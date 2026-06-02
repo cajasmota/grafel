@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Lockfile parsing | ✅ `full` | — | 2865 | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/extractor_test.go` | — |
-| Manifest parsing | ✅ `full` | `2026-05-28` | — | `internal/extractors/cross/manifest/extractor.go` | — |
+| Manifest parsing | ✅ `full` | `2026-06-02` | — | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/extractor_test.go` | Also emits the converged file/repo-agnostic SCOPE.Package SBOM node + DEPENDS_ON_PACKAGE edge via buildEntitiesAndRels (shared across all ecosystems); see internal/types/kinds.go EntityKindPackage / RelationshipKindDependsOnPackage. [sbom #3628] |
 
 ## Provenance
 

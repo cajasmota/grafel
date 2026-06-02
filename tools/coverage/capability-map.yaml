@@ -15928,6 +15928,27 @@ records:
         issues_implemented: ["3211"]
         verified_at: "2026-05-30"
 
+  pkg.gradle:
+    capabilities:
+      manifest_parsing:
+        # parseBuildGradle parses the `dependencies { ... }` block of
+        # build.gradle (Groovy DSL) and build.gradle.kts (Kotlin DSL),
+        # extracting group:artifact:version coordinates from string-notation
+        # declarations (implementation/api/compileOnly/runtimeOnly/... and the
+        # test* / androidTest* configurations -> dev scope). Honest-partial:
+        # map-style notation and dependency constraints are skipped rather than
+        # emitting malformed packages; only recognised dependency configurations
+        # in gradleConfigs are matched (a quoted "a:b:c" outside a dependency
+        # configuration emits no package).
+        status: partial
+        symbols:
+          - file: internal/extractors/cross/manifest/extractor.go
+            functions: [parseBuildGradle, gradleConfigIsDev, detectPackageManager, IsManifest, dispatchParser]
+        tests:
+          - file: internal/extractors/cross/manifest/extractor_test.go
+        issues_implemented: ["3628"]
+        verified_at: "2026-06-02"
+
   # ---------------------------------------------------------------------------
   # Ruby framework middleware + routing cells (Part of #3282)
   # ---------------------------------------------------------------------------

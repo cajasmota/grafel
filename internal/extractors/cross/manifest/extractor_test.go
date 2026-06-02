@@ -1154,3 +1154,316 @@ func TestComposerJSON_PackageManager(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// build.gradle / build.gradle.kts — Gradle (Java/Kotlin)
+// ---------------------------------------------------------------------------
+
+func TestGradle_GroovyDSL(t *testing.T) {
+	src := `
+dependencies {
+    implementation 'org.springframework:spring-core:5.3.0'
+    api "io.reactivex:rxjava:2.2.21"
+    testImplementation 'junit:junit:4.13.2'
+    compileOnly 'org.projectlombok:lombok:1.18.24'
+}
+`
+	records := runExtract(t, "app/build.gradle", src)
+	deps := depEntities(records)
+	byName := map[string]types.EntityRecord{}
+	for _, d := range deps {
+		byName[d.Name] = d
+	}
+	// spring-core: group:artifact name, version, runtime scope, maven-style PM=gradle.
+	spring, ok := byName["org.springframework:spring-core"]
+	if !ok {
+		t.Fatalf("expected org.springframework:spring-core dep, got %v", keysOf(byName))
+	}
+	if spring.Properties["version"] != "5.3.0" {
+		t.Errorf("spring-core version=%q want 5.3.0", spring.Properties["version"])
+	}
+	if spring.Properties["package_manager"] != "gradle" {
+		t.Errorf("spring-core package_manager=%q want gradle", spring.Properties["package_manager"])
+	}
+	if spring.Properties["dependency_kind"] != "runtime" {
+		t.Errorf("spring-core dependency_kind=%q want runtime", spring.Properties["dependency_kind"])
+	}
+	// junit declared via testImplementation -> dev scope.
+	junit, ok := byName["junit:junit"]
+	if !ok {
+		t.Fatalf("expected junit:junit dep")
+	}
+	if junit.Properties["is_dev"] != "true" {
+		t.Errorf("junit is_dev=%q want true (testImplementation)", junit.Properties["is_dev"])
+	}
+	if junit.Properties["version"] != "4.13.2" {
+		t.Errorf("junit version=%q want 4.13.2", junit.Properties["version"])
+	}
+	// rxjava declared with double-quotes + api config -> runtime.
+	if byName["io.reactivex:rxjava"].Properties["version"] != "2.2.21" {
+		t.Errorf("rxjava version=%q want 2.2.21", byName["io.reactivex:rxjava"].Properties["version"])
+	}
+}
+
+func TestGradle_KotlinDSL(t *testing.T) {
+	src := `
+dependencies {
+    implementation("com.google.guava:guava:31.0-jre")
+    testImplementation("org.junit.jupiter:junit-jupiter:5.9.0")
+}
+`
+	records := runExtract(t, "build.gradle.kts", src)
+	deps := depEntities(records)
+	byName := map[string]types.EntityRecord{}
+	for _, d := range deps {
+		byName[d.Name] = d
+	}
+	guava, ok := byName["com.google.guava:guava"]
+	if !ok {
+		t.Fatalf("expected com.google.guava:guava dep, got %v", keysOf(byName))
+	}
+	if guava.Properties["version"] != "31.0-jre" {
+		t.Errorf("guava version=%q want 31.0-jre", guava.Properties["version"])
+	}
+	if guava.Properties["package_manager"] != "gradle" {
+		t.Errorf("guava package_manager=%q want gradle", guava.Properties["package_manager"])
+	}
+	if byName["org.junit.jupiter:junit-jupiter"].Properties["is_dev"] != "true" {
+		t.Errorf("junit-jupiter should be is_dev=true")
+	}
+}
+
+// Negative: a quoted "a:b:c" string outside a recognised dependency
+// configuration (e.g. a plugin id or a custom function) emits no package.
+func TestGradle_IgnoresNonDependencyConfigs(t *testing.T) {
+	src := `
+plugins {
+    id 'java'
+}
+someCustomTask 'org.evil:not-a-dep:1.0.0'
+dependencies {
+    implementation 'org.real:dep:1.0.0'
+}
+`
+	records := runExtract(t, "build.gradle", src)
+	deps := depEntities(records)
+	byName := map[string]types.EntityRecord{}
+	for _, d := range deps {
+		byName[d.Name] = d
+	}
+	if _, ok := byName["org.evil:not-a-dep"]; ok {
+		t.Errorf("custom-task coordinate must NOT be emitted as a dependency")
+	}
+	if _, ok := byName["org.real:dep"]; !ok {
+		t.Errorf("real implementation dep must be emitted")
+	}
+}
+
+func TestGradle_IsManifest(t *testing.T) {
+	for _, p := range []string{"build.gradle", "app/build.gradle.kts"} {
+		if !IsManifest(p) {
+			t.Errorf("IsManifest(%q)=false want true", p)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// [sbom] Converged SCOPE.Package node + DEPENDS_ON_PACKAGE edge
+// ---------------------------------------------------------------------------
+
+// packageEntities returns the converged SCOPE.Package nodes.
+func packageEntities(records []types.EntityRecord) []types.EntityRecord {
+	var out []types.EntityRecord
+	for _, r := range records {
+		if r.Kind == "SCOPE.Package" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// dependsOnPackageRels returns every DEPENDS_ON_PACKAGE edge across records.
+func dependsOnPackageRels(records []types.EntityRecord) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
+	for _, r := range records {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "DEPENDS_ON_PACKAGE" {
+				out = append(out, rel)
+			}
+		}
+	}
+	return out
+}
+
+func keysOf(m map[string]types.EntityRecord) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	return out
+}
+
+func TestSBOM_PackageNode_NPM(t *testing.T) {
+	src := `{
+  "dependencies": {"react": "^18.2.0"},
+  "devDependencies": {"jest": "^29.0.0"}
+}`
+	records := runExtract(t, "frontend/package.json", src)
+	pkgs := packageEntities(records)
+	byName := map[string]types.EntityRecord{}
+	for _, p := range pkgs {
+		byName[p.Name] = p
+	}
+
+	react, ok := byName["package:npm:react"]
+	if !ok {
+		t.Fatalf("expected converged node package:npm:react, got %v", keysOf(byName))
+	}
+	// Node identity: file-agnostic synthetic SourceFile so cross-repo converges.
+	if react.SourceFile != PackageSourceFile {
+		t.Errorf("react SourceFile=%q want %q (synthetic)", react.SourceFile, PackageSourceFile)
+	}
+	if react.QualifiedName != "scope:package:npm:react" {
+		t.Errorf("react QualifiedName=%q want scope:package:npm:react", react.QualifiedName)
+	}
+	if react.Properties["package"] != "react" {
+		t.Errorf("react package prop=%q want react", react.Properties["package"])
+	}
+	// Version is NOT on the node (lives on the edge) — assert it's absent.
+	if _, has := react.Properties["version"]; has {
+		t.Errorf("node must NOT carry version (it is edge-scoped for convergence)")
+	}
+
+	// Edge: DEPENDS_ON_PACKAGE(project -> package:npm:react) version="^18.2.0" dev=false.
+	rels := dependsOnPackageRels(records)
+	byTo := map[string]types.RelationshipRecord{}
+	for _, r := range rels {
+		byTo[r.ToID] = r
+	}
+	rreact, ok := byTo["scope:package:npm:react"]
+	if !ok {
+		t.Fatalf("expected DEPENDS_ON_PACKAGE edge to react")
+	}
+	if rreact.FromID != "scope:component:project:frontend/package.json" {
+		t.Errorf("edge FromID=%q want project anchor ref", rreact.FromID)
+	}
+	if rreact.Properties["version"] != "^18.2.0" {
+		t.Errorf("react edge version=%q want ^18.2.0", rreact.Properties["version"])
+	}
+	if rreact.Properties["dev"] != "false" {
+		t.Errorf("react edge dev=%q want false", rreact.Properties["dev"])
+	}
+	if rreact.Properties["package_manager"] != "npm" {
+		t.Errorf("react edge package_manager=%q want npm", rreact.Properties["package_manager"])
+	}
+	// jest is a devDependency -> dev=true on its edge.
+	jest, ok := byTo["scope:package:npm:jest"]
+	if !ok {
+		t.Fatalf("expected DEPENDS_ON_PACKAGE edge to jest")
+	}
+	if jest.Properties["dev"] != "true" {
+		t.Errorf("jest edge dev=%q want true", jest.Properties["dev"])
+	}
+}
+
+func TestSBOM_PackageNode_GoMod(t *testing.T) {
+	src := `module example.com/app
+
+go 1.21
+
+require github.com/gin-gonic/gin v1.9.0
+`
+	records := runExtract(t, "go.mod", src)
+	pkgs := packageEntities(records)
+	var gin *types.EntityRecord
+	for i := range pkgs {
+		if pkgs[i].Name == "package:go_modules:github.com/gin-gonic/gin" {
+			gin = &pkgs[i]
+		}
+	}
+	if gin == nil {
+		t.Fatalf("expected converged node for gin")
+	}
+	if gin.QualifiedName != "scope:package:go_modules:github.com/gin-gonic/gin" {
+		t.Errorf("gin QualifiedName=%q", gin.QualifiedName)
+	}
+	rels := dependsOnPackageRels(records)
+	var found bool
+	for _, r := range rels {
+		if r.ToID == "scope:package:go_modules:github.com/gin-gonic/gin" {
+			found = true
+			if r.Properties["version"] != "v1.9.0" {
+				t.Errorf("gin edge version=%q want v1.9.0", r.Properties["version"])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected DEPENDS_ON_PACKAGE edge to gin")
+	}
+}
+
+// Convergence: the SAME ecosystem:name declared in two different manifest
+// files produces SCOPE.Package nodes with the IDENTICAL ComputeID — i.e. they
+// collapse to one node when merged into the graph (cross-repo SBOM).
+func TestSBOM_CrossFileConvergence(t *testing.T) {
+	srcA := `{"dependencies": {"lodash": "^4.17.21"}}`
+	srcB := `{"dependencies": {"lodash": "^4.17.0"}}`
+	recA := runExtract(t, "repo-a/package.json", srcA)
+	recB := runExtract(t, "repo-b/package.json", srcB)
+
+	idOf := func(recs []types.EntityRecord) string {
+		for _, r := range recs {
+			if r.Kind == "SCOPE.Package" && r.Name == "package:npm:lodash" {
+				return r.ID
+			}
+		}
+		return ""
+	}
+	idA := idOf(recA)
+	idB := idOf(recB)
+	if idA == "" || idB == "" {
+		t.Fatalf("missing lodash package node: idA=%q idB=%q", idA, idB)
+	}
+	if idA != idB {
+		t.Errorf("convergence broken: idA=%q idB=%q (same ecosystem:name must share ID)", idA, idB)
+	}
+}
+
+func TestSBOM_MavenPackageNode(t *testing.T) {
+	src := `<project>
+  <dependencies>
+    <dependency>
+      <groupId>org.springframework</groupId>
+      <artifactId>spring-core</artifactId>
+      <version>5.3.0</version>
+    </dependency>
+  </dependencies>
+</project>`
+	records := runExtract(t, "pom.xml", src)
+	pkgs := packageEntities(records)
+	var found bool
+	for _, p := range pkgs {
+		if p.Name == "package:maven:org.springframework:spring-core" {
+			found = true
+			if p.QualifiedName != "scope:package:maven:org.springframework:spring-core" {
+				t.Errorf("maven QualifiedName=%q", p.QualifiedName)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected converged maven node for spring-core, got %d package nodes", len(pkgs))
+	}
+	rels := dependsOnPackageRels(records)
+	var edgeFound bool
+	for _, r := range rels {
+		if r.ToID == "scope:package:maven:org.springframework:spring-core" {
+			edgeFound = true
+			if r.Properties["version"] != "5.3.0" {
+				t.Errorf("spring-core edge version=%q want 5.3.0", r.Properties["version"])
+			}
+		}
+	}
+	if !edgeFound {
+		t.Fatalf("expected DEPENDS_ON_PACKAGE edge to spring-core")
+	}
+}

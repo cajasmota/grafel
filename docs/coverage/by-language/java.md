@@ -86,7 +86,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Mockito](../detail/test.mockito.md) | 🔴 | — | — | — | 🟢 | |
 | [REST-assured](../detail/test.restassured.md) | 🔴 | — | — | — | 🔴 | |
 | [TestNG](../detail/test.testng.md) | 🔴 | — | — | — | 🟢 | |
-| [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | — | 🔴 | 🔴 | — | |
+| [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | — | 🔴 | 🟢 | — | |
 | [pom.xml](../detail/pkg.pom.md) | — | — | — | ✅ | — | |
 
 ## ORMs

@@ -254,6 +254,26 @@ const (
 	//                    "rails_enum", "csharp_enum").
 	// See internal/extractor/enum_valueset.go.
 	EntityKindEnum EntityKind = "SCOPE.Enum"
+	// [sbom] EntityKindPackage is a synthetic, file-agnostic node representing a
+	// single declared EXTERNAL package (dependency) by its ecosystem-qualified
+	// name — e.g. "npm:react", "go_modules:github.com/gin-gonic/gin",
+	// "pip:requests", "maven:org.springframework:spring-core", "cargo:serde".
+	// It is the convergence point for the software-bill-of-materials (SBOM)
+	// capability (child of epic #3628): every manifest that declares the SAME
+	// package — across files, modules, AND repos in a group — resolves to ONE
+	// node, so the graph answers "which repos depend on package X, and at what
+	// versions?" (a package's inbound DEPENDS_ON_PACKAGE edges are its full
+	// usage footprint) and conversely "what is this repo's full dependency
+	// set?". Like SCOPE.ExternalService it carries a constant synthetic
+	// SourceFile (PackageSourceFile) so EntityRecord.ComputeID
+	// (SourceFile+Kind+Name) collapses the same ecosystem:name across every
+	// manifest into a single node — distinct from the per-manifest
+	// SCOPE.Component(subtype=external_dependency) record (which stays
+	// file-scoped for license/version provenance). The version is NOT part of
+	// the identity (two repos pinning different versions of react converge on
+	// one node); per-edge `version` + `dev` scope live on the DEPENDS_ON_PACKAGE
+	// edge. Emitted by internal/extractors/cross/manifest/extractor.go.
+	EntityKindPackage EntityKind = "SCOPE.Package"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -334,6 +354,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindChannel,
 		// #3628 data-model: enum / value-set node.
 		EntityKindEnum,
+		// [sbom] synthetic package convergence node (child of #3628).
+		EntityKindPackage,
 	}
 }
 
@@ -1111,6 +1133,22 @@ const (
 	// this edge; dynamic / computed types do not. See
 	// internal/extractor/enum_valueset.go.
 	RelationshipKindTypedAs RelationshipKind = "TYPED_AS"
+	// [sbom] DEPENDS_ON_PACKAGE points a manifest's project-anchor entity at a
+	// synthetic SCOPE.Package node (Name "package:<ecosystem>:<name>") it
+	// declares as an external dependency. Distinct from the file-scoped
+	// DEPENDS_ON(kind=external_dependency) edge: this edge targets the
+	// CONVERGED, file/repo-agnostic package node so the SAME package declared in
+	// many repos shares one inbound set — the graph's software bill-of-materials
+	// (SBOM). ToID is the package entity's QualifiedName so the resolver binds
+	// it via the byQualifiedName exact-match tier. Edge properties:
+	//   "package_manager" : ecosystem (npm, pip, go_modules, maven, gradle,
+	//                       cargo, bundler, composer, ...).
+	//   "version"         : the declared version range / pin (verbatim; "" when
+	//                       the manifest omits it — honest-partial).
+	//   "dev"             : "true" when the package is a dev/test-only dependency.
+	//   "dependency_kind" : runtime|dev|peer|locked|indirect (from the manifest).
+	// Emitted by internal/extractors/cross/manifest/extractor.go.
+	RelationshipKindDependsOnPackage RelationshipKind = "DEPENDS_ON_PACKAGE"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -1254,6 +1292,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindThrows,
 		RelationshipKindCatches,
 		RelationshipKindDependsOnService,
+		// [sbom] manifest project-anchor → synthetic package convergence node.
+		RelationshipKindDependsOnPackage,
 		// [realtime] WS room/channel grouping: JOINS_CHANNEL / BROADCASTS_TO.
 		RelationshipKindJoinsChannel,
 		RelationshipKindBroadcastsTo,

@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Lockfile parsing | 🔴 `missing` | — | — | — | — |
-| Manifest parsing | 🔴 `missing` | — | — | — | — |
+| Manifest parsing | 🟢 `partial` | `2026-06-02` | 3628 | `internal/extractors/cross/manifest/extractor.go`<br>`internal/extractors/cross/manifest/extractor_test.go` | — |
 
 ## Provenance
 

@@ -71555,7 +71555,10 @@
           "status": "missing"
         },
         "manifest_parsing": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/extractors/cross/manifest/extractor.go","internal/extractors/cross/manifest/extractor_test.go"],
+          "issue": "3628",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -71583,8 +71586,9 @@
         },
         "manifest_parsing": {
           "status": "full",
-          "cites": ["internal/extractors/cross/manifest/extractor.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/extractors/cross/manifest/extractor.go","internal/extractors/cross/manifest/extractor_test.go"],
+          "notes": "Also emits the converged file/repo-agnostic SCOPE.Package SBOM node + DEPENDS_ON_PACKAGE edge via buildEntitiesAndRels (shared across all ecosystems); see internal/types/kinds.go EntityKindPackage / RelationshipKindDependsOnPackage. [sbom #3628]",
+          "verified_at": "2026-06-02"
         }
       }
     },

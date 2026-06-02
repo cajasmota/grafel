@@ -93,6 +93,38 @@ func projectRef(filePath string) string {
 }
 
 // ---------------------------------------------------------------------------
+// [sbom] Converged package node (SCOPE.Package) — file/repo-agnostic
+// ---------------------------------------------------------------------------
+//
+// Distinct from the per-manifest SCOPE.Component(external_dependency) record:
+// the SCOPE.Package node is the SBOM convergence point. Its identity is
+// (ecosystem, name) ONLY — version is intentionally excluded so the same
+// package declared across many manifests/repos collapses to one node (the
+// per-edge DEPENDS_ON_PACKAGE carries version + dev scope). This mirrors the
+// SCOPE.ExternalService synthetic-SourceFile model.
+
+// PackageSourceFile is the synthetic, constant SourceFile assigned to every
+// SCOPE.Package entity so identical ecosystem:name pairs converge to a single
+// graph node under EntityRecord.ComputeID (SourceFile+Kind+Name).
+const PackageSourceFile = "<package>"
+
+// packageName returns the canonical entity Name for a converged package node,
+// namespaced so it never collides with a same-named code symbol, e.g.
+// "package:npm:react", "package:maven:org.springframework:spring-core".
+func packageName(packageManager, name string) string {
+	return "package:" + packageManager + ":" + name
+}
+
+// packageTargetID returns the structural-ref ToID for a DEPENDS_ON_PACKAGE edge
+// pointing at a package node. This value is ALSO the package entity's
+// QualifiedName, so the resolver's byQualifiedName exact-match tier binds the
+// edge without any new linker code. Constant across files and repos so the same
+// dependency converges everywhere.
+func packageTargetID(packageManager, name string) string {
+	return "scope:package:" + packageManager + ":" + name
+}
+
+// ---------------------------------------------------------------------------
 // Manifest detection
 // ---------------------------------------------------------------------------
 
@@ -131,6 +163,9 @@ var exactManifestNames = map[string]bool{
 	// PHP / Composer
 	"composer.json": true,
 	"composer.lock": true,
+	// Java / Kotlin — Gradle build scripts (Groovy DSL + Kotlin DSL)
+	"build.gradle":     true,
+	"build.gradle.kts": true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -177,6 +212,9 @@ func detectPackageManager(filePath string) string {
 		// PHP / Composer
 		"composer.json": "composer",
 		"composer.lock": "composer",
+		// Java / Kotlin — Gradle
+		"build.gradle":     "gradle",
+		"build.gradle.kts": "gradle",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -1410,6 +1448,87 @@ func parseComposerLock(source string) []dep {
 }
 
 // ---------------------------------------------------------------------------
+// Parser: build.gradle / build.gradle.kts (Gradle, Groovy + Kotlin DSL)
+// ---------------------------------------------------------------------------
+//
+// Parses dependency declarations inside the `dependencies { ... }` block.
+// Both the short "group:artifact:version" string notation and the Kotlin-DSL
+// quote style are handled:
+//
+//	implementation 'org.springframework:spring-core:5.3.0'
+//	implementation("com.google.guava:guava:31.0-jre")
+//	testImplementation 'junit:junit:4.13.2'
+//	api "io.reactivex:rxjava:2.2.21"
+//	compileOnly 'org.projectlombok:lombok:1.18.24'
+//
+// The configuration keyword (implementation/api/runtimeOnly/... vs
+// testImplementation/testRuntimeOnly/...) determines runtime-vs-dev scope.
+// Map-style notation (group: '...', name: '...', version: '...') and dependency
+// constraints are out of scope — honest-partial: those lines are skipped rather
+// than emitting a malformed package.
+var gradleDepLineRE = regexp.MustCompile(
+	`(?m)^\s*([A-Za-z][A-Za-z0-9]*)\s*[ (]\s*['"]([^'"\s]+:[^'"\s]+)['"]`,
+)
+
+// gradleConfigs is the set of recognised Gradle dependency configurations.
+// Anything outside this set (e.g. a custom function call that happens to take a
+// quoted "a:b:c" string) is ignored — precision over recall.
+var gradleConfigs = map[string]bool{
+	"implementation":            true,
+	"api":                       true,
+	"compileOnly":               true,
+	"runtimeOnly":               true,
+	"compile":                   true, // legacy
+	"runtime":                   true, // legacy
+	"annotationProcessor":       true,
+	"kapt":                      true,
+	"testImplementation":        true,
+	"testCompileOnly":           true,
+	"testRuntimeOnly":           true,
+	"testCompile":               true, // legacy
+	"androidTestImplementation": true,
+	"developmentOnly":           true,
+}
+
+// gradleConfigIsDev reports whether a configuration keyword denotes a
+// test/dev-only dependency.
+func gradleConfigIsDev(cfg string) bool {
+	return strings.HasPrefix(cfg, "test") || strings.HasPrefix(cfg, "androidTest")
+}
+
+func parseBuildGradle(source string) []dep {
+	var out []dep
+	seen := map[string]bool{}
+	for _, m := range gradleDepLineRE.FindAllStringSubmatch(source, -1) {
+		cfg := m[1]
+		if !gradleConfigs[cfg] {
+			continue
+		}
+		coord := m[2] // group:artifact[:version]
+		parts := strings.Split(coord, ":")
+		if len(parts) < 2 {
+			continue
+		}
+		name := parts[0] + ":" + parts[1]
+		version := ""
+		if len(parts) >= 3 {
+			version = parts[2]
+		}
+		if seen[name] {
+			continue
+		}
+		seen[name] = true
+		isDev := gradleConfigIsDev(cfg)
+		kind := "runtime"
+		if isDev {
+			kind = "dev"
+		}
+		out = append(out, dep{name: name, version: version, isDev: isDev, kind: kind})
+	}
+	return out
+}
+
+// ---------------------------------------------------------------------------
 
 type parserFn func(source string) []dep
 
@@ -1440,6 +1559,9 @@ var parsers = map[string]parserFn{
 	// PHP / Composer
 	"composer.json": parseComposerJSON,
 	"composer.lock": parseComposerLock,
+	// Java / Kotlin — Gradle
+	"build.gradle":     parseBuildGradle,
+	"build.gradle.kts": parseBuildGradle,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {
@@ -1553,6 +1675,47 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 			},
 			QualityScore: 0.8,
 		})
+
+		// [sbom] Converged package node + DEPENDS_ON_PACKAGE edge. The node is
+		// file/repo-agnostic (synthetic SourceFile) so the SAME ecosystem:name
+		// across every manifest in the group collapses to ONE node — the
+		// software-bill-of-materials convergence point. The DEPENDS_ON_PACKAGE
+		// edge from the project anchor carries the per-declaration version +
+		// dev scope (which are NOT part of the node identity). Mirrors the
+		// SCOPE.ExternalService synthetic-node model.
+		pkgID := packageTargetID(packageManager, d.name)
+		pkgEnt := types.EntityRecord{
+			Name:          packageName(packageManager, d.name),
+			QualifiedName: pkgID,
+			Kind:          string(types.EntityKindPackage),
+			Subtype:       "package",
+			SourceFile:    PackageSourceFile,
+			Language:      "",
+			StartLine:     1,
+			EndLine:       1,
+			Properties: map[string]string{
+				"package":         d.name,
+				"package_manager": packageManager,
+				"ref":             pkgID,
+			},
+			Relationships: []types.RelationshipRecord{
+				{
+					FromID: projRef,
+					ToID:   pkgID,
+					Kind:   string(types.RelationshipKindDependsOnPackage),
+					Properties: map[string]string{
+						"package_manager": packageManager,
+						"version":         d.version,
+						"dev":             isDev,
+						"dependency_kind": depKind,
+						"indirect":        indirect,
+					},
+				},
+			},
+			QualityScore: 0.8,
+		}
+		pkgEnt.ID = pkgEnt.ComputeID()
+		out = append(out, pkgEnt)
 	}
 	return out
 }
