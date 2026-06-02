@@ -120,7 +120,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [ORM model lifecycle-hook → handler TRIGGERS (Django signals, SQLAlchemy events)](../detail/msg.orm-lifecycle-hooks-py.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
-| [Python transitions (FSM topology)](../detail/infra.state-machine.python-transitions.md) | [platform](../by-category/platform.md) | 🟢 | |
+
+### Workflow / DAG & State Machines
+
+| Name | Dependency attribution | Resource extraction | Notes |
+|---|---|---|---|
+| [Python transitions (FSM topology)](../detail/infra.state-machine.python-transitions.md) | 🟢 | 🟢 | |
+
 
 ### Validation
 

@@ -6,12 +6,48 @@
 Back to [summary](../summary.md). Bucket: **{{.Bucket}}**.
 
 {{if eq .Bucket "Other" -}}
+{{- if .Subsections -}}
+{{- range .Subsections}}
+
+## {{.Heading}}
+{{if .GroupNames}}
+| Language | Name |{{range .GroupNames}} {{.}} |{{end}} Status | Notes |
+|---|---|{{range .GroupNames}}---|{{end}}---|---|
+{{- $groups := .GroupNames}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{langDsp .Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $groups}} {{groupCell $rec.GroupDigestByName .}} |{{end}} {{glyph $rec.Digest}} | |
+{{- end}}
+{{- else}}
 | Language | Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Status | Notes |
 |---|---|{{range .CapabilityKeys}}---|{{end}}---|---|
 {{- $caps := .CapabilityKeys}}
 {{- range .Records}}
 {{- $rec := .}}
 | [{{langDsp .Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} {{glyph $rec.Digest}} | |
+{{- end}}
+{{- end}}
+{{- end}}
+{{- if .Records}}
+
+## Other
+
+| Language | Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Status | Notes |
+|---|---|{{range .CapabilityKeys}}---|{{end}}---|---|
+{{- $caps := .CapabilityKeys}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{langDsp .Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} {{glyph $rec.Digest}} | |
+{{- end}}
+{{- end}}
+{{- else -}}
+| Language | Name |{{range .CapabilityKeys}} {{humanizeCapKey .}} |{{end}} Status | Notes |
+|---|---|{{range .CapabilityKeys}}---|{{end}}---|---|
+{{- $caps := .CapabilityKeys}}
+{{- range .Records}}
+{{- $rec := .}}
+| [{{langDsp .Language}}](../by-language/{{.Language}}.md) | [{{.Label}}](../detail/{{.ID}}.md) |{{range $caps}} {{glyph (index $rec.CapByKey .).Status}} |{{end}} {{glyph $rec.Digest}} | |
+{{- end}}
 {{- end}}
 {{- else -}}
 {{- if .Subsections}}

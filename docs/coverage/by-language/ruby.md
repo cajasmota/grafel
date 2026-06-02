@@ -78,7 +78,12 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)](../detail/msg.orm-lifecycle-hooks-ruby.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Rails ActionCable](../detail/msg.actioncable.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Resque (Ruby task queue)](../detail/msg.resque.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [Ruby AASM (FSM topology)](../detail/infra.state-machine.aasm.md) | [platform](../by-category/platform.md) | 🟢 | |
 | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
 | [rufus-scheduler (Ruby in-process scheduler)](../detail/msg.rufus-scheduler.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
 | [whenever (Ruby cron / config/schedule.rb)](../detail/msg.whenever.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+
+### Workflow / DAG & State Machines
+
+| Name | Dependency attribution | Resource extraction | Notes |
+|---|---|---|---|
+| [Ruby AASM (FSM topology)](../detail/infra.state-machine.aasm.md) | 🟢 | 🟢 | |

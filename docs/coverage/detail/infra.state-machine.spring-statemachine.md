@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [java](../by-language/java.md)
 - **Category:** [platform](../by-category/platform.md)
+- **Subcategory:** Workflow / DAG & State Machines
 - **Capability cells:** 2
 
 ## Capabilities

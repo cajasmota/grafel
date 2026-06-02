@@ -156,4 +156,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [ORM model lifecycle-hook → handler TRIGGERS (TypeORM, Sequelize, Mongoose)](../detail/msg.orm-lifecycle-hooks-jsts.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [node-schedule (Node scheduled jobs)](../detail/msg.node-schedule.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
-| [tsconfig.json](../detail/config.tsconfig.md) | [platform](../by-category/platform.md) | ✅ | |
+
+### Config Files
+
+| Name | Env resolution | File parsing | Notes |
+|---|---|---|---|
+| [tsconfig.json](../detail/config.tsconfig.md) | — | ✅ | |

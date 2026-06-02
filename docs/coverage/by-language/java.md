@@ -117,9 +117,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [.properties (application.properties)](../detail/config.properties.md) | [platform](../by-category/platform.md) | ✅ | |
 | [Auth policy resolver (Java/Kotlin — Phase 1 of #1942)](../detail/security.auth-java.md) | [security](../by-category/security.md) | ✅ | |
-| [Spring StateMachine (FSM topology)](../detail/infra.state-machine.spring-statemachine.md) | [platform](../by-category/platform.md) | 🟢 | |
+
+### Config Files
+
+| Name | Env resolution | File parsing | Notes |
+|---|---|---|---|
+| [.properties (application.properties)](../detail/config.properties.md) | — | ✅ | |
+
+
+### Workflow / DAG & State Machines
+
+| Name | Dependency attribution | Resource extraction | Notes |
+|---|---|---|---|
+| [Spring StateMachine (FSM topology)](../detail/infra.state-machine.spring-statemachine.md) | 🟢 | 🟢 | |
+
 
 ### Validation
 

@@ -42,6 +42,18 @@
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
 | **Total** | 115 | 43 | 45 | 27 |
 
+### Platform subcategories
+
+The [Platform / k8s](by-category/platform.md) category splits into the lanes below. Infrastructure-as-Code (Terraform, OpenTofu, Pulumi, AWS CDK, CloudFormation, Bicep, Serverless) lives under **IaC / Provisioning**.
+
+| Lane | Records | Tools |
+|---|---:|---|
+| [IaC / Provisioning](by-category/platform.md#iac--provisioning) | 8 | AWS CDK, AWS CloudFormation, Ansible, Azure Bicep, … |
+| [Containers & Orchestration](by-category/platform.md#containers--orchestration) | 5 | Dockerfile, Helm charts, Kubernetes manifests, Kustomize, … |
+| [Config Files](by-category/platform.md#config-files) | 7 | .env, .ini, .properties, .toml, … |
+| [Workflow / DAG & State Machines](by-category/platform.md#workflow--dag--state-machines) | 7 | Apache Airflow, Argo Workflows, Celery canvas, Python transitions, … |
+| [App Topology & Integration](by-category/platform.md#app-topology--integration) | 13 | API-gateway route topology, AWS CDK, AWS CloudFormation, Frontend route, … |
+
 ## Languages with extractor support, no records yet
 
 (archigraph has tree-sitter / extractor coverage for these but no framework/ORM/tool records tracked — contribute via `go run ./tools/coverage add`)

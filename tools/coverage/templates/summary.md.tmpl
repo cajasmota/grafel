@@ -20,6 +20,17 @@
 {{- end}}
 | **Total** | {{.CrossCuttingTotal.Records}} | {{.CrossCuttingTotal.Full}} | {{.CrossCuttingTotal.Partial}} | {{.CrossCuttingTotal.Missing}} |
 {{end}}
+{{- if .PlatformSubcategories}}
+### Platform subcategories
+
+The [Platform / k8s](by-category/platform.md) category splits into the lanes below. Infrastructure-as-Code (Terraform, OpenTofu, Pulumi, AWS CDK, CloudFormation, Bicep, Serverless) lives under **IaC / Provisioning**.
+
+| Lane | Records | Tools |
+|---|---:|---|
+{{- range .PlatformSubcategories}}
+| [{{.Heading}}](by-category/platform.md#{{.Anchor}}) | {{.Records}} | {{.Tools}} |
+{{- end}}
+{{end}}
 {{- if .PlaceholderLangs}}
 ## Languages with extractor support, no records yet
 

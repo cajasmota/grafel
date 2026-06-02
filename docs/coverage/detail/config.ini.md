@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
+- **Subcategory:** Config Files
 - **Capability cells:** 1
 
 ## Capabilities

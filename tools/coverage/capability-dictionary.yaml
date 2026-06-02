@@ -66,6 +66,7 @@ categories:
     capabilities: [resource_extraction, dependency_attribution]
   platform:
     capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage]
+    subcategory_order: [iac_provisioning, container_orchestration, config_files, workflow_dag, app_topology]
   security:
     capabilities: [auth_policy, secret_detection, sql_injection, cors_policy]
   protocol:
@@ -631,3 +632,58 @@ subcategories:
         keys: [type_coercion_recognition]
       - name: Testing
         keys: [tests_linkage]
+
+  # Platform subcategories (#3628 child). The platform category was a
+  # grab-bag rendering one 7-wide union pivot in which most cells were
+  # "—". These lanes carve it into coherent groups whose per-capability
+  # column sets only include the capabilities the lane's records actually
+  # carry, so each pivot is dense. The iac vs resource-graph duplicate-
+  # looking pairs (AWS CDK, Helm, Kubernetes, CloudFormation, Pulumi —
+  # an infra.iac.* declarative record + an infra.resource.* attribution
+  # record) are split across iac_provisioning vs app_topology so they no
+  # longer sit adjacent as apparent duplicates. No group taxonomy: these
+  # lanes render per-capability columns (the union machinery's don't-
+  # strand guard is N/A — every declared column is used by ≥1 record).
+  iac_provisioning:
+    display: "IaC / Provisioning"
+    parent_category: platform
+    capabilities:
+      - resource_extraction
+      - dependency_attribution
+    groups: []
+
+  container_orchestration:
+    display: "Containers & Orchestration"
+    parent_category: platform
+    capabilities:
+      - resource_extraction
+      - dependency_attribution
+      - env_resolution
+    groups: []
+
+  config_files:
+    display: "Config Files"
+    parent_category: platform
+    capabilities:
+      - file_parsing
+      - env_resolution
+    groups: []
+
+  workflow_dag:
+    display: "Workflow / DAG & State Machines"
+    parent_category: platform
+    capabilities:
+      - resource_extraction
+      - dependency_attribution
+    groups: []
+
+  app_topology:
+    display: "App Topology & Integration"
+    parent_category: platform
+    capabilities:
+      - resource_extraction
+      - dependency_attribution
+      - shared_data_coupling
+      - external_service_dependency
+      - translation_key_usage
+    groups: []

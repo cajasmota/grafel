@@ -124,6 +124,23 @@ type placeholderLanguage struct {
 	Display string
 }
 
+// platformSubcatRow is one entry in the summary's "Platform subcategories"
+// discoverability section (#3628 child). The platform category is a
+// cross-cutting grab-bag whose internal lanes (IaC / Provisioning,
+// Containers & Orchestration, Config Files, ...) were previously invisible
+// from summary.md — a user scanning the summary could not tell that
+// Terraform / Pulumi / CDK / CloudFormation coverage existed without
+// opening by-category/platform.md. This row surfaces each lane by display
+// heading, its record count, and a short representative tool list so IaC
+// (and the other lanes) are named and discoverable. Anchor links into the
+// per-subcategory section heading on the platform by-category page.
+type platformSubcatRow struct {
+	Heading string // subcategory display heading (e.g. "IaC / Provisioning")
+	Anchor  string // GitHub-style heading anchor on by-category/platform.md
+	Records int
+	Tools   string // comma-joined sample of record labels, truncated
+}
+
 // bucketSection is one rendered section on a by-language page. When a
 // bucket contains records with subcategories the section is split into
 // Subsections (one per subcategory, ordered by subcategoryOrder) and a
@@ -164,19 +181,20 @@ type subSection struct {
 // ActiveLanguages and PlaceholderLanguages totals power the headline
 // banner ("16 active · 22 placeholder").
 type summaryData struct {
-	Marker            string
-	TotalLanguages    int
-	ActiveLanguages   int
-	PlaceholderCount  int
-	TotalFrameworks   int
-	TotalTools        int
-	TotalORMs         int
-	TotalOther        int
-	ActiveRows        []pivotRow
-	CrossCutting      []crossCuttingRow
-	CrossCuttingTotal crossCuttingRow
-	EmptyCrossCutting []crossCuttingRow
-	PlaceholderLangs  []placeholderLanguage
+	Marker                string
+	TotalLanguages        int
+	ActiveLanguages       int
+	PlaceholderCount      int
+	TotalFrameworks       int
+	TotalTools            int
+	TotalORMs             int
+	TotalOther            int
+	ActiveRows            []pivotRow
+	CrossCutting          []crossCuttingRow
+	CrossCuttingTotal     crossCuttingRow
+	EmptyCrossCutting     []crossCuttingRow
+	PlaceholderLangs      []placeholderLanguage
+	PlatformSubcategories []platformSubcatRow
 }
 
 // languagePageData feeds by-language/<lang>.md.tmpl.
@@ -658,6 +676,12 @@ func generate(reg *Registry, outRoot string) error {
 	// "tracked but no records" section instead (omitted when empty).
 	activeCC, emptyCC, ccTotal := buildCrossCuttingRows(byCat)
 
+	// Platform subcategory discoverability rows (#3628 child): surface
+	// IaC / Provisioning, Containers, Config Files, ... by name in the
+	// summary so a reader sees Terraform / Pulumi / CDK exists without
+	// opening the by-category page.
+	platformSubcats := buildPlatformSubcatRows(byCat)
+
 	// Extractor-supported but record-free languages form the placeholder
 	// table at the bottom. Sorted by display name for human scanability.
 	supported := SupportedLanguages(outRoot)
@@ -677,19 +701,20 @@ func generate(reg *Registry, outRoot string) error {
 
 	activeLangCount := len(activeRows)
 	if err := renderToFile(tmpls, "summary.md.tmpl", filepath.Join(root, "summary.md"), summaryData{
-		Marker:            doNotEditMarker,
-		TotalLanguages:    activeLangCount + len(placeholderLangs),
-		ActiveLanguages:   activeLangCount,
-		PlaceholderCount:  len(placeholderLangs),
-		TotalFrameworks:   totals.Frameworks,
-		TotalTools:        totals.Tools,
-		TotalORMs:         totals.ORMs,
-		TotalOther:        totals.Other,
-		ActiveRows:        activeRows,
-		CrossCutting:      activeCC,
-		CrossCuttingTotal: ccTotal,
-		EmptyCrossCutting: emptyCC,
-		PlaceholderLangs:  placeholderLangs,
+		Marker:                doNotEditMarker,
+		TotalLanguages:        activeLangCount + len(placeholderLangs),
+		ActiveLanguages:       activeLangCount,
+		PlaceholderCount:      len(placeholderLangs),
+		TotalFrameworks:       totals.Frameworks,
+		TotalTools:            totals.Tools,
+		TotalORMs:             totals.ORMs,
+		TotalOther:            totals.Other,
+		ActiveRows:            activeRows,
+		CrossCutting:          activeCC,
+		CrossCuttingTotal:     ccTotal,
+		EmptyCrossCutting:     emptyCC,
+		PlaceholderLangs:      placeholderLangs,
+		PlatformSubcategories: platformSubcats,
 	}); err != nil {
 		return err
 	}
@@ -895,6 +920,96 @@ func buildCrossCuttingRows(byCat map[string][]recordView) ([]crossCuttingRow, []
 		total.Missing += row.Missing
 	}
 	return active, empty, total
+}
+
+// headingAnchor converts a markdown heading into a GitHub-style fragment
+// anchor: lowercase, drop characters that are not alphanumeric / space /
+// hyphen, then replace each space run's individual spaces with hyphens
+// (GitHub does NOT collapse runs, so "IaC / Provisioning" → the dropped
+// "/" leaves two spaces → "iac--provisioning"). Deterministic and pure.
+func headingAnchor(s string) string {
+	var b strings.Builder
+	for _, r := range strings.ToLower(s) {
+		switch {
+		case r >= 'a' && r <= 'z', r >= '0' && r <= '9', r == '-':
+			b.WriteRune(r)
+		case r == ' ':
+			b.WriteRune('-')
+		default:
+			// drop everything else (slashes, punctuation)
+		}
+	}
+	return b.String()
+}
+
+// buildPlatformSubcatRows produces the summary's "Platform subcategories"
+// discoverability rows (#3628 child) from the platform records in byCat.
+// Rows follow the dictionary's canonical subcategory order; each carries
+// the lane's display heading, an anchor link into by-category/platform.md,
+// the record count, and a short de-duplicated representative tool list so
+// IaC / Terraform / Pulumi / CDK (and the other lanes) are named and
+// scannable from the summary instead of buried under "Other → platform".
+// Returns nil when platform has no subcategorised records.
+func buildPlatformSubcatRows(byCat map[string][]recordView) []platformSubcatRow {
+	const category = "platform"
+	bySub := map[string][]string{}
+	present := map[string]bool{}
+	for _, rv := range byCat[category] {
+		if rv.Subcategory == "" {
+			continue
+		}
+		present[rv.Subcategory] = true
+		bySub[rv.Subcategory] = append(bySub[rv.Subcategory], rv.Label)
+	}
+	if len(present) == 0 {
+		return nil
+	}
+	const sampleN = 4
+	out := make([]platformSubcatRow, 0, len(present))
+	for _, sub := range orderedSubcategories(category, present) {
+		labels := bySub[sub]
+		sort.Strings(labels)
+		samples := platformToolSamples(labels, sampleN)
+		heading := subcategoryHeading(sub)
+		out = append(out, platformSubcatRow{
+			Heading: heading,
+			Anchor:  headingAnchor(heading),
+			Records: len(labels),
+			Tools:   samples,
+		})
+	}
+	return out
+}
+
+// platformToolSamples renders up to n short tool names from a sorted
+// label slice as a comma-joined string, appending "…" when truncated.
+// Labels are shortened to their leading token before any parenthetical or
+// slash qualifier so the summary cell stays compact (e.g. "Terraform
+// (HCL)" → "Terraform"). Deterministic.
+func platformToolSamples(labels []string, n int) string {
+	short := make([]string, 0, len(labels))
+	seen := map[string]bool{}
+	for _, l := range labels {
+		s := l
+		if i := strings.IndexAny(s, "(/→"); i > 0 {
+			s = strings.TrimSpace(s[:i])
+		}
+		if s == "" || seen[s] {
+			continue
+		}
+		seen[s] = true
+		short = append(short, s)
+	}
+	truncated := false
+	if len(short) > n {
+		short = short[:n]
+		truncated = true
+	}
+	joined := strings.Join(short, ", ")
+	if truncated {
+		joined += ", …"
+	}
+	return joined
 }
 
 // nonStrandedGroupNames is the don't-strand render guard (#2902/#2899).

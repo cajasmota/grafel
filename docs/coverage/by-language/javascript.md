@@ -21,6 +21,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ## Other
 
-| Name | Category | Status | Notes |
+
+### Workflow / DAG & State Machines
+
+| Name | Dependency attribution | Resource extraction | Notes |
 |---|---|---|---|
-| [XState (FSM topology)](../detail/infra.state-machine.xstate.md) | [platform](../by-category/platform.md) | 🟢 | |
+| [XState (FSM topology)](../detail/infra.state-machine.xstate.md) | 🟢 | 🟢 | |

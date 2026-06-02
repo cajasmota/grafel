@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [java](../by-language/java.md)
 - **Category:** [platform](../by-category/platform.md)
+- **Subcategory:** Config Files
 - **Capability cells:** 1
 
 ## Capabilities

@@ -5,6 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [python](../by-language/python.md)
 - **Category:** [platform](../by-category/platform.md)
+- **Subcategory:** Workflow / DAG & State Machines
 - **Capability cells:** 2
 
 ## Capabilities

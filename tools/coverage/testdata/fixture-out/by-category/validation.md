@@ -5,5 +5,10 @@
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
-| Language | Name | Constraint extraction | Custom validator extraction | Nested model extraction | Schema extraction | Tests linkage | Type coercion recognition | Status | Notes |
-|---|---|---|---|---|---|---|---|---|---|
+
+
+## Validation
+
+| Language | Name | Testing | Other capabilities | Status | Notes |
+|---|---|---|---|---|---|
+| [python](../by-language/python.md) | [Pydantic](../detail/lang.python.validation.pydantic.md) | 🔴 0/1 | 🟡 1/5 | 🔴 | |
