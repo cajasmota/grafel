@@ -506,6 +506,10 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 
 	switch lang {
 	case "java":
+		// Capture the producer-side entity count before the Java backend
+		// synthesizers run so the middleware pass (#3628) can resolve the
+		// ordered middleware_chain over exactly the endpoints this file emits.
+		javaMWBefore := len(entities)
 		// Spring MVC composed Routes already carry a verb on the
 		// `http_method` property; reuse them rather than re-scanning the
 		// file (the AST pass is the source of truth for prefix composition).
@@ -533,7 +537,20 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// so they cross-link via the existing Name-based HTTP linker.
 		synthesizeJavaSOAPServer(string(content), emit)
 		synthesizeJavaSOAPClient(string(content), soapClientEmit)
+		// #3628 — bind the ordered middleware chain to the Spring producer
+		// endpoints emitted above: Servlet FilterRegistrationBean urlPatterns and
+		// Spring MVC HandlerInterceptor addPathPatterns are matched against each
+		// route's path and stamped as middleware_chain/middleware_count/
+		// middleware_names/middleware_scope using the same cross-stack contract as
+		// the Go (#3777) and JS/TS (#2853) passes. Auth filters/interceptors are
+		// annotated IN the chain (auth_kind), never double-modeled.
+		applyJavaMiddlewareCoverage(string(content), path, entities, javaMWBefore)
 	case "python":
+		// Capture the producer-side entity count before the Python backend
+		// synthesizers run so the middleware pass (#3628) can resolve the
+		// ordered middleware_chain over exactly the http_endpoint_definition
+		// entities this file just emitted.
+		pyMWBefore := len(entities)
 		// #2980 — ASGI frameworks (Sanic / Litestar / Robyn) run BEFORE
 		// Flask / FastAPI. Sanic's `@app.route` / `@app.get` shape overlaps
 		// Flask's, and Robyn's `@app.get` shape overlaps FastAPI's, so the
@@ -611,6 +628,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizePySOAPClient(string(content), soapClientEmit)
 		synthesizePyJSONRPCServer(string(content), emit)
 		synthesizePyJSONRPCClient(string(content), soapClientEmit)
+		// #3628 — bind the ordered middleware chain to the Python producer
+		// endpoints emitted above (Django settings.MIDDLEWARE global pipeline,
+		// FastAPI app.add_middleware + per-route dependencies, DRF view
+		// permission/authentication/throttle classes). Stamps middleware_chain/
+		// middleware_count/middleware_names/middleware_scope using the same
+		// cross-stack contract as the Go (#3777) and JS/TS (#2853) passes. Auth
+		// middleware is annotated IN the chain (auth_kind), never double-modeled.
+		applyPythonMiddlewareCoverage(string(content), path, entities, pyMWBefore)
 	case "javascript", "typescript":
 		// Capture the producer-side entity count before the JS/TS backend
 		// synthesizers run so #2852 can resolve auth_coverage over exactly the
@@ -1679,7 +1704,11 @@ func parseFlaskMethods(args string) []string {
 // @router.<verb>("/path") forms. The handler function follows on the next
 // `def`/`async def` line; intermediate decorators (e.g. @app.middleware,
 // @Depends) are allowed.
-var fastapiVerbDecoratorRe = regexp.MustCompile(`@(?:app|router|api|\w+_router)\.(get|post|put|patch|delete|head|options|trace)\s*\(\s*["']([^"'\n\r]+)["'][^)]*\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
+// The decorator argument tail tolerates ONE level of nested parens so a
+// `dependencies=[Depends(verify_token)]` / `response_model=Foo()` kwarg does not
+// terminate the match prematurely (the inner `)` previously aborted the scan,
+// dropping the whole endpoint — #3628).
+var fastapiVerbDecoratorRe = regexp.MustCompile(`@(?:app|router|api|\w+_router)\.(get|post|put|patch|delete|head|options|trace)\s*\(\s*["']([^"'\n\r]+)["'](?:[^()]*(?:\([^()]*\)[^()]*)*)\)\s*[\r\n]+(?:\s*@[^\n\r]*[\r\n]+)*\s*(?:async\s+)?def\s+(\w+)`)
 
 func synthesizeFastAPI(content string, emit emitDefFn) {
 	if !strings.Contains(content, "FastAPI") && !strings.Contains(content, "APIRouter") &&

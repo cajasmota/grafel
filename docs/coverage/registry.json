@@ -25193,8 +25193,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/engine/java_annotation_params.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/http_endpoint_java_middleware.go","internal/engine/java_annotation_params.go"],
+            "notes": "@Bean SecurityFilterChain + OncePerRequestFilter/HandlerInterceptor/WebMvcConfigurer.addInterceptors/WebFilter captured by name. #3628: applyJavaMiddlewareCoverage now BINDS an ordered middleware_chain to Spring ENDPOINTS — Servlet FilterRegistrationBean urlPatterns (outermost, filter scope) + HandlerInterceptor addPathPatterns/excludePathPatterns (interceptor scope) statically matched against each route path and stamped per the cross-stack {name,expr,scope,order,auth_kind?} contract (auth filters/interceptors tagged auth_kind). Honest-partial: only path patterns that statically resolve to a known same-file route bind; broad /** includes and filters without resolvable urlPatterns are skipped (no fabricated order). Tests: TestMiddleware_SpringInterceptorPathMatch, TestMiddleware_SpringFilterAndInterceptorOrder, TestMiddleware_SpringExcludePathPatterns, TestMiddleware_SpringFilterNoUrlPatternsSkipped.",
+            "verified_at": "2026-06-02"
           }
         },
         "Testing": {
@@ -48864,9 +48865,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/custom/python/django.go"],
-            "notes": "django.go extracts *Middleware class definitions (djangoMiddlewareClassRe) + process_request/process_response/process_view/process_exception hook methods. Partial because: Django MIDDLEWARE settings list (settings.py list of dotted paths) is not parsed; new-style __call__-based middleware is detected via class name but __call__ method is not specifically emitted; mixin-based middleware (MiddlewareMixin subclass) is covered. Test: TestDjango_Middleware.",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/python/django.go","internal/engine/http_endpoint_python_middleware.go"],
+            "notes": "django.go extracts *Middleware class definitions + process_* hooks. #3628: applyPythonMiddlewareCoverage now BINDS the ordered settings.MIDDLEWARE list (static list literal, declaration order) as the global-scope middleware_chain on every same-file Django route op, matching the Go (#3777) / JS-TS (#2853) endpoint contract {name,expr,scope,order,auth_kind?} (auth middleware tagged auth_kind, not double-modeled). Still partial: cross-file settings.py MIDDLEWARE (routes in urls.py, list in settings.py) is not joined; dynamically-assembled MIDDLEWARE lists are skipped (honest-partial). Tests: TestMiddleware_DjangoGlobal, TestMiddleware_DjangoDynamicSkipped.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -49144,9 +49145,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "partial",
-            "cites": ["internal/engine/django_imports_rewrite.go"],
-            "notes": "Django import rewriting provides coverage for stock Django middleware (SecurityMiddleware, SessionMiddleware etc.) via class-name rewriting. Partial because: DRF DEFAULT_AUTHENTICATION_CLASSES / DEFAULT_THROTTLE_CLASSES in settings.py are not parsed; custom DRF middleware (BaseAuthentication subclasses used as middleware) is not detected; no MIDDLEWARE_CLASSES list parsing. DRF has no dedicated middleware extractor.",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/engine/django_imports_rewrite.go","internal/engine/http_endpoint_python_middleware.go"],
+            "notes": "Django import rewriting covers stock middleware by class-name. #3628: applyPythonMiddlewareCoverage now BINDS DRF view permission_classes/authentication_classes/throttle_classes as the view-scope middleware_chain on the ViewSet's router-registered endpoints (same-file ViewSet, bound by router.register prefix), per the cross-stack {name,expr,scope,order,auth_kind?} contract; permission/authentication classes carry auth_kind=auth. Still partial: cross-file ViewSet (views.py separate from urls.py) is not joined; settings-level DEFAULT_*_CLASSES not parsed (honest-partial). Test: TestMiddleware_DRFView.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -49940,9 +49941,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
-            "cites": ["internal/custom/python/fastapi.go","internal/custom/python/http_middleware.go"],
-            "notes": "@app.middleware('http') decorator extracted by fastapi.go (faMiddlewareRe); app.add_middleware(Cls, ...) extracted via starletteAddMiddlewareRe in http_middleware.go for Starlette/FastAPI. Tests: TestFastAPI_Middleware (decorator form), TestFastAPI_FullFixture_Middleware (fixture). Covers both ASGI middleware registration patterns used in FastAPI.",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/python/fastapi.go","internal/custom/python/http_middleware.go","internal/engine/http_endpoint_python_middleware.go"],
+            "notes": "@app.middleware('http') + app.add_middleware(Cls) extracted by fastapi.go/http_middleware.go. #3628: applyPythonMiddlewareCoverage now BINDS the ordered chain to ENDPOINTS — app.add_middleware as global-scope entries (outermost) + per-route dependencies=[Depends(...)] as route-scope entries (innermost) — stamping middleware_chain/count/names/scope per the cross-stack {name,expr,scope,order,auth_kind?} contract shared with Go (#3777)/JS-TS (#2853). The FastAPI route-decorator regex was hardened to tolerate nested-paren kwargs so dependencies-bearing routes synthesise. Test: TestMiddleware_FastAPIGlobalAndRoute.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
