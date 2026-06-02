@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Mobile
-- **Capability cells:** 35
+- **Capability cells:** 36
 
 ## Capabilities
 
@@ -75,6 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | HTTP effect | ✅ `full` | — | — | `internal/engine/http_endpoint_swift_client.go`<br>`internal/engine/http_endpoint_swift_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | URLSession via URL(string: "...") + request.httpMethod = "VERB" (default GET) -> one http_endpoint_call (consumer) per URL site + FETCHES from the enclosing func; host stripped, \(expr) -> {param}. Same entity shape as the backend producer so the cross-repo linker pairs the iOS screen with the backend route on reindex. Value-asserted in http_endpoint_swift_client_test.go (URL(string: ".../v1/users") -> GET /v1/users; httpMethod="POST" + URL(string:"/auth/login") -> POST /auth/login). |
 | Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

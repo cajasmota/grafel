@@ -26,22 +26,22 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Vapor](../detail/lang.swift.framework.vapor.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
+| [Vapor](../detail/lang.swift.framework.vapor.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
 
 
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/22 | 🟡 3/8 | |
+| [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/23 | 🟡 3/8 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Alamofire (HTTP client)](../detail/lang.swift.framework.alamofire.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/22 | 🔴 0/9 | |
-| [URLSession (HTTP client)](../detail/lang.swift.framework.urlsession.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/22 | 🔴 0/9 | |
+| [Alamofire (HTTP client)](../detail/lang.swift.framework.alamofire.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/23 | 🔴 0/9 | |
+| [URLSession (HTTP client)](../detail/lang.swift.framework.urlsession.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/23 | 🔴 0/9 | |
 
 
 ## Tools

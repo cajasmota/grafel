@@ -186,6 +186,8 @@ func AllEntityKinds() []EntityKind {
 		HTTPEndpointKindLegacy,
 		// #3100:
 		EntityKindCustomValidator,
+		// #3628 area #17:
+		EntityKindFeatureFlag,
 	}
 }
 
@@ -571,6 +573,17 @@ const (
 	// Subtype "constraint_validator" is used to distinguish from generic component types.
 	EntityKindCustomValidator EntityKind = "SCOPE.CustomValidator"
 
+	// #3628 area #17: Feature-flag entities. FeatureFlag represents a single
+	// feature-flag key checked at runtime via a flag-management SDK
+	// (LaunchDarkly, Unleash, OpenFeature, Flipper, Flagsmith) or a generic
+	// config flag. Cross-repo / cross-file identity = the flag key string,
+	// encoded in the synthetic ID `feature:<flag-key>`. One entity per
+	// distinct key per repo; the enclosing function that checks the flag
+	// links to it via GATED_BY so the graph can answer "what code is gated
+	// by flag X" (flag blast-radius). Subtype = the SDK that detected it
+	// ("launchdarkly", "unleash", "openfeature", "flipper", "flagsmith").
+	EntityKindFeatureFlag EntityKind = "SCOPE.FeatureFlag"
+
 	// #2904: Request-validation / DTO-extraction linkage edges. Emitted by
 	// the JS/TS extractor when a route handler / controller method is wired
 	// to a schema validator or a typed DTO, turning validators that were
@@ -713,6 +726,23 @@ const (
 	// Append-only — never modifies existing entities or edges.
 	RelationshipKindCaches      RelationshipKind = "CACHES"
 	RelationshipKindInvalidates RelationshipKind = "INVALIDATES"
+	// #3628 area #17: Feature-flag gating edge. Emitted by the engine
+	// feature_flag_edges pass for every flag-check call site detected via a
+	// flag-management SDK (LaunchDarkly, Unleash, OpenFeature, Flipper,
+	// Flagsmith) or a generic config flag.
+	//   GATED_BY : enclosing function/method → SCOPE.FeatureFlag entity
+	//              (synthetic ID `feature:<flag-key>`). Reads "this code path
+	//              is gated by feature flag X", enabling flag blast-radius.
+	// Properties:
+	//   "flag"    : the flag key string
+	//   "sdk"     : the SDK that detected the check ("launchdarkly",
+	//               "unleash", "openfeature", "flipper", "flagsmith")
+	//   "method"  : the SDK call/decorator observed (e.g. "variation",
+	//               "isEnabled", "getBooleanValue", "Flipper.enabled?")
+	//   "line"    : 1-indexed source line of the flag-check call site
+	// Dynamic flag keys (non-literal first argument) are NOT emitted — no
+	// fabricated flag entity. Append-only; never modifies existing edges.
+	RelationshipKindGatedBy RelationshipKind = "GATED_BY"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -832,6 +862,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #3692 (epic #3628, area #18) caching-topology edges:
 		RelationshipKindCaches,
 		RelationshipKindInvalidates,
+		// #3628 area #17 feature-flag gating edge:
+		RelationshipKindGatedBy,
 	}
 }
 

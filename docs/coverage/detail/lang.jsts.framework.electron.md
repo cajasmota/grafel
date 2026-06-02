@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Desktop
-- **Capability cells:** 14
+- **Capability cells:** 15
 
 ## Capabilities
 
@@ -39,6 +39,7 @@ Auto-generated. Back to [summary](../summary.md).
 | DB effect | 🟢 `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | Electron main-process runs full Node.js; ORM/DB libraries like Sequelize/TypeORM/Prisma apply |
 | Dead code detection | 🟢 `partial` | — | 3059 | `internal/patterns/dead_module_detector.go` | — |
 | Env fallback recognition | 🟢 `partial` | — | 3059 | `internal/substrate/jsts.go` | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🟢 `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
 | HTTP effect | 🟢 `partial` | — | 3059 | `internal/substrate/effect_sinks_jsts.go` | — |
 | Import resolution quality | 🟢 `partial` | — | 3059 | `internal/substrate/jsts.go` | — |

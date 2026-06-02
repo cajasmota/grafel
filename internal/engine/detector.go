@@ -566,6 +566,17 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// cannot regress the surrounding pipeline's bug-rate.
 	applyPass(applyORMFieldEdges)
 
+	// Feature-flag gating topology (#3628 area #17). For every flag-check
+	// call site detected via a flag-management SDK (LaunchDarkly variation,
+	// Unleash isEnabled, OpenFeature getBooleanValue, Ruby Flipper.enabled?,
+	// Flagsmith has_feature), emits a synthetic SCOPE.FeatureFlag entity
+	// (`feature:<key>`) and a GATED_BY edge from the enclosing function so
+	// the graph can answer flag blast-radius ("what code is gated by flag X").
+	// Only literal flag keys are emitted; dynamic keys are skipped. Reuses
+	// the orm_queries enclosing-function index. Append-only — cannot regress
+	// the surrounding pipeline's bug-rate on files without flag checks.
+	applyPass(applyFeatureFlagEdges)
+
 	// Kafka producer/consumer cross-repo edges (wave 1 of #726). Emits
 	// synthetic MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges
 	// using the same cross-repo matching strategy as #534: identical

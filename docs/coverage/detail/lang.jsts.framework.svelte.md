@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 43
+- **Capability cells:** 44
 
 ## Capabilities
 
@@ -64,6 +64,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🟢 `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
 | Def use chain extraction | 🟢 `partial` | `2026-05-29` | — | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_t3_test.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🟢 `partial` | `2026-05-29` | 3053 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_markup_script.go` | Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on <script> but no Svelte-specific fixture tests this cap. |
 | HTTP effect | 🟢 `partial` | `2026-05-29` | 3053 | `internal/substrate/effect_sinks_markup_script.go`<br>`internal/substrate/effect_sinks_t3_test.go` | TestSniffEffectsMarkupScript_Svelte proves http_effect fires on Svelte <script>; db/fs/mutation effects not Svelte-specifically tested. |
 | Import resolution quality | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go`<br>`internal/substrate/substrate.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_svelte/UserCard.svelte` | — |

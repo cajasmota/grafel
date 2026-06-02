@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Mobile
-- **Capability cells:** 35
+- **Capability cells:** 36
 
 ## Capabilities
 
@@ -75,6 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | HTTP effect | ✅ `full` | — | — | `internal/engine/http_endpoint_swift_client.go`<br>`internal/engine/http_endpoint_swift_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Alamofire AF.request("...", method: .verb) / session.request(...) outbound calls -> one http_endpoint_call (consumer) per call site + FETCHES from the enclosing func; host stripped, \(expr) -> {param}; verb from method: .verb (default GET). Same entity shape as the backend producer so the cross-repo linker pairs the iOS screen with the backend route on reindex. Value-asserted in http_endpoint_swift_client_test.go (AF.request("/auth/login", method: .post) -> POST /auth/login). |
 | Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

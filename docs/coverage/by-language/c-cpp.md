@@ -26,43 +26,43 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 3/3 | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 3/3 | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 3/3 | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ✅ 3/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 3/3 | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 3/3 | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 3/3 | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 3/3 | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 3/3 | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 3/3 | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | ✅ 3/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 3/3 | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 3/3 | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | — | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/23 | 🟢 3/3 | |
 
 
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Qt](../detail/lang.c-cpp.framework.qt.md) | ✅ 3/3 | ✅ 1/1 | 🟡 21/22 | 🟢 8/8 | |
+| [Qt](../detail/lang.c-cpp.framework.qt.md) | ✅ 3/3 | ✅ 1/1 | 🟡 21/23 | 🟢 8/8 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟡 10/11 | 🟢 2/2 | |
-| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟡 10/11 | 🟢 2/2 | |
+| [ROS (Robot Operating System)](../detail/lang.c-cpp.framework.ros.md) | 🟡 10/12 | 🟢 2/2 | |
+| [Unreal Engine](../detail/lang.c-cpp.framework.unreal-engine.md) | 🟡 10/12 | 🟢 2/2 | |
 
 
 ### RPC Framework
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🟡 2/22 | 🟡 3/4 | |
-| [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | 🟡 2/22 | 🟢 4/4 | |
+| [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🟡 2/23 | 🟡 3/4 | |
+| [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | 🟡 2/23 | 🟢 4/4 | |
 
 
 ## Tools

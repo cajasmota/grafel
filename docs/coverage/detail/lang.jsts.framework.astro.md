@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 37
+- **Capability cells:** 38
 
 ## Capabilities
 
@@ -75,6 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🟢 `partial` | — | 3057 | `internal/extractors/astro/extractor.go` | framework-blind dead code detection applies to Astro via substrate reachability analysis (#3183) |
 | Def use chain extraction | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_markup_script.go` | — |
 | Env fallback recognition | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
 | HTTP effect | 🟢 `partial` | `2026-05-29` | 3057 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_markup_script.go` | — |
 | Import resolution quality | 🟢 `partial` | `2026-05-29` | 3057 | `internal/substrate/jsts.go`<br>`internal/substrate/markup_script.go` | — |

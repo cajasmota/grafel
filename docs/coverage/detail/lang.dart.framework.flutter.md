@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [dart](../by-language/dart.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 34
+- **Capability cells:** 35
 
 ## Capabilities
 
@@ -64,6 +64,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | HTTP effect | ✅ `full` | — | — | `internal/engine/http_endpoint_dart_client.go`<br>`internal/engine/http_endpoint_dart_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Each Dio / package:http call is recorded as an outbound HTTP effect (verb + canonical path) emitted with the SAME http_endpoint_call entity shape as the backend producer side, so the cross-repo linker pairs the Flutter screen with the backend route on reindex. Value-asserted in http_endpoint_dart_client_test.go. |
 | Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

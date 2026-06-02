@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Task Queue
-- **Capability cells:** 30
+- **Capability cells:** 31
 
 ## Capabilities
 
@@ -54,6 +54,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_python.go` | dead code derived from reachability.go + entry_points_python.go; fires on all Python; partial because Celery task entry wiring via @app.task is not modelled |
 | Def use chain extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/substrate/def_use_python.go` | language-wide Python def-use sniffer captures variable defs/uses; partial for Celery task argument flows |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | language-wide Python effect sniffer (open/pathlib/os/shutil) fires on any Python file; partial because Celery task file I/O is not disambiguated from worker code |
 | HTTP effect | 🟢 `partial` | `2026-05-29` | 3047 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_python.go` | language-wide Python HTTP-effect sniffer (requests/httpx/boto3) fires on any Python file; partial because Celery task outbound HTTP is not separated from unrelated code |
 | Import resolution quality | 🟢 `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/python.go`<br>`internal/substrate/substrate.go` | — |

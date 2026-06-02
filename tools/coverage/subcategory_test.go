@@ -113,6 +113,8 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"def_use_chain_extraction",
 		"enum_extraction",
 		"env_fallback_recognition",
+		// #3628 area #17 feature-flag gating topology.
+		"feature_flag_gating",
 		"fs_effect",
 		// #2938 jsx_template + hoc_wrapper_recognition removed from the shared
 		// ui_frontend Structure group; re-homed to React framework_specific.
@@ -175,6 +177,8 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"endpoint_synthesis",
 		"enum_extraction",
 		"env_fallback_recognition",
+		// #3628 area #17 feature-flag gating topology.
+		"feature_flag_gating",
 		"fs_effect",
 		"handler_attribution",
 		// #2938 jsx_template + hoc_wrapper_recognition removed from ui_frontend.

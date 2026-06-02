@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 37
+- **Capability cells:** 38
 
 ## Capabilities
 
@@ -77,6 +77,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_swift.go` | reachability.go BFS from entry-points to detect unreachable entities; entry_points_swift.go (new) provides Swift-specific sniffers for @main, static func main, Vapor lifecycle hooks (configure/boot), XCTest methods, and public/open exported functions; partial because comprehensive dead-code detection requires full Swift module resolution. |
 | Def use chain extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_swift.go` | def_use_pass.go runs on all indexed languages including Swift; def_use_swift.go provides Swift-specific let/var/identifier sniffers; partial because comprehensive Swift pattern coverage requires broader test corpus. |
 | Env fallback recognition | ✅ `full` | `2026-05-30` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/swift.go` | swift.go (substrate) explicitly recognises ProcessInfo.processInfo.environment[KEY] ?? default as ProvenanceEnvFallback with confidence 0.85; constant_propagation.go promotes these bindings into the graph; this is the canonical Swift env-fallback idiom. |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🟢 `partial` | — | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_swift.go` | — |
 | HTTP effect | 🟢 `partial` | — | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_swift.go` | — |
 | Import resolution quality | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/constant_propagation.go`<br>`internal/substrate/swift.go` | constant_propagation.go resolves cross-file bindings including import statements; swift.go (substrate) sniffs Swift import declarations (import Module, import struct Foundation.Date) and maps them to local names; partial because Swift's module-system scoping requires Package.swift integration for full cross-module resolution. |

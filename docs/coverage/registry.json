@@ -2297,6 +2297,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -2511,6 +2515,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -2724,6 +2732,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -2948,6 +2960,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -3170,6 +3186,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -3394,6 +3414,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -3544,6 +3568,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -3746,6 +3774,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -3960,6 +3992,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -4200,6 +4236,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -4500,6 +4540,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -4722,6 +4766,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -4946,6 +4994,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -5092,6 +5144,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -5279,6 +5335,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -5499,6 +5559,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -5723,6 +5787,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -5858,6 +5926,10 @@
             "status": "full",
             "cites": ["internal/substrate/c_cpp.go"]
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_c_cpp.go"],
@@ -5939,6 +6011,10 @@
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/substrate/c_cpp.go"]
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -7023,6 +7099,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -7259,6 +7339,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -7452,6 +7536,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -7647,6 +7735,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -7840,6 +7932,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -8064,6 +8160,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -8287,6 +8387,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -8436,6 +8540,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -8638,6 +8746,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -8844,6 +8956,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -9046,6 +9162,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -9270,6 +9390,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -9407,6 +9531,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-29"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -9492,6 +9620,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-29"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_csharp.go"],
@@ -9576,6 +9708,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-29"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -9727,6 +9863,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -10218,6 +10358,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -10820,6 +10964,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_elixir.go"],
@@ -11047,6 +11195,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_elixir.go"],
@@ -11266,6 +11418,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -11517,6 +11673,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_elixir.go"],
@@ -11719,6 +11879,10 @@
             "notes": "@base_url System.get_env(VAR, default) fallback literal resolved for Finch URLs (#1496/#3511)",
             "verified_at": "2026-05-30"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -11850,6 +12014,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -12036,6 +12204,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -12226,6 +12398,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -12447,6 +12623,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -12677,6 +12857,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_elixir.go"],
@@ -12887,6 +13071,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -13117,6 +13305,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_elixir.go"],
@@ -13318,6 +13510,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -13501,6 +13697,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -14271,6 +14471,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -14490,6 +14694,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -14718,6 +14926,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -14945,6 +15157,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -15161,6 +15377,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -15389,6 +15609,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -15523,6 +15747,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-29"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -15701,6 +15929,13 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "verified_at": "2026-06-02"
           },
           "fs_effect": {
             "status": "partial",
@@ -15921,6 +16156,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -16120,6 +16359,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -16360,6 +16603,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -16557,6 +16804,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "3613"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -16764,6 +17015,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -16986,6 +17241,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -17206,6 +17465,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -17424,6 +17687,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -17650,6 +17917,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_golang.go"],
@@ -17868,6 +18139,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -18664,6 +18939,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
@@ -18881,6 +19160,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
@@ -19094,6 +19377,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -19330,6 +19617,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -19589,6 +19880,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -20025,6 +20320,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
@@ -20311,6 +20610,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -20608,6 +20911,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
@@ -20890,6 +21197,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -21191,6 +21502,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -21533,6 +21848,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
@@ -21833,6 +22152,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
@@ -22056,6 +22379,10 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "Framework-blind Java substrate env-fallback sniffer fires for all Java sources (#3178).",
             "verified_at": "2026-05-29"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -22369,6 +22696,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
@@ -22667,6 +22998,13 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "verified_at": "2026-06-02"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_java.go"],
@@ -22927,6 +23265,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -23209,6 +23551,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -23508,6 +23854,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/links/module_cycle_pass.go","internal/substrate/def_use_java.go","internal/substrate/effect_sinks_java.go","internal/substrate/entry_points_java.go","internal/substrate/taint_sites_java.go","internal/substrate/template_pattern_java.go"],
@@ -23706,6 +24056,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -23982,6 +24336,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -25729,6 +26087,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -25960,6 +26322,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -26266,6 +26632,10 @@
             "issue": "3057",
             "verified_at": "2026-05-29"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_markup_script.go"],
@@ -26432,6 +26802,10 @@
             "cites": ["internal/substrate/jsts.go"],
             "issue": "3059"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go"],
@@ -26589,6 +26963,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -26856,6 +27234,13 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "feature_flag_gating:#3706-not-yet-extracted",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "verified_at": "2026-06-02"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -27107,6 +27492,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -27357,6 +27746,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -27582,6 +27975,10 @@
             "issue": "3057",
             "verified_at": "2026-05-29"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go"],
@@ -27764,6 +28161,10 @@
             "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
             "issue": "3076",
             "verified_at": "2026-05-29"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -28010,6 +28411,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -28261,6 +28666,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -28488,6 +28897,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -28725,6 +29138,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -29015,6 +29432,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -29235,6 +29656,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -29477,6 +29902,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -29738,6 +30167,13 @@
             "issue": "3055",
             "verified_at": "2026-05-29"
           },
+          "feature_flag_gating": {
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "verified_at": "2026-06-02"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -29992,6 +30428,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "issue": "3055",
             "verified_at": "2026-05-29"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -30256,6 +30696,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -30468,6 +30912,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "full",
@@ -30781,6 +31229,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go"],
@@ -31074,6 +31526,10 @@
             "issue": "3055",
             "verified_at": "2026-05-29"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -31331,6 +31787,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -31571,6 +32031,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -31806,6 +32270,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -32089,6 +32557,10 @@
             "issue": "3055",
             "verified_at": "2026-05-29"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/substrate/effect_sinks_jsts.go","internal/substrate/effects_test.go"],
@@ -32272,6 +32744,10 @@
             "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_trpc/router.ts"],
             "issue": "3057",
             "verified_at": "2026-05-29"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -32498,6 +32974,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -33330,6 +33810,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_kotlin.go"],
@@ -33537,6 +34021,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_kotlin.go"],
@@ -33664,6 +34152,10 @@
             "status": "full",
             "cites": ["internal/substrate/kotlin.go"]
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_kotlin.go"],
@@ -33743,6 +34235,10 @@
           "env_fallback_recognition": {
             "status": "full",
             "cites": ["internal/substrate/kotlin.go"]
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -33943,6 +34439,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -34182,6 +34682,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -34406,6 +34910,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -34647,6 +35155,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -34914,6 +35426,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_kotlin.go"],
@@ -35119,6 +35635,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -35358,6 +35878,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -35575,6 +36099,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -35828,6 +36356,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -36114,6 +36646,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_kotlin.go"],
@@ -36399,6 +36935,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_kotlin.go"],
@@ -36638,6 +37178,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -36909,6 +37453,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -37522,6 +38070,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -37705,6 +38257,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -37904,6 +38460,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/lua.go"],
             "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -38128,6 +38688,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/lua.go"],
             "notes": "Lua constant-binding sniffer (luaLiteralRe, luaEnvOrRe, luaRequireRe) registered in substrate/lua.go. Feeds the language-agnostic constant propagation pass."
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -38779,6 +39343,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -38981,6 +39549,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -39206,6 +39778,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_php.go"],
@@ -39430,6 +40006,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_php.go"],
@@ -39629,6 +40209,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -39832,6 +40416,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -40057,6 +40645,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_php.go"],
@@ -40256,6 +40848,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -40459,6 +41055,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -40684,6 +41284,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_php.go"],
@@ -40908,6 +41512,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_php.go"],
@@ -41131,6 +41739,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -41360,6 +41972,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_php.go"],
@@ -41584,6 +42200,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_php.go"],
@@ -41807,6 +42427,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -42756,6 +43380,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -42999,6 +43627,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -43194,6 +43826,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -43458,6 +44094,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -43706,6 +44346,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -43951,6 +44595,13 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "verified_at": "2026-06-02"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -44178,6 +44829,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -44428,6 +45083,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -44674,6 +45333,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -44922,6 +45585,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -45175,6 +45842,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -45456,6 +46127,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -45698,6 +46373,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -45944,6 +46623,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -46186,6 +46869,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -46377,6 +47064,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -46628,6 +47319,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -46869,6 +47564,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -47115,6 +47814,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go"],
@@ -47356,6 +48059,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-28"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -48677,6 +49384,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_ruby.go"],
@@ -48886,6 +49597,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -49097,6 +49812,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -49312,6 +50031,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_ruby.go"],
@@ -49525,6 +50248,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -49744,6 +50471,13 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith)",
+            "verified_at": "2026-06-02"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_ruby.go"],
@@ -49957,6 +50691,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -50176,6 +50914,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -51132,6 +51874,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_rust.go"],
@@ -51336,6 +52082,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -51545,6 +52295,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -51769,6 +52523,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_rust.go"],
@@ -51992,6 +52750,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -52245,6 +53007,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_rust.go"],
@@ -52495,6 +53261,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_rust.go"],
@@ -52718,6 +53488,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_rust.go"],
@@ -52914,6 +53688,10 @@
             "status": "full",
             "cites": ["internal/substrate/rust.go"]
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_rust.go"],
@@ -53083,6 +53861,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -53289,6 +54071,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -53503,6 +54289,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_rust.go"],
@@ -53705,6 +54495,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -53914,6 +54708,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -54522,6 +55320,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_scala.go"],
@@ -54774,6 +55576,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -55039,6 +55845,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_scala.go"],
@@ -55303,6 +56113,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -55587,6 +56401,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_scala.go"],
@@ -55862,6 +56680,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -56146,6 +56968,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_scala.go"],
@@ -56413,6 +57239,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -56600,6 +57430,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_scala.go"],
@@ -56769,6 +57603,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -57029,6 +57867,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_scala.go"],
@@ -57274,6 +58116,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -57513,6 +58359,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -57775,6 +58625,10 @@
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
             "verified_at": "2026-05-27"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",
@@ -58308,6 +59162,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -58475,6 +59333,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -58641,6 +59503,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "missing",
@@ -58855,6 +59721,10 @@
             "cites": ["internal/links/constant_propagation.go","internal/substrate/swift.go"],
             "notes": "swift.go (substrate) explicitly recognises ProcessInfo.processInfo.environment[KEY] ?? default as ProvenanceEnvFallback with confidence 0.85; constant_propagation.go promotes these bindings into the graph; this is the canonical Swift env-fallback idiom.",
             "verified_at": "2026-05-30"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
             "status": "partial",

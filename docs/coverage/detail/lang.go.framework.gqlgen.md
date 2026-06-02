@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 37
+- **Capability cells:** 38
 
 ## Capabilities
 
@@ -77,6 +77,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | 3613 | — | — |
 | Def use chain extraction | 🔴 `missing` | — | 3613 | — | — |
 | Env fallback recognition | 🔴 `missing` | — | 3613 | — | — |
+| Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🔴 `missing` | — | 3613 | — | — |
 | HTTP effect | 🔴 `missing` | — | 3613 | — | — |
 | Import resolution quality | 🔴 `missing` | — | 3613 | — | — |

@@ -683,6 +683,16 @@ records:
           issues_implemented: ["2816"]
           verified_at: "2026-05-28"
       Substrate:
+        feature_flag_gating:
+          status: full
+          symbols:
+            - file: internal/engine/feature_flag_edges.go
+              functions: [applyFeatureFlagEdges, scanFeatureFlags, buildFeatureFlagID, buildFeatureFlagCallerID]
+          tests:
+            - file: internal/engine/feature_flag_edges_test.go
+              functions: [TestFeatureFlag_LaunchDarkly_Python_checkout, TestFeatureFlag_Flagsmith_has_feature]
+          issues_implemented: ["3706"]
+          verified_at: "2026-06-02"
         constant_propagation:
           status: full
           symbols:
@@ -2044,6 +2054,16 @@ records:
           issues_implemented: ["2671", "2687"]
           verified_at: "2026-05-28"
       Substrate:
+        feature_flag_gating:
+          status: full
+          symbols:
+            - file: internal/engine/feature_flag_edges.go
+              functions: [applyFeatureFlagEdges, scanFeatureFlags, buildFeatureFlagID, buildFeatureFlagCallerID]
+          tests:
+            - file: internal/engine/feature_flag_edges_test.go
+              functions: [TestFeatureFlag_Unleash_JS_isEnabled, TestFeatureFlag_OpenFeature_getBooleanValue]
+          issues_implemented: ["3706"]
+          verified_at: "2026-06-02"
         # #3186: framework-blind JS/TS taint sniffer wired to the Next.js
         # API-route record. Pages-Router req.query/body via jstsSourceReqRe,
         # App-Router Web-Fetch request.json()/formData()/text() via the new
@@ -2631,6 +2651,16 @@ records:
           issues_implemented: ["3347"]
           verified_at: "2026-05-30"
       Substrate:
+        feature_flag_gating:
+          status: full
+          symbols:
+            - file: internal/engine/feature_flag_edges.go
+              functions: [applyFeatureFlagEdges, scanFeatureFlags, buildFeatureFlagID, buildFeatureFlagCallerID]
+          tests:
+            - file: internal/engine/feature_flag_edges_test.go
+              functions: [TestFeatureFlag_LaunchDarkly_bool_variation]
+          issues_implemented: ["3706"]
+          verified_at: "2026-06-02"
         config_consumption:
           status: full
           symbols:
@@ -2997,6 +3027,16 @@ records:
           verified_at: "2026-05-30"
 
       Substrate:
+        feature_flag_gating:
+          status: full
+          symbols:
+            - file: internal/engine/feature_flag_edges.go
+              functions: [applyFeatureFlagEdges, scanFeatureFlags, buildFeatureFlagID, buildFeatureFlagCallerID]
+          tests:
+            - file: internal/engine/feature_flag_edges_test.go
+              functions: [TestFeatureFlag_Dedup_SameFlagOneEdge, TestFeatureFlag_BlastRadius_SharedFlagTwoCallers]
+          issues_implemented: ["3706"]
+          verified_at: "2026-06-02"
         constant_propagation:
           status: full
           symbols:
@@ -6902,6 +6942,16 @@ records:
   lang.ruby.framework.rails:
     capabilities:
       Substrate:
+        feature_flag_gating:
+          status: full
+          symbols:
+            - file: internal/engine/feature_flag_edges.go
+              functions: [applyFeatureFlagEdges, scanFeatureFlags, buildFeatureFlagID, buildFeatureFlagCallerID]
+          tests:
+            - file: internal/engine/feature_flag_edges_test.go
+              functions: [TestFeatureFlag_Flipper_Ruby_symbol]
+          issues_implemented: ["3706"]
+          verified_at: "2026-06-02"
         constant_propagation:
           status: full
           symbols:
