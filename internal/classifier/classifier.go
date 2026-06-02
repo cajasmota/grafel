@@ -677,6 +677,19 @@ func detectLanguage(norm string) string {
 			return strings.Contains(lower, "/"+seg+"/") ||
 				strings.HasPrefix(lower, seg+"/")
 		}
+		// #3628 area #16 — OpenAPI / Swagger spec files shipped as JSON. Route
+		// the canonical spec filenames (openapi.json / swagger.json, plus the
+		// *.openapi.json / *.swagger.json compound forms) to "json" so the
+		// OpenAPI endpoint synthesizer can ingest them as endpoint ground-truth.
+		// Narrow by filename (these basenames have no other reasonable meaning)
+		// to avoid pulling in package.json / tsconfig.json / lockfiles. The
+		// synthesizer still content-sniffs for `openapi`/`swagger` + `paths`
+		// before emitting, so a stray match is a harmless no-op. The .yaml/.yml
+		// spec forms already classify as "yaml" via the extension map.
+		if b := path.Base(lower); b == "openapi.json" || b == "swagger.json" ||
+			strings.HasSuffix(b, ".openapi.json") || strings.HasSuffix(b, ".swagger.json") {
+			return "json"
+		}
 		switch {
 		case dirAnchor("cdc"),
 			dirAnchor("debezium"),

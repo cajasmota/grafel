@@ -851,6 +851,45 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// http_endpoint_call entities + FETCHES edges. The Swift PRODUCER
 		// side (Vapor) is handled by the custom_swift_* extractors.
 		synthesizeSwiftClientWithRuntime(string(content), emitClientRuntime)
+	case "yaml", "json":
+		// Producer side (#3628, area #16): OpenAPI 3.x / Swagger 2.0 spec
+		// files declare the HTTP API surface as ground-truth. Each
+		// `paths.<path>.<method>` becomes a canonical http_endpoint_definition
+		// whose synthetic ID (`http:<VERB>:<canonical-path>`) is built the SAME
+		// way as code-extracted routes, so a spec endpoint CONVERGES on (does not
+		// duplicate) the code-extracted endpoint for the same (verb, path). The
+		// per-operation wrapper stamps spec-only provenance (source=openapi_spec,
+		// provenance=spec) plus operationId / summary / request+response schema
+		// refs so spec-only endpoints stay distinguishable from code-extracted
+		// ones and act as a parity oracle.
+		synthesizeOpenAPI(string(content), func(method, canonicalPath, opID, summary string, reqRef string, respRefs []string) {
+			before := len(entities)
+			emit(method, canonicalPath, "openapi", "", "")
+			if len(entities) == before {
+				return
+			}
+			last := &entities[len(entities)-1]
+			if last.Properties == nil {
+				last.Properties = map[string]string{}
+			}
+			// Override the code-route framework default and mark provenance so
+			// downstream parity checks can tell a spec-only endpoint apart.
+			last.Properties["framework"] = "openapi"
+			last.Properties["source"] = "openapi_spec"
+			last.Properties["provenance"] = "spec"
+			if opID != "" {
+				last.Properties["operation_id"] = opID
+			}
+			if summary != "" {
+				last.Properties["summary"] = summary
+			}
+			if reqRef != "" {
+				last.Properties["request_schema"] = reqRef
+			}
+			if len(respRefs) > 0 {
+				last.Properties["response_schemas"] = strings.Join(respRefs, ",")
+			}
+		})
 	}
 
 	// #722 — response/request shape extraction. Mutates Properties on

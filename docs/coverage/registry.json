@@ -30,6 +30,26 @@
       }
     },
     {
+      "id": "api-spec.openapi-ingestion",
+      "category": "protocol",
+      "language": "multi",
+      "label": "OpenAPI 3.x / Swagger 2.0 spec ingestion (endpoint ground-truth)",
+      "capabilities": {
+        "cross_repo_linkage": {
+          "status": "full",
+          "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go","internal/engine/openapi_synthesis.go"],
+          "notes": "Spec endpoints CONVERGE on (do not duplicate) code-extracted routes and HTTP clients: they share the identical canonical synthetic ID http:\u003cVERB\u003e:\u003cpath\u003e emitted by httproutes.SyntheticID, so entity-merge collapses a spec endpoint and its code-extracted twin into one node — making the spec a parity oracle. provenance=spec distinguishes spec-only endpoints (declared but not found in code) from code-extracted ones. Test TestOpenAPISynthesis_ConvergesWithCodeRoute asserts the spec GET /users/{id} ID equals httproutes.SyntheticID(GET, Canonicalize(FastAPI, /users/{id})).",
+          "verified_at": "2026-06-02"
+        },
+        "service_extraction": {
+          "status": "full",
+          "cites": ["internal/classifier/classifier.go","internal/engine/http_endpoint_synthesis.go","internal/engine/openapi_synthesis.go","internal/engine/openapi_synthesis_test.go"],
+          "notes": "#3628 area #16: OpenAPI 3.x / Swagger 2.0 spec files (openapi.{yaml,json}/swagger.{json,yaml}, sniffed by openapi:/swagger: + paths:) are ingested by synthesizeOpenAPI as a yaml/json case of applyHTTPEndpointSynthesis. Each paths.\u003cpath\u003e.\u003cmethod\u003e becomes a canonical http_endpoint_definition whose synthetic ID http:\u003cVERB\u003e:\u003ccanonical-path\u003e is built via httproutes.Canonicalize(FastAPI) — the SAME shape as code-extracted routes — carrying operation_id, summary, request_schema/response_schemas DTO refs, source=openapi_spec, provenance=spec. Value-asserting tests: paths./users/{id}.get{operationId:getUser} -\u003e http:GET:/users/{id}; POST requestBody $ref -\u003e request_schema=CreateUser; Swagger2 definitions form; negative non-spec YAML emits zero endpoints.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
       "id": "build.bazel",
       "category": "build_system",
       "language": "multi",

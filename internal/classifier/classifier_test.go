@@ -1258,3 +1258,32 @@ func TestClassify_GenericJSONNotIndexed(t *testing.T) {
 		})
 	}
 }
+
+// TestClassify_OpenAPISpecFiles asserts OpenAPI/Swagger spec files route to a
+// language tag the HTTP endpoint synthesizer consumes: YAML specs via the
+// extension map ("yaml"), and the canonical JSON spec basenames via the narrow
+// #3628 JSON routing ("json"). A plain package.json must NOT match.
+func TestClassify_OpenAPISpecFiles(t *testing.T) {
+	c := newTestClassifier(t)
+	cases := []struct {
+		path string
+		want string
+	}{
+		{"api/openapi.yaml", "yaml"},
+		{"docs/swagger.yml", "yaml"},
+		{"api/openapi.json", "json"},
+		{"swagger.json", "json"},
+		{"specs/users.openapi.json", "json"},
+		{"specs/orders.swagger.json", "json"},
+		{"package.json", ""},
+		{"tsconfig.json", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.path, func(t *testing.T) {
+			r := c.Classify(context.Background(), tc.path)
+			if r.Language != tc.want {
+				t.Errorf("Classify(%s).Language = %q, want %q", tc.path, r.Language, tc.want)
+			}
+		})
+	}
+}
