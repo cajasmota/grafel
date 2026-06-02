@@ -52,7 +52,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type graph extraction | 🔴 `missing` | — | 3804 | — | GraphQL object-type→type graph applies (this is a GraphQL server) but is not yet implemented for this framework/language; SDL servers are covered by internal/extractors/graphql/type_graph.go (#3805) and the TS/Python code-first set (TypeGraphQL/Nexus/Pothos/Strawberry/graphene) by the code-first type-graph extractors. This lane is the remaining backfill for other-language GraphQL frameworks. |
+| Type graph extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/rust/async_graphql.go`<br>`internal/custom/rust/graphql_codefirst_typegraph.go`<br>`internal/custom/rust/graphql_codefirst_typegraph_test.go` | #3983: new internal/custom/rust/graphql_codefirst_typegraph.go mirrors the py/jsts code-first type-graph extractors (completes #3804 for Rust). Emits SCOPE.Schema/type nodes (BuildOperationStructuralRef("graphql",file,Type), shared identity with the SDL #3805 pass) + GRAPH_RELATES field->type edges off #[derive(SimpleObject/MergedObject)] struct fields and #[Object] impl resolver return types, carrying the SDL cardinality contract (field_name/list/nullable/item_nullable/cardinality/self_ref). Probe TestGqlTG_SimpleObject_FieldGraph asserts User.orders Vec<Order> to_many + Option<Account> nullable to_one + scalar fields no edge; TestGqlTG_ResolverReturnType asserts Query.user Result<User> unwrap. Honest-partial: same-file resolution only; InputObject/Enum stay DTO-catalog. |
 
 ### Type System
 
