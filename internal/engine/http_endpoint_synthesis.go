@@ -488,6 +488,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	}
 	emitClientRuntime := makeRuntimeEmit()
 
+	// soapClientEmit adapts the plain 5-arg emitFn used by the SOAP / JSON-RPC
+	// consumer passes (#3628) onto emitClientRuntime so they emit the same
+	// http_endpoint_call entity + FETCHES edge as every other consumer pass.
+	// These protocols carry no runtime-dynamic URL, so runtimeDynamic is false.
+	soapClientEmit := func(method, canonicalPath, framework, refKind, refName string) {
+		emitClientRuntime(method, canonicalPath, framework, refKind, refName, false)
+	}
+
 	// Phase 1 deliberately emits synthetic entities WITHOUT producer-side
 	// handler→endpoint edges. The referenced entity is recorded as a
 	// property (`source_handler`) so a follow-up pass can resolve it
@@ -520,6 +528,11 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Consumer side (#721): HttpClient / RestTemplate /
 		// WebClient / OkHttp / Apache HttpClient / Retrofit.
 		synthesizeJavaClientWithRuntime(string(content), emitClientRuntime)
+		// SOAP (epic #3628): JAX-WS @WebService/@WebMethod producer endpoints
+		// and JAX-WS generated-port client calls, keyed http:SOAP:/soap/...
+		// so they cross-link via the existing Name-based HTTP linker.
+		synthesizeJavaSOAPServer(string(content), emit)
+		synthesizeJavaSOAPClient(string(content), soapClientEmit)
 	case "python":
 		// #2980 — ASGI frameworks (Sanic / Litestar / Robyn) run BEFORE
 		// Flask / FastAPI. Sanic's `@app.route` / `@app.get` shape overlaps
@@ -591,6 +604,13 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// aiohttp / urllib / session-style HTTP client calls.
 		// Now emits FETCHES edges at extraction time.
 		synthesizePyClientWithRuntime(string(content), emitClientRuntime)
+		// SOAP + JSON-RPC (epic #3628): zeep `client.service.<Op>()` SOAP calls
+		// and xmlrpc/jsonrpc `register_function` producers + `ServerProxy(...)`
+		// client calls, keyed http:SOAP:/soap/... and http:JSONRPC:/jsonrpc/...
+		// so they cross-link via the existing Name-based HTTP linker.
+		synthesizePySOAPClient(string(content), soapClientEmit)
+		synthesizePyJSONRPCServer(string(content), emit)
+		synthesizePyJSONRPCClient(string(content), soapClientEmit)
 	case "javascript", "typescript":
 		// Capture the producer-side entity count before the JS/TS backend
 		// synthesizers run so #2852 can resolve auth_coverage over exactly the
@@ -727,6 +747,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 			last.Properties["polymorphic_subscript"] = polySubscript
 		}
 		synthesizeFetchAxiosWithRuntime(string(content), emitJSClientRuntime)
+		// SOAP + JSON-RPC (epic #3628): node-soap `client.<Op>Async()` SOAP
+		// calls, jayson server method maps (producer) + `client.request('m')`
+		// client calls, keyed http:SOAP:/soap/... and http:JSONRPC:/jsonrpc/...
+		// so they cross-link via the existing Name-based HTTP linker.
+		jstsRPCFuncs := indexJSEnclosingFunctions(string(content))
+		synthesizeJSSOAPClient(string(content), jstsRPCFuncs, soapClientEmit)
+		synthesizeJSJSONRPCServer(string(content), emit)
+		synthesizeJSJSONRPCClient(string(content), jstsRPCFuncs, soapClientEmit)
 	case "go":
 		// Producer side: Gin / Echo / Chi route registrations. #722.
 		synthesizeGoRouters(string(content), emit)

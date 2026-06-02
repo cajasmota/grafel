@@ -62739,10 +62739,18 @@
       "label": "JSON-RPC",
       "capabilities": {
         "cross_repo_linkage": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/http_endpoint_jsonrpc.go","internal/links/http_pass.go"],
+          "issue": "3750",
+          "notes": "#3628 — client/server synthetics keyed http:JSONRPC:/jsonrpc/\u003cmethod\u003e join via the Name-based HTTP linker; round-trip covered in TestHTTPPass_JSONRPCCrossRepoMatch. JS jayson + Python ServerProxy clients; jayson method-map + register_function producers. Partial: dynamic method names honest-partial skipped",
+          "verified_at": "2026-06-02"
         },
         "method_attribution": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/http_endpoint_jsonrpc.go"],
+          "issue": "3750",
+          "notes": "#3628 — literal method names from client.request('m') / ServerProxy.\u003cm\u003e() and jayson method-map / register_function keys; dynamic names skipped",
+          "verified_at": "2026-06-02"
         },
         "service_extraction": {
           "status": "missing"
@@ -62814,13 +62822,25 @@
       "label": "SOAP / WSDL",
       "capabilities": {
         "cross_repo_linkage": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/http_endpoint_soap.go","internal/links/http_pass.go"],
+          "issue": "3750",
+          "notes": "#3628 — client/server synthetics keyed http:SOAP:/soap/\u003cService\u003e/\u003cOp\u003e (+ service-less alias) join via the Name-based HTTP linker; round-trip covered in TestHTTPPass_SOAPCrossRepoMatch. Python zeep + JS node-soap + Java JAX-WS-port clients; JAX-WS @WebService/@WebMethod producers. Partial: client-side service binding is service-less honest-partial; dynamic op names skipped",
+          "verified_at": "2026-06-02"
         },
         "method_attribution": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/http_endpoint_soap.go"],
+          "issue": "3750",
+          "notes": "#3628 — operation names from zeep client.service.\u003cOp\u003e(), node-soap client.\u003cOp\u003eAsync(), JAX-WS port.\u003cop\u003e(), and @WebMethod(operationName=) producers; dynamic op names skipped",
+          "verified_at": "2026-06-02"
         },
         "service_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/http_endpoint_soap.go"],
+          "issue": "3750",
+          "notes": "#3628 — JAX-WS @WebService serviceName/name attribute (else class name) on the producer side; client side is service-less honest-partial",
+          "verified_at": "2026-06-02"
         }
       }
     },

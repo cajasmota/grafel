@@ -3791,3 +3791,145 @@ func TestHTTPPass_DynamicSuffix_RuntimeStaysUnlinked(t *testing.T) {
 		}
 	}
 }
+
+// TestHTTPPass_SOAPCrossRepoMatch verifies the SOAP cross-link round-trip
+// (epic #3628): a zeep client `client.service.GetUser(id)` (service-less id
+// http:SOAP:/soap/GetUser) joins to a JAX-WS producer's service-less alias.
+func TestHTTPPass_SOAPCrossRepoMatch(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "user-soap-svc",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "GetUser", "kind": "Method", "source_file": "ws/UserEndpoint.java"},
+			{
+				"id": "ep1", "name": "http:SOAP:/soap/GetUser", "kind": "http_endpoint",
+				"source_file": "ws/UserEndpoint.java",
+				"properties": map[string]any{
+					"verb":         "SOAP",
+					"path":         "/soap/GetUser",
+					"framework":    "jaxws",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "billing-svc",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "fetch_user", "kind": "Function", "source_file": "client.py"},
+			{
+				"id": "ep2", "name": "http:SOAP:/soap/GetUser", "kind": "http_endpoint",
+				"source_file": "client.py",
+				"properties": map[string]any{
+					"verb":          "SOAP",
+					"path":          "/soap/GetUser",
+					"framework":     "zeep",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetch_user",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g-soap", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g-soap-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hit *Link
+	for i, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			hit = &doc.Links[i]
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatalf("expected a cross-repo SOAP link zeep client → JAX-WS endpoint; got %+v", doc.Links)
+	}
+	if hit.Source != "billing-svc::fn1" {
+		t.Errorf("source: want billing-svc::fn1 (zeep caller), got %s", hit.Source)
+	}
+	if hit.Target != "user-soap-svc::h1" {
+		t.Errorf("target: want user-soap-svc::h1 (JAX-WS handler), got %s", hit.Target)
+	}
+	if hit.Identifier == nil || *hit.Identifier != "http:SOAP:/soap/GetUser" {
+		t.Errorf("identifier: want http:SOAP:/soap/GetUser, got %v", hit.Identifier)
+	}
+}
+
+// TestHTTPPass_JSONRPCCrossRepoMatch verifies the JSON-RPC cross-link round-trip
+// (epic #3628): a jayson client `client.request('add', …)` joins to a jayson
+// server method-map producer on http:JSONRPC:/jsonrpc/add.
+func TestHTTPPass_JSONRPCCrossRepoMatch(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "math-rpc-svc",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "add", "kind": "Method", "source_file": "server.js"},
+			{
+				"id": "ep1", "name": "http:JSONRPC:/jsonrpc/add", "kind": "http_endpoint",
+				"source_file": "server.js",
+				"properties": map[string]any{
+					"verb":         "JSONRPC",
+					"path":         "/jsonrpc/add",
+					"framework":    "jayson",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "gateway-svc",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "compute", "kind": "Function", "source_file": "client.js"},
+			{
+				"id": "ep2", "name": "http:JSONRPC:/jsonrpc/add", "kind": "http_endpoint",
+				"source_file": "client.js",
+				"properties": map[string]any{
+					"verb":          "JSONRPC",
+					"path":          "/jsonrpc/add",
+					"framework":     "jayson",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:compute",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g-jsonrpc", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g-jsonrpc-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hit *Link
+	for i, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			hit = &doc.Links[i]
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatalf("expected a cross-repo JSON-RPC link jayson client → jayson server; got %+v", doc.Links)
+	}
+	if hit.Source != "gateway-svc::fn1" {
+		t.Errorf("source: want gateway-svc::fn1 (jayson caller), got %s", hit.Source)
+	}
+	if hit.Target != "math-rpc-svc::h1" {
+		t.Errorf("target: want math-rpc-svc::h1 (jayson handler), got %s", hit.Target)
+	}
+	if hit.Identifier == nil || *hit.Identifier != "http:JSONRPC:/jsonrpc/add" {
+		t.Errorf("identifier: want http:JSONRPC:/jsonrpc/add, got %v", hit.Identifier)
+	}
+}
