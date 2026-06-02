@@ -61442,8 +61442,11 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_ruby.go"],
+            "issue": "3948",
+            "notes": "Ruby effect sniffer fires db_read (User.find_by/.where) + db_write (User.create!) on graphql-ruby resolver bodies, bound to the resolver def. Framework-agnostic per-language dispatch (#3948).",
+            "verified_at": "2026-06-02"
           }
         },
         "Substrate": {
@@ -61467,8 +61470,11 @@
             "issue": "3621"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_ruby.go"],
+            "issue": "3948",
+            "notes": "Per-LANGUAGE Ruby def-use sniffer fires on graphql-ruby resolver .rb bodies (def_use_pass.go dispatches by file language, framework-agnostic). Probed: record def-\u003euse chain inside a field resolver (#3948).",
+            "verified_at": "2026-06-02"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -61483,12 +61489,18 @@
             "issue": "backfill:dictionary-completeness"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_ruby.go"],
+            "issue": "3948",
+            "notes": "fs_read/fs_write effect (File.read/.write) fires on graphql-ruby resolver file I/O. Per-language Ruby sniffer (#3948).",
+            "verified_at": "2026-06-02"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_ruby.go"],
+            "issue": "3948",
+            "notes": "http_out effect (Net::HTTP/HTTParty/Faraday) fires when a graphql-ruby resolver calls an HTTP client. Per-language Ruby sniffer (#3948).",
+            "verified_at": "2026-06-02"
           },
           "import_resolution_quality": {
             "status": "missing",
@@ -61499,8 +61511,11 @@
             "issue": "3621"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_ruby.go"],
+            "issue": "3948",
+            "notes": "mutation effect (@ivar assignment) fires inside graphql-ruby resolver methods. Per-language Ruby sniffer (#3948).",
+            "verified_at": "2026-06-02"
           },
           "pure_function_tagging": {
             "status": "missing",
@@ -61523,28 +61538,40 @@
             "issue": "3621"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_ruby.go"],
+            "issue": "3948",
+            "notes": "Sanitizer recognition (AR placeholder where with bound value) fires on graphql-ruby resolvers. Per-language Ruby sniffer (#3948).",
+            "verified_at": "2026-06-02"
           },
           "schema_drift_detection": {
             "status": "missing",
             "issue": "3621"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_ruby.go"],
+            "issue": "3948",
+            "notes": "Taint SINK (SQL interpolation in where) fires when a graphql-ruby resolver builds raw SQL from a field argument. Per-language Ruby sniffer (#3948).",
+            "verified_at": "2026-06-02"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_ruby.go"],
+            "issue": "3948",
+            "notes": "Taint SOURCE (JSON.parse of non-literal etc.) fires in graphql-ruby resolver bodies. Resolvers read keyword args not params, so params-style sources do not apply (#3948).",
+            "verified_at": "2026-06-02"
           },
           "template_pattern_catalog": {
             "status": "missing",
             "issue": "3621"
           },
           "vulnerability_finding": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_ruby.go"],
+            "issue": "3948",
+            "notes": "Vulnerability findings derive from the taint source-\u003esink flow proven for graphql-ruby resolvers. Per-language Ruby sniffer (#3948).",
+            "verified_at": "2026-06-02"
           }
         }
       }

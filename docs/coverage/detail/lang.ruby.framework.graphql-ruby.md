@@ -89,7 +89,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DB effect | 🔴 `missing` | — | 3621 | — | — |
+| DB effect | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | Ruby effect sniffer fires db_read (User.find_by/.where) + db_write (User.create!) on graphql-ruby resolver bodies, bound to the resolver def. Framework-agnostic per-language dispatch (#3948). |
 
 ### Substrate
 
@@ -99,26 +99,26 @@ Auto-generated. Back to [summary](../summary.md).
 | Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/ruby/config_consumer.go`<br>`internal/extractors/ruby/config_consumer_test.go` | ENV[...], ENV.fetch -> config:<key> DEPENDS_ON_CONFIG edges (issue #3641) |
 | Constant propagation | 🔴 `missing` | — | 3621 | — | — |
 | Dead code detection | 🔴 `missing` | — | 3621 | — | — |
-| Def use chain extraction | 🔴 `missing` | — | 3621 | — | — |
+| Def use chain extraction | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_ruby.go` | Per-LANGUAGE Ruby def-use sniffer fires on graphql-ruby resolver .rb bodies (def_use_pass.go dispatches by file language, framework-agnostic). Probed: record def->use chain inside a field resolver (#3948). |
 | Env fallback recognition | 🔴 `missing` | — | 3621 | — | — |
 | Error flow | 🔴 `missing` | — | 3628 | — | — |
 | Feature flag gating | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Fs effect | 🔴 `missing` | — | 3621 | — | — |
-| HTTP effect | 🔴 `missing` | — | 3621 | — | — |
+| Fs effect | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | fs_read/fs_write effect (File.read/.write) fires on graphql-ruby resolver file I/O. Per-language Ruby sniffer (#3948). |
+| HTTP effect | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | http_out effect (Net::HTTP/HTTParty/Faraday) fires when a graphql-ruby resolver calls an HTTP client. Per-language Ruby sniffer (#3948). |
 | Import resolution quality | 🔴 `missing` | — | 3621 | — | — |
 | Module cycle detection | 🔴 `missing` | — | 3621 | — | — |
-| Mutation effect | 🔴 `missing` | — | 3621 | — | — |
+| Mutation effect | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | mutation effect (@ivar assignment) fires inside graphql-ruby resolver methods. Per-language Ruby sniffer (#3948). |
 | Pure function tagging | 🔴 `missing` | — | 3621 | — | — |
 | Reachability analysis | 🔴 `missing` | — | 3621 | — | — |
 | Request shape extraction | 🔴 `missing` | — | 3621 | — | — |
 | Request sink dataflow | 🔴 `missing` | — | 3740 | — | — |
 | Response shape extraction | 🔴 `missing` | — | 3621 | — | — |
-| Sanitizer recognition | 🔴 `missing` | — | 3621 | — | — |
+| Sanitizer recognition | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_ruby.go` | Sanitizer recognition (AR placeholder where with bound value) fires on graphql-ruby resolvers. Per-language Ruby sniffer (#3948). |
 | Schema drift detection | 🔴 `missing` | — | 3621 | — | — |
-| Taint sink detection | 🔴 `missing` | — | 3621 | — | — |
-| Taint source detection | 🔴 `missing` | — | 3621 | — | — |
+| Taint sink detection | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_ruby.go` | Taint SINK (SQL interpolation in where) fires when a graphql-ruby resolver builds raw SQL from a field argument. Per-language Ruby sniffer (#3948). |
+| Taint source detection | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_ruby.go` | Taint SOURCE (JSON.parse of non-literal etc.) fires in graphql-ruby resolver bodies. Resolvers read keyword args not params, so params-style sources do not apply (#3948). |
 | Template pattern catalog | 🔴 `missing` | — | 3621 | — | — |
-| Vulnerability finding | 🔴 `missing` | — | 3621 | — | — |
+| Vulnerability finding | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_ruby.go` | Vulnerability findings derive from the taint source->sink flow proven for graphql-ruby resolvers. Per-language Ruby sniffer (#3948). |
 
 ## Related extraction records
 
