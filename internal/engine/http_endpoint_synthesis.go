@@ -1002,6 +1002,17 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	applyEndpointAPIVersion(entities, path, deprecationBefore)
 	applyEndpointDeprecation(lang, string(content), path, entities, deprecationBefore)
 
+	// #3628 (epic) — endpoint pagination-posture stamping. Mutates Properties on
+	// the same producer-side http_endpoint_definition entities (index >=
+	// deprecationBefore, same source file); adds/removes nothing. Resolves
+	// `paginated` / `pagination_style` / `pagination_params` from a recognised
+	// DRF pagination_class (or settings DEFAULT_PAGINATION_CLASS), a Spring
+	// Pageable param / Page<…> return, an Express/FastAPI limit+offset / page /
+	// cursor param shape, or a Sequelize/Prisma/Django Paginator ORM shape.
+	// Honest-partial: a lone `limit` with no offset/page/cursor companion is
+	// ambiguous and is left unstamped.
+	applyEndpointPagination(lang, string(content), path, entities, deprecationBefore)
+
 	// #722 — response/request shape extraction. Mutates Properties on
 	// the synthetic entities emitted above; never adds or removes
 	// entities, so it cannot regress the bug-rate of upstream passes.

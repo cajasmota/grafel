@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -16,6 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
+| Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/async_graphql.go`<br>`internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/helpers.go` | Synthesizes verb GRAPHQL endpoints from resolver impl blocks; Schema::build root captured as SCOPE.Service |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/async_graphql.go`<br>`internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/helpers.go` | handler_name=<Root>.<field> attributed per resolver method |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/async_graphql.go`<br>`internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/helpers.go` | Each #[Object] impl Query/Mutation/Subscription resolver method becomes a GRAPHQL endpoint at /graphql/<Root>/<field>; operation kind derived from impl root |

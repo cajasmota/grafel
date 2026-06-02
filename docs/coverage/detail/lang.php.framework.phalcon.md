@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [php](../by-language/php.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -16,6 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
+| Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Phalcon app->get/post/router->method routes and group prefixes extracted |
 | Handler attribution | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Phalcon controller class detection alongside route definitions |
 | Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |
