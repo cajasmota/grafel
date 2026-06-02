@@ -1,8 +1,9 @@
 // Python request-input → sink dataflow sniffer (#3628 area #22).
 //
-// SCOPED def→use tracking inside one function body, plus one hop into a
-// directly-called local (module-level) function. See dataflow.go for the
-// contract and the honest-partial boundary.
+// SCOPED def→use tracking inside one function body, followed through up to
+// DataFlowMaxHops local (module-level) call hops, PLUS cross-file boundary
+// emission for a tainted value that escapes into an imported callee. See
+// dataflow.go for the contract and the honest-partial boundary.
 //
 // Sources recognised (static key only):
 //   - request.data['x'] / request.data.get('x')        (DRF body)
@@ -21,7 +22,12 @@ import (
 	"strings"
 )
 
-func init() { RegisterDataFlowSniffer("python", sniffDataFlowPython) }
+func init() {
+	RegisterDataFlowSnifferEx("python", sniffDataFlowPythonEx, continueDataFlowPython)
+}
+
+// sniffDataFlowPython preserves the legacy in-file-only entry point.
+func sniffDataFlowPython(content string) []DataFlow { return sniffDataFlowPythonEx(content).Flows }
 
 // dfPySourceFieldRe captures a request-input read with a STATIC string
 // key. Group 1/2/3/4 hold the key depending on the access form. Dynamic
@@ -54,25 +60,73 @@ var dfPyHTTPCallRe = regexp.MustCompile(
 	`\b((?:requests|httpx|session|client)\s*\.\s*(?:get|post|put|delete|patch))\s*\(`,
 )
 
-// dfPyAssignRe captures `NAME = <rhs>` (group 1 name, group 2 rhs).
+// dfPyAssignRe captures `NAME = <rhs>` (group 1 indent, 2 name, 3 rhs).
 // Excludes augmented/compare via the `[^=]` after `=`.
 var dfPyAssignRe = regexp.MustCompile(
 	`^(\s*)([A-Za-z_][\w]*)\s*=\s*([^=].*)$`,
 )
 
-func sniffDataFlowPython(content string) []DataFlow {
+// dfPySinkSpecs is the ordered sink table reused at every scan depth.
+var dfPySinkSpecs = []struct {
+	re   *regexp.Regexp
+	kind DataFlowSinkKind
+}{
+	{dfPyDBWriteRe, DataFlowSinkDBWrite},
+	{dfPyRespRe, DataFlowSinkResponse},
+	{dfPyHTTPCallRe, DataFlowSinkHTTPCall},
+}
+
+func sniffDataFlowPythonEx(content string) DataFlowResult {
 	if content == "" {
-		return nil
+		return DataFlowResult{}
 	}
 	lines := strings.Split(content, "\n")
 	headers := scanPyFuncHeaders(content)
 	bodies := pyFuncBodies(lines, headers)
 
-	var out []DataFlow
+	var res DataFlowResult
 	for _, b := range bodies {
-		out = append(out, analyzePyBody(lines, b, bodies)...)
+		ctx := pyWalkCtx{
+			origin:  b.Name,
+			bodies:  bodies,
+			lines:   lines,
+			visited: map[string]bool{b.Name: true},
+		}
+		r := walkPyBody(ctx, b, map[string]taintInfo{})
+		res.Flows = append(res.Flows, r.Flows...)
+		res.Boundaries = append(res.Boundaries, r.Boundaries...)
 	}
-	return out
+	return res
+}
+
+// continueDataFlowPython continues a bounded hop walk inside this file: it
+// binds the tainted value into fnName's paramIndex-th parameter and walks.
+// Function/SourceField/SourceLine on returned flows are placeholders that the
+// links pass rewrites to the true origin handler.
+func continueDataFlowPython(content, fnName string, paramIndex int, field string, hopsUsed int) DataFlowResult {
+	if content == "" || hopsUsed >= DataFlowMaxHops {
+		return DataFlowResult{}
+	}
+	lines := strings.Split(content, "\n")
+	headers := scanPyFuncHeaders(content)
+	bodies := pyFuncBodies(lines, headers)
+	callee := pyBodyByName(bodies, fnName)
+	if callee == nil {
+		return DataFlowResult{}
+	}
+	param := pyParamName(lines, callee.Start, paramIndex)
+	if param == "" {
+		return DataFlowResult{}
+	}
+	ctx := pyWalkCtx{
+		origin:   fnName, // placeholder; links pass rewrites
+		field:    field,
+		hopsUsed: hopsUsed,
+		bodies:   bodies,
+		lines:    lines,
+		visited:  map[string]bool{fnName: true},
+	}
+	return walkPyBody(ctx, *callee, map[string]taintInfo{param: {field: field, line: callee.Start}})
 }
 
 // pyFuncBody is a function's line span (1-indexed, inclusive) with the
@@ -131,32 +185,52 @@ func leadingWS(s string) int {
 	return n
 }
 
-func analyzePyBody(lines []string, b pyFuncBody, all []pyFuncBody) []DataFlow {
-	tainted := map[string]taintInfo{}
-	var out []DataFlow
+// pyWalkCtx threads the bounded multi-hop walk's state. hopPath/visited are
+// COPIED on each descent so sibling branches stay isolated.
+type pyWalkCtx struct {
+	origin   string
+	field    string
+	srcLine  int
+	hopsUsed int
+	bodies   []pyFuncBody
+	lines    []string
+	visited  map[string]bool
+	hopPath  []string
+}
 
-	for ln := b.Start; ln <= b.End && ln <= len(lines); ln++ {
+// walkPyBody is the unified forward pass over a function body.
+func walkPyBody(ctx pyWalkCtx, b pyFuncBody, tainted map[string]taintInfo) DataFlowResult {
+	var res DataFlowResult
+	for ln := b.Start; ln <= b.End && ln <= len(ctx.lines); ln++ {
 		// Only consider lines strictly inside the body (indent > def indent).
 		if ln != b.Start {
-			if strings.TrimSpace(lines[ln-1]) != "" && leadingWS(lines[ln-1]) <= b.Indent {
+			if strings.TrimSpace(ctx.lines[ln-1]) != "" && leadingWS(ctx.lines[ln-1]) <= b.Indent {
 				break
 			}
 		}
-		line := lines[ln-1]
+		line := ctx.lines[ln-1]
 
-		// Assignment propagation / chain-breaking reassignment.
-		if m := dfPyAssignRe.FindStringSubmatch(line); m != nil {
-			name, rhs := m[2], m[3]
-			if fld, ok := pyRHSSourceField(rhs, tainted); ok {
-				tainted[name] = taintInfo{field: fld, line: ln}
-			} else {
-				delete(tainted, name) // reassigned to non-source → drop taint
-			}
-		}
+		pyTrackTaint(tainted, line, ln)
 
-		out = appendPySinkFlows(out, lines, b, ln, line, tainted, all)
+		res.Flows = append(res.Flows, pyDirectSinks(ctx, ln, line, tainted)...)
+
+		r := pyFollowCalls(ctx, ln, line, tainted)
+		res.Flows = append(res.Flows, r.Flows...)
+		res.Boundaries = append(res.Boundaries, r.Boundaries...)
 	}
-	return out
+	return res
+}
+
+// pyTrackTaint applies one line's assignment effects to the taint map.
+func pyTrackTaint(tainted map[string]taintInfo, line string, ln int) {
+	if m := dfPyAssignRe.FindStringSubmatch(line); m != nil {
+		name, rhs := m[2], m[3]
+		if fld, ok := pyRHSSourceField(rhs, tainted); ok {
+			tainted[name] = taintInfo{field: fld, line: ln}
+		} else {
+			delete(tainted, name) // reassigned to non-source → drop taint
+		}
+	}
 }
 
 // pyRHSSourceField returns (field, true) when rhs is a request-input read
@@ -181,80 +255,93 @@ func pyRHSSourceField(rhs string, tainted map[string]taintInfo) (string, bool) {
 	return "", false
 }
 
-func appendPySinkFlows(out []DataFlow, lines []string, b pyFuncBody, ln int, line string, tainted map[string]taintInfo, all []pyFuncBody) []DataFlow {
-	for _, s := range []struct {
-		re   *regexp.Regexp
-		kind DataFlowSinkKind
-	}{
-		{dfPyDBWriteRe, DataFlowSinkDBWrite},
-		{dfPyRespRe, DataFlowSinkResponse},
-		{dfPyHTTPCallRe, DataFlowSinkHTTPCall},
-	} {
+// pyDirectSinks emits flows for sinks on `line` whose args carry taint.
+func pyDirectSinks(ctx pyWalkCtx, ln int, line string, tainted map[string]taintInfo) []DataFlow {
+	var out []DataFlow
+	for _, s := range dfPySinkSpecs {
 		for _, m := range s.re.FindAllStringSubmatchIndex(line, -1) {
 			callee := line[m[2]:m[3]]
-			args := pyCallArgs(lines, ln, m[2])
+			args := pyCallArgs(ctx.lines, ln, m[2])
 			if fld, ok := pyExprTainted(args, tainted); ok {
+				field := ctx.field
+				if field == "" {
+					field = fld
+				}
 				out = append(out, DataFlow{
-					Function:    b.Name,
-					SourceField: fld,
-					SourceLine:  ln,
+					Function:    ctx.origin,
+					SourceField: field,
+					SourceLine:  ctx.srcLine,
 					SinkKind:    s.kind,
 					SinkName:    callee,
 					SinkLine:    ln,
+					HopVia:      firstOf(ctx.hopPath),
+					HopPath:     dupStrings(ctx.hopPath),
 				})
-			}
-		}
-	}
-
-	// One-hop into a local function call helper(tainted).
-	for _, call := range pyLocalCalls(line) {
-		callee := pyBodyByName(all, call.name)
-		if callee == nil || callee.Name == b.Name {
-			continue
-		}
-		for pos, argExpr := range call.args {
-			fld, ok := pyExprTainted(argExpr, tainted)
-			if !ok {
-				continue
-			}
-			param := pyParamName(lines, callee.Start, pos)
-			if param == "" {
-				continue
-			}
-			for cln := callee.Start; cln <= callee.End && cln <= len(lines); cln++ {
-				out = appendPyHopSink(out, lines, b, callee, param, fld, ln, cln, lines[cln-1])
 			}
 		}
 	}
 	return out
 }
 
-func appendPyHopSink(out []DataFlow, lines []string, origin pyFuncBody, callee *pyFuncBody, param, fld string, srcLine, cln int, cline string) []DataFlow {
-	for _, s := range []struct {
-		re   *regexp.Regexp
-		kind DataFlowSinkKind
-	}{
-		{dfPyDBWriteRe, DataFlowSinkDBWrite},
-		{dfPyRespRe, DataFlowSinkResponse},
-		{dfPyHTTPCallRe, DataFlowSinkHTTPCall},
-	} {
-		for _, m := range s.re.FindAllStringSubmatchIndex(cline, -1) {
-			callName := cline[m[2]:m[3]]
-			args := pyCallArgs(lines, cln, m[2])
-			if dfReWholeIdent(param).MatchString(args) {
-				out = append(out, DataFlow{
-					Function:    origin.Name,
-					SourceField: fld,
-					SourceLine:  srcLine,
-					SinkKind:    s.kind,
-					SinkName:    callName,
-					SinkLine:    cln,
-					HopVia:      callee.Name,
-				})
+// pyFollowCalls handles each local-call on `line`: recurse into a local
+// module function (bounded + cycle-guarded) or record a cross-file boundary.
+func pyFollowCalls(ctx pyWalkCtx, ln int, line string, tainted map[string]taintInfo) DataFlowResult {
+	var res DataFlowResult
+	for _, call := range pyLocalCalls(line) {
+		if pyArgsHaveStar(call.args) {
+			continue // *args/**kwargs make positions unreliable — drop
+		}
+		for pos, argExpr := range call.args {
+			if _, ok := pyExprTainted(argExpr, tainted); !ok {
+				continue
 			}
+			// Skip keyword args (`name=value`) for positional binding; only a
+			// bare positional tainted arg binds soundly.
+			fld, bare := pyArgBareTaint(argExpr, tainted)
+			if !bare {
+				continue
+			}
+			field := ctx.field
+			if field == "" {
+				field = fld
+			}
+			callee := pyBodyByName(ctx.bodies, call.name)
+			if callee == nil {
+				if ctx.hopsUsed+len(ctx.hopPath) >= DataFlowMaxHops {
+					continue
+				}
+				res.Boundaries = append(res.Boundaries, DataFlowBoundary{
+					Function:    ctx.origin,
+					SourceField: field,
+					SourceLine:  ctx.srcLine,
+					Callee:      call.name,
+					ArgIndex:    pos,
+					HopPath:     dupStrings(ctx.hopPath),
+					CallLine:    ln,
+				})
+				continue
+			}
+			if ctx.hopsUsed+len(ctx.hopPath) >= DataFlowMaxHops {
+				continue
+			}
+			if ctx.visited[callee.Name] {
+				continue // recursion / cycle — drop
+			}
+			param := pyParamName(ctx.lines, callee.Start, pos)
+			if param == "" {
+				continue
+			}
+			child := ctx
+			child.hopPath = append(dupStrings(ctx.hopPath), callee.Name)
+			child.visited = dupVisited(ctx.visited)
+			child.visited[callee.Name] = true
+			child.field = field
+			r := walkPyBody(child, *callee, map[string]taintInfo{param: {field: field, line: callee.Start}})
+			res.Flows = append(res.Flows, r.Flows...)
+			res.Boundaries = append(res.Boundaries, r.Boundaries...)
 		}
 	}
-	return out
+	return res
 }
 
 // pyExprTainted reports whether expr references a request source or a
@@ -277,6 +364,60 @@ func pyExprTainted(expr string, tainted map[string]taintInfo) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// pyArgBareTaint reports whether argExpr is EXACTLY a tainted value (a
+// request-source read or a bare tainted identifier), not embedded in a
+// larger expression and not a keyword argument. Precision guard for sound
+// positional binding. Returns the field.
+func pyArgBareTaint(argExpr string, tainted map[string]taintInfo) (string, bool) {
+	e := strings.TrimSpace(argExpr)
+	// Reject keyword argument form `name=expr` (a positional binding cannot
+	// be derived from it soundly).
+	if dfPyKwargRe.MatchString(e) {
+		return "", false
+	}
+	if pyWholeExprIsSource(e) {
+		if m := dfPySourceFieldRe.FindStringSubmatch(e); m != nil {
+			for _, g := range m[1:] {
+				if g != "" {
+					return g, true
+				}
+			}
+		}
+		return "", true
+	}
+	if dfReSimpleIdent.MatchString(e) {
+		if info, ok := tainted[e]; ok {
+			return info.field, true
+		}
+	}
+	return "", false
+}
+
+// dfPyKwargRe matches a keyword-argument form `name=...` (but not `==`).
+var dfPyKwargRe = regexp.MustCompile(`^[A-Za-z_][\w]*\s*=[^=]`)
+
+// pyWholeExprIsSource reports the expr is SOLELY a request-source access.
+func pyWholeExprIsSource(e string) bool {
+	loc := dfPySourceFieldRe.FindStringIndex(e)
+	if loc == nil {
+		loc = dfPySourceAnyRe.FindStringIndex(e)
+	}
+	if loc == nil {
+		return false
+	}
+	return strings.TrimSpace(e[:loc[0]]) == "" && strings.TrimSpace(e[loc[1]:]) == ""
+}
+
+// pyArgsHaveStar reports whether any arg is a *args / **kwargs unpack.
+func pyArgsHaveStar(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(strings.TrimSpace(a), "*") {
+			return true
+		}
+	}
+	return false
 }
 
 // pyCallArgs returns the argument text of the call whose `(` begins at/after
@@ -336,6 +477,13 @@ func pyLocalCalls(line string) []pyLocalCall {
 	var out []pyLocalCall
 	for _, m := range dfPyLocalCallRe.FindAllStringSubmatchIndex(line, -1) {
 		name := line[m[2]:m[3]]
+		// skip method calls (`obj.foo(`) and keywords/builtins.
+		if m[2] > 0 {
+			prev := strings.TrimRight(line[:m[2]], " \t")
+			if strings.HasSuffix(prev, ".") {
+				continue
+			}
+		}
 		switch name {
 		case "if", "for", "while", "return", "print", "len", "range", "def", "self":
 			continue
@@ -348,7 +496,7 @@ func pyLocalCalls(line string) []pyLocalCall {
 
 // pyParamName returns the pos-th positional parameter name of the function
 // whose header is on headerLine. A leading `self`/`cls` is skipped so the
-// positional index aligns with call-site args. Complex params → "".
+// positional index aligns with call-site args. Complex / *args params → "".
 func pyParamName(lines []string, headerLine, pos int) string {
 	if headerLine < 1 || headerLine > len(lines) {
 		return ""
@@ -370,6 +518,12 @@ func pyParamName(lines []string, headerLine, pos int) string {
 			params = params[1:]
 		}
 	}
+	// A *args / **kwargs parameter makes positions ambiguous past it.
+	for _, p := range params {
+		if strings.HasPrefix(strings.TrimSpace(p), "*") {
+			return ""
+		}
+	}
 	if pos >= len(params) {
 		return ""
 	}
@@ -377,7 +531,7 @@ func pyParamName(lines []string, headerLine, pos int) string {
 	if i := strings.IndexAny(p, ":="); i >= 0 {
 		p = strings.TrimSpace(p[:i])
 	}
-	if strings.HasPrefix(p, "*") || !dfReSimpleIdent.MatchString(p) {
+	if !dfReSimpleIdent.MatchString(p) {
 		return ""
 	}
 	return p

@@ -1,8 +1,9 @@
 // JS/TS request-input → sink dataflow sniffer (#3628 area #22).
 //
-// SCOPED def→use tracking inside one function body, plus one hop into a
-// directly-called local function. See dataflow.go for the contract and the
-// honest-partial boundary.
+// SCOPED def→use tracking inside one function body, followed through up to
+// DataFlowMaxHops local-call hops, PLUS cross-file boundary emission for a
+// tainted value that escapes into an imported (non-local) callee. See
+// dataflow.go for the contract and the honest-partial boundary.
 //
 // Sources recognised:
 //   - req.body.X / req.query.X / req.params.X         (Express / generic)
@@ -22,7 +23,12 @@ import (
 	"strings"
 )
 
-func init() { RegisterDataFlowSniffer("jsts", sniffDataFlowJSTS) }
+func init() {
+	RegisterDataFlowSnifferEx("jsts", sniffDataFlowJSTSEx, continueDataFlowJSTS)
+}
+
+// sniffDataFlowJSTS preserves the legacy in-file-only entry point.
+func sniffDataFlowJSTS(content string) []DataFlow { return sniffDataFlowJSTSEx(content).Flows }
 
 // dfJstsSourceFieldRe captures a request-input read with a STATIC field
 // name. Group 1 = field. Anchored on the canonical receivers. Dynamic
@@ -65,19 +71,69 @@ var dfJstsBareAssignRe = regexp.MustCompile(
 	`^\s*([A-Za-z_$][\w$]*)\s*=\s*([^=].*)$`,
 )
 
-func sniffDataFlowJSTS(content string) []DataFlow {
+// dfJstsSinkSpecs is the ordered sink table reused at every scan depth.
+var dfJstsSinkSpecs = []struct {
+	re   *regexp.Regexp
+	kind DataFlowSinkKind
+}{
+	{dfJstsDBWriteRe, DataFlowSinkDBWrite},
+	{dfJstsRespRe, DataFlowSinkResponse},
+	{dfJstsHTTPCallRe, DataFlowSinkHTTPCall},
+}
+
+func sniffDataFlowJSTSEx(content string) DataFlowResult {
 	if content == "" {
-		return nil
+		return DataFlowResult{}
 	}
 	lines := strings.Split(content, "\n")
 	headers := scanJSTSFuncHeaders(content)
 	bodies := jstsFuncBodies(content, headers)
 
-	var out []DataFlow
+	var res DataFlowResult
 	for _, b := range bodies {
-		out = append(out, analyzeJSTSBody(lines, b, bodies)...)
+		ctx := jstsWalkCtx{
+			origin:  b.Name,
+			bodies:  bodies,
+			lines:   lines,
+			visited: map[string]bool{b.Name: true},
+		}
+		r := walkJSTSBody(ctx, b, map[string]taintInfo{})
+		res.Flows = append(res.Flows, r.Flows...)
+		res.Boundaries = append(res.Boundaries, r.Boundaries...)
 	}
-	return out
+	return res
+}
+
+// continueDataFlowJSTS continues a bounded hop walk inside this file: it
+// binds the tainted value into fnName's paramIndex-th parameter and walks.
+// hopsUsed is the number of hops already consumed reaching this file (so the
+// continuation honours DataFlowMaxHops). The returned flows' Function /
+// SourceField / SourceLine are placeholders; the links pass rewrites them to
+// the true origin handler.
+func continueDataFlowJSTS(content, fnName string, paramIndex int, field string, hopsUsed int) DataFlowResult {
+	if content == "" || hopsUsed >= DataFlowMaxHops {
+		return DataFlowResult{}
+	}
+	lines := strings.Split(content, "\n")
+	headers := scanJSTSFuncHeaders(content)
+	bodies := jstsFuncBodies(content, headers)
+	callee := jstsBodyByName(bodies, fnName)
+	if callee == nil {
+		return DataFlowResult{}
+	}
+	param := jstsParamName(lines, callee.Start, paramIndex)
+	if param == "" {
+		return DataFlowResult{} // ambiguous/destructured param — drop
+	}
+	ctx := jstsWalkCtx{
+		origin:   fnName, // placeholder; links pass rewrites
+		field:    field,
+		hopsUsed: hopsUsed,
+		bodies:   bodies,
+		lines:    lines,
+		visited:  map[string]bool{fnName: true},
+	}
+	return walkJSTSBody(ctx, *callee, map[string]taintInfo{param: {field: field, line: callee.Start}})
 }
 
 // jstsFuncBody is a function's line span (1-indexed, inclusive).
@@ -93,13 +149,34 @@ func jstsFuncBodies(content string, headers []funcHeader) []jstsFuncBody {
 	lines := strings.Split(content, "\n")
 	var out []jstsFuncBody
 	for _, h := range headers {
-		end := jstsMatchBraceEnd(lines, h.Line)
+		// The (?m)^\s* header regex can place a function preceded by a blank
+		// line one line early (the \s* eats the prior newline). Snap Start to
+		// the line that actually contains the function's name token so param
+		// reading and the brace scan are aligned.
+		start := jstsSnapHeaderLine(lines, h.Line, h.Name)
+		end := jstsMatchBraceEnd(lines, start)
 		if end == 0 {
 			continue
 		}
-		out = append(out, jstsFuncBody{Name: h.Name, Start: h.Line, End: end})
+		out = append(out, jstsFuncBody{Name: h.Name, Start: start, End: end})
 	}
 	return out
+}
+
+// jstsSnapHeaderLine returns the 1-indexed line at/after `line` whose text
+// contains `name` followed (ignoring spaces) by `(` — the real header line.
+// Falls back to `line` if not found within a small window.
+func jstsSnapHeaderLine(lines []string, line int, name string) int {
+	for i := line; i <= line+2 && i <= len(lines); i++ {
+		s := lines[i-1]
+		if idx := strings.Index(s, name); idx >= 0 {
+			rest := strings.TrimLeft(s[idx+len(name):], " \t")
+			if strings.HasPrefix(rest, "(") {
+				return i
+			}
+		}
+	}
+	return line
 }
 
 // jstsMatchBraceEnd finds the line of the `}` that closes the first `{`
@@ -126,42 +203,150 @@ func jstsMatchBraceEnd(lines []string, startLine int) int {
 	return 0
 }
 
-// analyzeJSTSBody runs the scoped def→use over a single function body and
-// returns the flows that reach a sink (intra-fn or one-hop).
-func analyzeJSTSBody(lines []string, b jstsFuncBody, all []jstsFuncBody) []DataFlow {
-	// tainted: var name -> source field (may be "" for whole-object).
-	tainted := map[string]taintInfo{}
-	var out []DataFlow
+// jstsWalkCtx threads the bounded multi-hop walk's immutable-ish state.
+// hopPath/visited are COPIED (not shared) on each descent so sibling
+// branches do not pollute one another.
+type jstsWalkCtx struct {
+	origin   string // originating handler name (or placeholder, cross-file)
+	field    string // carried source field provenance ("" if unknown)
+	srcLine  int    // request-source line in the origin handler (0 cross-file)
+	hopsUsed int    // hops already consumed reaching this body
+	bodies   []jstsFuncBody
+	lines    []string
+	visited  map[string]bool // callee names on the active path (cycle guard)
+	hopPath  []string        // ordered callee chain to this body
+}
 
-	for ln := b.Start; ln <= b.End && ln <= len(lines); ln++ {
-		line := lines[ln-1]
+// walkJSTSBody is the unified forward pass over a function body. The taint
+// map is pre-seeded (cross-file continuation) or empty (handler, which reads
+// its request sources here). Returns reached sinks + cross-file boundaries.
+func walkJSTSBody(ctx jstsWalkCtx, b jstsFuncBody, tainted map[string]taintInfo) DataFlowResult {
+	var res DataFlowResult
+	for ln := b.Start; ln <= b.End && ln <= len(ctx.lines); ln++ {
+		line := ctx.lines[ln-1]
 
-		// Chain-breaking reassignment: a bare `name = <expr>` where expr is
-		// NOT a source/tainted reference removes the taint. (honest-partial)
-		if m := dfJstsBareAssignRe.FindStringSubmatch(line); m != nil {
-			name, rhs := m[1], m[2]
-			if _, was := tainted[name]; was && !jstsRHSCarriesTaint(rhs, tainted) {
-				delete(tainted, name)
-				// fall through: a bare assignment is not also a decl below.
-			}
-		}
+		jstsTrackTaint(tainted, line, ln)
 
-		// Propagation via declaration: const y = <source or tainted>.
-		if m := dfJstsConstAssignRe.FindStringSubmatch(line); m != nil {
-			name, rhs := m[1], m[2]
-			if fld, ok := jstsRHSSourceField(rhs, tainted); ok {
-				tainted[name] = taintInfo{field: fld, line: ln}
-				continue
-			}
-			// Declared from a non-source expr: ensure no stale taint.
+		res.Flows = append(res.Flows, jstsDirectSinks(ctx, ln, line, tainted)...)
+
+		r := jstsFollowCalls(ctx, ln, line, tainted)
+		res.Flows = append(res.Flows, r.Flows...)
+		res.Boundaries = append(res.Boundaries, r.Boundaries...)
+	}
+	return res
+}
+
+// jstsTrackTaint applies one line's assignment effects to the taint map.
+func jstsTrackTaint(tainted map[string]taintInfo, line string, ln int) {
+	if m := dfJstsBareAssignRe.FindStringSubmatch(line); m != nil {
+		name, rhs := m[1], m[2]
+		if _, was := tainted[name]; was && !jstsRHSCarriesTaint(rhs, tainted) {
 			delete(tainted, name)
 		}
+	}
+	if m := dfJstsConstAssignRe.FindStringSubmatch(line); m != nil {
+		name, rhs := m[1], m[2]
+		if fld, ok := jstsRHSSourceField(rhs, tainted); ok {
+			tainted[name] = taintInfo{field: fld, line: ln}
+		} else {
+			delete(tainted, name)
+		}
+	}
+}
 
-		// Sinks. A sink fires if any of its argument text references a
-		// source directly or a tainted variable.
-		out = appendJSTSSinkFlows(out, lines, b, ln, line, tainted, all)
+// jstsDirectSinks emits flows for sinks on `line` whose args carry taint.
+func jstsDirectSinks(ctx jstsWalkCtx, ln int, line string, tainted map[string]taintInfo) []DataFlow {
+	var out []DataFlow
+	for _, s := range dfJstsSinkSpecs {
+		for _, m := range s.re.FindAllStringSubmatchIndex(line, -1) {
+			callee := line[m[2]:m[3]]
+			args := jstsCallArgs(ctx.lines, ln, m[2])
+			if fld, ok := jstsArgsTainted(args, tainted); ok {
+				field := ctx.field
+				if field == "" {
+					field = fld
+				}
+				out = append(out, DataFlow{
+					Function:    ctx.origin,
+					SourceField: field,
+					SourceLine:  ctx.srcLine,
+					SinkKind:    s.kind,
+					SinkName:    callee,
+					SinkLine:    ln,
+					HopVia:      firstOf(ctx.hopPath),
+					HopPath:     dupStrings(ctx.hopPath),
+				})
+			}
+		}
 	}
 	return out
+}
+
+// jstsFollowCalls handles each local-call on `line`: if the callee is a
+// function defined in this file and the hop bound + cycle guards allow,
+// recurse into it; otherwise (non-local callee) record a cross-file boundary
+// candidate. Position binding is EXACT — a spread / ambiguous arg drops.
+func jstsFollowCalls(ctx jstsWalkCtx, ln int, line string, tainted map[string]taintInfo) DataFlowResult {
+	var res DataFlowResult
+	for _, call := range jstsLocalCalls(line) {
+		// A spread token anywhere in the arg list makes positions unreliable.
+		if jstsArgsHaveSpread(call.args) {
+			continue
+		}
+		for pos, argExpr := range call.args {
+			if _, ok := jstsExprTainted(argExpr, tainted); !ok {
+				continue
+			}
+			// Require the arg to be EXACTLY the tainted value (not embedded in
+			// a larger expression) so positional binding stays sound.
+			fld, bare := jstsArgBareTaint(argExpr, tainted)
+			if !bare {
+				continue
+			}
+			field := ctx.field
+			if field == "" {
+				field = fld
+			}
+			callee := jstsBodyByName(ctx.bodies, call.name)
+			if callee == nil {
+				// Non-local callee → cross-file boundary candidate (only with
+				// hop budget remaining for the next hop).
+				if ctx.hopsUsed+len(ctx.hopPath) >= DataFlowMaxHops {
+					continue
+				}
+				res.Boundaries = append(res.Boundaries, DataFlowBoundary{
+					Function:    ctx.origin,
+					SourceField: field,
+					SourceLine:  ctx.srcLine,
+					Callee:      call.name,
+					ArgIndex:    pos,
+					HopPath:     dupStrings(ctx.hopPath),
+					CallLine:    ln,
+				})
+				continue
+			}
+			// Local hop. Guards: depth bound, cycle/recursion, param binding.
+			if ctx.hopsUsed+len(ctx.hopPath) >= DataFlowMaxHops {
+				continue // beyond bound — drop
+			}
+			if ctx.visited[callee.Name] {
+				continue // recursion / cycle — stop, drop
+			}
+			param := jstsParamName(ctx.lines, callee.Start, pos)
+			if param == "" {
+				continue // destructured / ambiguous param — drop
+			}
+			child := ctx
+			child.hopPath = append(dupStrings(ctx.hopPath), callee.Name)
+			child.visited = dupVisited(ctx.visited)
+			child.visited[callee.Name] = true
+			child.field = field
+			r := walkJSTSBody(child, *callee, map[string]taintInfo{param: {field: field, line: callee.Start}})
+			res.Flows = append(res.Flows, r.Flows...)
+			res.Boundaries = append(res.Boundaries, r.Boundaries...)
+		}
+	}
+	return res
 }
 
 type taintInfo struct {
@@ -182,7 +367,6 @@ func jstsRHSSourceField(rhs string, tainted map[string]taintInfo) (string, bool)
 	if dfJstsSourceAnyRe.MatchString(rhs) {
 		return "", true
 	}
-	// Reference to an existing tainted var, e.g. `const z = y;`.
 	for name, info := range tainted {
 		if dfReWholeIdent(name).MatchString(rhs) {
 			return info.field, true
@@ -196,93 +380,6 @@ func jstsRHSSourceField(rhs string, tainted map[string]taintInfo) (string, bool)
 func jstsRHSCarriesTaint(rhs string, tainted map[string]taintInfo) bool {
 	_, ok := jstsRHSSourceField(rhs, tainted)
 	return ok
-}
-
-// appendJSTSSinkFlows detects sinks on `line` and, for each, emits a flow
-// if a tainted value or a direct source reaches its argument list. Also
-// performs the single one-hop expansion into a local function call.
-func appendJSTSSinkFlows(out []DataFlow, lines []string, b jstsFuncBody, ln int, line string, tainted map[string]taintInfo, all []jstsFuncBody) []DataFlow {
-	// Direct sinks in this body.
-	for _, s := range []struct {
-		re   *regexp.Regexp
-		kind DataFlowSinkKind
-	}{
-		{dfJstsDBWriteRe, DataFlowSinkDBWrite},
-		{dfJstsRespRe, DataFlowSinkResponse},
-		{dfJstsHTTPCallRe, DataFlowSinkHTTPCall},
-	} {
-		for _, m := range s.re.FindAllStringSubmatchIndex(line, -1) {
-			callee := line[m[2]:m[3]]
-			args := jstsCallArgs(lines, ln, m[2])
-			if fld, ok := jstsArgsTainted(args, tainted); ok {
-				out = append(out, DataFlow{
-					Function:    b.Name,
-					SourceField: fld,
-					SourceLine:  ln,
-					SinkKind:    s.kind,
-					SinkName:    callee,
-					SinkLine:    ln,
-				})
-			}
-		}
-	}
-
-	// One-hop: a call `helper(<tainted-or-source>)` where helper is a local
-	// function. Bind the tainted argument into helper's matching positional
-	// parameter and look for a sink inside helper's body (one level only).
-	for _, call := range jstsLocalCalls(line) {
-		callee := jstsBodyByName(all, call.name)
-		if callee == nil || callee.Name == b.Name {
-			continue
-		}
-		// Which positional args carry taint?
-		for pos, argExpr := range call.args {
-			fld, ok := jstsExprTainted(argExpr, tainted)
-			if !ok {
-				continue
-			}
-			param := jstsParamName(lines, callee.Start, pos)
-			if param == "" {
-				continue
-			}
-			// Scan the callee body for a sink that uses `param` directly.
-			for cln := callee.Start; cln <= callee.End && cln <= len(lines); cln++ {
-				cline := lines[cln-1]
-				out = appendJSTSHopSink(out, lines, b, callee, param, fld, ln, cln, cline)
-			}
-		}
-	}
-	return out
-}
-
-// appendJSTSHopSink emits a one-hop flow when a sink inside the callee uses
-// the bound parameter directly.
-func appendJSTSHopSink(out []DataFlow, lines []string, origin jstsFuncBody, callee *jstsFuncBody, param, fld string, srcLine, cln int, cline string) []DataFlow {
-	for _, s := range []struct {
-		re   *regexp.Regexp
-		kind DataFlowSinkKind
-	}{
-		{dfJstsDBWriteRe, DataFlowSinkDBWrite},
-		{dfJstsRespRe, DataFlowSinkResponse},
-		{dfJstsHTTPCallRe, DataFlowSinkHTTPCall},
-	} {
-		for _, m := range s.re.FindAllStringSubmatchIndex(cline, -1) {
-			callName := cline[m[2]:m[3]]
-			args := jstsCallArgs(lines, cln, m[2])
-			if dfReWholeIdent(param).MatchString(args) {
-				out = append(out, DataFlow{
-					Function:    origin.Name,
-					SourceField: fld,
-					SourceLine:  srcLine,
-					SinkKind:    s.kind,
-					SinkName:    callName,
-					SinkLine:    cln,
-					HopVia:      callee.Name,
-				})
-			}
-		}
-	}
-	return out
 }
 
 // jstsArgsTainted reports whether the argument text references a source
@@ -311,11 +408,58 @@ func jstsExprTainted(expr string, tainted map[string]taintInfo) (string, bool) {
 	return "", false
 }
 
+// jstsArgBareTaint reports whether argExpr is EXACTLY a tainted reference (a
+// request-source read or a bare tainted identifier), not embedded in a
+// larger expression. This precision guard keeps positional binding sound:
+// `helper(x)` / `helper(req.body.x)` bind; `helper(x + 1)` / `helper({x})` /
+// `helper(f(x))` do NOT (drop — honest-partial). Returns the field.
+func jstsArgBareTaint(argExpr string, tainted map[string]taintInfo) (string, bool) {
+	e := strings.TrimSpace(argExpr)
+	if jstsWholeExprIsSource(e) {
+		if m := dfJstsSourceFieldRe.FindStringSubmatch(e); m != nil {
+			if m[1] != "" {
+				return m[1], true
+			}
+			return m[2], true
+		}
+		return "", true
+	}
+	if dfReSimpleIdent.MatchString(e) {
+		if info, ok := tainted[e]; ok {
+			return info.field, true
+		}
+	}
+	return "", false
+}
+
+// jstsWholeExprIsSource reports the expr is SOLELY a request-source access
+// (optionally a member chain) with no surrounding operators.
+func jstsWholeExprIsSource(e string) bool {
+	loc := dfJstsSourceFieldRe.FindStringIndex(e)
+	if loc == nil {
+		loc = dfJstsSourceAnyRe.FindStringIndex(e)
+	}
+	if loc == nil {
+		return false
+	}
+	return strings.TrimSpace(e[:loc[0]]) == "" && strings.TrimSpace(e[loc[1]:]) == ""
+}
+
+// jstsArgsHaveSpread reports whether any argument is a spread (`...x`),
+// which makes positional indices unreliable → the whole call is dropped.
+func jstsArgsHaveSpread(args []string) bool {
+	for _, a := range args {
+		if strings.HasPrefix(strings.TrimSpace(a), "...") {
+			return true
+		}
+	}
+	return false
+}
+
 // jstsCallArgs returns the argument text of the call whose `(` begins at or
 // after byte offset openByte on line ln, spanning until the matching `)`
 // (possibly across lines). Returns the inner text.
 func jstsCallArgs(lines []string, ln, openByte int) string {
-	// Concatenate from the `(` to the matching `)`.
 	var sb strings.Builder
 	depth := 0
 	started := false
@@ -323,7 +467,6 @@ func jstsCallArgs(lines []string, ln, openByte int) string {
 		s := lines[i]
 		start := 0
 		if i == ln-1 {
-			// find the first '(' at/after openByte
 			idx := strings.IndexByte(s[min(openByte, len(s)):], '(')
 			if idx < 0 {
 				return ""
@@ -365,13 +508,20 @@ type jstsLocalCall struct {
 // dfJstsLocalCallRe matches a call to a bare identifier (potential local fn).
 var dfJstsLocalCallRe = regexp.MustCompile(`\b([A-Za-z_$][\w$]*)\s*\(`)
 
-// jstsLocalCalls extracts candidate local-function calls on a line with
-// their top-level positional argument expressions.
+// jstsLocalCalls extracts candidate bare-identifier function calls on a line
+// with their top-level positional argument expressions. A method call
+// (`x.foo(`) is skipped — only bare-identifier calls are hop/boundary
+// candidates (a method call cannot be resolved positionally here).
 func jstsLocalCalls(line string) []jstsLocalCall {
 	var out []jstsLocalCall
 	for _, m := range dfJstsLocalCallRe.FindAllStringSubmatchIndex(line, -1) {
 		name := line[m[2]:m[3]]
-		// skip known sink/keyword callees handled directly
+		if m[2] > 0 {
+			prev := strings.TrimRight(line[:m[2]], " \t")
+			if strings.HasSuffix(prev, ".") {
+				continue // method call — not a bare-ident call
+			}
+		}
 		if jstsControlKeyword(name) || name == "require" {
 			continue
 		}
@@ -408,8 +558,9 @@ func jstsSplitArgs(s string) []string {
 }
 
 // jstsParamName returns the name of the pos-th positional parameter of the
-// function whose header is on headerLine. Destructured params are skipped
-// (return "" → no one-hop binding, honest-partial).
+// function whose header is on headerLine. Destructured params return ""
+// (no binding, honest-partial). A rest param (`...rest`) anywhere makes
+// positional binding ambiguous → "".
 func jstsParamName(lines []string, headerLine, pos int) string {
 	if headerLine < 1 || headerLine > len(lines) {
 		return ""
@@ -427,13 +578,17 @@ func jstsParamName(lines []string, headerLine, pos int) string {
 	if pos >= len(params) {
 		return ""
 	}
+	for _, p := range params {
+		if strings.HasPrefix(strings.TrimSpace(p), "...") {
+			return "" // rest param → ambiguous positions
+		}
+	}
 	p := strings.TrimSpace(params[pos])
-	// strip a TS type annotation / default.
 	if i := strings.IndexAny(p, ":="); i >= 0 {
 		p = strings.TrimSpace(p[:i])
 	}
 	if !dfReSimpleIdent.MatchString(p) {
-		return "" // destructured / rest / complex — drop
+		return "" // destructured / complex — drop
 	}
 	return p
 }
@@ -453,6 +608,33 @@ var dfReSimpleIdent = regexp.MustCompile(`^[A-Za-z_$][\w$]*$`)
 // dfReWholeIdent builds a whole-word matcher for a specific identifier.
 func dfReWholeIdent(name string) *regexp.Regexp {
 	return regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\b`)
+}
+
+// firstOf returns the first element of a slice, or "".
+func firstOf(s []string) string {
+	if len(s) == 0 {
+		return ""
+	}
+	return s[0]
+}
+
+// dupStrings returns a copy of s (so descents don't alias the parent path).
+func dupStrings(s []string) []string {
+	if len(s) == 0 {
+		return nil
+	}
+	out := make([]string, len(s))
+	copy(out, s)
+	return out
+}
+
+// dupVisited returns a shallow copy of the visited set.
+func dupVisited(m map[string]bool) map[string]bool {
+	out := make(map[string]bool, len(m)+1)
+	for k, v := range m {
+		out[k] = v
+	}
+	return out
 }
 
 func dfMin(a, b int) int {
