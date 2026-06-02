@@ -3135,7 +3135,7 @@ func TestJestCaseQNameScrubbing(t *testing.T) {
 
 func TestResolveCalls_EmptyBodyFallsBackToConvention(t *testing.T) {
 	tf := testFunction{qname: "TestFoo", body: ""}
-	calls := resolveCalls(tf, "foo.go", "Foo")
+	calls := resolveCalls(tf, "foo.go", "Foo", nil)
 	if len(calls) != 1 || calls[0].confidence != "low" || calls[0].qname != "Foo" {
 		t.Errorf("empty body fallback broken: %+v", calls)
 	}
@@ -3143,7 +3143,7 @@ func TestResolveCalls_EmptyBodyFallsBackToConvention(t *testing.T) {
 
 func TestResolveCalls_NoConventionUsesNameStrip(t *testing.T) {
 	tf := testFunction{qname: "TestCompute", body: ""}
-	calls := resolveCalls(tf, "", "")
+	calls := resolveCalls(tf, "", "", nil)
 	if len(calls) != 1 || calls[0].qname != "Compute" {
 		t.Errorf("strip fallback broken: %+v", calls)
 	}
@@ -3154,7 +3154,7 @@ func TestResolveCalls_DeduplicatesAcrossPasses(t *testing.T) {
 		qname: "TestAll",
 		body:  `Foo() ; mock.On("Foo", 1)`,
 	}
-	calls := resolveCalls(tf, "x.go", "X")
+	calls := resolveCalls(tf, "x.go", "X", nil)
 	var fooCount int
 	for _, c := range calls {
 		if c.qname == "Foo" {
@@ -3171,7 +3171,7 @@ func TestResolveCalls_DeduplicatesAcrossPasses(t *testing.T) {
 
 func TestResolveCalls_SkipsShortIdents(t *testing.T) {
 	tf := testFunction{qname: "TestShort", body: "a(); bb(); Cc(); LongName();"}
-	calls := resolveCalls(tf, "x.go", "X")
+	calls := resolveCalls(tf, "x.go", "X", nil)
 	for _, c := range calls {
 		if len(c.qname) < 3 {
 			t.Errorf("short ident leaked: %q", c.qname)
