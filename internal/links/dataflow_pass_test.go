@@ -188,6 +188,90 @@ function createUser(req, res) {
 	}
 }
 
+// TestDataFlowPass_JSTS_NestJS_BodyToDBWrite_EmitsEdge proves the NestJS
+// request-decorator source flows end-to-end through the links pass: a
+// @Body() dto member access reaching an ORM write emits DATA_FLOWS_TO from
+// the controller method with the resolved sink + lifted field (#3902).
+func TestDataFlowPass_JSTS_NestJS_BodyToDBWrite_EmitsEdge(t *testing.T) {
+	content := `
+@Controller('users')
+export class UsersController {
+  @Post()
+  create(@Body() dto: CreateUserDto) {
+    return this.repo.save({ email: dto.email });
+  }
+}
+`
+	ents := []entityNode{
+		{ID: "h1", Name: "create", Kind: "function", SourceFile: "src/users.controller.ts"},
+	}
+	links := runDataFlowForTest(t, "src/users.controller.ts", content, ents)
+	l := findLink(links, func(l Link) bool {
+		return l.Relation == string(types.RelationshipKindDataFlowsTo) &&
+			l.Properties["sink_kind"] == "db_write"
+	})
+	if l == nil {
+		t.Fatalf("expected a DATA_FLOWS_TO db_write link from NestJS @Body, got %+v", links)
+	}
+	if l.Source != "repo-a::h1" {
+		t.Errorf("source = %q, want repo-a::h1 (controller method)", l.Source)
+	}
+	if l.Properties["field"] != "email" {
+		t.Errorf("field = %q, want email (from dto.email)", l.Properties["field"])
+	}
+	if l.Properties["sink"] != "this.repo.save" {
+		t.Errorf("sink = %q, want this.repo.save", l.Properties["sink"])
+	}
+}
+
+// TestDataFlowPass_JSTS_NestJS_CrossFile_DBWrite proves a NestJS @Body('email')
+// param escaping into an imported service continues the bounded walk in the
+// service file and resolves the sink to the callee-file entity (#3902).
+func TestDataFlowPass_JSTS_NestJS_CrossFile_DBWrite(t *testing.T) {
+	controller := `
+import { save } from './svc';
+@Controller('users')
+export class UsersController {
+  @Post()
+  create(@Body('email') email: string) {
+    save(email);
+  }
+}
+`
+	svc := `
+export function save(v) {
+  Model.create({ v });
+}
+`
+	files := map[string]string{
+		"src/users.controller.ts": controller,
+		"src/svc.ts":              svc,
+	}
+	ents := []entityNode{
+		{ID: "create", Name: "create", Kind: "function", SourceFile: "src/users.controller.ts"},
+		{ID: "save", Name: "save", Kind: "function", SourceFile: "src/svc.ts"},
+		{ID: "modelcreate", Name: "create", Kind: "function", SourceFile: "src/svc.ts"},
+	}
+	edges := []edgeRef{{FromID: "create", ToID: "save", Kind: "calls"}}
+	links := runDataFlowMultiFile(t, files, ents, edges)
+	l := findLink(links, func(l Link) bool {
+		return l.Relation == string(types.RelationshipKindDataFlowsTo) &&
+			l.Properties["sink"] == "Model.create"
+	})
+	if l == nil {
+		t.Fatalf("expected cross-file NestJS DATA_FLOWS_TO to Model.create, got %+v", links)
+	}
+	if l.Source != "repo-a::create" {
+		t.Errorf("source = %q, want repo-a::create (origin controller method)", l.Source)
+	}
+	if l.Properties["field"] != "email" {
+		t.Errorf("field = %q, want email (decorator key)", l.Properties["field"])
+	}
+	if l.Properties["hop_via"] != "save" {
+		t.Errorf("hop_via = %q, want save", l.Properties["hop_via"])
+	}
+}
+
 func TestDataFlowPass_Python_OneHop_ResolvesToCalleeEntity(t *testing.T) {
 	content := "" +
 		"def handler(request):\n" +
