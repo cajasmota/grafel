@@ -178,6 +178,15 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 	case "go":
 		scanGoORM(src, funcs, emit)
 		scanInfra()
+		// Sibling pass: parse the mongo-go-driver `coll.Aggregate(ctx, pipeline)`
+		// pipeline (inline `mongo.Pipeline{...}` / `[]bson.D{...}` literal OR a
+		// same-function variable binding) into per-stage entities +
+		// $lookup/$graphLookup join edges, matching the JS/Python contract
+		// (#3846).
+		scanGoMongoAggregation(src, funcs, path, lang,
+			func(ent types.EntityRecord) { entities = append(entities, ent) },
+			func(rel types.RelationshipRecord) { relationships = append(relationships, rel) },
+		)
 	case "java":
 		scanJavaORM(src, funcs, emit)
 		// Driver-topology: native MongoDB Java driver getCollection("x"),
