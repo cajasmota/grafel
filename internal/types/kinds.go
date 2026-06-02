@@ -610,6 +610,30 @@ const (
 	//   "parent_path"   : the dotted path in the parent values tree
 	// Append-only — never modifies existing entities or edges.
 	RelationshipKindOverrides RelationshipKind = "OVERRIDES"
+
+	// #3632 (epic #3625): API-consumption edge. Emitted by the
+	// internal/extractors/cross/consumes_api Pass-3 cross extractor for every
+	// HTTP client call site whose (verb, path) matches a server endpoint
+	// declared in the SAME source file (co-located client + server — BFFs, API
+	// gateways, Django views that call their own API, integration-test
+	// harnesses). The edge goes from the consuming caller stub
+	// ("scope:component:http_caller:<file>") → the canonical endpoint entity ID
+	// ("scope:endpoint:<file>#<VERB>:<canonical-path>") emitted by the
+	// _cross_endpoint extractor. Properties:
+	//   "method"        : the HTTP verb of the client call
+	//   "matched_url"   : the raw client URL/pattern that produced the match
+	//   "matched_path"  : the path component used for the join
+	//   "endpoint_path" : the server endpoint's canonical path
+	//   "via"           : "same_file_http_consumption" (capability tag)
+	//   "provenance"    : "INFERRED_FROM_HTTP_CLIENT_CALL"
+	// This is the *consumption* semantic — it is complementary to, not a
+	// duplicate of, the CALLS→ExternalAPI edge emitted by _cross_httpclient and
+	// the cross-repo MethodHTTP links emitted by internal/links/http_pass.go
+	// (which only fires for groups of ≥2 repos via synthetic http_endpoint
+	// entities). Cross-org / cross-repo consumption stays owned by the links
+	// layer; this extractor never crosses a file boundary, so its org guard is
+	// trivially satisfied. Append-only — never modifies existing entities/edges.
+	RelationshipKindConsumesAPI RelationshipKind = "CONSUMES_API"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -718,6 +742,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindIncludes,
 		// #3552 Helm parent-chart values override edge:
 		RelationshipKindOverrides,
+		// #3632 API-consumption edge (same-file client→endpoint):
+		RelationshipKindConsumesAPI,
 	}
 }
 

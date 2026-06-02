@@ -12,6 +12,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/extractor"
 
 	_ "github.com/cajasmota/archigraph/internal/extractors/cross/abibridge"
+	_ "github.com/cajasmota/archigraph/internal/extractors/cross/consumes_api"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cross/dbmap"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cross/deprecation"
 	_ "github.com/cajasmota/archigraph/internal/extractors/cross/endpoint"
@@ -45,6 +46,9 @@ var names = []string{
 	"ormlink",
 	"react_props",
 	"endpoint",
+	// consumes_api runs after httpclient + endpoint: it reuses their detection
+	// to join same-file client calls → server endpoints into CONSUMES_API edges.
+	"consumes_api",
 	"manifest",
 	"testmap",
 	"deprecation",
