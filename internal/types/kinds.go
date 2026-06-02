@@ -102,6 +102,16 @@ const (
 	// without any new linker code.
 	EntityKindEventBusEvent EntityKind = "SCOPE.EventBusEvent"
 
+	// #3704 (epic #3628, area #20): finite-state-machine (FSM) topology.
+	// A single declared state in an application-level state machine — XState
+	// (JS/TS), Ruby AASM, Spring StateMachine (Java), or the Python
+	// `transitions` library. One entity per statically-named state. Distinct
+	// from EntityKindStateMachine ("SCOPE.StateMachine"), which models an AWS
+	// Step Functions *whole-machine*; this models the individual nodes of the
+	// state graph, connected by RelationshipKindTransitionsTo. Synthetic ID
+	// shape: `state:<lib>:<machine>:<stateName>`.
+	EntityKindState EntityKind = "SCOPE.State"
+
 	// #1217 (Sub-A of #1115): Split http_endpoint into two distinct kinds.
 	//
 	// HTTPEndpointDefinition is emitted for backend handler registrations
@@ -180,6 +190,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindServerlessFunction,
 		// #927:
 		EntityKindEventBusEvent,
+		// #3704 FSM topology:
+		EntityKindState,
 		// #1217:
 		EntityKindHTTPEndpointDefinition,
 		EntityKindHTTPEndpointCall,
@@ -672,6 +684,20 @@ const (
 	//                 than a string literal (omitted otherwise)
 	// Append-only — never modifies existing entities or edges.
 	RelationshipKindInstruments RelationshipKind = "INSTRUMENTS"
+
+	// #3704 (epic #3628, area #20): finite-state-machine transition edge.
+	// Emitted by the FSM-topology pass (state_machine_edges.go) for XState
+	// (JS/TS), Ruby AASM, Spring StateMachine (Java), and the Python
+	// `transitions` library. Direction follows the transition: source state →
+	// target state. Both endpoints are SCOPE.State entities. Properties:
+	//   "event"   : the triggering event / trigger name (e.g. "FETCH",
+	//               "activate", "START", "go"); omitted for event-less
+	//               (e.g. always/eventless) transitions.
+	//   "library" : the FSM library ("xstate" | "aasm" | "spring-statemachine"
+	//               | "python-transitions").
+	//   "machine" : the owning machine / class name.
+	// Append-only — never modifies existing entities or edges.
+	RelationshipKindTransitionsTo RelationshipKind = "TRANSITIONS_TO"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -788,6 +814,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindConsumesAPI,
 		// #3689 OpenTelemetry tracing-span instrumentation edge:
 		RelationshipKindInstruments,
+		// #3704 FSM state-transition edge:
+		RelationshipKindTransitionsTo,
 	}
 }
 

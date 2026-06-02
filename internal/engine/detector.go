@@ -791,6 +791,15 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// TASK_DEPENDS_ON (upstream→downstream) edges. Append-only — cannot regress
 	// surrounding passes.
 	applyPass(applyWorkflowDAGEdges)
+	// Finite-state-machine (FSM) topology (#3704, epic #3628 area #20).
+	// Emits SCOPE.State entities + TRANSITIONS_TO edges (carrying the
+	// triggering event) for the dominant application-level FSM libraries:
+	// XState (JS/TS), Ruby AASM, Spring StateMachine (Java/Kotlin), and the
+	// Python transitions library. Distinct from the AWS Step Functions
+	// SCOPE.StateMachine whole-machine model in workflow_edges.go - this
+	// models the individual states and the state-to-state transition graph.
+	// Append-only - cannot regress surrounding passes.
+	applyPass(applyStateMachineEdges)
 	// Redis pub/sub + Streams channel discovery (#930). Emits SCOPE.Queue
 	// entities keyed by channel:redis-pubsub:<name> or stream:redis:<name>,
 	// plus PUBLISHES_TO / SUBSCRIBES_TO edges. Covers Python (redis-py /
