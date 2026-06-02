@@ -1149,10 +1149,15 @@
       "label": "Apache Cassandra (schema)",
       "capabilities": {
         "dependency_attribution": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_drivers_other.go"],
+          "verified_at": "2026-06-02"
         },
         "resource_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_drivers_other.go"],
+          "notes": "Cassandra/Scylla CQL session.execute(\"... FROM table\") across C#/PHP/Rust/Python/Java/Ruby/JS parses the FROM/INTO/UPDATE table into a Class:\u003cTable\u003e resource node + QUERIES dependency edge from the connecting function (emitCQLTargets). Runtime-built CQL honest-skipped.",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -1163,10 +1168,15 @@
       "label": "ClickHouse",
       "capabilities": {
         "dependency_attribution": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_datastore_infra.go"],
+          "verified_at": "2026-06-02"
         },
         "resource_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_datastore_infra.go"],
+          "notes": "ClickHouse client.execute/query(\"... FROM table\") (clickhouse-driver/clickhouse-connect/clickhouse-go, gated on clickhouse import / clickhouse:// / :8123) parses the SQL table into a Class:\u003cTable\u003e resource node + QUERIES dependency edge from the connecting function (emitClickHouseTargets, mirrors emitCQLTargets). Tableless/runtime SQL honest-skipped.",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -1249,10 +1259,15 @@
       "label": "Neo4j",
       "capabilities": {
         "dependency_attribution": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_datastore_infra.go","internal/engine/orm_queries_jsts_drivers.go"],
+          "verified_at": "2026-06-02"
         },
         "resource_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_datastore_infra.go","internal/engine/orm_queries_jsts_drivers.go"],
+          "notes": "Neo4j session.run(\"MATCH (n:Label) ...\") Cypher (gated on neo4j / bolt:// / GraphDatabase / neomodel / neogma) parses the first node label into a Class:\u003cLabel\u003e resource node + QUERIES dependency edge from the connecting function. JS via scanJSNeo4j (orm_queries_jsts_drivers.go); C#/PHP/Rust/Python/Java/Ruby/Go via emitCypherTargets (orm_queries_datastore_infra.go). Parameterised labels / runtime Cypher honest-skipped.",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -1299,10 +1314,15 @@
       "label": "Snowflake",
       "capabilities": {
         "dependency_attribution": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_datastore_infra.go"],
+          "verified_at": "2026-06-02"
         },
         "resource_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/orm_queries_datastore_infra.go"],
+          "notes": "Snowflake cursor.execute/query(\"... FROM table\") (snowflake-connector-python, SQLAlchemy snowflake:// dialect, gosnowflake, JDBC; gated on snowflake / snowflake:// / snowflakecomputing.com) parses the SQL table into a Class:\u003cTable\u003e resource node + QUERIES dependency edge from the connecting function (emitSnowflakeTargets, mirrors emitCQLTargets). Tableless/runtime SQL honest-skipped.",
+          "verified_at": "2026-06-02"
         }
       }
     },

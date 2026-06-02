@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | 🔴 `missing` | — | — | — | — |
-| Resource extraction | 🔴 `missing` | — | — | — | — |
+| Dependency attribution | 🟢 `partial` | `2026-06-02` | — | `internal/engine/orm_queries_datastore_infra.go` | — |
+| Resource extraction | 🟢 `partial` | `2026-06-02` | — | `internal/engine/orm_queries_datastore_infra.go` | ClickHouse client.execute/query("... FROM table") (clickhouse-driver/clickhouse-connect/clickhouse-go, gated on clickhouse import / clickhouse:// / :8123) parses the SQL table into a Class:<Table> resource node + QUERIES dependency edge from the connecting function (emitClickHouseTargets, mirrors emitCQLTargets). Tableless/runtime SQL honest-skipped. |
 
 ## Provenance
 

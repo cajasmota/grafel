@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | 🔴 `missing` | — | — | — | — |
-| Resource extraction | 🔴 `missing` | — | — | — | — |
+| Dependency attribution | 🟢 `partial` | `2026-06-02` | — | `internal/engine/orm_queries_drivers_other.go` | — |
+| Resource extraction | 🟢 `partial` | `2026-06-02` | — | `internal/engine/orm_queries_drivers_other.go` | Cassandra/Scylla CQL session.execute("... FROM table") across C#/PHP/Rust/Python/Java/Ruby/JS parses the FROM/INTO/UPDATE table into a Class:<Table> resource node + QUERIES dependency edge from the connecting function (emitCQLTargets). Runtime-built CQL honest-skipped. |
 
 ## Provenance
 

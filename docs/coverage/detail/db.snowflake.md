@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | 🔴 `missing` | — | — | — | — |
-| Resource extraction | 🔴 `missing` | — | — | — | — |
+| Dependency attribution | 🟢 `partial` | `2026-06-02` | — | `internal/engine/orm_queries_datastore_infra.go` | — |
+| Resource extraction | 🟢 `partial` | `2026-06-02` | — | `internal/engine/orm_queries_datastore_infra.go` | Snowflake cursor.execute/query("... FROM table") (snowflake-connector-python, SQLAlchemy snowflake:// dialect, gosnowflake, JDBC; gated on snowflake / snowflake:// / snowflakecomputing.com) parses the SQL table into a Class:<Table> resource node + QUERIES dependency edge from the connecting function (emitSnowflakeTargets, mirrors emitCQLTargets). Tableless/runtime SQL honest-skipped. |
 
 ## Provenance
 

@@ -32,7 +32,7 @@
 
 | Category | Records | Full | Partial | Missing |
 |---|---:|---:|---:|---:|
-| [Databases](by-category/databases.md) | 12 | 0 | 8 | 4 |
+| [Databases](by-category/databases.md) | 12 | 0 | 12 | 0 |
 | [Platform / k8s](by-category/platform.md) | 34 | 20 | 14 | 0 |
 | [Message Brokers](by-category/message_broker.md) | 21 | 9 | 10 | 2 |
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
@@ -40,7 +40,7 @@
 | [Observability](by-category/observability.md) | 9 | 1 | 1 | 7 |
 | [Protocols](by-category/protocol.md) | 12 | 5 | 4 | 3 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 115 | 43 | 45 | 27 |
+| **Total** | 115 | 43 | 49 | 23 |
 
 ## Languages with extractor support, no records yet
 

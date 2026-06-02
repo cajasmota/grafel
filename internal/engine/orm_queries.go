@@ -135,12 +135,19 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		})
 	}
 
+	// Datastore-infra resource attribution (Neo4j / ClickHouse / Snowflake)
+	// is language-agnostic in its call shapes (`session.run(<cypher>)`,
+	// `cursor.execute("SQL")`); run it for every supported language so the
+	// three datastores reach sibling parity with cassandra/mongo/elastic.
+	scanInfra := func() { scanDatastoreInfraDrivers(src, funcs, emit) }
+
 	switch lang {
 	case "python":
 		scanPythonORM(src, funcs, emit)
 		// Driver-topology: pymongo collection target, boto3 DynamoDB
 		// TableName, Elasticsearch index, Cassandra CQL (#3645).
 		scanPythonDrivers(src, funcs, emit)
+		scanInfra()
 		// Sibling pass: parse the pymongo `.aggregate(<pipeline>)` pipeline
 		// (inline list literal OR a same-function variable binding) into
 		// per-stage entities + $lookup/$graphLookup join edges (#3440).
@@ -151,6 +158,10 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 	case "javascript", "typescript":
 		scanJSORM(src, funcs, emit)
 		scanJSDrivers(src, funcs, emit)
+		// Neo4j (Cypher node-label) is already attributed by scanJSNeo4j
+		// inside scanJSDrivers; only the SQL datastores need adding here.
+		emitClickHouseTargets(src, funcs, emit)
+		emitSnowflakeTargets(src, funcs, emit)
 		// Sibling pass: parse the inline pipeline array of `.aggregate([...])`
 		// call sites into per-stage entities + $lookup/$graphLookup join
 		// edges. Does NOT re-emit the aggregate QUERIES edge (#3426).
@@ -160,22 +171,28 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		)
 	case "go":
 		scanGoORM(src, funcs, emit)
+		scanInfra()
 	case "java":
 		scanJavaORM(src, funcs, emit)
 		// Driver-topology: native MongoDB Java driver getCollection("x"),
 		// DynamoDB SDK TableName, Cassandra CQL FROM/INTO (#3645).
 		scanJavaDrivers(src, funcs, emit)
+		scanInfra()
 	case "ruby":
 		scanRubyORM(src, funcs, emit)
 		// Driver-topology: Mongo Ruby driver client[:coll], aws-sdk-dynamodb
 		// table_name, Cassandra CQL (#3645).
 		scanRubyDrivers(src, funcs, emit)
+		scanInfra()
 	case "csharp":
 		scanCSharpDrivers(src, funcs, emit)
+		scanInfra()
 	case "php":
 		scanPHPDrivers(src, funcs, emit)
+		scanInfra()
 	case "rust":
 		scanRustDrivers(src, funcs, emit)
+		scanInfra()
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
