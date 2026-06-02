@@ -1368,17 +1368,105 @@ var (
 		"Schema", "Field", "Property",
 		scopeKindPrefix + "Schema",
 	}
+	// componentOrOperationKindFamily is the union of the component- and
+	// operation-shaped kinds, for new semantic edges (#3930) whose
+	// real-code endpoint may be EITHER a class/component OR a free
+	// function/method depending on the framework. RENDERS (handler method
+	// vs. component class) and USES_TRANSLATION (enclosing function vs.
+	// React component) are the canonical mixed cases. uniqueMatchInFamily
+	// still only resolves when EXACTLY ONE entity across the whole union
+	// matches the bare name, so widening the family stays honest: it
+	// narrows an ambiguity only when the union is itself unambiguous, and
+	// otherwise leaves the endpoint unresolved.
+	componentOrOperationKindFamily = []string{
+		"Component", "Class", "View", "Model",
+		"Operation", "Function", "Method",
+		scopeKindPrefix + "Component",
+		scopeKindPrefix + "View",
+		scopeKindPrefix + "Model",
+		scopeKindPrefix + "Operation",
+	}
 )
 
 // hintKinds returns the entity-kind families preferred for a given
 // relationship kind. EXTENDS / IMPLEMENTS prefer Component-shaped kinds;
-// CALLS prefers Operation-shaped kinds. Everything else returns nil.
+// CALLS prefers Operation-shaped kinds.
+//
+// #3930 (epic #3929): the new semantic-edge taxonomy added by the graph
+// rewrite (NestJS/Spring/Angular DI, graph DBs, scheduled jobs, i18n,
+// feature flags, data-flow, …) is now kind-resolved too. The regression
+// these entries fix: when one endpoint of such an edge is addressed by a
+// bare name that is AMBIGUOUS — the classic shape being a real
+// `Class:DevicesWriteService` colliding with an OpenAPI/spec `module`
+// `Component` of the same name — hintKinds previously returned nil, so
+// LookupStatusHint fell straight to statusAmbiguous, rewriteOne left the
+// endpoint as a bare string, and buildAdjacency keyed it under a phantom
+// node: the edge became invisible to inspect / neighbors / subgraph. With
+// a family hint, lookupByKindHint's tier-1 pass prefers the REAL
+// source-bearing entity (Class/Component/Function/Method) over the
+// SCOPE.* / spec placeholder, so the edge resolves to the real node and
+// stays reachable. Generalised across the WHOLE taxonomy, not just DI.
+//
+// Family assignment follows each edge's real-code endpoint:
+//   - component-shaped endpoints (a class/component on at least one side):
+//     INJECTED_INTO, BINDS (DI token→impl), GRAPH_RELATES, REGISTERS,
+//     HANDLES_SIGNAL, FEDERATES.
+//   - operation-shaped endpoints (the real endpoint is a function/method;
+//     the other end is a synthetic SCOPE.* stub resolved structurally or
+//     by QualifiedName, never via this bare-name path):
+//     DEPENDS_ON_SERVICE, TRIGGERS, ENQUEUES, HANDLES_COMMAND, GATED_BY,
+//     DATA_FLOWS_TO, THROWS, CATCHES, INSTRUMENTS, CACHES, INVALIDATES,
+//     JOINS_CHANNEL, BROADCASTS_TO, RESOLVED_BY, VALIDATES, FETCHES,
+//     GRPC_IMPLEMENTS, GRPC_HANDLES, HANDLES, DISCRIMINATES_ON, BRANCHES_ON.
+//   - mixed (class OR free function depending on framework): RENDERS,
+//     USES_TRANSLATION — hinted to the component∪operation union, which
+//     resolves only when the union is itself unambiguous (honest widening).
+//
+// Honest scoping: edge kinds whose BOTH endpoints are synthetic stubs
+// (helm BINDS template→values_key, MODIFIES_TABLE/ACCESSES_TABLE/QUERIES →
+// table key, PUBLISHES_TO/SUBSCRIBES_TO → MessageTopic, JOINS_COLLECTION →
+// collection key, DEPENDS_ON_CONFIG → SCOPE.Config, SHARES_DATA →
+// Module, TRANSITIONS_TO → SCOPE.State, GATED_BY's flag end) are NOT hinted
+// here for the stub side — those resolve via byQualifiedName / structural
+// tiers BEFORE the ambiguous-bare-name branch is reached, so a code-entity
+// family hint would never apply (and adding one would be misleading). BINDS
+// is dual-use (Helm + DI); the Helm `helm_values:<path>` stub matches by
+// QualifiedName first, so the component hint only ever affects the DI
+// token→impl class case, which is exactly the target.
+//
+// Tie-break note (#3936): preferring the real source-bearing entity over a
+// synthetic/spec stub is handled by lookupByKindHint's tier-1
+// nameKindsReal pass (real kinds before SCOPE.* placeholders). This PR
+// scopes itself to the hintKinds family map; the broader real-vs-stub
+// tie-break hardening is tracked separately in #3936.
+//
+// Everything else returns nil.
 func hintKinds(relKind string) []string {
 	switch strings.ToUpper(relKind) {
 	case "EXTENDS", "IMPLEMENTS":
 		return componentKindFamily
 	case "CALLS":
 		return operationKindFamily
+	// #3930: component-shaped semantic edges — both real endpoints are
+	// classes/components (DI provider/consumer, graph @Node owner/target,
+	// admin/signal model registration, federation entity type).
+	case "INJECTED_INTO", "BINDS", "GRAPH_RELATES", "REGISTERS",
+		"HANDLES_SIGNAL", "FEDERATES":
+		return componentKindFamily
+	// #3930: operation-shaped semantic edges — the real endpoint is a
+	// function/method; the opposite endpoint is a synthetic SCOPE.* stub
+	// resolved on the QualifiedName / structural tiers, never here.
+	case "DEPENDS_ON_SERVICE", "TRIGGERS", "ENQUEUES", "HANDLES_COMMAND",
+		"GATED_BY", "DATA_FLOWS_TO", "THROWS", "CATCHES", "INSTRUMENTS",
+		"CACHES", "INVALIDATES", "JOINS_CHANNEL", "BROADCASTS_TO",
+		"RESOLVED_BY", "VALIDATES", "FETCHES", "GRPC_IMPLEMENTS",
+		"GRPC_HANDLES", "HANDLES", "DISCRIMINATES_ON", "BRANCHES_ON":
+		return operationKindFamily
+	// #3930: mixed endpoints — a handler method OR a component class
+	// depending on the framework. Honest widening: the union resolves only
+	// when it is itself unambiguous.
+	case "RENDERS", "USES_TRANSLATION":
+		return componentOrOperationKindFamily
 	}
 	return nil
 }
