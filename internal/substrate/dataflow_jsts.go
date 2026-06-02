@@ -113,6 +113,24 @@ var dfJstsBareAssignRe = regexp.MustCompile(
 	`^\s*([A-Za-z_$][\w$]*)\s*=\s*([^=].*)$`,
 )
 
+// dfJstsDestructureRe captures an object-destructuring declaration:
+// `const { a, b: c } = rhs`. Group 1 = the brace-enclosed binding list,
+// group 2 = the right-hand side. A rest element (`...x`) or computed key
+// (`[k]: v`) makes the binding list non-static; such forms are filtered per
+// element by jstsDestructureFields rather than rejected wholesale here.
+var dfJstsDestructureRe = regexp.MustCompile(
+	`^\s*(?:const|let|var)\s*\{\s*([^{}]*?)\s*\}\s*=\s*(.*)$`,
+)
+
+// dfJstsDestructEntryRe captures one destructuring entry: `prop` or
+// `prop: local` (with optional default after `=`, ignored). Group 1 = the
+// source property name, group 2 = the optional rebound local name. Entries
+// using a rest (`...x`), a computed key, or a nested pattern do not match and
+// are skipped (honest-partial).
+var dfJstsDestructEntryRe = regexp.MustCompile(
+	`^\s*([A-Za-z_$][\w$]*)\s*(?::\s*([A-Za-z_$][\w$]*))?\s*(?:=[^,]*)?$`,
+)
+
 // dfJstsSinkSpecs is the ordered sink table reused at every scan depth.
 var dfJstsSinkSpecs = []struct {
 	re   *regexp.Regexp
@@ -383,6 +401,10 @@ func jstsTrackTaint(tainted map[string]taintInfo, line string, ln int) {
 			delete(tainted, name)
 		}
 	}
+	if m := dfJstsDestructureRe.FindStringSubmatch(line); m != nil {
+		jstsTrackDestructure(tainted, m[1], m[2], ln)
+		return
+	}
 	if m := dfJstsConstAssignRe.FindStringSubmatch(line); m != nil {
 		name, rhs := m[1], m[2]
 		if fld, ok := jstsRHSSourceField(rhs, tainted); ok {
@@ -390,6 +412,43 @@ func jstsTrackTaint(tainted map[string]taintInfo, line string, ln int) {
 		} else {
 			delete(tainted, name)
 		}
+	}
+}
+
+// jstsTrackDestructure seeds taint for an object-destructuring declaration
+// `const { <bindings> } = <rhs>` when the rhs is a request source or a tainted
+// whole-object root (NestJS `@Body() dto`). Each static binding becomes a new
+// taint root whose field is the destructured property — `const {email} = dto`
+// → `email` tainted with field "email"; `const {email: e} = dto` → `e` with
+// field "email". When the root already carries a field of its own (e.g.
+// `@Body('user') user` → `const {name} = user`), that field is preserved
+// (the destructured prop is a sub-field we do not deepen — honest-partial).
+// Rest/computed/nested elements are skipped per-element. A non-tainted rhs is
+// a no-op (the bindings are simply untracked).
+func jstsTrackDestructure(tainted map[string]taintInfo, bindings, rhs string, ln int) {
+	rootField, ok := jstsRHSSourceField(rhs, tainted)
+	if !ok {
+		return
+	}
+	for _, raw := range strings.Split(bindings, ",") {
+		entry := strings.TrimSpace(raw)
+		if entry == "" {
+			continue
+		}
+		em := dfJstsDestructEntryRe.FindStringSubmatch(entry)
+		if em == nil {
+			continue // rest / computed / nested — skip (honest-partial)
+		}
+		prop, rebind := em[1], em[2]
+		local := prop
+		if rebind != "" {
+			local = rebind
+		}
+		field := rootField
+		if field == "" {
+			field = prop // whole-object root: the property IS the field
+		}
+		tainted[local] = taintInfo{field: field, line: ln}
 	}
 }
 
