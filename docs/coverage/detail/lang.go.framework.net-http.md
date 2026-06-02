@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
+| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/nethttp.go`<br>`internal/engine/go_routes.go`<br>`internal/engine/rules/go/frameworks/net_http_stdlib.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/nethttp.go`<br>`internal/engine/go_routes.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/extractors_test.go`<br>`internal/custom/golang/nethttp.go` | regex-based: http.HandleFunc + http.Handle on DefaultServeMux + http.NewServeMux() + Go 1.22+ method-prefixed patterns (GET /path) tested; misses cross-file route splits and dynamic path construction |

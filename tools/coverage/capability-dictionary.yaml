@@ -94,6 +94,7 @@ subcategories:
       - handler_attribution
       - endpoint_deprecation_versioning
       - endpoint_pagination_posture
+      - endpoint_response_codes
       - auth_coverage
       - middleware_coverage
       - rate_limit_stamping
@@ -146,7 +147,7 @@ subcategories:
       - type_graph_extraction
     groups:
       - name: Routing
-        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture]
+        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture, endpoint_response_codes]
       - name: View
         keys: [view_rendering]
       - name: Auth
@@ -178,6 +179,7 @@ subcategories:
       - handler_attribution
       - endpoint_deprecation_versioning
       - endpoint_pagination_posture
+      - endpoint_response_codes
       - auth_coverage
       - middleware_coverage
       - rate_limit_stamping
@@ -229,7 +231,7 @@ subcategories:
       - view_rendering
     groups:
       - name: Routing
-        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture]
+        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture, endpoint_response_codes]
       - name: View
         keys: [view_rendering]
       - name: Auth

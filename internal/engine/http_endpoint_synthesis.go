@@ -1020,6 +1020,18 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	// ambiguous and is left unstamped.
 	applyEndpointPagination(lang, string(content), path, entities, deprecationBefore)
 
+	// #3628 (epic) — endpoint response status-code set stamping. Mutates
+	// Properties on the same producer-side http_endpoint_definition entities
+	// (index >= deprecationBefore, same source file); adds/removes nothing.
+	// Resolves `response_codes` (sorted unique list) + `success_code` from
+	// status literals in the route decorator/annotation + handler body: FastAPI
+	// status_code= / HTTPException, DRF status.HTTP_* / Response(status=...) /
+	// raised DRF exceptions, Express res.status()/sendStatus() / Nest @HttpCode /
+	// Nest exceptions, Spring @ResponseStatus / ResponseEntity builders /
+	// ResponseStatusException. Honest-partial: a dynamic status variable is
+	// skipped (only literals are recorded).
+	applyEndpointResponseCodes(lang, string(content), path, entities, deprecationBefore)
+
 	// #722 — response/request shape extraction. Mutates Properties on
 	// the synthetic entities emitted above; never adds or removes
 	// entities, so it cannot regress the bug-rate of upstream passes.

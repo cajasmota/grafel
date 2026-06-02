@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
+| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
 | Endpoint synthesis | — `not_applicable` | — | — | — | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/nerves.yaml` | — |
 | Route extraction | — `not_applicable` | — | — | — | Nerves is an embedded/IoT firmware framework; no HTTP routing concept. NervesHub is separate. |

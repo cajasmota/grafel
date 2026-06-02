@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 53
+- **Capability cells:** 54
 
 ## Capabilities
 
@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
+| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
 | Endpoint synthesis | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; Kotlin trailing-lambda route DSL proven by TestKotlinJavalin_Routes_Issue3274 |
 | Handler attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; handler attribution proven by TestKotlinJavalin_Routes_Issue3274 |
 | Route extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274 |

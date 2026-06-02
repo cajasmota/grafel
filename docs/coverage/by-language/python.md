@@ -26,25 +26,25 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Ariadne GraphQL](../detail/lang.python.framework.ariadne.md) | 🟡 3/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/14 | |
-| [Bottle](../detail/lang.python.framework.bottle.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [CherryPy](../detail/lang.python.framework.cherrypy.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Django](../detail/lang.python.framework.django.md) | 🟡 4/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/12 | |
-| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟡 4/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 25/25 | 🟡 12/17 | |
-| [Falcon](../detail/lang.python.framework.falcon.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 5/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 10/11 | |
-| [Flask](../detail/lang.python.framework.flask.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 10/13 | |
-| [Graphene GraphQL](../detail/lang.python.framework.graphene.md) | 🟡 3/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/13 | |
-| [Hug](../detail/lang.python.framework.hug.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Pyramid](../detail/lang.python.framework.pyramid.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Quart](../detail/lang.python.framework.quart.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Robyn](../detail/lang.python.framework.robyn.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Starlette](../detail/lang.python.framework.starlette.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
-| [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [aiohttp](../detail/lang.python.framework.aiohttp.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Ariadne GraphQL](../detail/lang.python.framework.ariadne.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/13 | |
+| [Bottle](../detail/lang.python.framework.bottle.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [CherryPy](../detail/lang.python.framework.cherrypy.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Django](../detail/lang.python.framework.django.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/12 | |
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 25/25 | 🟡 12/17 | |
+| [Falcon](../detail/lang.python.framework.falcon.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 10/11 | |
+| [Flask](../detail/lang.python.framework.flask.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 10/13 | |
+| [Graphene GraphQL](../detail/lang.python.framework.graphene.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/12 | |
+| [Hug](../detail/lang.python.framework.hug.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Pyramid](../detail/lang.python.framework.pyramid.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Quart](../detail/lang.python.framework.quart.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Robyn](../detail/lang.python.framework.robyn.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Starlette](../detail/lang.python.framework.starlette.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [aiohttp](../detail/lang.python.framework.aiohttp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
 
 
 ### AI Integration
@@ -90,24 +90,24 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 2/5 | |
-| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/9 | |
-| [Django ORM](../detail/lang.python.orm.django.md) | ✅ 11/11 | |
-| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟡 5/9 | |
-| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 2/5 | |
-| [Peewee](../detail/lang.python.orm.peewee.md) | 🟡 6/9 | |
-| [Pony ORM](../detail/lang.python.orm.pony.md) | 🟡 6/9 | |
-| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 11/11 | |
-| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟡 8/11 | |
-| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟡 7/10 | |
-| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟡 1/4 | |
-| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟡 1/4 | |
-| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟡 1/4 | |
-| [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/7 | |
-| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟡 2/5 | |
-| [pymongo / motor](../detail/lang.python.driver.mongodb.md) | 🟡 1/4 | |
-| [redis-py](../detail/lang.python.driver.redis.md) | 🟡 1/4 | |
-| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟡 2/5 | |
+| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 2/4 | |
+| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/8 | |
+| [Django ORM](../detail/lang.python.orm.django.md) | ✅ 10/10 | |
+| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟡 5/8 | |
+| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 2/4 | |
+| [Peewee](../detail/lang.python.orm.peewee.md) | 🟡 6/8 | |
+| [Pony ORM](../detail/lang.python.orm.pony.md) | 🟡 6/8 | |
+| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 10/10 | |
+| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟡 8/10 | |
+| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟡 7/9 | |
+| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟡 1/3 | |
+| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟡 1/3 | |
+| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟡 1/3 | |
+| [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/6 | |
+| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟡 2/4 | |
+| [pymongo / motor](../detail/lang.python.driver.mongodb.md) | 🟡 1/3 | |
+| [redis-py](../detail/lang.python.driver.redis.md) | 🟡 1/3 | |
+| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟡 2/4 | |
 
 
 ## Other

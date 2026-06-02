@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 53
+- **Capability cells:** 54
 
 ## Capabilities
 
@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
+| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | class : Query/Mutation/Subscription marker-interface roots → each public member fun is a GraphQL field synthesised as a GRAPHQL endpoint /graphql/<Operation>/<field>. Value-asserted (user, users, createUser) in TestGraphQLKotlin_ResolverFields/_NameRename. File-local: cross-file root composition via SchemaGeneratorConfig not chased. |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | Each synthesised GraphQL field carries handler_name=<Class>.<fun> and resolver_fun, binding the field to its Kotlin resolver function even under @GraphQLName rename (field=createUser, resolver_fun=addUser). Asserted in TestGraphQLKotlin_NameRename. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | GraphQL operation paths /graphql/<Operation>/<field> derived from the Query/Mutation/Subscription supertype; @GraphQLName renames the field segment, @GraphQLIgnore and private/protected/internal funs excluded. Asserted in TestGraphQLKotlin_ResolverFields/_IgnoreAndPrivate. |

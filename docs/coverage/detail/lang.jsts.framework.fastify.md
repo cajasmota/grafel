@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
+| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | 2932 | `internal/engine/http_endpoint_jsts_extra.go`<br>`internal/engine/http_endpoint_synthesis_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/fastify.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/frameworks/fastify.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-29` | 3062 | `internal/custom/javascript/fastify.go`<br>`internal/engine/http_endpoint_jsts_extra.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go`<br>`internal/engine/http_endpoint_synthesis_test.go` | — |

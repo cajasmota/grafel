@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 53
+- **Capability cells:** 54
 
 ## Capabilities
 
@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
+| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
 | Endpoint synthesis | ✅ `full` | — | — | `internal/engine/http_endpoint_kotlin_client.go`<br>`internal/engine/http_endpoint_kotlin_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Retrofit interface verb annotations (@GET/@POST/@PUT/@DELETE/@PATCH/@HEAD/@OPTIONS) → one outbound http_endpoint (consumer) per annotated method + FETCHES from the method; Retrofit.Builder().baseUrl() composed; {param} paths normalized. Value-asserted in http_endpoint_kotlin_client_test.go. |
 | Handler attribution | ✅ `full` | — | — | `internal/engine/http_endpoint_kotlin_client.go`<br>`internal/engine/http_endpoint_kotlin_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | FETCHES edge attributes each outbound call to the enclosing Retrofit interface method. Value-asserted in http_endpoint_kotlin_client_test.go. |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
