@@ -274,12 +274,18 @@ func TestProbe_GraphQLRuby_NonFiringStaySilent(t *testing.T) {
 }
 
 // TestProbe_GraphQLRuby_RequestSinkDataflowDoesNotFire is the documented
-// HONEST NEGATIVE. graphql-ruby resolvers receive validated GraphQL field
-// arguments (`args` / keyword args), never request.body — so there is no
-// request→sink dataflow signal here, and Ruby ships no dataflow sniffer
-// at all (#3947). The request_sink_dataflow Substrate cell stays missing.
+// HONEST NEGATIVE. As of #3947 Ruby DOES have a dataflow sniffer, but it
+// keys on request sources (`params[:x]`, strong params). graphql-ruby
+// resolvers receive validated GraphQL field arguments (`args` / keyword
+// args), never request.body — so running the Ruby sniffer over a
+// graphql-ruby resolver still yields no request→sink flows, and the
+// request_sink_dataflow Substrate cell honestly stays missing.
 func TestProbe_GraphQLRuby_RequestSinkDataflowDoesNotFire(t *testing.T) {
-	if DataFlowSnifferFor("ruby") != nil {
-		t.Fatal("unexpected: a Ruby dataflow sniffer now exists — re-evaluate the request_sink_dataflow cell (#3947)")
+	sniff := DataFlowSnifferFor("ruby")
+	if sniff == nil {
+		t.Skip("no Ruby dataflow sniffer registered")
+	}
+	if got := len(sniff(graphqlRubyResolverSrc)); got != 0 {
+		t.Errorf("request-sink flows on a graphql-ruby resolver = %d, want 0 (resolvers read args, not params — cell stays missing)", got)
 	}
 }
