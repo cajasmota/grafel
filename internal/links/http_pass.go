@@ -492,6 +492,138 @@ func literalFillsParamSlot(consumerPath, producerPath string) bool {
 	return filled
 }
 
+// pathNormPrefixSegments is the configurable set of leading version/api prefix
+// forms the path_normalized strategy (#3752, roadmap oracle-priority #9) strips
+// before comparing a client path to a server path. Each entry is the normalized
+// (lower-cased, leading-slash) prefix that pathNormalizeForMatch peels off when
+// it is the leading segment group.
+//
+// This is intentionally identical in spirit to apiPrefixRe / stripAPIPrefix but
+// kept as an explicit, ordered, configurable list so the path_normalized
+// strategy's prefix vocabulary is self-documenting and tunable independently of
+// the byPath generic-strip alias. Longer (more specific) prefixes come first so
+// `/api/v1` is preferred over `/api`.
+var pathNormPrefixSegments = []string{"/api/v1", "/api/v2", "/api", "/v1", "/v2"}
+
+// pathNormalizeForMatch produces the canonical comparison key used by the
+// path_normalized cross-repo strategy (#3752). It is deliberately a SEPARATE,
+// stricter transform from normalizePathForIndex / normalizeURLPattern so the
+// strategy's matching contract is explicit and testable in isolation:
+//
+//  1. Lower-case the whole path (HTTP paths are case-insensitive in practice).
+//  2. Replace every path-parameter placeholder ({id}, :id, {pk}, <int:id>, …)
+//     with the single uniform token `{}` — param NAMES are irrelevant.
+//  3. Strip ONE leading version/api prefix segment group from pathNormPrefixSegments,
+//     but NEVER when stripping would empty the path (guard #3): a bare `/api`
+//     keeps its single segment so it can still match another `/api`.
+//  4. Strip a trailing slash (unless the path is just "/").
+//
+// The returned key, together with the verb and the segment count, is the full
+// identity under this strategy. Two paths are considered equivalent by the
+// caller IFF their keys are equal AND they have the same number of path
+// segments — pathNormSegmentCount supplies the latter so `/users/{}` can never
+// be conflated with `/users/{}/orders` even though neither has a trailing slash.
+func pathNormalizeForMatch(path string) string {
+	if path == "" {
+		return ""
+	}
+	// 1. Lower-case.
+	path = strings.ToLower(path)
+	// 2. Collapse every param placeholder to `{}`. urlParamNormRe already
+	//    recognises {name}, <type:name>, and :name styles.
+	path = urlParamNormRe.ReplaceAllString(path, "{}")
+	// 3. Strip ONE leading version/api prefix segment group, longest first.
+	for _, pfx := range pathNormPrefixSegments {
+		if path == pfx {
+			// Guard #3: stripping would empty the path. Leave it intact so a
+			// bare `/api` can still match another bare `/api`.
+			break
+		}
+		if strings.HasPrefix(path, pfx+"/") {
+			path = path[len(pfx):]
+			break
+		}
+	}
+	// 4. Strip trailing slash (preserve bare "/").
+	if len(path) > 1 {
+		path = strings.TrimRight(path, "/")
+		if path == "" {
+			path = "/"
+		}
+	}
+	return path
+}
+
+// pathNormSegmentCount returns the number of path segments in the
+// already-prefix-agnostic normalized key produced by pathNormalizeForMatch.
+// Segment count is part of the path_normalized strategy's identity: the strategy
+// links two endpoints only when their normalized keys are equal AND their
+// segment counts match, so `/users/{}` (2 segs after the leading slash split,
+// counted here as the non-empty segments) never matches `/users/{}/orders`.
+//
+// It counts non-empty segments after splitting on `/`, so the leading empty
+// segment from the root slash is ignored and the bare root "/" reports 0.
+func pathNormSegmentCount(normalizedKey string) int {
+	n := 0
+	for _, seg := range strings.Split(normalizedKey, "/") {
+		if seg != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// pathNormResolve reports whether the consumer and producer paths match under
+// the path_normalized strategy (#3752): equal normalized keys AND equal segment
+// counts. Verb compatibility is checked by the caller (and is required to be an
+// exact same-verb match per the strategy contract). Returns the shared
+// normalized key on success for telemetry / traceability.
+func pathNormResolve(consumerPath, producerPath string) (key string, ok bool) {
+	if consumerPath == "" || producerPath == "" {
+		return "", false
+	}
+	cKey := pathNormalizeForMatch(consumerPath)
+	pKey := pathNormalizeForMatch(producerPath)
+	if cKey == "" || pKey == "" {
+		return "", false
+	}
+	if cKey != pKey {
+		return "", false
+	}
+	if pathNormSegmentCount(cKey) != pathNormSegmentCount(pKey) {
+		return "", false
+	}
+	return cKey, true
+}
+
+// distinctEndpointCount reports how many DISTINCT server endpoints a candidate
+// set represents for the path_normalized ambiguity guard (#3752). Two producer
+// hits are the "same endpoint" when they share the same (upper-cased verb,
+// raw-canonical-path) pair — e.g. the same route emitted twice across re-index
+// or via a router alias. They are DISTINCT when their raw canonical paths differ
+// (even if both happen to collapse to the same path_normalized key, which is
+// exactly the ambiguous case `/api/v1/users/{id}` vs `/users/{id}` both
+// normalizing to a client `/users/{}`): linking either would be a guess, so the
+// caller suppresses the link when this count exceeds 1.
+//
+// The raw canonical path (NOT the normalized key) is the identity axis on
+// purpose: it is precisely the divergence the normalization erased, so counting
+// on it is what makes the prefix-collision case register as ambiguous.
+func distinctEndpointCount(cands []*httpEndpointHit) int {
+	seen := map[string]bool{}
+	for _, p := range cands {
+		path := p.canonicalPath
+		if path == "" {
+			if _, pp, ok := parseHTTPName(p.name); ok {
+				path = pp
+			}
+		}
+		key := strings.ToUpper(p.verb) + " " + path
+		seen[key] = true
+	}
+	return len(seen)
+}
+
 // dynamicSuffixMinStaticSegments is the floor on how many concrete (non-param)
 // path segments a dynamic-baseurl suffix MUST carry before the dynamic-suffix
 // matcher (#2813) will consider auto-linking it. Two static segments
@@ -2024,6 +2156,159 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// producer param slot. That binding is reconstructed, not
 					// proven from a real param on the call side. inferred.
 					link.WithEdgeConfidence(ConfidenceInferred)
+					fresh = append(fresh, link)
+				}
+			}
+		}
+	}
+
+	// #3752 — path_normalized orphan-retry sweep (oracle-priority #9).
+	//
+	// The LAST *static* resolution stage, running after byPath, mount-prefix,
+	// case-style, url-pattern, param-normalized and literal-fill have all missed
+	// (and before the runtime-dynamic #2813 suffix sweep). It closes the
+	// upvate-bench gap where a client calls `GET /inspections/{id}` and the
+	// server serves `GET /api/v1/inspections/{pk}` — a PREFIX + PARAM-NAME
+	// mismatch, not a genuinely-missing endpoint — that the earlier stages did
+	// not co-bucket for this particular consumer.
+	//
+	// Matching contract (pathNormResolve): equal pathNormalizeForMatch key
+	// (version/api prefix stripped, every param collapsed to `{}`, lower-cased)
+	// AND equal segment count AND the SAME specific verb. The match is fuzzy
+	// (param names and the api prefix are discarded), so the link is stamped
+	// confidence=heuristic — distinct from the `resolved` class the precise
+	// stages emit.
+	//
+	// PRECISION GUARD (ambiguity → NO link): if a consumer path normalizes to
+	// MORE THAN ONE distinct server endpoint (different stamped producers, or
+	// the same producer serving structurally-distinct paths that happen to share
+	// a normalized key), we emit NO link for that consumer in that producer repo
+	// and record the ambiguity under missesByReason["path_normalized_ambiguous"].
+	// Attributing one of several candidates would be a false edge, which this
+	// precision-first strategy must never do.
+	for _, byRepo := range hits {
+		for _, perRepo := range byRepo {
+			for _, c := range perRepo {
+				if c.side != sideConsumer {
+					continue
+				}
+				cKey := entityKey(c.repo, c.stampedID)
+				if matchedConsumers[cKey] {
+					continue // resolved by an earlier (higher-precision) stage
+				}
+				consumerPath := c.canonicalPath
+				if consumerPath == "" {
+					if _, p, ok := parseHTTPName(c.name); ok {
+						consumerPath = p
+					}
+				}
+				if consumerPath == "" {
+					continue
+				}
+				allConsumers[cKey] = true
+
+				// Collect path_normalized-eligible producers in OTHER repos,
+				// requiring an EXACT same-verb match (no ANY widening — the
+				// strategy contract demands verb equality). De-dupe by stamped
+				// producer identity.
+				var eligible []*httpEndpointHit
+				seenCandidate := map[string]bool{}
+				for _, p := range allProducers {
+					if p.repo == c.repo {
+						continue
+					}
+					if strings.ToUpper(p.verb) != strings.ToUpper(c.verb) || c.verb == "" {
+						continue
+					}
+					producerPath := p.canonicalPath
+					if producerPath == "" {
+						if _, pp, ok := parseHTTPName(p.name); ok {
+							producerPath = pp
+						}
+					}
+					if producerPath == "" {
+						continue
+					}
+					if _, ok := pathNormResolve(consumerPath, producerPath); !ok {
+						continue
+					}
+					pid := entityKey(p.repo, p.stampedID)
+					if seenCandidate[pid] {
+						continue
+					}
+					seenCandidate[pid] = true
+					eligible = append(eligible, p)
+				}
+				if len(eligible) == 0 {
+					continue
+				}
+				sort.SliceStable(eligible, func(i, j int) bool { return less(eligible[i], eligible[j]) })
+				producersByRepoPN := map[string][]*httpEndpointHit{}
+				for _, p := range eligible {
+					producersByRepoPN[p.repo] = append(producersByRepoPN[p.repo], p)
+				}
+				pRepoNamesPN := make([]string, 0, len(producersByRepoPN))
+				for r := range producersByRepoPN {
+					pRepoNamesPN = append(pRepoNamesPN, r)
+				}
+				sort.Strings(pRepoNamesPN)
+				for _, pRepo := range pRepoNamesPN {
+					repoCands := producersByRepoPN[pRepo]
+					// Ambiguity guard: a consumer that normalizes to more than
+					// one DISTINCT server endpoint in this repo is ambiguous —
+					// linking either one would risk a false attribution. Emit no
+					// link and record the ambiguity for telemetry.
+					if distinctEndpointCount(repoCands) > 1 {
+						missesByReason["path_normalized_ambiguous"]++
+						continue
+					}
+					p := repoCands[0]
+					srcID := c.callerID
+					if srcID == "" {
+						srcID = c.stampedID
+					}
+					tgtID := p.handlerID
+					if tgtID == "" {
+						tgtID = p.stampedID
+					}
+					source := entityKey(c.repo, srcID)
+					target := entityKey(p.repo, tgtID)
+					id := MakeID(source, target, MethodHTTP)
+					if emitted[id] {
+						matchedConsumers[cKey] = true
+						continue
+					}
+					emitted[id] = true
+					matchedConsumers[cKey] = true
+					hitsByStrategy["path_normalized"]++
+					normKey, _ := pathNormResolve(consumerPath, p.canonicalPath)
+					ident := canonicalIdentifier(c, p)
+					ch := httpChannel
+					link := Link{
+						ID:           id,
+						Source:       source,
+						Target:       target,
+						Relation:     RelationCalls,
+						Method:       MethodHTTP,
+						Confidence:   urlPatternNormConfidence,
+						Channel:      &ch,
+						Identifier:   &ident,
+						DiscoveredAt: now,
+						SourceLocations: [][]string{
+							{c.sourceFile},
+							{p.sourceFile},
+						},
+						MatchQuality: matchQualityAnyFallback,
+						Properties: map[string]string{
+							"resolve_strategy": "path_normalized",
+							"normalized_path":  normKey,
+						},
+					}
+					// #3752 — both endpoints are AST-grounded, but the match
+					// discards the api/version prefix AND the param names: a
+					// fuzzy structural equivalence, not a proven canonical-id
+					// match. That is the `heuristic` honesty class.
+					link.WithEdgeConfidence(ConfidenceHeuristic)
 					fresh = append(fresh, link)
 				}
 			}
