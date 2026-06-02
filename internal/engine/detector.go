@@ -888,6 +888,14 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 		relationships = rewritePythonModelImports(relationships)
 	}
 
+	// Issue #3729 (epic #3628, area #24) — precision pass. Runs last, after
+	// every rule-set and engine pass has contributed its entities and edges, so
+	// it collapses cross-pass multi-kind double-emits and strips statement-level
+	// `Operation` noise from the final graph. Edge endpoints anchored to a
+	// collapsed kind are rewritten so no relationship is lost; opt-out via
+	// PrecisionDedupEnabled.
+	entities, relationships = applyPrecisionDedup(entities, relationships)
+
 	span.SetAttributes(
 		attribute.Int("entity_count", len(entities)),
 		attribute.Int("relationship_count", len(relationships)),
