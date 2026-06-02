@@ -94,6 +94,7 @@ subcategories:
       - handler_attribution
       - auth_coverage
       - middleware_coverage
+      - rate_limit_stamping
       - route_extraction
       - request_validation
       - tests_linkage
@@ -146,7 +147,7 @@ subcategories:
       - name: Validation
         keys: [request_validation, dto_extraction]
       - name: Middleware
-        keys: [middleware_coverage]
+        keys: [middleware_coverage, rate_limit_stamping]
       - name: Type System
         keys: [interface_extraction, type_alias_extraction, enum_extraction, type_extraction]
       - name: DI

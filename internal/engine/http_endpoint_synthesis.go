@@ -725,6 +725,13 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// middleware_scope. Shares the jstsAuthBefore window so it only sees the
 		// producer http_endpoint_definition entities this file emitted.
 		applyJSTSMiddlewareCoverage(string(content), path, entities, jstsAuthBefore)
+		// #3628 rate-limit child — stamp rate_limited / rate_limit /
+		// rate_limit_scope / rate_limit_source on the producer-side endpoints
+		// when an express-rate-limit-style limiter is applied (app.use(limiter)
+		// or a route-level limiter arg). Resolves windowMs+max → human rate
+		// where statically available; honest-partial (rate omitted) for
+		// config-driven limiters. Shares the jstsAuthBefore window.
+		applyJSTSRateLimit(string(content), path, entities, jstsAuthBefore)
 		// Consumer side (#721): fetch / axios / generic *Client
 		// HTTP client calls. Now emits FETCHES edges at extraction time.
 		//

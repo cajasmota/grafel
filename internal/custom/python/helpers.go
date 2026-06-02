@@ -37,3 +37,35 @@ func entity(name, kind, subtype, sourceFile string, startLine int, props map[str
 func allMatchesIndex(re *regexp.Regexp, source string) [][]int {
 	return re.FindAllStringSubmatchIndex(source, -1)
 }
+
+// decoratorWindow returns the contiguous block of stacked decorator lines that
+// immediately precede the byte offset `at` (the start of a route decorator
+// match), plus everything from there up to `end`. It walks backwards over
+// consecutive `@…` / comment / blank lines so a sibling decorator such as
+// slowapi's `@limiter.limit("5/minute")` — which the route regex cannot include
+// in its own match (the regex tail only permits comments before `def`) — is
+// still visible to the rate-limit resolver. Used for endpoint-level throttle
+// stamping (#3628 rate-limit child).
+func decoratorWindow(source string, at, end int) string {
+	if at < 0 || at > len(source) || end < at || end > len(source) {
+		return ""
+	}
+	start := at
+	// Walk back line-by-line while the preceding line is a decorator, comment,
+	// or blank line (the conventional stacked-decorator block).
+	for start > 0 {
+		// Find the start of the line that ends just before `start`.
+		lineEnd := start - 1 // index of the '\n' terminating the previous line
+		if lineEnd < 0 || source[lineEnd] != '\n' {
+			break
+		}
+		lineStart := strings.LastIndexByte(source[:lineEnd], '\n') + 1
+		line := strings.TrimSpace(source[lineStart:lineEnd])
+		if line == "" || strings.HasPrefix(line, "@") || strings.HasPrefix(line, "#") {
+			start = lineStart
+			continue
+		}
+		break
+	}
+	return source[start:end]
+}

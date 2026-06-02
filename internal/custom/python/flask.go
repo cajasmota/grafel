@@ -25,10 +25,10 @@ func (e *FlaskExtractor) Language() string { return "python_flask" }
 
 var (
 	flRouteDecoratorRe = regexp.MustCompile(
-		`(?m)@(\w+)\.route\s*\(\s*(?:r)?["']([^"']*)["']([^)]*)\)(?:\s*\n(?:\s*@\w+(?:\([^)]*\))?\s*\n)*)\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+		`(?m)@(\w+)\.route\s*\(\s*(?:r)?["']([^"']*)["']([^)]*)\)(?:\s*\n(?:\s*@[\w.]+(?:\([^)]*\))?\s*\n)*)\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 	flRouteMethodsRe    = regexp.MustCompile(`methods\s*=\s*\[([^\]]+)\]`)
 	flHTTPMethodDecorRe = regexp.MustCompile(
-		`(?m)@(\w+)\.(get|post|put|patch|delete|options|head)\s*\(\s*(?:r)?["']([^"']*)["']([^)]*)\)(?:\s*\n(?:\s*@\w+(?:\([^)]*\))?\s*\n)*)\s*(?:async\s+)?def\s+(\w+)\s*\(`)
+		`(?m)@(\w+)\.(get|post|put|patch|delete|options|head)\s*\(\s*(?:r)?["']([^"']*)["']([^)]*)\)(?:\s*\n(?:\s*@[\w.]+(?:\([^)]*\))?\s*\n)*)\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 	flBlueprintRe       = regexp.MustCompile(`(?m)(\w+)\s*=\s*Blueprint\s*\(\s*["'](\w+)["']([^)]*)\)`)
 	flURLPrefixRe       = regexp.MustCompile(`url_prefix\s*=\s*["']([^"']*)["']`)
 	flRegBlueprintRe    = regexp.MustCompile(`(?m)(\w+)\.register_blueprint\s*\(\s*(\w+)([^)]*)\)`)
@@ -80,6 +80,10 @@ func (e *FlaskExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		// Flask-Login / Flask-Security auth decorator (the route decorator itself
 		// is never an auth decorator, so it can't false-positive).
 		resolveFlaskDecoratorAuth(source[idx[0]:idx[1]]).stamp(props)
+		// #3628 rate-limit child — flask-limiter `@limiter.limit("100/hour")` /
+		// django-ratelimit `@ratelimit(rate='5/m')` may be stacked above the
+		// route decorator, so widen to the full preceding decorator block.
+		resolvePyEndpointRateLimit(decoratorWindow(source, idx[0], idx[1]), source).stamp(props)
 		out = append(out, entity(funcName, "SCOPE.Operation", "endpoint", file.Path, line, props))
 	}
 
@@ -92,6 +96,7 @@ func (e *FlaskExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		line := lineOf(source, idx[0])
 		props := map[string]string{"framework": "flask", "pattern_type": "route", "path": path, "http_methods": httpMethod, "blueprint": appVar}
 		resolveFlaskDecoratorAuth(source[idx[0]:idx[1]]).stamp(props)
+		resolvePyEndpointRateLimit(decoratorWindow(source, idx[0], idx[1]), source).stamp(props)
 		out = append(out, entity(funcName, "SCOPE.Operation", "endpoint", file.Path, line, props))
 	}
 

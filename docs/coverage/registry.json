@@ -2342,6 +2342,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "low-level network/event library; no HTTP middleware pipeline"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -2578,6 +2583,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "low-level network/event library; no HTTP middleware pipeline"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -2814,6 +2824,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "low-level network/event library; no HTTP middleware pipeline"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -3059,6 +3074,11 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/auth_middleware.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -3304,6 +3324,11 @@
             "status": "full",
             "cites": ["internal/custom/cpp/auth_middleware.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -3549,6 +3574,11 @@
             "status": "full",
             "cites": ["internal/custom/cpp/auth_middleware.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -3933,6 +3963,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "low-level network/event library; no HTTP middleware pipeline"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -4169,6 +4204,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "low-level network/event library; no HTTP middleware pipeline"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -4431,6 +4471,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "low-level network/event library; no HTTP middleware pipeline"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -4752,6 +4797,11 @@
             "status": "full",
             "cites": ["internal/custom/cpp/auth_middleware.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -4997,6 +5047,11 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/auth_middleware.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -5242,6 +5297,11 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/auth_middleware.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -5831,6 +5891,11 @@
             "status": "partial",
             "cites": ["internal/custom/cpp/auth_middleware.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -6076,6 +6141,11 @@
             "cites": ["internal/custom/cpp/restinio_middleware.go"],
             "notes": "non_matched_request_handler, make_chain\u003cH1,H2,...\u003e, request_handler chaining detected; regex/partial",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -7414,6 +7484,11 @@
             "status": "full",
             "cites": ["internal/custom/csharp/middleware_extra.go","internal/custom/csharp/middleware_extra_test.go"],
             "verified_at": "2026-05-28"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -7659,6 +7734,11 @@
             "status": "full",
             "cites": ["internal/custom/csharp/middleware_extra.go","internal/custom/csharp/middleware_extra_test.go"],
             "notes": "app.UseMiddleware\u003cT\u003e typed registrations, inline app.Use() lambda middleware, IMiddleware class + InvokeAsync detection, [ServiceFilter]/[TypeFilter]/IActionFilter-based MVC filter coverage."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -8509,6 +8589,11 @@
             "status": "partial",
             "cites": ["internal/custom/csharp/middleware_extra.go","internal/custom/csharp/middleware_extra_test.go"],
             "notes": "Carter app.MapCarter()/AddCarter() pipeline wiring detected; ICarterModule.AddRoutes already covers route registration. Middleware wiring is the AddCarter/MapCarter registration surface."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -8757,6 +8842,11 @@
             "status": "partial",
             "cites": ["internal/custom/csharp/middleware_extra.go","internal/custom/csharp/middleware_extra_test.go"],
             "notes": "FastEndpoints AddFastEndpoints()/UseFastEndpoints() pipeline wiring and IGlobalPreProcessor/IGlobalPostProcessor/IPreProcessor/IPostProcessor class declarations detected."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -9161,6 +9251,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -9376,6 +9471,11 @@
             "status": "partial",
             "cites": ["internal/custom/csharp/middleware_extra.go","internal/custom/csharp/middleware_extra_test.go"],
             "notes": "NancyFX DefaultNancyBootstrapper subclass, RequestStartup/ApplicationStartup overrides, and this.Before += / this.After += module pipeline hook registrations detected."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -9834,6 +9934,11 @@
             "status": "partial",
             "cites": ["internal/custom/csharp/middleware_extra.go","internal/custom/csharp/middleware_extra_test.go"],
             "notes": "ServiceStack AppHostBase subclass, Plugins.Add\u003cT\u003e(), GlobalRequestFilters.Add, and Pre/PostResponseFilters pipeline registration patterns detected."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -11438,6 +11543,11 @@
             "status": "partial",
             "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml","internal/substrate/taint_sites_elixir.go"],
             "notes": "Absinthe.Middleware.* module uses detected via engine YAML; plug pipeline middleware tracked via taint substrate"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -11687,6 +11797,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "Ash is a resource/action framework without HTTP middleware; middleware layer handled by Plug/Phoenix integration"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -11929,6 +12044,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "Bandit is a raw HTTP/2 server with no middleware pipeline; pipeline is Plug-layer concern"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -12201,6 +12321,11 @@
             "status": "partial",
             "cites": ["internal/substrate/taint_sites_elixir.go"],
             "notes": "Cowboy middleware defined via stream_handlers; taint substrate tracks conn access patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -12444,6 +12569,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -12797,6 +12927,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -12992,6 +13127,11 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "not_applicable"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -13229,6 +13369,11 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "not_applicable"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -13480,6 +13625,11 @@
             "status": "full",
             "cites": ["internal/custom/elixir/phoenix.go"],
             "notes": "phoenixExtractor parses pipeline :name do...end blocks into ordered plug chains (plug_chain, plug_order per step) and binds scopes to pipelines via pipe_through [:a,:b]; module + function plugs captured. Tests assert exact :browser chain order + protect_from_forgery index + pipe_through 'api -\u003e auth' binding."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -13946,6 +14096,11 @@
             "status": "full",
             "cites": ["internal/custom/elixir/plug.go"],
             "notes": "plugExtractor captures the ordered Plug.Builder/Plug.Router plug chain with plug_order per step (plug :name and plug Module). Test asserts Plug.Logger order 0 within builder chain."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -14189,6 +14344,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -14396,6 +14556,11 @@
             "issue": "3511",
             "notes": "BaseUrl/JSON Tesla plug middleware parsed for base-url only; full middleware-chain modeling pending (#3511)",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -15169,6 +15334,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -15411,6 +15581,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -15657,6 +15832,11 @@
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
             "notes": "balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -15906,6 +16086,11 @@
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
             "notes": "balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -16148,6 +16333,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "fasthttp / fasthttp-router has no middleware-registration primitive; middleware is manual RequestHandler wrapping with no .Use() chain to extract."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -16404,6 +16594,11 @@
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
             "notes": "balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -16639,6 +16834,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3628"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -16950,6 +17150,11 @@
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
             "notes": "balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -17194,6 +17399,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/go_zero.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -17654,6 +17864,11 @@
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
             "notes": "gorilla-mux .Use() chain scanned via shared middleware_auth_extend pass; one SCOPE.Pattern per middleware in registration order (mw_order); TestGorillaMuxMiddlewareAuthExtend proves ordering + auth classification",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -17899,6 +18114,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3613"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -18108,6 +18328,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -18351,6 +18576,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/huma.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -18593,6 +18823,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -18834,6 +19069,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/kratos.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -19076,6 +19316,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "net/http has no middleware-registration primitive; middleware is manual handler wrapping (func(http.Handler) http.Handler) with no .Use() chain to extract."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -19332,6 +19577,11 @@
             "status": "partial",
             "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_extend.go","internal/custom/golang/middleware_auth_extend_test.go"],
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -19564,6 +19814,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3628"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -27546,6 +27801,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/adonisjs_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -28712,6 +28972,13 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/express_middleware.ts"],
             "verified_at": "2026-05-28"
+          },
+          "rate_limit_stamping": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_ratelimit.go","internal/engine/http_endpoint_jsts_ratelimit_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "express-rate-limit / express-slow-down: resolves windowMs+max to a human rate and stamps rate_limited/rate_limit/rate_limit_scope (route|app)/rate_limit_source on the endpoint op. Imported/config-driven limiters → rate_limited=true with rate omitted (honest-partial). Negative: a limiter defined but never applied to a route is not stamped.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -28991,6 +29258,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/fastify_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -29268,6 +29540,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/feathers_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -29968,6 +30245,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/hapi_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -30240,6 +30522,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/hono_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -30734,6 +31021,13 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/koa_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_jsts_ratelimit.go","internal/engine/http_endpoint_jsts_ratelimit_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "express-rate-limit / express-slow-down: resolves windowMs+max to a human rate and stamps rate_limited/rate_limit/rate_limit_scope (route|app)/rate_limit_source on the endpoint op. Imported/config-driven limiters → rate_limited=true with rate omitted (honest-partial). Negative: a limiter defined but never applied to a route is not stamped.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -31050,6 +31344,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/marblejs_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -31538,6 +31837,11 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/nestjs_middleware.ts"],
             "verified_at": "2026-05-28"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -32335,6 +32639,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/polka_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -32592,6 +32901,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3619"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -33646,6 +33960,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_middleware.go","internal/engine/http_endpoint_jsts_middleware_test.go","testdata/fixtures/typescript/restify_middleware.ts"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -33908,6 +34227,11 @@
           "middleware_coverage": {
             "status": "not_applicable",
             "notes": "Sails does not attach middleware to individual endpoints; its global middleware pipeline is the declarative `order` array under `middleware` in config/http.js. Covered by the framework_specific Middleware Pipeline / middleware_order_recognition cell (ParseSailsMiddlewareOrder)."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -34893,6 +35217,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3619"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -40205,6 +40534,11 @@
             "status": "full",
             "cites": ["internal/custom/lua/kong.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -40411,6 +40745,11 @@
             "status": "full",
             "cites": ["internal/custom/lua/kong.go"],
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -40616,6 +40955,11 @@
             "status": "full",
             "cites": ["internal/custom/lua/middleware.go"],
             "notes": "Lapis middleware chain: before_filter/app:before (phase=before) + app:after filters with chain_index ordering, error_handler/on_error, lapis.flow pipeline. value-asserting tests in extractors_test.go."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -40862,6 +41206,11 @@
             "status": "full",
             "cites": ["internal/custom/lua/middleware.go"],
             "notes": "OpenResty middleware chain: nginx phase directives (init/init_worker/rewrite/access/content/header_filter/body_filter/log _by_lua) emitted with chain_index (textual order) + phase_order (canonical request-lifecycle rank) so the ordered chain is reconstructable; Kong plugin handler phases. value-asserting test TestLuaMiddlewareOrdering asserts specific phase_order ranks."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -41560,6 +41909,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -41770,6 +42124,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -42019,6 +42378,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -42268,6 +42632,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -42511,6 +42880,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -42721,6 +43095,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -42968,6 +43347,11 @@
             "status": "full",
             "cites": ["internal/custom/php/laravel_authval.go"],
             "notes": "Full Kernel.php coverage ($middleware/$middlewareGroups/$routeMiddleware/$middlewareAliases arrays with per-entry class+alias extraction); custom middleware class via handle(Closure $next) with terminate() detection; route -\u003emiddleware() attachment and -\u003ewithoutMiddleware() exclusion"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -43219,6 +43603,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -43429,6 +43818,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -43678,6 +44072,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -43927,6 +44326,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -44176,6 +44580,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -44427,6 +44836,11 @@
             "cites": ["internal/custom/php/symfony.go"],
             "notes": "EventSubscriberInterface implementors with getSubscribedEvents() event name extraction; addListener/addSubscriber kernel event registration; kernel event names emitted as SCOPE.Pattern",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -44682,6 +45096,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -44931,6 +45350,11 @@
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
             "notes": "Middleware class detection via implements/extends MiddlewareInterface/ActionFilter/Plugin patterns"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -45949,6 +46373,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -46209,6 +46638,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3620"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -46431,6 +46865,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -46916,6 +47355,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -47180,6 +47624,11 @@
             "cites": ["internal/custom/python/django.go"],
             "notes": "django.go extracts *Middleware class definitions (djangoMiddlewareClassRe) + process_request/process_response/process_view/process_exception hook methods. Partial because: Django MIDDLEWARE settings list (settings.py list of dotted paths) is not parsed; new-style __call__-based middleware is detected via class name but __call__ method is not specifically emitted; mixin-based middleware (MiddlewareMixin subclass) is covered. Test: TestDjango_Middleware.",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -47453,6 +47902,11 @@
             "cites": ["internal/engine/django_imports_rewrite.go"],
             "notes": "Django import rewriting provides coverage for stock Django middleware (SecurityMiddleware, SessionMiddleware etc.) via class-name rewriting. Partial because: DRF DEFAULT_AUTHENTICATION_CLASSES / DEFAULT_THROTTLE_CLASSES in settings.py are not parsed; custom DRF middleware (BaseAuthentication subclasses used as middleware) is not detected; no MIDDLEWARE_CLASSES list parsing. DRF has no dedicated middleware extractor.",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -47965,6 +48419,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -48228,6 +48687,13 @@
             "cites": ["internal/custom/python/fastapi.go","internal/custom/python/http_middleware.go"],
             "notes": "@app.middleware('http') decorator extracted by fastapi.go (faMiddlewareRe); app.add_middleware(Cls, ...) extracted via starletteAddMiddlewareRe in http_middleware.go for Starlette/FastAPI. Tests: TestFastAPI_Middleware (decorator form), TestFastAPI_FullFixture_Middleware (fixture). Covers both ASGI middleware registration patterns used in FastAPI.",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "full",
+            "cites": ["internal/custom/python/fastapi.go","internal/custom/python/rate_limit_endpoint.go","internal/custom/python/rate_limit_endpoint_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "slowapi @limiter.limit(\"5/minute\") stamps rate_limited/rate_limit/rate_limit_source on the route op. DRF @throttle_classes resolver (rate from a co-located custom throttle's rate attr; settings-driven built-ins → honest-partial) shared via resolvePyEndpointRateLimit.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -48503,6 +48969,13 @@
             "cites": ["internal/custom/python/flask.go"],
             "notes": "flask.go extracts @app.before_request / @app.after_request / @app.teardown_request / @bp.before_app_request decorators as request_hook pattern entities — these ARE Flask's middleware mechanism (no traditional middleware class in Flask; hooks are the canonical approach). Test: TestFlask_RequestHook proves before_request hook extraction with hook_type property.",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "full",
+            "cites": ["internal/custom/python/flask.go","internal/custom/python/rate_limit_endpoint.go","internal/custom/python/rate_limit_endpoint_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "flask-limiter @limiter.limit(\"100/hour\") and django-ratelimit @ratelimit(key='ip', rate='5/m') stamp rate_limited/rate_limit/rate_limit_scope/rate_limit_source on the route op.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -48779,6 +49252,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3620"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -48993,6 +49471,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -49295,6 +49778,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -49560,6 +50048,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -49827,6 +50320,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -50091,6 +50589,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -50561,6 +51064,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -50825,6 +51333,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -51092,6 +51605,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -51356,6 +51874,11 @@
             "cites": ["internal/custom/python/http_middleware.go"],
             "issue": "3054",
             "verified_at": "2026-05-29"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -52781,6 +53304,11 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/middleware.go"],
             "notes": "Rack use and Cuba before/after blocks. Part of #3282."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -53014,6 +53542,11 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "not_applicable"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -53252,6 +53785,11 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/middleware.go"],
             "notes": "Rack use, Rails before/after_action, Grape before/after hooks, Sinatra before/after blocks, Roda plugins, Cuba before/after. Part of #3282."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -53490,6 +54028,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "3621"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -53700,6 +54243,11 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/middleware.go"],
             "notes": "Rack use via Hanami::Application, config.middleware.use. Part of #3282."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -53939,6 +54487,11 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/middleware.go"],
             "notes": "Rack use, config.middleware.use, Padrino before/after blocks. Part of #3282."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -54178,6 +54731,11 @@
           "middleware_coverage": {
             "status": "full",
             "cites": ["internal/custom/ruby/middleware.go","internal/custom/ruby/middleware_test.go"]
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -54434,6 +54992,11 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/middleware.go"],
             "notes": "Roda plugin :name declarations and Rack use. Part of #3282."
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -54676,6 +55239,11 @@
             "cites": ["internal/custom/ruby/middleware.go","internal/custom/ruby/middleware_test.go","internal/custom/ruby/sinatra_deep.go","internal/custom/ruby/sinatra_deep_test.go"],
             "notes": "Covers: use Rack::X Rack middleware, before do / after do filters, before '/path' do scoped filters, helpers do blocks, custom Rack middleware class detection (initialize(app)+call(env)). Full idiomatic Sinatra middleware surface. Closes #3344.",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -55674,6 +56242,11 @@
             "cites": ["internal/custom/rust/actix_web.go","internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
             "notes": "custom Transform\u003cS,ServiceRequest\u003e impls + .wrap() registrations captured with middleware_name/middleware_trait",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -55913,6 +56486,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -56132,6 +56710,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go","internal/custom/rust/axum.go"],
             "notes": ".layer/.route_layer + tower ServiceBuilder ordered layer chains enumerated in source order (layer_order + layer_order_list)",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -56377,6 +56960,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
             "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but gotham layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -56623,6 +57211,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
             "notes": "hyper services compose via tower ServiceBuilder::new().layer() chains, enumerated in order (layer_order + layer_chain) by the shared tower matcher",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -56897,6 +57490,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
             "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but poem layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -57169,6 +57767,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go","internal/custom/rust/rocket.go"],
             "notes": "impl Fairing for X middleware captured with middleware_name + middleware_trait=Fairing; .attach() registration captured",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -57414,6 +58017,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
             "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but salvo layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -57806,6 +58414,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
             "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but tide layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -58045,6 +58658,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -58269,6 +58887,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go","internal/custom/rust/auth_policy_test.go"],
             "notes": "ServiceBuilder::new().layer(..).layer(..) chains enumerated in source order: per-layer layer_order plus a layer_chain entity with layer_count + layer_order_list",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -58508,6 +59131,11 @@
           "middleware_coverage": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -58725,6 +59353,11 @@
             "cites": ["internal/custom/rust/auth.go","internal/custom/rust/auth_policy.go"],
             "notes": "framework middleware registration surface detected (with/middleware/attach/filter/add_middleware) but warp layer chains are not ordered/enumerated like tower",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {
@@ -63753,6 +64386,11 @@
             "cites": ["internal/custom/swift/vapor.go","internal/custom/swift/vapor_extended.go"],
             "notes": "vapor.go extracts Middleware protocol conformances (struct/class conforming to Middleware); vapor_extended.go extracts .grouped(XMiddleware, YMiddleware) middleware chains from route group definitions; proven by TestVaporRouteCollection and TestVaporExtendedMiddleware.",
             "verified_at": "2026-05-30"
+          },
+          "rate_limit_stamping": {
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
+            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
           }
         },
         "Type System": {

@@ -38,7 +38,10 @@ var (
 	faRouteDecoratorRe = regexp.MustCompile(
 		`(?m)@(\w+)\.(get|post|put|delete|patch|head|options|trace)\s*` +
 			`\(\s*(?:r)?["']([^"']*)["']((?:[^()]|\([^()]*\))*)\)\s*\n` +
-			`(?:\s*(?:#[^\n]*)?\n)*` +
+			// Tolerate intervening blank / comment lines and stacked sibling
+			// decorators (e.g. slowapi `@limiter.limit("5/minute")`) between the
+			// route decorator and `def` so the route is still recognised.
+			`(?:[ \t]*(?:#[^\n]*|@[^\n]*)?\n)*` +
 			`\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 	faDependsParamRe = regexp.MustCompile(`=\s*Depends\s*\(\s*(\w+)\s*\)`)
 	faAPIRouterRe    = regexp.MustCompile(`(?m)(\w+)\s*=\s*APIRouter\s*\(([^)]*)\)`)
@@ -90,6 +93,10 @@ func (e *FastAPIExtractor) Extract(ctx context.Context, file extractor.FileInput
 		// dependencies, and the decorator args for a `dependencies=[...]` kwarg.
 		sig := pyCallArgRegion(source, idx[1])
 		resolveFastAPIRouteAuth(sig, decoratorArgs).stamp(props)
+		// #3628 rate-limit child — slowapi `@limiter.limit("5/minute")` is a
+		// sibling decorator stacked with the route decorator (the route regex
+		// can't include it), so scan the preceding decorator window.
+		resolvePyEndpointRateLimit(decoratorWindow(source, idx[0], idx[1]), source).stamp(props)
 		out = append(out, entity(handlerName, "SCOPE.Operation", "endpoint", file.Path, line, props))
 	}
 
