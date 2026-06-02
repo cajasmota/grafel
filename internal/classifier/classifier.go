@@ -544,6 +544,10 @@ var extensionLanguageMap = map[string]string{
 	// GraphQL
 	".graphql": "graphql",
 	".gql":     "graphql",
+	// #4006 — gqlgen's canonical schema file is graph/schema.graphqls. Without
+	// this mapping the file is dropped (lang=""), so the SDL type→type graph
+	// (#3805) and gqlgen endpoint synthesis never fire on a real gqlgen project.
+	".graphqls": "graphql",
 	// Prisma
 	".prisma": "prisma",
 	// Elm

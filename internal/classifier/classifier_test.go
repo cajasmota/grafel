@@ -432,6 +432,7 @@ func TestExtensionCoverage(t *testing.T) {
 		{"foo.hcl", "hcl"},
 		{"foo.proto", "protobuf"},
 		{"foo.graphql", "graphql"},
+		{"graph/schema.graphqls", "graphql"}, // #4006 — gqlgen canonical schema file
 		{"foo.prisma", "prisma"},
 		{"foo.hs", "haskell"},
 		{"foo.pony", "pony"},

@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | 3613 | — | — |
+| Auth coverage | 🟢 `partial` | `2026-06-03` | 4006 | `internal/extractors/graphql/gqlgen_typegraph_auth_4006_test.go`<br>`internal/extractors/graphql/graphql.go` | #4006 (verify-first): the SDL pass now extracts field-level auth directives — @hasRole(role: ADMIN)/@hasRoles/@hasScope → auth_required+auth_roles=ADMIN; bare @auth/@isAuthenticated → auth_required (no roles); auth_method=graphql_directive, auth_confidence=0.9 — stamped on the SCOPE.Component field node. Proven by TestGqlgen_DirectiveAuth_4006 (Query.adminUsers→ADMIN, Query.me bare @auth, negatives Query.publicStats/User.id), and a non-auth-directive negative (@deprecated/@goField → no auth, TestGqlgen_NonAuthDirective_NoAuth_4006). partial: the schema-directive form is statically recoverable; resolver-body ctx-based checks (auth.ForContext(ctx)) and gqlgen generated directive-runtime wiring are not modelled. |
 
 ### Validation
 
@@ -52,7 +52,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type graph extraction | ✅ `full` | `2026-06-02` | — | `internal/extractors/graphql/graphql.go`<br>`internal/extractors/graphql/type_graph.go` | gqlgen is SDL-driven: the schema (object types + object-typed fields) is declared in *.graphql files, so the SDL type→type graph pass (internal/extractors/graphql/type_graph.go, #3805) already emits the GRAPH_RELATES object-type→type edges with list/nullable cardinality between the SCOPE.Schema type nodes. gqlgen's generated Go resolvers carry no additional type refs (operation glue only), so no code-first Go extractor is required; the SDL pass is the source of truth for the gqlgen schema relationship graph. |
+| Type graph extraction | ✅ `full` | `2026-06-03` | 4006 | `internal/classifier/classifier.go`<br>`internal/extractors/graphql/gqlgen_typegraph_auth_4006_test.go`<br>`internal/extractors/graphql/graphql.go`<br>`internal/extractors/graphql/type_graph.go` | gqlgen is SDL-driven: the schema (object types + object-typed fields) is declared in *.graphqls files, so the SDL type→type graph pass (internal/extractors/graphql/type_graph.go, #3805) emits the GRAPH_RELATES object-type→type edges with list/nullable cardinality between the SCOPE.Schema type nodes. gqlgen's generated Go resolvers carry no additional type refs (operation glue only), so no code-first Go extractor is required; the SDL pass is the source of truth for the gqlgen schema relationship graph. #4006 (verify-first) fixed the canonical gqlgen drop: classifier extensionLanguageMap mapped .graphql/.gql but NOT gqlgen's canonical .graphqls, so the pass silently never fired on graph/schema.graphqls (probe: schema.graphqls→lang=""). Added .graphqls→graphql; proven by TestGqlgen_TypeGraph_4006 (User.orders→to_many, User.account→to_one nullable) + classifier TestExtensionCoverage(graph/schema.graphqls→graphql). |
 
 ### Type System
 

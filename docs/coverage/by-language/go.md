@@ -41,7 +41,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟡 3/6 | — | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/11 | |
 | [go-zero](../detail/lang.go.framework.go-zero.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [google/wire (DI)](../detail/lang.go.framework.wire.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 2/11 | |
-| [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 5/24 | 🟡 2/13 | |
+| [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟡 3/6 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 5/24 | 🟡 2/13 | |
 | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 3/6 | — | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [uber/fx (DI)](../detail/lang.go.framework.fx.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 2/11 | |
 
