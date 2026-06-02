@@ -67,9 +67,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | 3628 | — | — |
-| DI injection point | 🔴 `missing` | — | 3628 | — | — |
-| DI scope resolution | 🔴 `missing` | — | 3628 | — | — |
+| DI binding extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/csharp/dotnet_di.go`<br>`internal/custom/csharp/dotnet_di_siblings_test.go`<br>`internal/custom/csharp/dotnet_di_test.go` | #3959 (epic #3872): ASP.NET Core MVC (targeted via Microsoft.AspNetCore.Mvc / Microsoft.NET.Sdk.Web) uses the identical Microsoft.Extensions.DependencyInjection container as ASP.NET Core, so the container-driven custom_csharp_dotnet_di extractor (#3699, NO framework gating) emits the SAME DI binding GRAPH: services.AddSingleton/AddScoped/AddTransient<IFoo,Foo>() (Try/Keyed + typeof forms) -> IFoo BINDS Foo with lifetime; single-type-arg -> self-BINDS. Verify-first probe TestDotnetDI_Sibling_AspNetMvc asserts IGreeter BINDS Greeter (lifetime=Scoped, framework=dotnet_di) fires for a Controller-based file with M.E.DI registration. |
+| DI injection point | 🟢 `partial` | `2026-06-03` | — | `internal/custom/csharp/dotnet_di.go`<br>`internal/custom/csharp/dotnet_di_siblings_test.go`<br>`internal/custom/csharp/dotnet_di_test.go` | #3959: container-driven custom_csharp_dotnet_di (#3699) emits INJECTED_INTO (service type -> consumer class, via=dotnet_constructor) for any class ctor; IConfiguration/IServiceProvider/IOptions<>/ILogger<> + primitives rejected. Probe TestDotnetDI_Sibling_AspNetMvc asserts IGreeter INJECTED_INTO the Controller class. PARTIAL mirrors aspnet-core: the registered-as-DI gate is structural and impl/provider resolves cross-file via the resolver pass; factory-lambda registrations not linked. |
+| DI scope resolution | ✅ `full` | `2026-06-03` | — | `internal/custom/csharp/dotnet_di.go`<br>`internal/custom/csharp/dotnet_di_siblings_test.go`<br>`internal/custom/csharp/dotnet_di_test.go` | #3959: BINDS edges carry the M.E.DI lifetime (Singleton/Scoped/Transient) parsed from the AddXxx verb -- identical container to aspnet-core. Value-asserted in TestDotnetDI_Sibling_AspNetMvc (lifetime=Scoped). |
 
 ### Testing
 

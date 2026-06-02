@@ -8823,16 +8823,22 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959 (epic #3872): ASP.NET Core MVC (targeted via Microsoft.AspNetCore.Mvc / Microsoft.NET.Sdk.Web) uses the identical Microsoft.Extensions.DependencyInjection container as ASP.NET Core, so the container-driven custom_csharp_dotnet_di extractor (#3699, NO framework gating) emits the SAME DI binding GRAPH: services.AddSingleton/AddScoped/AddTransient\u003cIFoo,Foo\u003e() (Try/Keyed + typeof forms) -\u003e IFoo BINDS Foo with lifetime; single-type-arg -\u003e self-BINDS. Verify-first probe TestDotnetDI_Sibling_AspNetMvc asserts IGreeter BINDS Greeter (lifetime=Scoped, framework=dotnet_di) fires for a Controller-based file with M.E.DI registration.",
+            "verified_at": "2026-06-03"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959: container-driven custom_csharp_dotnet_di (#3699) emits INJECTED_INTO (service type -\u003e consumer class, via=dotnet_constructor) for any class ctor; IConfiguration/IServiceProvider/IOptions\u003c\u003e/ILogger\u003c\u003e + primitives rejected. Probe TestDotnetDI_Sibling_AspNetMvc asserts IGreeter INJECTED_INTO the Controller class. PARTIAL mirrors aspnet-core: the registered-as-DI gate is structural and impl/provider resolves cross-file via the resolver pass; factory-lambda registrations not linked.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959: BINDS edges carry the M.E.DI lifetime (Singleton/Scoped/Transient) parsed from the AddXxx verb -- identical container to aspnet-core. Value-asserted in TestDotnetDI_Sibling_AspNetMvc (lifetime=Scoped).",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
@@ -9721,16 +9727,22 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959 (epic #3872): Carter is an ASP.NET Core-hosted framework that uses the identical Microsoft.Extensions.DependencyInjection container as ASP.NET Core, so the container-driven custom_csharp_dotnet_di extractor (#3699, NO framework gating) emits the SAME DI binding GRAPH: services.AddSingleton/AddScoped/AddTransient\u003cIFoo,Foo\u003e() (Try/Keyed + typeof forms) -\u003e IFoo BINDS Foo with lifetime; single-type-arg -\u003e self-BINDS. Verify-first probe TestDotnetDI_Sibling_Carter asserts IGreeter BINDS Greeter (lifetime=Scoped, framework=dotnet_di) fires for a ICarterModule-based file with M.E.DI registration.",
+            "verified_at": "2026-06-03"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959: container-driven custom_csharp_dotnet_di (#3699) emits INJECTED_INTO (service type -\u003e consumer class, via=dotnet_constructor) for any class ctor; IConfiguration/IServiceProvider/IOptions\u003c\u003e/ILogger\u003c\u003e + primitives rejected. Probe TestDotnetDI_Sibling_Carter asserts IGreeter INJECTED_INTO the ICarterModule class. PARTIAL mirrors aspnet-core: the registered-as-DI gate is structural and impl/provider resolves cross-file via the resolver pass; factory-lambda registrations not linked.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959: BINDS edges carry the M.E.DI lifetime (Singleton/Scoped/Transient) parsed from the AddXxx verb -- identical container to aspnet-core. Value-asserted in TestDotnetDI_Sibling_Carter (lifetime=Scoped).",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
@@ -10005,16 +10017,22 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959 (epic #3872): FastEndpoints is an ASP.NET Core-hosted framework that uses the identical Microsoft.Extensions.DependencyInjection container as ASP.NET Core, so the container-driven custom_csharp_dotnet_di extractor (#3699, NO framework gating) emits the SAME DI binding GRAPH: services.AddSingleton/AddScoped/AddTransient\u003cIFoo,Foo\u003e() (Try/Keyed + typeof forms) -\u003e IFoo BINDS Foo with lifetime; single-type-arg -\u003e self-BINDS. Verify-first probe TestDotnetDI_Sibling_FastEndpoints asserts IGreeter BINDS Greeter (lifetime=Scoped, framework=dotnet_di) fires for a Endpoint-based file with M.E.DI registration.",
+            "verified_at": "2026-06-03"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959: container-driven custom_csharp_dotnet_di (#3699) emits INJECTED_INTO (service type -\u003e consumer class, via=dotnet_constructor) for any class ctor; IConfiguration/IServiceProvider/IOptions\u003c\u003e/ILogger\u003c\u003e + primitives rejected. Probe TestDotnetDI_Sibling_FastEndpoints asserts IGreeter INJECTED_INTO the Endpoint class. PARTIAL mirrors aspnet-core: the registered-as-DI gate is structural and impl/provider resolves cross-file via the resolver pass; factory-lambda registrations not linked.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/csharp/dotnet_di.go","internal/custom/csharp/dotnet_di_siblings_test.go","internal/custom/csharp/dotnet_di_test.go"],
+            "notes": "#3959: BINDS edges carry the M.E.DI lifetime (Singleton/Scoped/Transient) parsed from the AddXxx verb -- identical container to aspnet-core. Value-asserted in TestDotnetDI_Sibling_FastEndpoints (lifetime=Scoped).",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
