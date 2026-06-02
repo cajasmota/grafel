@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 28 records · **java**: 1 · **JS/TS**: 1 · **multi**: 26
+**Total**: 31 records · **java**: 1 · **JS/TS**: 1 · **multi**: 29
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -18,7 +18,10 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.iac.cloudformation.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.resource.cloudformation.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Ansible (playbooks)](../detail/infra.iac.ansible.md) | 🟢 | — | — | 🟢 | 🟢 | |
+| [multi](../by-language/multi.md) | [Apache Airflow (DAG topology)](../detail/infra.orchestration.airflow.md) | 🟢 | — | — | 🟢 | 🟢 | |
+| [multi](../by-language/multi.md) | [Argo Workflows (DAG topology)](../detail/infra.orchestration.argo.md) | 🟢 | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Azure Bicep](../detail/infra.iac.bicep.md) | ✅ | — | — | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [Celery canvas (chain/group/chord topology)](../detail/infra.orchestration.celery-canvas.md) | 🟢 | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Dockerfile](../detail/infra.container.dockerfile.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Helm charts](../detail/infra.container.helm.md) | ✅ | ✅ | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Helm charts](../detail/infra.resource.helm.md) | — | — | — | ✅ | ✅ | |

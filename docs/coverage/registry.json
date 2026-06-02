@@ -1670,6 +1670,66 @@
       }
     },
     {
+      "id": "infra.orchestration.airflow",
+      "category": "platform",
+      "language": "multi",
+      "label": "Apache Airflow (DAG topology)",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/detector.go","internal/engine/workflow_dag_edges.go"],
+          "notes": "#3628 area #12: applyWorkflowDAGEdges (engine pass, registered in detector.go after applyWorkflowEdges) extracts the Airflow task-dependency DAG. Classic operators `t1 = PythonOperator(task_id=\"extract\")` and TaskFlow `@task def extract()` become SCOPE.Activity tasks owned by the SCOPE.Workflow (DAG name from `with DAG(\"id\")` / `@dag(dag_id=...)`) via EXECUTES_ACTIVITY. Static dependency operators emit TASK_DEPENDS_ON upstream-\u003edownstream: `extract \u003e\u003e transform \u003e\u003e load` -\u003e extract-\u003etransform-\u003eload; `[a,b] \u003e\u003e c` fan-in; `t1.set_downstream(t2)` / `set_upstream` (direction-flipped); `extract() \u003e\u003e transform()` decorator-call chains. Value-asserting tests pin exact edge direction and assert a lone task yields no false dependency edge. Honest-partial: dynamic task mapping (.expand()), loop-built operators, and programmatically-assembled chains are NOT resolved.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/workflow_dag_edges.go"],
+          "notes": "#3628 area #12: emits SCOPE.Workflow (the DAG, keyed workflow:airflow:\u003cdag\u003e) and SCOPE.Activity (each task, keyed task:airflow:\u003cdag\u003e:\u003ctask\u003e) entities with workflow_engine=airflow and topology=dag properties. Synthetics carry SourceFile=\"\" so the import-channel linker joins them. Partial: only statically-named tasks.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "infra.orchestration.argo",
+      "category": "platform",
+      "language": "multi",
+      "label": "Argo Workflows (DAG topology)",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/workflow_dag_edges.go"],
+          "notes": "#3628 area #12: applyWorkflowDAGEdges parses Argo Workflow/WorkflowTemplate/CronWorkflow YAML (gated on argoproj.io / kind:) via gopkg.in/yaml.v3. spec.templates[].dag.tasks[] with `dependencies: [t1]` emit TASK_DEPENDS_ON dependency-\u003etask (build-\u003etest-\u003edeploy); two deps fan in. `steps:` stages emit sequential TASK_DEPENDS_ON prev-stage-\u003enext-stage. Each task is a SCOPE.Activity owned by the SCOPE.Workflow (metadata.name) via EXECUTES_ACTIVITY. Value-asserting tests pin `dependencies:[build]` -\u003e build-\u003edeploy direction and assert a lone task / non-Argo manifest (Deployment) yield no edges. Honest-partial: withItems/withParam dynamic task expansion not resolved.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/workflow_dag_edges.go"],
+          "notes": "#3628 area #12: emits SCOPE.Workflow (workflow:argo:\u003cname\u003e) and SCOPE.Activity (task:argo:\u003cname\u003e:\u003ctask\u003e) entities with workflow_engine=argo. Partial: statically-declared dag.tasks / steps only.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "infra.orchestration.celery-canvas",
+      "category": "platform",
+      "language": "multi",
+      "label": "Celery canvas (chain/group/chord topology)",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/workflow_dag_edges.go"],
+          "notes": "#3628 area #12: applyWorkflowDAGEdges extracts Celery canvas topology (distinct from celery_pubsub_edges.go which models broker dispatch). `chain(a.s(), b.s(), c.s())` emits sequential TASK_DEPENDS_ON a-\u003eb-\u003ec; `chord([a.s(),b.s()])(callback.s())` emits fan-in a-\u003ecallback, b-\u003ecallback; `group(a.s(),b.s())` registers parallel members with NO ordering edge (honest). Each .s()/.si() signature becomes a SCOPE.Activity (task:celery:canvas:\u003ctask\u003e) owned by the SCOPE.Workflow via EXECUTES_ACTIVITY. Value-asserting tests pin chain direction, chord fan-in, and assert group members produce zero TASK_DEPENDS_ON edges. Honest-partial: nested canvas topology is flattened in source order; dynamically-built signatures not resolved.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/workflow_dag_edges.go"],
+          "notes": "#3628 area #12: emits SCOPE.Workflow (workflow:celery:canvas) and SCOPE.Activity (task:celery:canvas:\u003ctask\u003e) entities with workflow_engine=celery. Partial: statically-named signatures only.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
       "id": "infra.resource.aws-cdk",
       "category": "platform",
       "language": "multi",

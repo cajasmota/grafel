@@ -782,6 +782,15 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// without new linker code. Append-only — cannot regress surrounding passes.
 	applyPass(applyWorkflowEdges)
 	applyPass(applySFNStartExecutionEdges)
+	// Workflow/orchestration DAG topology (#3628 area #12). Extends the
+	// SCOPE.Workflow / SCOPE.Activity entity shape to the task-dependency DAG
+	// orchestrators that workflow_edges.go did not cover: Airflow (Python
+	// operators + `>>` / set_downstream chains and @task TaskFlow), Celery
+	// canvas (chain/group/chord), and Argo Workflows (YAML dag.tasks
+	// dependencies + sequential steps). Emits EXECUTES_ACTIVITY (DAG→task) and
+	// TASK_DEPENDS_ON (upstream→downstream) edges. Append-only — cannot regress
+	// surrounding passes.
+	applyPass(applyWorkflowDAGEdges)
 	// Redis pub/sub + Streams channel discovery (#930). Emits SCOPE.Queue
 	// entities keyed by channel:redis-pubsub:<name> or stream:redis:<name>,
 	// plus PUBLISHES_TO / SUBSCRIBES_TO edges. Covers Python (redis-py /
