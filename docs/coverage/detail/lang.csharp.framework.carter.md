@@ -18,9 +18,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
-| Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | carter route endpoint_synthesis via regex extractor; heuristic |
-| Handler attribution | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | carter module/endpoint class declarations detected via regex; heuristic |
-| Route extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | carter route path strings extracted via regex; heuristic |
+| Endpoint synthesis | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3962: synthesizeCarter promotes app.MapGet/Post/Put/Delete/Patch routes declared in an ICarterModule to the canonical http_endpoint_definition shape (http:<VERB>:<path>) emitted by synthesizeASPNetCore — same FrameworkASPNetCore canonicaliser, dispatched in the csharp case of http_endpoint_synthesis.go. No longer regex-only SCOPE.Operation. |
+| Handler attribution | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: each synthesized Carter endpoint carries source_handler=SCOPE.Operation:<Module>.AddRoutes, which ResolveHTTPEndpointHandlers rebinds to the module's AddRoutes method (HANDLES edge). Value-asserted in TestSynth_Carter. |
+| Route extraction | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: carterMapRouteRe extracts the verb+path of each app.MapVerb call; the path is canonicalised ({id:int}->{id}) into the endpoint ID. Asserted on /widgets/{id} in TestSynth_Carter. |
 
 ### View
 

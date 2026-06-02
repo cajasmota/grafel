@@ -9652,25 +9652,25 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "carter route endpoint_synthesis via regex extractor; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3962",
+            "notes": "#3962: synthesizeCarter promotes app.MapGet/Post/Put/Delete/Patch routes declared in an ICarterModule to the canonical http_endpoint_definition shape (http:\u003cVERB\u003e:\u003cpath\u003e) emitted by synthesizeASPNetCore — same FrameworkASPNetCore canonicaliser, dispatched in the csharp case of http_endpoint_synthesis.go. No longer regex-only SCOPE.Operation.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "carter module/endpoint class declarations detected via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: each synthesized Carter endpoint carries source_handler=SCOPE.Operation:\u003cModule\u003e.AddRoutes, which ResolveHTTPEndpointHandlers rebinds to the module's AddRoutes method (HANDLES edge). Value-asserted in TestSynth_Carter.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "carter route path strings extracted via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: carterMapRouteRe extracts the verb+path of each app.MapVerb call; the path is canonicalised ({id:int}-\u003e{id}) into the endpoint ID. Asserted on /widgets/{id} in TestSynth_Carter.",
+            "verified_at": "2026-06-03"
           }
         },
         "View": {
@@ -9949,25 +9949,25 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "fastendpoints route endpoint_synthesis via regex extractor; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3962",
+            "notes": "#3962: synthesizeFastEndpoints promotes the bare Verb(\"/path\") registrations inside a class : Endpoint\u003cTReq[,TRes]\u003e Configure() body to the canonical http_endpoint_definition shape (http:\u003cVERB\u003e:\u003cpath\u003e), dispatched in the csharp case. No longer regex-only SCOPE.Operation.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "fastendpoints module/endpoint class declarations detected via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: each synthesized FastEndpoints endpoint carries source_handler=SCOPE.Operation:\u003cClass\u003e.HandleAsync (or \u003cClass\u003e when no HandleAsync), attributing to the endpoint's handler method. Value-asserted in TestSynth_FastEndpoints + TestSynth_FastEndpoints_NoHandleAsync.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "fastendpoints route path strings extracted via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: feRouteRe extracts the verb+path of each bare Configure() route helper; the leading non-dot boundary excludes consumer client.Get(...) calls (negative TestSynth_FastEndpoints_NoConsumerCall).",
+            "verified_at": "2026-06-03"
           }
         },
         "View": {
@@ -10665,25 +10665,25 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "nancyfx route endpoint_synthesis via regex extractor; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3962",
+            "notes": "#3962: synthesizeNancy promotes both index-syntax Get[\"/path\"] (Nancy 1.x) and call-syntax Get(\"/path\") (Nancy 2.x) routes inside a : NancyModule subclass to the canonical http_endpoint_definition shape (http:\u003cVERB\u003e:\u003cpath\u003e), dispatched in the csharp case. No longer regex-only SCOPE.Operation.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "nancyfx module/endpoint class declarations detected via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: each synthesized Nancy endpoint carries source_handler=SCOPE.Operation:\u003cModule\u003e (routes are inline lambdas assigned in the module ctor, so the module is the handler). Value-asserted in TestSynth_Nancy.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "nancyfx route path strings extracted via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: nancyIndexRouteRe + nancyCallRouteRe extract verb+path for both Nancy route-declaration styles; the module gate prevents call-syntax collision with FastEndpoints' bare Get(). Asserted on /widgets/{id} in TestSynth_Nancy.",
+            "verified_at": "2026-06-03"
           }
         },
         "View": {
@@ -11163,25 +11163,25 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "servicestack route endpoint_synthesis via regex extractor; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3962",
+            "notes": "#3962: synthesizeServiceStack promotes [Route(\"/path\",\"GET POST\")] request-DTO attributes (verbs from the attribute, falling back to the service's handler methods, else GET) to the canonical http_endpoint_definition shape, dispatched in the csharp case. No longer regex-only SCOPE.Operation.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "servicestack module/endpoint class declarations detected via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: each synthesized ServiceStack endpoint carries source_handler=SCOPE.Operation:\u003cService\u003e.\u003cHandlerMethod\u003e, picking the verb-specific Get/Post method when present, else the Any catch-all. Value-asserted per-verb in TestSynth_ServiceStack + TestSynth_ServiceStack_AnyHandler.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/csharp/minor_routes.go"],
-            "issue": "3263",
-            "notes": "servicestack route path strings extracted via regex; heuristic",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_csharp_minor.go","internal/engine/http_endpoint_csharp_minor_test.go"],
+            "issue": "3962",
+            "notes": "#3962: ssRouteAttrRe extracts the path + optional verb list from each [Route(...)] attribute on a request DTO; the path is canonicalised into the endpoint ID. Asserted on /widgets/{Id} in TestSynth_ServiceStack.",
+            "verified_at": "2026-06-03"
           }
         },
         "View": {

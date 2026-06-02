@@ -875,6 +875,20 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// resolver's typed-arg request shape + typed-return response shape.
 		// Mutates Properties in place; never adds/removes entities.
 		applyHotChocolateAuthShapes(string(content), path, entities, hcBefore)
+		// Producer side (#3962, epic #3872): promote the four .NET minor HTTP
+		// frameworks — Carter (app.MapVerb in ICarterModule.AddRoutes),
+		// FastEndpoints (Endpoint<TReq> + Verb("/path") in Configure()), NancyFX
+		// (Get["/path"] / Get("/path") in : NancyModule) and ServiceStack
+		// ([Route("/path","VERBS")] + : Service handlers) — from the regex-only
+		// SCOPE.Operation path (internal/custom/csharp/minor_routes.go) to the
+		// SAME canonical http_endpoint_definition shape synthesizeASPNetCore
+		// emits, so their Routing cells reach parity and the request/response
+		// shape substrate (which keys off the synthesized endpoint) can join.
+		// Each is file-signal-gated so it no-ops on plain ASP.NET Core files.
+		synthesizeCarter(string(content), emit)
+		synthesizeFastEndpoints(string(content), emit)
+		synthesizeNancy(string(content), emit)
+		synthesizeServiceStack(string(content), emit)
 		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
 		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
 	case "rust":

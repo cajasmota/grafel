@@ -18,9 +18,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
-| Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | servicestack route endpoint_synthesis via regex extractor; heuristic |
-| Handler attribution | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | servicestack module/endpoint class declarations detected via regex; heuristic |
-| Route extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | servicestack route path strings extracted via regex; heuristic |
+| Endpoint synthesis | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3962: synthesizeServiceStack promotes [Route("/path","GET POST")] request-DTO attributes (verbs from the attribute, falling back to the service's handler methods, else GET) to the canonical http_endpoint_definition shape, dispatched in the csharp case. No longer regex-only SCOPE.Operation. |
+| Handler attribution | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: each synthesized ServiceStack endpoint carries source_handler=SCOPE.Operation:<Service>.<HandlerMethod>, picking the verb-specific Get/Post method when present, else the Any catch-all. Value-asserted per-verb in TestSynth_ServiceStack + TestSynth_ServiceStack_AnyHandler. |
+| Route extraction | ✅ `full` | `2026-06-03` | 3962 | `internal/engine/http_endpoint_csharp_minor.go`<br>`internal/engine/http_endpoint_csharp_minor_test.go` | #3962: ssRouteAttrRe extracts the path + optional verb list from each [Route(...)] attribute on a request DTO; the path is canonicalised into the endpoint ID. Asserted on /widgets/{Id} in TestSynth_ServiceStack. |
 
 ### View
 
