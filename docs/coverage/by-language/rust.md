@@ -70,17 +70,17 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟢 4/4 | |
 | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟢 8/8 | |
 | [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/8 | |
-| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟢 1/1 | |
-| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟢 1/1 | |
-| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🟢 1/1 | |
-| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🟢 1/1 | |
-| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🟢 1/1 | |
-| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 1/1 | |
-| [redis-rs](../detail/lang.rust.driver.redis.md) | 🟢 1/1 | |
+| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🔴 0/1 | |
+| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🔴 0/1 | |
+| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/1 | |
+| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🔴 0/1 | |
+| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/1 | |
+| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🔴 0/1 | |
+| [redis-rs](../detail/lang.rust.driver.redis.md) | 🔴 0/1 | |
 | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ✅ 1/1 | |
-| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟢 1/1 | |
+| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/1 | |
 | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
-| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟢 1/1 | |
+| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🔴 0/1 | |
 
 
 ## Other

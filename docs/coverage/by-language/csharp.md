@@ -86,17 +86,17 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟢 2/2 | |
-| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟢 2/2 | |
+| [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 1/2 | |
+| [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 1/2 | |
 | [Dapper](../detail/lang.csharp.orm.dapper.md) | ✅ 3/3 | |
 | [Entity Framework Core](../detail/lang.csharp.orm.efcore.md) | ✅ 8/8 | |
 | [LINQ to SQL](../detail/lang.csharp.orm.linq-to-sql.md) | 🟢 7/7 | |
 | [LinqToDB](../detail/lang.csharp.orm.linqtodb.md) | 🟢 6/6 | |
-| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🟢 1/1 | |
-| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟢 2/2 | |
-| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🟢 1/1 | |
-| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟢 2/2 | |
+| [Microsoft.Data.Sqlite](../detail/lang.csharp.driver.sqlite.md) | 🔴 0/1 | |
+| [MongoDB.Driver (C#)](../detail/lang.csharp.driver.mongodb.md) | 🟡 1/2 | |
+| [MySQL.Data / MySqlConnector](../detail/lang.csharp.driver.mysql.md) | 🔴 0/1 | |
+| [NEST (Elasticsearch .NET)](../detail/lang.csharp.driver.elastic.md) | 🟡 1/2 | |
 | [NHibernate](../detail/lang.csharp.orm.nhibernate.md) | 🟢 7/7 | |
-| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🟢 1/1 | |
-| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🟢 1/1 | |
-| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🟢 1/1 | |
+| [Neo4j.Driver (C#)](../detail/lang.csharp.driver.neo4j.md) | 🔴 0/1 | |
+| [Npgsql (PostgreSQL)](../detail/lang.csharp.driver.npgsql.md) | 🔴 0/1 | |
+| [StackExchange.Redis](../detail/lang.csharp.driver.redis.md) | 🔴 0/1 | |

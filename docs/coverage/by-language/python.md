@@ -89,19 +89,19 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟢 2/2 | |
-| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟢 6/6 | |
+| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/6 | |
 | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
-| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟢 6/6 | |
+| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟡 5/6 | |
 | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟢 2/2 | |
 | [Peewee](../detail/lang.python.orm.peewee.md) | 🟢 6/6 | |
 | [Pony ORM](../detail/lang.python.orm.pony.md) | 🟢 6/6 | |
 | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
 | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟢 8/8 | |
 | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟢 7/7 | |
-| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟢 1/1 | |
-| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟢 1/1 | |
-| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟢 1/1 | |
-| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | 🟢 1/1 | |
+| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🔴 0/1 | |
+| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🔴 0/1 | |
+| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🔴 0/1 | |
+| [neo4j (Python driver)](../detail/lang.python.driver.neo4j.md) | 🔴 0/1 | |
 | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
 | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |
