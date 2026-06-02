@@ -1188,6 +1188,31 @@ const (
 	//   "dependency_kind" : runtime|dev|peer|locked|indirect (from the manifest).
 	// Emitted by internal/extractors/cross/manifest/extractor.go.
 	RelationshipKindDependsOnPackage RelationshipKind = "DEPENDS_ON_PACKAGE"
+
+	// #3834 (epic #3829, MRO T4): member-granularity inheritance edge.
+	//   INHERITS : an inherited member STUB (e.g. a bodyless DRF
+	//              `RoleViewSet.retrieve` synthetic, or a `ChildService.handle`
+	//              the child never redeclares) → the DEFINING member that owns
+	//              the real body (the in-repo base method, or — when the base is
+	//              external and the body is not indexed — a synthetic contract
+	//              node from the baseknowledge pack).
+	// This is the member-level counterpart of the class-level EXTENDS edge: it
+	// lets neighbors/def_use/trace HOP from the inherited stub (which has empty
+	// CALLS/called_by) to the defining body's call graph, so traversal reaches
+	// the real implementation instead of dead-ending at the bodyless node (the
+	// rewrite agent's G5). Edge properties:
+	//   "member"         : the inherited member's bare name (e.g. "retrieve").
+	//   "owning_class"   : the subclass that inherits the member.
+	//   "defining_class" : FQN of the class whose body defines the member
+	//                      (in-repo base name, or external pack FQN such as
+	//                      "rest_framework.mixins.RetrieveModelMixin").
+	//   "resolved_from"  : "extends_in_repo" | "baseknowledge_pack".
+	//   "external"       : "true" when the defining body is an external library
+	//                      member described only by the pack (no in-repo body).
+	// The MCP read path (internal/mcp/mro_traverse.go) projects this edge
+	// synthetically from the EXTENDS walk + pack so it works before any
+	// indexer-side emission; an indexer producer MAY later materialise it.
+	RelationshipKindInherits RelationshipKind = "INHERITS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -1339,6 +1364,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindBroadcastsTo,
 		// #3628 data-model: field/param → enum value-set edge.
 		RelationshipKindTypedAs,
+		// #3834 (epic #3829) member-granularity inheritance edge:
+		RelationshipKindInherits,
 	}
 }
 
