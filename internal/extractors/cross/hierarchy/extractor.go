@@ -30,6 +30,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 
 	"go.opentelemetry.io/otel"
@@ -107,6 +108,34 @@ var pyInterfaceBases = map[string]bool{
 
 // Ruby: class Foo < Bar
 var rubyClassRE = regexp.MustCompile(`(?m)^class\s+(\w+)\s*<\s*([\w:]+)`)
+
+// Ruby: opening of a class OR module declaration (with or without a superclass).
+// Captures the keyword (class|module) and the declared name so the mixin pass
+// can attribute an `include`/`prepend`/`extend` to the lexically enclosing
+// class/module. Anchored at column 0 OR after leading indentation so nested
+// declarations are still recognised.
+var rubyClassOrModuleRE = regexp.MustCompile(`(?m)^[ \t]*(class|module)\s+(\w+)`)
+
+// Ruby: `end` keyword on its own line — used to track the lexical scope stack
+// so `include` is attributed to the innermost open class/module.
+var rubyEndRE = regexp.MustCompile(`(?m)^[ \t]*end\b`)
+
+// Ruby mixin: `include M`, `prepend M`, `extend M`. The op group selects the
+// precedence (#3840): prepend wins over the class's own method, include/extend
+// lose to it. Captures a single constant path (Foo or Foo::Bar). Multiple
+// modules on one line (`include A, B`) are split downstream.
+var rubyMixinRE = regexp.MustCompile(`(?m)^[ \t]*(include|prepend|extend)\s+([\w:][\w:,\s]*?)[ \t]*$`)
+
+// PHP trait usage inside a class/trait body: `use Audit;`, `use A, B;`,
+// `use Audit { foo as bar; }` (#3840). The leading delimiter ensures we don't
+// match a substring; the names group captures one or more comma-separated trait
+// names (FQ or leaf). A trailing `{ ... }` adaptation block or `;` terminates.
+// Distinguished from a top-level namespace import (`use Foo\Bar;`) by being
+// matched only within class/trait brace scope (see extractPHPTraits).
+var phpTraitUseRE = regexp.MustCompile(`(?m)(?:^|[\s;{])use\s+([\\\w][\\\w,\s]*?)\s*(?:\{|;)`)
+
+// PHP class OR trait declaration opener (name only) — anchors trait-use scope.
+var phpClassOpenRE = regexp.MustCompile(`(?:^|[\s;{])(?:abstract\s+|final\s+)?(?:class|trait)\s+(\w+)`)
 
 // Go embedded struct:
 // type Foo struct { ... Bar ... *Baz ... }
@@ -557,6 +586,219 @@ func extractRuby(source, filePath string, res *result) {
 		})
 		res.extendsFound++
 	}
+
+	extractRubyMixins(source, filePath, res)
+}
+
+// extractRubyMixins emits an IMPLEMENTS edge for every `include`/`prepend`/
+// `extend M` mixin, from the lexically-enclosing class/module to the mixed-in
+// module (#3840, epic #3829 MRO T8). It models the SAME member-promotion
+// semantics as Java interface defaults: the MCP MRO walk (extendsBases) already
+// follows IMPLEMENTS and only resolves a member when the module declares it
+// with a REAL body, so an external/unindexed module falls through to
+// honest-unresolved (no fabrication).
+//
+// We reuse IMPLEMENTS (not a new edge kind) — same choice Rust trait_impl makes
+// — and tag the edge `kind=ruby_mixin` + `mixin_op` so the precedence is
+// recoverable. Resolution is name-based (base_name = the module's leaf
+// constant), matching how Ruby methods are keyed (Module.member) downstream.
+//
+// Scope attribution: Ruby has no braces, so we track a lexical stack by scanning
+// class/module openers and `end` closers in source order; a mixin is attributed
+// to the innermost open class/module. A mixin at file top-level (no enclosing
+// class) is skipped — there is nothing to attach the promoted member to.
+func extractRubyMixins(source, filePath string, res *result) {
+	type tok struct {
+		pos  int
+		kind string // "open" | "end" | "include" | "prepend" | "extend"
+		name string // class/module name for "open"; module list for a mixin
+	}
+	var toks []tok
+	for _, im := range rubyClassOrModuleRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 3)
+		toks = append(toks, tok{pos: im[0], kind: "open", name: m[2]})
+	}
+	for _, im := range rubyEndRE.FindAllStringIndex(source, -1) {
+		toks = append(toks, tok{pos: im[0], kind: "end"})
+	}
+	for _, im := range rubyMixinRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 3)
+		toks = append(toks, tok{pos: im[0], kind: m[1], name: m[2]})
+	}
+	// Source order is the lexical order for the stack machine.
+	sort.SliceStable(toks, func(i, j int) bool { return toks[i].pos < toks[j].pos })
+
+	var stack []string // enclosing class/module names, innermost last
+	for _, tk := range toks {
+		switch tk.kind {
+		case "open":
+			stack = append(stack, tk.name)
+		case "end":
+			if len(stack) > 0 {
+				stack = stack[:len(stack)-1]
+			}
+		default: // include | prepend | extend
+			if len(stack) == 0 {
+				// Top-level mixin — no enclosing class to attach to. Skip rather
+				// than fabricate an owner.
+				continue
+			}
+			owner := stack[len(stack)-1]
+			clsID := classRef(filePath, owner, "ruby")
+			for _, modRaw := range strings.Split(tk.name, ",") {
+				modName := strings.TrimSpace(modRaw)
+				if modName == "" || modName == "self" {
+					// `extend self` / `include self` is a self-mixin, not a
+					// cross-module member promotion — nothing to resolve.
+					continue
+				}
+				modLeaf := rubyConstLeaf(modName)
+				modID := ifaceRef(modLeaf, "ruby")
+				res.addEntity(types.EntityRecord{
+					Name: modLeaf, Kind: "SCOPE.Component", Subtype: "module",
+					SourceFile: filePath, Language: "ruby",
+					Properties: map[string]string{
+						"role": "module", "ref": modID,
+						"provenance": "INFERRED_FROM_CLASS_HIERARCHY",
+					},
+					QualityScore: 0.9,
+				})
+				res.addRel(clsID, modID, "IMPLEMENTS", map[string]string{
+					"language":  "ruby",
+					"kind":      "ruby_mixin",
+					"mixin_op":  tk.kind,
+					"base_name": modLeaf,
+				})
+				res.implementsFound++
+			}
+		}
+	}
+}
+
+// rubyConstLeaf returns the trailing constant of a `Foo::Bar::Baz` path. Ruby
+// methods are keyed by their bare module/class leaf downstream, so the
+// base_name must be the leaf for the MRO walk to match Module.member.
+func rubyConstLeaf(s string) string {
+	if i := strings.LastIndex(s, "::"); i >= 0 {
+		return s[i+2:]
+	}
+	return s
+}
+
+// extractPHPTraits emits an IMPLEMENTS edge for every `use Trait;` statement
+// inside a class/trait body, from the enclosing class to the used trait (#3840,
+// epic #3829 MRO T8). Same member-promotion model as the Ruby mixin / Java
+// interface-default path: the MCP MRO walk follows IMPLEMENTS and only resolves
+// a member when the trait declares it with a REAL body (the PHP extractor emits
+// trait methods as Trait.method), so an external/unindexed trait falls through
+// to honest-unresolved — never fabricated.
+//
+// Reuses IMPLEMENTS (no new edge kind) tagged kind=php_trait. The challenge is
+// disambiguating a TRAIT use from a top-level namespace import (`use Foo\Bar;`),
+// which shares the `use` keyword: a trait use lives INSIDE a class/trait brace
+// scope, an import lives at file/namespace scope. We track brace depth and the
+// innermost enclosing class to attribute the trait correctly; a `use` at depth 0
+// is an import and is ignored here (the PHP extractor already emits it as
+// IMPORTS).
+func extractPHPTraits(source, filePath string, res *result) {
+	type frame struct {
+		name  string
+		depth int // brace depth at which this class's body opened
+	}
+	var stack []frame
+
+	type opener struct {
+		pos  int
+		name string
+	}
+	var openers []opener
+	for _, im := range phpClassOpenRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 2)
+		openers = append(openers, opener{pos: im[0], name: m[1]})
+	}
+	oi := 0
+
+	type useTok struct {
+		pos   int
+		names string
+	}
+	var uses []useTok
+	for _, im := range phpTraitUseRE.FindAllStringSubmatchIndex(source, -1) {
+		m := groupStrings(source, im, 2)
+		uses = append(uses, useTok{pos: im[0], names: m[1]})
+	}
+	ui := 0
+
+	depth := 0
+	pendingClass := "" // class name awaiting its opening brace
+	for pos := 0; pos < len(source); pos++ {
+		for oi < len(openers) && openers[oi].pos <= pos {
+			pendingClass = openers[oi].name
+			oi++
+		}
+		ch := source[pos]
+		switch ch {
+		case '{':
+			depth++
+			if pendingClass != "" {
+				stack = append(stack, frame{name: pendingClass, depth: depth})
+				pendingClass = ""
+			}
+		case '}':
+			if len(stack) > 0 && stack[len(stack)-1].depth == depth {
+				stack = stack[:len(stack)-1]
+			}
+			if depth > 0 {
+				depth--
+			}
+		}
+		for ui < len(uses) && uses[ui].pos <= pos {
+			u := uses[ui]
+			ui++
+			if len(stack) == 0 {
+				continue // top-level import, not a trait use
+			}
+			owner := stack[len(stack)-1].name
+			clsID := classRef(filePath, owner, "php")
+			for _, traitRaw := range strings.Split(u.names, ",") {
+				traitName := strings.TrimSpace(traitRaw)
+				if traitName == "" {
+					continue
+				}
+				if traitName == "function" || traitName == "const" {
+					continue
+				}
+				traitLeaf := phpTraitLeaf(traitName)
+				traitID := ifaceRef(traitLeaf, "php")
+				res.addEntity(types.EntityRecord{
+					Name: traitLeaf, Kind: "SCOPE.Component", Subtype: "trait",
+					SourceFile: filePath, Language: "php",
+					Properties: map[string]string{
+						"role": "trait", "ref": traitID,
+						"provenance": "INFERRED_FROM_CLASS_HIERARCHY",
+					},
+					QualityScore: 0.9,
+				})
+				res.addRel(clsID, traitID, "IMPLEMENTS", map[string]string{
+					"language":  "php",
+					"kind":      "php_trait",
+					"base_name": traitLeaf,
+				})
+				res.implementsFound++
+			}
+		}
+	}
+}
+
+// phpTraitLeaf returns the trailing segment of a `Foo\Bar\Audit` trait path.
+// PHP trait methods are keyed by the bare trait leaf downstream (Trait.method),
+// so the base_name must be the leaf for the MRO walk to match.
+func phpTraitLeaf(s string) string {
+	s = strings.TrimPrefix(s, "\\")
+	if i := strings.LastIndex(s, "\\"); i >= 0 {
+		return s[i+1:]
+	}
+	return s
 }
 
 func extractGo(source, filePath string, res *result) {
@@ -805,6 +1047,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	case "java", "typescript", "javascript", "csharp", "kotlin", "scala", "dart", "php":
 		extractJTCSharp(source, file.Path, lang, res)
 		extractJTCInterface(source, file.Path, lang, res)
+		if lang == "php" {
+			// PHP traits (`class C { use T; }`) — member promotion via IMPLEMENTS
+			// (#3840). Only PHP has the trait-use syntax in this family.
+			extractPHPTraits(source, file.Path, res)
+		}
 	case "python":
 		// Issue #2603 — Django migration files are pruned by default.  The
 		// Python extractor already returns early for these files, but this
