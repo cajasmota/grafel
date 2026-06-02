@@ -89,7 +89,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DB effect | 🔴 `missing` | — | 3619 | — | — |
+| DB effect | 🟢 `partial` | `2026-06-02` | 3903 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/substrate_jsts_graphql_codefirst_test.go` | #3903 (verify-first): effect_sinks_jsts.go is registered per-LANGUAGE on "jsts" and dispatched by file extension (LanguageForPath) with zero framework refs; effect_propagation.go binds each attributed sink to its graph entity. Pothos resolvers live in ordinary .ts files, so db_read/db_write ORM primitives are detected and attributed to the enclosing function. Proven by TestSubstrate_JSTS_Pothos_EffectsAttribute (db_read+db_write attributed to persistUser). Partial: attribution covers the standard fn/service/handler forms these codebases contain; the inline-arrow / @Arg-decorated resolver forms have no addressable header so their in-body sinks are not bound there. |
 
 ### Substrate
 
@@ -99,12 +99,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Config consumption | 🔴 `missing` | — | 3619 | — | — |
 | Constant propagation | 🔴 `missing` | — | 3619 | — | — |
 | Dead code detection | 🔴 `missing` | — | 3619 | — | — |
-| Def use chain extraction | 🔴 `missing` | — | 3619 | — | — |
+| Def use chain extraction | 🟢 `partial` | `2026-06-02` | 3903 | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use.go`<br>`internal/substrate/def_use_jsts.go`<br>`internal/substrate/substrate_jsts_graphql_codefirst_test.go` | #3903 (verify-first): def_use_jsts.go is registered per-LANGUAGE on "jsts" (file-extension dispatch via LanguageForPath, zero framework refs); def_use_pass.go composes intra-procedural reaching-definitions over the resulting VarDef/VarUse facts. Pothos .ts bodies yield real def-use chains attributed to their enclosing function. Proven by TestSubstrate_JSTS_Pothos_DefUseAttributes. Partial: attribution follows the per-language header scanner (named fns / const-arrows / plain methods bind; inline-arrow resolvers in t.field({...}) do not). |
 | Env fallback recognition | 🔴 `missing` | — | 3619 | — | — |
 | Error flow | ✅ `full` | `2026-06-02` | 3628 | `internal/extractor/exception_flow.go`<br>`internal/extractors/javascript/exception_flow.go`<br>`internal/extractors/javascript/exception_flow_test.go` | throw new X -> THROWS; e instanceof X catch-filter -> CATCHES; untyped throw/catch dropped (#3628) |
 | Feature flag gating | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Fs effect | 🔴 `missing` | — | 3619 | — | — |
-| HTTP effect | 🔴 `missing` | — | 3619 | — | — |
+| HTTP effect | 🟢 `partial` | `2026-06-02` | 3903 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/substrate_jsts_graphql_codefirst_test.go` | #3903 (verify-first): the per-LANGUAGE effect_sinks_jsts.go http_out detector (fetch/axios/got/ky/...) fires on Pothos .ts bodies and attributes to the enclosing function; effect_propagation.go binds it. Proven by TestSubstrate_JSTS_Pothos_EffectsAttribute (http_out attributed to persistUser). Partial: same standard-form attribution scope as db_effect. |
 | Import resolution quality | 🔴 `missing` | — | 3619 | — | — |
 | Module cycle detection | 🔴 `missing` | — | 3619 | — | — |
 | Mutation effect | 🔴 `missing` | — | 3619 | — | — |
@@ -115,7 +115,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Response shape extraction | 🔴 `missing` | — | 3619 | — | — |
 | Sanitizer recognition | 🔴 `missing` | — | 3619 | — | — |
 | Schema drift detection | 🔴 `missing` | — | 3619 | — | — |
-| Taint sink detection | 🔴 `missing` | — | 3619 | — | — |
+| Taint sink detection | 🟢 `partial` | `2026-06-02` | 3903 | `internal/links/taint_flow.go`<br>`internal/substrate/substrate_jsts_graphql_codefirst_test.go`<br>`internal/substrate/taint_sites_jsts.go` | #3903 (verify-first): the per-LANGUAGE taint_sites_jsts.go sink detector fires on Pothos .ts bodies — a raw-SQL concat (db.query('... ' + x)) is flagged as a sql_injection sink. Proven by TestSubstrate_JSTS_Pothos_TaintFires. Partial: the security-sensitive sink primitives are detected per-language regardless of framework; full source→sink flow linkage depends on handler attribution (see def_use/effects scope). |
 | Taint source detection | 🔴 `missing` | — | 3619 | — | — |
 | Template pattern catalog | 🔴 `missing` | — | 3619 | — | — |
 | Vulnerability finding | 🔴 `missing` | — | 3619 | — | — |

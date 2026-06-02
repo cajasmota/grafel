@@ -62,20 +62,20 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/13 | |
 | [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 3/6 | — | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [uber/fx (DI)](../detail/lang.go.framework.fx.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 2/11 | |
-| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 6/11 | |
+| [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 6/11 | |
 | [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
 | [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [JS/TS](../by-language/jsts.md) | [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [JS/TS](../by-language/jsts.md) | [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
 | [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 10/12 | |
-| [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [JS/TS](../by-language/jsts.md) | [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/13 | |
-| [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
-| [JS/TS](../by-language/jsts.md) | [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/13 | |
+| [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [JS/TS](../by-language/jsts.md) | [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 4/24 | 🟡 2/13 | |
+| [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [JS/TS](../by-language/jsts.md) | [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/13 | |
+| [JS/TS](../by-language/jsts.md) | [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 4/24 | 🟡 2/13 | |
 | [lua](../by-language/lua.md) | [Apache APISIX](../detail/lang.lua.framework.apisix.md) | 🟡 2/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/12 | |
 | [lua](../by-language/lua.md) | [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/12 | |
 | [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | 🟡 3/6 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |

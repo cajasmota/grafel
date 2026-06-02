@@ -31735,8 +31735,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go","internal/substrate/dataflow_jsts_express_siblings_test.go"],
+            "issue": "3904",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), credited via #3904 (verify-first): the dataflow_jsts.go matcher is registered per-LANGUAGE on the \"jsts\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), NOT per-framework — it matches the GENERIC accessor shapes req.body/query/params and ctx.request.body, which adonisjs route handlers use, so it already sniffs them today. Proven by TestDataFlowJSTS_Adonis_ReqBodyToDBWrite (a adonisjs handler reading req.body.username flowing into a User.create db_write sink). Intra-fn assignment tracking + multi-hop (≤DataFlowMaxHops=3) local-call + cross-file propagation; sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, dynamic keys, embedded-arg, spread/rest/destructured params, recursion/cycle, 4th hop, external/ambiguous imports; decorator-injected params (NestJS @Body) NOT covered. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -33605,8 +33608,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go","internal/substrate/dataflow_jsts_express_siblings_test.go"],
+            "issue": "3904",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), credited via #3904 (verify-first): the dataflow_jsts.go matcher is registered per-LANGUAGE on the \"jsts\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), NOT per-framework — it matches the GENERIC accessor shapes req.body/query/params and ctx.request.body, which feathers route handlers use, so it already sniffs them today. Proven by TestDataFlowJSTS_Feathers_ReqBodyToDBWrite (a feathers handler reading req.body.email flowing into a Account.create db_write sink). Intra-fn assignment tracking + multi-hop (≤DataFlowMaxHops=3) local-call + cross-file propagation; sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, dynamic keys, embedded-arg, spread/rest/destructured params, recursion/cycle, 4th hop, external/ambiguous imports; decorator-injected params (NestJS @Body) NOT covered. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -34373,8 +34379,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go","internal/substrate/dataflow_jsts_express_siblings_test.go"],
+            "issue": "3904",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), credited via #3904 (verify-first): the dataflow_jsts.go matcher is registered per-LANGUAGE on the \"jsts\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), NOT per-framework — it matches the GENERIC accessor shapes req.body/query/params and ctx.request.body, which hapi route handlers use, so it already sniffs them today. Proven by TestDataFlowJSTS_Hapi_CtxRequestBodyToDBWrite (a hapi handler reading ctx.request.body.label flowing into a Record.create db_write sink). Intra-fn assignment tracking + multi-hop (≤DataFlowMaxHops=3) local-call + cross-file propagation; sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, dynamic keys, embedded-arg, spread/rest/destructured params, recursion/cycle, 4th hop, external/ambiguous imports; decorator-injected params (NestJS @Body) NOT covered. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -36963,8 +36972,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go","internal/substrate/dataflow_jsts_express_siblings_test.go"],
+            "issue": "3904",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), credited via #3904 (verify-first): the dataflow_jsts.go matcher is registered per-LANGUAGE on the \"jsts\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), NOT per-framework — it matches the GENERIC accessor shapes req.body/query/params and ctx.request.body, which polka route handlers use, so it already sniffs them today. Proven by TestDataFlowJSTS_Polka_ReqBodyToDBWrite (a polka handler reading req.body.sku flowing into a Item.create db_write sink). Intra-fn assignment tracking + multi-hop (≤DataFlowMaxHops=3) local-call + cross-file propagation; sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, dynamic keys, embedded-arg, spread/rest/destructured params, recursion/cycle, 4th hop, external/ambiguous imports; decorator-injected params (NestJS @Body) NOT covered. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -37145,8 +37157,11 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): effect_sinks_jsts.go is registered per-LANGUAGE on \"jsts\" and dispatched by file extension (LanguageForPath) with zero framework refs; effect_propagation.go binds each attributed sink to its graph entity. Pothos resolvers live in ordinary .ts files, so db_read/db_write ORM primitives are detected and attributed to the enclosing function. Proven by TestSubstrate_JSTS_Pothos_EffectsAttribute (db_read+db_write attributed to persistUser). Partial: attribution covers the standard fn/service/handler forms these codebases contain; the inline-arrow / @Arg-decorated resolver forms have no addressable header so their in-body sinks are not bound there.",
+            "verified_at": "2026-06-02"
           }
         },
         "Substrate": {
@@ -37167,8 +37182,11 @@
             "issue": "3619"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_jsts.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): def_use_jsts.go is registered per-LANGUAGE on \"jsts\" (file-extension dispatch via LanguageForPath, zero framework refs); def_use_pass.go composes intra-procedural reaching-definitions over the resulting VarDef/VarUse facts. Pothos .ts bodies yield real def-use chains attributed to their enclosing function. Proven by TestSubstrate_JSTS_Pothos_DefUseAttributes. Partial: attribution follows the per-language header scanner (named fns / const-arrows / plain methods bind; inline-arrow resolvers in t.field({...}) do not).",
+            "verified_at": "2026-06-02"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -37190,8 +37208,11 @@
             "issue": "3619"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): the per-LANGUAGE effect_sinks_jsts.go http_out detector (fetch/axios/got/ky/...) fires on Pothos .ts bodies and attributes to the enclosing function; effect_propagation.go binds it. Proven by TestSubstrate_JSTS_Pothos_EffectsAttribute (http_out attributed to persistUser). Partial: same standard-form attribution scope as db_effect.",
+            "verified_at": "2026-06-02"
           },
           "import_resolution_quality": {
             "status": "missing",
@@ -37234,8 +37255,11 @@
             "issue": "3619"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go","internal/substrate/taint_sites_jsts.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): the per-LANGUAGE taint_sites_jsts.go sink detector fires on Pothos .ts bodies — a raw-SQL concat (db.query('... ' + x)) is flagged as a sql_injection sink. Proven by TestSubstrate_JSTS_Pothos_TaintFires. Partial: the security-sensitive sink primitives are detected per-language regardless of framework; full source→sink flow linkage depends on handler attribution (see def_use/effects scope).",
+            "verified_at": "2026-06-02"
           },
           "taint_source_detection": {
             "status": "missing",
@@ -38375,8 +38399,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go","internal/substrate/dataflow_jsts_express_siblings_test.go"],
+            "issue": "3904",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), credited via #3904 (verify-first): the dataflow_jsts.go matcher is registered per-LANGUAGE on the \"jsts\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), NOT per-framework — it matches the GENERIC accessor shapes req.body/query/params and ctx.request.body, which restify route handlers use, so it already sniffs them today. Proven by TestDataFlowJSTS_Restify_ReqBodyToDBWrite (a restify handler reading req.body.name flowing into a User.create db_write sink). Intra-fn assignment tracking + multi-hop (≤DataFlowMaxHops=3) local-call + cross-file propagation; sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, dynamic keys, embedded-arg, spread/rest/destructured params, recursion/cycle, 4th hop, external/ambiguous imports; decorator-injected params (NestJS @Body) NOT covered. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -38676,8 +38703,11 @@
             "verified_at": "2026-05-27"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go","internal/substrate/dataflow_jsts_express_siblings_test.go"],
+            "issue": "3904",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22), credited via #3904 (verify-first): the dataflow_jsts.go matcher is registered per-LANGUAGE on the \"jsts\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), NOT per-framework — it matches the GENERIC accessor shapes req.body/query/params and ctx.request.body, which sails route handlers use, so it already sniffs them today. Proven by TestDataFlowJSTS_Sails_ReqBodyToDBWrite (a sails handler reading req.body.title flowing into a Post.create db_write sink). Intra-fn assignment tracking + multi-hop (≤DataFlowMaxHops=3) local-call + cross-file propagation; sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, dynamic keys, embedded-arg, spread/rest/destructured params, recursion/cycle, 4th hop, external/ambiguous imports; decorator-injected params (NestJS @Body) NOT covered. DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -39612,8 +39642,11 @@
         },
         "Data": {
           "db_effect": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): effect_sinks_jsts.go is registered per-LANGUAGE on \"jsts\" and dispatched by file extension (LanguageForPath) with zero framework refs; effect_propagation.go binds each attributed sink to its graph entity. TypeGraphQL resolvers live in ordinary .ts files, so db_read/db_write ORM primitives are detected and attributed to the enclosing function. Proven by TestSubstrate_JSTS_TypeGraphQL_EffectsAttribute (db_read+db_write attributed to persistAccount). Partial: attribution covers the standard fn/service/handler forms these codebases contain; the inline-arrow / @Arg-decorated resolver forms have no addressable header so their in-body sinks are not bound there.",
+            "verified_at": "2026-06-02"
           }
         },
         "Substrate": {
@@ -39634,8 +39667,11 @@
             "issue": "3619"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_jsts.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): def_use_jsts.go is registered per-LANGUAGE on \"jsts\" (file-extension dispatch via LanguageForPath, zero framework refs); def_use_pass.go composes intra-procedural reaching-definitions over the resulting VarDef/VarUse facts. TypeGraphQL .ts bodies yield real def-use chains attributed to their enclosing function. Proven by TestSubstrate_JSTS_TypeGraphQL_DefUseAttributes. Partial: attribution follows the per-language header scanner (named fns / const-arrows / plain methods bind; inline-arrow resolvers in t.field({...}) do not).",
+            "verified_at": "2026-06-02"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -39657,8 +39693,11 @@
             "issue": "3619"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_jsts.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): the per-LANGUAGE effect_sinks_jsts.go http_out detector (fetch/axios/got/ky/...) fires on TypeGraphQL .ts bodies and attributes to the enclosing function; effect_propagation.go binds it. Proven by TestSubstrate_JSTS_TypeGraphQL_EffectsAttribute (http_out attributed to persistAccount). Partial: same standard-form attribution scope as db_effect.",
+            "verified_at": "2026-06-02"
           },
           "import_resolution_quality": {
             "status": "missing",
@@ -39701,8 +39740,11 @@
             "issue": "3619"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "3619"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/substrate_jsts_graphql_codefirst_test.go","internal/substrate/taint_sites_jsts.go"],
+            "issue": "3903",
+            "notes": "#3903 (verify-first): the per-LANGUAGE taint_sites_jsts.go sink detector fires on TypeGraphQL .ts bodies — a raw-SQL concat (db.query('... ' + x)) is flagged as a sql_injection sink. Proven by TestSubstrate_JSTS_TypeGraphQL_TaintFires. Partial: the security-sensitive sink primitives are detected per-language regardless of framework; full source→sink flow linkage depends on handler attribution (see def_use/effects scope).",
+            "verified_at": "2026-06-02"
           },
           "taint_source_detection": {
             "status": "missing",
