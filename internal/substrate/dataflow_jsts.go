@@ -9,6 +9,15 @@
 //   - req.body.X / req.query.X / req.params.X         (Express / generic)
 //   - request.body.X / request.query.X                (Hono / generic)
 //   - ctx.request.body.X                              (Koa)
+//   - @Body()/@Query()/@Param()/@Headers()/@Req()/@Request() decorated
+//     controller-method parameters                    (NestJS, #3902)
+//
+// NestJS sources are PARAMETERS, not member accesses: a parameter decorated
+// `@Body() dto` makes the identifier `dto` a request-derived root (the same
+// role `req.body` plays in Express). At handler entry the decorated params
+// are seeded into the taint map. The source field is the decorator's literal
+// key when present (`@Body('email') x` → field "email") or, failing that,
+// the member accessed off the param (`dto.email` → field "email").
 //
 // Sinks recognised:
 //   - DB write : <recv>.create( / <recv>.save( / <recv>.insert( /
@@ -20,6 +29,7 @@ package substrate
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 )
 
@@ -42,6 +52,19 @@ var dfJstsSourceFieldRe = regexp.MustCompile(
 // field, used to detect whole-object pass-through (`res.json(req.body)`).
 var dfJstsSourceAnyRe = regexp.MustCompile(
 	`\b(?:req|request)\s*\.\s*(?:body|query|params)\b|\bctx\s*\.\s*request\s*\.\s*body\b`,
+)
+
+// dfJstsNestJSParamRe matches a NestJS controller-method parameter injected
+// by a request decorator (#3902). Group 1 = the decorator's optional string
+// literal key (the request-input field, e.g. `id` in `@Param('id')`); group
+// 2 = the bound parameter identifier (the tainted root). The decorator's
+// param list is matched non-greedily so a quoted key is captured but other
+// option objects are tolerated. Mirrors the security taint-site recogniser
+// (taint_sites_jsts.go jstsSourceNestJSDecoratorRe) but additionally lifts
+// the literal key as field provenance.
+var dfJstsNestJSParamRe = regexp.MustCompile(
+	`@(?:Body|Query|Param|Headers|Req|Request)\s*\(\s*(?:['"]([\w$-]+)['"])?[^)]*\)\s*` +
+		`([A-Za-z_$][\w$]*)`,
 )
 
 // dfJstsDBWriteRe matches an ORM write call. Group 1 = the callee text.
@@ -86,7 +109,7 @@ func sniffDataFlowJSTSEx(content string) DataFlowResult {
 		return DataFlowResult{}
 	}
 	lines := strings.Split(content, "\n")
-	headers := scanJSTSFuncHeaders(content)
+	headers := jstsAllHeaders(content)
 	bodies := jstsFuncBodies(content, headers)
 
 	var res DataFlowResult
@@ -97,11 +120,108 @@ func sniffDataFlowJSTSEx(content string) DataFlowResult {
 			lines:   lines,
 			visited: map[string]bool{b.Name: true},
 		}
-		r := walkJSTSBody(ctx, b, map[string]taintInfo{})
+		// Seed NestJS decorator-injected params as request-derived roots so a
+		// `@Body() dto`/`@Query('q') q` parameter is tainted on handler entry,
+		// exactly as if it had been assigned from `req.body` (#3902).
+		seed := jstsNestJSParamTaints(lines, b)
+		r := walkJSTSBody(ctx, b, seed)
 		res.Flows = append(res.Flows, r.Flows...)
 		res.Boundaries = append(res.Boundaries, r.Boundaries...)
 	}
 	return res
+}
+
+// dfJstsNestJSMethodHeaderRe matches the start of a class-method header whose
+// name token opens a parameter list: `[async ][public|private|protected ]NAME(`
+// at the start of a line. The shared jstsFuncHeaderRe deliberately rejects a
+// param list containing `)` (its `[^)\n]*` stops at the first inner paren), so
+// a NestJS method like `create(@Body() dto)` is NOT seen as a header there.
+// This dedicated matcher recovers those headers for the dataflow pass only;
+// candidates are confirmed by checking the parameter block actually contains
+// a request decorator (jstsNestJSHeaders), so plain methods are unaffected.
+var dfJstsNestJSMethodHeaderRe = regexp.MustCompile(
+	`(?m)^\s*(?:async\s+)?(?:public\s+|private\s+|protected\s+)?(?:async\s+)?` +
+		`([A-Za-z_$][\w$]*)\s*\(`,
+)
+
+// jstsNestJSHeaders scans for NestJS controller-method headers — methods whose
+// parameter list contains an @Body/@Query/@Param/@Headers/@Req/@Request
+// decorator. These are the dataflow handlers the shared header regex misses.
+// The returned headers carry the method name and its 1-indexed line.
+func jstsNestJSHeaders(content string) []funcHeader {
+	lines := strings.Split(content, "\n")
+	var out []funcHeader
+	for _, m := range dfJstsNestJSMethodHeaderRe.FindAllStringSubmatchIndex(content, -1) {
+		name := content[m[2]:m[3]]
+		if name == "" || jstsControlKeyword(name) || name == "constructor" || name == "function" {
+			continue
+		}
+		line := lineOfOffset(content, m[2])
+		open := strings.IndexByte(lines[line-1], '(')
+		if open < 0 {
+			continue
+		}
+		// The param block must contain a request decorator AND close with `{`
+		// (an actual method body), else this is a call site, not a header.
+		sig := jstsCallArgs(lines, line, open)
+		if !dfJstsNestJSParamRe.MatchString(sig) {
+			continue
+		}
+		out = append(out, funcHeader{Line: line, Name: name})
+	}
+	return out
+}
+
+// jstsAllHeaders merges the shared JS/TS headers with the NestJS
+// controller-method headers the shared regex misses, de-duplicated by line so
+// a method seen by both is counted once. Order is by line for determinism.
+func jstsAllHeaders(content string) []funcHeader {
+	base := scanJSTSFuncHeaders(content)
+	seen := make(map[int]bool, len(base))
+	for _, h := range base {
+		seen[h.Line] = true
+	}
+	for _, h := range jstsNestJSHeaders(content) {
+		if seen[h.Line] {
+			continue
+		}
+		seen[h.Line] = true
+		base = append(base, h)
+	}
+	sort.Slice(base, func(i, j int) bool { return base[i].Line < base[j].Line })
+	return base
+}
+
+// jstsNestJSParamTaints returns the taint seed for a function body whose
+// signature declares NestJS request-decorator parameters. Each decorated
+// parameter identifier becomes a tainted root; the seed field is the
+// decorator's literal key when present (`@Param('id') id` → field "id"),
+// otherwise "" (the field is recovered later from a member access such as
+// `dto.email`). The parameter block is read from the header line through the
+// matching `)` so multi-line signatures (one decorated param per line, the
+// idiomatic NestJS form) are covered. Returns an empty map when no decorator
+// params are present, so non-NestJS handlers are unaffected.
+func jstsNestJSParamTaints(lines []string, b jstsFuncBody) map[string]taintInfo {
+	if b.Start < 1 || b.Start > len(lines) {
+		return map[string]taintInfo{}
+	}
+	open := strings.IndexByte(lines[b.Start-1], '(')
+	if open < 0 {
+		return map[string]taintInfo{}
+	}
+	sig := jstsCallArgs(lines, b.Start, open)
+	if sig == "" || !strings.Contains(sig, "@") {
+		return map[string]taintInfo{}
+	}
+	out := map[string]taintInfo{}
+	for _, m := range dfJstsNestJSParamRe.FindAllStringSubmatch(sig, -1) {
+		key, name := m[1], m[2]
+		if name == "" {
+			continue
+		}
+		out[name] = taintInfo{field: key, line: b.Start}
+	}
+	return out
 }
 
 // continueDataFlowJSTS continues a bounded hop walk inside this file: it
@@ -115,7 +235,7 @@ func continueDataFlowJSTS(content, fnName string, paramIndex int, field string, 
 		return DataFlowResult{}
 	}
 	lines := strings.Split(content, "\n")
-	headers := scanJSTSFuncHeaders(content)
+	headers := jstsAllHeaders(content)
 	bodies := jstsFuncBodies(content, headers)
 	callee := jstsBodyByName(bodies, fnName)
 	if callee == nil {
@@ -354,6 +474,30 @@ type taintInfo struct {
 	line  int
 }
 
+// dfJstsIdentMemberRe captures an identifier (group 1) immediately followed
+// by a static member access (group 2): for `dto.email` it yields ("dto",
+// "email"). Used to recover the request-input field for a tainted NestJS
+// param whose decorator carried no literal key (`@Body() dto` → `dto.email`).
+var dfJstsIdentMemberRe = regexp.MustCompile(`\b([A-Za-z_$][\w$]*)\s*\.\s*([A-Za-z_$][\w$]*)`)
+
+// jstsTaintedField resolves the source field for a reference to the tainted
+// variable `name` (known field `info.field`) as it appears in `expr`. When
+// the taint root carries no field of its own (`@Body() dto`, or a whole
+// request object) and `expr` accesses a static member of it (`dto.email`),
+// the member name is lifted as the field. The known decorator/source field
+// always wins when present.
+func jstsTaintedField(expr, name string, info taintInfo) string {
+	if info.field != "" {
+		return info.field
+	}
+	for _, m := range dfJstsIdentMemberRe.FindAllStringSubmatch(expr, -1) {
+		if m[1] == name {
+			return m[2]
+		}
+	}
+	return ""
+}
+
 // jstsRHSSourceField returns (field, true) when rhs is a request-input read
 // or a reference to a tainted variable. The field is the source field name
 // (possibly ""), preserving provenance across the assignment.
@@ -369,7 +513,7 @@ func jstsRHSSourceField(rhs string, tainted map[string]taintInfo) (string, bool)
 	}
 	for name, info := range tainted {
 		if dfReWholeIdent(name).MatchString(rhs) {
-			return info.field, true
+			return jstsTaintedField(rhs, name, info), true
 		}
 	}
 	return "", false
@@ -402,7 +546,7 @@ func jstsExprTainted(expr string, tainted map[string]taintInfo) (string, bool) {
 	}
 	for name, info := range tainted {
 		if dfReWholeIdent(name).MatchString(expr) {
-			return info.field, true
+			return jstsTaintedField(expr, name, info), true
 		}
 	}
 	return "", false
@@ -429,8 +573,21 @@ func jstsArgBareTaint(argExpr string, tainted map[string]taintInfo) (string, boo
 			return info.field, true
 		}
 	}
+	// A static member access off a tainted root (`dto.email`) is itself a
+	// clean positional value: bind it and lift the member as the field when
+	// the root carried none (NestJS `@Body() dto` → `dto.email`, #3902).
+	if m := dfJstsTaintedMemberRe.FindStringSubmatch(e); m != nil {
+		if info, ok := tainted[m[1]]; ok {
+			return jstsTaintedField(e, m[1], info), true
+		}
+	}
 	return "", false
 }
+
+// dfJstsTaintedMemberRe matches an expression that is SOLELY an identifier
+// followed by a single static member access (`dto.email`), anchored so it is
+// the whole expression (no surrounding operators). Group 1 = root identifier.
+var dfJstsTaintedMemberRe = regexp.MustCompile(`^([A-Za-z_$][\w$]*)\s*\.\s*[A-Za-z_$][\w$]*$`)
 
 // jstsWholeExprIsSource reports the expr is SOLELY a request-source access
 // (optionally a member chain) with no surrounding operators.

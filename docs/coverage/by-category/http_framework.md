@@ -70,7 +70,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [JS/TS](../by-language/jsts.md) | [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
 | [JS/TS](../by-language/jsts.md) | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 10/12 | |
+| [JS/TS](../by-language/jsts.md) | [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 10/12 | |
 | [JS/TS](../by-language/jsts.md) | [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [JS/TS](../by-language/jsts.md) | [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/13 | |
 | [JS/TS](../by-language/jsts.md) | [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
