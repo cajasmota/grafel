@@ -73,6 +73,11 @@ func (e *echoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		entities = append(entities, ent)
 	}
 
+	// #3734 — endpoint protection. Echo passes trailing middleware after the
+	// handler (`e.GET(path, h, mw)`); the shared index classifies each route /
+	// group / engine arg independently, so both orderings resolve.
+	authIdx := buildGoRouteAuthIndex(src)
+
 	// 1. echo.New() engine -> SCOPE.Service
 	for _, m := range reEchoEngine.FindAllStringSubmatchIndex(src, -1) {
 		varName := src[m[2]:m[3]]
@@ -98,14 +103,17 @@ func (e *echoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 	for _, m := range reEchoRoute.FindAllStringSubmatchIndex(src, -1) {
 		routerVar := src[m[2]:m[3]]
 		method := strings.ToUpper(src[m[4]:m[5]])
-		path := src[m[6]:m[7]]
+		ownPath := src[m[6]:m[7]]
+		path := ownPath
 		if gp, ok := groupPaths[routerVar]; ok {
 			path = gp + path
 		}
 		name := method + " " + path
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "echo", "provenance", "INFERRED_FROM_ECHO_ROUTE",
-			"http_method", method, "route_path", path)
+			"http_method", method, "route_path", path, "router_var", routerVar)
+		// #3734 — stamp endpoint protection (inline > group > engine-wide).
+		authIdx.resolve(routerVar, method, ownPath).stamp(ent.Properties)
 		add(ent)
 	}
 

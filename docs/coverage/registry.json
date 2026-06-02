@@ -15186,9 +15186,9 @@
         "Auth": {
           "auth_coverage": {
             "status": "full",
-            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
-            "notes": "heuristic substring catalog (jwt/oauth/basic/session/rbac/api_key/auth) against .Use() chain expressions; auth_kind + dedicated auth:NAME pattern emitted; fixture tests prove jwt/basic/oauth classification per-framework",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go","internal/custom/golang/route_auth.go","internal/custom/golang/route_auth_test.go"],
+            "notes": "Two layers. (1) #3734 endpoint-protection stamping (route_auth.go): binds auth middleware to the route SCOPE.Operation op and stamps the #3696 flat contract (auth_required/auth_method=middleware/auth_guard/auth_kind/auth_confidence). Echo passes trailing middleware after the handler (e.GET('/admin', h, jwtMiddleware) -\u003e /admin auth_required, kind=jwt, HIGH), group-level (g := e.Group('/admin', jwtMiddleware) -\u003e routes on g auth_required, HIGH), engine-wide .Use() -\u003e MEDIUM. Value-asserting tests TestEchoTrailingMiddlewareAuth/TestEchoGroupAuth + negatives (/public,/login not stamped). (2) #3213 .Use() chain pattern catalog (jwt/oauth/basic/session/rbac/api_key/auth). Honest-partial: dynamic/conditional middleware and roles/scopes from opaque guards not modelled.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -15962,9 +15962,9 @@
         "Auth": {
           "auth_coverage": {
             "status": "full",
-            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
-            "notes": "heuristic substring catalog (jwt/oauth/basic/session/rbac/api_key/auth) against .Use() chain expressions; auth_kind + dedicated auth:NAME pattern emitted; fixture tests prove jwt/basic/oauth classification per-framework",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go","internal/custom/golang/route_auth.go","internal/custom/golang/route_auth_test.go"],
+            "notes": "Two layers. (1) #3734 endpoint-protection stamping (route_auth.go): binds auth middleware to the route SCOPE.Operation op and stamps the #3696 flat contract (auth_required/auth_method=middleware/auth_guard/auth_kind/auth_confidence). Group-level (authorized := r.Group('/', AuthRequired()) -\u003e routes on the group var auth_required, HIGH), inline route middleware (r.GET('/admin', JWTAuth(), h) -\u003e that route auth_required, HIGH, kind from classifyAuthMiddleware), engine-wide .Use(jwt.New()) -\u003e MEDIUM inheritance. Value-asserting tests TestGinGroupAuth/TestGinInlineRouteAuth/TestGinEngineWideAuth + negatives (unprotected /health,/public not stamped). (2) #3213 .Use() chain pattern catalog (jwt/oauth/basic/session/rbac/api_key/auth) for middleware Pattern entities. Honest-partial: dynamic/conditional middleware and roles/scopes from opaque guards not modelled.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -51663,8 +51663,8 @@
         "Auth": {
           "auth_coverage": {
             "status": "full",
-            "cites": ["internal/custom/ruby/auth.go","internal/custom/ruby/auth_deep_test.go"],
-            "notes": "Deep Rails auth (Devise/Pundit/CanCanCan) extraction to TS/JS bar. Devise: devise_for route registration, authenticate_\u003cmodel\u003e! before_action with mechanism+auth_required, devise modules with authenticatable flag, \u003cmodel\u003e_signed_in? helpers, require_login. Pundit: class FooPolicy name extraction, per-action (update?/create?/show?) entity with action+policy_class properties, authorize calls with mechanism=pundit+auth_required=true, include Pundit::Authorization. CanCanCan: Ability class sentinel, per-rule can/cannot :action Resource with action+resource+permission+in_ability_class properties, authorize! and load_and_authorize_resource with mechanism=cancancan. General: before_action :require_auth/:check_authentication/:verify_auth. Value-asserting tests in auth_deep_test.go assert SPECIFIC properties (mechanism, action, resource, auth_required, authenticatable, policy_class) across 13 test cases covering all four frameworks plus combined scenarios. Honest remainder: cross-file dataflow (e.g. inferring which controller actions are protected by a controller-level before_action) and roles/scopes extraction not modelled.",
+            "cites": ["internal/custom/ruby/auth.go","internal/custom/ruby/auth_deep_test.go","internal/custom/ruby/controller_auth.go","internal/custom/ruby/controller_auth_test.go"],
+            "notes": "#3734 endpoint-protection: controller_auth.go (custom_ruby_controller_auth) resolves a controller-level before_action :authenticate_user! (Devise) / :require_login / CanCanCan load_and_authorize_resource and stamps the #3696 flat contract (auth_required/auth_method/auth_guard/auth_confidence) on one SCOPE.Operation/endpoint per controller ACTION (controller#action handler); only:/except: + skip_before_action honoured; per-action Pundit authorize -\u003e MEDIUM. Closes the prior honest remainder (which actions a controller-level before_action protects). Tests TestControllerAuth* incl negative _Unprotected. Plus deep Rails auth (Devise/Pundit/CanCanCan) extraction to TS/JS bar. Devise: devise_for route registration, authenticate_\u003cmodel\u003e! before_action with mechanism+auth_required, devise modules with authenticatable flag, \u003cmodel\u003e_signed_in? helpers, require_login. Pundit: class FooPolicy name extraction, per-action (update?/create?/show?) entity with action+policy_class properties, authorize calls with mechanism=pundit+auth_required=true, include Pundit::Authorization. CanCanCan: Ability class sentinel, per-rule can/cannot :action Resource with action+resource+permission+in_ability_class properties, authorize! and load_and_authorize_resource with mechanism=cancancan. General: before_action :require_auth/:check_authentication/:verify_auth. Value-asserting tests in auth_deep_test.go assert SPECIFIC properties (mechanism, action, resource, auth_required, authenticatable, policy_class) across 13 test cases covering all four frameworks plus combined scenarios. Honest remainder: cross-file dataflow (e.g. inferring which controller actions are protected by a controller-level before_action) and roles/scopes extraction not modelled.",
             "verified_at": "2026-05-30"
           }
         },

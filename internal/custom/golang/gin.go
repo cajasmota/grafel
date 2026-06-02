@@ -77,6 +77,10 @@ func (e *ginExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		entities = append(entities, ent)
 	}
 
+	// #3734 — endpoint protection. Resolve route/group/engine-level auth
+	// middleware once so each route op can be stamped with auth_required.
+	authIdx := buildGoRouteAuthIndex(src)
+
 	// 1. gin.Default()/gin.New() engine -> SCOPE.Service
 	for _, m := range reGinEngine.FindAllStringSubmatchIndex(src, -1) {
 		varName := src[m[2]:m[3]]
@@ -101,7 +105,8 @@ func (e *ginExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 	for _, m := range reGinRoute.FindAllStringSubmatchIndex(src, -1) {
 		routerVar := src[m[2]:m[3]]
 		method := strings.ToUpper(src[m[4]:m[5]])
-		path := src[m[6]:m[7]]
+		ownPath := src[m[6]:m[7]]
+		path := ownPath
 		// Resolve group prefix
 		if gp, ok := groupPaths[routerVar]; ok {
 			path = gp + path
@@ -110,6 +115,9 @@ func (e *ginExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "gin", "provenance", "INFERRED_FROM_GIN_ROUTE",
 			"http_method", method, "route_path", path, "router_var", routerVar)
+		// #3734 — stamp endpoint protection from the route's own inline
+		// middleware, its group var, or an engine-wide auth .Use().
+		authIdx.resolve(routerVar, method, ownPath).stamp(ent.Properties)
 		add(ent)
 	}
 
