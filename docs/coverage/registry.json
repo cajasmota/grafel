@@ -23149,9 +23149,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -23908,8 +23909,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -24174,9 +24177,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -24490,8 +24494,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "3699"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -24980,10 +24986,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -25313,10 +25319,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -25648,9 +25654,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -25974,11 +25981,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "JUnit 5 tests in JAX-RS projects; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestJakartaEE_TestsLinkage_Issue2996 value-asserting (same JUnit 5 extractor gates on jaxrs)",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -26360,11 +26366,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "@MicronautTest + JUnit 5; @Test/@ParameterizedTest/@RepeatedTest extracted; OWNS edge; TestMicronaut_TestsLinkage_Issue2995 value-asserting",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -26701,10 +26706,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -27291,10 +27296,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -27641,11 +27646,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "@Test/@ParameterizedTest/@RepeatedTest methods extracted; @BeforeEach/@AfterEach lifecycle methods captured; @Nested classes emitted; @ExtendWith extensions; OWNS edge from class to test method; @SpringBootTest/@WebMvcTest class-level annotations recognised; value-asserting test TestSpringBoot_TestsLinkage_Issue2991",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -27991,8 +27995,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -28263,11 +28269,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "@Test/@WebFluxTest; @Test/@ParameterizedTest/@RepeatedTest methods extracted; OWNS edge class-\u003emethod; TestSpringWebFlux_TestsLinkage_Issue2991 value-asserting",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -28614,11 +28619,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/junit5.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "struts, struts2, apache-struts keys included in junit5Frameworks map in junit5.go; test-class detection fires for JUnit 5 @Test methods and Struts Test Plugin patterns",
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -29147,10 +29151,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/junit5.go","internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/frameworks_java_test.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "Java JUnit (4/5) deep test-\u003eSUT linkage via the shared cross/testmap extractor (#3855), same path that credits Kotlin JVM (#3437). detectJUnit fires on @Test/@ParameterizedTest/@RepeatedTest in *Test.java/*Tests.java/*IT.java (org.junit/junit.jupiter import hints); resolver emits high-confidence TESTS edges for direct SUT calls (new UserService(); userService.create()), medium for class-name subject (UserServiceTest-\u003eUserService) when the body has no prod call, and suppresses MockMvc/REST-assured/WebTestClient/AssertJ/Hamcrest/Mockito test-harness noise. Value-asserted in frameworks_java_test.go (TestJUnit_DirectCall_HighConfidence/_MethodCallOnInjectedSUT/_ClassNameSubject/_ParameterizedTest/_MockMvc_NoHTTPClientNoise/_RestAssured_NoDSLNoise). Scope: unit-level test-\u003eSUT; framework-handler attribution from HTTP integration tests (MockMvc/REST-assured -\u003e controller endpoint) is out of scope.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {

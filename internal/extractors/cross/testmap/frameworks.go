@@ -735,16 +735,54 @@ func detectMinitest(source string) []testFunction {
 // Java — JUnit
 // ---------------------------------------------------------------------------
 
+// junitMethodRE matches a JUnit (4 or 5) annotated test method. It accepts
+// @Test, @ParameterizedTest and @RepeatedTest (JUnit 5 — each optionally
+// carrying an argument list), optional additional annotation lines (e.g.
+// @DisplayName(…), @ValueSource(…), @CsvSource(…)) between the test annotation
+// and the method signature, and an optional non-void return type (JUnit 5
+// allows e.g. `Stream<DynamicTest>` factory-style or value-returning helpers,
+// though `void` is by far the common case). Group 1 captures the method name.
 var junitMethodRE = regexp.MustCompile(
-	`(?m)@Test(?:\s*\([^)]*\))?\s*(?:public\s+|private\s+|protected\s+)?void\s+(\w+)\s*\([^)]*\)\s*(?:throws\s+[\w., ]+)?\s*{`,
+	`(?m)@(?:Test|ParameterizedTest|RepeatedTest)(?:\s*\([^)]*\))?` +
+		`(?:\s*@\w+(?:\s*\([^)]*\))?)*` +
+		`\s*(?:public\s+|private\s+|protected\s+|static\s+|final\s+)*` +
+		`(?:void|[\w<>\[\].,?\s]+?)\s+(\w+)\s*\([^)]*\)\s*(?:throws\s+[\w., ]+)?\s*{`,
 )
 
+// junitClassRE captures the first declared class name in a Java test source
+// file. Used to derive the JUnit subject-under-test from the test-class name
+// (UserServiceTest → UserService), mirroring the Kotlin/C# describeSubject path
+// so a class-level naming-convention edge is emitted even when a test body
+// contains no direct production call (e.g. Mockito-only bodies).
+var junitClassRE = regexp.MustCompile(
+	`(?m)^\s*(?:(?:public|private|protected|abstract|final|sealed|static)\s+)*class\s+(\w+)`,
+)
+
+// junitFirstClassName returns the first class name found in source, or "".
+func junitFirstClassName(source string) string {
+	if m := junitClassRE.FindStringSubmatch(source); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
 func detectJUnit(source string) []testFunction {
+	// Derive the class-under-test from the test-class name (UserServiceTest →
+	// UserService). Reuses csTestSubjectFromClassName, which strips a trailing
+	// Tests/Test suffix — the dominant Java convention. (An "IT"-suffixed
+	// integration-test class name yields no subject here; those resolve via the
+	// body-call scan or the file-name convention fallback in extractor.go.)
+	subject := csTestSubjectFromClassName(junitFirstClassName(source))
+
 	var out []testFunction
 	for _, m := range junitMethodRE.FindAllStringSubmatchIndex(source, -1) {
 		name := source[m[2]:m[3]]
 		body := extractBraceBody(source, m[1]-1)
-		out = append(out, testFunction{qname: name, body: body})
+		out = append(out, testFunction{
+			qname:           name,
+			body:            body,
+			describeSubject: subject,
+		})
 	}
 	return out
 }

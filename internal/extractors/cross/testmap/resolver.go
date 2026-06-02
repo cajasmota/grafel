@@ -87,6 +87,67 @@ var stopwords = map[string]bool{
 	// JUnit
 	"assertions.assertequals": true, "assertequals": true,
 	"assertnull": true, "assertnotnull": true,
+	// JUnit 5 Assertions / Hamcrest / AssertJ matcher entry points. These are
+	// assertion-harness identifiers and must never surface as the tested
+	// production subject. directCallRE captures the bare/dotted call form
+	// (assertThat(…), assertTrue(…), org.junit.jupiter.api.Assertions.* tail).
+	"assertthat": true, "asserttrue_junit": true, "assertfalse_junit": true,
+	"assertiterableequals": true, "assertarrayequals": true,
+	"assertlinesmatch": true, "asserttimeout": true, "asserttimeoutpreemptively": true,
+	// (assertinstanceof / assertsame / assertnotsame already stop-worded above.)
+	// Hamcrest matchers (assertThat(x, is(y)) / matchers used standalone).
+	"is": true, "isin": true, "hasitem": true, "hasitems": true, "hassize": true,
+	"hasentry": true, "hasvalue": true, "containsstring": true,
+	"greaterthan": true, "lessthan": true, "notnullvalue": true,
+	"nullvalue": true, "instanceof": true, "samepropertyvaluesas": true,
+	// AssertJ fluent assertions: assertThat(x).isEqualTo(y) — the chain heads are
+	// matched here; the dotted `.isEqualTo`/`.contains` tails are caught by the
+	// suffix filter additions below.
+	"assertthatthrownby": true, "assertthatexceptionoftype": true,
+	"assertthatcode": true, "assertthatnullpointerexception": true,
+	// AssertJ fluent assertion verbs captured in BARE form — `assertThat(x)
+	// .isEqualTo(0)` yields a bare `isEqualTo(` token because the `)` after the
+	// subject breaks the dotted chain (directCallRE then sees `isEqualTo` alone).
+	// These are assertion verbs, never the production subject. (#3855)
+	"isequalto": true, "isnotequalto": true,
+	"isgreaterthanorequalto": true, "islessthanorequalto": true,
+	"isbetween": true, "startswith": true, "endswith": true,
+	"containsexactly": true, "containsonly": true, "containsexactlyinanyorder": true,
+	"hasfieldorpropertywithvalue": true, "extracting": true, "usingrecursivecomparison": true,
+	"hasmessage": true, "hasmessagecontaining": true, "isinstanceof": true,
+	// Mockito stubbing/verification verbs captured in bare form — `when(...)`
+	// is already stop-worded (kotlin/catch2 `when`); add the chained verbs that
+	// surface as bare idents after the `)` chain break.
+	"thenreturn": true, "thenthrow": true, "thenanswer": true, "thencallrealmethod": true,
+	"doreturn": true, "dothrow": true, "donothing": true, "doanswer": true,
+	"verifyno more interactions": true, "verifynomoreinteractions": true,
+	"verifyzerointeractions": true, "given_mockito": true, "willreturn": true,
+	"willthrow": true,
+	// MockMvc / Spring test web — `mockMvc.perform(...)`, the static request
+	// builders (get/post already stop-worded as HTTP verbs), and the result
+	// matchers `andExpect`/`andDo`/`andReturn`/`status()`/`content()`/`jsonPath()`
+	// are HTTP-test plumbing, not production calls. Without these the resolver
+	// emits high-confidence TESTS edges to `andExpect`/`isOk`/`status` instead of
+	// the controller handler. (#3855)
+	"mockmvc.perform": true, "perform": true,
+	"andexpect": true, "anddo": true, "andreturn": true,
+	"status": true, "content": true, "jsonpath": true, "header": true,
+	"isok": true, "iscreated": true, "isnotfound": true, "isbadrequest": true,
+	"isunauthorized": true, "isforbidden": true, "isnocontent": true,
+	"isconflict": true, "isinternalservererror": true, "isaccepted": true,
+	"redirectedurl": true, "forwardedurl": true, "model": true, "view": true,
+	"mvcresult": true, "asyncdispatch": true,
+	// REST-assured fluent DSL — `given().when().get("/x").then().statusCode(200)`.
+	// `when`/`then`/`given` are already stop-worded (catch2/BDD block); add the
+	// REST-assured-specific verbs so the chain never resolves to a fake subject.
+	"statuscode": true, "extract": true, "body_restassured": true,
+	"contenttype": true, "pathparam": true, "queryparam": true, "formparam": true,
+	"andstuff": true, "rootpath": true, "spec": true, "log": true,
+	// WebTestClient (Spring WebFlux) — `webTestClient.get().uri(...).exchange()
+	// .expectStatus().isOk()`. Test-client plumbing, not production calls.
+	"webtestclient.get": true, "webtestclient.post": true, "uri": true,
+	"exchange": true, "expectstatus": true, "expectbody": true, "expectheader": true,
+	"returnresult": true,
 	// Kotlin — kotest matchers (infix + paren forms), kotlin.test / JUnit5
 	// assertions, and MockK DSL verbs. These are test-harness identifiers and
 	// must never surface as the tested production subject. Lower-cased.
@@ -455,6 +516,10 @@ func isStopword(id string) bool {
 		// ASP.NET Core / HttpClient test infrastructure
 		"_factory.", "factory.", "_client.", "httpclient.",
 		"response.", "_response.",
+		// Spring MockMvc / WebTestClient test infrastructure (#3855).
+		// mockMvc.perform(...).andExpect(...), webTestClient.get()...exchange(),
+		// resultActions.andExpect(...) — all HTTP-test plumbing, never a prod call.
+		"mockmvc.", "webtestclient.", "resultactions.", "mvc.",
 		// PHP / Laravel feature-test infrastructure (#3399).
 		// $this->get('/url'), $this->post(...), $this->assertStatus(200) etc. are
 		// TestResponse helpers or HTTP dispatch on the test kernel — not production calls.
@@ -489,6 +554,15 @@ func isStopword(id string) bool {
 		// expectation builders (.expect_x(), .returning(), .times(), .with()).
 		".unwrap", ".unwrap_err", ".iter", ".returning", ".return_const",
 		".times", ".never", ".with", ".withf",
+		// Java/Spring assertion + HTTP-test fluent chains (#3855). AssertJ
+		// assertThat(x).isEqualTo(y), MockMvc .andExpect/.andDo/.andReturn, and
+		// REST-assured/WebTestClient .statusCode/.expectStatus/.exchange tails are
+		// test-harness chains, never the production subject.
+		".isequalto", ".isnotequalto", ".isnull", ".isnotnull", ".istrue",
+		".isfalse", ".isempty", ".isnotempty", ".contains", ".containsexactly",
+		".hassize", ".isinstanceof", ".isgreaterthan", ".islessthan",
+		".andexpect", ".anddo", ".andreturn", ".statuscode", ".expectstatus",
+		".expectbody", ".exchange", ".isok", ".iscreated",
 	} {
 		if strings.HasSuffix(low, suf) {
 			return true
