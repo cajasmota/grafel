@@ -48,6 +48,29 @@ func setProps(e *types.EntityRecord, kv ...string) {
 	}
 }
 
+// lineStart returns the byte offset of the start of the line containing offset.
+func lineStart(s string, offset int) int {
+	if offset > len(s) {
+		offset = len(s)
+	}
+	if i := strings.LastIndexByte(s[:offset], '\n'); i >= 0 {
+		return i + 1
+	}
+	return 0
+}
+
+// lineEnd returns the byte offset just past the end of the line containing
+// offset (exclusive of the newline, or len(s) at EOF).
+func lineEnd(s string, offset int) int {
+	if offset > len(s) {
+		return len(s)
+	}
+	if i := strings.IndexByte(s[offset:], '\n'); i >= 0 {
+		return offset + i
+	}
+	return len(s)
+}
+
 // isQuoteOrSpace returns true for characters that commonly surround string literals
 // in JavaScript/TypeScript source (quotes, backtick, space, tab).
 func isQuoteOrSpace(r rune) bool {

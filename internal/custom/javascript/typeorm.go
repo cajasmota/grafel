@@ -38,8 +38,15 @@ var (
 	// @OneToMany / @ManyToOne / @OneToOne / @ManyToMany
 	// Uses [^@]* instead of [^)]* to handle arrow functions like (() => Post, post => post.user)
 	// that contain nested parentheses. Stops at next decorator (@) instead.
+	// Group 1 = relation kind, group 2 = decorator-args blob, group 3 = field name.
 	reTypeORMRelation = regexp.MustCompile(
-		`@(OneToMany|ManyToOne|OneToOne|ManyToMany)\s*\([^@]*?\)\s+(\w+)`,
+		`@(OneToMany|ManyToOne|OneToOne|ManyToMany)\s*\(([^@]*?)\)\s+(\w+)`,
+	)
+	// The type-target arrow inside a relation decorator: `() => Order` or
+	// `type => Order` or `() => Order` (with optional parens around the param).
+	// Captures the referenced entity class name (group 1).
+	reTypeORMRelationTarget = regexp.MustCompile(
+		`=>\s*([A-Z][A-Za-z0-9_]*)`,
 	)
 	// lazy: true inside a TypeORM relation decorator options object.
 	// Matches the full decorator block so we can extract field name alongside it.
@@ -77,6 +84,29 @@ var (
 		`new\s+Table\s*\(\s*\{\s*name\s*:\s*['"]([A-Za-z0-9_.]+)['"]`,
 	)
 )
+
+// typeormRelationCardinality maps a TypeORM relation decorator to the shared
+// ORM relationship-cardinality vocabulary, used as the `cardinality` prop on
+// the GRAPH_RELATES edge from the owning @Entity to the target entity.
+//
+//	@OneToMany(() => Order, ...)  → one_to_many
+//	@ManyToOne(() => User, ...)   → many_to_one
+//	@OneToOne(() => Profile, ...) → one_to_one
+//	@ManyToMany(() => Tag, ...)   → many_to_many
+func typeormRelationCardinality(decorator string) string {
+	switch decorator {
+	case "OneToMany":
+		return "one_to_many"
+	case "ManyToOne":
+		return "many_to_one"
+	case "OneToOne":
+		return "one_to_one"
+	case "ManyToMany":
+		return "many_to_many"
+	default:
+		return ""
+	}
+}
 
 // typeormMigrationOpSubtype maps a queryRunner method name to a normalized
 // schema-change op subtype shared across ORM migration extractors.
@@ -177,12 +207,39 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 		addEntity(ent)
 	}
 
-	// @Entity classes
+	// @Entity classes. Track each class's byte offset and its index in the
+	// entities slice so relation decorators below can hang a GRAPH_RELATES edge
+	// off the owning @Entity model node.
+	type ownerInfo struct {
+		name   string
+		offset int
+		idx    int
+	}
+	var owners []ownerInfo
+	knownEntities := make(map[string]bool)
 	for _, m := range reTypeORMEntity.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
 		ent := makeEntity(name, "SCOPE.Schema", "entity", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "typeorm", "provenance", "INFERRED_FROM_TYPEORM_ENTITY")
+		if !seen[fmt.Sprintf("%s:%s:%s", ent.Kind, ent.Name, ent.Subtype)] {
+			owners = append(owners, ownerInfo{name: name, offset: m[0], idx: len(entities)})
+			knownEntities[name] = true
+		}
 		addEntity(ent)
+	}
+
+	// owningEntity returns the @Entity class whose declaration most closely
+	// precedes a body offset, and whether one was found.
+	owningEntity := func(offset int) (ownerInfo, bool) {
+		best := ownerInfo{idx: -1}
+		found := false
+		for _, o := range owners {
+			if o.offset <= offset {
+				best = o
+				found = true
+			}
+		}
+		return best, found
 	}
 
 	// @ViewEntity classes
@@ -204,12 +261,42 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 	// @OneToMany / @ManyToOne etc. relations
 	for _, m := range reTypeORMRelation.FindAllStringSubmatchIndex(src, -1) {
 		relType := src[m[2]:m[3]]
-		fieldName := src[m[4]:m[5]]
+		argsBlob := src[m[4]:m[5]]
+		fieldName := src[m[6]:m[7]]
+		// The arrow-returned class is the target entity: @OneToMany(() => Order).
+		target := ""
+		if tm := reTypeORMRelationTarget.FindStringSubmatch(argsBlob); tm != nil {
+			target = tm[1]
+		}
 		name := fmt.Sprintf("%s:%s", relType, fieldName)
 		ent := makeEntity(name, "SCOPE.Component", "relation", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "typeorm", "relation_type", relType, "field_name", fieldName,
 			"provenance", "INFERRED_FROM_TYPEORM_RELATION")
+		if target != "" {
+			setProps(&ent, "target_entity", target)
+		}
 		addEntity(ent)
+
+		// GRAPH_RELATES model↔model edge with cardinality, hung off the owning
+		// @Entity model node. Only emitted when the arrow target resolves to a
+		// known same-file @Entity class — cross-file targets stay honest-partial
+		// (the topology is preserved as the `target_entity` prop above).
+		if owner, ok := owningEntity(m[0]); ok && target != "" && knownEntities[target] {
+			card := typeormRelationCardinality(relType)
+			entities[owner.idx].Relationships = append(entities[owner.idx].Relationships,
+				types.RelationshipRecord{
+					FromID: "Class:" + owner.name,
+					ToID:   "Class:" + target,
+					Kind:   string(types.RelationshipKindGraphRelates),
+					Properties: map[string]string{
+						"framework":     "typeorm",
+						"cardinality":   card,
+						"relation_type": relType,
+						"field_name":    fieldName,
+						"provenance":    "INFERRED_FROM_TYPEORM_RELATION",
+					},
+				})
+		}
 	}
 
 	// Lazy relations: @OneToMany/@ManyToOne/etc. with { lazy: true } option.

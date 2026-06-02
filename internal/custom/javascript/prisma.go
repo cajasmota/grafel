@@ -87,6 +87,44 @@ var (
 	)
 )
 
+var (
+	// A model block field line: `  fieldName  Type  @directives`. Captures the
+	// field name (group 1) and the raw type token (group 2) including any `[]`
+	// list or `?` optional suffix.
+	rePrismaFieldLine = regexp.MustCompile(
+		`(?m)^\s{1,8}([a-z][A-Za-z0-9_]*)\s+([A-Z][A-Za-z0-9_]*(?:\[\]|\?)?)`)
+	// Detects a @relation(... fields: [...] ...) on a field line — the FK-owning
+	// (many_to_one / one_to_one owner) side of a Prisma relation.
+	rePrismaFieldHasFKRel = regexp.MustCompile(`@relation\s*\([^)]*\bfields\s*:`)
+)
+
+// prismaModelBlocks returns each model block's name and body for a schema.
+func prismaModelBlocks(src string) []struct {
+	name string
+	body string
+} {
+	var blocks []struct {
+		name string
+		body string
+	}
+	for _, m := range rePrismaModel.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		// Body runs from the opening brace to the matching closing brace at
+		// column 0 (Prisma blocks are not nested), best-effort via the next
+		// line that is a lone `}`.
+		start := m[1]
+		end := len(src)
+		if i := strings.Index(src[start:], "\n}"); i >= 0 {
+			end = start + i + 2
+		}
+		blocks = append(blocks, struct {
+			name string
+			body string
+		}{name: name, body: src[start:end]})
+	}
+	return blocks
+}
+
 // alterTableOpSubtype maps an ALTER TABLE clause keyword to a schema-change subtype.
 func alterTableOpSubtype(clause string) string {
 	switch strings.ToUpper(clause) {
@@ -140,11 +178,19 @@ func (e *prismaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		entities = append(entities, ent)
 	}
 
-	// Prisma schema models
+	// Prisma schema models. Track the entities-slice index of each model node so
+	// the relation-field scan below can hang GRAPH_RELATES edges off it, and the
+	// set of known model names so targets resolve in-file.
+	modelIdx := make(map[string]int)
+	knownModels := make(map[string]bool)
 	for _, m := range rePrismaModel.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
 		ent := makeEntity(name, "SCOPE.Schema", "model", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "prisma", "provenance", "INFERRED_FROM_PRISMA_MODEL")
+		if !seen[fmt.Sprintf("%s:%s:%s", ent.Kind, ent.Name, ent.Subtype)] {
+			modelIdx[name] = len(entities)
+			knownModels[name] = true
+		}
 		addEntity(ent)
 	}
 
@@ -198,6 +244,59 @@ func (e *prismaExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 			setProps(&ent, "framework", "prisma", "relation_name", relName,
 				"provenance", "INFERRED_FROM_PRISMA_RELATION_REF")
 			addEntity(ent)
+		}
+
+		// GRAPH_RELATES model↔model edges with cardinality. Scan each model
+		// block's fields; a field whose (base) type names another model is a
+		// relation field:
+		//
+		//	orders   Order[]                              → one_to_many
+		//	user     User    @relation(fields:[uId], ...) → many_to_one  (FK owner)
+		//	profile  Profile?                             → one_to_one   (back side)
+		//
+		// FromID/ToID use the Class:<Model> convention so the resolver byName
+		// index links them to the model nodes. Cross-file target types are
+		// honest-partial (no edge — the model isn't a known in-file node).
+		for _, blk := range prismaModelBlocks(src) {
+			ownerIdx, ok := modelIdx[blk.name]
+			if !ok {
+				continue
+			}
+			for _, fm := range rePrismaFieldLine.FindAllStringSubmatchIndex(blk.body, -1) {
+				fieldName := blk.body[fm[2]:fm[3]]
+				rawType := blk.body[fm[4]:fm[5]]
+				isList := strings.HasSuffix(rawType, "[]")
+				baseType := strings.TrimSuffix(strings.TrimSuffix(rawType, "[]"), "?")
+				if !knownModels[baseType] {
+					continue // scalar/enum/cross-file type — not a model relation
+				}
+				// Determine cardinality. The list side is always one_to_many.
+				// The singular side is many_to_one when this field owns the FK
+				// (@relation(fields:[...])), else one_to_one (back-reference of a
+				// 1:1, or the singular back side).
+				lineText := blk.body[lineStart(blk.body, fm[0]):lineEnd(blk.body, fm[1])]
+				var card string
+				if isList {
+					card = "one_to_many"
+				} else if rePrismaFieldHasFKRel.MatchString(lineText) {
+					card = "many_to_one"
+				} else {
+					card = "one_to_one"
+				}
+				entities[ownerIdx].Relationships = append(entities[ownerIdx].Relationships,
+					types.RelationshipRecord{
+						FromID: "Class:" + blk.name,
+						ToID:   "Class:" + baseType,
+						Kind:   string(types.RelationshipKindGraphRelates),
+						Properties: map[string]string{
+							"framework":    "prisma",
+							"cardinality":  card,
+							"field_name":   fieldName,
+							"target_model": baseType,
+							"provenance":   "INFERRED_FROM_PRISMA_RELATION_FIELD",
+						},
+					})
+			}
 		}
 	}
 

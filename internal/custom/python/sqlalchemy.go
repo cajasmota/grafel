@@ -33,7 +33,12 @@ var (
 	// Captures the lazy strategy value: "dynamic", "select", "joined",
 	// "subquery", "raise", "raise_on_sql", True, False, or "write_only".
 	// Issue #2986 — lazy_loading_recognition partial for SQLAlchemy.
-	saLazyKwargRe       = regexp.MustCompile(`\blazy\s*=\s*["']?([A-Za-z_][A-Za-z0-9_]*)["']?`)
+	saLazyKwargRe = regexp.MustCompile(`\blazy\s*=\s*["']?([A-Za-z_][A-Za-z0-9_]*)["']?`)
+	// saUselistRe captures the uselist= kwarg of a relationship() call. When
+	// uselist=False the relationship is scalar (one_to_one / many_to_one);
+	// otherwise it is a collection (one_to_many). Used for GRAPH_RELATES
+	// cardinality.
+	saUselistRe         = regexp.MustCompile(`\buselist\s*=\s*(True|False)\b`)
 	saForeignKeyRe      = regexp.MustCompile(`ForeignKey\s*\(\s*["']([^"']+)["']`)
 	saAssocTableRe      = regexp.MustCompile(`(?m)^(\w+)\s*=\s*Table\s*\(\s*["']([^"']+)["']`)
 	saCreateEngineRe    = regexp.MustCompile(`(?m)(\w+)\s*=\s*create_(?:async_)?engine\s*\(\s*["']([^"']*)["']`)
@@ -139,6 +144,7 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 			props["tablename"] = tm[1]
 		}
 		out = append(out, entity(className, "SCOPE.Schema", "", file.Path, line, props))
+		modelIdx := len(out) - 1 // index of this model node, for GRAPH_RELATES edges
 
 		// Relationships within the class body
 		for _, rIdx := range allMatchesIndex(saRelationshipRe, body) {
@@ -151,16 +157,41 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 				"target_model": targetModel,
 				"parent_class": className,
 			}
+			argsBlob := ""
+			if rIdx[7] >= 0 {
+				argsBlob = body[rIdx[6]:rIdx[7]]
+			}
 			// Issue #2986 — detect lazy= kwarg in the relationship args blob.
 			// Captures strategies like "dynamic", "select", "joined", "subquery",
 			// "raise", "raise_on_sql", "write_only", True, False.
-			if rIdx[7] >= 0 {
-				argsBlob := body[rIdx[6]:rIdx[7]]
+			if argsBlob != "" {
 				if lm := saLazyKwargRe.FindStringSubmatch(argsBlob); lm != nil {
 					relProps["lazy_strategy"] = lm[1]
 				}
 			}
 			out = append(out, entity(className+"."+relAttr, "SCOPE.Schema", "", file.Path, relLine, relProps))
+
+			// GRAPH_RELATES model↔model edge with cardinality. SQLAlchemy
+			// relationship() default is a collection (one_to_many); uselist=False
+			// makes it scalar (one_to_one). The target is a quoted class name that
+			// resolves to the model node via the Class:<Name> byName convention.
+			card := "one_to_many"
+			if um := saUselistRe.FindStringSubmatch(argsBlob); um != nil && um[1] == "False" {
+				card = "one_to_one"
+			}
+			out[modelIdx].Relationships = append(out[modelIdx].Relationships,
+				types.RelationshipRecord{
+					FromID: "Class:" + className,
+					ToID:   "Class:" + targetModel,
+					Kind:   string(types.RelationshipKindGraphRelates),
+					Properties: map[string]string{
+						"framework":    "sqlalchemy",
+						"cardinality":  card,
+						"field_name":   relAttr,
+						"target_model": targetModel,
+						"provenance":   "INFERRED_FROM_SQLALCHEMY_RELATIONSHIP",
+					},
+				})
 		}
 
 		// ForeignKey references in the class body

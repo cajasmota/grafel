@@ -34043,9 +34043,9 @@
           },
           "relationship_extraction": {
             "status": "full",
-            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/prisma.go"],
-            "issue": "3067",
-            "verified_at": "2026-05-29"
+            "cites": ["internal/custom/javascript/orm_relationship_edges_test.go","internal/custom/javascript/prisma.go"],
+            "notes": "Model↔model GRAPH_RELATES edges with cardinality from schema.prisma relation fields: Order[]→one_to_many, Type @relation(fields:...)→many_to_one, Type?→one_to_one; scalar/enum/cross-file types emit no edge. Test: TestPrismaGraphRelatesEdges/TestPrismaScalarFieldNoEdge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
@@ -34105,9 +34105,9 @@
           },
           "relationship_extraction": {
             "status": "full",
-            "cites": ["internal/custom/javascript/orm_build_3067_test.go","internal/custom/javascript/sequelize.go"],
-            "issue": "3067",
-            "verified_at": "2026-05-29"
+            "cites": ["internal/custom/javascript/orm_relationship_edges_test.go","internal/custom/javascript/sequelize.go"],
+            "notes": "Model↔model GRAPH_RELATES edges with cardinality from User.hasMany/belongsTo/hasOne/belongsToMany(Target); Class:\u003csrc\u003e→Class:\u003ctarget\u003e. Test: TestSequelizeGraphRelatesEdges.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
@@ -34165,8 +34165,9 @@
           },
           "relationship_extraction": {
             "status": "full",
-            "cites": ["internal/custom/javascript/typeorm.go"],
-            "verified_at": "2026-05-29"
+            "cites": ["internal/custom/javascript/orm_relationship_edges_test.go","internal/custom/javascript/typeorm.go"],
+            "notes": "Model↔model GRAPH_RELATES edges with cardinality from @OneToMany/@ManyToOne/@OneToOne/@ManyToMany; target taken from the arrow-returned class (() =\u003e Order), hung off the owning @Entity node; cross-file targets honest-partial (target_entity prop only, no edge). Test: TestTypeORMGraphRelatesEdges/TestTypeORMUnresolvedTargetNoEdge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
@@ -49254,8 +49255,9 @@
           },
           "relationship_extraction": {
             "status": "full",
-            "cites": ["internal/extractors/python/django_relational.go"],
-            "verified_at": "2026-05-29"
+            "cites": ["internal/extractors/python/django_graph_relates_test.go","internal/extractors/python/django_relational.go"],
+            "notes": "Model↔model GRAPH_RELATES edges with cardinality alongside the field-level REFERENCES edge: ForeignKey→many_to_one, OneToOneField→one_to_one, ManyToManyField→many_to_many; hung off the owning model class node; scalar fields emit no edge. Test: TestDjangoGraphRelatesForeignKey/TestDjangoGraphRelatesScalarFieldNoEdge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
@@ -49493,8 +49495,9 @@
           },
           "relationship_extraction": {
             "status": "full",
-            "cites": ["internal/custom/python/sqlalchemy.go"],
-            "verified_at": "2026-05-29"
+            "cites": ["internal/custom/python/sqlalchemy.go","internal/custom/python/sqlalchemy_graph_relates_test.go"],
+            "notes": "Model↔model GRAPH_RELATES edges with cardinality from relationship(\"Target\"): default collection→one_to_many, uselist=False→one_to_one; Class:\u003cparent\u003e→Class:\u003ctarget\u003e. Test: TestSQLAlchemyGraphRelatesEdges/TestSQLAlchemyNoRelationshipNoEdge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
@@ -52185,8 +52188,9 @@
           },
           "relationship_extraction": {
             "status": "full",
-            "cites": ["internal/custom/ruby/activerecord.go","internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_deep_test.go"],
-            "notes": "Each association emits a SCOPE.Pattern/association entity carrying association_type, target_model, owner_model and option props (through/source/class_name/foreign_key/polymorphic/as). Test: TestDeepAssoc_AllMacrosWithOptions."
+            "cites": ["internal/custom/ruby/activerecord_deep.go","internal/custom/ruby/activerecord_graph_relates_test.go"],
+            "notes": "Model↔model GRAPH_RELATES edges with cardinality (one_to_many/many_to_one/one_to_one/many_to_many) emitted from associations, hung off the owner model node; ToID Class:\u003cTarget\u003e honors class_name: + inflection; polymorphic stays honest-partial (no edge). Test: TestARGraphRelatesCardinality/TestARBelongsToManyToOne/TestARClassNameTargetRedirect/TestARPolymorphicNoEdge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
