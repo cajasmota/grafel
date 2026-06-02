@@ -228,6 +228,72 @@ type drfViewSetClass struct {
 	// synthesized http_endpoint (#3864). Zero value means "nothing declared"
 	// (honest-partial — no fabricated posture).
 	posture drfPosture
+	// resolved reports whether the ViewSet class was actually located and
+	// parsed on disk (parseViewSetClass found the `class <name>(...)`
+	// declaration). When false, the caller fell back to modelViewSetMethods()
+	// without ever reading a class body, so a CRUD verb's body presence is
+	// unknown — its route provenance is `synthesized`, not `inherited` (#3831).
+	resolved bool
+}
+
+// crudVerbDefiningMixin maps each DRF CRUD method name to the rest_framework
+// mixin class that implements it (the DRF dispatch table). Used to stamp
+// `defining_class` on router-expanded routes whose verb is INHERITED from a
+// mixin rather than overridden in the ViewSet body (#3831). This is the
+// canonical DRF wiring: rest_framework.mixins.{List,Create,Retrieve,Update,
+// Destroy}ModelMixin. Both `update` and `partial_update` are implemented by
+// UpdateModelMixin (update() + partial_update() live in the same mixin).
+var crudVerbDefiningMixin = map[string]string{
+	"list":           "ListModelMixin",
+	"create":         "CreateModelMixin",
+	"retrieve":       "RetrieveModelMixin",
+	"update":         "UpdateModelMixin",
+	"partial_update": "UpdateModelMixin",
+	"destroy":        "DestroyModelMixin",
+}
+
+// Route-provenance tag values stamped onto router-expanded http_endpoint
+// synthetics (#3831). They answer the #278 disambiguation: is a verb on a
+// generated route overridden in the ViewSet body, inherited from a mixin, an
+// @action custom route, or a pure router default with no body anywhere?
+const (
+	// drfProvExplicit — the handler method is defined directly in the ViewSet
+	// class body (overridden). defining_class is the ViewSet itself.
+	drfProvExplicit = "explicit"
+	// drfProvInherited — a CRUD verb the ViewSet exposes via a mixin it does
+	// not override. defining_class is the implementing mixin (best-effort).
+	drfProvInherited = "inherited"
+	// drfProvAction — an @action / @detail_route / @list_route custom route.
+	// The decorated method lives in the ViewSet body, so defining_class is the
+	// ViewSet.
+	drfProvAction = "action"
+	// drfProvSynthesized — a router default route for a ViewSet that could not
+	// be resolved on disk: the CRUD family is assumed (modelViewSetMethods)
+	// with no class body ever read, so no body presence is known anywhere.
+	drfProvSynthesized = "synthesized"
+)
+
+// drfCRUDProvenance computes the (provenance, defining_class) pair for a CRUD
+// route on the given ViewSet (#3831).
+//
+//   - The ViewSet overrides the method in its body  → explicit, defining_class
+//     = the ViewSet class.
+//   - The ViewSet was resolved and the method is inherited from a mixin →
+//     inherited, defining_class = the implementing mixin from
+//     crudVerbDefiningMixin (or "" when the verb maps to an unknown custom
+//     base — honest-partial: provenance stays inherited, defining_class
+//     omitted).
+//   - The ViewSet could NOT be resolved on disk → synthesized (the whole CRUD
+//     family is an assumed router default; no body presence is known).
+func drfCRUDProvenance(vc drfViewSetClass, viewSetName, method string) (provenance, definingClass string) {
+	if vc.explicitMethods[method] {
+		return drfProvExplicit, viewSetName
+	}
+	if !vc.resolved {
+		// No class body was ever read — the verb is an assumed router default.
+		return drfProvSynthesized, ""
+	}
+	return drfProvInherited, crudVerbDefiningMixin[method]
 }
 
 // drfAction is a single @action-decorated method on a ViewSet.
@@ -330,7 +396,7 @@ func ApplyDjangoDRFRoutes(
 	// when the ViewSet class cannot be resolved). sourceLine is the 1-based
 	// line of `def <handler>(` (for explicit / @action methods) or the class
 	// def line (for inherited mixin methods). #2677.
-	emit := func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture) {
+	emit := func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture, provenance, definingClass string) {
 		if canonical == "" || canonical == "/" {
 			return
 		}
@@ -385,6 +451,18 @@ func ApplyDjangoDRFRoutes(
 		// SourceFile=ViewSet not routers.py), so the DRF expansion is the only
 		// place ViewSet-level posture can be attributed to the generated routes.
 		stampDRFEndpointPosture(props, posture)
+
+		// #3831 — stamp route provenance (explicit | inherited | action |
+		// synthesized) + the defining_class so consumers can disambiguate an
+		// overridden verb from an inherited one (the #278 question). provenance
+		// is always set for a router-expanded route; defining_class is omitted
+		// only in the honest-partial case (unknown custom base).
+		if provenance != "" {
+			props["provenance"] = provenance
+		}
+		if definingClass != "" {
+			props["defining_class"] = definingClass
+		}
 
 		out = append(out, types.EntityRecord{
 			ID:                 id,
@@ -1080,7 +1158,7 @@ func expandRegisterPrefixes(
 // exactly ONE canonical placeholder per detail route — the ViewSet's
 // declared lookup_field (defaulting to "pk").
 func emitCRUDFamily(
-	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture, provenance, definingClass string),
 	fullPrefix string,
 	vc drfViewSetClass,
 	sourceFile string,
@@ -1105,7 +1183,7 @@ func crudMethodLine(vc drfViewSetClass, method string) int {
 // `lookup_field`) is the source of truth; subsequent calls with alternate
 // placeholders widen the cross-repo match surface (#704 companion).
 func emitOneCRUDFamily(
-	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture, provenance, definingClass string),
 	fullPrefix string,
 	placeholder string,
 	vc drfViewSetClass,
@@ -1116,27 +1194,35 @@ func emitOneCRUDFamily(
 	// #3864 — all CRUD routes inherit the ViewSet-level posture.
 	pos := vc.posture
 
+	// emitCRUD wraps emit with the #3831 provenance/defining_class computed for
+	// the given CRUD method, so each route is tagged explicit | inherited |
+	// synthesized with the right defining class.
+	emitCRUD := func(verb, canonical string, line int, method string) {
+		prov, defClass := drfCRUDProvenance(vc, viewSetName, method)
+		emit(verb, canonical, sourceFile, line, viewSetName, method, pos, prov, defClass)
+	}
+
 	if vc.crudMethods["list"] {
-		emit("GET", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "list"), viewSetName, "list", pos)
+		emitCRUD("GET", canonicalDjango(fullPrefix), crudMethodLine(vc, "list"), "list")
 	}
 	if vc.crudMethods["create"] {
-		emit("POST", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "create"), viewSetName, "create", pos)
+		emitCRUD("POST", canonicalDjango(fullPrefix), crudMethodLine(vc, "create"), "create")
 	}
 	hasDetailVerb := false
 	if vc.crudMethods["retrieve"] {
-		emit("GET", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "retrieve"), viewSetName, "retrieve", pos)
+		emitCRUD("GET", canonicalDjango(detailBase), crudMethodLine(vc, "retrieve"), "retrieve")
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["update"] {
-		emit("PUT", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "update"), viewSetName, "update", pos)
+		emitCRUD("PUT", canonicalDjango(detailBase), crudMethodLine(vc, "update"), "update")
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["partial_update"] {
-		emit("PATCH", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "partial_update"), viewSetName, "partial_update", pos)
+		emitCRUD("PATCH", canonicalDjango(detailBase), crudMethodLine(vc, "partial_update"), "partial_update")
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["destroy"] {
-		emit("DELETE", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "destroy"), viewSetName, "destroy", pos)
+		emitCRUD("DELETE", canonicalDjango(detailBase), crudMethodLine(vc, "destroy"), "destroy")
 		hasDetailVerb = true
 	}
 	// Emit an ANY-verb detail fallback ONLY when no per-verb detail routes
@@ -1146,7 +1232,10 @@ func emitOneCRUDFamily(
 	// verb-aware matcher must skip, and it defeated the iter3 calibration
 	// top add-rec #2 (detail routes still showing method=ANY). Fix #1692.
 	if !hasDetailVerb {
-		emit("ANY", canonicalDjango(detailBase), sourceFile, vc.classDefLine, viewSetName, "", pos)
+		// The ANY catch-all only appears when the ViewSet could not be resolved
+		// (empty crudMethods), so the detail route is a pure router default with
+		// no body anywhere → synthesized, no defining_class (#3831).
+		emit("ANY", canonicalDjango(detailBase), sourceFile, vc.classDefLine, viewSetName, "", pos, drfProvSynthesized, "")
 	}
 }
 
@@ -1154,7 +1243,7 @@ func emitOneCRUDFamily(
 // ViewSet. For detail=True actions the route is
 // /<prefix>/{lookup}/<url_path>/; for detail=False it is /<prefix>/<url_path>/.
 func emitActionRoutes(
-	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture, provenance, definingClass string),
 	fullPrefix string,
 	vc drfViewSetClass,
 	sourceFile string,
@@ -1205,7 +1294,10 @@ func emitActionRoutes(
 				actionLine = vc.classDefLine
 			}
 			for _, verb := range methods {
-				emit(verb, canonical, sourceFile, actionLine, viewSetName, act.methodName, actPosture)
+				// #3831 — an @action route's handler is the decorated method,
+				// which lives in the ViewSet body, so defining_class is the
+				// ViewSet itself.
+				emit(verb, canonical, sourceFile, actionLine, viewSetName, act.methodName, actPosture, drfProvAction, viewSetName)
 			}
 		}
 	}
@@ -1542,6 +1634,10 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 	if classBodyStart == -1 {
 		return out
 	}
+	// The class declaration was located and its body is about to be parsed —
+	// mark the ViewSet resolved so route provenance can distinguish inherited
+	// (real mixin, body read) from synthesized (assumed default, no body) (#3831).
+	out.resolved = true
 
 	// 1-based line of the `class X(...)` declaration. Used as the fallback
 	// StartLine for inherited CRUD methods (#2677).
