@@ -9648,8 +9648,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "data_fetching": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_dart_client.go","internal/engine/http_endpoint_dart_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Dio (dio.get/post/put/delete) and package:http (http.get(Uri.parse(...))) outbound calls -\u003e one http_endpoint_call (consumer) per call site + FETCHES from the enclosing function; host stripped, $id/${expr} -\u003e {id}/{param} to match server-route normalisation. Value-asserted in http_endpoint_dart_client_test.go (e.g. dio.post(\"/auth/login\") -\u003e POST /auth/login, http.get(Uri.parse(\".../v1/users\")) -\u003e GET /v1/users)."
           },
           "prop_extraction": {
             "status": "missing",
@@ -9726,8 +9727,9 @@
             "issue": "backfill:dictionary-completeness"
           },
           "http_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_dart_client.go","internal/engine/http_endpoint_dart_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Each Dio / package:http call is recorded as an outbound HTTP effect (verb + canonical path) emitted with the SAME http_endpoint_call entity shape as the backend producer side, so the cross-repo linker pairs the Flutter screen with the backend route on reindex. Value-asserted in http_endpoint_dart_client_test.go."
           },
           "import_resolution_quality": {
             "status": "missing",
@@ -55820,6 +55822,334 @@
             "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway)"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.swift.framework.alamofire",
+      "category": "http_framework",
+      "subcategory": "mobile",
+      "language": "swift",
+      "label": "Alamofire (HTTP client)",
+      "capabilities": {
+        "Structure": {
+          "context_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Navigation": {
+          "deep_link_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "navigation_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "screen_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Platform": {
+          "platform_branching": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Native Bridge": {
+          "native_module_imports": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data Flow": {
+          "branch_conditions": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "state_management": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Lifecycle": {
+          "state_setter_emission": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_swift_client.go","internal/engine/http_endpoint_swift_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Alamofire AF.request(\"...\", method: .verb) / session.request(...) outbound calls -\u003e one http_endpoint_call (consumer) per call site + FETCHES from the enclosing func; host stripped, \\(expr) -\u003e {param}; verb from method: .verb (default GET). Same entity shape as the backend producer so the cross-repo linker pairs the iOS screen with the backend route on reindex. Value-asserted in http_endpoint_swift_client_test.go (AF.request(\"/auth/login\", method: .post) -\u003e POST /auth/login)."
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.swift.framework.urlsession",
+      "category": "http_framework",
+      "subcategory": "mobile",
+      "language": "swift",
+      "label": "URLSession (HTTP client)",
+      "capabilities": {
+        "Structure": {
+          "context_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Navigation": {
+          "deep_link_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "navigation_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "screen_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Platform": {
+          "platform_branching": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Native Bridge": {
+          "native_module_imports": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Data Flow": {
+          "branch_conditions": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "state_management": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Lifecycle": {
+          "state_setter_emission": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "http_effect": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_swift_client.go","internal/engine/http_endpoint_swift_client_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "URLSession via URL(string: \"...\") + request.httpMethod = \"VERB\" (default GET) -\u003e one http_endpoint_call (consumer) per URL site + FETCHES from the enclosing func; host stripped, \\(expr) -\u003e {param}. Same entity shape as the backend producer so the cross-repo linker pairs the iOS screen with the backend route on reindex. Value-asserted in http_endpoint_swift_client_test.go (URL(string: \".../v1/users\") -\u003e GET /v1/users; httpMethod=\"POST\" + URL(string:\"/auth/login\") -\u003e POST /auth/login)."
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           }
         }
       }

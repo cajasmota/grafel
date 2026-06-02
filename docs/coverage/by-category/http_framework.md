@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 209 records · **C/C++**: 19 · **C#**: 15 · **dart**: 1 · **elixir**: 14 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 17 · **lua**: 4 · **php**: 15 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 14 · **swift**: 1
+**Total**: 211 records · **C/C++**: 19 · **C#**: 15 · **dart**: 1 · **elixir**: 14 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 17 · **lua**: 4 · **php**: 15 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 14 · **swift**: 3
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -182,7 +182,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ✅ 2/2 | 🟢 1/1 | 🟢 21/21 | 🟢 8/8 | |
-| [dart](../by-language/dart.md) | [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/21 | 🟡 3/8 | |
+| [dart](../by-language/dart.md) | [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/21 | 🟡 4/8 | |
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🔴 0/1 | 🟢 19/19 | 🔴 0/3 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🔴 0/1 | 🟢 19/19 | 🔴 0/3 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 17/17 | |
@@ -221,6 +221,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | 🟢 20/20 | ✅ 19/19 | |
 | [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ✅ 3/3 | ✅ 1/1 | 🟢 18/18 | 🟢 9/9 | |
 | [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 8/8 | |
+| [swift](../by-language/swift.md) | [Alamofire (HTTP client)](../detail/lang.swift.framework.alamofire.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/21 | 🔴 0/9 | |
+| [swift](../by-language/swift.md) | [URLSession (HTTP client)](../detail/lang.swift.framework.urlsession.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/21 | 🔴 0/9 | |
 
 
 ## Desktop

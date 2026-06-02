@@ -1,12 +1,12 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `lang.dart.framework.flutter` — Flutter
+# `lang.swift.framework.alamofire` — Alamofire (HTTP client)
 
 Auto-generated. Back to [summary](../summary.md).
 
-- **Language:** [dart](../by-language/dart.md)
+- **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
-- **Subcategory:** UI Frontend
-- **Capability cells:** 33
+- **Subcategory:** Mobile
+- **Capability cells:** 34
 
 ## Capabilities
 
@@ -15,23 +15,34 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Component extraction | ✅ `full` | — | [link](https://github.com/cajasmota/archigraph/issues/3505) | `internal/custom/dart/extractors_test.go`<br>`internal/custom/dart/flutter.go` | StatelessWidget/StatefulWidget class declarations -> SCOPE.UIComponent (widget_type stateless/stateful). Regex/heuristic but catches the canonical Flutter widget idiom; value-asserting tests (TestFlutterStatelessWidget/StatefulWidget). |
 | Context extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Navigation
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Deep link extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Navigation extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Screen detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Platform
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Platform branching | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Native Bridge
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Native module imports | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Data Flow
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Data fetching | ✅ `full` | — | — | `internal/engine/http_endpoint_dart_client.go`<br>`internal/engine/http_endpoint_dart_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Dio (dio.get/post/put/delete) and package:http (http.get(Uri.parse(...))) outbound calls -> one http_endpoint_call (consumer) per call site + FETCHES from the enclosing function; host stripped, $id/${expr} -> {id}/{param} to match server-route normalisation. Value-asserted in http_endpoint_dart_client_test.go (e.g. dio.post("/auth/login") -> POST /auth/login, http.get(Uri.parse(".../v1/users")) -> GET /v1/users). |
-| Prop extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| State management | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/dart/flutter.go` | Bloc/Cubit/ChangeNotifier/InheritedWidget classes + StreamBuilder/BlocBuilder/context.read|watch|select<T> detected as SCOPE.Pattern/Component (state_kind). PARTIAL: class/usage detection only — no state-transition or data-flow resolution, no provider->consumer edges. |
-
-### Navigation
-
-| Capability | Status | Verified at | Issue | Cites | Notes |
-|------------|--------|-------------|-------|-------|-------|
-| Router pattern | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/dart/flutter.go` | Navigator.pushNamed/pushReplacementNamed + GoRoute(path:) detected as SCOPE.Operation/endpoint with route_path. PARTIAL: routes emitted as standalone entities — no screen->screen NAVIGATES_TO edges, no route->widget/builder resolution. |
+| State management | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Type System
 
@@ -64,7 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | ✅ `full` | — | — | `internal/engine/http_endpoint_dart_client.go`<br>`internal/engine/http_endpoint_dart_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Each Dio / package:http call is recorded as an outbound HTTP effect (verb + canonical path) emitted with the SAME http_endpoint_call entity shape as the backend producer side, so the cross-repo linker pairs the Flutter screen with the backend route on reindex. Value-asserted in http_endpoint_dart_client_test.go. |
+| HTTP effect | ✅ `full` | — | — | `internal/engine/http_endpoint_swift_client.go`<br>`internal/engine/http_endpoint_swift_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Alamofire AF.request("...", method: .verb) / session.request(...) outbound calls -> one http_endpoint_call (consumer) per call site + FETCHES from the enclosing func; host stripped, \(expr) -> {param}; verb from method: .verb (default GET). Same entity shape as the backend producer so the cross-repo linker pairs the iOS screen with the backend route on reindex. Value-asserted in http_endpoint_swift_client_test.go (AF.request("/auth/login", method: .post) -> POST /auth/login). |
 | Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
@@ -82,7 +93,7 @@ Auto-generated. Back to [summary](../summary.md).
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
-(or use `go run ./tools/coverage update lang.dart.framework.flutter ...`) then regenerate:
+(or use `go run ./tools/coverage update lang.swift.framework.alamofire ...`) then regenerate:
 
 ```
 go run ./tools/coverage validate

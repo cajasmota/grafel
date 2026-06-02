@@ -107,6 +107,12 @@ func synthesisSupportsLanguage(lang string) bool {
 	// through for the client synthesizer; files without sttp markers are no-ops.
 	case "scala":
 		return true
+	// #3574: mobile consumer-side HTTP client extraction (epic #3571). Dart
+	// (Dio / package:http) and Swift (URLSession / Alamofire) have no compiled
+	// YAML rules for their outbound calls; allow them through so the mobile
+	// client synthesizers run. Files without client markers are no-ops.
+	case "dart", "swift":
+		return true
 	// #3484: Lua Lapis / OpenResty producer-side route synthesis.
 	case "lua":
 		return true
@@ -198,6 +204,9 @@ func isTestSourceFile(filePath string) bool {
 	case ".php":
 		// PHP: FooTest.php
 		return strings.HasSuffix(stem, "test")
+	case ".dart":
+		// Dart: foo_test.dart (the package:test / flutter_test convention).
+		return strings.HasSuffix(stem, "_test")
 	case ".rs":
 		// Rust tests live in modules within production files; file-level
 		// exclusion is not meaningful. Return false and rely on the testmap
@@ -811,6 +820,20 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// combinators with uri"..." literals) outbound HTTP client. The Scala
 		// producer side is handled by the custom_scala_* framework extractors.
 		synthesizeScalaClientWithRuntime(string(content), emitClientRuntime)
+	case "dart":
+		// Consumer side (#3574, epic #3571): Flutter mobile HTTP clients —
+		// Dio (`dio.get("/path")`) and package:http
+		// (`http.get(Uri.parse("..."))`). Emits outbound http_endpoint_call
+		// entities + FETCHES edges so the cross-repo linker pairs mobile
+		// screens with backend routes.
+		synthesizeDartClientWithRuntime(string(content), emitClientRuntime)
+	case "swift":
+		// Consumer side (#3574, epic #3571): iOS mobile HTTP clients —
+		// URLSession (`URL(string: "...")` + `httpMethod`) and Alamofire
+		// (`AF.request("...", method: .post)`). Emits outbound
+		// http_endpoint_call entities + FETCHES edges. The Swift PRODUCER
+		// side (Vapor) is handled by the custom_swift_* extractors.
+		synthesizeSwiftClientWithRuntime(string(content), emitClientRuntime)
 	}
 
 	// #722 — response/request shape extraction. Mutates Properties on
