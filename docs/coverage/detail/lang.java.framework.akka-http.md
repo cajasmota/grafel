@@ -75,10 +75,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| Transaction boundary extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3863) | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present. |
 | Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
-| Transaction rollback rules | — `not_applicable` | — | 3092 | `internal/custom/java/akka_http_routes.go` | — |
+| Transaction rollback rules | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3863) | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework. |
 
 ### AOP
 

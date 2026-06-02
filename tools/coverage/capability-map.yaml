@@ -2812,6 +2812,55 @@ records:
           issues_implemented: ["2996"]
           verified_at: "2026-05-29"
 
+      Transactions:
+        transaction_function_stamping:
+          # #3863 (epic #3854): @Transactional (Spring + Jakarta/JTA) stamps
+          # transactional=true via the framework-agnostic txscope.DetectJava path.
+          status: full
+          symbols:
+            - file: internal/txscope/txscope.go
+              functions: [DetectJava]
+            - file: internal/extractors/java/java.go
+              functions: [javaMethodTxStamp, stampClassLevelTransactional]
+          tests:
+            - file: internal/extractors/java/transaction_boundary_test.go
+              functions: [TestJavaTx_MethodTransactionalWithPropagation]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_boundary_extraction:
+          # #3863: microprofile in txFrameworks — @Transactional boundary + net-new
+          # programmatic boundary detection (UserTransaction/Hibernate/JPA).
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_propagation:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_DGS_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863: rollbackFor/noRollbackFor (Spring) + rollbackOn/dontRollbackOn
+          # (Jakarta/JTA) + programmatic setRollbackOnly()/tx.rollback().
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList, extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Dropwizard_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.java.framework.spring-boot:
     capabilities:
       View:
@@ -14940,6 +14989,31 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+      Transactions:
+        transaction_boundary_extraction:
+          # #3863 (epic #3854) partial: programmatic transaction boundary only
+          # (UserTransaction.begin/commit, Hibernate session.beginTransaction,
+          # JPA em.getTransaction().begin). No @Transactional annotation surface.
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863, TestTransactional_ProgrammaticGating_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863 partial: programmatic rollback only (setRollbackOnly()/rollback()).
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.java.framework.dropwizard:
     capabilities:
       Routing:
@@ -15035,6 +15109,55 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+      Transactions:
+        transaction_function_stamping:
+          # #3863 (epic #3854): @Transactional (Spring + Jakarta/JTA) stamps
+          # transactional=true via the framework-agnostic txscope.DetectJava path.
+          status: full
+          symbols:
+            - file: internal/txscope/txscope.go
+              functions: [DetectJava]
+            - file: internal/extractors/java/java.go
+              functions: [javaMethodTxStamp, stampClassLevelTransactional]
+          tests:
+            - file: internal/extractors/java/transaction_boundary_test.go
+              functions: [TestJavaTx_MethodTransactionalWithPropagation]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_boundary_extraction:
+          # #3863: dropwizard in txFrameworks — @Transactional boundary + net-new
+          # programmatic boundary detection (UserTransaction/Hibernate/JPA).
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_propagation:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_DGS_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863: rollbackFor/noRollbackFor (Spring) + rollbackOn/dontRollbackOn
+          # (Jakarta/JTA) + programmatic setRollbackOnly()/tx.rollback().
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList, extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Dropwizard_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.java.framework.helidon:
     capabilities:
       Routing:
@@ -15130,6 +15253,55 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+      Transactions:
+        transaction_function_stamping:
+          # #3863 (epic #3854): @Transactional (Spring + Jakarta/JTA) stamps
+          # transactional=true via the framework-agnostic txscope.DetectJava path.
+          status: full
+          symbols:
+            - file: internal/txscope/txscope.go
+              functions: [DetectJava]
+            - file: internal/extractors/java/java.go
+              functions: [javaMethodTxStamp, stampClassLevelTransactional]
+          tests:
+            - file: internal/extractors/java/transaction_boundary_test.go
+              functions: [TestJavaTx_MethodTransactionalWithPropagation]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_boundary_extraction:
+          # #3863: helidon in txFrameworks — @Transactional boundary + net-new
+          # programmatic boundary detection (UserTransaction/Hibernate/JPA).
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_propagation:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_DGS_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863: rollbackFor/noRollbackFor (Spring) + rollbackOn/dontRollbackOn
+          # (Jakarta/JTA) + programmatic setRollbackOnly()/tx.rollback().
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList, extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Dropwizard_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.java.framework.javalin:
     capabilities:
       Observability:
@@ -15160,6 +15332,31 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+      Transactions:
+        transaction_boundary_extraction:
+          # #3863 (epic #3854) partial: programmatic transaction boundary only
+          # (UserTransaction.begin/commit, Hibernate session.beginTransaction,
+          # JPA em.getTransaction().begin). No @Transactional annotation surface.
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863, TestTransactional_ProgrammaticGating_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863 partial: programmatic rollback only (setRollbackOnly()/rollback()).
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.java.framework.jaxrs:
     capabilities:
       Routing:
@@ -15591,6 +15788,55 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+      Transactions:
+        transaction_function_stamping:
+          # #3863 (epic #3854): @Transactional (Spring + Jakarta/JTA) stamps
+          # transactional=true via the framework-agnostic txscope.DetectJava path.
+          status: full
+          symbols:
+            - file: internal/txscope/txscope.go
+              functions: [DetectJava]
+            - file: internal/extractors/java/java.go
+              functions: [javaMethodTxStamp, stampClassLevelTransactional]
+          tests:
+            - file: internal/extractors/java/transaction_boundary_test.go
+              functions: [TestJavaTx_MethodTransactionalWithPropagation]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_boundary_extraction:
+          # #3863: quarkus in txFrameworks — @Transactional boundary + net-new
+          # programmatic boundary detection (UserTransaction/Hibernate/JPA).
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_propagation:
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_DGS_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863: rollbackFor/noRollbackFor (Spring) + rollbackOn/dontRollbackOn
+          # (Jakarta/JTA) + programmatic setRollbackOnly()/tx.rollback().
+          status: full
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [txParseAttributes, classRefList, extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_JTARollbackOn_3863, TestTransactional_Dropwizard_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.java.framework.play:
     capabilities:
       Substrate:
@@ -15655,6 +15901,31 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+      Transactions:
+        transaction_boundary_extraction:
+          # #3863 (epic #3854) partial: programmatic transaction boundary only
+          # (UserTransaction.begin/commit, Hibernate session.beginTransaction,
+          # JPA em.getTransaction().begin). No @Transactional annotation surface.
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863, TestTransactional_ProgrammaticGating_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863 partial: programmatic rollback only (setRollbackOnly()/rollback()).
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.java.framework.android-sdk:
     capabilities:
       Structure:
@@ -15777,6 +16048,31 @@ records:
             - file: internal/custom/java/extractors_test.go
           issues_implemented: ["3006"]
           verified_at: "2026-05-29"
+      Transactions:
+        transaction_boundary_extraction:
+          # #3863 (epic #3854) partial: programmatic transaction boundary only
+          # (UserTransaction.begin/commit, Hibernate session.beginTransaction,
+          # JPA em.getTransaction().begin). No @Transactional annotation surface.
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [ExtractTransactional, extractProgrammaticTx, programmaticTxAPI]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863, TestTransactional_ProgrammaticGating_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
+        transaction_rollback_rules:
+          # #3863 partial: programmatic rollback only (setRollbackOnly()/rollback()).
+          status: partial
+          symbols:
+            - file: internal/custom/java/transactional.go
+              functions: [extractProgrammaticTx]
+          tests:
+            - file: internal/custom/java/transactional_3863_test.go
+              functions: [TestTransactional_Programmatic_3863]
+          issues_implemented: ["3863"]
+          verified_at: "2026-06-03"
   lang.python.framework.cherrypy:
     capabilities:
       Testing:

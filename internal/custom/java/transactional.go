@@ -28,6 +28,9 @@ import "regexp"
 var txFrameworks = map[string]bool{
 	"spring_boot": true, "spring-boot": true, "springboot": true,
 	"spring_webflux": true, "spring-webflux": true, "springwebflux": true,
+	// Spring for GraphQL resolver methods (@QueryMapping/@SchemaMapping/...) carry
+	// the same Spring @Transactional annotation. #3863.
+	"spring_graphql": true, "spring-graphql": true, "springgraphql": true,
 	"quarkus":   true,
 	"micronaut": true, "micronaut-core": true, "micronaut_core": true,
 	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
@@ -36,7 +39,36 @@ var txFrameworks = map[string]bool{
 	"microprofile": true, "micro-profile": true, "micro_profile": true,
 	// Helidon MP uses JTA @Transactional (via MicroProfile / Jakarta EE).
 	"helidon": true,
+	// Dropwizard-Hibernate exposes Jakarta/JTA @Transactional (and the
+	// dropwizard-hibernate @UnitOfWork boundary, handled below). #3863.
+	"dropwizard": true,
+	// Netflix DGS data-fetcher methods carry Spring @Transactional when a
+	// resolver opens a DB transaction. #3863.
+	"dgs":         true,
+	"netflix-dgs": true, "netflix_dgs": true,
 }
+
+// txProgrammaticFrameworks gates the PROGRAMMATIC transaction-boundary /
+// rollback detection (UserTransaction.begin()/commit()/rollback(),
+// session.beginTransaction(), setRollbackOnly()). Unlike the annotation surface,
+// programmatic JTA/Hibernate transaction APIs are available across the whole JVM
+// backend ecosystem — including frameworks that do NOT use @Transactional
+// (Vert.x, Akka-HTTP, Struts, Javalin, Guice). #3863 (epic #3854). The set is the
+// union of txFrameworks and those non-annotation JVM frameworks.
+var txProgrammaticFrameworks = func() map[string]bool {
+	m := map[string]bool{
+		"vertx": true, "vert.x": true, "vert_x": true, "vertx_web": true, "vertx-web": true,
+		"akka-http": true, "akka_http": true, "akkahttp": true, "akka-http-java": true,
+		"struts":  true,
+		"javalin": true,
+		"guice":   true,
+		"play":    true,
+	}
+	for k, v := range txFrameworks {
+		m[k] = v
+	}
+	return m
+}()
 
 var (
 	// txMethodRE matches @Transactional (with optional attribute body) on a
@@ -72,6 +104,14 @@ var (
 	// scanning the matched body separately via txClassRefRE.
 	txRollbackRE   = regexp.MustCompile(`rollbackFor\s*=\s*\{?([^}]*?)\}?(?:,\s*\w+\s*=|\)|$)`)
 	txNoRollbackRE = regexp.MustCompile(`noRollbackFor\s*=\s*\{?([^}]*?)\}?(?:,\s*\w+\s*=|\)|$)`)
+	// txJTARollbackOnRE / txJTADontRollbackOnRE capture the Jakarta/JTA spelling
+	// (`@Transactional(rollbackOn = …, dontRollbackOn = …)` from
+	// jakarta.transaction.Transactional / javax.transaction.Transactional). These
+	// are folded into the SAME rollback_for / no_rollback_for properties as the
+	// Spring rollbackFor / noRollbackFor so the rollback-rule capability is
+	// uniform across the Spring and Jakarta annotation surfaces. #3863.
+	txJTARollbackOnRE     = regexp.MustCompile(`\brollbackOn\s*=\s*\{?([^}]*?)\}?(?:,\s*\w+\s*=|\)|$)`)
+	txJTADontRollbackOnRE = regexp.MustCompile(`\bdontRollbackOn\s*=\s*\{?([^}]*?)\}?(?:,\s*\w+\s*=|\)|$)`)
 	// txClassRefRE pulls each class token out of a rollbackFor list body. Accepts
 	// both the Java `Foo.class` form and the Kotlin `Foo::class` form so Kotlin
 	// @Transactional(rollbackFor = [Foo::class]) rollback rules are captured.
@@ -107,12 +147,23 @@ func txParseAttributes(body string) map[string]any {
 		// Jakarta/JTA positional propagation: @Transactional(TxType.REQUIRES_NEW).
 		props["propagation"] = m[1]
 	}
+	// rollback_for accepts BOTH the Spring `rollbackFor=` and the Jakarta/JTA
+	// `rollbackOn=` spelling (folded into the same property). Likewise
+	// no_rollback_for accepts Spring `noRollbackFor=` and JTA `dontRollbackOn=`.
 	if m := txRollbackRE.FindStringSubmatch(body); m != nil {
+		if refs := classRefList(m[1]); len(refs) > 0 {
+			props["rollback_for"] = joinComma(refs)
+		}
+	} else if m := txJTARollbackOnRE.FindStringSubmatch(body); m != nil {
 		if refs := classRefList(m[1]); len(refs) > 0 {
 			props["rollback_for"] = joinComma(refs)
 		}
 	}
 	if m := txNoRollbackRE.FindStringSubmatch(body); m != nil {
+		if refs := classRefList(m[1]); len(refs) > 0 {
+			props["no_rollback_for"] = joinComma(refs)
+		}
+	} else if m := txJTADontRollbackOnRE.FindStringSubmatch(body); m != nil {
 		if refs := classRefList(m[1]); len(refs) > 0 {
 			props["no_rollback_for"] = joinComma(refs)
 		}
@@ -151,7 +202,12 @@ var methodNameStopwords = map[string]bool{
 // annotation before fun/class declarations (same regex patterns apply).
 func ExtractTransactional(ctx PatternContext) PatternResult {
 	var result PatternResult
-	if (ctx.Language != "java" && ctx.Language != "kotlin") || !txFrameworks[ctx.Framework] {
+	if ctx.Language != "java" && ctx.Language != "kotlin" {
+		return result
+	}
+	annotationFW := txFrameworks[ctx.Framework]
+	programmaticFW := txProgrammaticFrameworks[ctx.Framework]
+	if !annotationFW && !programmaticFW {
 		return result
 	}
 
@@ -159,6 +215,16 @@ func ExtractTransactional(ctx PatternContext) PatternResult {
 	fp := ctx.FilePath
 	seenRefs := make(map[string]bool)
 	seenRels := make(map[relKey]bool)
+
+	// Programmatic transaction boundaries / rollback (net-new, #3863) run for the
+	// wider JVM-backend set (including non-@Transactional frameworks). The
+	// annotation passes below still gate on txFrameworks only.
+	if programmaticFW {
+		extractProgrammaticTx(ctx, source, fp, &result, seenRefs, seenRels)
+	}
+	if !annotationFW {
+		return result
+	}
 
 	// 1. Class-level @Transactional. Record offsets so class-level boundaries
 	//    are not double-counted as methods, and so method boundaries can link
@@ -249,6 +315,138 @@ func ExtractTransactional(ctx PatternContext) PatternResult {
 	return result
 }
 
+var (
+	// txProgMethodRE finds a concrete method declaration (signature followed by a
+	// body-opening brace). It deliberately requires the `{` so abstract/interface
+	// declarations (which have no programmatic body) are skipped. Group 1 is the
+	// method name; the match end is positioned at the opening brace so the
+	// brace-balanced body can be scanned from there.
+	txProgMethodRE = regexp.MustCompile(
+		`(?s)(?:(?:public|protected|private|static|final|abstract|synchronized|default|native)\s+)*` +
+			`(?:<[^>]*>\s*)?` +
+			`(?:[\w.]+(?:\s*<[^>]*>)?(?:\[\])?\s+)` +
+			`(\w+)\s*\([^;{]*\)\s*(?:throws\s+[\w.,\s]+?)?\{`)
+
+	// Programmatic transaction-OPEN signals (boundary). Conservative: each is a
+	// recognised JTA / Hibernate / JPA programmatic transaction-open call.
+	//   userTransaction.begin()            — JTA UserTransaction.
+	//   tm.begin() where a *Transaction*   — handled by the UserTransaction arm.
+	//   session.beginTransaction()         — Hibernate Session.
+	//   em.getTransaction().begin()        — JPA EntityTransaction.
+	txProgUserTxBeginRE = regexp.MustCompile(`\b\w*[Tt]ransaction\s*\.\s*begin\s*\(\s*\)`)
+	txProgHibBeginRE    = regexp.MustCompile(`\b\w+\s*\.\s*beginTransaction\s*\(\s*\)`)
+	txProgEMBeginRE     = regexp.MustCompile(`\bgetTransaction\s*\(\s*\)\s*\.\s*begin\s*\(`)
+
+	// Programmatic ROLLBACK signals.
+	//   ctx.setRollbackOnly()      — JTA/EJB mark-rollback.
+	//   userTransaction.rollback() — JTA explicit rollback.
+	//   tx.rollback()              — Hibernate / JPA EntityTransaction rollback.
+	txProgSetRollbackOnlyRE = regexp.MustCompile(`\bsetRollbackOnly\s*\(\s*\)`)
+	txProgRollbackCallRE    = regexp.MustCompile(`\b\w+\s*\.\s*rollback\s*\(\s*\)`)
+)
+
+// matchingBrace returns the index just AFTER the brace-balanced region that
+// starts at the opening `{` located at openIdx. Returns len(src) if unbalanced.
+func matchingBrace(src string, openIdx int) int {
+	depth := 0
+	for i := openIdx; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return len(src)
+}
+
+// extractProgrammaticTx detects PROGRAMMATIC transaction boundaries and rollback
+// rules inside method bodies — net-new for #3863 (epic #3854). Unlike the
+// annotation surface this fires for the wider JVM-backend framework set
+// (txProgrammaticFrameworks), since UserTransaction / Hibernate Session /
+// EntityTransaction APIs are framework-agnostic.
+//
+// HONESTY BOUNDARY: a method is stamped only when a transaction-OPEN call
+// (begin/beginTransaction) is lexically present in its own body — receiving a tx
+// handle as a parameter is NOT a boundary. A method that only calls rollback()/
+// setRollbackOnly() (without an open) is stamped as a rollback-only marker, not a
+// boundary, to avoid crediting a boundary that opens elsewhere. Annotation-stamped
+// methods are skipped (their ref is already claimed) so no double-count occurs.
+func extractProgrammaticTx(ctx PatternContext, source, fp string, result *PatternResult, seenRefs map[string]bool, seenRels map[relKey]bool) {
+	for _, m := range txProgMethodRE.FindAllStringSubmatchIndex(source, -1) {
+		methodName := source[m[2]:m[3]]
+		if methodNameStopwords[methodName] {
+			continue
+		}
+		openIdx := m[1] - 1 // the matched `{`
+		if openIdx < 0 || openIdx >= len(source) || source[openIdx] != '{' {
+			continue
+		}
+		body := source[openIdx:matchingBrace(source, openIdx)]
+
+		opensTx := txProgUserTxBeginRE.MatchString(body) ||
+			txProgHibBeginRE.MatchString(body) ||
+			txProgEMBeginRE.MatchString(body)
+		rollsBack := txProgSetRollbackOnlyRE.MatchString(body) ||
+			txProgRollbackCallRE.MatchString(body)
+		if !opensTx && !rollsBack {
+			continue
+		}
+
+		ownerClass := findEnclosingClass(source, m[0])
+		name := methodName
+		if ownerClass != "" {
+			name = ownerClass + "." + methodName
+		}
+		ref := "scope:pattern:transaction_boundary:" + fp + ":" + name
+		// Do not collide with an annotation-emitted boundary for the same method.
+		if seenRefs[ref] {
+			continue
+		}
+
+		props := map[string]any{
+			"method":    methodName,
+			"framework": canonicalTxFramework(ctx.Framework),
+		}
+		if ownerClass != "" {
+			props["declaring_class"] = ownerClass
+		}
+		if opensTx {
+			props["transaction_boundary"] = "programmatic"
+			props["tx_api"] = programmaticTxAPI(body)
+		}
+		if rollsBack {
+			props["rollback"] = "programmatic"
+		}
+		addEntity(result, seenRefs, SecondaryEntity{
+			Name: name, Kind: "SCOPE.Pattern", Subtype: "transaction_boundary",
+			SourceFile: fp,
+			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, openIdx),
+			Provenance: "INFERRED_FROM_PROGRAMMATIC_TX", Ref: ref,
+			Properties: props,
+		})
+	}
+}
+
+// programmaticTxAPI names the programmatic transaction API a body opens, for the
+// tx_api property. Hibernate/EM-specific calls are checked ahead of the generic
+// UserTransaction.begin() arm so the most specific label wins.
+func programmaticTxAPI(body string) string {
+	switch {
+	case txProgHibBeginRE.MatchString(body):
+		return "hibernate_session"
+	case txProgEMBeginRE.MatchString(body):
+		return "jpa_entity_transaction"
+	case txProgUserTxBeginRE.MatchString(body):
+		return "jta_user_transaction"
+	default:
+		return ""
+	}
+}
+
 // canonicalTxFramework normalises a framework alias to its canonical name for
 // the entity `framework` property, matching the convention used by the
 // sibling extractors.
@@ -258,6 +456,8 @@ func canonicalTxFramework(framework string) string {
 		return "spring_boot"
 	case "spring_webflux", "spring-webflux", "springwebflux":
 		return "spring_webflux"
+	case "spring_graphql", "spring-graphql", "springgraphql":
+		return "spring_graphql"
 	case "micronaut", "micronaut-core", "micronaut_core":
 		return "micronaut"
 	case "jakarta_ee", "jakarta-ee", "jakartaee", "java_ee", "javaee":
@@ -268,6 +468,22 @@ func canonicalTxFramework(framework string) string {
 		return "microprofile"
 	case "helidon":
 		return "helidon"
+	case "dropwizard":
+		return "dropwizard"
+	case "dgs", "netflix-dgs", "netflix_dgs":
+		return "dgs"
+	case "vertx", "vert.x", "vert_x", "vertx_web", "vertx-web":
+		return "vertx"
+	case "akka-http", "akka_http", "akkahttp", "akka-http-java":
+		return "akka_http"
+	case "struts":
+		return "struts"
+	case "javalin":
+		return "javalin"
+	case "guice":
+		return "guice"
+	case "play":
+		return "play"
 	default:
 		return framework
 	}

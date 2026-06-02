@@ -75,10 +75,10 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction boundary extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
-| Transaction propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Transaction rollback rules | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Transaction boundary extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863: spring_graphql in txFrameworks; @Transactional resolver boundaries + programmatic. |
+| Transaction function stamping | ✅ `full` | `2026-06-02` | — | `internal/extractors/java/java.go`<br>`internal/extractors/java/transaction_boundary_test.go`<br>`internal/txscope/txscope.go` | #3863: @Transactional stamping via txscope.DetectJava (framework-agnostic). |
+| Transaction propagation | ✅ `full` | `2026-06-02` | — | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863: propagation/TxType captured. |
+| Transaction rollback rules | ✅ `full` | `2026-06-02` | — | `internal/custom/java/transactional.go`<br>`internal/custom/java/transactional_3863_test.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3863: rollbackFor/noRollbackFor + rollbackOn/dontRollbackOn + programmatic. |
 
 ### AOP
 

@@ -23523,9 +23523,11 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "not_applicable",
-            "cites": ["internal/custom/java/akka_http_routes.go"],
-            "issue": "3092"
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
             "status": "missing",
@@ -23537,9 +23539,11 @@
             "issue": "3092"
           },
           "transaction_rollback_rules": {
-            "status": "not_applicable",
-            "cites": ["internal/custom/java/akka_http_routes.go"],
-            "issue": "3092"
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -24288,20 +24292,28 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: @Transactional class/method boundaries (Spring + Jakarta/JTA); SCOPE.Pattern(subtype=transaction_boundary) with declaring_class + OWNS edge; framework in txFrameworks. Net-new programmatic boundary (UserTransaction/Hibernate session/JPA EntityTransaction) also detected.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3863: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only via txscope.DetectJava (framework-agnostic).",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: propagation=Propagation.\u003cMODE\u003e (Spring) + TxType.\u003cMODE\u003e (JTA positional) captured; isolation + readOnly too; framework in txFrameworks.",
+            "verified_at": "2026-06-02"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: rollbackFor/noRollbackFor (Spring) AND rollbackOn/dontRollbackOn (Jakarta/JTA) folded into rollback_for/no_rollback_for; programmatic setRollbackOnly()/tx.rollback() also marked.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -24579,23 +24591,28 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: @Transactional class/method boundaries (Spring + Jakarta/JTA); SCOPE.Pattern(subtype=transaction_boundary) with declaring_class + OWNS edge; framework in txFrameworks. Net-new programmatic boundary (UserTransaction/Hibernate session/JPA EntityTransaction) also detected.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3863: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only via txscope.DetectJava (framework-agnostic).",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: propagation=Propagation.\u003cMODE\u003e (Spring) + TxType.\u003cMODE\u003e (JTA positional) captured; isolation + readOnly too; framework in txFrameworks.",
+            "verified_at": "2026-06-02"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: rollbackFor/noRollbackFor (Spring) AND rollbackOn/dontRollbackOn (Jakarta/JTA) folded into rollback_for/no_rollback_for; programmatic setRollbackOnly()/tx.rollback() also marked.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -24901,8 +24918,11 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "3699"
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
             "status": "missing",
@@ -24913,8 +24933,11 @@
             "issue": "3699"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "3699"
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -25405,26 +25428,28 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: @Transactional class/method boundaries (Spring + Jakarta/JTA); SCOPE.Pattern(subtype=transaction_boundary) with declaring_class + OWNS edge; framework in txFrameworks. Net-new programmatic boundary (UserTransaction/Hibernate session/JPA EntityTransaction) also detected.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3863: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only via txscope.DetectJava (framework-agnostic).",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: propagation=Propagation.\u003cMODE\u003e (Spring) + TxType.\u003cMODE\u003e (JTA positional) captured; isolation + readOnly too; framework in txFrameworks.",
+            "verified_at": "2026-06-02"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: rollbackFor/noRollbackFor (Spring) AND rollbackOn/dontRollbackOn (Jakarta/JTA) folded into rollback_for/no_rollback_for; programmatic setRollbackOnly()/tx.rollback() also marked.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -25747,31 +25772,28 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: @Transactional class/method boundaries (Spring + Jakarta/JTA); SCOPE.Pattern(subtype=transaction_boundary) with declaring_class + OWNS edge; framework in txFrameworks. Net-new programmatic boundary (UserTransaction/Hibernate session/JPA EntityTransaction) also detected.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
             "status": "full",
             "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
-            "notes": "#3628: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only on that method entity; class-level @Transactional propagates to all enclosing methods (method-level annotation wins on specificity). No transitive propagation across calls.",
+            "notes": "#3863: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only via txscope.DetectJava (framework-agnostic).",
             "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: propagation=Propagation.\u003cMODE\u003e (Spring) + TxType.\u003cMODE\u003e (JTA positional) captured; isolation + readOnly too; framework in txFrameworks.",
+            "verified_at": "2026-06-02"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: rollbackFor/noRollbackFor (Spring) AND rollbackOn/dontRollbackOn (Jakarta/JTA) folded into rollback_for/no_rollback_for; programmatic setRollbackOnly()/tx.rollback() also marked.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -26090,9 +26112,11 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "not_applicable",
-            "issue": "3085",
-            "notes": "Javalin is a micro HTTP framework with no built-in transaction management. @Transactional is a Spring/JTA concept; transaction boundary extraction is not_applicable for Javalin."
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
             "status": "missing",
@@ -26104,9 +26128,11 @@
             "notes": "Javalin has no transaction propagation model; not_applicable."
           },
           "transaction_rollback_rules": {
-            "status": "not_applicable",
-            "issue": "3085",
-            "notes": "Javalin has no transaction rollback rules; not_applicable."
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -27170,26 +27196,28 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: @Transactional class/method boundaries (Spring + Jakarta/JTA); SCOPE.Pattern(subtype=transaction_boundary) with declaring_class + OWNS edge; framework in txFrameworks. Net-new programmatic boundary (UserTransaction/Hibernate session/JPA EntityTransaction) also detected.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3863: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only via txscope.DetectJava (framework-agnostic).",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: propagation=Propagation.\u003cMODE\u003e (Spring) + TxType.\u003cMODE\u003e (JTA positional) captured; isolation + readOnly too; framework in txFrameworks.",
+            "verified_at": "2026-06-02"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: rollbackFor/noRollbackFor (Spring) AND rollbackOn/dontRollbackOn (Jakarta/JTA) folded into rollback_for/no_rollback_for; programmatic setRollbackOnly()/tx.rollback() also marked.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -27769,29 +27797,28 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: @Transactional class/method boundaries (Spring + Jakarta/JTA); SCOPE.Pattern(subtype=transaction_boundary) with declaring_class + OWNS edge; framework in txFrameworks. Net-new programmatic boundary (UserTransaction/Hibernate session/JPA EntityTransaction) also detected.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3863: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only via txscope.DetectJava (framework-agnostic).",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "propagation=Propagation.\u003cMODE\u003e (Spring) and TxType.\u003cMODE\u003e (JTA) captured into propagation property; isolation + readOnly also captured",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: propagation=Propagation.\u003cMODE\u003e (Spring) + TxType.\u003cMODE\u003e (JTA positional) captured; isolation + readOnly too; framework in txFrameworks.",
+            "verified_at": "2026-06-02"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "rollbackFor / noRollbackFor X.class single + {A.class,B.class} list captured into rollback_for / no_rollback_for properties",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: rollbackFor/noRollbackFor (Spring) AND rollbackOn/dontRollbackOn (Jakarta/JTA) folded into rollback_for/no_rollback_for; programmatic setRollbackOnly()/tx.rollback() also marked.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -28477,20 +28504,28 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: spring_graphql in txFrameworks; @Transactional resolver boundaries + programmatic.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3863: @Transactional stamping via txscope.DetectJava (framework-agnostic).",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: propagation/TxType captured.",
+            "verified_at": "2026-06-02"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3863: rollbackFor/noRollbackFor + rollbackOn/dontRollbackOn + programmatic.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -29136,10 +29171,11 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "not_applicable",
-            "cites": ["internal/custom/java/struts_routes.go"],
-            "issue": "3089",
-            "notes": "Struts has no transaction management; projects use Spring @Transactional or JTA outside the framework"
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
             "status": "missing",
@@ -29152,10 +29188,11 @@
             "notes": "No transaction propagation in Struts core; deferred to Spring/JTA layer"
           },
           "transaction_rollback_rules": {
-            "status": "not_applicable",
-            "cites": ["internal/custom/java/struts_routes.go"],
-            "issue": "3089",
-            "notes": "No rollback-rule declarations in Struts; deferred to Spring/JTA layer"
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
@@ -29675,9 +29712,11 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
-            "notes": "Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly."
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic transaction boundary detected — UserTransaction.begin()/commit(), Hibernate session.beginTransaction(), JPA em.getTransaction().begin() in a method body emit a SCOPE.Pattern(subtype=transaction_boundary, transaction_boundary=programmatic, tx_api=...). No @Transactional annotation surface for this framework. Honest-partial: boundary credited only where a begin/open call is lexically present.",
+            "verified_at": "2026-06-02"
           },
           "transaction_function_stamping": {
             "status": "missing",
@@ -29689,9 +29728,11 @@
             "notes": "Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly."
           },
           "transaction_rollback_rules": {
-            "status": "not_applicable",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3086",
-            "notes": "Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly."
+            "status": "partial",
+            "cites": ["internal/custom/java/transactional.go","internal/custom/java/transactional_3863_test.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3863",
+            "notes": "#3863 (partial): programmatic rollback detected — setRollbackOnly() / tx.rollback() / userTransaction.rollback() mark rollback=programmatic on the method. No declarative rollbackFor/rollbackOn surface for this framework.",
+            "verified_at": "2026-06-02"
           }
         },
         "AOP": {
