@@ -146,7 +146,6 @@ subcategories:
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture]
-        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
       - name: View
         keys: [view_rendering]
       - name: Auth
@@ -228,7 +227,6 @@ subcategories:
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture]
-        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
       - name: View
         keys: [view_rendering]
       - name: Auth

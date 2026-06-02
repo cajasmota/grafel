@@ -26,19 +26,19 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/5 | |
-| [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/18 | |
-| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🔴 0/4 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 5/8 | |
-| [Koin (Kotlin DI)](../detail/lang.kotlin.framework.koin.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/18 | |
-| [Ktor](../detail/lang.kotlin.framework.ktor.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 12/14 | |
-| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/17 | |
-| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/17 | |
-| [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | 🟡 2/4 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/23 | 🔴 0/18 | |
-| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/17 | |
-| [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/18 | |
-| [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/8 | |
-| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/5 | |
-| [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/18 | |
+| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟡 1/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/6 | |
+| [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/19 | |
+| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🔴 0/5 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 5/9 | |
+| [Koin (Kotlin DI)](../detail/lang.kotlin.framework.koin.md) | 🔴 0/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/19 | |
+| [Ktor](../detail/lang.kotlin.framework.ktor.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 12/15 | |
+| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/18 | |
+| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/18 | |
+| [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | 🟡 2/5 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/23 | 🔴 0/19 | |
+| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 4/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/18 | |
+| [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | 🟡 3/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/19 | |
+| [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/9 | |
+| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟡 1/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/6 | |
+| [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | 🔴 0/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/19 | |
 
 
 ### Mobile
@@ -64,10 +64,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟡 7/8 | |
-| [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟡 7/9 | |
-| [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟡 7/8 | |
-| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟡 2/3 | |
-| [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟡 7/8 | |
-| [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟡 7/8 | |
-| [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 7/9 | |
+| [Exposed (JetBrains)](../detail/lang.kotlin.orm.exposed.md) | 🟡 7/9 | |
+| [Hibernate (Kotlin)](../detail/lang.kotlin.orm.hibernate.md) | 🟡 7/10 | |
+| [Ktorm](../detail/lang.kotlin.orm.ktorm.md) | 🟡 7/9 | |
+| [MongoDB (Kotlin driver)](../detail/lang.kotlin.orm.mongodb.md) | 🟡 2/4 | |
+| [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟡 7/9 | |
+| [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟡 7/9 | |
+| [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 7/10 | |

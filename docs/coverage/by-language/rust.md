@@ -26,19 +26,19 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/4 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/4 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/4 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/5 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/5 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/5 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
 
 
 ### Desktop
@@ -66,21 +66,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 7/8 | |
-| [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 4/5 | |
-| [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 8/9 | |
-| [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/9 | |
-| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🔴 0/2 | |
-| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/2 | |
-| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/2 | |
-| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🟡 1/2 | |
-| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/2 | |
-| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟡 3/4 | |
-| [redis-rs](../detail/lang.rust.driver.redis.md) | 🟡 1/2 | |
-| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 1/2 | |
-| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/2 | |
-| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 4/5 | |
-| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🔴 0/2 | |
+| [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 7/9 | |
+| [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 4/6 | |
+| [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 8/10 | |
+| [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/10 | |
+| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🔴 0/3 | |
+| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/3 | |
+| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/3 | |
+| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🟡 1/3 | |
+| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/3 | |
+| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟡 3/5 | |
+| [redis-rs](../detail/lang.rust.driver.redis.md) | 🟡 1/3 | |
+| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 1/3 | |
+| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/3 | |
+| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 4/6 | |
+| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🔴 0/3 | |
 
 
 ## Other

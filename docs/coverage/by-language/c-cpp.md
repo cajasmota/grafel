@@ -26,20 +26,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | 🔴 0/1 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
-| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/1 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
-| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/1 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
-| [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟡 3/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/1 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
-| [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/1 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
-| [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/1 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
+| [ACE (Adaptive Communication Environment)](../detail/lang.c-cpp.framework.ace.md) | 🔴 0/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
+| [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
+| [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
+| [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟡 3/5 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
+| [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
+| [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
 
 
 ### UI Frontend
@@ -93,13 +93,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/4 | |
-| [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/8 | |
-| [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/4 | |
-| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/4 | |
-| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/4 | |
-| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/2 | |
-| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/4 | |
+| [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/5 | |
+| [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/9 | |
+| [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/5 | |
+| [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/5 | |
+| [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/5 | |
+| [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/3 | |
+| [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/5 | |
 
 
 ## Other

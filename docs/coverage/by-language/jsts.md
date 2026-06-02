@@ -26,20 +26,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 6/11 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 4/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 10/12 | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/12 | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
-| [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/12 | |
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 6/11 | |
+| [Express](../detail/lang.jsts.framework.express.md) | ✅ 5/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 10/12 | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/12 | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
+| [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟡 3/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/12 | |
 
 
 ### UI Frontend
@@ -129,24 +129,24 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | 🟡 1/2 | |
-| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | 🟡 1/2 | |
-| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | 🟡 7/8 | |
-| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ 7/7 | |
-| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟡 8/9 | |
-| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | 🟡 1/2 | |
-| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 5/6 | |
-| [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟡 8/9 | |
-| [Prisma](../detail/lang.jsts.orm.prisma.md) | ✅ 8/8 | |
-| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 9/9 | |
-| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟢 9/9 | |
-| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | 🟡 1/2 | |
-| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | 🟡 1/2 | |
-| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | 🟡 1/2 | |
-| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | 🟡 1/2 | |
-| [neo4j-driver (JS) / neogma OGM](../detail/lang.jsts.driver.neo4j.md) | 🟡 4/5 | |
-| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | 🟡 1/2 | |
-| [supabase-js](../detail/lang.jsts.driver.supabase.md) | 🟡 1/2 | |
+| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | 🟡 1/3 | |
+| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | 🟡 1/3 | |
+| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | 🟡 7/9 | |
+| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ 8/8 | |
+| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟡 8/10 | |
+| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | 🟡 1/3 | |
+| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 5/7 | |
+| [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟡 8/10 | |
+| [Prisma](../detail/lang.jsts.orm.prisma.md) | 🟡 8/9 | |
+| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 10/10 | |
+| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟢 10/10 | |
+| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | 🟡 1/3 | |
+| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | 🟡 1/3 | |
+| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | 🟡 1/3 | |
+| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | 🟡 1/3 | |
+| [neo4j-driver (JS) / neogma OGM](../detail/lang.jsts.driver.neo4j.md) | 🟡 4/6 | |
+| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | 🟡 1/3 | |
+| [supabase-js](../detail/lang.jsts.driver.supabase.md) | 🟡 1/3 | |
 
 
 ## Other

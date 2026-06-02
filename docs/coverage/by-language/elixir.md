@@ -26,18 +26,18 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟡 3/4 | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟡 3/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
-| [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟡 1/2 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
-| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟡 3/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 4/9 | |
-| [Finch](../detail/lang.elixir.framework.finch.md) | 🟡 1/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 3/24 | 🔴 0/12 | |
-| [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/4 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/12 | |
-| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟡 1/2 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 1/6 | |
-| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟡 1/2 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
-| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/4 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/4 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 2/24 | 🔴 0/12 | |
-| [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [Absinthe (GraphQL)](../detail/lang.elixir.framework.absinthe.md) | 🟡 3/5 | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟡 3/5 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
+| [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟡 1/3 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
+| [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟡 3/5 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 4/9 | |
+| [Finch](../detail/lang.elixir.framework.finch.md) | 🟡 1/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 3/24 | 🔴 0/12 | |
+| [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/5 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/12 | |
+| [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟡 1/3 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 1/6 | |
+| [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟡 1/3 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
+| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/5 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/5 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
+| [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 2/24 | 🔴 0/12 | |
+| [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
 
 
 ### Meta Framework
@@ -71,16 +71,16 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Ecto](../detail/lang.elixir.orm.ecto.md) | 🟡 7/8 | |
-| [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🔴 0/2 | |
-| [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🔴 0/2 | |
-| [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🔴 0/2 | |
-| [Redix](../detail/lang.elixir.driver.redix.md) | 🔴 0/2 | |
-| [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | 🔴 0/2 | |
-| [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🟡 3/4 | |
-| [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | 🟡 7/8 | |
-| [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | 🔴 0/2 | |
-| [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | 🔴 0/2 | |
+| [Ecto](../detail/lang.elixir.orm.ecto.md) | 🟡 7/9 | |
+| [ExAws DynamoDB](../detail/lang.elixir.driver.dynamodb.md) | 🔴 0/3 | |
+| [MyXQL](../detail/lang.elixir.driver.myxql.md) | 🔴 0/3 | |
+| [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🔴 0/3 | |
+| [Redix](../detail/lang.elixir.driver.redix.md) | 🔴 0/3 | |
+| [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | 🔴 0/3 | |
+| [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🟡 3/5 | |
+| [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | 🟡 7/9 | |
+| [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | 🔴 0/3 | |
+| [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | 🔴 0/3 | |
 
 
 ## Other
