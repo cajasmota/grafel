@@ -1098,6 +1098,11 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				if discs := inspectDiscriminators(r, e, scopeIsOne); len(discs) > 0 {
 					out["discriminators"] = discs
 				}
+				// #3870: dependency-injection edges (INJECTED_INTO / BINDS).
+				// Section omitted entirely when the entity has no DI edges.
+				if di := inspectDIEdges(r, e, scopeIsOne); len(di) > 0 {
+					out["di_edges"] = di
+				}
 				// #2642: metadata block with index provenance.
 				out["metadata"] = inspectMetadata(r)
 				return jsonResult(out), nil
@@ -1159,6 +1164,11 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	// edges. Section is omitted entirely when no discriminator edges exist.
 	if discs := inspectDiscriminators(m.repo, m.ent, scopeIsOne); len(discs) > 0 {
 		out["discriminators"] = discs
+	}
+	// #3870: dependency-injection edges (INJECTED_INTO / BINDS).
+	// Section omitted entirely when the entity has no DI edges.
+	if di := inspectDIEdges(m.repo, m.ent, scopeIsOne); len(di) > 0 {
+		out["di_edges"] = di
 	}
 	// #2642: metadata block with index provenance.
 	out["metadata"] = inspectMetadata(m.repo)
@@ -1456,6 +1466,110 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 	return out
 }
 
+// inspectDIEdges returns rows for every dependency-injection edge attached to
+// entity e — INJECTED_INTO (provider→consumer) and BINDS (module/token→impl).
+// These edges are emitted by the per-language DI extractors (e.g.
+// internal/custom/javascript/nestjs_di.go) and wired into the graph, but before
+// #3870 no MCP read tool projected them: inspect surfaced only CALLS
+// (calls/called_by) and DISCRIMINATES_ON, so a consumer could not see
+// provider→consumer wiring at all.
+//
+// Each row carries:
+//
+//	kind      — "INJECTED_INTO" or "BINDS"
+//	direction — "outbound" (this entity is the FromID, e.g. a provider injected
+//	            into others / a module that binds) or "inbound" (this entity is
+//	            the ToID, e.g. a controller a provider is injected into / an impl
+//	            a token binds to)
+//	other     — the entity on the other side of the edge (ToID for outbound,
+//	            FromID for inbound)
+//	line      — Properties["line"] when the extractor recorded one (0 otherwise)
+//
+// Returns nil when the entity has no DI edges so the inspect envelope can omit
+// the section entirely (mirrors inspectDiscriminators, #2666). (#3870)
+func inspectDIEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	if lr == nil || lr.Doc == nil || e == nil {
+		return nil
+	}
+	isDIKind := func(k string) bool {
+		return strings.EqualFold(k, string(types.RelationshipKindInjectedInto)) ||
+			strings.EqualFold(k, string(types.RelationshipKindBinds))
+	}
+	out := []map[string]any{}
+	rels := lr.Doc.Relationships
+	emit := func(ed edge, direction string) {
+		other := ed.target
+		if !scopeIsOne {
+			other = prefixedID(lr.Repo, other)
+		}
+		// ed.kind preserves the on-graph relationship casing (buildAdjacency
+		// copies r.Kind verbatim), so consumers can match the constant directly.
+		entry := map[string]any{
+			"kind":      ed.kind,
+			"direction": direction,
+			"other":     other,
+			"line":      0,
+		}
+		if ed.relIdx >= 0 && ed.relIdx < len(rels) {
+			if v := rels[ed.relIdx].Properties["line"]; v != "" {
+				if n, err := strconv.Atoi(v); err == nil {
+					entry["line"] = n
+				}
+			}
+		}
+		out = append(out, entry)
+	}
+	adj := lr.getAdjacency()
+	for _, ed := range adj.Outgoing(e.ID) {
+		if isDIKind(ed.kind) {
+			emit(ed, "outbound")
+		}
+	}
+	for _, ed := range adj.Incoming(e.ID) {
+		if isDIKind(ed.kind) {
+			emit(ed, "inbound")
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// diNeighbor describes the dependency-injection edge connecting a start node to
+// one of its direct neighbours (used to annotate archigraph_expand rows, #3870).
+type diNeighbor struct {
+	kind      string // "INJECTED_INTO" or "BINDS" (on-graph casing)
+	direction string // "outbound" (start is FromID) or "inbound" (start is ToID)
+}
+
+// directDIEdges indexes the INJECTED_INTO / BINDS edges directly incident on
+// startID, keyed by the neighbour entity id. Outbound edges (start is the
+// provider/module/token FromID) take precedence over inbound when an id appears
+// on both sides. Returns an empty (non-nil) map when there are no DI edges.
+// (#3870)
+func directDIEdges(adj *adjacency, startID string) map[string]diNeighbor {
+	res := map[string]diNeighbor{}
+	if adj == nil {
+		return res
+	}
+	isDI := func(k string) bool {
+		return strings.EqualFold(k, string(types.RelationshipKindInjectedInto)) ||
+			strings.EqualFold(k, string(types.RelationshipKindBinds))
+	}
+	for _, ed := range adj.Incoming(startID) {
+		if isDI(ed.kind) {
+			res[ed.target] = diNeighbor{kind: ed.kind, direction: "inbound"}
+		}
+	}
+	for _, ed := range adj.Outgoing(startID) {
+		if isDI(ed.kind) {
+			res[ed.target] = diNeighbor{kind: ed.kind, direction: "outbound"}
+		}
+	}
+	return res
+}
+
 // inspectMetadata returns index-staleness fields for the inspect response.
 // Surfaces indexed_at and age_seconds so agents know whether the line-number
 // data might be stale. (#2642)
@@ -1581,6 +1695,13 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 	}
 	adj := startRepo.getAdjacency() // built lazily, cached until reload (#3367)
 	vis := bfs(adj, start.ID, depth, nil)
+	// #3870: dependency-injection edges (INJECTED_INTO / BINDS) are emitted by
+	// the per-language DI extractors and live in the graph, but neighbors
+	// previously dropped the connecting edge kind entirely — so a consumer could
+	// not tell a provider→consumer injection from a plain CALLS neighbour. Index
+	// the start node's direct DI edges by neighbour id so the matching output
+	// rows can be annotated with {di_kind, di_direction} below.
+	diByNeighbor := directDIEdges(adj, start.ID)
 	out := []map[string]any{}
 	for nid, d := range vis {
 		if nid == start.ID {
@@ -1590,13 +1711,18 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 		if e == nil {
 			continue
 		}
-		out = append(out, map[string]any{
+		row := map[string]any{
 			"id":          prefixedID(startRepo.Repo, e.ID),
 			"label":       e.Name,
 			"depth":       d,
 			"source_file": e.SourceFile,
 			"start_line":  e.StartLine,
-		})
+		}
+		if di, ok := diByNeighbor[nid]; ok {
+			row["di_kind"] = di.kind
+			row["di_direction"] = di.direction
+		}
+		out = append(out, row)
 	}
 	// include cross-repo overlay edges from this node.
 	// linksForSourceRepo consults the CrossLinkCache (issue #2224) so that
