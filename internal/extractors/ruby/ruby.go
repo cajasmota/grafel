@@ -43,7 +43,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	walk(file.Tree.RootNode(), file, &entities)
+	root := file.Tree.RootNode()
+	walk(root, file, &entities)
+	// Issue #3641 (epic #3625) — config-key consumption edges
+	// (ENV['X'] / ENV.fetch('X')) → shared SCOPE.Config config_key nodes.
+	emitConfigConsumerEdges(root, file.Content, &entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")

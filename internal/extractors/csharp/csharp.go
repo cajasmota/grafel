@@ -72,6 +72,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	root := file.Tree.RootNode()
 	imports := collectImportNames(root, file.Content)
 	walk(root, file, "", nil, imports, &entities)
+	// Issue #3641 (epic #3625) — config-key consumption edges
+	// (Configuration["X"] / GetValue / GetConnectionString /
+	// Environment.GetEnvironmentVariable) → shared SCOPE.Config config_key nodes.
+	emitConfigConsumerEdges(root, file.Content, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "csharp")
 	extractor.TagEntitiesLanguage(entities, "csharp")
