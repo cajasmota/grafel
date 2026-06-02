@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/python/orms/django_orm.yaml`<br>`internal/extractors/python/django_relational.go` | — |
-| Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
+| Model lifecycle extraction | ✅ `full` | `2026-06-02` | 3628 | `internal/custom/python/django.go`<br>`internal/custom/python/lifecycle_traits_test.go`<br>`internal/lifecycle/lifecycle.go`<br>`internal/lifecycle/lifecycle_test.go` | soft_delete + soft_delete_column (deleted_at DateTimeField -> deleted_at, is_deleted BooleanField -> is_deleted, or a django-safedelete base -> deleted_at), timestamps (auto_now_add + auto_now, or created_at + updated_at fields), audit_columns (created_by/updated_by FK). Honesty: a plain 'deleted' boolean with no deleted_at/is_deleted/safedelete is NOT soft_delete. Emits a SCOPE.Schema/model node per class X(models.Model). |
 | Schema extraction | ✅ `full` | `2026-05-29` | 3060 | `internal/extractors/python/django_relational.go` | field_type and all keyword arguments (max_length, null, blank, on_delete, related_name, etc.) are stamped on each SCOPE.Schema/field entity by stampDjangoFieldProperties(); structured JSON Schema or OpenAPI emission not yet implemented |
 
 ### Relationships

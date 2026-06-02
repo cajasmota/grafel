@@ -92,12 +92,12 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 |---|---|---|
 | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 2/5 | |
 | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/9 | |
-| [Django ORM](../detail/lang.python.orm.django.md) | 🟡 10/11 | |
+| [Django ORM](../detail/lang.python.orm.django.md) | ✅ 11/11 | |
 | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟡 5/9 | |
 | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 2/5 | |
 | [Peewee](../detail/lang.python.orm.peewee.md) | 🟡 6/9 | |
 | [Pony ORM](../detail/lang.python.orm.pony.md) | 🟡 6/9 | |
-| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | 🟡 10/11 | |
+| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 11/11 | |
 | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟡 8/11 | |
 | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟡 7/10 | |
 | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟡 1/4 | |

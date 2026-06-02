@@ -39501,8 +39501,11 @@
             "verified_at": "2026-05-28"
           },
           "model_lifecycle_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/javascript/lifecycle_traits_test.go","internal/custom/javascript/sequelize.go","internal/lifecycle/lifecycle.go","internal/lifecycle/lifecycle_test.go"],
+            "issue": "3628",
+            "notes": "soft_delete + soft_delete_column (paranoid:true -\u003e deletedAt, or deletedAt:'col' override), timestamps (default-on for Sequelize models unless timestamps:false; paranoid forces them on), audit_columns (createdBy/created_by/... attribute keys). Honesty: no paranoid -\u003e no soft_delete; timestamps:false omits timestamps. Reads attributes + options objects of define()/init().",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "full",
@@ -39581,8 +39584,11 @@
             "verified_at": "2026-05-28"
           },
           "model_lifecycle_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/javascript/lifecycle_traits_test.go","internal/custom/javascript/typeorm.go","internal/lifecycle/lifecycle.go","internal/lifecycle/lifecycle_test.go"],
+            "issue": "3628",
+            "notes": "soft_delete + soft_delete_column (@DeleteDateColumn() -\u003e its property name), timestamps (@CreateDateColumn() + @UpdateDateColumn() both present), audit_columns (@Column() createdBy/created_by/...). Honesty: a plain @Column() 'deleted' boolean with no @DeleteDateColumn is NOT soft_delete; @CreateDateColumn alone does not assert timestamps. Per-@Entity body isolation.",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "partial",
@@ -57417,8 +57423,11 @@
             "verified_at": "2026-05-28"
           },
           "model_lifecycle_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/python/django.go","internal/custom/python/lifecycle_traits_test.go","internal/lifecycle/lifecycle.go","internal/lifecycle/lifecycle_test.go"],
+            "issue": "3628",
+            "notes": "soft_delete + soft_delete_column (deleted_at DateTimeField -\u003e deleted_at, is_deleted BooleanField -\u003e is_deleted, or a django-safedelete base -\u003e deleted_at), timestamps (auto_now_add + auto_now, or created_at + updated_at fields), audit_columns (created_by/updated_by FK). Honesty: a plain 'deleted' boolean with no deleted_at/is_deleted/safedelete is NOT soft_delete. Emits a SCOPE.Schema/model node per class X(models.Model).",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "full",
@@ -57717,8 +57726,11 @@
             "verified_at": "2026-05-28"
           },
           "model_lifecycle_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/python/lifecycle_traits_test.go","internal/custom/python/sqlalchemy.go","internal/lifecycle/lifecycle.go","internal/lifecycle/lifecycle_test.go"],
+            "issue": "3628",
+            "notes": "soft_delete + soft_delete_column (deleted_at Column/mapped_column, or a SoftDeleteMixin base -\u003e deleted_at), timestamps (created_at + updated_at columns WITH a server_default/onupdate/default=func|datetime signal), audit_columns (created_by/updated_by). Honesty: a plain 'deleted' boolean Column is NOT soft_delete; a pair of plain DateTime columns without a timestamp-default signal does NOT assert timestamps.",
+            "verified_at": "2026-06-02"
           },
           "schema_extraction": {
             "status": "full",

@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/lifecycle"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -217,10 +218,21 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 	}
 	var owners []ownerInfo
 	knownEntities := make(map[string]bool)
-	for _, m := range reTypeORMEntity.FindAllStringSubmatchIndex(src, -1) {
+	entityMatches := reTypeORMEntity.FindAllStringSubmatchIndex(src, -1)
+	for i, m := range entityMatches {
 		name := src[m[2]:m[3]]
 		ent := makeEntity(name, "SCOPE.Schema", "entity", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "typeorm", "provenance", "INFERRED_FROM_TYPEORM_ENTITY")
+		// Data-lifecycle traits (#3628 child): scan this entity's class body —
+		// from its @Entity decorator to the next @Entity (or EOF) — for the
+		// TypeORM soft-delete/timestamp/audit decorators and stamp the resolved
+		// traits onto the model node before it is emitted.
+		bodyEnd := len(src)
+		if i+1 < len(entityMatches) {
+			bodyEnd = entityMatches[i+1][0]
+		}
+		lifecycle.TypeORM(src[m[0]:bodyEnd]).
+			Stamp(func(kv ...string) { setProps(&ent, kv...) })
 		if !seen[fmt.Sprintf("%s:%s:%s", ent.Kind, ent.Name, ent.Subtype)] {
 			owners = append(owners, ownerInfo{name: name, offset: m[0], idx: len(entities)})
 			knownEntities[name] = true

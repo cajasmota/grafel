@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/lifecycle"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -138,6 +139,51 @@ func sequelizeMigrationOpSubtype(method string) string {
 	}
 }
 
+// reSequelizeAttrKey matches a top-level attribute key inside the attributes
+// object of a define()/init() model spec (`fieldName: {` or `fieldName: DataTypes...`).
+var reSequelizeAttrKey = regexp.MustCompile(`(?m)^\s{2,}([a-zA-Z_][A-Za-z0-9_]*)\s*:`)
+
+// sequelizeBracedSpan returns the substring spanning the brace-balanced object
+// that begins at the first '{' at or after start, and the index just past its
+// closing '}'. Returns ("", start) when no balanced object is found.
+func sequelizeBracedSpan(src string, start int) (string, int) {
+	open := strings.IndexByte(src[start:], '{')
+	if open < 0 {
+		return "", start
+	}
+	open += start
+	depth := 0
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[open : i+1], i + 1
+			}
+		}
+	}
+	return "", start
+}
+
+// sequelizeModelLifecycle resolves lifecycle traits for a Sequelize model whose
+// declaration ends at declEnd (just past the `define(`/`.init(` opener). It reads
+// the attributes object (column names) and the following options object
+// (paranoid/timestamps flags) and returns the resolved traits.
+func sequelizeModelLifecycle(src string, declEnd int) lifecycle.Traits {
+	attrs, after := sequelizeBracedSpan(src, declEnd)
+	if attrs == "" {
+		return lifecycle.Traits{}
+	}
+	var cols []string
+	for _, m := range reSequelizeAttrKey.FindAllStringSubmatch(attrs, -1) {
+		cols = append(cols, m[1])
+	}
+	options, _ := sequelizeBracedSpan(src, after)
+	return lifecycle.Sequelize(lifecycle.SequelizeInput{OptionsBlob: options, Columns: cols})
+}
+
 func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/javascript")
 	_, span := tracer.Start(ctx, "indexer.sequelize_extractor.extract",
@@ -176,29 +222,47 @@ func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput)
 		addEntity(ent)
 	}
 
-	// sequelize.define models
+	// sequelize.define models. The model node carries data-lifecycle traits
+	// (#3628 child) resolved from the attributes + options objects that follow
+	// the define( opener: paranoid → soft-delete, timestamps default-on, audit
+	// columns from the attribute keys.
 	for _, m := range reSequelizeDefine.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
 		ent := makeEntity(name, "SCOPE.Schema", "model", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "sequelize", "provenance", "INFERRED_FROM_SEQUELIZE_DEFINE")
+		sequelizeModelLifecycle(src, m[1]).
+			Stamp(func(kv ...string) { setProps(&ent, kv...) })
 		addEntity(ent)
 	}
 
-	// Class extends Model
+	// Class extends Model. The lifecycle traits live in the X.init({...}, {...})
+	// call, so we record the model-node index and stamp them once the matching
+	// init() is found below.
 	classNames := make(map[string]bool)
+	classModelIdx := make(map[string]int)
 	for _, m := range reSequelizeClassExtends.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
 		classNames[name] = true
 		ent := makeEntity(name, "SCOPE.Schema", "model", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "sequelize", "provenance", "INFERRED_FROM_SEQUELIZE_CLASS_MODEL")
+		if !seen[fmt.Sprintf("%s:%s:%s", ent.Kind, ent.Name, ent.Subtype)] {
+			classModelIdx[name] = len(entities)
+		}
 		addEntity(ent)
 	}
 
-	// Model.init() calls (only for known class models)
+	// Model.init() calls (only for known class models). Resolve lifecycle traits
+	// from the init spec and stamp them back onto the class model node.
 	for _, m := range reSequelizeModelInit.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
 		if !classNames[name] {
 			continue
+		}
+		if idx, ok := classModelIdx[name]; ok {
+			// reSequelizeModelInit consumes the attributes object's opening '{',
+			// so back up one byte to let sequelizeBracedSpan see it.
+			sequelizeModelLifecycle(src, m[1]-1).
+				Stamp(func(kv ...string) { setProps(&entities[idx], kv...) })
 		}
 		ent := makeEntity(name+".init", "SCOPE.Operation", "model_init", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "sequelize", "model_name", name,

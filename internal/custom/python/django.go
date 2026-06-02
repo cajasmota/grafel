@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/lifecycle"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -53,6 +54,11 @@ var (
 	djangoMgmtHandleRe        = regexp.MustCompile(`(?m)^\s{4,}def\s+handle\s*\(\s*self`)
 	djangoManagerClassRe      = regexp.MustCompile(
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:(?:models\.)?(?:Manager|QuerySet)|BaseManager)[^)]*\)\s*:`)
+	// Django model class: class Foo(models.Model) / a SafeDeleteModel subclass.
+	// Group 1 = class name, group 2 = base-class list.
+	djangoModelClassRe = regexp.MustCompile(
+		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\(([^)]*(?:models\.Model|SafeDeleteModel|SafeDeleteMPTTModel)[^)]*)\)\s*:`)
+
 	djangoLoginRequiredRe = regexp.MustCompile(`(?m)@login_required\s*(?:\([^)]*\))?\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 	djangoPermRequiredRe  = regexp.MustCompile(`(?m)@permission_required\s*\(\s*["']?([^)"']+)["']?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 
@@ -402,6 +408,32 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		line := lineOf(source, idx[0])
 		out = append(out, entity(className, "SCOPE.Schema", "", file.Path, line,
 			map[string]string{"framework": "django", "pattern_type": "model_manager"}))
+	}
+
+	// 10b. Model classes with data-lifecycle traits (#3628 child).
+	//      Each `class X(models.Model)` (or django-safedelete subclass) is
+	//      emitted as a SCOPE.Schema model node stamped with soft-delete /
+	//      timestamps / audit-column traits resolved from its class body, so the
+	//      graph can answer "which Django models soft-delete / track timestamps?".
+	//      Detection is convention-driven (deleted_at/is_deleted field, a
+	//      safedelete base, auto_now/auto_now_add or created_at+updated_at) — a
+	//      plain `deleted` boolean is NOT reported as soft-delete.
+	for _, idx := range allMatchesIndex(djangoModelClassRe, source) {
+		className := source[idx[2]:idx[3]]
+		bases := source[idx[4]:idx[5]]
+		classLine := lineOf(source, idx[0])
+		body := extractClassBody(source, idx[0])
+		props := map[string]string{
+			"framework":    "django",
+			"pattern_type": "model",
+			"provenance":   "INFERRED_FROM_DJANGO_MODEL",
+		}
+		lifecycle.Django(bases, body).Stamp(func(kv ...string) {
+			for i := 0; i+1 < len(kv); i += 2 {
+				props[kv[i]] = kv[i+1]
+			}
+		})
+		out = append(out, entity(className, "SCOPE.Schema", "model", file.Path, classLine, props))
 	}
 
 	// 11. View decorators

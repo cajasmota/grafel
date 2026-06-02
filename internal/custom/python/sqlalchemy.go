@@ -9,6 +9,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/lifecycle"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -143,6 +144,15 @@ func (e *SQLAlchemyExtractor) Extract(ctx context.Context, file extractor.FileIn
 		if tm := saTablenameRe.FindStringSubmatch(body); tm != nil {
 			props["tablename"] = tm[1]
 		}
+		// Data-lifecycle traits (#3628 child): soft-delete (deleted_at Column /
+		// SoftDeleteMixin), timestamps (created_at+updated_at with a
+		// server_default/onupdate signal), audit columns — stamped onto the model
+		// node. A plain `deleted` boolean is NOT reported as soft-delete.
+		lifecycle.SQLAlchemy(bases, body).Stamp(func(kv ...string) {
+			for i := 0; i+1 < len(kv); i += 2 {
+				props[kv[i]] = kv[i+1]
+			}
+		})
 		out = append(out, entity(className, "SCOPE.Schema", "", file.Path, line, props))
 		modelIdx := len(out) - 1 // index of this model node, for GRAPH_RELATES edges
 

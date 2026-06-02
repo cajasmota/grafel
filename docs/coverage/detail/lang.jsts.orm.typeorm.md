@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/orms/typeorm.yaml` | — |
-| Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
+| Model lifecycle extraction | ✅ `full` | `2026-06-02` | 3628 | `internal/custom/javascript/lifecycle_traits_test.go`<br>`internal/custom/javascript/typeorm.go`<br>`internal/lifecycle/lifecycle.go`<br>`internal/lifecycle/lifecycle_test.go` | soft_delete + soft_delete_column (@DeleteDateColumn() -> its property name), timestamps (@CreateDateColumn() + @UpdateDateColumn() both present), audit_columns (@Column() createdBy/created_by/...). Honesty: a plain @Column() 'deleted' boolean with no @DeleteDateColumn is NOT soft_delete; @CreateDateColumn alone does not assert timestamps. Per-@Entity body isolation. |
 | Schema extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/javascript/typeorm.go` | reTypeORMEntity+reTypeORMColumn+reTypeORMViewEntity extract entity/column/view decorators (#3183) |
 
 ### Relationships

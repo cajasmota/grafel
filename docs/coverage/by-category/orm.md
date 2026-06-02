@@ -83,8 +83,8 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [JS/TS](../by-language/jsts.md) | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 5/8 | |
 | [JS/TS](../by-language/jsts.md) | [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟡 8/11 | |
 | [JS/TS](../by-language/jsts.md) | [Prisma](../detail/lang.jsts.orm.prisma.md) | 🟡 8/10 | |
-| [JS/TS](../by-language/jsts.md) | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟡 10/11 | |
-| [JS/TS](../by-language/jsts.md) | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟡 10/11 | |
+| [JS/TS](../by-language/jsts.md) | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 11/11 | |
+| [JS/TS](../by-language/jsts.md) | [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟢 11/11 | |
 | [JS/TS](../by-language/jsts.md) | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | 🟡 1/4 | |
 | [JS/TS](../by-language/jsts.md) | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | 🟡 1/4 | |
 | [JS/TS](../by-language/jsts.md) | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | 🟡 1/4 | |
@@ -115,12 +115,12 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/4 | |
 | [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 2/5 | |
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/9 | |
-| [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | 🟡 10/11 | |
+| [python](../by-language/python.md) | [Django ORM](../detail/lang.python.orm.django.md) | ✅ 11/11 | |
 | [python](../by-language/python.md) | [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟡 5/9 | |
 | [python](../by-language/python.md) | [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 2/5 | |
 | [python](../by-language/python.md) | [Peewee](../detail/lang.python.orm.peewee.md) | 🟡 6/9 | |
 | [python](../by-language/python.md) | [Pony ORM](../detail/lang.python.orm.pony.md) | 🟡 6/9 | |
-| [python](../by-language/python.md) | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | 🟡 10/11 | |
+| [python](../by-language/python.md) | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 11/11 | |
 | [python](../by-language/python.md) | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟡 8/11 | |
 | [python](../by-language/python.md) | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟡 7/10 | |
 | [python](../by-language/python.md) | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟡 1/4 | |

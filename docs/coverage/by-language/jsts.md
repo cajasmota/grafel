@@ -138,8 +138,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 5/8 | |
 | [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟡 8/11 | |
 | [Prisma](../detail/lang.jsts.orm.prisma.md) | 🟡 8/10 | |
-| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟡 10/11 | |
-| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟡 10/11 | |
+| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 11/11 | |
+| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟢 11/11 | |
 | [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | 🟡 1/4 | |
 | [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | 🟡 1/4 | |
 | [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | 🟡 1/4 | |

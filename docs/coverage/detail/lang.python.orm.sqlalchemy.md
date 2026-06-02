@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_field_edges.go`<br>`internal/engine/rules/python/orms/sqlalchemy.yaml` | — |
-| Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
+| Model lifecycle extraction | ✅ `full` | `2026-06-02` | 3628 | `internal/custom/python/lifecycle_traits_test.go`<br>`internal/custom/python/sqlalchemy.go`<br>`internal/lifecycle/lifecycle.go`<br>`internal/lifecycle/lifecycle_test.go` | soft_delete + soft_delete_column (deleted_at Column/mapped_column, or a SoftDeleteMixin base -> deleted_at), timestamps (created_at + updated_at columns WITH a server_default/onupdate/default=func|datetime signal), audit_columns (created_by/updated_by). Honesty: a plain 'deleted' boolean Column is NOT soft_delete; a pair of plain DateTime columns without a timestamp-default signal does NOT assert timestamps. |
 | Schema extraction | ✅ `full` | `2026-05-29` | 3060 | `internal/custom/python/sqlalchemy.go`<br>`internal/engine/orm_field_edges.go` | __tablename__, Mapped[] columns, relationship attributes, and ForeignKey targets are extracted as SCOPE.Schema entities; structured JSON Schema or OpenAPI emission not yet implemented |
 
 ### Relationships

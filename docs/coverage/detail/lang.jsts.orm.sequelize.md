@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/orms/sequelize.yaml` | — |
-| Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
+| Model lifecycle extraction | ✅ `full` | `2026-06-02` | 3628 | `internal/custom/javascript/lifecycle_traits_test.go`<br>`internal/custom/javascript/sequelize.go`<br>`internal/lifecycle/lifecycle.go`<br>`internal/lifecycle/lifecycle_test.go` | soft_delete + soft_delete_column (paranoid:true -> deletedAt, or deletedAt:'col' override), timestamps (default-on for Sequelize models unless timestamps:false; paranoid forces them on), audit_columns (createdBy/created_by/... attribute keys). Honesty: no paranoid -> no soft_delete; timestamps:false omits timestamps. Reads attributes + options objects of define()/init(). |
 | Schema extraction | ✅ `full` | `2026-05-29` | 3067 | `internal/custom/javascript/orm_build_3067_test.go`<br>`internal/custom/javascript/sequelize.go` | — |
 
 ### Relationships
