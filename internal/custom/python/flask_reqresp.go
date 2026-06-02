@@ -102,8 +102,17 @@ func (e *FlaskReqRespExtractor) Extract(ctx context.Context, file extractor.File
 			dtoName := unwrapType(strings.TrimSpace(ret[1]))
 			if dtoName != "" && !flrrSkipTypes[dtoName] {
 				emitSchema(dtoName, line, "response")
-				out = append(out, entity(h.funcName+":returns:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
-					map[string]string{"framework": "flask", "pattern_type": "returns", "schema_type": dtoName, "match_source": "return_type_annotation"}))
+				ep := entity(h.funcName+":returns:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
+					map[string]string{"framework": "flask", "pattern_type": "returns", "schema_type": dtoName, "match_source": "return_type_annotation"})
+				// RETURNS edge: endpoint -> response schema/DTO type (#3629).
+				// Only emitted for the statically-resolvable return annotation;
+				// dynamically-serialized responses stay edge-less (honest-partial).
+				ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
+					ToID:       "Class:" + dtoName,
+					Kind:       string(types.RelationshipKindReturns),
+					Properties: map[string]string{"framework": "flask", "match_source": "return_type_annotation", "schema_type": dtoName},
+				})
+				out = append(out, ep)
 			}
 		}
 
@@ -133,8 +142,17 @@ func (e *FlaskReqRespExtractor) Extract(ctx context.Context, file extractor.File
 				continue
 			}
 			emitSchema(canonical, line, "schema")
-			out = append(out, entity(h.funcName+":accepts:"+canonical, "SCOPE.Operation", "endpoint", file.Path, line,
-				map[string]string{"framework": "flask", "pattern_type": "accepts_input", "schema_var": schemaVar, "schema_type": canonical}))
+			ep := entity(h.funcName+":accepts:"+canonical, "SCOPE.Operation", "endpoint", file.Path, line,
+				map[string]string{"framework": "flask", "pattern_type": "accepts_input", "schema_var": schemaVar, "schema_type": canonical})
+			// ACCEPTS_INPUT edge: endpoint -> marshmallow schema resolved from a
+			// statically-detectable schema.load() call (#3629). Dynamic /
+			// request.get_json() untyped bodies stay edge-less (honest-partial).
+			ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
+				ToID:       "Class:" + canonical,
+				Kind:       string(types.RelationshipKindAcceptsInput),
+				Properties: map[string]string{"framework": "flask", "match_source": "marshmallow_schema_load", "schema_var": schemaVar, "schema_type": canonical},
+			})
+			out = append(out, ep)
 		}
 	}
 

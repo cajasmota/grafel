@@ -29,7 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ✅ `full` | — | — | `internal/custom/csharp/validation.go`<br>`internal/custom/csharp/validation_test.go` | DTO types inferred from FluentValidation AbstractValidator<T> type arg and DataAnnotation model classes; heuristic |
+| DTO extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/csharp/aspnet_request_response.go`<br>`internal/custom/csharp/extractors_test.go`<br>`internal/custom/csharp/validation.go`<br>`internal/custom/csharp/validation_test.go` | DTO types inferred from FluentValidation AbstractValidator<T> type arg and DataAnnotation model classes. aspnet_request_response.go ALSO emits traversable endpoint→DTO graph edges (#3629): an action SCOPE.Operation entity with ACCEPTS_INPUT → [FromBody] request DTO and RETURNS → ActionResult<T>/concrete response DTO (Class:<Name> structural ref; FromID=action entity). Previously these extractors emitted DTO entities only, so expand/traces/payload_drift could not follow endpoint→DTO; now they can, restoring parity with Java Spring. Tests: TestAspNetReqRespAcceptsInputAndReturnsEdges, TestAspNetReqRespEdgeHasFromID, TestAspNetReqRespPrimitiveParamNoEdge. |
 | Request validation | ✅ `full` | — | — | `internal/custom/csharp/validation.go`<br>`internal/custom/csharp/validation_test.go` | FluentValidation AbstractValidator<T> + DataAnnotations [Required]/[StringLength]/[Range]/[RegularExpression] regex extractor; heuristic |
 
 ### Middleware

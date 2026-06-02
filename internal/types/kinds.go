@@ -256,6 +256,13 @@ const (
 	// Documented-but-previously-undocumented relationship kinds (Issue #77):
 	RelationshipKindRenders RelationshipKind = "RENDERS"
 	RelationshipKindReturns RelationshipKind = "RETURNS"
+	// #3629: endpoint→request-DTO edge. Emitted by the request/response
+	// extractors (Spring already emits ACCEPTS_INPUT/RETURNS as string
+	// literals; FastAPI, Flask and ASP.NET now mirror it) from a handler/
+	// endpoint operation entity → the request body DTO/schema type. Partner
+	// to RETURNS so `expand`/`traces`/`payload_drift` can traverse
+	// endpoint→DTO in both directions.
+	RelationshipKindAcceptsInput RelationshipKind = "ACCEPTS_INPUT"
 	// Issue #86: surfaced by the producer-boundary validator scan. Emitted
 	// by the OpenAPI pattern extractor to associate operations with their
 	// tag entities.
@@ -659,6 +666,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindWritesTo,
 		RelationshipKindRenders,
 		RelationshipKindReturns,
+		// #3629:
+		RelationshipKindAcceptsInput,
 		RelationshipKindTaggedAs,
 		// ADR-0018 pattern edge kinds:
 		RelationshipKindExemplar,
