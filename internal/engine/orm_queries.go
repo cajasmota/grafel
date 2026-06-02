@@ -152,6 +152,7 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		// (inline list literal OR a same-function variable binding) into
 		// per-stage entities + $lookup/$graphLookup join edges (#3440).
 		scanPythonMongoAggregation(src, funcs, path, lang,
+			newMongoAggPyCrossFileResolver(args.RepoRoot, path, src),
 			func(ent types.EntityRecord) { entities = append(entities, ent) },
 			func(rel types.RelationshipRecord) { relationships = append(relationships, rel) },
 		)

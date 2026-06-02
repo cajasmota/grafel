@@ -1,6 +1,8 @@
 package engine
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/types"
@@ -10,10 +12,24 @@ import (
 // emitted stage entities + join edges.
 func runMongoAggPy(t *testing.T, src string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	t.Helper()
+	return runMongoAggPyXFile(t, src, nil)
+}
+
+// runMongoAggPyXFile drives the scan with an in-memory cross-file builder
+// resolver (builderName → defining-module source). Pass nil to disable
+// cross-file follow (same-file behaviour).
+func runMongoAggPyXFile(
+	t *testing.T, src string, modules map[string]string,
+) ([]types.EntityRecord, []types.RelationshipRecord) {
+	t.Helper()
 	funcs := indexEnclosingFunctions("python", src)
 	var ents []types.EntityRecord
 	var rels []types.RelationshipRecord
-	scanPythonMongoAggregation(src, funcs, "svc/agg.py", "python",
+	var resolver mongoAggPyCrossFileResolver
+	if modules != nil {
+		resolver = func(name string) string { return modules[name] }
+	}
+	scanPythonMongoAggregation(src, funcs, "svc/agg.py", "python", resolver,
 		func(e types.EntityRecord) { ents = append(ents, e) },
 		func(r types.RelationshipRecord) { rels = append(rels, r) },
 	)
@@ -967,5 +983,235 @@ def run(db):
 		if r.ToID == "Class:"+capitalisedSingular("WRONG") && r.FromID == "Class:"+capitalisedSingular("inspections") {
 			t.Fatalf("run() aggregate wrongly resolved to other()'s binding: %+v", r)
 		}
+	}
+}
+
+// =====================================================================
+// deploy-8 #3969: cross-file builder resolution + nested $lookup recursion.
+// =====================================================================
+
+// CROSS-FILE BUILDER (#3969 ask 1) — THE rewrite-blocking real shape:
+// the `.aggregate()` executor lives in `service.py` but the pipeline builder is
+// IMPORTED from a SIBLING file `queries.py`. Same-file scan finds no def; the
+// cross-file resolver supplies queries.py's source and the builder body is
+// scanned there. Assert the NAMED JOINS_COLLECTION edge resolves cross-file:
+// Class:Inspection (aggregating coll) → Class:Inspection ($lookup from
+// "inspections"), proving the builder body in the OTHER file was read.
+func TestMongoAggPy_CrossFileBuilder_Resolved(t *testing.T) {
+	// Executor file: imports the builder, then aggregates with its result.
+	service := `
+import pymongo
+from .queries import get_inspection_devices_pipeline
+
+def run(db):
+    return db.devices.aggregate(get_inspection_devices_pipeline(db))
+`
+	// Defining file (queries.py): the builder returns a $lookup-to-inspections.
+	queries := `
+def get_inspection_devices_pipeline(db):
+    return [{"$lookup": {"from": "inspections", "localField": "inspection_id", "foreignField": "_id", "as": "insp"}}]
+`
+	modules := map[string]string{
+		"get_inspection_devices_pipeline": queries,
+	}
+	ents, rels := runMongoAggPyXFile(t, service, modules)
+
+	if len(rels) != 1 {
+		t.Fatalf("expected exactly 1 cross-file join edge, got %d: %+v", len(rels), rels)
+	}
+	j := rels[0]
+	if j.ToID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("cross-file join ToID = %q, want Class:Inspection (builder $lookup from in queries.py)", j.ToID)
+	}
+	if j.FromID != "Class:"+capitalisedSingular("devices") {
+		t.Errorf("cross-file join FromID = %q, want Class:Device (aggregating collection at executor)", j.FromID)
+	}
+	if j.Properties["local_field"] != "inspection_id" || j.Properties["as"] != "insp" {
+		t.Errorf("cross-file join props = %+v, want local_field=inspection_id as=insp", j.Properties)
+	}
+	if len(ents) != 1 || ents[0].Subtype != "$lookup" {
+		t.Fatalf("expected 1 $lookup stage entity from cross-file builder, got %+v", ents)
+	}
+}
+
+// CROSS-FILE BUILDER, DIRECT-CALL-ARG variant: `coll.aggregate(build())` with
+// `build` imported (absolute dotted import this time). Same resolution path.
+func TestMongoAggPy_CrossFileBuilder_DirectCallArg(t *testing.T) {
+	service := `
+import pymongo
+from core.services.building.queries import build_pipe
+
+def run(insp):
+    return insp.aggregate(build_pipe())
+`
+	queries := `
+def build_pipe():
+    return [{"$lookup": {"from": "m_devices", "localField": "device_id", "foreignField": "_id", "as": "d"}}]
+`
+	_, rels := runMongoAggPyXFile(t, service, map[string]string{"build_pipe": queries})
+	if len(rels) != 1 {
+		t.Fatalf("expected exactly 1 cross-file join edge, got %d: %+v", len(rels), rels)
+	}
+	if rels[0].ToID != "Class:"+capitalisedSingular("m_devices") {
+		t.Errorf("cross-file join ToID = %q, want Class:M_device", rels[0].ToID)
+	}
+}
+
+// NEGATIVE (#3969): builder imported from a module the resolver cannot locate
+// (unresolvable import → resolver returns "") MUST emit NO edge — honest skip,
+// no fabrication. Driven with an empty module map so the resolver yields "".
+func TestMongoAggPy_CrossFileBuilder_UnresolvableImport_NoEdge(t *testing.T) {
+	service := `
+import pymongo
+from .missing import build_pipe
+
+def run(db):
+    return db.inspections.aggregate(build_pipe())
+`
+	ents, rels := runMongoAggPyXFile(t, service, map[string]string{}) // empty: nothing resolves
+	if len(rels) != 0 || len(ents) != 0 {
+		t.Fatalf("unresolvable cross-file builder must emit nothing, got rels=%d ents=%d", len(rels), len(ents))
+	}
+}
+
+// NESTED $lookup (#3969 ask 2) — THE correlated-join shape the top-level
+// splitter misses: a `$lookup` against m_contracts carries a `pipeline:[...]`
+// whose OWN `$lookup` targets m_group_device_settings. BOTH joins must be
+// emitted: Class:M_contract (outer) AND Class:M_group_device_setting (nested).
+func TestMongoAggPy_NestedLookup_CorrelatedSubPipeline(t *testing.T) {
+	src := `
+import pymongo
+
+def run(db):
+    pipeline = [
+        {"$lookup": {"from": "m_contracts", "let": {"cid": "$contract_id"}, "pipeline": [
+            {"$match": {"$expr": {"$eq": ["$_id", "$$cid"]}}},
+            {"$lookup": {"from": "m_group_device_settings", "localField": "gid", "foreignField": "_id", "as": "gds"}}
+        ], "as": "contract"}},
+    ]
+    return db.inspections.aggregate(pipeline)
+`
+	_, rels := runMongoAggPy(t, src)
+
+	outer := pyFindJoinTo(rels, capitalisedSingular("m_contracts"))
+	if outer == nil {
+		t.Fatalf("expected OUTER join to Class:M_contract; rels=%+v", rels)
+	}
+	if outer.FromID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("outer join FromID = %q, want Class:Inspection", outer.FromID)
+	}
+	nested := pyFindJoinTo(rels, capitalisedSingular("m_group_device_settings"))
+	if nested == nil {
+		t.Fatalf("expected NESTED join to Class:M_group_device_setting; rels=%+v", rels)
+	}
+	if nested.FromID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("nested join FromID = %q, want Class:Inspection (correlated against aggregating coll)", nested.FromID)
+	}
+	if nested.Properties["local_field"] != "gid" || nested.Properties["as"] != "gds" {
+		t.Errorf("nested join props = %+v, want local_field=gid as=gds", nested.Properties)
+	}
+	// Exactly the two joins — no phantom edges from the inner $match.
+	if len(rels) != 2 {
+		t.Fatalf("expected exactly 2 join edges (outer + nested), got %d: %+v", len(rels), rels)
+	}
+}
+
+// NESTED + CROSS-FILE compose (#3969): the builder in the sibling file returns a
+// correlated $lookup with a nested $lookup; both the cross-file follow AND the
+// nested recursion must fire — Class:M_contract AND Class:M_group_device_setting.
+func TestMongoAggPy_NestedLookup_InsideCrossFileBuilder(t *testing.T) {
+	service := `
+import pymongo
+from .queries import get_inspection_devices_pipeline
+
+def run(db):
+    return db.inspections.aggregate(get_inspection_devices_pipeline(db))
+`
+	queries := `
+def get_inspection_devices_pipeline(db):
+    return [
+        {"$lookup": {"from": "m_contracts", "pipeline": [
+            {"$lookup": {"from": "m_group_device_settings", "localField": "gid", "foreignField": "_id", "as": "gds"}}
+        ], "as": "contract"}},
+    ]
+`
+	_, rels := runMongoAggPyXFile(t, service, map[string]string{"get_inspection_devices_pipeline": queries})
+	if pyFindJoinTo(rels, capitalisedSingular("m_contracts")) == nil {
+		t.Fatalf("expected OUTER join to Class:M_contract (cross-file); rels=%+v", rels)
+	}
+	if pyFindJoinTo(rels, capitalisedSingular("m_group_device_settings")) == nil {
+		t.Fatalf("expected NESTED join to Class:M_group_device_setting (cross-file + nested); rels=%+v", rels)
+	}
+	if len(rels) != 2 {
+		t.Fatalf("expected exactly 2 join edges, got %d: %+v", len(rels), rels)
+	}
+}
+
+// NEGATIVE (#3969): a nested $lookup whose `from` is DYNAMIC (a variable/
+// expression, not a string literal) must NOT emit an edge — we never fabricate a
+// join target we cannot statically read.
+func TestMongoAggPy_NestedLookup_DynamicFrom_NoEdge(t *testing.T) {
+	src := `
+import pymongo
+
+def run(db, target):
+    pipeline = [
+        {"$lookup": {"from": "m_contracts", "pipeline": [
+            {"$lookup": {"from": target, "localField": "gid", "foreignField": "_id", "as": "gds"}}
+        ], "as": "contract"}},
+    ]
+    return db.inspections.aggregate(pipeline)
+`
+	_, rels := runMongoAggPy(t, src)
+	// Only the outer (literal) join resolves; the dynamic nested from is skipped.
+	if pyFindJoinTo(rels, capitalisedSingular("m_contracts")) == nil {
+		t.Fatalf("expected OUTER literal join to Class:M_contract; rels=%+v", rels)
+	}
+	if len(rels) != 1 {
+		t.Fatalf("dynamic nested from must not emit an edge; want 1 join, got %d: %+v", len(rels), rels)
+	}
+}
+
+// ON-DISK cross-file resolution (#3969) — exercises the PRODUCTION resolver
+// factory `newMongoAggPyCrossFileResolver` end-to-end against a real temp repo:
+// `service.py` imports `get_pipe` from the sibling `queries.py`, the resolver
+// reads queries.py off disk and the builder body is scanned. Proves the import →
+// module-path → file resolution works for a relative import.
+func TestMongoAggPy_CrossFileBuilder_OnDiskRelativeImport(t *testing.T) {
+	repo := t.TempDir()
+	pkg := filepath.Join(repo, "core", "services", "building")
+	if err := os.MkdirAll(pkg, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(pkg, "queries.py"), []byte(`
+def get_pipe(db):
+    return [{"$lookup": {"from": "inspections", "localField": "inspection_id", "foreignField": "_id", "as": "insp"}}]
+`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	servicePath := filepath.Join("core", "services", "building", "service.py")
+	serviceSrc := `
+import pymongo
+from .queries import get_pipe
+
+def run(db):
+    return db.devices.aggregate(get_pipe(db))
+`
+	resolver := newMongoAggPyCrossFileResolver(repo, servicePath, serviceSrc)
+	funcs := indexEnclosingFunctions("python", serviceSrc)
+	var ents []types.EntityRecord
+	var rels []types.RelationshipRecord
+	scanPythonMongoAggregation(serviceSrc, funcs, servicePath, "python", resolver,
+		func(e types.EntityRecord) { ents = append(ents, e) },
+		func(r types.RelationshipRecord) { rels = append(rels, r) },
+	)
+	if len(rels) != 1 {
+		t.Fatalf("expected 1 on-disk cross-file join edge, got %d: %+v", len(rels), rels)
+	}
+	if rels[0].ToID != "Class:"+capitalisedSingular("inspections") {
+		t.Errorf("on-disk cross-file join ToID = %q, want Class:Inspection", rels[0].ToID)
+	}
+	if rels[0].FromID != "Class:"+capitalisedSingular("devices") {
+		t.Errorf("on-disk cross-file join FromID = %q, want Class:Device", rels[0].FromID)
 	}
 }

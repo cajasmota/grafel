@@ -55,6 +55,8 @@ package engine
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 
@@ -179,14 +181,31 @@ func mongoAggPyCollVarBindRe(ident string) *regexp.Regexp {
 	return re
 }
 
+// mongoAggPyCrossFileResolver resolves an imported builder-function NAME to the
+// SOURCE TEXT of the (single) sibling module that defines it, so a pipeline
+// builder living in a DIFFERENT file than the `.aggregate()` executor can still
+// be scanned (the dominant `service.py` imports `get_..._pipeline` from
+// `queries.py` shape — deploy-8's #1 ask). Returns "" when the name is not
+// imported, the module cannot be located on disk, or reading it fails — honest:
+// the builder then stays unresolved exactly as before. Production builds this
+// from the repo root + the executor file's import statements; tests inject an
+// in-memory module map. A nil resolver disables cross-file follow entirely
+// (same-file behaviour unchanged).
+type mongoAggPyCrossFileResolver func(builderName string) string
+
 // scanPythonMongoAggregation walks `src`, finds pymongo `.aggregate(...)` call
 // sites, resolves the pipeline (inline list literal OR a single same-function
 // variable binding), parses each stage, and emits stage entities + join edges.
+//
+// `resolveCrossFile` (nil-safe) resolves an imported builder function to the
+// source of its defining sibling module so cross-file pipeline builders are
+// scanned; pass nil to disable cross-file follow.
 func scanPythonMongoAggregation(
 	src string,
 	funcs []funcSpan,
 	path string,
 	lang string,
+	resolveCrossFile mongoAggPyCrossFileResolver,
 	emitStage func(ent types.EntityRecord),
 	emitJoin func(rel types.RelationshipRecord),
 ) {
@@ -203,7 +222,7 @@ func scanPythonMongoAggregation(
 
 		// Resolve the pipeline list literal (the full `[ ... ]`, brackets
 		// included, so mongoAggSplitStages can scan it) for either form.
-		listLiteral := mongoAggPyResolvePipeline(src, openParen, loc[0])
+		listLiteral := mongoAggPyResolvePipeline(src, openParen, loc[0], resolveCrossFile)
 		if listLiteral == "" {
 			continue // dynamic / builder pipeline — honest skip.
 		}
@@ -244,6 +263,17 @@ func scanPythonMongoAggregation(
 						props["as"] = lk.as
 					}
 					emitJoin(mongoAggJoinEdge(coll, lk, "lookup"))
+				}
+				// Correlated sub-pipeline join: a `$lookup` may carry a
+				// `pipeline: [ ... ]` whose own `$lookup` stages are NESTED joins
+				// (`$lookup:{from:'a', pipeline:[{$lookup:{from:'b'}}]}` joins BOTH
+				// a and b). mongoAggSplitStages only sees the top-level array, so the
+				// nested `from` is otherwise lost. Recurse into the sub-pipeline and
+				// emit a JOINS_COLLECTION edge for each nested `from`, attributed to
+				// the SAME aggregating collection (the correlated lookup runs against
+				// it). Bounded recursion over the static stage text — honest.
+				for _, nlk := range mongoAggCollectNestedLookups(st) {
+					emitJoin(mongoAggJoinEdge(coll, nlk, "lookup"))
 				}
 			case "$graphLookup":
 				lk := mongoAggParseLookup(st)
@@ -507,7 +537,7 @@ var mongoAggPyCollDottedRe = regexp.MustCompile(`^[A-Za-z_][\w.]*\.([A-Za-z_]\w*
 //
 // Returns "" for any other first-argument shape (builder var, call expr,
 // kwargs, non-literal binding) — honest unresolved.
-func mongoAggPyResolvePipeline(src string, openParen, dotPos int) string {
+func mongoAggPyResolvePipeline(src string, openParen, dotPos int, resolveCrossFile mongoAggPyCrossFileResolver) string {
 	// Skip whitespace after '('.
 	i := openParen + 1
 	for i < len(src) && (src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r') {
@@ -564,7 +594,7 @@ func mongoAggPyResolvePipeline(src string, openParen, dotPos int) string {
 			// (c) builder indirection: `pipeline = build_fn()` → resolve the
 			// builder's definition and scan its body for the returned pipeline.
 			if fn := mongoAggPyFollowCallBinding(src, ident, dotPos, funcStart); fn != "" {
-				return mongoAggPyResolveBuilderBody(src, fn)
+				return mongoAggPyResolveBuilderBody(src, fn, resolveCrossFile)
 			}
 			return "" // non-literal / non-builder binding — honest unresolved.
 		case '(':
@@ -583,7 +613,7 @@ func mongoAggPyResolvePipeline(src string, openParen, dotPos int) string {
 			if k >= len(src) || src[k] != ')' {
 				return "" // e.g. `build()['x']`, `build() + extra` — unresolved.
 			}
-			return mongoAggPyResolveBuilderBody(src, ident)
+			return mongoAggPyResolveBuilderBody(src, ident, resolveCrossFile)
 		default:
 			return "" // `pipeline + extra`, `pipeline['x']`, attribute — unresolved.
 		}
@@ -774,10 +804,24 @@ func mongoAggPyFollowCallBinding(src, ident string, usePos, funcStart int) strin
 // other than a same-function list-literal (a call, a comprehension, a mutated
 // var), or the literal is unbalanced — honest-partial: the executor site then
 // stays unresolved rather than fabricating stages.
-func mongoAggPyResolveBuilderBody(src, fnName string) string {
+func mongoAggPyResolveBuilderBody(src, fnName string, resolveCrossFile mongoAggPyCrossFileResolver) string {
 	defStart, bodyEnd := mongoAggPyFuncBody(src, fnName)
 	if defStart < 0 {
-		return ""
+		// Same-file def absent — the builder is IMPORTED from a sibling module
+		// (the dominant `service.py` does `from .queries import build` then
+		// `coll.aggregate(build(...))`, with `build` defined in `queries.py`).
+		// Resolve the import to that module's source and scan ITS body for the
+		// returned pipeline. Bounded 1-file follow; unresolvable import → "".
+		if resolveCrossFile == nil {
+			return ""
+		}
+		otherSrc := resolveCrossFile(fnName)
+		if otherSrc == "" || otherSrc == src {
+			return ""
+		}
+		// No further cross-file hop (nil resolver): bound the follow to one file
+		// so a builder that itself imports another builder stays honest-partial.
+		return mongoAggPyResolveBuilderBody(otherSrc, fnName, nil)
 	}
 	body := src[defStart:bodyEnd]
 
@@ -1078,6 +1122,199 @@ func funcStartBefore(src string, pos int) int {
 		start = m[0]
 	}
 	return start
+}
+
+// mongoAggCollectNestedLookups extracts the $lookup join targets nested inside a
+// correlated $lookup stage's `pipeline: [ ... ]` sub-array (and any deeper
+// sub-pipelines, recursively). The outer stage's OWN `from` is handled by the
+// caller; this returns ONLY the nested ones. A correlated lookup such as
+//
+//	{"$lookup": {"from": "m_contracts",
+//	             "pipeline": [{"$lookup": {"from": "m_group_device_settings"}}]}}
+//
+// is a join against BOTH m_contracts (caller) AND m_group_device_settings
+// (nested) — the nested $lookup is invisible to the top-level stage splitter, so
+// without this it never produces an edge. We locate each `pipeline:` value that
+// is a `[ ... ]` literal, split it into stages, and for every `$lookup` /
+// `$graphLookup` stage emit its parsed lookup AND recurse into ITS sub-pipeline.
+// Honest: a `from` that is non-literal (expression/variable) parses to "" and is
+// skipped; a `pipeline` value that is not a bracket literal is skipped.
+func mongoAggCollectNestedLookups(stage string) []mongoAggLookup {
+	var out []mongoAggLookup
+	for _, sub := range mongoAggPipelineSubArrays(stage) {
+		for _, st := range mongoAggSplitStages(sub, 0) {
+			op := mongoAggFirstKey(st)
+			if op != "$lookup" && op != "$graphLookup" {
+				// Even a non-lookup nested stage may itself carry a sub-pipeline
+				// (e.g. a nested correlated stage); recurse to be exhaustive.
+				out = append(out, mongoAggCollectNestedLookups(st)...)
+				continue
+			}
+			if lk := mongoAggParseLookup(st); lk.from != "" {
+				out = append(out, lk)
+			}
+			// Recurse: the nested $lookup may have its OWN correlated sub-pipeline.
+			out = append(out, mongoAggCollectNestedLookups(st)...)
+		}
+	}
+	return out
+}
+
+// mongoAggPipelineSubArrays returns every `pipeline: [ ... ]` value (the full
+// balanced bracket literal) that appears as a key inside `stage`. String- and
+// depth-aware: it walks the stage text, and at each `pipeline` key whose value
+// opens with `[`, captures the balanced array. Multiple sub-pipelines in one
+// stage (e.g. inside a `$facet`-like shape) are all returned.
+func mongoAggPipelineSubArrays(stage string) []string {
+	var arrays []string
+	for _, loc := range mongoAggPipelineKeyRe.FindAllStringIndex(stage, -1) {
+		// loc[1] is just past the matched `pipeline` ... `:`; skip whitespace to
+		// the value, which must open a list literal to be a stage array.
+		j := loc[1]
+		for j < len(stage) && (stage[j] == ' ' || stage[j] == '\t' || stage[j] == '\n' || stage[j] == '\r') {
+			j++
+		}
+		if j >= len(stage) || stage[j] != '[' {
+			continue
+		}
+		if lit := mongoAggPyBracketBody(stage, j); lit != "" {
+			arrays = append(arrays, lit)
+		}
+	}
+	return arrays
+}
+
+// mongoAggPipelineKeyRe matches a `pipeline:` / `"pipeline":` / `'pipeline':`
+// object key (the value follows). Used to locate correlated $lookup sub-arrays.
+var mongoAggPipelineKeyRe = regexp.MustCompile(`(?:\bpipeline\b|['"]pipeline['"])\s*:`)
+
+// mongoAggPyFromImportRe matches a Python `from <module> import <names>` line,
+// capturing the module path (group 1, e.g. `.queries`, `core.services.building.queries`)
+// and the imported-names clause (group 2, e.g. `build, other` or `build as b`).
+// Parenthesised multi-line import lists are NOT followed (single-line only) —
+// honest-partial; the dominant builder-import shape is a single-line
+// `from .queries import get_inspection_devices_pipeline`.
+var mongoAggPyFromImportRe = regexp.MustCompile(`(?m)^[ \t]*from\s+([.\w]+)\s+import\s+([^\n#]+)`)
+
+// newMongoAggPyCrossFileResolver builds a cross-file builder resolver bound to
+// the executor file's imports. For a builder NAME it:
+//
+//  1. scans `src` for a `from <module> import ... <NAME> ...` statement,
+//  2. resolves `<module>` (relative `.`/`..` or absolute dotted) to a sibling
+//     `.py` file path under `repoRoot` (relative to the executor `path`),
+//  3. reads and returns that file's source.
+//
+// Returns a closure yielding "" when the name is not imported, the module can't
+// be located, or the read fails — the builder then stays unresolved (honest).
+// When `repoRoot` is empty (path not absolutifiable) the resolver still works if
+// `path` is itself absolute; otherwise it yields "" for every name.
+func newMongoAggPyCrossFileResolver(repoRoot, path, src string) mongoAggPyCrossFileResolver {
+	// Pre-scan imports once: NAME → module path.
+	nameToModule := map[string]string{}
+	for _, m := range mongoAggPyFromImportRe.FindAllStringSubmatch(src, -1) {
+		module := m[1]
+		for _, raw := range strings.Split(m[2], ",") {
+			name := strings.TrimSpace(raw)
+			if name == "" || name == "*" {
+				continue
+			}
+			// `build as b` — the LOCAL alias is what the executor calls, so key on
+			// the alias; the def in the target file still carries the ORIGINAL name,
+			// so we must remember both. We resolve the target body by the original
+			// def name, so store original under the alias key.
+			orig := name
+			if parts := strings.Fields(name); len(parts) == 3 && parts[1] == "as" {
+				name = parts[2] // alias used at the call site
+				orig = parts[0] // original def name in the target module
+			}
+			// Strip any stray parens from a `from x import (a, b)` single-line list.
+			name = strings.Trim(name, "() \t")
+			orig = strings.Trim(orig, "() \t")
+			if name == "" {
+				continue
+			}
+			nameToModule[name] = module + "\x00" + orig
+		}
+	}
+
+	return func(builderName string) string {
+		enc, ok := nameToModule[builderName]
+		if !ok {
+			return ""
+		}
+		module := enc
+		if i := strings.IndexByte(enc, '\x00'); i >= 0 {
+			module = enc[:i]
+		}
+		file := mongoAggPyModuleToFile(repoRoot, path, module)
+		if file == "" {
+			return ""
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			return ""
+		}
+		return string(data)
+	}
+}
+
+// mongoAggPyModuleToFile resolves a Python import module path to a sibling `.py`
+// file path on disk, relative to the executor file `path` under `repoRoot`.
+//
+//   - Relative imports (`.queries`, `..pkg.mod`): each leading dot is one parent
+//     directory of the executor file's package, then the remaining dotted
+//     segments are directory steps, with `.py` appended to the last.
+//   - Absolute imports (`core.services.building.queries`): resolved from
+//     `repoRoot` (the dotted path is the package path from the source root). When
+//     `repoRoot` is empty this cannot be located → "".
+//
+// Returns "" when the resulting file does not exist (a package `__init__.py`
+// re-export, a namespace package, or a third-party module — honest skip).
+func mongoAggPyModuleToFile(repoRoot, path, module string) string {
+	if module == "" {
+		return ""
+	}
+	// Executor file's directory (absolute when possible).
+	execAbs := path
+	if repoRoot != "" && !filepath.IsAbs(execAbs) {
+		execAbs = filepath.Join(repoRoot, path)
+	}
+	execDir := filepath.Dir(execAbs)
+
+	var candidate string
+	if strings.HasPrefix(module, ".") {
+		// Relative import. Count leading dots: 1 dot = current package dir.
+		dots := 0
+		for dots < len(module) && module[dots] == '.' {
+			dots++
+		}
+		rest := module[dots:] // dotted remainder after the dots
+		dir := execDir
+		// Each dot BEYOND the first ascends one parent (`.` = same dir, `..` = parent).
+		for k := 1; k < dots; k++ {
+			dir = filepath.Dir(dir)
+		}
+		if rest == "" {
+			// `from . import x` — x is a module in the current package; without the
+			// imported submodule name we cannot point at a file. Honest "".
+			return ""
+		}
+		segs := strings.Split(rest, ".")
+		parts := append([]string{dir}, segs...)
+		candidate = filepath.Join(parts...) + ".py"
+	} else {
+		// Absolute dotted import, resolved from the repo root.
+		if repoRoot == "" {
+			return ""
+		}
+		segs := strings.Split(module, ".")
+		parts := append([]string{repoRoot}, segs...)
+		candidate = filepath.Join(parts...) + ".py"
+	}
+	if st, err := os.Stat(candidate); err == nil && !st.IsDir() {
+		return candidate
+	}
+	return ""
 }
 
 func isPyIdentStart(c byte) bool {
