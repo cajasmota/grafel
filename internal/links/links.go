@@ -482,6 +482,16 @@ func RunAllPasses(group, graphsDir, archigraphHome string) (*RunResult, error) {
 	}
 	res.Results = append(res.Results, pTP)
 
+	// #3628 area #22 — SCOPED request-input → sink dataflow. Emits
+	// DATA_FLOWS_TO links (intra-function + one local-call hop) from the
+	// per-language substrate dataflow sniffers. Honest-partial: see
+	// internal/links/dataflow_pass.go.
+	pDF, err := runDataFlowPass(graphs, paths, rejects)
+	if err != nil {
+		return nil, fmt.Errorf("data-flow pass: %w", err)
+	}
+	res.Results = append(res.Results, pDF)
+
 	for _, r := range res.Results {
 		res.TotalLinks += r.LinksAdded
 		res.TotalCandid += r.Candidates

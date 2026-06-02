@@ -2465,6 +2465,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -2683,6 +2687,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -2900,6 +2908,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -3128,6 +3140,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -3355,6 +3371,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -3581,6 +3601,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -3948,6 +3972,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -4165,6 +4193,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -4409,6 +4441,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -4713,6 +4749,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -4940,6 +4980,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -5166,6 +5210,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -5738,6 +5786,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
@@ -5964,6 +6016,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_c_cpp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -7278,6 +7334,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
@@ -7517,6 +7577,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -8339,6 +8403,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
@@ -8565,6 +8633,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -8922,6 +8994,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -9139,6 +9215,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -9573,6 +9653,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_csharp.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -11155,6 +11239,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
@@ -11386,6 +11474,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
@@ -11609,6 +11701,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -11864,6 +11960,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
@@ -12060,6 +12160,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -12390,6 +12494,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -12594,6 +12702,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -12819,6 +12931,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -13052,6 +13168,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -13501,6 +13621,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
@@ -13697,6 +13821,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -13884,6 +14012,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -14664,6 +14796,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
@@ -14887,6 +15023,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -15119,6 +15259,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
@@ -15350,6 +15494,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
@@ -15570,6 +15718,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -15811,6 +15963,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -16136,6 +16292,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
@@ -16358,6 +16518,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -16806,6 +16970,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
@@ -16999,6 +17167,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "3613"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -17218,6 +17390,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -17444,6 +17620,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
@@ -17668,6 +17848,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
@@ -17890,6 +18074,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -18119,6 +18307,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -18352,6 +18544,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_golang.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -26367,6 +26563,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
@@ -27518,6 +27718,13 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go"],
+            "issue": "3740",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22): intra-fn assignment tracking + one local-call hop. Sources req.body/query/params, ctx.request.body. Sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, collection mutation, dynamic keys, \u003e1 hop, cross-file. Decorator-injected params (NestJS @Body) NOT covered.",
+            "verified_at": "2026-06-02"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
@@ -27773,6 +27980,13 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go"],
+            "issue": "3740",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22): intra-fn assignment tracking + one local-call hop. Sources req.body/query/params, ctx.request.body. Sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, collection mutation, dynamic keys, \u003e1 hop, cross-file. Decorator-injected params (NestJS @Body) NOT covered.",
+            "verified_at": "2026-06-02"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
@@ -28020,6 +28234,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -28711,6 +28929,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
@@ -28964,6 +29186,13 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go"],
+            "issue": "3740",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22): intra-fn assignment tracking + one local-call hop. Sources req.body/query/params, ctx.request.body. Sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, collection mutation, dynamic keys, \u003e1 hop, cross-file. Decorator-injected params (NestJS @Body) NOT covered.",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -29438,6 +29667,13 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_jsts.go"],
+            "issue": "3740",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22): intra-fn assignment tracking + one local-call hop. Sources req.body/query/params, ctx.request.body. Sinks ORM create/save/insert, res.json/send, axios/fetch. HONEST-PARTIAL: drops reassignment, branch-merge, collection mutation, dynamic keys, \u003e1 hop, cross-file. Decorator-injected params (NestJS @Body) NOT covered.",
+            "verified_at": "2026-06-02"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
@@ -29724,6 +29960,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -30202,6 +30442,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -30990,6 +31234,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
@@ -31185,6 +31433,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "3619"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -32265,6 +32517,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
@@ -32508,6 +32764,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_jsts.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -33432,6 +33692,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "3619"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -38724,6 +38988,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -38911,6 +39179,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -39126,6 +39398,10 @@
             "status": "not_applicable",
             "cites": ["internal/extractors/lua/lua.go"],
             "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "not_applicable",
@@ -39354,6 +39630,10 @@
             "status": "not_applicable",
             "cites": ["internal/extractors/lua/lua.go"],
             "notes": "Lua is dynamically typed; request/response shapes are Lua tables with no static schema declarations. No payload shapes sniffer applicable."
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "not_applicable",
@@ -40007,6 +40287,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -40224,6 +40508,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -40453,6 +40741,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
@@ -40681,6 +40973,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
@@ -40873,6 +41169,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -41091,6 +41391,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -41320,6 +41624,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
@@ -41512,6 +41820,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -41730,6 +42042,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -41959,6 +42275,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
@@ -42187,6 +42507,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
@@ -42414,6 +42738,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -42647,6 +42975,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
@@ -42875,6 +43207,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
@@ -43102,6 +43438,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_php.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -44113,6 +44453,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -44312,6 +44656,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "3620"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -44558,6 +44906,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -45026,6 +45378,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -45278,6 +45634,13 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_python.go"],
+            "issue": "3740",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22): intra-fn assignment tracking + one local-call hop. Sources request.data/json/GET/POST + DRF serializer.validated_data (static string keys only). Sinks Model.objects.create/.save/.insert, return Response/JsonResponse, requests/httpx.post. HONEST-PARTIAL: drops reassignment, branch-merge, collection mutation, dynamic keys, \u003e1 hop, cross-file.",
+            "verified_at": "2026-06-02"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -45529,6 +45892,13 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_python.go"],
+            "issue": "3740",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22): intra-fn assignment tracking + one local-call hop. Sources request.data/json/GET/POST + DRF serializer.validated_data (static string keys only). Sinks Model.objects.create/.save/.insert, return Response/JsonResponse, requests/httpx.post. HONEST-PARTIAL: drops reassignment, branch-merge, collection mutation, dynamic keys, \u003e1 hop, cross-file.",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -46015,6 +46385,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -46265,6 +46639,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -46518,6 +46896,13 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_python.go"],
+            "issue": "3740",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22): intra-fn assignment tracking + one local-call hop. Sources request.data/json/GET/POST + DRF serializer.validated_data (static string keys only). Sinks Model.objects.create/.save/.insert, return Response/JsonResponse, requests/httpx.post. HONEST-PARTIAL: drops reassignment, branch-merge, collection mutation, dynamic keys, \u003e1 hop, cross-file.",
+            "verified_at": "2026-06-02"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -46724,6 +47109,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "3620"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -46962,6 +47351,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -47247,6 +47640,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -47492,6 +47889,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -47742,6 +48143,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -47987,6 +48392,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -48438,6 +48847,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -48683,6 +49096,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -48933,6 +49350,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
@@ -49178,6 +49599,10 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_python.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -50562,6 +50987,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
@@ -50775,6 +51204,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -50991,6 +51424,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
@@ -51187,6 +51624,10 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "3621"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -51396,6 +51837,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -51614,6 +52059,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -51839,6 +52288,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -52068,6 +52521,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
@@ -52290,6 +52747,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_ruby.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -53269,6 +53730,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
@@ -53471,6 +53936,10 @@
             "issue": "3508",
             "notes": "InputObject DTO type names recovered; per-field shape of the input struct not statically chased",
             "verified_at": "2026-05-30"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -53690,6 +54159,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -53918,6 +54391,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
@@ -54145,6 +54622,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -54402,6 +54883,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
@@ -54656,6 +55141,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
@@ -54882,6 +55371,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -55257,6 +55750,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
@@ -55460,6 +55957,10 @@
             "issue": "3508",
             "notes": "Request\u003cT\u003e message type NAME recovered; field shapes live in tonic-build-generated structs (build.rs OUT_DIR), not statically present in source",
             "verified_at": "2026-05-30"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -55684,6 +56185,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
@@ -55883,6 +56388,10 @@
             "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
             "notes": "request_body = \u003cDTO\u003e (incl inline()/content=) -\u003e request_dto tied to verb+path",
             "verified_at": "2026-05-30"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -56103,6 +56612,10 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_rust.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -61122,6 +61635,10 @@
             "cites": ["internal/links/payload_drift.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_t3.go"],
             "notes": "payload_shapes_t3.go provides full Swift/Vapor sniffer: req.content.decode(T.self) + Codable/Content-conforming struct field extraction; payload_drift.go cross-references producer/consumer shapes.",
             "verified_at": "2026-05-30"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3740"
           },
           "response_shape_extraction": {
             "status": "full",

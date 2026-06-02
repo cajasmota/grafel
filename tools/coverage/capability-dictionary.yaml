@@ -124,6 +124,7 @@ subcategories:
       - pure_function_tagging
       - module_cycle_detection
       - def_use_chain_extraction
+      - request_sink_dataflow
       - template_pattern_catalog
       - trace_extraction
       - log_extraction
@@ -152,7 +153,7 @@ subcategories:
       - name: Data
         keys: [db_effect]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, config_consumption, feature_flag_gating, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, template_pattern_catalog]
+        keys: [constant_propagation, env_fallback_recognition, config_consumption, feature_flag_gating, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, request_sink_dataflow, template_pattern_catalog]
 
   jvm_backend:
     display: "JVM Backend"

@@ -587,6 +587,22 @@ const (
 	// without modifying the underlying entity kind.
 	RelationshipKindResolvesTo RelationshipKind = "RESOLVES_TO"
 
+	// #3628 area #22: SCOPED request-input → sink dataflow edge. Emitted by
+	// the dataflow pass (internal/links/dataflow_pass.go) for a value that
+	// travels from an HTTP request input (req.body.X, request.data['x'], …)
+	// to a recognised sink (DB write / outbound HTTP call / response body)
+	// within a single function body, or across exactly one local-call hop.
+	// The FROM endpoint is the request-handler entity that reads the input;
+	// the TO endpoint is the sink entity/call. Properties carry:
+	//   "field"     : the source field name when statically known
+	//   "sink_kind" : "db_write" | "http_call" | "response"
+	//   "sink"      : the sink callee/expression as written
+	//   "hop_via"   : the local function name for a one-hop flow (else absent)
+	// SCOPED & honest-partial: this is NOT full taint analysis. Flows that
+	// cannot be soundly followed (reassignment, branch merges, collection
+	// mutation, >1 hop, cross-file) are dropped, never fabricated.
+	RelationshipKindDataFlowsTo RelationshipKind = "DATA_FLOWS_TO"
+
 	// #2666: Discriminator comparison edges. Emitted by the JS/TS and Python
 	// extractors for every `identifier == literal` comparison detected in a
 	// function/method body (the discriminator pattern from #2659).
@@ -967,6 +983,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindBranchesOn,
 		// #2761 substrate Phase 0:
 		RelationshipKindResolvesTo,
+		// #3628 area #22 scoped request-input → sink dataflow:
+		RelationshipKindDataFlowsTo,
 		// #2904 request-validation / DTO-extraction linkage:
 		RelationshipKindValidates,
 		// #3520 Kustomize overlay-patch edge:
