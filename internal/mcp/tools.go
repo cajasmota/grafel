@@ -1103,6 +1103,12 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				if di := inspectDIEdges(r, e, scopeIsOne); len(di) > 0 {
 					out["di_edges"] = di
 				}
+				// #3897: full semantic, non-structural edge set (JOINS_COLLECTION,
+				// GRAPH_RELATES, DEPENDS_ON_SERVICE, THROWS/CATCHES, DATA_FLOWS_TO,
+				// …). Generalizes the DI-only #3870 projection; omitted when empty.
+				if sem := inspectSemanticEdges(r, e, scopeIsOne, isSemanticEdgeKind); len(sem) > 0 {
+					out["semantic_edges"] = sem
+				}
 				// #2642: metadata block with index provenance.
 				out["metadata"] = inspectMetadata(r)
 				return jsonResult(out), nil
@@ -1169,6 +1175,12 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	// Section omitted entirely when the entity has no DI edges.
 	if di := inspectDIEdges(m.repo, m.ent, scopeIsOne); len(di) > 0 {
 		out["di_edges"] = di
+	}
+	// #3897: full semantic, non-structural edge set (JOINS_COLLECTION,
+	// GRAPH_RELATES, DEPENDS_ON_SERVICE, THROWS/CATCHES, DATA_FLOWS_TO, …).
+	// Generalizes the DI-only #3870 projection; omitted when empty.
+	if sem := inspectSemanticEdges(m.repo, m.ent, scopeIsOne, isSemanticEdgeKind); len(sem) > 0 {
+		out["semantic_edges"] = sem
 	}
 	// #2642: metadata block with index provenance.
 	out["metadata"] = inspectMetadata(m.repo)
@@ -1466,34 +1478,86 @@ func inspectDiscriminators(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []m
 	return out
 }
 
-// inspectDIEdges returns rows for every dependency-injection edge attached to
-// entity e — INJECTED_INTO (provider→consumer) and BINDS (module/token→impl).
-// These edges are emitted by the per-language DI extractors (e.g.
-// internal/custom/javascript/nestjs_di.go) and wired into the graph, but before
-// #3870 no MCP read tool projected them: inspect surfaced only CALLS
-// (calls/called_by) and DISCRIMINATES_ON, so a consumer could not see
-// provider→consumer wiring at all.
+// semanticEdgeKinds is the configurable set of NON-STRUCTURAL, semantically
+// meaningful relationship kinds that the MCP read tools project in inspect's
+// `semantic_edges` section and in expand's per-neighbour annotation. (#3897,
+// generalizing the DI-only #3870/#3894 projection.)
+//
+// These edges are emitted by the per-language extractors and wired into the
+// graph, but before #3897 no MCP read tool surfaced them — inspect projected
+// only CALLS (calls/called_by), DISCRIMINATES_ON (discriminators) and the DI
+// subset (di_edges); expand annotated only CALLS depth + the DI subset. A node
+// could carry a JOINS_COLLECTION / GRAPH_RELATES / DEPENDS_ON_SERVICE / error-
+// flow edge and the rewrite agent would never see it.
+//
+// Deliberately EXCLUDED (handled elsewhere or pure scaffolding):
+//   - CALLS              — has dedicated calls/called_by sections + expand depth.
+//   - DISCRIMINATES_ON   — has the dedicated `discriminators` section (#2666).
+//   - IMPORTS / CONTAINS — structural scaffolding, high-volume + low-signal.
+//
+// The map keys are stored UPPER-cased; membership is matched case-insensitively
+// against the on-graph relationship casing (buildAdjacency copies r.Kind
+// verbatim). The DI kinds (INJECTED_INTO / BINDS) are members so the generalized
+// projection is a strict superset of the #3870 behaviour.
+var semanticEdgeKinds = map[string]struct{}{
+	string(types.RelationshipKindJoinsCollection):  {},
+	string(types.RelationshipKindGraphRelates):     {},
+	string(types.RelationshipKindDependsOnService): {},
+	string(types.RelationshipKindThrows):           {},
+	string(types.RelationshipKindCatches):          {},
+	string(types.RelationshipKindModifiesTable):    {},
+	string(types.RelationshipKindAccessesTable):    {},
+	string(types.RelationshipKindQueries):          {},
+	string(types.RelationshipKindRenders):          {},
+	string(types.RelationshipKindUsesTranslation):  {},
+	string(types.RelationshipKindTriggers):         {},
+	string(types.RelationshipKindEnqueues):         {},
+	string(types.RelationshipKindPublishesTo):      {},
+	string(types.RelationshipKindSubscribesTo):     {},
+	string(types.RelationshipKindCaches):           {},
+	string(types.RelationshipKindInvalidates):      {},
+	string(types.RelationshipKindGatedBy):          {},
+	string(types.RelationshipKindHandlesCommand):   {},
+	string(types.RelationshipKindDataFlowsTo):      {},
+	string(types.RelationshipKindInjectedInto):     {},
+	string(types.RelationshipKindBinds):            {},
+	string(types.RelationshipKindDependsOnConfig):  {},
+}
+
+// isSemanticEdgeKind reports whether k is one of the projected semantic edge
+// kinds (case-insensitive against the on-graph casing). (#3897)
+func isSemanticEdgeKind(k string) bool {
+	_, ok := semanticEdgeKinds[strings.ToUpper(k)]
+	return ok
+}
+
+// diEdgeKinds is the dependency-injection SUBSET of semanticEdgeKinds, retained
+// so the backward-compatible `di_edges` section / di_kind|di_direction
+// annotation can be derived without re-listing the kinds. (#3870, #3897)
+func isDIEdgeKind(k string) bool {
+	return strings.EqualFold(k, string(types.RelationshipKindInjectedInto)) ||
+		strings.EqualFold(k, string(types.RelationshipKindBinds))
+}
+
+// inspectSemanticEdges returns rows for every projected semantic edge attached
+// to entity e (see semanticEdgeKinds). Generalizes inspectDIEdges (#3870) to
+// cover the full meaningful, non-structural edge set (#3897).
 //
 // Each row carries:
 //
-//	kind      — "INJECTED_INTO" or "BINDS"
-//	direction — "outbound" (this entity is the FromID, e.g. a provider injected
-//	            into others / a module that binds) or "inbound" (this entity is
-//	            the ToID, e.g. a controller a provider is injected into / an impl
-//	            a token binds to)
-//	other     — the entity on the other side of the edge (ToID for outbound,
-//	            FromID for inbound)
+//	kind      — the on-graph relationship kind verbatim (e.g. "JOINS_COLLECTION")
+//	direction — "outbound" (this entity is the FromID) or "inbound" (ToID)
+//	other     — the entity on the other side (ToID for outbound, FromID inbound),
+//	            repo-prefixed when scopeIsOne is false
 //	line      — Properties["line"] when the extractor recorded one (0 otherwise)
 //
-// Returns nil when the entity has no DI edges so the inspect envelope can omit
-// the section entirely (mirrors inspectDiscriminators, #2666). (#3870)
-func inspectDIEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+// Returns nil when the entity has no semantic edges so the inspect envelope can
+// omit the section entirely (mirrors inspectDiscriminators, #2666). The `accept`
+// predicate selects which kinds to emit — callers pass isSemanticEdgeKind for
+// the full `semantic_edges` set or isDIEdgeKind for the legacy `di_edges` subset.
+func inspectSemanticEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, accept func(string) bool) []map[string]any {
 	if lr == nil || lr.Doc == nil || e == nil {
 		return nil
-	}
-	isDIKind := func(k string) bool {
-		return strings.EqualFold(k, string(types.RelationshipKindInjectedInto)) ||
-			strings.EqualFold(k, string(types.RelationshipKindBinds))
 	}
 	out := []map[string]any{}
 	rels := lr.Doc.Relationships
@@ -1521,12 +1585,12 @@ func inspectDIEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[stri
 	}
 	adj := lr.getAdjacency()
 	for _, ed := range adj.Outgoing(e.ID) {
-		if isDIKind(ed.kind) {
+		if accept(ed.kind) {
 			emit(ed, "outbound")
 		}
 	}
 	for _, ed := range adj.Incoming(e.ID) {
-		if isDIKind(ed.kind) {
+		if accept(ed.kind) {
 			emit(ed, "inbound")
 		}
 	}
@@ -1536,38 +1600,51 @@ func inspectDIEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[stri
 	return out
 }
 
-// diNeighbor describes the dependency-injection edge connecting a start node to
-// one of its direct neighbours (used to annotate archigraph_expand rows, #3870).
-type diNeighbor struct {
-	kind      string // "INJECTED_INTO" or "BINDS" (on-graph casing)
+// inspectDIEdges is the backward-compatible DI-only projection (#3870), now a
+// thin wrapper over the generalized inspectSemanticEdges (#3897). Returns rows
+// for INJECTED_INTO / BINDS edges only, preserving the legacy `di_edges` shape.
+func inspectDIEdges(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map[string]any {
+	return inspectSemanticEdges(lr, e, scopeIsOne, isDIEdgeKind)
+}
+
+// semanticNeighbor describes the semantic edge connecting a start node to one of
+// its direct neighbours (used to annotate archigraph_expand rows). (#3897)
+type semanticNeighbor struct {
+	kind      string // on-graph relationship casing (e.g. "JOINS_COLLECTION")
 	direction string // "outbound" (start is FromID) or "inbound" (start is ToID)
 }
 
-// directDIEdges indexes the INJECTED_INTO / BINDS edges directly incident on
-// startID, keyed by the neighbour entity id. Outbound edges (start is the
-// provider/module/token FromID) take precedence over inbound when an id appears
-// on both sides. Returns an empty (non-nil) map when there are no DI edges.
-// (#3870)
-func directDIEdges(adj *adjacency, startID string) map[string]diNeighbor {
-	res := map[string]diNeighbor{}
+// diNeighbor is the DI-specific alias retained for the legacy di_kind/
+// di_direction annotation. (#3870)
+type diNeighbor = semanticNeighbor
+
+// directSemanticEdges indexes the projected semantic edges directly incident on
+// startID, keyed by the neighbour entity id. Outbound edges take precedence over
+// inbound when an id appears on both sides. Returns an empty (non-nil) map when
+// there are no matching edges. The `accept` predicate selects the kind subset
+// (isSemanticEdgeKind for the full set, isDIEdgeKind for the DI subset). (#3897)
+func directSemanticEdges(adj *adjacency, startID string, accept func(string) bool) map[string]semanticNeighbor {
+	res := map[string]semanticNeighbor{}
 	if adj == nil {
 		return res
 	}
-	isDI := func(k string) bool {
-		return strings.EqualFold(k, string(types.RelationshipKindInjectedInto)) ||
-			strings.EqualFold(k, string(types.RelationshipKindBinds))
-	}
 	for _, ed := range adj.Incoming(startID) {
-		if isDI(ed.kind) {
-			res[ed.target] = diNeighbor{kind: ed.kind, direction: "inbound"}
+		if accept(ed.kind) {
+			res[ed.target] = semanticNeighbor{kind: ed.kind, direction: "inbound"}
 		}
 	}
 	for _, ed := range adj.Outgoing(startID) {
-		if isDI(ed.kind) {
-			res[ed.target] = diNeighbor{kind: ed.kind, direction: "outbound"}
+		if accept(ed.kind) {
+			res[ed.target] = semanticNeighbor{kind: ed.kind, direction: "outbound"}
 		}
 	}
 	return res
+}
+
+// directDIEdges is the backward-compatible DI-only neighbour index (#3870), now
+// delegating to directSemanticEdges with the DI subset predicate. (#3897)
+func directDIEdges(adj *adjacency, startID string) map[string]diNeighbor {
+	return directSemanticEdges(adj, startID, isDIEdgeKind)
 }
 
 // inspectMetadata returns index-staleness fields for the inspect response.
@@ -1702,6 +1779,12 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 	// the start node's direct DI edges by neighbour id so the matching output
 	// rows can be annotated with {di_kind, di_direction} below.
 	diByNeighbor := directDIEdges(adj, start.ID)
+	// #3897: same idea, generalized to the full semantic edge set. Annotates the
+	// neighbour row with {semantic_kind, semantic_direction} for ANY projected
+	// non-structural edge (JOINS_COLLECTION, GRAPH_RELATES, DEPENDS_ON_SERVICE,
+	// THROWS/CATCHES, DATA_FLOWS_TO, …) — not just DI. di_kind/di_direction are
+	// retained above for backward compatibility on the DI subset.
+	semByNeighbor := directSemanticEdges(adj, start.ID, isSemanticEdgeKind)
 	out := []map[string]any{}
 	for nid, d := range vis {
 		if nid == start.ID {
@@ -1721,6 +1804,10 @@ func (s *Server) handleGetNeighbors(ctx context.Context, req mcpapi.CallToolRequ
 		if di, ok := diByNeighbor[nid]; ok {
 			row["di_kind"] = di.kind
 			row["di_direction"] = di.direction
+		}
+		if sem, ok := semByNeighbor[nid]; ok {
+			row["semantic_kind"] = sem.kind
+			row["semantic_direction"] = sem.direction
 		}
 		out = append(out, row)
 	}

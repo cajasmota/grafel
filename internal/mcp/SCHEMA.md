@@ -359,6 +359,23 @@ is the source line the extractor recorded (`0` when absent). The section is
 omitted entirely when the entity has no DI edges. Before #3870 these edges were
 in the graph but no read tool projected them — only CALLS was visible.
 
+A `semantic_edges` array generalizes the `di_edges` projection to the full set
+of semantically meaningful, **non-structural** relationship kinds (#3897). Each
+row has the same `{ "kind", "direction", "other", "line" }` shape as `di_edges`,
+where `kind` is the on-graph relationship kind verbatim. The projected kinds are:
+`JOINS_COLLECTION`, `GRAPH_RELATES`, `DEPENDS_ON_SERVICE`, `THROWS`, `CATCHES`,
+`MODIFIES_TABLE`, `ACCESSES_TABLE`, `QUERIES`, `RENDERS`, `USES_TRANSLATION`,
+`TRIGGERS`, `ENQUEUES`, `PUBLISHES_TO`, `SUBSCRIBES_TO`, `CACHES`, `INVALIDATES`,
+`GATED_BY`, `HANDLES_COMMAND`, `DATA_FLOWS_TO`, `INJECTED_INTO`, `BINDS`, and
+`DEPENDS_ON_CONFIG`. Structural / high-volume kinds are deliberately excluded
+because they have their own sections or are pure scaffolding: `CALLS`
+(`calls`/`called_by`), `DISCRIMINATES_ON` (`discriminators`), `IMPORTS`, and
+`CONTAINS`. The DI kinds (`INJECTED_INTO`/`BINDS`) appear in **both** `di_edges`
+(backward-compatible subset) and `semantic_edges` (superset). The section is
+omitted entirely when the entity has no semantic edges. Before #3897 these edges
+were in the graph but invisible to read tools — only CALLS + the DI subset were
+projected.
+
 With `verbose=true`, the response also includes `end_line`, `language`, `repo`,
 `pagerank`, `community_id`, and `properties`.
 
@@ -420,6 +437,15 @@ edge `FromID`, `"inbound"` when it is the `ToID`). This lets a consumer tell a
 provider→consumer injection from a plain `CALLS` neighbour — before #3870 the
 connecting edge kind was dropped from neighbour rows entirely. Fields are absent
 on neighbours that are not connected by a DI edge.
+
+Generalizing this (#3897), direct neighbours connected by ANY projected semantic
+edge (the `semantic_edges` kind set documented under `archigraph_inspect`)
+additionally carry `semantic_kind` and `semantic_direction` (same semantics as
+`di_kind`/`di_direction`). This lets a consumer distinguish e.g. a
+`DEPENDS_ON_SERVICE`, `THROWS`, or `DATA_FLOWS_TO` neighbour from a plain `CALLS`
+one. For DI neighbours, both the legacy `di_*` and the generalized `semantic_*`
+fields are present. Fields are absent on neighbours not connected by a projected
+semantic edge.
 
 ---
 
