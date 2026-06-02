@@ -114,6 +114,13 @@ func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
 		relationships = synthesizeCeleryCallSiteEdges(src, path, seenJob, relationships)
 		synthesizePyAPScheduler(src, path, emitJob)
 		synthesizePyScheduleLib(src, path, emitJob)
+		// #3628 area: RQ (Redis Queue) enqueue→handler cross-link. A
+		// `queue.enqueue(my_func)` / `enqueue_call(func="mod.my_func")` dispatch
+		// site ENQUEUES the named callable; the callable's own def IS the
+		// consumer, so we emit an ENQUEUES edge from the enclosing function to
+		// Function:<callable> directly (mirroring Celery's TRIGGERS target
+		// convention). No synthetic queue node: the function is the rendezvous.
+		relationships = synthesizeRQEnqueueEdges(src, relationships)
 	case "javascript", "typescript":
 		synthesizeNodeCron(src, path, emitJob)
 		synthesizeNodeBull(src, path, emitJob)
@@ -131,6 +138,13 @@ func applyScheduledJobEdges(args DetectorPassArgs) DetectorPassResult {
 		// to those IDs and appends the caller→job ENQUEUES edges.
 		synthesizeRubySidekiq(src, path, emitJob)
 		relationships = synthesizeSidekiqEnqueueEdges(src, seenJob, relationships)
+		// #3628 area: Resque jobs + ENQUEUES edges. synthesizeRubyResque emits
+		// a SCOPE.ScheduledJob (resque:<Job>) with a TRIGGERS edge to the job's
+		// `self.perform` handler; synthesizeResqueEnqueueEdges resolves
+		// `Resque.enqueue(Job, …)` dispatch sites to that job ID and appends the
+		// caller→job ENQUEUES edges. Same join shape as Sidekiq.
+		synthesizeRubyResque(src, path, emitJob)
+		relationships = synthesizeResqueEnqueueEdges(src, seenJob, relationships)
 	}
 
 	// YAML-based detectors run regardless of `lang` because the language
@@ -775,6 +789,240 @@ func synthesizeSidekiqEnqueueEdges(
 				"dispatch_method": src[idx[4]:idx[5]],
 			},
 		})
+	}
+	return relationships
+}
+
+// ---------------------------------------------------------------------------
+// Ruby — Resque jobs + ENQUEUES (#3628 area)
+// ---------------------------------------------------------------------------
+//
+// A Resque job is a Ruby class that defines a class method `self.perform`
+// (Resque pops a job off the queue and calls `Job.perform(*args)`). The class
+// usually declares `@queue = :name`, but the perform method is the consumer.
+// We model the job as a SCOPE.ScheduledJob entity keyed `resque:<Job>` (stable
+// across files, no path) with a TRIGGERS edge to `perform`, exactly mirroring
+// the Sidekiq shape so a `Resque.enqueue(Job)` dispatch in another file joins.
+//
+// Dispatch happens at `Resque.enqueue(Job, …)` / `Resque.enqueue_to(queue,
+// Job, …)` / `Resque.enqueue_in(sec, Job, …)` call sites; each ENQUEUES work
+// onto the queue. We emit an ENQUEUES edge from the enclosing Ruby method to
+// the job entity.
+
+// rubyResqueJobID is the canonical job-entity ID for a Resque job class.
+// Stable across files (no path) so an enqueue dispatch in one file resolves to
+// the job class defined in another — same convention as rubySidekiqWorkerJobID.
+func rubyResqueJobID(jobClass string) string {
+	return "resque:" + jobClass
+}
+
+// reRubyResqueQueueDecl matches `@queue = :name` / `@queue = "name"`, the
+// idiomatic Resque queue declaration that distinguishes a Resque job class
+// from an arbitrary class with a self.perform method. Group 1 = queue name.
+var reRubyResqueQueueDecl = regexp.MustCompile(`(?m)^\s*@queue\s*=\s*[:'"]([A-Za-z0-9_]+)`)
+
+// reRubyResqueSelfPerform matches the `def self.perform` class method that
+// Resque invokes when running the job.
+var reRubyResqueSelfPerform = regexp.MustCompile(`(?m)^\s*def\s+self\.perform\b`)
+
+// reRubyResqueDispatch captures `Resque.enqueue(Job, …)`,
+// `Resque.enqueue_to(:q, Job, …)` and `Resque.enqueue_in(sec, Job, …)`
+// dispatch sites. Group 1 = dispatch method, group 2 = job class. For the
+// _to / _in forms the job class is the second positional arg, so we tolerate a
+// leading non-class argument before the class name.
+var reRubyResqueDispatch = regexp.MustCompile(`Resque\.(enqueue|enqueue_to|enqueue_in)\s*\(\s*(?:[^,()]+,\s*)?([A-Z][A-Za-z0-9_:]*)`)
+
+// synthesizeRubyResque emits a SCOPE.ScheduledJob entity (resque:<Job>) with a
+// TRIGGERS edge to `perform` for each Resque job class — a class that both
+// declares `@queue` AND defines `def self.perform`. Both markers are required
+// to avoid flagging arbitrary classes. Registers job IDs into seenJob (via
+// emitJob) so the ENQUEUES pass can resolve dispatch targets.
+func synthesizeRubyResque(
+	src, path string,
+	emitJob func(jobID, handler, schedule, framework string, extra map[string]string),
+) {
+	if !strings.Contains(src, "@queue") || !strings.Contains(src, "self.perform") {
+		return
+	}
+	if !reRubyResqueSelfPerform.MatchString(src) {
+		return
+	}
+	// Attribute each `@queue =` declaration to the class declared above it,
+	// reusing the Sidekiq class-resolution regex.
+	for _, qloc := range reRubyResqueQueueDecl.FindAllStringSubmatchIndex(src, -1) {
+		queueName := src[qloc[2]:qloc[3]]
+		classMatches := reRubySidekiqClass.FindAllStringSubmatch(src[:qloc[0]], -1)
+		if len(classMatches) == 0 {
+			continue
+		}
+		jobClass := classMatches[len(classMatches)-1][1]
+		jobID := rubyResqueJobID(jobClass)
+		emitJob(jobID, "perform", "", "resque", map[string]string{
+			"job_class":  jobClass,
+			"queue_name": queueName,
+			"job_type":   "queue",
+		})
+	}
+}
+
+// synthesizeResqueEnqueueEdges emits ENQUEUES edges from the enclosing Ruby
+// method of each `Resque.enqueue*` dispatch site to the job entity. Only emits
+// when the job ID is present in knownJobs (the seenJob map) — preventing
+// phantom-node creation when the job class is defined in another, un-indexed
+// file. Dedupes on (caller, jobID).
+func synthesizeResqueEnqueueEdges(
+	src string,
+	knownJobs map[string]bool,
+	relationships []types.RelationshipRecord,
+) []types.RelationshipRecord {
+	if !strings.Contains(src, "Resque.enqueue") {
+		return relationships
+	}
+	seenEdge := map[string]bool{}
+	for _, idx := range reRubyResqueDispatch.FindAllStringSubmatchIndex(src, -1) {
+		dispatchMethod := src[idx[2]:idx[3]]
+		jobClass := src[idx[4]:idx[5]]
+		jobID := rubyResqueJobID(jobClass)
+		if !knownJobs[jobID] {
+			continue
+		}
+		caller := rubyEnclosingMethod(src, idx[0])
+		if caller == "" {
+			caller = "module"
+		}
+		key := caller + "|" + jobID
+		if seenEdge[key] {
+			continue
+		}
+		seenEdge[key] = true
+		relationships = append(relationships, types.RelationshipRecord{
+			FromID: "SCOPE.Operation:" + caller,
+			ToID:   scheduledJobKind + ":" + jobID,
+			Kind:   string(types.RelationshipKindEnqueues),
+			Properties: map[string]string{
+				"framework":       "resque",
+				"pattern_type":    "resque_enqueue_synthesis",
+				"job_class":       jobClass,
+				"dispatch_method": dispatchMethod,
+			},
+		})
+	}
+	return relationships
+}
+
+// ---------------------------------------------------------------------------
+// Python — RQ (Redis Queue) enqueue→handler ENQUEUES (#3628 area)
+// ---------------------------------------------------------------------------
+//
+// RQ dispatches a job by handing the consumer callable directly to enqueue:
+//
+//	queue.enqueue(send_email, to, subject)          # callable reference
+//	queue.enqueue_call(func="workers.email.gen")    # dotted string
+//	queue.enqueue_call(func=generate_report)        # callable reference
+//
+// The callable IS the consumer (RQ's Worker just pops the job and calls it),
+// so unlike Sidekiq/Resque there is no separate worker class to model — we
+// emit an ENQUEUES edge straight from the enclosing function to
+// Function:<callable>, the same target convention Celery's TRIGGERS uses.
+// Honest-partial: dynamic callables (e.g. `enqueue(getattr(mod, name))`) yield
+// no static name and are skipped.
+
+// reRQEnqueueRef matches `queue.enqueue(callable` with a bare callable arg.
+// Group 1 = queue var, group 2 = callable (possibly dotted). We exclude the
+// _call form and string literals: a `'` / `"` immediately after `(` means a
+// job-id string, not a callable, so the leading char class rejects quotes.
+var reRQEnqueueRef = regexp.MustCompile(`(?m)(\w+)\.enqueue\s*\(\s*([A-Za-z_][\w.]*)`)
+
+// reRQEnqueueCallStr matches `queue.enqueue_call(func="module.fn")`.
+// Group 1 = dotted function path.
+var reRQEnqueueCallStr = regexp.MustCompile(`(?m)\w+\.enqueue_call\s*\([^)]*func\s*=\s*["']([^"']+)["']`)
+
+// reRQEnqueueCallRef matches `queue.enqueue_call(func=callable_ref)`.
+// Group 1 = callable (possibly dotted).
+var reRQEnqueueCallRef = regexp.MustCompile(`(?m)\w+\.enqueue_call\s*\([^)]*func\s*=\s*([A-Za-z_][\w.]*)`)
+
+// rqCallableShortName returns the last dotted segment of a callable reference
+// (`workers.email.send` → `send`), the bare function name the consumer def is
+// keyed on. Returns "" for an empty or trailing-dot input.
+func rqCallableShortName(callable string) string {
+	parts := strings.Split(callable, ".")
+	return parts[len(parts)-1]
+}
+
+// synthesizeRQEnqueueEdges emits ENQUEUES edges from the enclosing Python
+// function of each RQ enqueue dispatch site to Function:<callable>. Dedupes on
+// (caller, target). The producer-side `.enqueue_call` matches are stripped from
+// the bare `.enqueue` scan via the distinct method name, so a single call site
+// never double-emits.
+func synthesizeRQEnqueueEdges(
+	src string,
+	relationships []types.RelationshipRecord,
+) []types.RelationshipRecord {
+	if !strings.Contains(src, ".enqueue") {
+		return relationships
+	}
+	// RQ-only guard: require an rq import so a generic `q.enqueue(x)` on an
+	// unrelated object in non-RQ code does not fabricate an edge.
+	if !strings.Contains(src, "from rq") && !strings.Contains(src, "import rq") &&
+		!strings.Contains(src, "rq.") {
+		return relationships
+	}
+
+	seenEdge := map[string]bool{}
+	// emit attributes an ENQUEUES edge. callEnd is the byte offset just past the
+	// captured callable; when the next non-space char is '(' the "callable" is
+	// actually a nested call (e.g. `getattr(mod, name)`), i.e. the real target
+	// is computed dynamically — honest-partial, so we skip it.
+	emit := func(callerOffset, callEnd int, callable string) {
+		j := callEnd
+		for j < len(src) && (src[j] == ' ' || src[j] == '\t') {
+			j++
+		}
+		if j < len(src) && src[j] == '(' {
+			return
+		}
+		short := rqCallableShortName(callable)
+		if short == "" {
+			return
+		}
+		caller := enclosingFunction(src, callerOffset)
+		if caller == "" {
+			return
+		}
+		if caller == short {
+			return // self-enqueue inside the callable's own def
+		}
+		key := caller + "|" + short
+		if seenEdge[key] {
+			return
+		}
+		seenEdge[key] = true
+		relationships = append(relationships, types.RelationshipRecord{
+			FromID: "SCOPE.Operation:" + caller,
+			ToID:   "Function:" + short,
+			Kind:   string(types.RelationshipKindEnqueues),
+			Properties: map[string]string{
+				"framework":    "rq",
+				"pattern_type": "rq_enqueue_synthesis",
+				"callable":     callable,
+			},
+		})
+	}
+
+	// enqueue_call(func="…") / func=ref — handle first so the bare enqueue
+	// scan below can skip these spans is unnecessary (distinct method name).
+	for _, m := range reRQEnqueueCallStr.FindAllStringSubmatchIndex(src, -1) {
+		// String func= is always a literal name, never a nested call: pass the
+		// match end so the '(' guard is a no-op (next char is '"').
+		emit(m[0], m[3], src[m[2]:m[3]])
+	}
+	for _, m := range reRQEnqueueCallRef.FindAllStringSubmatchIndex(src, -1) {
+		emit(m[0], m[3], src[m[2]:m[3]])
+	}
+	// bare enqueue(callable). reRQEnqueueRef matches `.enqueue(` but NOT
+	// `.enqueue_call(` because `_call` is not consumed by `\s*\(`.
+	for _, m := range reRQEnqueueRef.FindAllStringSubmatchIndex(src, -1) {
+		emit(m[0], m[5], src[m[4]:m[5]])
 	}
 	return relationships
 }

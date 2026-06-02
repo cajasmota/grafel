@@ -47924,8 +47924,10 @@
           },
           "task_routing": {
             "status": "partial",
-            "cites": ["internal/custom/python/rq.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/python/rq.go","internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+            "issue": "3628",
+            "notes": "epic #3628 jobs cross-link: queue.enqueue(my_func) / enqueue_call(func=\"mod.my_func\") dispatch sites now emit an ENQUEUES edge from the enclosing function to Function:\u003cmy_func\u003e (the consumer), joining producer to handler. Honest-partial: dynamic callables (e.g. enqueue(getattr(...))) are skipped; cross-queue routing by name not modelled.",
+            "verified_at": "2026-06-02"
           }
         },
         "Schedule": {
@@ -61462,6 +61464,32 @@
           "cites": ["internal/engine/realtime_endpoint_synthesis.go"],
           "notes": "Topic pattern captured verbatim as route_path (room:*); wildcard segments not expanded.",
           "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
+      "id": "msg.resque",
+      "category": "message_broker",
+      "language": "ruby",
+      "label": "Resque (Ruby task queue)",
+      "capabilities": {
+        "consumer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "epic #3628 jobs cross-link: a Ruby class declaring @queue = :name AND def self.perform becomes a SCOPE.ScheduledJob (resque:\u003cJob\u003e) with a TRIGGERS edge to perform (the consumer). Honest-partial: requires both @queue and self.perform in one file; dynamic class refs not resolved."
+        },
+        "producer_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "epic #3628 jobs cross-link: Resque.enqueue/enqueue_to/enqueue_in dispatch sites emit an ENQUEUES edge from the enclosing Ruby method to the job entity (SCOPE.ScheduledJob resque:\u003cJob\u003e), joined on the shared resque:\u003cJob\u003e id with the consumer side. Honest-partial: enqueue target resolves only when the job class def is in the indexed group; dynamic class names not resolved."
+        },
+        "topic_attribution": {
+          "status": "partial",
+          "cites": ["internal/engine/scheduled_jobs_edges.go","internal/engine/scheduled_jobs_edges_test.go"],
+          "issue": "3628",
+          "notes": "epic #3628 jobs cross-link: producer ENQUEUES and consumer TRIGGERS both reference the same resque:\u003cJob\u003e SCOPE.ScheduledJob node, so a Resque.enqueue(Job) caller and the Job's self.perform join on one node (same shape as Sidekiq). Honest-partial: cross-file join requires the job class def to be indexed."
         }
       }
     },

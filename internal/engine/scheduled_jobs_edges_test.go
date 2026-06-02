@@ -528,3 +528,197 @@ end
 		t.Errorf("expected no ENQUEUES edges for plain class, got %v", enqueuesEdges(rels))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Ruby — Resque jobs + ENQUEUES edges (#3628 area)
+// ---------------------------------------------------------------------------
+
+// enqueuesByFramework filters ENQUEUES edges by their framework property.
+func enqueuesByFramework(rels []types.RelationshipRecord, framework string) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
+	for _, r := range enqueuesEdges(rels) {
+		if r.Properties["framework"] == framework {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// A Resque job class (@queue + def self.perform) becomes a ScheduledJob with a
+// TRIGGERS edge to perform, and `Resque.enqueue(Job)` emits an ENQUEUES edge
+// from the enclosing method to the job — joined on resque:<Job>.
+func TestScheduledJobs_RubyResque_EnqueuesEdge(t *testing.T) {
+	src := `class EmailJob
+  @queue = :emails
+
+  def self.perform(user_id)
+    # send the email
+  end
+end
+
+class SignupService
+  def register(user)
+    Resque.enqueue(EmailJob, user.id)
+  end
+end
+`
+	ents, rels := runScheduledDetect(t, "ruby", "app/jobs/email_job.rb", src)
+
+	jobs := scheduledJobsByFramework(ents, "resque")
+	if len(jobs) != 1 {
+		t.Fatalf("expected exactly 1 resque ScheduledJob, got %d (%v)", len(jobs), ents)
+	}
+	if jobs[0].Name != "resque:EmailJob" {
+		t.Errorf("expected job ID resque:EmailJob, got %q", jobs[0].Name)
+	}
+	if jobs[0].Properties["queue_name"] != "emails" {
+		t.Errorf("expected queue_name=emails, got %q", jobs[0].Properties["queue_name"])
+	}
+
+	// TRIGGERS: job -> perform handler.
+	var gotTrigger bool
+	for _, e := range triggersEdges(rels) {
+		if e.FromID == scheduledJobKind+":resque:EmailJob" && e.ToID == "Function:perform" {
+			gotTrigger = true
+		}
+	}
+	if !gotTrigger {
+		t.Errorf("expected TRIGGERS resque:EmailJob -> Function:perform, got %v", triggersEdges(rels))
+	}
+
+	// ENQUEUES: caller `register` -> job, joined on resque:EmailJob.
+	enq := enqueuesByFramework(rels, "resque")
+	if len(enq) != 1 {
+		t.Fatalf("expected exactly 1 resque ENQUEUES edge, got %d (%v)", len(enq), enq)
+	}
+	e := enq[0]
+	if e.FromID != "SCOPE.Operation:register" {
+		t.Errorf("expected ENQUEUES from SCOPE.Operation:register, got %q", e.FromID)
+	}
+	if e.ToID != scheduledJobKind+":resque:EmailJob" {
+		t.Errorf("expected ENQUEUES to %s:resque:EmailJob, got %q", scheduledJobKind, e.ToID)
+	}
+	if e.Properties["dispatch_method"] != "enqueue" {
+		t.Errorf("expected dispatch_method=enqueue, got %q", e.Properties["dispatch_method"])
+	}
+}
+
+// Resque.enqueue_in(sec, Job, …) — the job class is the 2nd positional arg.
+func TestScheduledJobs_RubyResque_EnqueueIn(t *testing.T) {
+	src := `class ReportJob
+  @queue = "reports"
+  def self.perform(id); end
+end
+
+class Caller
+  def schedule
+    Resque.enqueue_in(60, ReportJob, 7)
+  end
+end
+`
+	_, rels := runScheduledDetect(t, "ruby", "app/jobs/report_job.rb", src)
+	enq := enqueuesByFramework(rels, "resque")
+	if len(enq) != 1 {
+		t.Fatalf("expected 1 resque ENQUEUES edge, got %d (%v)", len(enq), enq)
+	}
+	if enq[0].ToID != scheduledJobKind+":resque:ReportJob" {
+		t.Errorf("expected ENQUEUES to resque:ReportJob, got %q", enq[0].ToID)
+	}
+	if enq[0].Properties["dispatch_method"] != "enqueue_in" {
+		t.Errorf("expected dispatch_method=enqueue_in, got %q", enq[0].Properties["dispatch_method"])
+	}
+}
+
+// Negative: a Resque.enqueue dispatch whose job class is NOT a known job (no
+// @queue/self.perform def in scope) must not fabricate an ENQUEUES edge.
+func TestScheduledJobs_RubyResque_UnknownJob_NoEdge(t *testing.T) {
+	src := `class Caller
+  def go
+    Resque.enqueue(SomeUnindexedJob, 1)
+  end
+end
+`
+	_, rels := runScheduledDetect(t, "ruby", "app/caller.rb", src)
+	if got := enqueuesByFramework(rels, "resque"); len(got) != 0 {
+		t.Errorf("expected no resque ENQUEUES edge for unknown job, got %v", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Python — RQ enqueue→handler ENQUEUES (#3628 area)
+// ---------------------------------------------------------------------------
+
+// queue.enqueue(my_func) links the producer's enclosing function to the
+// consumer Function:my_func.
+func TestScheduledJobs_PyRQ_EnqueueRef(t *testing.T) {
+	src := `from rq import Queue
+from redis import Redis
+from workers.email import send_email
+
+q = Queue("emails", connection=Redis())
+
+def notify_user(user_id):
+    q.enqueue(send_email, "user@example.com", "hi")
+`
+	_, rels := runScheduledDetect(t, "python", "api/notifications.py", src)
+	enq := enqueuesByFramework(rels, "rq")
+	if len(enq) != 1 {
+		t.Fatalf("expected exactly 1 rq ENQUEUES edge, got %d (%v)", len(enq), enq)
+	}
+	e := enq[0]
+	if e.FromID != "SCOPE.Operation:notify_user" {
+		t.Errorf("expected ENQUEUES from notify_user, got %q", e.FromID)
+	}
+	if e.ToID != "Function:send_email" {
+		t.Errorf("expected ENQUEUES to Function:send_email, got %q", e.ToID)
+	}
+}
+
+// queue.enqueue_call(func="workers.email.generate_report") resolves the dotted
+// string to the consumer's short name.
+func TestScheduledJobs_PyRQ_EnqueueCallString(t *testing.T) {
+	src := `import rq
+
+def request_report(report_id):
+    report_queue.enqueue_call(func="workers.email.generate_report", args=[report_id])
+`
+	_, rels := runScheduledDetect(t, "python", "api/reports.py", src)
+	enq := enqueuesByFramework(rels, "rq")
+	if len(enq) != 1 {
+		t.Fatalf("expected exactly 1 rq ENQUEUES edge, got %d (%v)", len(enq), enq)
+	}
+	if enq[0].FromID != "SCOPE.Operation:request_report" {
+		t.Errorf("expected ENQUEUES from request_report, got %q", enq[0].FromID)
+	}
+	if enq[0].ToID != "Function:generate_report" {
+		t.Errorf("expected ENQUEUES to Function:generate_report, got %q", enq[0].ToID)
+	}
+}
+
+// Negative: a `.enqueue` call in a file with no rq import must not emit an
+// edge (guards against generic queue objects in non-RQ code).
+func TestScheduledJobs_PyRQ_NoImport_NoEdge(t *testing.T) {
+	src := `def handler():
+    some_other_queue.enqueue(do_work, 1)
+`
+	_, rels := runScheduledDetect(t, "python", "svc/worker.py", src)
+	if got := enqueuesByFramework(rels, "rq"); len(got) != 0 {
+		t.Errorf("expected no rq ENQUEUES edge without rq import, got %v", got)
+	}
+}
+
+// Negative: enqueue with a dynamic (non-identifier) callable must not fabricate
+// an edge — honest-partial on dynamic dispatch.
+func TestScheduledJobs_PyRQ_DynamicCallable_NoEdge(t *testing.T) {
+	src := `from rq import Queue
+
+def dispatch(name):
+    q.enqueue(getattr(mod, name), 1)
+`
+	_, rels := runScheduledDetect(t, "python", "svc/dyn.py", src)
+	// The captured token `getattr` is immediately followed by `(`, so it is a
+	// nested call (dynamic dispatch), not a callable reference — no edge.
+	if got := enqueuesByFramework(rels, "rq"); len(got) != 0 {
+		t.Errorf("expected no rq ENQUEUES edge for dynamic callable, got %v", got)
+	}
+}
