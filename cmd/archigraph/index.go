@@ -62,13 +62,14 @@ const (
 	PassCoupling      = "coupling"       // Pass 8.6: structural Ca/Ce/instability per Module (#3634)
 	PassDepHygiene    = "dep-hygiene"    // Pass 8.7: persist deplinker used/unused status onto deps (#3640)
 	PassSharedDB      = "shared-db"      // Pass 8.8: shared-database cross-service coupling (#3628 area #13)
+	PassLibBoundary   = "lib-boundary"   // Pass 8.9: first_party/third_party boundary on DEPENDS_ON edges (#3638)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 	PassTestsWalkUp   = "tests-walkup"   // Pass 3.5: derive TESTS edges via helper walk-up
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassCoupling, PassDepHygiene, PassEmbed,
+	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassCoupling, PassDepHygiene, PassSharedDB, PassLibBoundary, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -1596,6 +1597,28 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				"archigraph: shared-db tables=%d shared=%d data_access_annotated=%d coupling_edges=%d\n",
 				sdStats.TablesConsidered, sdStats.SharedTables,
 				sdStats.DataAccessAnnotated, sdStats.CouplingEdges)
+		}
+	}
+
+	// Pass 8.9 — dependency-boundary annotation (#3638, epic #3625). Restores
+	// the previously-orphaned lib_boundary enricher as a live pass. Runs AFTER
+	// the document is assembled (manifest external_dependency entities + import
+	// DEPENDS_ON edges + code-to-code DEPENDS_ON edges are all present) so the
+	// classifier sees the same graph the dashboard would. Annotates each
+	// DEPENDS_ON edge with boundary=first_party (internal/local import or
+	// repo-internal code dependency) vs third_party (manifest dep or resolved
+	// external import) — a rewrite-scope signal. Reuses the locality/kind
+	// properties the extractors already attached; does NOT re-parse source.
+	// Honest-partial: edges with ambiguous origin are left unannotated.
+	// Skippable via --skip-pass=lib-boundary.
+	if !i.skipPasses[PassLibBoundary] {
+		lbStats := engine.ApplyLibBoundary(doc)
+		if verbose() || lbStats.FirstParty > 0 || lbStats.ThirdParty > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: lib-boundary edges=%d first_party=%d third_party=%d "+
+					"ambiguous=%d entities_annotated=%d\n",
+				lbStats.EdgesConsidered, lbStats.FirstParty, lbStats.ThirdParty,
+				lbStats.Ambiguous, lbStats.EntitiesAnnotated)
 		}
 	}
 
