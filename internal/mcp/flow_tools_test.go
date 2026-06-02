@@ -723,6 +723,175 @@ func TestImpactRadius_RootHasNoUpstreamImpact(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// TestImpactRadius reliability (#3925): input-driven errors → graceful results
+// ---------------------------------------------------------------------------
+
+// TestImpactRadius_MissingEntity_GracefulNotError verifies #3925: a missing
+// entity_id returns a well-formed empty result with a reason, NOT a tool error.
+func TestImpactRadius_MissingEntity_GracefulNotError(t *testing.T) {
+	doc := buildChainDoc()
+	srv := newTestServer(t, doc)
+
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{
+		"entity_id": "ent-does-not-exist",
+		"hops":      float64(2),
+	}
+	res, err := srv.handleImpactRadius(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler returned Go error: %v", err)
+	}
+	if res == nil {
+		t.Fatal("nil result")
+	}
+	// The whole point of the fix: this must NOT be a tool error.
+	if res.IsError {
+		t.Fatalf("missing entity must NOT be a tool error; got error result: %v", res.Content)
+	}
+	out := decodeFlowResult(t, res)
+	if out["resolved"] != false {
+		t.Errorf("expected resolved=false, got %v", out["resolved"])
+	}
+	affected, ok := out["affected"].([]any)
+	if !ok || len(affected) != 0 {
+		t.Errorf("expected empty affected array, got %v", out["affected"])
+	}
+	if c, _ := out["count"].(float64); c != 0 {
+		t.Errorf("expected count=0, got %v", out["count"])
+	}
+	reason, _ := out["reason"].(string)
+	if reason == "" {
+		t.Error("expected a non-empty reason explaining why nothing was found")
+	}
+}
+
+// TestImpactRadius_NameInsteadOfID_Resolves verifies #3925: when the caller
+// passes an entity *name* (not its graph ID), and that name is unique, the
+// handler resolves it to the real entity and returns the correct impact set —
+// no error.
+func TestImpactRadius_NameInsteadOfID_Resolves(t *testing.T) {
+	doc := buildChainDoc()
+	srv := newTestServer(t, doc)
+
+	// "FuncB" is a Name, not an ID (the ID is "ent-b"). Changing FuncB affects
+	// FuncA (its caller). Resolution by name must find ent-b and return FuncA.
+	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
+		"entity_id": "FuncB",
+		"hops":      float64(1),
+	})
+	if out["resolved"] != true {
+		t.Errorf("expected resolved=true after name resolution, got %v", out["resolved"])
+	}
+	affected, ok := out["affected"].([]any)
+	if !ok || len(affected) == 0 {
+		t.Fatalf("expected at least 1 affected entity, got %v", out["affected"])
+	}
+	first := affected[0].(map[string]any)
+	if first["name"] != "FuncA" {
+		t.Errorf("expected FuncA as affected caller of FuncB, got %v", first["name"])
+	}
+}
+
+// TestImpactRadius_AmbiguousName_ReturnsCandidates verifies #3925: when an
+// entity_id matches multiple entities by name, the handler returns a
+// disambiguation candidates list (no error).
+func TestImpactRadius_AmbiguousName_ReturnsCandidates(t *testing.T) {
+	// Two distinct entities share the name "process".
+	doc := minDoc(
+		[]graph.Entity{
+			{ID: "ent-1", Name: "process", Kind: "Function", SourceFile: "a.go"},
+			{ID: "ent-2", Name: "process", Kind: "Method", SourceFile: "b.go"},
+			{ID: "ent-caller", Name: "main", Kind: "Function", SourceFile: "main.go"},
+		},
+		[]graph.Relationship{
+			{FromID: "ent-caller", ToID: "ent-1", Kind: "CALLS"},
+		},
+	)
+	srv := newTestServer(t, doc)
+
+	req := mcpapi.CallToolRequest{}
+	req.Params.Arguments = map[string]any{"entity_id": "process", "hops": float64(1)}
+	res, err := srv.handleImpactRadius(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler returned Go error: %v", err)
+	}
+	if res.IsError {
+		t.Fatalf("ambiguous name must NOT be a tool error; got: %v", res.Content)
+	}
+	out := decodeFlowResult(t, res)
+	if out["ambiguous"] != true {
+		t.Errorf("expected ambiguous=true, got %v", out["ambiguous"])
+	}
+	cands, ok := out["candidates"].([]any)
+	if !ok || len(cands) != 2 {
+		t.Fatalf("expected 2 candidates, got %v", out["candidates"])
+	}
+	// Each candidate must carry a precise entity_id the caller can re-issue.
+	for _, c := range cands {
+		m := c.(map[string]any)
+		if m["entity_id"] == "" || m["entity_id"] == nil {
+			t.Errorf("candidate missing entity_id: %v", m)
+		}
+	}
+}
+
+// TestImpactRadius_HighDegree_TruncatesHonestly verifies #3925: a node with
+// more dependents than the cap returns a bounded result with an honest
+// truncation marker (no error, no unbounded payload).
+func TestImpactRadius_HighDegree_TruncatesHonestly(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "ent-hub", Name: "hub", Kind: "Function", SourceFile: "hub.go"},
+	}
+	var rels []graph.Relationship
+	// Far more callers than impactRadiusMaxResults.
+	n := impactRadiusMaxResults + 50
+	for i := 0; i < n; i++ {
+		id := fmt.Sprintf("caller-%d", i)
+		entities = append(entities, graph.Entity{
+			ID: id, Name: fmt.Sprintf("caller%d", i), Kind: "Function", SourceFile: "callers.go",
+		})
+		rels = append(rels, graph.Relationship{FromID: id, ToID: "ent-hub", Kind: "CALLS"})
+	}
+	srv := newTestServer(t, minDoc(entities, rels))
+
+	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
+		"entity_id": "ent-hub",
+		"hops":      float64(1),
+	})
+	if out["resolved"] != true {
+		t.Errorf("expected resolved=true, got %v", out["resolved"])
+	}
+	affected, ok := out["affected"].([]any)
+	if !ok {
+		t.Fatalf("expected affected array, got %T", out["affected"])
+	}
+	if len(affected) != impactRadiusMaxResults {
+		t.Errorf("expected affected capped at %d, got %d", impactRadiusMaxResults, len(affected))
+	}
+	if out["truncated"] != true {
+		t.Errorf("expected truncated=true for high-degree node, got %v", out["truncated"])
+	}
+	total, _ := out["total_affected"].(float64)
+	if int(total) != n {
+		t.Errorf("expected total_affected=%d, got %v", n, out["total_affected"])
+	}
+	if note, _ := out["truncation_note"].(string); note == "" {
+		t.Error("expected a non-empty truncation_note")
+	}
+}
+
+// decodeFlowResult unmarshals a (possibly non-error) tool result into a map.
+func decodeFlowResult(t *testing.T, res *mcpapi.CallToolResult) map[string]any {
+	t.Helper()
+	text := extractResultText(t, res)
+	var out map[string]any
+	if err := json.Unmarshal([]byte(text), &out); err != nil {
+		t.Fatalf("result is not JSON: %v\n%s", err, text)
+	}
+	return out
+}
+
 // buildMixedCallerDoc builds a doc for #2644 testing.
 //
 // Graph shape (impact_radius walks INBOUND edges from the queried entity):

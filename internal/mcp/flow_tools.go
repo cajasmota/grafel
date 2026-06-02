@@ -735,10 +735,105 @@ func impactRiskScore(e *graph.Entity, inDegree int) float64 {
 	return score
 }
 
+// impactRadiusMaxResults bounds the affected-set returned for a single
+// impact_radius call. A pathological high-degree node (e.g. a base class or a
+// utility imported everywhere) can have thousands of transitive dependents; we
+// keep the top-ranked slice and emit an honest truncation marker rather than
+// returning an unbounded payload. The cap is generous so normal nodes are never
+// truncated.
+const impactRadiusMaxResults = 500
+
+// impactCandidate is a disambiguation entry returned when entity_id resolves to
+// more than one entity by name. It carries enough to let the caller re-issue
+// the request against a precise ID.
+type impactCandidate struct {
+	EntityID   string `json:"entity_id"`
+	Name       string `json:"name"`
+	Kind       string `json:"kind"`
+	Repo       string `json:"repo"`
+	SourceFile string `json:"source_file,omitempty"`
+}
+
+// impactResolution is the outcome of resolving the entity_id argument against
+// the loaded group. Exactly one of {repo+localID set, candidates non-empty,
+// neither (not found)} holds.
+type impactResolution struct {
+	repo       *LoadedRepo // resolved repo when a unique entity was found
+	localID    string      // resolved local (un-prefixed) entity ID
+	candidates []impactCandidate
+}
+
+// resolveImpactTarget resolves the entity_id argument to a concrete entity.
+//
+// Resolution order, designed to convert the dominant error class (agents
+// passing a name, a stale ID, or an ambiguous symbol) into graceful results:
+//  1. Exact local-ID match in any in-scope repo → unique resolution.
+//  2. Else exact Name (or QualifiedName) match across in-scope repos:
+//     - exactly one → unique resolution (the entity_id was a name, not an ID).
+//     - more than one → return candidates for disambiguation.
+//  3. Else nothing matched → empty resolution (caller emits a graceful
+//     not-found result, NOT an error).
+//
+// `target` is the un-prefixed probe (local part of a repo:ID, or the raw
+// entity_id). `repos` is the already repo-hint-filtered candidate set.
+func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
+	// Pass 1: exact ID match (the happy path — unchanged semantics).
+	for _, r := range repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		if _, ok := r.getByID()[target]; ok {
+			return impactResolution{repo: r, localID: target}
+		}
+	}
+
+	// Pass 2: exact Name / QualifiedName match. Collect every match so we can
+	// distinguish "unique by name" from "ambiguous".
+	var byName []impactCandidate
+	type hit struct {
+		repo *LoadedRepo
+		id   string
+	}
+	var hits []hit
+	for _, r := range repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if e.Name == target || e.QualifiedName == target {
+				hits = append(hits, hit{repo: r, id: e.ID})
+				byName = append(byName, impactCandidate{
+					EntityID:   prefixedID(r.Repo, e.ID),
+					Name:       e.Name,
+					Kind:       stripScopePrefix(e.Kind),
+					Repo:       r.Repo,
+					SourceFile: e.SourceFile,
+				})
+			}
+		}
+	}
+	switch {
+	case len(hits) == 1:
+		return impactResolution{repo: hits[0].repo, localID: hits[0].id}
+	case len(hits) > 1:
+		return impactResolution{candidates: byName}
+	}
+
+	// Pass 3: nothing matched.
+	return impactResolution{}
+}
+
 // handleImpactRadius returns all entities that would be affected if the given
 // entity changes — a "change blast radius" analysis. Each result carries a
 // risk_score [0,1] indicating how dangerous that particular affected entity
 // is. Results are sorted by risk_score descending so agents can prioritise.
+//
+// Reliability (#3925): the dominant error class was input-driven — a missing
+// entity, a name passed where an ID was expected, or an ambiguous symbol all
+// returned a hard tool error. These are now converted into well-formed results:
+// a graceful empty set with a `reason` for not-found, a `candidates` list for
+// ambiguity, and an honest `truncated` marker for very high-degree nodes.
 func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	entityID, err := req.RequireString("entity_id")
 	if err != nil {
@@ -764,6 +859,40 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 		}
 	}
 
+	probe := local
+	if probe == "" {
+		probe = entityID
+	}
+	resolution := resolveImpactTarget(repos, probe)
+	// Ambiguous: entity_id matched multiple entities by name. Return candidates
+	// for disambiguation instead of erroring (#3925).
+	if len(resolution.candidates) > 0 {
+		return jsonResult(map[string]any{
+			"entity_id":  entityID,
+			"resolved":   false,
+			"ambiguous":  true,
+			"candidates": resolution.candidates,
+			"affected":   []any{},
+			"count":      0,
+			"reason": fmt.Sprintf("entity_id %q is ambiguous: %d entities share this name. "+
+				"Re-run with one of the precise entity_id values in `candidates`.",
+				entityID, len(resolution.candidates)),
+		}), nil
+	}
+	// Not found: no entity matched by ID or name. Return a graceful empty
+	// result with a reason instead of erroring (#3925).
+	if resolution.repo == nil {
+		return jsonResult(map[string]any{
+			"entity_id": entityID,
+			"resolved":  false,
+			"affected":  []any{},
+			"count":     0,
+			"reason": fmt.Sprintf("no entity matched %q by ID or name in the loaded graph. "+
+				"Use archigraph_find or archigraph_search_entities to locate the entity, "+
+				"then pass its exact entity_id.", entityID),
+		}), nil
+	}
+
 	type affected struct {
 		EntityID   string  `json:"entity_id"`
 		Name       string  `json:"name"`
@@ -775,114 +904,126 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 		RiskReason string  `json:"risk_reason,omitempty"`
 	}
 
-	for _, r := range repos {
-		if r.Doc == nil {
-			continue
-		}
-		target := local
-		if target == "" {
-			target = entityID
-		}
-		byID := r.getByID()
-		if _, ok := byID[target]; !ok {
-			continue
-		}
+	// Unique resolution: compute the impact set on the resolved repo + target.
+	r := resolution.repo
+	target := resolution.localID
+	byID := r.getByID()
 
-		// Precompute in-degree for risk scoring, broken down by caller kind.
-		// namedCallerMap counts inbound edges whose source is a named operation
-		// (Function, Method, Class, Component, Operation, etc.).
-		// moduleCallerMap counts inbound edges whose source is a file/module
-		// container node (SCOPE.Component, SCOPE.Module, File, Module, etc.).
-		// totalDegreeMap is the simple sum of all inbound edges (used for scoring).
-		namedCallerMap := map[string]int{}
-		moduleCallerMap := map[string]int{}
-		totalDegreeMap := map[string]int{}
-		for i := range r.Doc.Relationships {
-			rel := &r.Doc.Relationships[i]
-			totalDegreeMap[rel.ToID]++
-			if src := byID[rel.FromID]; src != nil {
-				if isModuleFileEntity(src) {
-					moduleCallerMap[rel.ToID]++
-				} else {
-					namedCallerMap[rel.ToID]++
-				}
+	// Precompute in-degree for risk scoring, broken down by caller kind.
+	// namedCallerMap counts inbound edges whose source is a named operation
+	// (Function, Method, Class, Component, Operation, etc.).
+	// moduleCallerMap counts inbound edges whose source is a file/module
+	// container node (SCOPE.Component, SCOPE.Module, File, Module, etc.).
+	// totalDegreeMap is the simple sum of all inbound edges (used for scoring).
+	namedCallerMap := map[string]int{}
+	moduleCallerMap := map[string]int{}
+	totalDegreeMap := map[string]int{}
+	for i := range r.Doc.Relationships {
+		rel := &r.Doc.Relationships[i]
+		totalDegreeMap[rel.ToID]++
+		if src := byID[rel.FromID]; src != nil {
+			if isModuleFileEntity(src) {
+				moduleCallerMap[rel.ToID]++
 			} else {
-				// Source not in byID — treat as named to avoid under-counting.
 				namedCallerMap[rel.ToID]++
 			}
+		} else {
+			// Source not in byID — treat as named to avoid under-counting.
+			namedCallerMap[rel.ToID]++
 		}
-
-		// Impact radius = entities that transitively depend on `target`.
-		// We walk the INBOUND graph from target: callers of callers.
-		adj := r.getAdjacency()
-		visited := map[string]int{target: 0}
-		frontier := []string{target}
-		for d := 0; d < hops; d++ {
-			next := []string{}
-			for _, n := range frontier {
-				for _, e := range adj.in[n] {
-					if _, seen := visited[e.target]; seen {
-						continue
-					}
-					visited[e.target] = d + 1
-					next = append(next, e.target)
-				}
-			}
-			frontier = next
-			if len(frontier) == 0 {
-				break
-			}
-		}
-
-		results := []affected{}
-		for id, d := range visited {
-			if id == target {
-				continue
-			}
-			e := byID[id]
-			if e == nil {
-				continue
-			}
-			risk := impactRiskScore(e, totalDegreeMap[id])
-			reason := buildRiskReason(e, namedCallerMap[id], moduleCallerMap[id], totalDegreeMap[id])
-			results = append(results, affected{
-				EntityID:   prefixedID(r.Repo, e.ID),
-				Name:       e.Name,
-				Kind:       stripScopePrefix(e.Kind),
-				Repo:       r.Repo,
-				SourceFile: e.SourceFile,
-				HopCount:   d,
-				RiskScore:  risk,
-				RiskReason: reason,
-			})
-		}
-		// Sort by risk descending, then hop ascending, then name.
-		sort.Slice(results, func(i, j int) bool {
-			if results[i].RiskScore != results[j].RiskScore {
-				return results[i].RiskScore > results[j].RiskScore
-			}
-			if results[i].HopCount != results[j].HopCount {
-				return results[i].HopCount < results[j].HopCount
-			}
-			return results[i].Name < results[j].Name
-		})
-
-		root := byID[target]
-		rootName := target
-		if root != nil {
-			rootName = root.Name
-		}
-		return jsonResult(map[string]any{
-			"entity_id":   prefixedID(r.Repo, target),
-			"entity_name": rootName,
-			"repo":        r.Repo,
-			"hops":        hops,
-			"affected":    results,
-			"count":       len(results),
-			"tip":         "risk_score 0.0–1.0: higher means the affected entity is more sensitive to breakage from changes in the root entity.",
-		}), nil
 	}
-	return mcpapi.NewToolResultError("entity not found: " + entityID), nil
+
+	// Impact radius = entities that transitively depend on `target`.
+	// We walk the INBOUND graph from target: callers of callers. The walk is
+	// bounded by `hops` (≤6) and the visited set, so it terminates on any
+	// graph; high-degree nodes are handled by the result cap below.
+	adj := r.getAdjacency()
+	visited := map[string]int{target: 0}
+	frontier := []string{target}
+	for d := 0; d < hops; d++ {
+		next := []string{}
+		for _, n := range frontier {
+			for _, e := range adj.in[n] {
+				if _, seen := visited[e.target]; seen {
+					continue
+				}
+				visited[e.target] = d + 1
+				next = append(next, e.target)
+			}
+		}
+		frontier = next
+		if len(frontier) == 0 {
+			break
+		}
+	}
+
+	results := []affected{}
+	for id, d := range visited {
+		if id == target {
+			continue
+		}
+		e := byID[id]
+		if e == nil {
+			continue
+		}
+		risk := impactRiskScore(e, totalDegreeMap[id])
+		reason := buildRiskReason(e, namedCallerMap[id], moduleCallerMap[id], totalDegreeMap[id])
+		results = append(results, affected{
+			EntityID:   prefixedID(r.Repo, e.ID),
+			Name:       e.Name,
+			Kind:       stripScopePrefix(e.Kind),
+			Repo:       r.Repo,
+			SourceFile: e.SourceFile,
+			HopCount:   d,
+			RiskScore:  risk,
+			RiskReason: reason,
+		})
+	}
+	// Sort by risk descending, then hop ascending, then name.
+	sort.Slice(results, func(i, j int) bool {
+		if results[i].RiskScore != results[j].RiskScore {
+			return results[i].RiskScore > results[j].RiskScore
+		}
+		if results[i].HopCount != results[j].HopCount {
+			return results[i].HopCount < results[j].HopCount
+		}
+		return results[i].Name < results[j].Name
+	})
+
+	// Bound the payload for pathological high-degree nodes. We keep the
+	// top-ranked slice (highest risk first) and emit an honest truncation
+	// marker rather than returning an unbounded result (#3925).
+	totalAffected := len(results)
+	truncated := false
+	if len(results) > impactRadiusMaxResults {
+		results = results[:impactRadiusMaxResults]
+		truncated = true
+	}
+
+	root := byID[target]
+	rootName := target
+	if root != nil {
+		rootName = root.Name
+	}
+	out := map[string]any{
+		"entity_id":   prefixedID(r.Repo, target),
+		"entity_name": rootName,
+		"repo":        r.Repo,
+		"hops":        hops,
+		"resolved":    true,
+		"affected":    results,
+		"count":       len(results),
+		"tip":         "risk_score 0.0–1.0: higher means the affected entity is more sensitive to breakage from changes in the root entity.",
+	}
+	if truncated {
+		out["truncated"] = true
+		out["total_affected"] = totalAffected
+		out["truncation_note"] = fmt.Sprintf(
+			"high-degree node: %d entities are affected; returning the top %d by risk_score. "+
+				"Narrow with a smaller `hops` or inspect specific neighbors.",
+			totalAffected, impactRadiusMaxResults)
+	}
+	return jsonResult(out), nil
 }
 
 // buildRiskReason produces a short human-readable reason string for the risk score.
