@@ -17,8 +17,64 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 )
+
+// docStateCache memoizes ComputeDocState results to keep archigraph_whoami off
+// the per-call os.Stat walk over every unique source file in the graph (on the
+// 62K-entity self-graph that is thousands of stat syscalls per call — the
+// dominant whoami cost after git subprocesses, #3325 / epic #3648).
+//
+// Invalidation key (docStateKey): the docgen-state file's mtime+size plus a
+// digest of every loaded repo's graph mtime. The graph mtime is the
+// index-completion signal — Reload() advances lr.mtime when a repo's graph.fb
+// is rewritten by the indexer — so a reindex always busts this cache, keeping
+// stale_count correct after re-indexing. A new /archigraph-tech-docs run
+// rewrites docgen-state.json (mtime advances) and likewise busts it. Source
+// files only become graph-visible on the next reindex, so keying on graph mtime
+// is the correct freshness boundary for the stale-count semantics.
+var (
+	docStateMu   sync.Mutex
+	docStateMemo = map[string]docStateEntry{}
+)
+
+type docStateEntry struct {
+	key    docStateKey
+	result DocStateResult
+}
+
+type docStateKey struct {
+	docgenMtime time.Time
+	docgenSize  int64
+	graphDigest int64 // sum of repo graph-mtime UnixNano values (order-independent)
+}
+
+// docStateCacheKey builds the invalidation key for a group's doc state. The
+// boolean is false when the key cannot be formed (no docgen state on disk), in
+// which case ComputeDocState short-circuits to "never_generated" cheaply and
+// caching is unnecessary.
+func docStateCacheKey(groupName string, lg *LoadedGroup) (docStateKey, bool) {
+	fi, err := os.Stat(docstateFilePath(groupName))
+	if err != nil {
+		return docStateKey{}, false
+	}
+	var digest int64
+	for _, r := range lg.Repos {
+		if r == nil {
+			continue
+		}
+		digest += r.mtime.UnixNano()
+	}
+	return docStateKey{docgenMtime: fi.ModTime(), docgenSize: fi.Size(), graphDigest: digest}, true
+}
+
+// resetDocStateCacheForTest clears the memo. Test-only.
+func resetDocStateCacheForTest() {
+	docStateMu.Lock()
+	docStateMemo = map[string]docStateEntry{}
+	docStateMu.Unlock()
+}
 
 // DocgenState is the on-disk shape of docgen-state.json.
 // Written by the /archigraph-tech-docs skill after a successful run;
@@ -130,6 +186,31 @@ func SaveDocgenState(group string, st DocgenState) error {
 //     (mtime > last_docgen_at, per-repo and group-wide).
 //   - Counts per-repo per-repo stale files separately for detailed surfacing.
 func ComputeDocState(groupName string, lg *LoadedGroup) DocStateResult {
+	key, ok := docStateCacheKey(groupName, lg)
+	if !ok {
+		// No docgen-state on disk → "never_generated"; the uncached path
+		// short-circuits cheaply with no stat walk, so skip the memo.
+		return computeDocStateUncached(groupName, lg)
+	}
+
+	docStateMu.Lock()
+	if ent, hit := docStateMemo[groupName]; hit && ent.key == key {
+		docStateMu.Unlock()
+		return ent.result
+	}
+	docStateMu.Unlock()
+
+	res := computeDocStateUncached(groupName, lg)
+
+	docStateMu.Lock()
+	docStateMemo[groupName] = docStateEntry{key: key, result: res}
+	docStateMu.Unlock()
+	return res
+}
+
+// computeDocStateUncached is the original os.Stat-walk implementation; callers
+// should use ComputeDocState which memoizes it (see docStateCache).
+func computeDocStateUncached(groupName string, lg *LoadedGroup) DocStateResult {
 	state, err := LoadDocgenState(groupName)
 	if err != nil || state == nil || state.LastDocgenAt == nil {
 		return DocStateResult{

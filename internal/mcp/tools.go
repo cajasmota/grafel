@@ -456,7 +456,7 @@ func groupIndexedRefSHA(s *State, groupName string) (ref, sha string) {
 			}
 			// Graph predates the IndexedSHA field — fall through to gitmeta.
 			if lr.Path != "" {
-				meta := gitmeta.Capture(lr.Path)
+				meta := gitmeta.CaptureCached(lr.Path)
 				return meta.Ref, meta.SHA
 			}
 		}
@@ -479,7 +479,7 @@ func groupIndexedRefSHA(s *State, groupName string) (ref, sha string) {
 		if repo.Path == "" {
 			continue
 		}
-		meta := gitmeta.Capture(repo.Path)
+		meta := gitmeta.CaptureCached(repo.Path)
 		return meta.Ref, meta.SHA
 	}
 	return "", ""

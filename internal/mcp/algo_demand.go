@@ -82,7 +82,7 @@ func ensureAlgoResults(ctx context.Context, lr *LoadedRepo) (*algo.Results, erro
 	if lr == nil || lr.Path == "" {
 		return nil, fmt.Errorf("ensureAlgoResults: nil or empty-path LoadedRepo")
 	}
-	meta := gitmeta.Capture(lr.Path)
+	meta := gitmeta.CaptureCached(lr.Path)
 	stateDir := daemon.StateDirForRepoRef(lr.Path, meta.Ref)
 	return globalAlgoCache.Get(ctx, stateDir, lr.Path, meta.Ref)
 }
