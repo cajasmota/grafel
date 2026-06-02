@@ -33,12 +33,12 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [Tide](../detail/lang.rust.framework.tide.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟢 4/4 | 🔴 0/1 | 🟡 2/24 | 🟡 4/12 | |
 | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [Warp](../detail/lang.rust.framework.warp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/13 | |
+| [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 2/24 | 🟡 4/13 | |
 | [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
 
 
 ### Desktop

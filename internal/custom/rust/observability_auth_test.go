@@ -535,3 +535,94 @@ func contains(s, sub string) bool {
 			return false
 		}())
 }
+
+// ---------------------------------------------------------------------------
+// Observability — per-framework attribution probe (issue #3981)
+// ---------------------------------------------------------------------------
+
+// frameworkOf returns the framework prop of the first observability entity, or
+// "" if there are none.
+func frameworkOf(ents []entitySummary) string {
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Pattern" {
+			return e.Props["framework"]
+		}
+	}
+	return ""
+}
+
+// TestRustObs_FrameworkAttribution_TonicAsyncGraphql is the VALUE-ASSERTING
+// probe for issue #3981. The observability scanner is framework-agnostic: the
+// tracing/metrics/#[instrument] signal regexes fire on any .rs file. Framework
+// attribution is a separate import-marker step that decides which per-framework
+// coverage cell the emitted entity is credited to. This probe proves that a
+// tonic gRPC service and an async-graphql resolver — each using the recognised
+// tracing span / #[instrument] patterns — now both (a) emit observability
+// entities and (b) carry the correct framework prop, so the per-framework
+// trace_extraction / metric_extraction / log_extraction cells are genuinely
+// backed by the scanner.
+func TestRustObs_FrameworkAttribution_TonicAsyncGraphql(t *testing.T) {
+	cases := []struct {
+		name    string
+		path    string
+		src     string
+		wantFw  string
+		wantEnt string // entity name that must be present (span / log)
+	}{
+		{
+			name: "tonic-span",
+			path: "tonic_service.rs",
+			src: `
+use tonic::{Request, Response, Status};
+use tracing::{info, info_span};
+
+#[tonic::async_trait]
+impl Greeter for MyGreeter {
+    async fn say_hello(&self, request: Request<HelloRequest>) -> Result<Response<HelloReply>, Status> {
+        let _s = info_span!("grpc_say_hello");
+        tracing::info!("handling grpc request");
+        Ok(Response::new(HelloReply::default()))
+    }
+}
+`,
+			wantFw:  "tonic",
+			wantEnt: "obs:tracing:tracing_level_span:info:grpc_say_hello",
+		},
+		{
+			name: "async-graphql-instrument",
+			path: "gql_resolver.rs",
+			src: `
+use async_graphql::{Context, Object};
+use tracing::instrument;
+
+struct QueryRoot;
+
+#[Object]
+impl QueryRoot {
+    #[instrument]
+    async fn user(&self, _ctx: &Context<'_>, id: i32) -> Option<String> {
+        tracing::info!("resolving user");
+        None
+    }
+}
+`,
+			wantFw:  "async-graphql",
+			wantEnt: "obs:logging:tracing_macro:info:resolving user",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ents := extract(t, "custom_rust_observability", fi(tc.path, "rust", tc.src))
+			if len(ents) == 0 {
+				t.Fatalf("%s: expected observability entities, got none", tc.name)
+			}
+			if !containsEntity(ents, "SCOPE.Pattern", tc.wantEnt) {
+				t.Errorf("%s: expected observability entity %q", tc.name, tc.wantEnt)
+			}
+			if got := frameworkOf(ents); got != tc.wantFw {
+				t.Errorf("%s: framework attribution = %q, want %q", tc.name, got, tc.wantFw)
+			}
+		})
+	}
+}

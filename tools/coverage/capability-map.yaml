@@ -8283,6 +8283,62 @@ records:
               functions: [TestAsyncGraphQLDTOs]
           issues_implemented: ["3508"]
           verified_at: "2026-05-31"
+        interface_extraction:
+          # #3980: emitted by the unconditional language-level rust extractor.
+          status: full
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [walk, buildComponent, rustTraitMethods]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+              functions: [TestRustExtractor_TypeSystem_PerFramework]
+          issues_implemented: ["3980"]
+          verified_at: "2026-06-03"
+        type_alias_extraction:
+          # #3980: emitted by the unconditional language-level rust extractor.
+          status: full
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [walk, buildTypeAlias]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+              functions: [TestRustExtractor_TypeSystem_PerFramework]
+          issues_implemented: ["3980"]
+          verified_at: "2026-06-03"
+      Observability:
+        log_extraction:
+          # #3981: framework-agnostic scanner + async-graphql import marker.
+          status: partial
+          symbols:
+            - file: internal/custom/rust/observability.go
+              functions: [Extract, detectRustObsFramework]
+          tests:
+            - file: internal/custom/rust/observability_auth_test.go
+              functions: [TestRustObs_FrameworkAttribution_TonicAsyncGraphql]
+          issues_implemented: ["3981"]
+          verified_at: "2026-06-03"
+        metric_extraction:
+          # #3981: framework-agnostic scanner + async-graphql import marker.
+          status: full
+          symbols:
+            - file: internal/custom/rust/observability.go
+              functions: [Extract, detectRustObsFramework]
+          tests:
+            - file: internal/custom/rust/observability_auth_test.go
+              functions: [TestRustObs_FrameworkAttribution_TonicAsyncGraphql]
+          issues_implemented: ["3981"]
+          verified_at: "2026-06-03"
+        trace_extraction:
+          # #3981: framework-agnostic scanner + async-graphql import marker.
+          status: full
+          symbols:
+            - file: internal/custom/rust/observability.go
+              functions: [Extract, detectRustObsFramework]
+          tests:
+            - file: internal/custom/rust/observability_auth_test.go
+              functions: [TestRustObs_FrameworkAttribution_TonicAsyncGraphql]
+          issues_implemented: ["3981"]
+          verified_at: "2026-06-03"
       Substrate:
         request_shape_extraction:
           status: partial
@@ -8449,6 +8505,62 @@ records:
               functions: [Extract]
           issues_implemented: ["3508"]
           verified_at: "2026-05-31"
+        enum_extraction:
+          # #3980: emitted by the unconditional language-level rust extractor.
+          status: full
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [walk, buildComponent, rustEnumVariants]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+              functions: [TestRustExtractor_TypeSystem_PerFramework]
+          issues_implemented: ["3980"]
+          verified_at: "2026-06-03"
+        type_alias_extraction:
+          # #3980: emitted by the unconditional language-level rust extractor.
+          status: full
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [walk, buildTypeAlias]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+              functions: [TestRustExtractor_TypeSystem_PerFramework]
+          issues_implemented: ["3980"]
+          verified_at: "2026-06-03"
+      Observability:
+        log_extraction:
+          # #3981: framework-agnostic scanner + tonic import marker.
+          status: partial
+          symbols:
+            - file: internal/custom/rust/observability.go
+              functions: [Extract, detectRustObsFramework]
+          tests:
+            - file: internal/custom/rust/observability_auth_test.go
+              functions: [TestRustObs_FrameworkAttribution_TonicAsyncGraphql]
+          issues_implemented: ["3981"]
+          verified_at: "2026-06-03"
+        metric_extraction:
+          # #3981: framework-agnostic scanner + tonic import marker.
+          status: full
+          symbols:
+            - file: internal/custom/rust/observability.go
+              functions: [Extract, detectRustObsFramework]
+          tests:
+            - file: internal/custom/rust/observability_auth_test.go
+              functions: [TestRustObs_FrameworkAttribution_TonicAsyncGraphql]
+          issues_implemented: ["3981"]
+          verified_at: "2026-06-03"
+        trace_extraction:
+          # #3981: framework-agnostic scanner + tonic import marker.
+          status: full
+          symbols:
+            - file: internal/custom/rust/observability.go
+              functions: [Extract, detectRustObsFramework]
+          tests:
+            - file: internal/custom/rust/observability_auth_test.go
+              functions: [TestRustObs_FrameworkAttribution_TonicAsyncGraphql]
+          issues_implemented: ["3981"]
+          verified_at: "2026-06-03"
       Substrate:
         request_shape_extraction:
           status: partial
@@ -8464,6 +8576,44 @@ records:
               functions: [Extract, tonicResponseType, tonicAddDTO]
           issues_implemented: ["3508"]
           verified_at: "2026-05-31"
+
+  lang.rust.framework.utoipa:
+    capabilities:
+      Type System:
+        # #3980: the unconditional language-level rust extractor
+        # (internal/extractors/rust/rust.go, registered as "rust" with no
+        # framework gating) emits enum / trait / type_alias entities for any
+        # .rs file, so a utoipa-annotated module gets full type-system coverage.
+        enum_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [walk, buildComponent, rustEnumVariants]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+              functions: [TestRustExtractor_TypeSystem_PerFramework]
+          issues_implemented: ["3980"]
+          verified_at: "2026-06-03"
+        interface_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [walk, buildComponent, rustTraitMethods]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+              functions: [TestRustExtractor_TypeSystem_PerFramework]
+          issues_implemented: ["3980"]
+          verified_at: "2026-06-03"
+        type_alias_extraction:
+          status: full
+          symbols:
+            - file: internal/extractors/rust/rust.go
+              functions: [walk, buildTypeAlias]
+          tests:
+            - file: internal/extractors/rust/rust_test.go
+              functions: [TestRustExtractor_TypeSystem_PerFramework]
+          issues_implemented: ["3980"]
+          verified_at: "2026-06-03"
 
   lang.rust.framework.actix:
     capabilities:

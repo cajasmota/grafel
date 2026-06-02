@@ -10,6 +10,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/extractor"
 	_ "github.com/cajasmota/archigraph/internal/extractors/rust"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // parseForTest parses Rust source using the real grammar.
@@ -95,6 +96,145 @@ fn create_user(name: String) -> User {
 	}
 	if imports == 0 {
 		t.Error("expected at least one import entity")
+	}
+}
+
+// extractRust is a probe helper: parses src and returns the rust extractor's
+// entities, failing the test on any error.
+func extractRust(t *testing.T, path, src string) []types.EntityRecord {
+	t.Helper()
+	tree := parseForTest(t, src)
+	ext, ok := extractor.Get("rust")
+	if !ok {
+		t.Fatal("rust extractor not registered")
+	}
+	got, err := ext.Extract(context.Background(), extractor.FileInput{
+		Path:     path,
+		Content:  []byte(src),
+		Language: "rust",
+		Tree:     tree,
+	})
+	if err != nil {
+		t.Fatalf("extract %q: %v", path, err)
+	}
+	return got
+}
+
+// hasComponent reports whether ents contains a SCOPE.Component of the given
+// subtype with the given name.
+func hasComponent(ents []types.EntityRecord, subtype, name string) bool {
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Component" && e.Subtype == subtype && e.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// TestRustExtractor_TypeSystem_PerFramework is the VALUE-ASSERTING probe for
+// issue #3980. The rust extractor is registered unconditionally per-language
+// ("rust") with no framework gating, so enum / trait / type_alias entities are
+// emitted for every .rs file regardless of which Rust HTTP framework (if any)
+// the file uses. This probe drives utoipa-, async-graphql-, and tonic-style
+// source through the extractor and asserts the type-system entities genuinely
+// fire — the evidence that backfills the per-framework Type System cells.
+func TestRustExtractor_TypeSystem_PerFramework(t *testing.T) {
+	cases := []struct {
+		name      string
+		path      string
+		src       string
+		enumName  string
+		traitName string
+		aliasName string
+	}{
+		{
+			name: "utoipa",
+			path: "utoipa_api.rs",
+			src: `
+use utoipa::ToSchema;
+
+#[derive(ToSchema)]
+enum Status {
+    Active,
+    Inactive,
+}
+
+trait Documented {
+    fn schema_name(&self) -> &str;
+}
+
+type ApiResult = Result<Status, String>;
+`,
+			enumName:  "Status",
+			traitName: "Documented",
+			aliasName: "ApiResult",
+		},
+		{
+			name: "async-graphql",
+			path: "async_graphql_api.rs",
+			src: `
+use async_graphql::Enum;
+
+#[derive(Enum, Copy, Clone, Eq, PartialEq)]
+enum Episode {
+    NewHope,
+    Empire,
+}
+
+trait Resolver {
+    fn resolve(&self) -> i32;
+}
+
+type GqlResult = async_graphql::Result<Episode>;
+`,
+			enumName:  "Episode",
+			traitName: "Resolver",
+			aliasName: "GqlResult",
+		},
+		{
+			name: "tonic",
+			path: "tonic_service.rs",
+			src: `
+use tonic::Request;
+
+enum RpcMode {
+    Unary,
+    Streaming,
+}
+
+trait GreeterExt {
+    fn greet(&self) -> String;
+}
+
+type GrpcStatus = Result<tonic::Response<()>, tonic::Status>;
+`,
+			enumName:  "RpcMode",
+			traitName: "GreeterExt",
+			aliasName: "GrpcStatus",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			ents := extractRust(t, tc.path, tc.src)
+			if !hasComponent(ents, "enum", tc.enumName) {
+				t.Errorf("%s: expected enum entity %q (enum_extraction)", tc.name, tc.enumName)
+			}
+			if !hasComponent(ents, "trait", tc.traitName) {
+				t.Errorf("%s: expected trait entity %q (interface_extraction)", tc.name, tc.traitName)
+			}
+			if !hasComponent(ents, "type_alias", tc.aliasName) {
+				t.Errorf("%s: expected type_alias entity %q (type_alias_extraction)", tc.name, tc.aliasName)
+			}
+			// Value-assert the alias target is captured (not just the name).
+			for _, e := range ents {
+				if e.Subtype == "type_alias" && e.Name == tc.aliasName {
+					if e.Properties["aliased_type"] == "" {
+						t.Errorf("%s: type_alias %q missing aliased_type property", tc.name, tc.aliasName)
+					}
+				}
+			}
+		})
 	}
 }
 

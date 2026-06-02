@@ -130,12 +130,12 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [rust](../by-language/rust.md) | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [rust](../by-language/rust.md) | [Tide](../detail/lang.rust.framework.tide.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [rust](../by-language/rust.md) | [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [rust](../by-language/rust.md) | [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟢 4/4 | 🔴 0/1 | 🟡 2/24 | 🟡 4/12 | |
 | [rust](../by-language/rust.md) | [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [rust](../by-language/rust.md) | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/13 | |
+| [rust](../by-language/rust.md) | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 2/24 | 🟡 4/13 | |
 | [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [rust](../by-language/rust.md) | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
+| [rust](../by-language/rust.md) | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 2/24 | 🟡 1/12 | |
 | [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/12 | |
 
 

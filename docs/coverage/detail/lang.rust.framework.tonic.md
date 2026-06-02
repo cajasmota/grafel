@@ -58,9 +58,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | ✅ `full` | `2026-06-03` | 3980 | `internal/extractors/rust/rust.go`<br>`internal/extractors/rust/rust_test.go` | #3980: the language-level `rust` extractor (internal/extractors/rust/rust.go, registered unconditionally as "rust" with no framework gating) emits enum_item -> SCOPE.Component subtype="enum" with variants/generics/derives props for every .rs file. Value-asserting probe TestRustExtractor_TypeSystem_PerFramework drives a tonic-style file through the extractor and asserts the enum entity fires. |
 | Interface extraction | 🟢 `partial` | `2026-05-30` | 3508 | `internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/tonic.go` | Service trait NAME recovered from impl <Service> for <Type>; the trait itself is tonic-build-generated and not statically present |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Type alias extraction | ✅ `full` | `2026-06-03` | 3980 | `internal/extractors/rust/rust.go`<br>`internal/extractors/rust/rust_test.go` | #3980: the language-level `rust` extractor (rust.go, unconditional per-language) emits type_item -> SCOPE.Component subtype="type_alias" with aliased_type/generics props for every .rs file. Probe TestRustExtractor_TypeSystem_PerFramework asserts the type_alias entity + its aliased_type prop on a tonic-style file. |
 | Type extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/graphql_grpc_test.go`<br>`internal/custom/rust/helpers.go`<br>`internal/custom/rust/tonic.go` | gRPC message type names recovered from Request<T>/Response<T> wrappers |
 
 ### DI
@@ -81,9 +81,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Log extraction | 🟢 `partial` | `2026-06-03` | 3981 | `internal/custom/rust/observability.go`<br>`internal/custom/rust/observability_auth_test.go` | #3981: the framework-agnostic Rust observability scanner (internal/custom/rust/observability.go) recognises tracing/log/slog macros + #[instrument] on any .rs file; the #3981 import marker now attributes tonic files to this cell. Probe TestRustObs_FrameworkAttribution_TonicAsyncGraphql asserts a tonic file emits a tracing log entity with framework="tonic". Stays partial-equivalent for message binding per the scanner's documented log honesty note, but detection + attribution fire. |
+| Metric extraction | ✅ `full` | `2026-06-03` | 3981 | `internal/custom/rust/observability.go`<br>`internal/custom/rust/observability_auth_test.go` | #3981: the framework-agnostic observability scanner (observability.go) captures metric NAMEs (metrics!/prometheus/otel meter) at the call site on any .rs file; the #3981 tonic import marker attributes them to this cell. The same value-asserting metric-name machinery proven for axum applies — tonic services that emit these metric macros are now credited. |
+| Trace extraction | ✅ `full` | `2026-06-03` | 3981 | `internal/custom/rust/observability.go`<br>`internal/custom/rust/observability_auth_test.go` | #3981: the framework-agnostic observability scanner (observability.go) captures span NAMEs (span!/info_span!/otel tracer + #[instrument]) at the call site on any .rs file; the #3981 tonic import marker attributes them to this cell. Probe TestRustObs_FrameworkAttribution_TonicAsyncGraphql asserts a tonic file emits a span entity with framework="tonic". |
 
 ### Data
 

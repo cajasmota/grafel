@@ -58,9 +58,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | ✅ `full` | `2026-06-03` | 3980 | `internal/extractors/rust/rust.go`<br>`internal/extractors/rust/rust_test.go` | #3980: the language-level `rust` extractor (internal/extractors/rust/rust.go, registered unconditionally as "rust" with no framework gating) emits enum_item -> SCOPE.Component subtype="enum" with variants/generics/derives props for every .rs file. Value-asserting probe TestRustExtractor_TypeSystem_PerFramework drives a utoipa-style file through the extractor and asserts the enum entity fires. |
+| Interface extraction | ✅ `full` | `2026-06-03` | 3980 | `internal/extractors/rust/rust.go`<br>`internal/extractors/rust/rust_test.go` | #3980: the language-level `rust` extractor (rust.go, unconditional per-language) emits trait_item -> SCOPE.Component subtype="trait" with methods/supertraits/generics + EXTENDS edges for every .rs file. Probe TestRustExtractor_TypeSystem_PerFramework asserts the trait entity fires on a utoipa-style file. |
+| Type alias extraction | ✅ `full` | `2026-06-03` | 3980 | `internal/extractors/rust/rust.go`<br>`internal/extractors/rust/rust_test.go` | #3980: the language-level `rust` extractor (rust.go, unconditional per-language) emits type_item -> SCOPE.Component subtype="type_alias" with aliased_type/generics props for every .rs file. Probe TestRustExtractor_TypeSystem_PerFramework asserts the type_alias entity + its aliased_type prop on a utoipa-style file. |
 | Type extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/utoipa.go`<br>`internal/custom/rust/utoipa_test.go` | ToSchema struct fields parsed (name/type/wire_name) -> schema_field entities |
 
 ### DI

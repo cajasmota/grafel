@@ -90,6 +90,14 @@ var rustObsFrameworkMarkers = []struct {
 	{"tower", regexp.MustCompile(`\buse\s+tower\b|tower::`)},
 	{"hyper", regexp.MustCompile(`\buse\s+hyper\b|hyper::`)},
 	{"gotham", regexp.MustCompile(`\buse\s+gotham\b|gotham::`)},
+	// Issue #3981 — tonic (gRPC) and async-graphql (GraphQL) services emit the
+	// same framework-agnostic observability signals (tracing spans / metrics /
+	// #[instrument]) recognised by rustObsSignals; adding these import markers
+	// attributes those signals to the correct per-framework coverage cell
+	// instead of leaving framework="". The signal regexes themselves are
+	// unchanged — these markers only affect attribution.
+	{"tonic", regexp.MustCompile(`\buse\s+tonic\b|tonic::`)},
+	{"async-graphql", regexp.MustCompile(`\buse\s+async_graphql\b|async_graphql::`)},
 }
 
 func detectRustObsFramework(src string) string {
