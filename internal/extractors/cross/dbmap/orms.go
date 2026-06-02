@@ -692,8 +692,39 @@ func detectActiveRecord(source string) []access {
 			functionQName: enclosingFunc(source, m[0]),
 		})
 	}
+
+	// Association query builders: `.joins(:orders)` / `.includes(:orders)`
+	// pull in a second table via the association name. The association symbol
+	// is conventionally the singular/plural table name; we pluralise it to the
+	// table name (orders → orders, order → orders). Honest-partial: a string
+	// or variable association arg is skipped.
+	for _, m := range arJoinsRE.FindAllStringSubmatchIndex(source, -1) {
+		assoc := source[m[2]:m[3]]
+		table := assoc
+		if !strings.HasSuffix(table, "s") {
+			table += "s"
+		}
+		key := "ar|" + OpSelect + "|" + table
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, access{
+			table:         table,
+			operation:     OpSelect,
+			orm:           "activerecord",
+			functionQName: enclosingFunc(source, m[0]),
+		})
+	}
 	return out
 }
+
+// arJoinsRE matches `.joins(:orders)` / `.includes(:orders)` /
+// `.preload(:orders)` — association-name symbol only (string/variable args
+// are intentionally not matched: honest-partial).
+var arJoinsRE = regexp.MustCompile(
+	`(?m)\.(?:joins|includes|preload|eager_load)\s*\(\s*:(\w+)\b`,
+)
 
 // ---------------------------------------------------------------------------
 // Elixir — Ecto
@@ -1097,6 +1128,37 @@ var ormOrder = []ormEntry{
 		name:        "diesel",
 		importHints: []string{"diesel"},
 		detect:      detectDiesel,
+	},
+	// Fluent query BUILDERS (oracle-priority #3, ticket under #3628). These
+	// name the table through a builder call, not a SQL string, so the
+	// raw-SQL scanner misses them. See query_builders.go.
+	{
+		name:        "knex",
+		importHints: []string{"knex"},
+		detect:      detectKnex,
+	},
+	{
+		name:        "drizzle",
+		importHints: []string{"drizzle-orm", "drizzle"},
+		detect:      detectDrizzle,
+	},
+	{
+		name:        "jooq",
+		importHints: []string{"org.jooq", "jooq"},
+		detect:      detectJOOQ,
+	},
+	{
+		name:        "querydsl",
+		importHints: []string{"com.querydsl", "querydsl"},
+		detect:      detectQueryDSL,
+	},
+	{
+		// SQLAlchemy Core builder surface (select(table) / table.insert()).
+		// The ORM `sqlalchemy` entry above keeps the session.query(Model)
+		// surface; both run when the import gate matches.
+		name:        "sqlalchemy_core",
+		importHints: []string{"sqlalchemy"},
+		detect:      detectSQLAlchemyCore,
 	},
 }
 

@@ -25155,9 +25155,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/jooq.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "full",
+            "cites": ["internal/engine/rules/java/orms/jooq.yaml","internal/extractors/cross/dbmap/orms.go","internal/extractors/cross/dbmap/query_builders.go","internal/extractors/cross/dbmap/query_builders_test.go"],
+            "notes": "#3628 area #3: jOOQ builder calls dsl.selectFrom(USERS)/insertInto/update/deleteFrom resolve the generated table constant (lower-cased) into SCOPE.DataAccess + ACCESSES_TABLE edges with the right op kind. Proven by TestJOOQSelectFrom/InsertInto/DeleteFrom.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -34075,9 +34076,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "full",
-            "cites": ["internal/engine/orm_queries_jsts.go"],
-            "verified_at": "2026-05-28"
+            "status": "partial",
+            "cites": ["internal/engine/orm_queries_jsts.go","internal/extractors/cross/dbmap/query_builders.go","internal/extractors/cross/dbmap/query_builders_test.go"],
+            "notes": "#3628 area #3: Drizzle db.select().from(users)/db.insert(users) resolve the pgTable/mysqlTable/sqliteTable OBJECT to its declared name literal → ACCESSES_TABLE edges. Partial: cross-file table objects unresolved (skipped, no fabricated edge). Proven by TestDrizzle* in query_builders_test.go.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -34140,8 +34142,9 @@
         "Queries": {
           "query_attribution": {
             "status": "full",
-            "cites": ["internal/engine/orm_queries_jsts_drivers.go","internal/engine/orm_queries_jsts_drivers_test.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/orm_queries_jsts_drivers.go","internal/engine/orm_queries_jsts_drivers_test.go","internal/extractors/cross/dbmap/orms.go","internal/extractors/cross/dbmap/query_builders.go","internal/extractors/cross/dbmap/query_builders_test.go"],
+            "notes": "Driver query attribution via orm_queries_jsts_drivers. #3628 area #3 ADDS table-level access: knex('t')/.from('t')/.into('t') resolve the string-literal table → ACCESSES_TABLE (op from .insert/.update/.del/.truncate); dynamic knex(tableVar) skipped. Proven by TestKnex* in query_builders_test.go.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -50052,8 +50055,9 @@
         "Queries": {
           "query_attribution": {
             "status": "full",
-            "cites": ["internal/engine/orm_queries_python.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/orm_queries_python.go","internal/extractors/cross/dbmap/orms.go","internal/extractors/cross/dbmap/query_builders.go","internal/extractors/cross/dbmap/query_builders_test.go"],
+            "notes": "ORM session.query attribution via orm_queries_python. #3628 area #3 ADDS the SQLAlchemy Core builder surface: select(table_obj) and table_obj.insert()/update()/delete() resolve the Table('name',...) object to its literal → ACCESSES_TABLE edges. Proven by TestSQLAlchemyCore* in query_builders_test.go.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -52852,8 +52856,9 @@
         "Queries": {
           "query_attribution": {
             "status": "full",
-            "cites": ["internal/engine/orm_queries.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/orm_queries.go","internal/extractors/cross/dbmap/orms.go","internal/extractors/cross/dbmap/query_builders_test.go"],
+            "notes": "ActiveRecord Model.find/where attribution via orm_queries. #3628 area #3 ADDS association table-access: .joins(:assoc)/.includes/.preload/.eager_load pull the association table into a second ACCESSES_TABLE edge (symbol args only; string/var skipped). Proven by TestActiveRecordJoinsAssociation.",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
