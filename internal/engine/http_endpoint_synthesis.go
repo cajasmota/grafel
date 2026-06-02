@@ -722,6 +722,15 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeGorillaMux(string(content), emitDef)
 		synthesizeNetHTTPStdlib(string(content), emitDef)
 		synthesizeHuma(string(content), emitDef)
+		// Producer side (#3613): gqlgen GraphQL server. Maps Go resolver
+		// methods on the generated *queryResolver/*mutationResolver/
+		// *subscriptionResolver receivers to the canonical
+		// http:GRAPHQL:/graphql/<Root>/<field> operation-endpoint shape shared
+		// with the JS/TS GraphQL server (synthesizeGraphQLResolvers) and the
+		// Python Strawberry server — so GraphQL client links (#3667) and the
+		// cross-repo linker join to them. Gated on a gqlgen file-signal so it
+		// no-ops on every other Go file.
+		synthesizeGqlgen(string(content), emitDef)
 		// Consumer side (#721 wave 2a): net/http, resty, fasthttp.
 		synthesizeGoClientWithRuntime(string(content), emitClientRuntime)
 	case "kotlin":
@@ -3182,6 +3191,139 @@ func synthesizeStrawberry(content string, emit emitDefFn) {
 			handlerRef := rootType + "." + methodName
 			emit("GRAPHQL", canonical, "strawberry-graphql", "SCOPE.Operation", handlerRef, defLine)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// gqlgen (Go) — #3613 (epic #3607)
+// ---------------------------------------------------------------------------
+//
+// gqlgen is the dominant schema-first GraphQL server for Go
+// (github.com/99designs/gqlgen). The SDL schema (`type Query { users: [User!]! }`,
+// in `*.graphqls`) is compiled to a generated `Resolver` root whose root-type
+// fields are implemented by user-edited Go methods on the generated receiver
+// types `*queryResolver`, `*mutationResolver`, and `*subscriptionResolver`
+// (canonically in `graph/schema.resolvers.go`):
+//
+//	func (r *queryResolver) Users(ctx context.Context) ([]*model.User, error) { ... }
+//	func (r *mutationResolver) CreateUser(ctx context.Context, input model.NewUser) (*model.User, error) { ... }
+//	func (r *subscriptionResolver) UserAdded(ctx context.Context) (<-chan *model.User, error) { ... }
+//
+// gqlgen derives the GraphQL field name from the resolver method by lower-casing
+// the leading run of the exported Go method name (Go's `Users` ↔ schema field
+// `users`, `CreateUser` ↔ `createUser`, `URL` ↔ `url`). We map each resolver
+// method to the SAME operation-endpoint shape emitted by the JS/TS GraphQL
+// server (synthesizeGraphQLResolvers) and the Python Strawberry server:
+//
+//	http:GRAPHQL:/graphql/<RootType>/<field>
+//
+// where RootType is Query / Mutation / Subscription. Emitting the identical id
+// shape is what lets the GraphQL client-link synthesizer (#3667) and the
+// cross-repo linker join Go GraphQL servers to their consumers.
+//
+// Handler attribution: the resolver method is the handler, referenced as
+// `SCOPE.Operation:<receiverType>.<Method>` (e.g.
+// `SCOPE.Operation:queryResolver.Users`). The Phase-2 resolver rebinds this
+// `source_handler` ref into a HANDLES edge to the Go method symbol.
+//
+// Detection is gated on a gqlgen file-signal (a `github.com/99designs/gqlgen`
+// import or one of the generated receiver types) so the synthesizer is a no-op
+// on every other Go file.
+
+// gqlgenResolverMethodRe matches a Go method declared on one of gqlgen's
+// generated root resolver receiver types, capturing the receiver type and the
+// exported method name.
+//
+// Capture groups:
+//
+//	1 = receiver type (queryResolver | mutationResolver | subscriptionResolver)
+//	2 = method (exported field implementation, e.g. Users / CreateUser)
+var gqlgenResolverMethodRe = regexp.MustCompile(
+	`(?m)^func\s*\(\s*\w+\s+\*?(queryResolver|mutationResolver|subscriptionResolver)\s*\)\s+([A-Z]\w*)\s*\(`,
+)
+
+// gqlgenReceiverToRoot maps a gqlgen generated receiver type to its GraphQL
+// root operation type.
+var gqlgenReceiverToRoot = map[string]string{
+	"queryResolver":        "Query",
+	"mutationResolver":     "Mutation",
+	"subscriptionResolver": "Subscription",
+}
+
+// gqlgenFieldName lower-cases the leading run of capitals of an exported Go
+// method name to recover the GraphQL field name, matching gqlgen's default
+// name-mapping (`Users` → `users`, `CreateUser` → `createUser`, `URL` → `url`,
+// `ID` → `id`). A single leading capital lower-cases just that letter; a run of
+// N>1 capitals lower-cases all but the last when the last is followed by a
+// lowercase (Go's standard initialism handling), otherwise the whole run.
+func gqlgenFieldName(method string) string {
+	if method == "" {
+		return method
+	}
+	r := []rune(method)
+	// Count the leading run of upper-case letters.
+	n := 0
+	for n < len(r) && r[n] >= 'A' && r[n] <= 'Z' {
+		n++
+	}
+	if n <= 1 {
+		// Simple case: lower-case the single leading capital.
+		r[0] = r[0] - 'A' + 'a'
+		return string(r)
+	}
+	// Initialism run (e.g. URL, ID). If the run is the whole identifier
+	// (URL → url) lower-case all of it; otherwise the final capital starts
+	// the next word (HTTPServer → httpServer) so keep it upper.
+	end := n
+	if n < len(r) {
+		end = n - 1
+	}
+	for i := 0; i < end; i++ {
+		r[i] = r[i] - 'A' + 'a'
+	}
+	return string(r)
+}
+
+func synthesizeGqlgen(content string, emit emitDefFn) {
+	// File-signal gate: require a gqlgen marker so this no-ops on every other
+	// Go file. The generated receiver types are gqlgen-specific; the import is
+	// the canonical project signal.
+	if !strings.Contains(content, "github.com/99designs/gqlgen") &&
+		!strings.Contains(content, "queryResolver") &&
+		!strings.Contains(content, "mutationResolver") &&
+		!strings.Contains(content, "subscriptionResolver") {
+		return
+	}
+
+	seen := map[string]bool{}
+	for _, m := range gqlgenResolverMethodRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		receiver := content[m[2]:m[3]]
+		method := content[m[4]:m[5]]
+		root, ok := gqlgenReceiverToRoot[receiver]
+		if !ok {
+			continue
+		}
+		field := gqlgenFieldName(method)
+		if field == "" {
+			continue
+		}
+		dedupKey := root + "." + field
+		if seen[dedupKey] {
+			continue
+		}
+		seen[dedupKey] = true
+
+		defLine := lineOfOffset(content, m[0])
+		path := "/graphql/" + root + "/" + field
+		canonical := httproutes.Canonicalize(httproutes.FrameworkGqlgen, path)
+		// Handler ref points at the resolver method symbol. The Phase-2
+		// resolver rebinds `SCOPE.Operation:<receiver>.<Method>` into a HANDLES
+		// edge against the extracted Go method entity.
+		handlerRef := receiver + "." + method
+		emit("GRAPHQL", canonical, "gqlgen", "SCOPE.Operation", handlerRef, defLine)
 	}
 }
 

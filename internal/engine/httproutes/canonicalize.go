@@ -154,6 +154,13 @@ const (
 	// normalised by canonicalizeColonParams (a literal nginx path has no `:`
 	// segments, so it passes through unchanged save for slash normalisation).
 	FrameworkOpenResty = "openresty"
+	// FrameworkGqlgen (#3613) — gqlgen is the dominant schema-first GraphQL
+	// server for Go. Operation endpoints are synthesised as the canonical
+	// `/graphql/<RootType>/<field>` path shared with the JS/TS GraphQL server
+	// (synthesizeGraphQLResolvers) and the Python Strawberry server. The path
+	// carries no framework-specific parameter syntax, so canonicalisation is
+	// identity + slash normalisation (default case).
+	FrameworkGqlgen = "gqlgen"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical

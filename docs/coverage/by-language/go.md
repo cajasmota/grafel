@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # go
 
-**Frameworks**: 17 · **Tools**: 8 · **ORMs**: 17 · **Other**: 0
+**Frameworks**: 18 · **Tools**: 8 · **ORMs**: 17 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -40,6 +40,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [chi](../detail/lang.go.framework.chi.md) | 🟢 3/3 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 5/5 | |
 | [go-zero](../detail/lang.go.framework.go-zero.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
+| [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🔴 0/7 | |
 | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 6/6 | |
 
 

@@ -15830,6 +15830,185 @@
       }
     },
     {
+      "id": "lang.go.framework.gqlgen",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "go",
+      "label": "gqlgen (GraphQL)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/gqlgen_go.yaml"],
+            "issue": "3613",
+            "verified_at": "2026-06-02"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/gqlgen_go.yaml"],
+            "issue": "3613",
+            "notes": "Resolver method on generated *queryResolver/*mutationResolver/*subscriptionResolver -\u003e http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e; source_handler=SCOPE.Operation:\u003creceiver\u003e.\u003cMethod\u003e rebinds to a HANDLES edge.",
+            "verified_at": "2026-06-02"
+          },
+          "route_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/gqlgen_go.yaml","internal/extractors/graphql/graphql.go"],
+            "issue": "3613",
+            "notes": "Operation endpoints synthesised from Go resolver receivers; SDL schema types parsed by the shared graphql extractor. Field-name mapping is gqlgen default lowerCamel and does not yet read gqlgen.yml overrides or @goField directives.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "3613"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "3613"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.go.framework.hertz",
       "category": "http_framework",
       "subcategory": "http_backend",

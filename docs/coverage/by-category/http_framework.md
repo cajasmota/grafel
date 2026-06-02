@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 212 records · **C/C++**: 19 · **C#**: 15 · **dart**: 1 · **elixir**: 14 · **go**: 17 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 17 · **lua**: 4 · **php**: 15 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 14 · **swift**: 4
+**Total**: 213 records · **C/C++**: 19 · **C#**: 15 · **dart**: 1 · **elixir**: 14 · **go**: 18 · **java**: 19 · **JS/TS**: 30 · **kotlin**: 17 · **lua**: 4 · **php**: 15 · **python**: 21 · **ruby**: 8 · **rust**: 14 · **scala**: 14 · **swift**: 4
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -57,6 +57,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [chi](../detail/lang.go.framework.chi.md) | 🟢 3/3 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
 | [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 5/5 | |
 | [go](../by-language/go.md) | [go-zero](../detail/lang.go.framework.go-zero.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 7/7 | |
+| [go](../by-language/go.md) | [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🔴 0/7 | |
 | [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟢 20/20 | 🟢 6/6 | |
 | [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 6/6 | |
 | [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 20/20 | 🟢 7/7 | |
