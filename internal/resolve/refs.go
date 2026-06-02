@@ -40,6 +40,18 @@ const (
 	// stubPrefixExternal marks an external-package placeholder
 	// emitted by the external synthesiser (e.g. "ext:django").
 	stubPrefixExternal = "ext:"
+	// stubPrefixVar marks a scope-local synthetic stub naming a local
+	// variable / sort key / discriminator field by its BARE leaf name
+	// (e.g. "var:order"). Emitted by the Python / JS discriminator
+	// extractors for DISCRIMINATES_ON edges (#2666): the ToID encodes the
+	// compared local-variable name purely so inspect/find can surface the
+	// line-precise hit — it is NOT a cross-file reference and has no global
+	// target entity. The leaf name routinely collides with an unrelated
+	// global entity of a different kind (the canonical #3936 bug: a pymongo
+	// sort key `var:order` mis-binding to an OpenAPI `order` query param).
+	// Such stubs MUST stay scope-local and NEVER cross-resolve through the
+	// global byKind / byName indexes. See isScopeLocalSyntheticStub.
+	stubPrefixVar = "var:"
 	// scopeKindPrefix is the optional family prefix on entity kinds
 	// emitted by Pass 3 cross-language extractors (e.g. "SCOPE.View").
 	scopeKindPrefix = "SCOPE."
@@ -1245,6 +1257,12 @@ func (idx Index) Lookup(stub string) (string, bool) {
 	if stub == "" {
 		return "", false
 	}
+	// #3936 — scope-local synthetic stubs ("var:<name>") never cross-resolve
+	// into a same-named global node. Mirror the LookupStatusHint guard so the
+	// kind-agnostic Lookup entry point is equally scope-safe.
+	if isScopeLocalSyntheticStub(stub) {
+		return "", false
+	}
 	// Direct QualifiedName hit short-circuits the kind/name paths
 	// (issue #100). Blank-string sentinel = ambiguous → treat as miss.
 	if qid, ok := idx.byQualifiedName[stub]; ok {
@@ -1290,6 +1308,19 @@ func (idx Index) LookupStatus(stub string) (id string, status int) {
 // When passed "" the function behaves exactly like LookupStatus.
 func (idx Index) LookupStatusHint(stub, relKind string) (id string, status int) {
 	if stub == "" {
+		return "", statusUnmatched
+	}
+
+	// #3936 — scope-local synthetic stubs (e.g. "var:order" discriminator /
+	// sort-key markers) name a local variable by its bare leaf inside the
+	// emitting scope. They have no global target entity and MUST NOT
+	// cross-resolve into a same-named-but-unrelated global node (the false
+	// edge being a pymongo `var:order` binding to an OpenAPI `order` param).
+	// Short-circuit BEFORE the QualifiedName / structural / kind / name tiers
+	// so the bare leaf is never matched against byName. Left as statusUnmatched
+	// → rewriteOne keeps the verbatim stub; classifyDispositionLang routes it
+	// to DispositionDynamic.
+	if isScopeLocalSyntheticStub(stub) {
 		return "", statusUnmatched
 	}
 
@@ -2122,6 +2153,32 @@ var sourceFileExtensions = []string{
 // Kept: short-form stubs whose target genuinely cannot resolve to a
 // single entity at link time (runtime-built URLs for http callers,
 // unresolved local imports, file/coverage wrappers).
+// isScopeLocalSyntheticStub reports whether s is a scope-local synthetic
+// stub — a placeholder whose ToID encodes a BARE local-variable / sort-key /
+// discriminator-field name (e.g. "var:order") that is meaningful ONLY inside
+// the emitting function's scope. These stubs exist so inspect/find can show a
+// line-precise hit; they are NOT cross-file references and have NO global
+// target entity.
+//
+// #3936: the generic resolver previously split such a stub on the first ':'
+// (kind="var", name="order"), missed byKind["var"], and fell through to the
+// global byName index — where the bare leaf name "order" bound to a totally
+// unrelated entity of a different kind (an OpenAPI `order` query param from
+// open-api/buildings.yml). That is a false edge across the code↔spec
+// boundary born of a bare-name collision; the resolver was neither scope- nor
+// type-aware for this synthetic shape.
+//
+// Recognising the stub here lets LookupStatusHint short-circuit it to
+// statusUnmatched (leave the stub verbatim) BEFORE the byKind / byName tiers
+// run, and lets classifyDispositionLang route it to DispositionDynamic rather
+// than a bug bucket. The guard is intentionally prefix-based so it generalises
+// to any future scope-local synthetic prefix without re-plumbing the resolver:
+// add the prefix to this function and both the cross-resolve guard and the
+// disposition classification follow automatically.
+func isScopeLocalSyntheticStub(s string) bool {
+	return strings.HasPrefix(s, stubPrefixVar)
+}
+
 func isHeuristicScopeStub(s string) bool {
 	if !strings.HasPrefix(s, stubPrefixScope) {
 		return false
@@ -2810,6 +2867,13 @@ func (idx Index) classifyDispositionLang(resolvedID, originalStub, lang string, 
 	// edges aren't resolvable by static name lookup. They keep the v1.0
 	// bug-rate metric honest while leaving the edges visible in graph.json.
 	if isHeuristicScopeStub(originalStub) {
+		return DispositionDynamic
+	}
+	// #3936 — scope-local synthetic stubs ("var:<name>" discriminator / sort-
+	// key markers) are intentionally left unresolved: they name a local
+	// variable inside the emitting scope, not a global entity. Route to
+	// Dynamic so they neither inflate the bug-rate nor falsely cross-resolve.
+	if isScopeLocalSyntheticStub(originalStub) {
 		return DispositionDynamic
 	}
 	// Issue #507 — Python SQL-driver dataaccess refs of the form
