@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 43
+- **Capability cells:** 45
 
 ## Capabilities
 
@@ -37,7 +37,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/python/fastapi.go`<br>`internal/custom/python/http_middleware.go` | @app.middleware('http') decorator extracted by fastapi.go (faMiddlewareRe); app.add_middleware(Cls, ...) extracted via starletteAddMiddlewareRe in http_middleware.go for Starlette/FastAPI. Tests: TestFastAPI_Middleware (decorator form), TestFastAPI_FullFixture_Middleware (fixture). Covers both ASGI middleware registration patterns used in FastAPI. |
+| Middleware coverage | ✅ `full` | `2026-06-02` | — | `internal/custom/python/fastapi.go`<br>`internal/custom/python/http_middleware.go`<br>`internal/engine/http_endpoint_python_middleware.go` | @app.middleware('http') + app.add_middleware(Cls) extracted by fastapi.go/http_middleware.go. #3628: applyPythonMiddlewareCoverage now BINDS the ordered chain to ENDPOINTS — app.add_middleware as global-scope entries (outermost) + per-route dependencies=[Depends(...)] as route-scope entries (innermost) — stamping middleware_chain/count/names/scope per the cross-stack {name,expr,scope,order,auth_kind?} contract shared with Go (#3777)/JS-TS (#2853). The FastAPI route-decorator regex was hardened to tolerate nested-paren kwargs so dependencies-bearing routes synthesise. Test: TestMiddleware_FastAPIGlobalAndRoute. |
+| Rate limit stamping | ✅ `full` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3778) | `internal/custom/python/fastapi.go`<br>`internal/custom/python/rate_limit_endpoint.go`<br>`internal/custom/python/rate_limit_endpoint_test.go` | slowapi @limiter.limit("5/minute") stamps rate_limited/rate_limit/rate_limit_source on the route op. DRF @throttle_classes resolver (rate from a co-located custom throttle's rate attr; settings-driven built-ins → honest-partial) shared via resolvePyEndpointRateLimit. |
 
 ### Type System
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 40
+- **Capability cells:** 41
 
 ## Capabilities
 
@@ -75,6 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🟢 `partial` | `2026-05-29` | 3055 | `internal/links/reachability.go`<br>`internal/links/reachability_test.go`<br>`internal/substrate/entry_points_jsts.go` | — |
 | Def use chain extraction | 🟢 `partial` | `2026-05-29` | 3055 | `internal/substrate/def_use_jsts.go`<br>`internal/substrate/def_use_test.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-29` | 3055 | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
+| Error flow | ✅ `full` | `2026-06-02` | 3628 | `internal/extractor/exception_flow.go`<br>`internal/extractors/javascript/exception_flow.go`<br>`internal/extractors/javascript/exception_flow_test.go` | throw new X -> THROWS; e instanceof X catch-filter -> CATCHES; untyped throw/catch dropped (#3628) |
 | Feature flag gating | ✅ `full` | `2026-06-02` | 3706 | `internal/engine/feature_flag_edges.go`<br>`internal/engine/feature_flag_edges_test.go`<br>`internal/engine/orm_queries.go` | flag-check call sites -> feature:<key> + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic) |
 | Fs effect | 🟢 `partial` | `2026-05-29` | 3055 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effects_test.go` | — |
 | HTTP effect | 🟢 `partial` | `2026-05-29` | 3055 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effects_test.go` | — |

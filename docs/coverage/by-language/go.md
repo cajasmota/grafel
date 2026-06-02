@@ -26,38 +26,38 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Echo](../detail/lang.go.framework.echo.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Gin](../detail/lang.go.framework.gin.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 6/9 | |
-| [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Huma](../detail/lang.go.framework.huma.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Iris](../detail/lang.go.framework.iris.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [Revel](../detail/lang.go.framework.revel.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 6/9 | |
-| [chi](../detail/lang.go.framework.chi.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟡 3/4 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 6/9 | |
-| [go-zero](../detail/lang.go.framework.go-zero.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [google/wire (DI)](../detail/lang.go.framework.wire.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 2/9 | |
-| [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🔴 0/10 | |
-| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 3/4 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/23 | 🟡 7/10 | |
-| [uber/fx (DI)](../detail/lang.go.framework.fx.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 2/9 | |
+| [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Echo](../detail/lang.go.framework.echo.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Gin](../detail/lang.go.framework.gin.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 24/25 | 🟡 6/10 | |
+| [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Huma](../detail/lang.go.framework.huma.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Iris](../detail/lang.go.framework.iris.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Revel](../detail/lang.go.framework.revel.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/10 | |
+| [chi](../detail/lang.go.framework.chi.md) | 🟡 3/4 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟡 3/4 | — | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/10 | |
+| [go-zero](../detail/lang.go.framework.go-zero.md) | 🟡 3/4 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [google/wire (DI)](../detail/lang.go.framework.wire.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 2/10 | |
+| [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/11 | |
+| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 3/4 | — | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [uber/fx (DI)](../detail/lang.go.framework.fx.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 2/10 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🟢 2/2 | 🟢 1/1 | 🟡 19/20 | 🟢 4/4 | |
+| [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🟢 2/2 | 🟢 1/1 | 🟡 20/21 | 🟢 4/4 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🟡 11/12 | 🟢 1/1 | |
+| [Fyne (desktop GUI)](../detail/lang.go.framework.fyne.md) | 🟡 12/13 | 🟢 1/1 | |
 
 
 ## Tools
@@ -80,20 +80,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | 🟢 3/3 | |
-| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟢 8/8 | |
-| [GORM](../detail/lang.go.orm.gorm.md) | 🟢 8/8 | |
-| [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟢 8/8 | |
-| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🟢 3/3 | |
-| [go-elasticsearch](../detail/lang.go.driver.elastic.md) | 🟢 4/4 | |
-| [go-redis](../detail/lang.go.driver.redis.md) | 🟢 2/2 | |
-| [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟢 2/2 | |
-| [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟢 2/2 | |
-| [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟢 1/1 | |
-| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟢 4/4 | |
-| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟢 3/3 | |
-| [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟢 3/3 | |
-| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟢 4/4 | |
-| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟢 4/4 | |
-| [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 5/5 | |
-| [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟢 6/6 | |
+| [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | 🟡 3/4 | |
+| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟡 8/9 | |
+| [GORM](../detail/lang.go.orm.gorm.md) | 🟢 9/9 | |
+| [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟡 8/9 | |
+| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🟡 3/4 | |
+| [go-elasticsearch](../detail/lang.go.driver.elastic.md) | 🟡 4/5 | |
+| [go-redis](../detail/lang.go.driver.redis.md) | 🟡 2/3 | |
+| [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟡 2/3 | |
+| [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟡 2/3 | |
+| [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟡 1/2 | |
+| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟡 4/5 | |
+| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟡 3/4 | |
+| [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 3/4 | |
+| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟡 4/5 | |
+| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 4/5 | |
+| [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 6/6 | |
+| [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟡 6/7 | |

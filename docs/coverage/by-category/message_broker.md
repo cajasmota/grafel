@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 39 records · **C/C++**: 3 · **C#**: 1 · **elixir**: 2 · **JS/TS**: 2 · **multi**: 21 · **python**: 4 · **ruby**: 4 · **rust**: 2
+**Total**: 42 records · **C/C++**: 3 · **C#**: 1 · **elixir**: 2 · **JS/TS**: 3 · **multi**: 21 · **python**: 5 · **ruby**: 5 · **rust**: 2
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -14,6 +14,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Phoenix Channels](../detail/msg.phoenix-channels.md) | 🔴 | ✅ | 🟢 | 🔴 | |
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [ORM model lifecycle-hook → handler TRIGGERS (TypeORM, Sequelize, Mongoose)](../detail/msg.orm-lifecycle-hooks-jsts.md) | ✅ | ✅ | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [node-schedule (Node scheduled jobs)](../detail/msg.node-schedule.md) | 🟢 | — | — | 🟢 | |
 | [multi](../by-language/multi.md) | [AMQP (generic)](../detail/msg.broker.amqp.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS EventBridge](../detail/msg.broker.eventbridge.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
@@ -40,6 +41,8 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [python](../by-language/python.md) | [Celery (Python task queue)](../detail/msg.celery.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | ✅ | ✅ | — | ✅ | |
+| [python](../by-language/python.md) | [ORM model lifecycle-hook → handler TRIGGERS (Django signals, SQLAlchemy events)](../detail/msg.orm-lifecycle-hooks-py.md) | ✅ | ✅ | ✅ | ✅ | |
+| [ruby](../by-language/ruby.md) | [ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)](../detail/msg.orm-lifecycle-hooks-ruby.md) | ✅ | ✅ | ✅ | ✅ | |
 | [ruby](../by-language/ruby.md) | [Resque (Ruby task queue)](../detail/msg.resque.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [ruby](../by-language/ruby.md) | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🟢 | 🟢 | — | 🟢 | |
 | [ruby](../by-language/ruby.md) | [rufus-scheduler (Ruby in-process scheduler)](../detail/msg.rufus-scheduler.md) | 🟢 | — | — | 🟢 | |

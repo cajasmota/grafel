@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 51
+- **Capability cells:** 53
 
 ## Capabilities
 
@@ -37,7 +37,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🟢 `partial` | `2026-05-28` | — | `internal/engine/java_annotation_params.go` | — |
+| Middleware coverage | 🟢 `partial` | `2026-06-02` | — | `internal/engine/http_endpoint_java_middleware.go`<br>`internal/engine/java_annotation_params.go` | @Bean SecurityFilterChain + OncePerRequestFilter/HandlerInterceptor/WebMvcConfigurer.addInterceptors/WebFilter captured by name. #3628: applyJavaMiddlewareCoverage now BINDS an ordered middleware_chain to Spring ENDPOINTS — Servlet FilterRegistrationBean urlPatterns (outermost, filter scope) + HandlerInterceptor addPathPatterns/excludePathPatterns (interceptor scope) statically matched against each route path and stamped per the cross-stack {name,expr,scope,order,auth_kind?} contract (auth filters/interceptors tagged auth_kind). Honest-partial: only path patterns that statically resolve to a known same-file route bind; broad /** includes and filters without resolvable urlPatterns are skipped (no fabricated order). Tests: TestMiddleware_SpringInterceptorPathMatch, TestMiddleware_SpringFilterAndInterceptorOrder, TestMiddleware_SpringExcludePathPatterns, TestMiddleware_SpringFilterNoUrlPatternsSkipped. |
 
 ### Testing
 
@@ -103,6 +103,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |
 | Def use chain extraction | 🟢 `partial` | `2026-05-28` | — | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use.go`<br>`internal/substrate/def_use_java.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
+| Error flow | ✅ `full` | `2026-06-02` | 3628 | `internal/extractor/exception_flow.go`<br>`internal/extractors/java/exception_flow.go`<br>`internal/extractors/java/exception_flow_test.go` | throw new X + throws clause -> THROWS; catch (A|B e) -> CATCHES; checked-exception model (#3628) |
 | Feature flag gating | ✅ `full` | `2026-06-02` | 3706 | `internal/engine/feature_flag_edges.go`<br>`internal/engine/feature_flag_edges_test.go`<br>`internal/engine/orm_queries.go` | flag-check call sites -> feature:<key> + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic) |
 | Fs effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
 | HTTP effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |

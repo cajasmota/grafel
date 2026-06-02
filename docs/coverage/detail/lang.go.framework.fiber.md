@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 43
+- **Capability cells:** 45
 
 ## Capabilities
 
@@ -38,6 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/helpers.go`<br>`internal/custom/golang/middleware_auth_test.go` | balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework |
+| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
 
 ### Type System
 

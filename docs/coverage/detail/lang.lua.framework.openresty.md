@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [lua](../by-language/lua.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 43
+- **Capability cells:** 45
 
 ## Capabilities
 
@@ -38,6 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | — | — | `internal/custom/lua/middleware.go` | OpenResty middleware chain: nginx phase directives (init/init_worker/rewrite/access/content/header_filter/body_filter/log _by_lua) emitted with chain_index (textual order) + phase_order (canonical request-lifecycle rank) so the ordered chain is reconstructable; Kong plugin handler phases. value-asserting test TestLuaMiddlewareOrdering asserts specific phase_order ranks. |
+| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
 
 ### Type System
 

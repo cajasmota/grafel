@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | 🔴 `missing` | — | — | — | — |
 | Metric extraction | 🔴 `missing` | — | — | — | — |
-| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3762) | `internal/extractors/python/observability.go` | #3628 area #11: Sentry Python performance-tracing sites emit INSTRUMENTS edges (enclosing op -> span:<name> stub). Bare @sentry_sdk.trace / @sentry.trace decorators key the span on the function name; sentry_sdk.start_transaction(...) / start_span(...) body calls take the name from name=/op=/description= kwargs. Honest-partial: dynamic names emit traced=true+dynamic=true without fabrication; only Python is covered. |
+| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3768) | `internal/extractors/golang/observability.go`<br>`internal/extractors/javascript/observability.go`<br>`internal/extractors/python/observability.go` | #3628 area #11: Sentry performance-tracing sites emit INSTRUMENTS edges (enclosing op -> span:<name> stub) in Python, Go and JS/TS. Python (#3762): @sentry_sdk.trace, start_transaction/start_span. Go: sentry.StartSpan(ctx, "op") takes the first string-literal arg as the span name. JS/TS: Sentry.startSpan({name:'op'}, cb) / Sentry.startTransaction({name:'op'}) / startInactiveSpan take the `name` property of the first object-literal arg. Honest-partial: dynamic names emit traced=true+dynamic=true keyed on the enclosing fn without fabrication; .StartSpan on a non-sentry receiver is not emitted. |
 
 ## Provenance
 
