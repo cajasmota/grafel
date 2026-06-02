@@ -365,6 +365,60 @@ func FindGraphFile(repoPath string) (path string, modtime int64) {
 	return findGraphFileInDir(stateDir)
 }
 
+// FindGraphFileAnyRef resolves a queryable graph file for repoPath, preferring
+// the current HEAD ref's per-ref directory but falling back to the newest
+// graph.fb/graph.json found under ANY indexed ref for the repo.
+//
+// Why this exists (#3648): a group registered via `group add --index` is
+// indexed ONCE, at the repo's HEAD ref at that moment, and — unless watchers
+// were installed (they default to OFF for `group add`, ON for the interactive
+// wizard) — nothing reindexes when HEAD subsequently moves. When the MCP server
+// later resolves the per-ref state dir from the *current* HEAD ref it lands on
+// an empty (never-indexed) ref directory, so FindGraphFile returns "" and the
+// repo's Doc stays nil. Every repo-scoped tool (find/inspect/expand/…) then
+// reports "no repos loaded for this group" even though a fully-indexed graph
+// exists one ref-directory over. The wizard/install path avoids this only
+// incidentally, because its watchers keep the current-ref dir fresh.
+//
+// Resolution order:
+//  1. The current HEAD ref's dir (fast path; matches FindGraphFile exactly).
+//  2. The newest graph file across all sibling refs/<ref>/ dirs for the repo.
+//
+// The fallback is freshness-safe for a read-only query surface: it serves the
+// most recently indexed graph the repo has, rather than nothing. Returns
+// ("", 0) when no ref directory holds a graph file. The returned path's parent
+// directory is the state dir the caller should read sidecars from.
+func FindGraphFileAnyRef(repoPath string) (path string, modtime int64) {
+	if repoPath == "" {
+		return "", 0
+	}
+	// 1. Current-ref fast path.
+	if p, mt := findGraphFileInDir(StateDirForRepo(repoPath)); p != "" {
+		return p, mt
+	}
+	// 2. Scan every indexed ref dir and keep the newest graph file.
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		abs = repoPath
+	}
+	abs = filepath.Clean(abs)
+	refsDir := filepath.Join(repoBaseDir(abs), "refs")
+	entries, rdErr := os.ReadDir(refsDir)
+	if rdErr != nil {
+		return "", 0
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		p, mt := findGraphFileInDir(filepath.Join(refsDir, e.Name()))
+		if p != "" && mt > modtime {
+			path, modtime = p, mt
+		}
+	}
+	return path, modtime
+}
+
 // WarnCaseCollisions scans the store directory for store slots whose
 // directory name (slug-hash) does not match the hash derived from the
 // canonical fleet repo path. This detects legacy store dirs created

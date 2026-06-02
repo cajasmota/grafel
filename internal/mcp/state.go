@@ -611,10 +611,21 @@ func (s *State) reloadLocked() (int, bool, error) {
 				// If stat failed (file removed) fall through to full discovery below.
 			}
 			if graphPath == "" {
-				// Use FindGraphFile to discover graph.fb (preferred) or graph.json,
-				// fixing issue #1374 item #1: repos that only have graph.fb were
-				// silently dropped because the old os.Stat always targeted graph.json.
-				graphPath, modtimeNs = daemon.FindGraphFile(rEntry.Path)
+				// Use FindGraphFileAnyRef to discover graph.fb (preferred) or
+				// graph.json, fixing issue #1374 item #1: repos that only have
+				// graph.fb were silently dropped because the old os.Stat always
+				// targeted graph.json.
+				//
+				// #3648: AnyRef falls back to the newest graph under ANY indexed
+				// ref when the current HEAD ref's dir is empty. A group registered
+				// via `group add --index` (watchers default OFF) is indexed once at
+				// the then-HEAD ref; when HEAD later moves the current-ref dir is
+				// empty and the old current-ref-only FindGraphFile returned "",
+				// leaving Doc nil and every repo-scoped tool reporting
+				// "no repos loaded for this group". Serving the most-recent indexed
+				// ref keeps find/inspect/expand working regardless of how the group
+				// was registered.
+				graphPath, modtimeNs = daemon.FindGraphFileAnyRef(rEntry.Path)
 			}
 
 			if graphPath == "" {
@@ -633,7 +644,13 @@ func (s *State) reloadLocked() (int, bool, error) {
 			// Update GraphFile in case .fb appeared after initial load.
 			lr.GraphFile = graphPath
 			fileMtime := time.Unix(0, modtimeNs)
-			stateDir := daemon.StateDirForRepo(rEntry.Path)
+			// #3648: derive the state dir from the directory the graph file was
+			// actually discovered in (graphPath may live under a non-HEAD ref dir
+			// when AnyRef fell back), NOT from the current-HEAD per-ref dir. The
+			// graph.fb mmap reader and the embeddings.bin / graph.json sidecars
+			// below must all read from the SAME dir as the parsed Document, or a
+			// fallback-discovered graph would be paired with a stale/empty sidecar.
+			stateDir := filepath.Dir(lr.GraphFile)
 			if !(fileMtime.Equal(lr.mtime) && lr.Doc != nil) {
 				// #3377 content-hash skip: the live indexer rewrites graph.fb on
 				// every reindex, bumping mtime even when the bytes are identical

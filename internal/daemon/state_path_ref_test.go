@@ -335,3 +335,79 @@ func TestStateDirForRepo_AlwaysUnderBaseAndHasRefs(t *testing.T) {
 		t.Errorf("StateDirForRepo path %q does not contain '/refs/'", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// FindGraphFileAnyRef: cross-ref fallback (#3648)
+// ---------------------------------------------------------------------------
+
+// TestFindGraphFileAnyRef_FallsBackToOtherRef reproduces the #3648 bug: a group
+// registered via `group add --index` is indexed once at the then-HEAD ref and,
+// with watchers off, nothing reindexes when HEAD moves. The current-ref state
+// dir is then empty, so the current-ref-only FindGraphFile returns "" and the
+// MCP server reports "no repos loaded for this group". FindGraphFileAnyRef must
+// fall back to the graph under the ref it was actually indexed at.
+func TestFindGraphFileAnyRef_FallsBackToOtherRef(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(EnvRoot, root)
+
+	// Non-git temp path → current HEAD ref resolves to the "_unknown" ref dir,
+	// which we deliberately leave EMPTY (simulating HEAD having moved away from
+	// the ref the graph was indexed at).
+	repoPath := t.TempDir()
+
+	// Index artifacts live ONLY under a different ref dir.
+	indexedRefDir := StateDirForRepoRef(repoPath, "feat/indexed-at")
+	writeFakeGraph(t, indexedRefDir, "feat/indexed-at")
+
+	// Bug: current-ref-only discovery finds nothing.
+	if p, _ := FindGraphFile(repoPath); p != "" {
+		t.Fatalf("precondition: current-ref FindGraphFile should be empty, got %q", p)
+	}
+
+	// Fix: AnyRef falls back to the indexed ref's graph.
+	got, mt := FindGraphFileAnyRef(repoPath)
+	if got == "" {
+		t.Fatal("FindGraphFileAnyRef returned empty; expected fallback to indexed ref")
+	}
+	if mt == 0 {
+		t.Errorf("FindGraphFileAnyRef returned zero modtime for %q", got)
+	}
+	if filepath.Dir(got) != filepath.Clean(indexedRefDir) {
+		t.Errorf("FindGraphFileAnyRef found %q; want a graph under %q", got, indexedRefDir)
+	}
+}
+
+// TestFindGraphFileAnyRef_PrefersCurrentRef ensures the fast path still wins:
+// when the current HEAD ref dir has a graph, AnyRef returns it without scanning
+// siblings (matching FindGraphFile exactly so the watcher/wizard path is
+// unaffected).
+func TestFindGraphFileAnyRef_PrefersCurrentRef(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(EnvRoot, root)
+	repoPath := t.TempDir()
+
+	// Non-git path → current ref is "_unknown". Put a graph there AND under a
+	// newer sibling ref; AnyRef must return the current-ref one.
+	curDir := StateDirForRepo(repoPath)
+	writeFakeGraph(t, curDir, "")
+
+	want, _ := FindGraphFile(repoPath)
+	if want == "" {
+		t.Fatal("setup: current-ref graph not discoverable")
+	}
+	got, _ := FindGraphFileAnyRef(repoPath)
+	if got != want {
+		t.Errorf("FindGraphFileAnyRef = %q; want current-ref %q", got, want)
+	}
+}
+
+// TestFindGraphFileAnyRef_NoGraphAnywhere returns empty when no ref dir holds a
+// graph (no false positives that would mask a genuinely un-indexed repo).
+func TestFindGraphFileAnyRef_NoGraphAnywhere(t *testing.T) {
+	root := t.TempDir()
+	t.Setenv(EnvRoot, root)
+	repoPath := t.TempDir()
+	if got, mt := FindGraphFileAnyRef(repoPath); got != "" || mt != 0 {
+		t.Errorf("FindGraphFileAnyRef = (%q,%d); want empty", got, mt)
+	}
+}
