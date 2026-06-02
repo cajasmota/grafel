@@ -12,9 +12,9 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [GraphQL](../detail/protocol.graphql.md) | 🟢 | — | ✅ | — | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [JCL → COBOL job bridge](../detail/protocol.jcl-cobol.md) | ✅ | — | ✅ | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [JSON Schema (*.schema.json)](../detail/protocol.json-schema.md) | 🔴 | ✅ | 🔴 | ✅ | 🔴 | 🔴 | |
-| [multi](../by-language/multi.md) | [JSON-RPC](../detail/protocol.jsonrpc.md) | 🔴 | — | 🔴 | — | 🔴 | 🔴 | |
+| [multi](../by-language/multi.md) | [JSON-RPC](../detail/protocol.jsonrpc.md) | 🟢 | — | 🟢 | — | 🔴 | 🔴 | |
 | [multi](../by-language/multi.md) | [OpenAPI / Swagger](../detail/protocol.openapi.md) | 🟢 | — | ✅ | — | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [OpenAPI 3.x / Swagger 2.0 spec ingestion (endpoint ground-truth)](../detail/api-spec.openapi-ingestion.md) | ✅ | — | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Protocol Buffers](../detail/protocol.protobuf.md) | 🟢 | ✅ | ✅ | ✅ | ✅ | 🟢 | |
-| [multi](../by-language/multi.md) | [SOAP / WSDL](../detail/protocol.soap.md) | 🔴 | — | 🔴 | — | 🔴 | 🔴 | |
+| [multi](../by-language/multi.md) | [SOAP / WSDL](../detail/protocol.soap.md) | 🟢 | — | 🟢 | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [gRPC](../detail/protocol.grpc.md) | ✅ | — | ✅ | — | ✅ | ✅ | |

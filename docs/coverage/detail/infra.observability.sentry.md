@@ -13,7 +13,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | 🔴 `missing` | — | — | — | — |
 | Metric extraction | 🔴 `missing` | — | — | — | — |
-| Trace extraction | 🔴 `missing` | — | — | — | — |
+| Trace extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3762) | `internal/extractors/python/observability.go` | #3628 area #11: Sentry Python performance-tracing sites emit INSTRUMENTS edges (enclosing op -> span:<name> stub). Bare @sentry_sdk.trace / @sentry.trace decorators key the span on the function name; sentry_sdk.start_transaction(...) / start_span(...) body calls take the name from name=/op=/description= kwargs. Honest-partial: dynamic names emit traced=true+dynamic=true without fabrication; only Python is covered. |
 
 ## Provenance
 

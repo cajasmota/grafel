@@ -43,7 +43,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [java](../by-language/java.md) | [JUnit 4](../detail/test.junit4.md) | 🟢 | — | — | — | 🟢 | |
 | [java](../by-language/java.md) | [JUnit 5](../detail/test.junit5.md) | ✅ | — | — | — | ✅ | |
 | [java](../by-language/java.md) | [Maven (pom.xml)](../detail/build.maven.md) | ✅ | — | — | — | ✅ | |
-| [java](../by-language/java.md) | [Mockito](../detail/test.mockito.md) | 🔴 | — | — | — | 🔴 | |
+| [java](../by-language/java.md) | [Mockito](../detail/test.mockito.md) | 🔴 | — | — | — | 🟢 | |
 | [java](../by-language/java.md) | [REST-assured](../detail/test.restassured.md) | 🔴 | — | — | — | 🔴 | |
 | [java](../by-language/java.md) | [TestNG](../detail/test.testng.md) | 🔴 | — | — | — | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [AVA](../detail/test.ava.md) | ✅ | — | — | — | ✅ | |

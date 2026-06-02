@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # JS/TS
 
-**Frameworks**: 32 · **Tools**: 21 · **ORMs**: 18 · **Other**: 2
+**Frameworks**: 32 · **Tools**: 21 · **ORMs**: 18 · **Other**: 3
 
 Back to [summary](../summary.md).
 
@@ -129,24 +129,24 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | ✅ 1/1 | |
-| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | ✅ 1/1 | |
-| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | ✅ 7/7 | |
-| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ 6/6 | |
-| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟢 8/8 | |
-| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | ✅ 1/1 | |
-| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟢 5/5 | |
-| [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟢 8/8 | |
-| [Prisma](../detail/lang.jsts.orm.prisma.md) | ✅ 7/7 | |
-| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 8/8 | |
-| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟢 8/8 | |
-| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | ✅ 1/1 | |
-| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | ✅ 1/1 | |
-| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | ✅ 1/1 | |
-| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | ✅ 1/1 | |
-| [neo4j-driver (JS) / neogma OGM](../detail/lang.jsts.driver.neo4j.md) | 🟢 4/4 | |
-| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | ✅ 1/1 | |
-| [supabase-js](../detail/lang.jsts.driver.supabase.md) | ✅ 1/1 | |
+| [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | 🟡 1/2 | |
+| [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | 🟡 1/2 | |
+| [Drizzle](../detail/lang.jsts.orm.drizzle.md) | 🟡 7/8 | |
+| [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | ✅ 7/7 | |
+| [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟡 8/9 | |
+| [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | 🟡 1/2 | |
+| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 5/6 | |
+| [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟡 8/9 | |
+| [Prisma](../detail/lang.jsts.orm.prisma.md) | ✅ 8/8 | |
+| [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 9/9 | |
+| [TypeORM](../detail/lang.jsts.orm.typeorm.md) | 🟢 9/9 | |
+| [better-sqlite3 / sqlite3](../detail/lang.jsts.driver.sqlite.md) | 🟡 1/2 | |
+| [cassandra-driver (JS)](../detail/lang.jsts.driver.cassandra.md) | 🟡 1/2 | |
+| [ioredis / node-redis](../detail/lang.jsts.driver.redis.md) | 🟡 1/2 | |
+| [mysql / mysql2](../detail/lang.jsts.driver.mysql.md) | 🟡 1/2 | |
+| [neo4j-driver (JS) / neogma OGM](../detail/lang.jsts.driver.neo4j.md) | 🟡 4/5 | |
+| [node-postgres / pg](../detail/lang.jsts.driver.postgres.md) | 🟡 1/2 | |
+| [supabase-js](../detail/lang.jsts.driver.supabase.md) | 🟡 1/2 | |
 
 
 ## Other
@@ -154,4 +154,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Category | Status | Notes |
 |---|---|---|---|
 | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
+| [node-schedule (Node scheduled jobs)](../detail/msg.node-schedule.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
 | [tsconfig.json](../detail/config.tsconfig.md) | [platform](../by-category/platform.md) | ✅ | |

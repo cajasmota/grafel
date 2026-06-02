@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -38,6 +38,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | — `not_applicable` | — | — | — | Peewee-migrate is a separate optional library; core peewee has no built-in migration concept (#3184) |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 
 ## Provenance
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 47
+- **Capability cells:** 48
 
 ## Capabilities
 
@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | — `not_applicable` | — | 3085 | — | Javalin is a micro HTTP framework with no built-in transaction management. @Transactional is a Spring/JTA concept; transaction boundary extraction is not_applicable for Javalin. |
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | — `not_applicable` | — | 3085 | — | Javalin has no transaction propagation model; not_applicable. |
 | Transaction rollback rules | — `not_applicable` | — | 3085 | — | Javalin has no transaction rollback rules; not_applicable. |
 

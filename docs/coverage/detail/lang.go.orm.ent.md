@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -38,6 +38,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ✅ `full` | `2026-05-29` | 3255 | `internal/custom/golang/ent.go`<br>`internal/custom/golang/ent_test.go` | — |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 
 ## Provenance
 

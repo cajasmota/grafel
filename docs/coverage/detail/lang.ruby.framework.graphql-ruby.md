@@ -80,7 +80,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | 🔴 `missing` | — | 3621 | — | — |
-| Config consumption | 🔴 `missing` | — | 3621 | — | — |
+| Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/ruby/config_consumer.go`<br>`internal/extractors/ruby/config_consumer_test.go` | ENV[...], ENV.fetch -> config:<key> DEPENDS_ON_CONFIG edges (issue #3641) |
 | Constant propagation | 🔴 `missing` | — | 3621 | — | — |
 | Dead code detection | 🔴 `missing` | — | 3621 | — | — |
 | Def use chain extraction | 🔴 `missing` | — | 3621 | — | — |

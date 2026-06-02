@@ -182,6 +182,7 @@ subcategories:
       - transaction_boundary_extraction
       - transaction_propagation
       - transaction_rollback_rules
+      - transaction_function_stamping
       - aspect_extraction
       - pointcut_resolution
       - advice_attribution
@@ -227,7 +228,7 @@ subcategories:
       - name: DI
         keys: [di_binding_extraction, di_injection_point, di_scope_resolution]
       - name: Transactions
-        keys: [transaction_boundary_extraction, transaction_propagation, transaction_rollback_rules]
+        keys: [transaction_boundary_extraction, transaction_propagation, transaction_rollback_rules, transaction_function_stamping]
       - name: AOP
         keys: [aspect_extraction, pointcut_resolution, advice_attribution]
       - name: Observability
@@ -570,6 +571,7 @@ subcategories:
       - lazy_loading_recognition
       - query_attribution
       - migration_parsing
+      - transaction_function_stamping
     groups:
       - name: Models
         keys: [model_extraction, schema_extraction]
@@ -579,6 +581,8 @@ subcategories:
         keys: [query_attribution]
       - name: Migrations
         keys: [migration_parsing]
+      - name: Transactions
+        keys: [transaction_function_stamping]
 
   validation_lib:
     display: "Validation"

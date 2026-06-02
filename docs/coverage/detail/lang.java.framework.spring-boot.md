@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | @Transactional on class/method detected; class-level boundary + method-level SCOPE.Pattern(subtype=transaction_boundary) with declaring_class, framework; OWNS edges from class to method boundaries; Jakarta/JTA TxType positional form handled; value-asserting fixture TestTransactional_Boundary_Propagation_Rollback_Issue3003 |
+| Transaction function stamping | ✅ `full` | `2026-06-02` | — | `internal/extractors/java/java.go`<br>`internal/extractors/java/transaction_boundary_test.go`<br>`internal/txscope/txscope.go` | #3628: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only on that method entity; class-level @Transactional propagates to all enclosing methods (method-level annotation wins on specificity). No transitive propagation across calls. |
 | Transaction propagation | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | propagation=Propagation.<MODE> (Spring) and TxType.<MODE> (JTA) extracted into propagation property; isolation + readOnly also captured; all Spring propagation modes + JTA TxType modes covered; value-asserting test TestTransactional_Boundary_Propagation_Rollback_Issue3003 |
 | Transaction rollback rules | ✅ `full` | `2026-06-01` | — | `internal/custom/java/transactional.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | rollbackFor/noRollbackFor X.class single + {A.class,B.class} list captured as rollback_for/no_rollback_for properties; value-asserting test covers single + multi-class rollback + noRollbackFor |
 
@@ -101,7 +102,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |
 | Def use chain extraction | 🟢 `partial` | `2026-05-28` | — | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use.go`<br>`internal/substrate/def_use_java.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |
-| Feature flag gating | ✅ `full` | `2026-06-02` | 3706 | `internal/engine/feature_flag_edges.go`<br>`internal/engine/feature_flag_edges_test.go`<br>`internal/engine/orm_queries.go` | flag-check call sites -> feature:<key> + GATED_BY edge (LaunchDarkly/Unleash/OpenFeature/Flipper/Flagsmith) |
+| Feature flag gating | ✅ `full` | `2026-06-02` | 3706 | `internal/engine/feature_flag_edges.go`<br>`internal/engine/feature_flag_edges_test.go`<br>`internal/engine/orm_queries.go` | flag-check call sites -> feature:<key> + GATED_BY edge (LaunchDarkly/Unleash/Unleash-React/OpenFeature/Flipper/Flagsmith/Split.io/generic) |
 | Fs effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
 | HTTP effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_java.go` | — |
 | Import resolution quality | 🟢 `partial` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/java.go`<br>`internal/substrate/substrate.go` | — |

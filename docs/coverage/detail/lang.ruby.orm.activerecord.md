@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -31,13 +31,19 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries.go` | — |
+| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/orm_queries.go`<br>`internal/extractors/cross/dbmap/orms.go`<br>`internal/extractors/cross/dbmap/query_builders_test.go` | ActiveRecord Model.find/where attribution via orm_queries. #3628 area #3 ADDS association table-access: .joins(:assoc)/.includes/.preload/.eager_load pull the association table into a second ACCESSES_TABLE edge (symbol args only; string/var skipped). Proven by TestActiveRecordJoinsAssociation. |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ✅ `full` | — | 3639 | `internal/custom/ruby/activerecord.go`<br>`internal/custom/ruby/activerecord_deep.go`<br>`internal/custom/ruby/activerecord_deep_test.go`<br>`internal/engine/migration_sequence.go` | db/migrate/*.rb parsed into normalized SCOPE.Evolution ops (create_table/add_column/drop_column/alter_column/create_index/add_reference/add_foreign_key/drop_table), plus typed columns inside create_table blocks and FK entities. Test: TestDeepMigration_CreateTableColumnsAndOps asserts exact op subtypes+columns+FKs. #3639 additionally stamps sequence_number (the YYYYMMDDHHMMSS timestamp) + migration_name + migration_pattern=rails on each db/migrate entity via live Pass 8.9 (engine.ApplyMigrationSequence). |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | ✅ `full` | `2026-06-02` | — | `internal/extractors/ruby/ruby.go`<br>`internal/extractors/ruby/transaction_boundary_test.go`<br>`internal/txscope/txscope.go` | #3628: ActiveRecord Model.transaction do / { } block stamps transactional=true + tx_source=rails_transaction on the enclosing Ruby method. No transitive propagation; attribute reads (obj.transaction) not matched. |
 
 ## Provenance
 

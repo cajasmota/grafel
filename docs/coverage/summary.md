@@ -1,24 +1,24 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 224 · **ORMs**: 155 · **Tools**: 111 · **Other**: 142
+**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 224 · **ORMs**: 155 · **Tools**: 111 · **Other**: 147
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-| [JS/TS](by-language/jsts.md) | 32 | 21 | 18 | 2 |
-| [python](by-language/python.md) | 23 | 15 | 18 | 7 |
+| [JS/TS](by-language/jsts.md) | 32 | 21 | 18 | 3 |
+| [python](by-language/python.md) | 23 | 15 | 18 | 8 |
 | [java](by-language/java.md) | 22 | 10 | 15 | 4 |
 | [go](by-language/go.md) | 20 | 8 | 17 | 0 |
 | [C/C++](by-language/c-cpp.md) | 19 | 16 | 7 | 4 |
 | [kotlin](by-language/kotlin.md) | 17 | 0 | 7 | 0 |
-| [C#](by-language/csharp.md) | 16 | 7 | 14 | 0 |
+| [C#](by-language/csharp.md) | 16 | 7 | 14 | 1 |
 | [php](by-language/php.md) | 15 | 6 | 14 | 0 |
 | [elixir](by-language/elixir.md) | 14 | 5 | 10 | 3 |
 | [rust](by-language/rust.md) | 14 | 6 | 15 | 3 |
 | [scala](by-language/scala.md) | 14 | 3 | 6 | 0 |
-| [ruby](by-language/ruby.md) | 9 | 6 | 14 | 3 |
+| [ruby](by-language/ruby.md) | 9 | 6 | 14 | 5 |
 | [lua](by-language/lua.md) | 4 | 0 | 0 | 0 |
 | [swift](by-language/swift.md) | 4 | 1 | 0 | 0 |
 | [dart](by-language/dart.md) | 1 | 1 | 0 | 0 |
@@ -38,9 +38,9 @@
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
 | [Security](by-category/security.md) | 10 | 3 | 0 | 7 |
 | [Observability](by-category/observability.md) | 9 | 1 | 1 | 7 |
-| [Protocols](by-category/protocol.md) | 11 | 4 | 3 | 4 |
+| [Protocols](by-category/protocol.md) | 11 | 4 | 4 | 3 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 110 | 41 | 41 | 28 |
+| **Total** | 110 | 41 | 42 | 27 |
 
 ## Languages with extractor support, no records yet
 
@@ -68,4 +68,4 @@
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 224 frameworks · 111 tools · 155 ORMs · 142 other
+Total: 224 frameworks · 111 tools · 155 ORMs · 147 other

@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency graph | ✅ `full` | `2026-05-28` | — | `internal/engine/tests_edges.go`<br>`internal/engine/tests_imports.go` | — |
-| Target extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/python/frameworks/pytest.yaml`<br>`internal/engine/tests_edges.go`<br>`internal/engine/tests_imports.go` | — |
+| Target extraction | ✅ `full` | `2026-06-02` | — | `internal/engine/rules/python/frameworks/pytest.yaml`<br>`internal/engine/tests_edges.go`<br>`internal/engine/tests_imports.go`<br>`internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/resolver.go` | — |
 
 ## Provenance
 

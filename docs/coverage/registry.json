@@ -2136,6 +2136,12 @@
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -2192,6 +2198,12 @@
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -2247,6 +2259,12 @@
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -2297,6 +2315,12 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "raw driver — no built-in migration system"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -6530,6 +6554,12 @@
             "notes": "ODB has no built-in migration system",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -6591,6 +6621,12 @@
             "notes": "SOCI has no built-in migration system",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -6650,6 +6686,12 @@
             "status": "not_applicable",
             "notes": "sqlpp11 has no built-in migration system",
             "verified_at": "2026-05-30"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -6963,6 +7005,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -7013,6 +7061,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -7065,6 +7119,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -7116,6 +7176,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -7164,6 +7230,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -7214,6 +7286,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -7262,6 +7340,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -7313,6 +7397,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -7361,6 +7451,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -10564,6 +10660,12 @@
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -10620,6 +10722,12 @@
             "status": "full",
             "issue": "3262",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -10686,6 +10794,12 @@
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -10748,6 +10862,12 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -10815,6 +10935,12 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "micro-ORM/query-lib — no built-in migration system"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -11036,6 +11162,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -11084,6 +11216,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -11134,6 +11272,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -11182,6 +11326,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -11237,6 +11387,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -11285,6 +11441,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -11335,6 +11497,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -11383,6 +11551,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -14634,6 +14808,12 @@
             "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -14695,6 +14875,12 @@
             "notes": "create table(:name) migration macros extracted as SCOPE.Schema/migration; add/remove column not yet tracked",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -14745,6 +14931,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -14799,6 +14991,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -14857,6 +15055,12 @@
             "issue": "3214",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -14906,6 +15110,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -14962,6 +15172,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -15015,6 +15231,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -15061,6 +15283,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -15114,6 +15342,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -19791,6 +20025,12 @@
             "issue": "3255",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -19856,6 +20096,12 @@
             "issue": "3255",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -19908,6 +20154,12 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "gen generates query code, not migrations (gorm.go)"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -19968,6 +20220,14 @@
             "cites": ["internal/custom/golang/gorm.go","internal/custom/golang/gorm_test.go"],
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: stamps transactional=true + tx_source/tx_isolation on Go fn entities that open db.Begin()/BeginTx/GORM Transaction. No transitive propagation.",
+            "verified_at": "2026-06-02"
+          }
         }
       }
     },
@@ -20016,6 +20276,12 @@
             "status": "partial",
             "cites": ["internal/engine/rules/go/orms/golang_migrate.yaml"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -20072,6 +20338,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -20130,6 +20402,12 @@
             "cites": ["internal/custom/golang/sqlc.go","internal/custom/golang/sqlc_test.go"],
             "notes": "file-based NNN_slug.up/down.sql migration file recognition; sqlc.yaml config has_schema/has_queries properties extracted; TestSqlcConfig + TestSqlcMigrationFile prove both",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -20191,6 +20469,14 @@
             "notes": "file-based NNN_slug.up/down.sql migrations recognised by filename; no migration runner integration; ALTER TABLE in migration content not parsed for schema delta",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/golang/extractor.go","internal/extractors/golang/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: database/sql db.Begin()/BeginTx(ctx, sql.TxOptions{Isolation}) stamps transactional=true + tx_isolation on the enclosing Go fn. No transitive propagation (a fn receiving *sql.Tx is not stamped).",
+            "verified_at": "2026-06-02"
+          }
         }
       }
     },
@@ -20250,6 +20536,12 @@
             "status": "not_applicable",
             "notes": "xo introspects existing schema; no migration management"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -20300,6 +20592,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -20404,6 +20702,10 @@
             "status": "not_applicable",
             "cites": ["internal/custom/java/akka_http_routes.go"],
             "issue": "3092"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -21106,6 +21408,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -21343,6 +21649,10 @@
             "status": "missing",
             "cites": ["internal/custom/java/dropwizard.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -21621,6 +21931,10 @@
           "transaction_boundary_extraction": {
             "status": "missing",
             "issue": "3699"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -22076,6 +22390,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
@@ -22374,6 +22692,12 @@
             "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
             "verified_at": "2026-05-29"
           },
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only on that method entity; class-level @Transactional propagates to all enclosing methods (method-level annotation wins on specificity). No transitive propagation across calls.",
+            "verified_at": "2026-06-02"
+          },
           "transaction_propagation": {
             "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
@@ -22664,6 +22988,10 @@
             "status": "not_applicable",
             "issue": "3085",
             "notes": "Javalin is a micro HTTP framework with no built-in transaction management. @Transactional is a Spring/JTA concept; transaction boundary extraction is not_applicable for Javalin."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -22960,6 +23288,12 @@
             "cites": ["internal/custom/java/transactional.go","internal/extractors/custom_java_patterns_smoke_test.go"],
             "notes": "@Transactional class/method boundaries; jaxrs in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies jaxrs",
             "verified_at": "2026-06-01"
+          },
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only on that method entity; class-level @Transactional propagates to all enclosing methods (method-level annotation wins on specificity). No transitive propagation across calls.",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
             "status": "full",
@@ -23306,6 +23640,12 @@
             "notes": "@Transactional class/method boundaries; micronaut in txFrameworks; OWNS edge; TestTransactional_FrameworkGating_Issue3003 verifies micronaut activation",
             "verified_at": "2026-06-01"
           },
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only on that method entity; class-level @Transactional propagates to all enclosing methods (method-level annotation wins on specificity). No transitive propagation across calls.",
+            "verified_at": "2026-06-02"
+          },
           "transaction_propagation": {
             "status": "full",
             "cites": ["internal/custom/java/transactional.go","internal/extractors/custom_java_patterns_smoke_test.go"],
@@ -23610,6 +23950,10 @@
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go","testdata/fixtures/sources/java/microprofile/OrderService.java"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "verified_at": "2026-05-29"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -24159,6 +24503,10 @@
             "notes": "@Transactional on class/method detected; SCOPE.Pattern(subtype=transaction_boundary) emitted with declaring_class + OWNS link from class-level boundary; Spring + Jakarta/JTA annotation surface",
             "verified_at": "2026-05-29"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "cites": ["internal/custom/java/extractors_test.go","internal/custom/java/transactional.go"],
@@ -24461,6 +24809,12 @@
             "notes": "@Transactional on class/method detected; class-level boundary + method-level SCOPE.Pattern(subtype=transaction_boundary) with declaring_class, framework; OWNS edges from class to method boundaries; Jakarta/JTA TxType positional form handled; value-asserting fixture TestTransactional_Boundary_Propagation_Rollback_Issue3003",
             "verified_at": "2026-06-01"
           },
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only on that method entity; class-level @Transactional propagates to all enclosing methods (method-level annotation wins on specificity). No transitive propagation across calls.",
+            "verified_at": "2026-06-02"
+          },
           "transaction_propagation": {
             "status": "full",
             "cites": ["internal/custom/java/transactional.go","internal/extractors/custom_java_patterns_smoke_test.go"],
@@ -24758,6 +25112,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -25007,6 +25365,12 @@
             "cites": ["internal/custom/java/transactional.go","internal/extractors/custom_java_patterns_smoke_test.go"],
             "notes": "@Transactional class/method boundaries; spring-webflux in txFrameworks; OWNS edge; same extractor as spring-boot; TestTransactional_FrameworkGating_Issue3003 verifies spring_webflux activation",
             "verified_at": "2026-06-01"
+          },
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/java/java.go","internal/extractors/java/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: @Transactional (Spring + Jakarta/JTA) on a method stamps transactional=true + tx_propagation/tx_isolation/tx_read_only on that method entity; class-level @Transactional propagates to all enclosing methods (method-level annotation wins on specificity). No transitive propagation across calls.",
+            "verified_at": "2026-06-02"
           },
           "transaction_propagation": {
             "status": "full",
@@ -25318,6 +25682,10 @@
             "cites": ["internal/custom/java/struts_routes.go"],
             "issue": "3089",
             "notes": "Struts has no transaction management; projects use Spring @Transactional or JTA outside the framework"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -25804,6 +26172,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3086",
             "notes": "Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly."
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "not_applicable",
             "issue": "https://github.com/cajasmota/archigraph/issues/3086",
@@ -26048,6 +26420,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26114,6 +26492,12 @@
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26178,6 +26562,12 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -26244,6 +26634,12 @@
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26307,6 +26703,12 @@
             "cites": ["internal/custom/java/jooq.go"],
             "issue": "3098",
             "notes": "jOOQ is a query DSL, not schema-migration tooling; migration_parsing is not applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -26374,6 +26776,12 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -26444,6 +26852,12 @@
             "notes": "MyBatis is an SQL mapper; database migration files are owned by Flyway/Liquibase, not MyBatis. Same rationale as T1 ORM sweep (#3180).",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26507,6 +26921,12 @@
             "cites": ["internal/custom/java/neo4j.go"],
             "issue": "3098",
             "notes": "Neo4j graph database has no SQL migration files; migration_parsing is not applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -26578,6 +26998,12 @@
             "notes": "Panache is a JPA wrapper (Quarkus-backed); database migration files are owned by Flyway/Liquibase. Same rationale as T1 ORM sweep (#3180).",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26638,6 +27064,12 @@
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26697,6 +27129,12 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -26763,6 +27201,12 @@
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26823,6 +27267,12 @@
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -26882,6 +27332,12 @@
             "status": "not_applicable",
             "notes": "ORM model-definition layer; database migration files are owned by Flyway/Liquibase, not the ORM itself. Same rationale as lang.java.orm.jooq and lang.java.orm.neo4j N/A.",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -27012,6 +27468,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -27064,6 +27526,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -27118,6 +27586,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -27171,6 +27645,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -27223,6 +27703,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -27281,6 +27767,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -27333,6 +27825,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -27387,6 +27885,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -27440,6 +27944,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -27492,6 +28002,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -35408,6 +35924,12 @@
             "cites": ["internal/custom/javascript/drizzle.go","internal/custom/javascript/extractors_coverage_test.go"],
             "verified_at": "2026-05-28"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -35473,6 +35995,14 @@
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/knex.go"],
             "verified_at": "2026-05-28"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: knex.transaction(...) stamps transactional=true + tx_source=knex_transaction on the enclosing fn.",
+            "verified_at": "2026-06-02"
+          }
         }
       }
     },
@@ -35535,6 +36065,12 @@
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mikroorm.go"],
             "verified_at": "2026-05-28"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -35592,6 +36128,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -35648,6 +36190,12 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/objection.go"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       },
@@ -35719,6 +36267,14 @@
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/prisma.go"],
             "verified_at": "2026-05-28"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: Prisma prisma.$transaction(async tx =\u003e ...) interactive transaction stamps transactional=true + tx_source=prisma_transaction on the enclosing fn.",
+            "verified_at": "2026-06-02"
+          }
         }
       }
     },
@@ -35781,6 +36337,14 @@
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/sequelize.go"],
             "verified_at": "2026-05-28"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: sequelize.transaction(async t =\u003e ...) stamps transactional=true + tx_source=sequelize_transaction on the enclosing fn.",
+            "verified_at": "2026-06-02"
+          }
         }
       }
     },
@@ -35840,6 +36404,14 @@
             "status": "full",
             "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/typeorm.go"],
             "verified_at": "2026-05-28"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: TypeORM dataSource/manager.transaction(...) and @Transaction() decorator stamp transactional=true + tx_source=typeorm_transaction on the enclosing fn. No transitive propagation.",
+            "verified_at": "2026-06-02"
           }
         }
       }
@@ -35936,6 +36508,10 @@
           "transaction_boundary_extraction": {
             "status": "not_applicable",
             "notes": "Arrow is a functional-programming library, not a web backend — no routing/DI/transaction/AOP container."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -36567,6 +37143,10 @@
             "status": "not_applicable",
             "notes": "kotlinx.coroutines is a concurrency runtime, not a web backend — no routing/DI/transaction/AOP container."
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "not_applicable",
             "notes": "kotlinx.coroutines is a concurrency runtime, not a web backend — no routing/DI/transaction/AOP container."
@@ -36820,6 +37400,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -37048,6 +37632,10 @@
           "transaction_boundary_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -37282,6 +37870,10 @@
           "transaction_boundary_extraction": {
             "status": "not_applicable",
             "notes": "http4k has no transaction management layer. Transactions are handled by the persistence library chosen by the user (Exposed, JOOQ, etc.) independently of http4k."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -37553,6 +38145,10 @@
           "transaction_boundary_extraction": {
             "status": "not_applicable",
             "notes": "Javalin has no transaction management (see lang.java.framework.javalin)."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -38016,6 +38612,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -38237,6 +38837,10 @@
           "transaction_boundary_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -38479,6 +39083,10 @@
             "cites": ["internal/custom/kotlin/ktor_di_transactions.go","internal/custom/kotlin/ktor_di_transactions_test.go"],
             "notes": "Exposed transaction { } / newSuspendedTransaction { } boundaries + isolation level; SERIALIZABLE captured, asserted by TestKtorTransactions_BoundaryAndIsolation_3435",
             "verified_at": "2026-05-30"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "partial",
@@ -38755,6 +39363,10 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; @Transactional (JTA/Spring) on Kotlin proven by TestKotlinTransactional_Quarkus_Issue3274 (JTA path covers micronaut too)",
             "verified_at": "2026-05-30"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -39045,6 +39657,10 @@
             "notes": "java extractor language-gated to kotlin; Jakarta @Transactional on Kotlin quarkus class proven by TestKotlinTransactional_Quarkus_Issue3274",
             "verified_at": "2026-05-30"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
@@ -39315,6 +39931,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -39564,6 +40184,10 @@
             "notes": "@Transactional on Kotlin fun/class; method/class boundary names asserted by TestKotlinTransactional_Attributes_3435 (getOrders, processPayment, reconcile)",
             "verified_at": "2026-05-30"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
@@ -39799,6 +40423,12 @@
             "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -39864,6 +40494,12 @@
             "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
             "notes": "New extractor: kotlinJPAMigrationExtractor emits migration entities from Flyway versioned/repeatable class declarations (V2__...), BaseJavaMigration extends, Liquibase @ChangeSet annotations, flyway.migrate() calls, and config bean detection. Partial because SQL migration files (V1__init.sql) are handled by internal/extractors/sql/sql.go."
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -39922,6 +40558,12 @@
             "status": "not_applicable",
             "notes": "Ktorm has no built-in migration layer; migrations are handled externally (Flyway, Liquibase, etc.)"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -39972,6 +40614,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -40028,6 +40676,12 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -40094,6 +40748,12 @@
             "cites": ["internal/custom/kotlin/jpa_compose_ext.go"],
             "notes": "New extractor: kotlinJPAMigrationExtractor covers Flyway/Liquibase migration declarations in Kotlin — same patterns apply to Spring Data JPA projects (both use Flyway/Liquibase for schema migration). SpringLiquibase bean detection is explicit."
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -40150,6 +40810,12 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/orm_schema.go","internal/custom/kotlin/orm_schema_test.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -41105,6 +41771,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -41154,6 +41826,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -41205,6 +41883,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -41254,6 +41938,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -41305,6 +41995,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -41360,6 +42056,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -41411,6 +42113,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -41460,6 +42168,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -41511,6 +42225,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -45188,6 +45908,12 @@
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "CycleORM #[Entity]/#[Column] attributes; HasMany/BelongsTo/ManyToMany relations; lazy Promise proxy; findByPK/findOne/select queries; MigrationInterface class and schema sync."
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45251,6 +45977,12 @@
             "notes": "AbstractMigration subclasses + up/down methods scanned.",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45307,6 +46039,12 @@
             "status": "full",
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "Eloquent $fillable/$casts/Schema::create/Blueprint columns; belongsTo/belongsToMany FK relations; $with eager hints; migration DDL."
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -45370,6 +46108,12 @@
             "cites": ["internal/custom/php/orm_data.go"],
             "notes": "Propel TableMap COL_* constants (schema); addRelation/addForeignKey (relations/FK); LAZY_LOAD constant; PropelMigration classes; XxxQuery::create() calls."
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45427,6 +46171,12 @@
             "status": "not_applicable",
             "notes": "RedBeanPHP is zero-config — schema is created/altered automatically at runtime; no migration files to parse."
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45476,6 +46226,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -45527,6 +46283,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45576,6 +46338,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -45628,6 +46396,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45679,6 +46453,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -45737,6 +46517,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45789,6 +46575,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -45838,6 +46630,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -45890,6 +46688,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -51615,6 +52419,12 @@
             "notes": "Previously FALSE-full (#3630): the cited migration_sequence_enricher.go was orphaned (imported by zero production code) so no sequence/ordering metadata was ever emitted. #3639 wires it as live Pass 8.9 (engine.ApplyMigrationSequence, cmd/archigraph/index.go): each Alembic versions/*.py entity is stamped sequence_number/migration_name/migration_pattern from the filename, and the pass reads the file body (enrichers.ParseAlembicRevisions) to emit a PRECEDES edge along the down_revision to revision DAG, making the migration chain traversable. Separately alembic_schema.go parses upgrade() op content. Partial: op.alter_column type changes, dropped columns, and server_default/constraint metadata are still not modeled.",
             "verified_at": "2026-06-02"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -51674,6 +52484,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -51739,6 +52555,14 @@
             "notes": "django_migration.go parses NNNN_name.py into op_count/operations/dependencies. #3639 additionally stamps sequence_number (the NNNN ordinal) + migration_name + migration_pattern=django on each migration entity via live Pass 8.9 (engine.ApplyMigrationSequence).",
             "verified_at": "2026-06-02"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/python/transaction_boundary.go","internal/extractors/python/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: Django @transaction.atomic decorator AND 'with transaction.atomic():' block stamp transactional=true + tx_source=django_atomic on the enclosing fn.",
+            "verified_at": "2026-06-02"
+          }
         }
       }
     },
@@ -51799,6 +52623,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -51857,6 +52687,12 @@
             "status": "not_applicable",
             "notes": "Peewee-migrate is a separate optional library; core peewee has no built-in migration concept (#3184)"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -51914,6 +52750,12 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "Pony ORM has no built-in migration support; schema changes require manual intervention (#3184)"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -51978,6 +52820,14 @@
             "cites": ["internal/engine/rules/python/orms/alembic.yaml"],
             "issue": "3060",
             "verified_at": "2026-05-29"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/python/transaction_boundary.go","internal/extractors/python/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: SQLAlchemy session.begin()/begin_nested()/engine.begin() stamps transactional=true + tx_source=sqlalchemy_begin on the enclosing Python fn. No transitive propagation.",
+            "verified_at": "2026-06-02"
           }
         }
       }
@@ -52044,6 +52894,12 @@
             "issue": "3056",
             "verified_at": "2026-05-29"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -52103,6 +52959,12 @@
           "migration_parsing": {
             "status": "not_applicable",
             "notes": "Aerich handles migrations separately; core tortoise-orm has no built-in migration support (#3184)"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -52321,6 +53183,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -52370,6 +53238,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -52422,6 +53296,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -52473,6 +53353,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -52521,6 +53407,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -52579,6 +53471,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -52627,6 +53525,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -52678,6 +53582,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -52726,6 +53636,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -54933,6 +55849,14 @@
             "issue": "3639",
             "notes": "db/migrate/*.rb parsed into normalized SCOPE.Evolution ops (create_table/add_column/drop_column/alter_column/create_index/add_reference/add_foreign_key/drop_table), plus typed columns inside create_table blocks and FK entities. Test: TestDeepMigration_CreateTableColumnsAndOps asserts exact op subtypes+columns+FKs. #3639 additionally stamps sequence_number (the YYYYMMDDHHMMSS timestamp) + migration_name + migration_pattern=rails on each db/migrate entity via live Pass 8.9 (engine.ApplyMigrationSequence)."
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "full",
+            "cites": ["internal/extractors/ruby/ruby.go","internal/extractors/ruby/transaction_boundary_test.go","internal/txscope/txscope.go"],
+            "notes": "#3628: ActiveRecord Model.transaction do / { } block stamps transactional=true + tx_source=rails_transaction on the enclosing Ruby method. No transitive propagation; attribute reads (obj.transaction) not matched.",
+            "verified_at": "2026-06-02"
+          }
         }
       }
     },
@@ -54991,6 +55915,12 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/activerecord.go"],
             "notes": "DataMapper::Migration / migration(n, :name) blocks, create_table/add_column via dm-migrations. Part of #3282."
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -55051,6 +55981,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -55109,6 +56045,12 @@
             "status": "partial",
             "cites": ["internal/custom/ruby/activerecord.go"],
             "notes": "ROM-rb uses Sequel.migration underneath; migration block detection covers this. Part of #3282."
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -55169,6 +56111,12 @@
             "cites": ["internal/custom/ruby/activerecord.go"],
             "notes": "Sequel.migration, DB.create_table/alter_table, add_column inside Sequel migration blocks. Part of #3282."
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -55219,6 +56167,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -55268,6 +56222,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -55316,6 +56276,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -55367,6 +56333,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -55415,6 +56387,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -55470,6 +56448,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -55518,6 +56502,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -55569,6 +56559,12 @@
           "migration_parsing": {
             "status": "not_applicable"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -55617,6 +56613,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -57659,6 +58661,12 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -58975,6 +59983,12 @@
             "notes": "Detects embed_migrations!(), run_pending_migrations(), impl MigrationHarness patterns",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -59033,6 +60047,12 @@
             "notes": "Detects table_meta! and rbatis::table_sync! migration macros",
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -59080,6 +60100,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -59145,6 +60171,12 @@
             "cites": ["internal/custom/rust/seaorm.go","internal/custom/rust/testdata/seaorm_migration.rs"],
             "verified_at": "2026-05-30"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -59199,6 +60231,12 @@
             "cites": ["internal/custom/rust/sqlx_rbatis.go","internal/custom/rust/sqlx_rbatis_test.go"],
             "notes": "sqlx::migrate! path + migration file refs detected; parsing the referenced migrations/*.sql DDL is out of scope (sqlx resolves them at compile time, not in the .rs source).",
             "verified_at": "2026-05-30"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -59359,6 +60397,10 @@
           "transaction_boundary_extraction": {
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -59630,6 +60672,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -59884,6 +60930,10 @@
           "transaction_boundary_extraction": {
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -60153,6 +61203,10 @@
           "transaction_boundary_extraction": {
             "status": "not_applicable",
             "notes": "Cats Effect is an effect-system runtime, not a web backend — no routing/DI/transaction/AOP container."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -60441,6 +61495,10 @@
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
@@ -60720,6 +61778,10 @@
           "transaction_boundary_extraction": {
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "not_applicable",
@@ -61008,6 +62070,10 @@
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
@@ -61284,6 +62350,10 @@
           "transaction_boundary_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -61912,6 +62982,10 @@
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
@@ -62174,6 +63248,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -62410,6 +63488,10 @@
           "transaction_boundary_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           },
           "transaction_propagation": {
             "status": "missing",
@@ -62671,6 +63753,10 @@
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
           },
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          },
           "transaction_propagation": {
             "status": "not_applicable",
             "notes": "Scala HTTP framework layer does not define transaction boundaries. Transactions are managed by the ORM/DB layer (Slick, Doobie, quill, ZIO-jdbc). These frameworks do not provide @Transactional annotations or equivalent transaction interceptors. The orm.* records cover transaction tracking for Scala persistence libraries."
@@ -62897,6 +63983,12 @@
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "Doobie does not manage migrations; use Flyway or Liquibase alongside doobie"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -62951,6 +64043,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -63010,6 +64108,12 @@
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "Quill does not manage schema migrations; use Flyway/Liquibase/scala-migrations alongside Quill"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -63067,6 +64171,12 @@
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "scalikejdbcDBMigrationRe captures DB autoCommit/localTx blocks which can contain DDL; scalikejdbc-play-support includes DB evolution integration"
           }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
+          }
         }
       }
     },
@@ -63121,6 +64231,12 @@
         "Migrations": {
           "migration_parsing": {
             "status": "not_applicable"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }
@@ -63180,6 +64296,12 @@
             "status": "full",
             "cites": ["internal/custom/scala/orm_extractors.go"],
             "notes": "slickMigrationRe captures schema.create / schema.createIfNotExists / DBIO.seq DDL patterns; full SQL migration file parsing not applicable (use Flyway)"
+          }
+        },
+        "Transactions": {
+          "transaction_function_stamping": {
+            "status": "missing",
+            "issue": "3628-transaction-function-stamping"
           }
         }
       }

@@ -66,21 +66,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Diesel](../detail/lang.rust.orm.diesel.md) | 🟢 7/7 | |
-| [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟢 4/4 | |
-| [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟢 8/8 | |
-| [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/8 | |
-| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🔴 0/1 | |
-| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | ✅ 1/1 | |
-| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/1 | |
-| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | ✅ 1/1 | |
-| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/1 | |
-| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 3/3 | |
-| [redis-rs](../detail/lang.rust.driver.redis.md) | ✅ 1/1 | |
-| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ✅ 1/1 | |
-| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/1 | |
-| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟢 4/4 | |
-| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🔴 0/1 | |
+| [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 7/8 | |
+| [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 4/5 | |
+| [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 8/9 | |
+| [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/9 | |
+| [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🔴 0/2 | |
+| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/2 | |
+| [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/2 | |
+| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🟡 1/2 | |
+| [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/2 | |
+| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟡 3/4 | |
+| [redis-rs](../detail/lang.rust.driver.redis.md) | 🟡 1/2 | |
+| [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 1/2 | |
+| [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/2 | |
+| [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 4/5 | |
+| [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🔴 0/2 | |
 
 
 ## Other

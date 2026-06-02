@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -38,6 +38,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | — `not_applicable` | — | — | `internal/custom/scala/orm_extractors.go` | Quill does not manage schema migrations; use Flyway/Liquibase/scala-migrations alongside Quill |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 
 ## Provenance
 

@@ -406,6 +406,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitGenericDecoratorProperties(root, file, &entities)
 	}()
 
+	// #3628 — transaction-boundary stamping. Mark function/method entities that
+	// open a DB transaction (@transaction.atomic decorator, `with
+	// transaction.atomic():`, SQLAlchemy session.begin()/engine.begin()) with
+	// Properties["transactional"]="true" + tx_source. No transitive
+	// propagation — only the lexically-enclosing function is stamped.
+	func() {
+		defer func() { _ = recover() }()
+		emitTransactionBoundaryProperties(root, file, &entities)
+	}()
+
 	// Issue #2989 — Type System extraction. Stamps pattern_type +
 	// structural properties on Protocol / Enum / TypedDict / NamedTuple /
 	// dataclass class entities and emits SCOPE.Schema/type_alias entities for

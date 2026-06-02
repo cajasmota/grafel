@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # python
 
-**Frameworks**: 23 · **Tools**: 15 · **ORMs**: 18 · **Other**: 7
+**Frameworks**: 23 · **Tools**: 15 · **ORMs**: 18 · **Other**: 8
 
 Back to [summary](../summary.md).
 
@@ -90,30 +90,31 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟢 2/2 | |
-| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/6 | |
-| [Django ORM](../detail/lang.python.orm.django.md) | ✅ 8/8 | |
-| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟡 5/6 | |
-| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟢 2/2 | |
-| [Peewee](../detail/lang.python.orm.peewee.md) | 🟢 6/6 | |
-| [Pony ORM](../detail/lang.python.orm.pony.md) | 🟢 6/6 | |
-| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
-| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟢 8/8 | |
-| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟢 7/7 | |
-| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ✅ 1/1 | |
-| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ✅ 1/1 | |
-| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ✅ 1/1 | |
-| [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/4 | |
-| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
-| [pymongo / motor](../detail/lang.python.driver.mongodb.md) | ✅ 1/1 | |
-| [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
-| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |
+| [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟡 2/3 | |
+| [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/7 | |
+| [Django ORM](../detail/lang.python.orm.django.md) | ✅ 9/9 | |
+| [MongoEngine](../detail/lang.python.orm.mongoengine.md) | 🟡 5/7 | |
+| [MySQL (PyMySQL / mysqlclient)](../detail/lang.python.driver.mysql.md) | 🟡 2/3 | |
+| [Peewee](../detail/lang.python.orm.peewee.md) | 🟡 6/7 | |
+| [Pony ORM](../detail/lang.python.orm.pony.md) | 🟡 6/7 | |
+| [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 9/9 | |
+| [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟡 8/9 | |
+| [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟡 7/8 | |
+| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🟡 1/2 | |
+| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🟡 1/2 | |
+| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🟡 1/2 | |
+| [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/5 | |
+| [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟡 2/3 | |
+| [pymongo / motor](../detail/lang.python.driver.mongodb.md) | 🟡 1/2 | |
+| [redis-py](../detail/lang.python.driver.redis.md) | 🟡 1/2 | |
+| [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟡 2/3 | |
 
 
 ## Other
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
+| [APScheduler (Python advanced scheduler)](../detail/msg.apscheduler.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
 | [Celery (Python task queue)](../detail/msg.celery.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | [message_broker](../by-category/message_broker.md) | ✅ | |
 | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | [message_broker](../by-category/message_broker.md) | ✅ | |

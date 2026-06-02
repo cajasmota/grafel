@@ -18,6 +18,7 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/txscope"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -122,6 +123,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		if rec, ok := buildMethod(node, file, "function"); ok {
 			rec.Relationships = append(rec.Relationships,
 				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
+			rec.Properties = stampRubyTx(node, file, rec.Properties)
 			*out = append(*out, rec)
 		}
 		return
@@ -130,6 +132,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		if rec, ok := buildMethod(node, file, "function"); ok {
 			rec.Relationships = append(rec.Relationships,
 				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name)...)
+			rec.Properties = stampRubyTx(node, file, rec.Properties)
 			*out = append(*out, rec)
 		}
 		return
@@ -219,6 +222,15 @@ func rubyCallTarget(call *sitter.Node, src []byte) string {
 		}
 	}
 	return ""
+}
+
+// stampRubyTx adds transaction-boundary properties (#3628) to a method entity
+// when an ActiveRecord `Model.transaction do ... end` / `Model.transaction { }`
+// block is lexically present in the method's source span. No transitive
+// propagation — only the method where `transaction do` appears is stamped.
+func stampRubyTx(node *sitter.Node, file extractor.FileInput, props map[string]string) map[string]string {
+	src := string(file.Content[node.StartByte():node.EndByte()])
+	return txscope.DetectRuby(src).Apply(props)
 }
 
 // buildRequireImport emits a SCOPE.Component module entity with a single

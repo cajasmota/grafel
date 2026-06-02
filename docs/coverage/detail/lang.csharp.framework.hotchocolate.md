@@ -80,7 +80,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Config consumption | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/csharp/config_consumer.go`<br>`internal/extractors/csharp/config_consumer_test.go` | IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -> config:<key> (issue #3641) |
 | Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

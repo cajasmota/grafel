@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Log extraction | — `not_applicable` | — | — | — | — |
-| Metric extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/_engine/comment_marker_extractor.yaml` | — |
+| Metric extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3762) | `internal/engine/rules/_engine/comment_marker_extractor.yaml`<br>`internal/extractors/python/observability.go` | #3628 area #11: prometheus_client Python metrics emit INSTRUMENTS edges (enclosing op -> metric:<name> stub). A module-level metric declaration X = Counter|Gauge|Summary|Histogram|Info|Enum("name", ...) is registered, then @X.time()/@X.count_exceptions()/@X.track_inprogress() decorators and X.inc()/dec()/observe()/set() body calls resolve to metric:name with the metric name captured. Honest-partial: a non-literal metric name yields traced=true+dynamic=true; a .inc()/.time() on a variable that is NOT a known module-level metric is NOT emitted (precision). Only Python is covered. |
 | Trace extraction | — `not_applicable` | — | — | — | — |
 
 ## Provenance

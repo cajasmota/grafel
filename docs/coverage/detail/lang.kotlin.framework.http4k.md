@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 47
+- **Capability cells:** 48
 
 ## Capabilities
 
@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | — `not_applicable` | — | — | — | http4k has no transaction management layer. Transactions are handled by the persistence library chosen by the user (Exposed, JOOQ, etc.) independently of http4k. |
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | — `not_applicable` | — | — | — | http4k has no transaction propagation model. Not applicable by framework design. |
 | Transaction rollback rules | — `not_applicable` | — | — | — | http4k has no transaction rollback model. Not applicable by framework design. |
 

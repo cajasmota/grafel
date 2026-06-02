@@ -80,7 +80,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Config consumption | 🔴 `missing` | — | 3641 | — | — |
+| Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/php/config_consumer.go`<br>`internal/extractors/php/config_consumer_test.go` | getenv/$_ENV + Laravel env()/config() -> config:<key> DEPENDS_ON_CONFIG edges (issue #3641) |
 | Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

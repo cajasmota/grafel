@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -31,13 +31,19 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries_python.go` | — |
+| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/orm_queries_python.go`<br>`internal/extractors/cross/dbmap/orms.go`<br>`internal/extractors/cross/dbmap/query_builders.go`<br>`internal/extractors/cross/dbmap/query_builders_test.go` | ORM session.query attribution via orm_queries_python. #3628 area #3 ADDS the SQLAlchemy Core builder surface: select(table_obj) and table_obj.insert()/update()/delete() resolve the Table('name',...) object to its literal → ACCESSES_TABLE edges. Proven by TestSQLAlchemyCore* in query_builders_test.go. |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ✅ `full` | `2026-05-29` | 3060 | `internal/engine/rules/python/orms/alembic.yaml` | — |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | ✅ `full` | `2026-06-02` | — | `internal/extractors/python/transaction_boundary.go`<br>`internal/extractors/python/transaction_boundary_test.go`<br>`internal/txscope/txscope.go` | #3628: SQLAlchemy session.begin()/begin_nested()/engine.begin() stamps transactional=true + tx_source=sqlalchemy_begin on the enclosing Python fn. No transitive propagation. |
 
 ## Provenance
 

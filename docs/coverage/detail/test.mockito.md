@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency graph | 🔴 `missing` | — | — | — | — |
-| Target extraction | 🔴 `missing` | — | — | — | — |
+| Target extraction | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3753) | `internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/resolver.go` | Mockito when(svc.method()).thenReturn(...) stubs resolve to a medium-confidence TESTS edge on the stubbed production method via testmap mockSetupREs; direct calls on the SUT in @Test bodies resolve high. |
 
 ## Provenance
 

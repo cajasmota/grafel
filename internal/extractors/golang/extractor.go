@@ -41,6 +41,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/txscope"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -1073,6 +1074,13 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 			Metadata:           metadata,
 			Relationships:      relationships,
 			EnrichmentRequired: false,
+		}
+		// Transaction-boundary stamp (#3628): mark the function transactional
+		// when a db.Begin()/BeginTx/GORM-Transaction construct is lexically
+		// present in its body. No transitive propagation — a function that
+		// merely receives a *sql.Tx is not stamped.
+		if tx := txscope.DetectGo(nodeText(bodyOrNode, src)); tx.Transactional {
+			rec.Properties = tx.Apply(rec.Properties)
 		}
 		records = append(records, rec)
 	}

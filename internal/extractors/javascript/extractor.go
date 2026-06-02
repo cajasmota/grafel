@@ -39,6 +39,7 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/txscope"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -651,6 +652,7 @@ func (x *extractor) emitWithRels(name, kind string, n *sitter.Node, subtype stri
 		QualityScore:     1.0,
 		Relationships:    rels,
 	}
+	x.stampTransactional(&e, n, subtype)
 	e.ID = e.ComputeID()
 	x.entities = append(x.entities, e)
 }
@@ -693,8 +695,32 @@ func (x *extractor) emitWithProps(name, kind string, n *sitter.Node, subtype str
 		QualityScore:     1.0,
 		Relationships:    rels,
 	}
+	x.stampTransactional(&e, n, subtype)
 	e.ID = e.ComputeID()
 	x.entities = append(x.entities, e)
+}
+
+// txOperationSubtypes gates the function-like SCOPE.Operation subtypes that may
+// carry a transaction boundary. Restricting to these avoids stamping non-fn
+// operations (state_setter, component_prop, …) on an incidental regex match.
+var txOperationSubtypes = map[string]bool{
+	"function": true, "method": true, "react_hook": true,
+}
+
+// stampTransactional adds transaction-boundary properties (#3628) to a
+// function-like JS/TS operation when a Sequelize/TypeORM/Prisma/Knex
+// `.transaction(...)` call (or @Transaction() decorator) is lexically present
+// in the entity's source span. No transitive propagation — a callee that merely
+// receives an EntityManager but does not open a transaction is not stamped.
+func (x *extractor) stampTransactional(e *types.EntityRecord, n *sitter.Node, subtype string) {
+	if n == nil || !txOperationSubtypes[subtype] {
+		return
+	}
+	tx := txscope.DetectJSTS(x.nodeText(n))
+	if !tx.Transactional {
+		return
+	}
+	e.Properties = tx.Apply(e.Properties)
 }
 
 // walk performs a depth-first traversal of the CST, dispatching on node type.

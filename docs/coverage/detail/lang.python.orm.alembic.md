@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -38,6 +38,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | 🟢 `partial` | `2026-06-02` | 3639 | `internal/custom/python/alembic_schema.go`<br>`internal/engine/migration_sequence.go`<br>`internal/engine/rules/python/orms/alembic.yaml`<br>`internal/enrichers/migration_sequence_enricher.go` | Previously FALSE-full (#3630): the cited migration_sequence_enricher.go was orphaned (imported by zero production code) so no sequence/ordering metadata was ever emitted. #3639 wires it as live Pass 8.9 (engine.ApplyMigrationSequence, cmd/archigraph/index.go): each Alembic versions/*.py entity is stamped sequence_number/migration_name/migration_pattern from the filename, and the pass reads the file body (enrichers.ParseAlembicRevisions) to emit a PRECEDES edge along the down_revision to revision DAG, making the migration chain traversable. Separately alembic_schema.go parses upgrade() op content. Partial: op.alter_column type changes, dropped columns, and server_default/constraint metadata are still not modeled. |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 
 ## Provenance
 

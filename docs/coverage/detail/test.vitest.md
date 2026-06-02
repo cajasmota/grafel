@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency graph | ✅ `full` | `2026-05-28` | — | `internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
-| Target extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/config/discover.go`<br>`internal/extractors/config/discover_test.go` | — |
+| Target extraction | ✅ `full` | `2026-06-02` | — | `internal/extractors/config/discover.go`<br>`internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/resolver.go` | — |
 
 ## Provenance
 

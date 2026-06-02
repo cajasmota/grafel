@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 47
+- **Capability cells:** 48
 
 ## Capabilities
 
@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/ktor_di_transactions.go`<br>`internal/custom/kotlin/ktor_di_transactions_test.go` | Exposed transaction { } / newSuspendedTransaction { } boundaries + isolation level; SERIALIZABLE captured, asserted by TestKtorTransactions_BoundaryAndIsolation_3435 |
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed transaction propagation defaults to REQUIRED; newSuspendedTransaction is coroutine-aware — file-local |
 | Transaction rollback rules | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/kotlin/ktor_di_transactions.go` | Exposed isolation level hints (Connection.TRANSACTION_*) extracted as rollback context — file-local |
 

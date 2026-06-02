@@ -80,20 +80,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | 🟢 3/3 | |
-| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟢 8/8 | |
-| [GORM](../detail/lang.go.orm.gorm.md) | 🟢 8/8 | |
-| [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟢 8/8 | |
-| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🟢 3/3 | |
-| [go-elasticsearch](../detail/lang.go.driver.elastic.md) | 🟢 4/4 | |
-| [go-redis](../detail/lang.go.driver.redis.md) | 🟢 2/2 | |
-| [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟢 2/2 | |
-| [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟢 2/2 | |
-| [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟢 1/1 | |
-| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟢 4/4 | |
-| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟢 3/3 | |
-| [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟢 3/3 | |
-| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟢 4/4 | |
-| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟢 4/4 | |
-| [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 5/5 | |
-| [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟢 6/6 | |
+| [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | 🟡 3/4 | |
+| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟡 8/9 | |
+| [GORM](../detail/lang.go.orm.gorm.md) | 🟢 9/9 | |
+| [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟡 8/9 | |
+| [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🟡 3/4 | |
+| [go-elasticsearch](../detail/lang.go.driver.elastic.md) | 🟡 4/5 | |
+| [go-redis](../detail/lang.go.driver.redis.md) | 🟡 2/3 | |
+| [go-sql-driver/mysql](../detail/lang.go.driver.mysql.md) | 🟡 2/3 | |
+| [gocql (Cassandra)](../detail/lang.go.driver.cassandra.md) | 🟡 2/3 | |
+| [golang-migrate](../detail/lang.go.orm.migrate.md) | 🟡 1/2 | |
+| [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟡 4/5 | |
+| [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟡 3/4 | |
+| [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 3/4 | |
+| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟡 4/5 | |
+| [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 4/5 | |
+| [sqlx](../detail/lang.go.orm.sqlx.md) | 🟢 6/6 | |
+| [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟡 6/7 | |

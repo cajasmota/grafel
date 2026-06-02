@@ -2507,6 +2507,27 @@ records:
               functions: [TestTransactional_Boundary_Propagation_Rollback_Issue3003]
           issues_implemented: ["3003"]
           verified_at: "2026-05-30"
+        transaction_function_stamping:
+          # #3628: stamps transactional=true + tx_propagation/tx_isolation/
+          # tx_read_only/tx_source DIRECTLY on the enclosing function/method
+          # entity (not a parallel SCOPE.Pattern node), so the graph answers
+          # "which operations run inside a DB transaction?" for rewrite parity.
+          # Detection signals live in the shared internal/txscope package; the
+          # Java extractor wires DetectJava + the class-level propagation
+          # post-pass. No transitive propagation (honesty boundary).
+          status: full
+          symbols:
+            - file: internal/txscope/txscope.go
+              functions: [DetectJava, DetectGo, DetectPython, DetectRuby, DetectJSTS]
+            - file: internal/extractors/java/java.go
+              functions: [javaMethodTxStamp, methodModifiersText, stampClassLevelTransactional, walkClassTx, findJavaOp]
+          tests:
+            - file: internal/txscope/txscope_test.go
+              functions: [TestDetectJava_TransactionalWithPropagation, TestDetectGo_BeginTxWithIsolation, TestDetectPython_AtomicBlock, TestDetectRuby_TransactionDo, TestDetectJSTS_TypeORMTransaction]
+            - file: internal/extractors/java/transaction_boundary_test.go
+              functions: [TestJavaTx_MethodTransactionalWithPropagation, TestJavaTx_ClassLevelPropagatesToMethods, TestJavaTx_JtaTxType]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Routing:
         endpoint_synthesis:
           # #3347: path_params property is now emitted on every Route entity listing

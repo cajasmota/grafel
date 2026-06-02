@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -38,6 +38,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/gorm.go`<br>`internal/custom/golang/gorm_test.go` | — |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | ✅ `full` | `2026-06-02` | — | `internal/extractors/golang/extractor.go`<br>`internal/extractors/golang/transaction_boundary_test.go`<br>`internal/txscope/txscope.go` | #3628: stamps transactional=true + tx_source/tx_isolation on Go fn entities that open db.Begin()/BeginTx/GORM Transaction. No transitive propagation. |
 
 ## Provenance
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -38,6 +38,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | ✅ `full` | `2026-06-02` | 3639 | `internal/engine/migration_sequence.go`<br>`internal/extractors/python/django_migration.go` | django_migration.go parses NNNN_name.py into op_count/operations/dependencies. #3639 additionally stamps sequence_number (the NNNN ordinal) + migration_name + migration_pattern=django on each migration entity via live Pass 8.9 (engine.ApplyMigrationSequence). |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | ✅ `full` | `2026-06-02` | — | `internal/extractors/python/transaction_boundary.go`<br>`internal/extractors/python/transaction_boundary_test.go`<br>`internal/txscope/txscope.go` | #3628: Django @transaction.atomic decorator AND 'with transaction.atomic():' block stamp transactional=true + tx_source=django_atomic on the enclosing fn. |
 
 ## Provenance
 

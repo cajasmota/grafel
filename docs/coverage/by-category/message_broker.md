@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 34 records · **C/C++**: 3 · **elixir**: 2 · **JS/TS**: 1 · **multi**: 21 · **python**: 3 · **ruby**: 2 · **rust**: 2
+**Total**: 39 records · **C/C++**: 3 · **C#**: 1 · **elixir**: 2 · **JS/TS**: 2 · **multi**: 21 · **python**: 4 · **ruby**: 4 · **rust**: 2
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -10,9 +10,11 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [C/C++](../by-language/c-cpp.md) | [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [C/C++](../by-language/c-cpp.md) | [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [C/C++](../by-language/c-cpp.md) | [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [C#](../by-language/csharp.md) | [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | 🟢 | — | — | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Phoenix Channels](../detail/msg.phoenix-channels.md) | 🔴 | ✅ | 🟢 | 🔴 | |
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [node-schedule (Node scheduled jobs)](../detail/msg.node-schedule.md) | 🟢 | — | — | 🟢 | |
 | [multi](../by-language/multi.md) | [AMQP (generic)](../detail/msg.broker.amqp.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS EventBridge](../detail/msg.broker.eventbridge.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS SNS](../detail/msg.broker.sns.md) | ✅ | ✅ | ✅ | ✅ | |
@@ -34,10 +36,13 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [SignalR](../detail/msg.signalr.md) | 🔴 | ✅ | — | 🔴 | |
 | [multi](../by-language/multi.md) | [WebSocket](../detail/msg.websocket.md) | ✅ | ✅ | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Webhooks](../detail/msg.webhook.md) | ✅ | ✅ | 🟢 | 🟢 | |
+| [python](../by-language/python.md) | [APScheduler (Python advanced scheduler)](../detail/msg.apscheduler.md) | 🟢 | — | — | 🟢 | |
 | [python](../by-language/python.md) | [Celery (Python task queue)](../detail/msg.celery.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | ✅ | ✅ | — | ✅ | |
 | [ruby](../by-language/ruby.md) | [Resque (Ruby task queue)](../detail/msg.resque.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [ruby](../by-language/ruby.md) | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🟢 | 🟢 | — | 🟢 | |
+| [ruby](../by-language/ruby.md) | [rufus-scheduler (Ruby in-process scheduler)](../detail/msg.rufus-scheduler.md) | 🟢 | — | — | 🟢 | |
+| [ruby](../by-language/ruby.md) | [whenever (Ruby cron / config/schedule.rb)](../detail/msg.whenever.md) | 🟢 | — | — | 🟢 | |
 | [rust](../by-language/rust.md) | [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [rust](../by-language/rust.md) | [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |

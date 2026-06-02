@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [orm](../by-category/orm.md)
 - **Subcategory:** ORM / Data Mapper
-- **Capability cells:** 8
+- **Capability cells:** 9
 
 ## Capabilities
 
@@ -38,6 +38,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Migration parsing | 🟢 `partial` | `2026-05-30` | 3214 | `internal/custom/golang/sql_drivers.go`<br>`internal/custom/golang/sql_drivers_test.go` | file-based NNN_slug.up/down.sql migrations recognised by filename; no migration runner integration; ALTER TABLE in migration content not parsed for schema delta |
+
+### Transactions
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Transaction function stamping | ✅ `full` | `2026-06-02` | — | `internal/extractors/golang/extractor.go`<br>`internal/extractors/golang/transaction_boundary_test.go`<br>`internal/txscope/txscope.go` | #3628: database/sql db.Begin()/BeginTx(ctx, sql.TxOptions{Isolation}) stamps transactional=true + tx_isolation on the enclosing Go fn. No transitive propagation (a fn receiving *sql.Tx is not stamped). |
 
 ## Provenance
 

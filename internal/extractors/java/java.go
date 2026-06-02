@@ -40,11 +40,98 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/txscope"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
 func init() {
 	extractor.Register("java", &Extractor{})
+}
+
+// javaMethodTxStamp inspects a method_declaration's `modifiers` child (where
+// tree-sitter Java places annotations) for @Transactional and returns the
+// resulting transaction stamp. Scanning only the modifiers — not the whole
+// method body — avoids false positives from an @Transactional token appearing
+// inside a string literal or comment in the body. Returns a zero stamp when no
+// @Transactional annotation is present.
+func javaMethodTxStamp(methodNode *sitter.Node, src []byte) txscope.Stamp {
+	mods := methodModifiersText(methodNode, src)
+	if mods == "" {
+		return txscope.Stamp{}
+	}
+	return txscope.DetectJava(mods)
+}
+
+// methodModifiersText returns the source text of a declaration's `modifiers`
+// child (annotations + visibility keywords), or "" when absent.
+func methodModifiersText(node *sitter.Node, src []byte) string {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch != nil && ch.Type() == "modifiers" {
+			return nodeText(ch, src)
+		}
+	}
+	return ""
+}
+
+// stampClassLevelTransactional walks every class/interface/enum/record body
+// whose own `modifiers` carry @Transactional, and stamps every enclosed method
+// operation entity that is not already transactional with the class-level
+// stamp. This realises Spring's class-level @Transactional → all-methods
+// semantics. A method with its own @Transactional (already stamped during the
+// primary walk) keeps its own — more specific — propagation/isolation.
+func stampClassLevelTransactional(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+	if root == nil || entities == nil {
+		return
+	}
+	walkClassTx(root, "", file, entities)
+}
+
+func walkClassTx(n *sitter.Node, pkgQualifier string, file extractor.FileInput, entities *[]types.EntityRecord) {
+	if n == nil {
+		return
+	}
+	switch n.Type() {
+	case "class_declaration", "interface_declaration", "enum_declaration", "record_declaration":
+		className := childFieldText(n, "name", file.Content)
+		classStamp := txscope.DetectJava(methodModifiersText(n, file.Content))
+		if classStamp.Transactional && className != "" {
+			if body := n.ChildByFieldName("body"); body != nil {
+				for i := 0; i < int(body.ChildCount()); i++ {
+					ch := body.Child(i)
+					if ch == nil || ch.Type() != "method_declaration" {
+						continue
+					}
+					methodName := childFieldText(ch, "name", file.Content)
+					if methodName == "" {
+						continue
+					}
+					op := findJavaOp(*entities, file.Path, className+"."+methodName)
+					if op == nil || op.Properties["transactional"] == "true" {
+						// Already stamped by its own method-level annotation, or
+						// not found — leave the more-specific stamp intact.
+						continue
+					}
+					op.Properties = classStamp.Apply(op.Properties)
+				}
+			}
+		}
+	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		walkClassTx(n.Child(i), pkgQualifier, file, entities)
+	}
+}
+
+// findJavaOp returns the SCOPE.Operation entity with the given file + emitted
+// (Class.method) name, or nil.
+func findJavaOp(entities []types.EntityRecord, filePath, emittedName string) *types.EntityRecord {
+	for i := range entities {
+		e := &entities[i]
+		if e.Kind == "SCOPE.Operation" && e.SourceFile == filePath && e.Name == emittedName {
+			return e
+		}
+	}
+	return nil
 }
 
 // Extractor implements extractor.Extractor for Java.
@@ -83,6 +170,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// can be set to "<package>.<ClassName>" and "<package>.<Class>.<method>".
 	pkgName := collectPackageName(root, file.Content)
 	walk(root, file, "", nil, imports, pkgName, &entities)
+
+	// #3628 — class-level @Transactional propagation. A class annotated
+	// @Transactional makes all of its (public) methods transactional in Spring;
+	// stamp each method operation that was not already stamped by its own
+	// method-level annotation. Runs after walk so all method operations exist.
+	func() {
+		defer func() { _ = recover() }()
+		stampClassLevelTransactional(root, file, &entities)
+	}()
 
 	// Issue #681 — attach IMPORTS relationships directly to the file-level
 	// entity instead of emitting a separate SCOPE.Component placeholder
@@ -532,6 +628,12 @@ func walk(
 			// annotations and spanBuilder(...).startSpan() chains.
 			rec.Relationships = append(rec.Relationships,
 				javaTracingSpanEdges(node, selfName, file.Content)...)
+			// #3628 — transaction-boundary stamping. Mark the method
+			// transactional when it carries @Transactional (Spring or JTA),
+			// capturing propagation / isolation / readOnly. Class-level
+			// @Transactional is propagated to enclosing methods in a post-pass
+			// (stampClassLevelTransactional).
+			rec.Properties = javaMethodTxStamp(node, file.Content).Apply(rec.Properties)
 			*out = append(*out, rec)
 		}
 		return

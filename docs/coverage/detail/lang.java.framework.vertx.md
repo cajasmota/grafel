@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 47
+- **Capability cells:** 48
 
 ## Capabilities
 
@@ -66,6 +66,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Transaction boundary extraction | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
+| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
 | Transaction propagation | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
 | Transaction rollback rules | — `not_applicable` | — | [link](https://github.com/cajasmota/archigraph/issues/3086) | — | Vert.x has no built-in transaction management. Applications use manual async callbacks or Vert.x SQL client directly. |
 
