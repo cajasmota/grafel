@@ -32,8 +32,8 @@ const FormatVersion = fbversion.Version
 // the canonical archigraph v2 binary graph.
 //
 // This is a thin wrapper around StreamingWriter for backward compatibility.
-// Callers that already hold a complete *graph.Document (e.g. PatchMetadata,
-// clone-from-parent PH7) continue to work unchanged.
+// Callers that already hold a complete *graph.Document continue to work
+// unchanged.
 func WriteAtomic(outPath string, doc *graph.Document) error {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return fmt.Errorf("fbwriter: mkdir %s: %w", filepath.Dir(outPath), err)

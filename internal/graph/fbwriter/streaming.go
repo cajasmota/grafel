@@ -85,7 +85,7 @@ type GraphMetadata struct {
 // Use StreamingWriter during the main index pipeline where entities are
 // produced batch-by-batch and the caller wants to discard each batch after
 // serialization rather than accumulate the full slice. For one-shot document
-// writes (metadata patches, clone-from-parent) continue to use WriteAtomic.
+// writes continue to use WriteAtomic.
 //
 // # Concurrency
 //

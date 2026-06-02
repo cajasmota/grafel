@@ -104,28 +104,6 @@ type IncrementalResult struct {
 // to fall through to IndexFn (full reindex fallback).
 type IncrementalFn func(ctx context.Context, repoPath string, ref string) IncrementalResult
 
-// CloneResult carries the outcome of a clone-from-parent attempt.
-// Mirrors clone.Result without importing the clone package here to
-// avoid a circular dependency (clone imports daemon for StateDirForRepoRef).
-type CloneResult struct {
-	// Done is true when the clone succeeded and the new ref is now indexed.
-	Done bool
-	// ParentRef is the ref that was used as the seed.
-	ParentRef string
-	// ChangedFiles is the number of files that were re-extracted.
-	ChangedFiles int
-}
-
-// CloneFn attempts the PH7 clone-from-parent optimisation before the
-// full IndexFn is called. Returns (done=true) when the clone succeeded
-// and the full reindex should be skipped. Returns (done=false) on any
-// precondition failure or error — the scheduler falls through to IndexFn.
-//
-// The function is invoked only when the target ref has not been indexed
-// before; repeat invocations for an already-indexed ref are suppressed
-// by the scheduler.
-type CloneFn func(ctx context.Context, repoPath string, ref string) CloneResult
-
 // Config wires the scheduler. All function fields are required; nil
 // causes Enqueue to short-circuit with a logged warning.
 type Config struct {
@@ -168,13 +146,6 @@ type Config struct {
 	// 0 (or negative) means: auto = max(2, runtime.NumCPU()/2).
 	// Set to 1 to fully serialise algo passes.
 	AlgoCap int
-
-	// Clone, when non-nil, is attempted before IndexFn for any ref that has
-	// no existing graph on disk. If Clone returns done=true, IndexFn is
-	// skipped for that job. If Clone returns done=false (any precondition
-	// failure or error), IndexFn is called normally (full reindex fallback).
-	// This is the PH7 clone-from-parent optimisation (issue #2099).
-	Clone CloneFn
 
 	// Incremental, when non-nil, is attempted before IndexFn when the
 	// incremental reindex path is enabled (S3 of epic #2149, issue #2153).
@@ -710,16 +681,16 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		}
 	}()
 
-	// S3: attempt incremental file-level reindex before the full index or
-	// clone-from-parent path. Only tried when the Incremental callback is
-	// configured AND the incremental toggle is active.
+	// S3: attempt incremental file-level reindex before the full index.
+	// Only tried when the Incremental callback is configured AND the
+	// incremental toggle is active.
 	//
 	// Issue #2397: consult s.cfg.ExtractorConfig.IsIncrementalEnabled()
 	// (single source of truth) instead of the private incrementalEnabled()
 	// helper that read ARCHIGRAPH_INCREMENTAL_REINDEX directly. The nil-
 	// receiver method falls through to the env-var for backward compat.
 	//
-	// On success (res.Done=true) we skip both clone and full reindex.
+	// On success (res.Done=true) we skip the full reindex.
 	// On fallback (res.Done=false) we log the reason and fall through normally.
 	// Use shutdownCtx for all child-process-spawning calls so that when
 	// Stop() is called (daemon SIGTERM/SIGINT/Stop-RPC), any in-flight
@@ -742,19 +713,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		}
 	}
 
-	// PH7: attempt clone-from-parent before running the full index.
-	// Only tried when the Clone callback is configured AND the job carries
-	// a non-empty ref (so we know which per-ref store to check).
-	cloneSkipped := false
-	if !incrementalDone && s.cfg.Clone != nil && tok.ref != "" {
-		res := s.cfg.Clone(jobCtx, repoPath, tok.ref)
-		if res.Done {
-			cloneSkipped = true
-			s.logEvent("clone_ok", repoPath,
-				"from="+res.ParentRef+" changed_files="+itoa(int64(res.ChangedFiles)))
-		}
-	}
-	if !incrementalDone && !cloneSkipped && s.cfg.Index != nil {
+	if !incrementalDone && s.cfg.Index != nil {
 		err = s.cfg.Index(jobCtx, repoPath, tok.ref)
 	}
 
