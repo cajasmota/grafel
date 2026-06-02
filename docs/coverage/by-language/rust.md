@@ -75,7 +75,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/1 | |
 | [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🔴 0/1 | |
 | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/1 | |
-| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🔴 0/1 | |
+| [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 3/3 | |
 | [redis-rs](../detail/lang.rust.driver.redis.md) | 🔴 0/1 | |
 | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ✅ 1/1 | |
 | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/1 | |

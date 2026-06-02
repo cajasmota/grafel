@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | — `not_applicable` | — | — | — | Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver. |
+| Schema extraction | 🟢 `partial` | `2026-06-02` | — | `internal/custom/elixir/neo4j.go`<br>`internal/custom/elixir/neo4j_test.go` | Node labels in Cypher patterns inside Bolt.Sips.query!/Boltx.query strings surfaced as SCOPE.Schema nodes. Soft schema recovered by regex over the query string, hence partial. |
 
 ### Relationships
 
@@ -25,13 +25,13 @@ Auto-generated. Back to [summary](../summary.md).
 | Association extraction | — `not_applicable` | — | — | — | Raw driver has no association/relationship concept; Ecto handles associations independently. |
 | Foreign key extraction | — `not_applicable` | — | — | — | Foreign key awareness lives in Ecto schema layer, not the raw driver. |
 | Lazy loading recognition | — `not_applicable` | — | — | — | Raw driver; no lazy loading concept. |
-| Relationship extraction | — `not_applicable` | — | — | — | Raw driver protocol; relationship modelling is Ecto's responsibility. |
+| Relationship extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/elixir/neo4j.go`<br>`internal/custom/elixir/neo4j_test.go` | Cypher relationship patterns in Bolt.Sips.query!/Boltx.query strings promoted to traversable GRAPH_RELATES edges between node-label entities (reNeo4jExCypherTriple); statically-resolvable topology full, dynamic/interpolated relations honest-partial. Completes Neo4j GRAPH_RELATES set (epic #3606, #3618). Value-asserting test TestExNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-> Movie; left-arrow flips source; single-node MATCH yields no edge. |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | `internal/custom/elixir/neo4j.go`<br>`internal/custom/elixir/neo4j_test.go` | Bolt.Sips.query!(conn,'CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built query strings not fully recoverable, so partial. |
 
 ### Migrations
 

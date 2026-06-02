@@ -77,7 +77,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🔴 0/1 | |
 | [Redix](../detail/lang.elixir.driver.redix.md) | 🔴 0/1 | |
 | [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | 🔴 0/1 | |
-| [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🔴 0/1 | |
+| [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🟢 3/3 | |
 | [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | 🟢 7/7 | |
 | [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | 🔴 0/1 | |
 | [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | 🔴 0/1 | |

@@ -38,7 +38,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [elixir](../by-language/elixir.md) | [Postgrex](../detail/lang.elixir.driver.postgrex.md) | 🔴 0/1 | |
 | [elixir](../by-language/elixir.md) | [Redix](../detail/lang.elixir.driver.redix.md) | 🔴 0/1 | |
 | [elixir](../by-language/elixir.md) | [Xandra (Cassandra)](../detail/lang.elixir.driver.xandra.md) | 🔴 0/1 | |
-| [elixir](../by-language/elixir.md) | [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🔴 0/1 | |
+| [elixir](../by-language/elixir.md) | [bolt_sips (Neo4j)](../detail/lang.elixir.driver.neo4j.md) | 🟢 3/3 | |
 | [elixir](../by-language/elixir.md) | [ecto_sqlite3](../detail/lang.elixir.orm.ecto-sqlite3.md) | 🟢 7/7 | |
 | [elixir](../by-language/elixir.md) | [elasticsearch-elixir](../detail/lang.elixir.driver.elastic.md) | 🔴 0/1 | |
 | [elixir](../by-language/elixir.md) | [mongodb (Elixir driver)](../detail/lang.elixir.driver.mongodb.md) | 🔴 0/1 | |
@@ -110,7 +110,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [php](../by-language/php.md) | [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | 🔴 0/1 | |
 | [php](../by-language/php.md) | [elasticsearch-php](../detail/lang.php.driver.elastic.md) | 🔴 0/1 | |
 | [php](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🔴 0/1 | |
-| [php](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🔴 0/1 | |
+| [php](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟢 3/3 | |
 | [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🔴 0/1 | |
 | [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [Beanie (async MongoDB ODM)](../detail/lang.python.orm.beanie.md) | 🟡 5/6 | |
@@ -151,7 +151,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/1 | |
-| [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🔴 0/1 | |
+| [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 3/3 | |
 | [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | ✅ 1/1 | |
 | [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🔴 0/1 | |

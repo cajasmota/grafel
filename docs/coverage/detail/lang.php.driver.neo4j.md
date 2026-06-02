@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | — `not_applicable` | — | — | — | Schema-less or server-side schema only; raw PHP driver has no PHP-level schema model to extract. |
+| Schema extraction | 🟢 `partial` | `2026-06-02` | — | `internal/custom/php/neo4j.go`<br>`internal/custom/php/neo4j_test.go` | Node labels in Cypher patterns ((n:Person),(:Movie)) inside ->run/Statement::create strings surfaced as SCOPE.Schema nodes. Soft schema recovered by regex over the query string, hence partial. |
 
 ### Relationships
 
@@ -25,13 +25,13 @@ Auto-generated. Back to [summary](../summary.md).
 | Association extraction | — `not_applicable` | — | — | — | Raw PHP driver — no ORM relation layer; association/relationship/lazy-loading do not apply to raw connection clients. |
 | Foreign key extraction | — `not_applicable` | — | — | — | Raw PHP driver — no ORM relation layer; association/relationship/lazy-loading do not apply to raw connection clients. |
 | Lazy loading recognition | — `not_applicable` | — | — | — | Raw PHP driver — no ORM relation layer; association/relationship/lazy-loading do not apply to raw connection clients. |
-| Relationship extraction | — `not_applicable` | — | — | — | Raw PHP driver — no ORM relation layer; association/relationship/lazy-loading do not apply to raw connection clients. |
+| Relationship extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/php/neo4j.go`<br>`internal/custom/php/neo4j_test.go` | Cypher relationship patterns in laudis ->run('...') strings promoted to traversable GRAPH_RELATES edges between node-label entities (reNeo4jPHPCypherTriple); statically-resolvable topology full, dynamic/untyped/interpolated relations honest-partial. Completes Neo4j GRAPH_RELATES set (epic #3606, #3618) alongside go/java/py/jsts/csharp/ruby. Value-asserting test TestPHPNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-> Movie; left-arrow flips source; single-node MATCH yields no edge. |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | `internal/custom/php/neo4j.go`<br>`internal/custom/php/neo4j_test.go` | ->run('CYPHER') / Statement::create('CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built query strings not fully recoverable, so partial. |
 
 ### Migrations
 

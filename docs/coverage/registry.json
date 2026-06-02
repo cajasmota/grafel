@@ -10737,8 +10737,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "not_applicable",
-            "notes": "Raw Elixir DB driver; no schema/model definition. Schema belongs to Ecto ORM layer, not the driver."
+            "status": "partial",
+            "cites": ["internal/custom/elixir/neo4j.go","internal/custom/elixir/neo4j_test.go"],
+            "notes": "Node labels in Cypher patterns inside Bolt.Sips.query!/Boltx.query strings surfaced as SCOPE.Schema nodes. Soft schema recovered by regex over the query string, hence partial.",
+            "verified_at": "2026-06-02"
           }
         },
         "Relationships": {
@@ -10755,15 +10757,18 @@
             "notes": "Raw driver; no lazy loading concept."
           },
           "relationship_extraction": {
-            "status": "not_applicable",
-            "notes": "Raw driver protocol; relationship modelling is Ecto's responsibility."
+            "status": "full",
+            "cites": ["internal/custom/elixir/neo4j.go","internal/custom/elixir/neo4j_test.go"],
+            "notes": "Cypher relationship patterns in Bolt.Sips.query!/Boltx.query strings promoted to traversable GRAPH_RELATES edges between node-label entities (reNeo4jExCypherTriple); statically-resolvable topology full, dynamic/interpolated relations honest-partial. Completes Neo4j GRAPH_RELATES set (epic #3606, #3618). Value-asserting test TestExNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-\u003e Movie; left-arrow flips source; single-node MATCH yields no edge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/custom/elixir/neo4j.go","internal/custom/elixir/neo4j_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Bolt.Sips.query!(conn,'CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built query strings not fully recoverable, so partial.",
             "verified_at": "2026-06-02"
           }
         },
@@ -39514,8 +39519,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "not_applicable",
-            "notes": "Schema-less or server-side schema only; raw PHP driver has no PHP-level schema model to extract."
+            "status": "partial",
+            "cites": ["internal/custom/php/neo4j.go","internal/custom/php/neo4j_test.go"],
+            "notes": "Node labels in Cypher patterns ((n:Person),(:Movie)) inside -\u003erun/Statement::create strings surfaced as SCOPE.Schema nodes. Soft schema recovered by regex over the query string, hence partial.",
+            "verified_at": "2026-06-02"
           }
         },
         "Relationships": {
@@ -39532,15 +39539,18 @@
             "notes": "Raw PHP driver — no ORM relation layer; association/relationship/lazy-loading do not apply to raw connection clients."
           },
           "relationship_extraction": {
-            "status": "not_applicable",
-            "notes": "Raw PHP driver — no ORM relation layer; association/relationship/lazy-loading do not apply to raw connection clients."
+            "status": "full",
+            "cites": ["internal/custom/php/neo4j.go","internal/custom/php/neo4j_test.go"],
+            "notes": "Cypher relationship patterns in laudis -\u003erun('...') strings promoted to traversable GRAPH_RELATES edges between node-label entities (reNeo4jPHPCypherTriple); statically-resolvable topology full, dynamic/untyped/interpolated relations honest-partial. Completes Neo4j GRAPH_RELATES set (epic #3606, #3618) alongside go/java/py/jsts/csharp/ruby. Value-asserting test TestPHPNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-\u003e Movie; left-arrow flips source; single-node MATCH yields no edge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/custom/php/neo4j.go","internal/custom/php/neo4j_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "-\u003erun('CYPHER') / Statement::create('CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built query strings not fully recoverable, so partial.",
             "verified_at": "2026-06-02"
           }
         },
@@ -52597,8 +52607,10 @@
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "not_applicable",
-            "notes": "raw client driver; no schema/model definitions in user code"
+            "status": "partial",
+            "cites": ["internal/custom/rust/neo4j.go","internal/custom/rust/neo4j_test.go"],
+            "notes": "Node labels in Cypher patterns inside neo4rs query()/Query::new() strings surfaced as SCOPE.Schema nodes. Soft schema recovered by regex over the query string, hence partial.",
+            "verified_at": "2026-06-02"
           }
         },
         "Relationships": {
@@ -52615,15 +52627,18 @@
             "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
           },
           "relationship_extraction": {
-            "status": "not_applicable",
-            "notes": "raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer"
+            "status": "full",
+            "cites": ["internal/custom/rust/neo4j.go","internal/custom/rust/neo4j_test.go"],
+            "notes": "Cypher relationship patterns in neo4rs query('...')/Query::new('...') strings (plain + raw literals) promoted to traversable GRAPH_RELATES edges between node-label entities (reNeo4jRustCypherTriple); statically-resolvable topology full, dynamic/untyped relations honest-partial. Completes Neo4j GRAPH_RELATES set (epic #3606, #3618). Value-asserting test TestRustNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-\u003e Movie; left-arrow flips source; single-node MATCH yields no edge.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/custom/rust/neo4j.go","internal/custom/rust/neo4j_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "query('CYPHER') / Query::new('CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built (format!) query strings not fully recoverable, so partial.",
             "verified_at": "2026-06-02"
           }
         },

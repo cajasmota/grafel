@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Model extraction | — `not_applicable` | — | — | — | — |
-| Schema extraction | — `not_applicable` | — | — | — | raw client driver; no schema/model definitions in user code |
+| Schema extraction | 🟢 `partial` | `2026-06-02` | — | `internal/custom/rust/neo4j.go`<br>`internal/custom/rust/neo4j_test.go` | Node labels in Cypher patterns inside neo4rs query()/Query::new() strings surfaced as SCOPE.Schema nodes. Soft schema recovered by regex over the query string, hence partial. |
 
 ### Relationships
 
@@ -25,13 +25,13 @@ Auto-generated. Back to [summary](../summary.md).
 | Association extraction | — `not_applicable` | — | — | — | raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer |
 | Foreign key extraction | — `not_applicable` | — | — | — | raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer |
 | Lazy loading recognition | — `not_applicable` | — | — | — | raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer |
-| Relationship extraction | — `not_applicable` | — | — | — | raw/NoSQL driver — no ORM relationship/association/FK/lazy-load layer |
+| Relationship extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/rust/neo4j.go`<br>`internal/custom/rust/neo4j_test.go` | Cypher relationship patterns in neo4rs query('...')/Query::new('...') strings (plain + raw literals) promoted to traversable GRAPH_RELATES edges between node-label entities (reNeo4jRustCypherTriple); statically-resolvable topology full, dynamic/untyped relations honest-partial. Completes Neo4j GRAPH_RELATES set (epic #3606, #3618). Value-asserting test TestRustNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-> Movie; left-arrow flips source; single-node MATCH yields no edge. |
 
 ### Queries
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Query attribution | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | `internal/custom/rust/neo4j.go`<br>`internal/custom/rust/neo4j_test.go` | query('CYPHER') / Query::new('CYPHER') call sites captured as SCOPE.Operation/query with a coarse verb sniffed from the leading Cypher clause. Dynamically-built (format!) query strings not fully recoverable, so partial. |
 
 ### Migrations
 
