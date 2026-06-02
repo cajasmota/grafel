@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 38 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 32 · **python**: 1 · **ruby**: 1
+**Total**: 39 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 33 · **python**: 1 · **ruby**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -26,6 +26,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Azure Bicep](../detail/infra.iac.bicep.md) | ✅ | — | — | — | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [Celery canvas (chain/group/chord topology)](../detail/infra.orchestration.celery-canvas.md) | 🟢 | — | — | — | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [Dockerfile](../detail/infra.container.dockerfile.md) | ✅ | — | — | — | ✅ | — | ✅ | |
+| [multi](../by-language/multi.md) | [Frontend route → component graph (SPA client routing)](../detail/frontend.routing.spa-route-component.md) | 🟢 | — | — | — | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [Helm charts](../detail/infra.container.helm.md) | ✅ | ✅ | — | — | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [Helm charts](../detail/infra.resource.helm.md) | — | — | — | — | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.container.kubernetes.md) | ✅ | — | — | — | ✅ | — | ✅ | |

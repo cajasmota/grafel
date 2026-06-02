@@ -847,6 +847,16 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// dynamic/templated upstreams (${...}) are omitted, not guessed. Append-only
 	// — cannot regress surrounding passes.
 	applyPass(applyAPIGatewayRoutingEdges)
+	// Frontend route -> component graph (epic #3628). Complements the BACKEND
+	// routing passes above by modelling the CLIENT-SIDE routing table: which
+	// component a single-page-app router (React Router, Vue Router, Angular)
+	// renders for a URL path. Mints a SCOPE.Route node keyed `feroute:<file>:
+	// <path>` (synthesis="frontend_routing", scope="client") — DISTINCT from a
+	// backend SCOPE.Endpoint or api-gateway SCOPE.Route even when the path
+	// coincides — and a ROUTES_TO edge to the rendered component (bare name,
+	// bound by the cross-file resolver). Honest-partial: dynamic paths and
+	// unresolvable component refs are dropped. JS/TS only; gated; append-only.
+	applyPass(applyFrontendRouteEdges)
 	// Workflow orchestration edges (#934). Emits SCOPE.Workflow, SCOPE.Activity,
 	// and SCOPE.StateMachine entities plus STARTS_WORKFLOW, EXECUTES_ACTIVITY,
 	// and STEPFUNCTION_STEP_INVOKES edges for Temporal (Python, Go, Java, Node),
