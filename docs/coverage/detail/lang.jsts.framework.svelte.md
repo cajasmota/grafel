@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 42
+- **Capability cells:** 43
 
 ## Capabilities
 
@@ -58,6 +58,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | 🟢 `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |
+| Config consumption | ✅ `full` | `2026-06-02` | 3641 | `internal/extractor/config_key.go`<br>`internal/extractors/javascript/config_consumer.go`<br>`internal/extractors/javascript/config_consumer_test.go` | process.env.X, import.meta.env.X, config.get(k) -> config:<key> DEPENDS_ON_CONFIG (issue #3641) |
 | Constant propagation | ✅ `full` | `2026-05-28` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/jsts.go`<br>`internal/substrate/substrate.go` | — |
 | DB effect | 🟢 `partial` | `2026-05-29` | 3053 | `internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_markup_script.go` | Svelte SFC uses markup-script dispatcher which delegates to sniffEffectsJSTS; reactive DB/FS/mutation patterns fire on <script> but no Svelte-specific fixture tests this cap. |
 | Dead code detection | 🟢 `partial` | `2026-05-29` | 3053 | `internal/links/effect_propagation.go`<br>`internal/links/module_cycle_pass.go`<br>`internal/links/payload_drift.go`<br>`internal/links/reachability.go`<br>`internal/links/taint_flow.go` | Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap. |

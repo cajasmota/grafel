@@ -308,6 +308,14 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		// form_resolver/validation_schema + field set (the hook calls / JSX
 		// already surface generically). Runs after walk so the entities exist.
 		x.decorateForms(root)
+
+		// Config-consumption topology (issue #3641, epic #3625) —
+		// DEPENDS_ON_CONFIG edges from functions/components that read a config
+		// key (process.env.X, import.meta.env.X, config.get('k')) to a shared
+		// config-key entity, so config:<key>'s inbound edges form the
+		// config-change blast radius. Runs after walk so the enclosing
+		// function/component entities already exist.
+		x.emitConfigConsumerEdges(root)
 	}()
 
 	// Third pass (#713): platform-variant and test-file relationship emission.

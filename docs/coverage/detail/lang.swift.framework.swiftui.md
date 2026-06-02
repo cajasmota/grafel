@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** UI Frontend
-- **Capability cells:** 33
+- **Capability cells:** 34
 
 ## Capabilities
 
@@ -58,6 +58,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Config consumption | 🔴 `missing` | — | 3641 | — | — |
 | Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | DB effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

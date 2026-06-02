@@ -115,6 +115,17 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitReferences(root, file, &entities)
 	}()
 
+	// Config-consumption topology (issue #3641, epic #3625) —
+	// DEPENDS_ON_CONFIG edges from Spring/MicroProfile beans that read a
+	// config key (@Value("${...}"), @ConfigurationProperties, env.getProperty)
+	// to a shared config-key entity, so config:<key>'s inbound edges form the
+	// config-change blast radius. Runs after primary entities are in place so
+	// edges attach to the right enclosing class/method.
+	func() {
+		defer func() { _ = recover() }()
+		emitConfigConsumerEdges(root, file, &entities)
+	}()
+
 	// Track B (analog of #642/#650 for Java) — IMPORTS ToID rewrite.
 	// Rewrites IMPORTS edges whose source_module's longest dotted
 	// prefix matches a known external JVM package to an

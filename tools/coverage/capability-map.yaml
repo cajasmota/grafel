@@ -2610,6 +2610,18 @@ records:
           issues_implemented: ["3347"]
           verified_at: "2026-05-30"
       Substrate:
+        config_consumption:
+          status: full
+          symbols:
+            - file: internal/extractors/java/config_consumer.go
+              functions: [emitConfigConsumerEdges, valueAndConfigPropertyKeys, configurationPropertiesKeys, getPropertyKey, findAnnotations]
+            - file: internal/extractor/config_key.go
+              functions: [EmitConfigReads, ConfigKeyEntity, ConfigKeyTargetID]
+          tests:
+            - file: internal/extractors/java/config_consumer_test.go
+              functions: [TestJavaConfigConsumer_ValueAnnotation, TestJavaConfigConsumer_ConfigurationProperties, TestJavaConfigConsumer_EnvGetProperty, TestJavaConfigConsumer_ConfigProperty, TestJavaConfigConsumer_DynamicKeyIgnored]
+          issues_implemented: ["3641"]
+          verified_at: "2026-06-02"
         constant_propagation:
           status: full
           symbols:

@@ -184,6 +184,19 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	records = append(records, errorPatterns...)
 
 	// ----------------------------------------------------------------
+	// 6b. Config-consumption topology (issue #3641, epic #3625) —
+	//     DEPENDS_ON_CONFIG edges from functions/methods that read a
+	//     config key (os.Getenv / viper.GetString) to a shared
+	//     config-key entity, so config:<key>'s inbound edges form the
+	//     config-change blast radius. Runs after function entities are
+	//     in place so edges attach to the right enclosing entity.
+	// ----------------------------------------------------------------
+	func() {
+		defer func() { _ = recover() }()
+		emitConfigConsumerEdges(root, file.Content, &records)
+	}()
+
+	// ----------------------------------------------------------------
 	// 6. OTel span attribute relationship_count
 	// and error_pattern_count.
 	// ----------------------------------------------------------------

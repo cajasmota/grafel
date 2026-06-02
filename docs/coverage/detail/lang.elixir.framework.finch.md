@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 36
+- **Capability cells:** 37
 
 ## Capabilities
 
@@ -72,6 +72,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Config consumption | 🔴 `missing` | — | 3641 | — | — |
 | Constant propagation | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_jsts_client_1483.go`<br>`internal/engine/http_endpoint_jsts_client_1483_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | @base_url module-attr resolution into Finch URL canonical path (#1483/#3511) |
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

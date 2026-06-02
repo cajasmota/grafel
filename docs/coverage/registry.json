@@ -2138,6 +2138,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
@@ -2348,6 +2352,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
@@ -2557,6 +2565,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -2777,6 +2789,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
@@ -2995,6 +3011,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -3215,6 +3235,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
@@ -3366,6 +3390,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -3559,6 +3587,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -3769,6 +3801,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -4005,6 +4041,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -4301,6 +4341,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
@@ -4519,6 +4563,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -4739,6 +4787,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
@@ -4886,6 +4938,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -5064,6 +5120,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -5280,6 +5340,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -5500,6 +5564,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go","internal/substrate/substrate.go"],
@@ -5638,6 +5706,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/c_cpp.go"]
@@ -5715,6 +5787,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -6788,6 +6864,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -6998,6 +7078,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -7187,6 +7271,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -7378,6 +7466,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -7567,6 +7659,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -7787,6 +7883,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -8006,6 +8106,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -8151,6 +8255,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -8371,6 +8479,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -8569,6 +8681,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -8789,6 +8905,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -8927,6 +9047,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -9008,6 +9132,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/csharp.go","internal/substrate/substrate.go"],
@@ -9088,6 +9216,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -9230,6 +9362,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -9722,6 +9858,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -10314,6 +10454,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
@@ -10537,6 +10681,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
@@ -10752,6 +10900,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -10999,6 +11151,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
@@ -11203,6 +11359,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_client_1483.go","internal/engine/http_endpoint_jsts_client_1483_test.go","internal/engine/http_endpoint_synthesis.go"],
@@ -11330,6 +11490,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -11517,6 +11681,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -11692,6 +11860,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -11909,6 +12081,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -12135,6 +12311,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
@@ -12341,6 +12521,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -12567,6 +12751,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/elixir.go","internal/substrate/substrate.go"],
@@ -12771,6 +12959,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "partial",
             "cites": ["internal/engine/http_endpoint_elixir_tesla.go","internal/engine/http_endpoint_elixir_tesla_test.go","internal/engine/http_endpoint_jsts_client_1483.go","internal/engine/http_endpoint_synthesis.go"],
@@ -12951,6 +13143,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -13712,6 +13908,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -13924,6 +14127,13 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -14145,6 +14355,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -14365,6 +14582,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -14574,6 +14798,13 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -14795,6 +15026,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -14921,6 +15159,13 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -15088,6 +15333,13 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -15306,6 +15558,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -15491,6 +15750,13 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -15731,6 +15997,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -15946,6 +16219,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -16160,6 +16440,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -16373,6 +16660,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -16584,6 +16878,13 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -16803,6 +17104,13 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/golang.go","internal/substrate/substrate.go"],
@@ -17014,6 +17322,13 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/golang/config_consumer.go","internal/extractors/golang/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "os.Getenv/viper.GetString -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -17805,6 +18120,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -18009,6 +18331,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -18216,6 +18545,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -18484,6 +18820,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -18685,6 +19028,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -18968,6 +19318,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -19258,6 +19615,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -19533,6 +19897,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -19830,6 +20201,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -20165,6 +20543,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -20458,6 +20843,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -20667,6 +21059,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "partial",
@@ -20980,6 +21379,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -21265,6 +21671,13 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "Substrate passes emit per-binding/per-finding confidence (Binding.Confidence, TaintMatch.Confidence, EffectMatch.Confidence); constant_propagation stamps substrate_confidence property on entities. Top-level EntityRecord.Confidence field not yet stamped by the Java extractor directly; confidence data not exposed via MCP min_confidence filtering. Full requires a confidence-scoring pass that writes EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -21582,6 +21995,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -21875,6 +22295,13 @@
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/java.go","internal/substrate/substrate.go"],
@@ -22061,6 +22488,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -22333,6 +22767,13 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3093",
             "notes": "Framework-blind substrate: constant_propagation, effect_propagation, and taint_flow passes emit per-binding/per-finding Confidence values on Java entities via java.go sniffers. EntityRecord.Confidence not yet stamped by the Java extractor directly; MCP min_confidence filtering applies. Partial pending a dedicated confidence-scoring pass writing top-level EntityRecord.Confidence.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/java/config_consumer.go","internal/extractors/java/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "@Value, @ConfigurationProperties, env.getProperty, @ConfigProperty -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -24069,6 +24510,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -24286,6 +24734,13 @@
             "issue": "3053",
             "notes": "Framework-blind jsts sniffer fires on Angular .ts files; React-specific tests (react_substrate_test.go) prove each sniffer, but no Angular-specific proving fixture/test exists yet.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -24586,6 +25041,13 @@
             "issue": "3057",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "partial",
             "cites": ["internal/substrate/jsts.go","internal/substrate/markup_script.go"],
@@ -24754,6 +25216,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
             "issue": "3059"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go"],
@@ -24898,6 +25367,13 @@
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
             "issue": "3059"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "partial",
@@ -25161,6 +25637,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -25404,6 +25887,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/jsts.go"],
             "issue": "2932",
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -25650,6 +26140,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -25860,6 +26357,13 @@
             "issue": "3057",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/substrate/jsts.go","internal/substrate/uimm_substrate_test.go","testdata/fixtures/typescript/substrate_gatsby/api-handler.ts"],
@@ -26035,6 +26539,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go","testdata/fixtures/typescript/substrate_graphql/resolver.ts"],
             "issue": "3076",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -26281,6 +26792,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -26524,6 +27042,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -26741,6 +27266,13 @@
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
             "issue": "3059"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "partial",
@@ -26974,6 +27506,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/jsts.go"],
             "issue": "2932",
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -27259,6 +27798,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -27467,6 +28013,13 @@
             "status": "partial",
             "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
             "issue": "3059"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "partial",
@@ -27705,6 +28258,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/jsts.go"],
             "issue": "2932",
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -27953,6 +28513,13 @@
             "issue": "3055",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -28200,6 +28767,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/jsts.go"],
             "issue": "3055",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -28465,6 +29039,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -28667,6 +29248,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/links/taint_flow.go","internal/substrate/jsts.go"],
             "issue": "2932",
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -28971,6 +29559,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
             "issue": "3059"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "partial",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go"],
@@ -29254,6 +29849,13 @@
             "issue": "3055",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -29512,6 +30114,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -29745,6 +30354,13 @@
             "issue": "2932",
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -29966,6 +30582,13 @@
             "issue": "3053",
             "notes": "Language-agnostic pass operates over extracted graph; Svelte .svelte files are processed via markup-script dispatcher but no Svelte-specific integration test exists for this cap.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -30241,6 +30864,13 @@
             "issue": "3055",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/jsts.go","internal/substrate/substrate.go"],
@@ -30417,6 +31047,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/jsts.go"],
             "issue": "3057",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -30637,6 +31274,13 @@
             "issue": "3053",
             "notes": "Language-agnostic pass operates over extracted graph; Vue .vue files are processed via markup-script dispatcher but no Vue-specific integration test exists for this cap.",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/javascript/config_consumer.go","internal/extractors/javascript/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "process.env.X, import.meta.env.X, config.get(k) -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -31469,6 +32113,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
@@ -31672,6 +32320,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
@@ -31802,6 +32454,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/substrate/kotlin.go"]
@@ -31877,6 +32533,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -32066,6 +32726,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -32310,6 +32974,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -32530,6 +33198,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -32758,6 +33430,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -33021,6 +33697,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
@@ -33222,6 +33902,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -33466,6 +34150,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -33679,6 +34367,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -33919,6 +34611,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -34201,6 +34897,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
@@ -34482,6 +35182,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/kotlin.go","internal/substrate/substrate.go"],
@@ -34724,6 +35428,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "partial",
@@ -34984,6 +35692,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -35602,6 +36314,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -35781,6 +36497,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -35965,6 +36685,10 @@
             "cites": ["internal/links/effect_propagation.go","internal/types/confidence.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Confidence scores are stamped on Lua entities via the language-agnostic effect propagation pass. Partial: no Lua-specific effect sinks file; confidence derived from CALLS edges and taint sniffer matches."
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -36185,6 +36909,10 @@
             "cites": ["internal/links/effect_propagation.go","internal/types/confidence.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Confidence scores are stamped on Lua entities via the language-agnostic effect propagation pass. Partial: no Lua-specific effect sinks file; confidence derived from CALLS edges and taint sniffer matches."
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -36843,6 +37571,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -37030,6 +37762,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -37251,6 +37987,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
@@ -37471,6 +38211,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
@@ -37678,6 +38422,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -37865,6 +38613,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -38086,6 +38838,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
@@ -38293,6 +39049,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -38480,6 +39240,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -38701,6 +39465,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
@@ -38921,6 +39689,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
@@ -39140,6 +39912,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -39365,6 +40141,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
@@ -39585,6 +40365,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/php.go","internal/substrate/substrate.go"],
@@ -39804,6 +40588,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -40741,6 +41529,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -40977,6 +41772,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -41156,6 +41958,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -41422,6 +42231,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -41663,6 +42479,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -41895,6 +42718,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -42113,6 +42943,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -42363,6 +43200,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -42602,6 +43446,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -42843,6 +43694,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -43089,6 +43947,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -43363,6 +44228,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -43598,6 +44470,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -43837,6 +44716,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -44072,6 +44958,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -44247,6 +45140,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "partial",
@@ -44500,6 +45400,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -44734,6 +45641,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -44973,6 +45887,13 @@
             "issue": "3068",
             "verified_at": "2026-05-29"
           },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/python.go","internal/substrate/substrate.go"],
@@ -45207,6 +46128,13 @@
             "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_python.go","internal/types/confidence.go"],
             "issue": "3068",
             "verified_at": "2026-05-29"
+          },
+          "config_consumption": {
+            "status": "full",
+            "cites": ["internal/extractors/python/config_consumer.go","internal/extractors/python/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "settings.X / os.environ.get(k) -\u003e DEPENDS_ON_CONFIG (live pre-#3641; config-blast-radius)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -46521,6 +47449,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
@@ -46726,6 +47658,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -46933,6 +47869,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -47144,6 +48084,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
@@ -47353,6 +48297,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -47568,6 +48516,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/ruby.go","internal/substrate/substrate.go"],
@@ -47777,6 +48729,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -47992,6 +48948,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -48944,6 +49904,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
@@ -49154,6 +50118,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -49349,6 +50317,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -49569,6 +50541,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
@@ -49788,6 +50764,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -50037,6 +51017,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
@@ -50283,6 +51267,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
@@ -50502,6 +51490,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go","internal/substrate/substrate.go"],
@@ -50701,6 +51693,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/rust.go"]
@@ -50859,6 +51855,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -51071,6 +52071,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -51270,6 +52274,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -51479,6 +52487,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -51674,6 +52686,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -52276,6 +53292,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
@@ -52536,6 +53556,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -52784,6 +53808,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -53045,6 +54073,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -53325,6 +54357,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
@@ -53596,6 +54632,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -53876,6 +54916,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "full",
             "cites": ["internal/links/constant_propagation.go","internal/substrate/scala.go","internal/substrate/substrate.go"],
@@ -54150,6 +55194,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -54321,6 +55369,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -54494,6 +55546,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -54742,6 +55798,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -54995,6 +56055,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -55230,6 +56294,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -55477,6 +56545,10 @@
             "status": "full",
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "verified_at": "2026-05-28"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "full",
@@ -56013,6 +57085,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -56176,6 +57252,10 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
+          },
           "constant_propagation": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -56338,6 +57418,10 @@
           "confidence_overlay": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "missing",
@@ -56540,6 +57624,10 @@
             "cites": ["internal/graph/graph.go","internal/mcp/tools.go","internal/types/confidence.go"],
             "notes": "Confidence overlay is language-agnostic infrastructure applied at graph-query time; all Swift entities receive confidence scores from the same overlay mechanism as all other languages.",
             "verified_at": "2026-05-30"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3641"
           },
           "constant_propagation": {
             "status": "partial",

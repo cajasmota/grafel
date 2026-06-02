@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [swift](../by-language/swift.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 36
+- **Capability cells:** 37
 
 ## Capabilities
 
@@ -71,6 +71,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Confidence overlay | ✅ `full` | `2026-05-30` | — | `internal/graph/graph.go`<br>`internal/mcp/tools.go`<br>`internal/types/confidence.go` | Confidence overlay is language-agnostic infrastructure applied at graph-query time; all Swift entities receive confidence scores from the same overlay mechanism as all other languages. |
+| Config consumption | 🔴 `missing` | — | 3641 | — | — |
 | Constant propagation | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/constant_propagation.go`<br>`internal/substrate/swift.go` | constant_propagation.go is language-agnostic; swift.go (substrate) provides Swift-specific literal let bindings (let X = literal), static let namespace bindings, and ProcessInfo.processInfo.environment env-fallback patterns; partial because complex Swift computed properties are not statically resolved. |
 | DB effect | 🟢 `partial` | — | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_swift.go` | — |
 | Dead code detection | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_swift.go` | reachability.go BFS from entry-points to detect unreachable entities; entry_points_swift.go (new) provides Swift-specific sniffers for @main, static func main, Vapor lifecycle hooks (configure/boot), XCTest methods, and public/open exported functions; partial because comprehensive dead-code detection requires full Swift module resolution. |

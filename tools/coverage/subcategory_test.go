@@ -99,6 +99,8 @@ func TestSubcategoryRenderKeysExcludesCategoryUnion(t *testing.T) {
 		"component_extraction",
 		// #2769 substrate confidence overlay.
 		"confidence_overlay",
+		// #3641 config-consumption topology (config_read / DEPENDS_ON_CONFIG).
+		"config_consumption",
 		// #2761 substrate cross-cutting keys.
 		"constant_propagation",
 		"context_extraction",
@@ -157,6 +159,8 @@ func TestSubcategoryCapabilityKeysSorted(t *testing.T) {
 		"component_extraction",
 		// #2769 substrate confidence overlay.
 		"confidence_overlay",
+		// #3641 config-consumption topology (config_read / DEPENDS_ON_CONFIG).
+		"config_consumption",
 		// #2761 substrate keys live under the Substrate group across every
 		// subcategory that imports an HTTP / RPC client surface.
 		"constant_propagation",
