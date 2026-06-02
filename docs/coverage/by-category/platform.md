@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 27 records · **java**: 1 · **JS/TS**: 1 · **multi**: 25
+**Total**: 28 records · **java**: 1 · **JS/TS**: 1 · **multi**: 26
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -30,6 +30,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | — | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Reverse-proxy / gateway request topology](../detail/infra.deployment.request-topology.md) | ✅ | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | ✅ | — | — | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [Structural coupling metrics (Ca/Ce/instability)](../detail/analysis.architecture.structural-coupling.md) | ✅ | — | — | — | ✅ | |
 | [multi](../by-language/multi.md) | [Terraform (HCL)](../detail/infra.iac.terraform.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Terraform / OpenTofu / Vault / Nomad / Packer / Waypoint](../detail/infra.resource.terraform.md) | ✅ | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [docker-compose.yml](../detail/config.docker-compose.md) | — | — | ✅ | — | ✅ | |

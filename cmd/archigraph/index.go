@@ -59,13 +59,14 @@ const (
 	PassEventFlow     = "event-flow"     // Pass 7.5: event-flow pub/sub walk (#1944 Phase 1)
 	PassModuleAgg     = "module-agg"     // Pass 8: module-level aggregation (#1383)
 	PassCommitCouple  = "commit-couple"  // Pass 8.5: VCS-derived COMMIT_COUPLED soft edges (#21)
+	PassCoupling      = "coupling"       // Pass 8.6: structural Ca/Ce/instability per Module (#3634)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 	PassTestsWalkUp   = "tests-walkup"   // Pass 3.5: derive TESTS edges via helper walk-up
 )
 
 // allPassNames is used to validate --skip-pass entries.
 var allPassNames = []string{
-	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassEmbed,
+	PassExtract, PassFramework, PassCrossLang, PassTestsWalkUp, PassGraphAlgo, PassBuildDocument, PassRenameDetect, PassEnrichment, PassProcessFlow, PassEventFlow, PassModuleAgg, PassCommitCouple, PassCoupling, PassEmbed,
 }
 
 // fileTask carries one repo-relative path and its absolute counterpart
@@ -1528,6 +1529,27 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				"archigraph: commit-couple commits=%d candidate_pairs=%d files=%d edges=%d oversize_skipped=%d\n",
 				ccStats.TotalCommits, ccStats.CandidatePairs, ccStats.FileEntities,
 				ccStats.CoupledEdges, ccStats.SkippedOversizeCommits)
+		}
+	}
+
+	// Pass 8.6 — structural coupling metrics (issue #3634, epic #3625).
+	// Restores the previously-orphaned coupling_score enricher as a live
+	// pass. Runs AFTER module-agg (Pass 8) so the Module→Module DEPENDS_ON
+	// edges it consumes are present. Annotates each Module entity with
+	// afferent coupling (ca), efferent coupling (ce), and instability
+	// (I = Ce/(Ca+Ce)) — an architecture-quality signal for rewrite-boundary
+	// planning. Distinct from commit-couple (Pass 8.5), which is the
+	// temporal/VCS co-change axis. Skippable via --skip-pass=coupling.
+	if !i.skipPasses[PassCoupling] {
+		cpStats := engine.ApplyStructuralCoupling(doc)
+		if cpStats.Skipped {
+			if verbose() {
+				fmt.Fprintf(os.Stderr, "archigraph: coupling skipped (no module graph)\n")
+			}
+		} else if verbose() || cpStats.ModulesAnnotated > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: coupling modules=%d depends_on_edges=%d\n",
+				cpStats.ModulesAnnotated, cpStats.DependsOnEdges)
 		}
 	}
 

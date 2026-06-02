@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 213 · **ORMs**: 152 · **Tools**: 110 · **Other**: 125
+**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 213 · **ORMs**: 152 · **Tools**: 110 · **Other**: 126
 
 ## Coverage by language
 
@@ -32,14 +32,14 @@
 | Category | Records | Full | Partial | Missing |
 |---|---:|---:|---:|---:|
 | [Databases](by-category/databases.md) | 11 | 0 | 7 | 4 |
-| [Platform / k8s](by-category/platform.md) | 25 | 18 | 7 | 0 |
+| [Platform / k8s](by-category/platform.md) | 26 | 19 | 7 | 0 |
 | [Message Brokers](by-category/message_broker.md) | 20 | 9 | 9 | 2 |
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
 | [Security](by-category/security.md) | 10 | 3 | 0 | 7 |
 | [Observability](by-category/observability.md) | 9 | 1 | 1 | 7 |
 | [Protocols](by-category/protocol.md) | 8 | 3 | 3 | 2 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 99 | 38 | 35 | 26 |
+| **Total** | 100 | 39 | 35 | 26 |
 
 ## Languages with extractor support, no records yet
 
@@ -67,4 +67,4 @@
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 213 frameworks · 110 tools · 152 ORMs · 125 other
+Total: 213 frameworks · 110 tools · 152 ORMs · 126 other

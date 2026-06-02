@@ -377,40 +377,11 @@ func TestEnrichConsumesAPI_EmptyEndpoints(t *testing.T) {
 	}
 }
 
-// coupling_score
-
-func TestEnrichCouplingScore_Basic(t *testing.T) {
-	comp1 := makeEntity("c1", "SCOPE.Component", "", "pkg/orders", "orders")
-	comp2 := makeEntity("c2", "SCOPE.Component", "", "pkg/users", "users")
-	comp2.Relationships = []types.RelationshipRecord{{FromID: "c2", ToID: "c1", Kind: "DEPENDS_ON"}}
-	entities := EnrichCouplingScore([]types.EntityRecord{comp1, comp2})
-	for _, e := range entities {
-		switch e.ID {
-		case "c1":
-			if e.Properties["ca"] != "1" {
-				t.Fatalf("comp1 ca expected 1, got %q", e.Properties["ca"])
-			}
-		case "c2":
-			if e.Properties["ce"] != "1" {
-				t.Fatalf("comp2 ce expected 1, got %q", e.Properties["ce"])
-			}
-		}
-	}
-}
-
-func TestEnrichCouplingScore_NoComponents(t *testing.T) {
-	result := EnrichCouplingScore([]types.EntityRecord{makeEntity("1", "class", "", "pkg/x", "X")})
-	if _, ok := result[0].Properties["coupling_computed"]; ok {
-		t.Fatal("expected no coupling_computed for non-component")
-	}
-}
-
-func TestEnrichCouplingScore_Isolated(t *testing.T) {
-	result := EnrichCouplingScore([]types.EntityRecord{makeEntity("c1", "SCOPE.Component", "", "pkg/iso", "iso")})
-	if result[0].Properties["instability"] != "0.00" {
-		t.Fatalf("expected 0.00, got %q", result[0].Properties["instability"])
-	}
-}
+// coupling_score — the orphaned coupling_score enricher was restored as a LIVE
+// engine pass (internal/engine/structural_coupling.go, #3634 / epic #3625);
+// its behaviour is now covered by structural_coupling_test.go, which asserts
+// the real Ca/Ce/instability properties stamped on Module nodes from the
+// materialized DEPENDS_ON dependency graph.
 
 // deployment_topology — the orphaned deployment_topology_extractor was restored
 // as a LIVE engine pass (internal/engine/deployment_topology_edges.go, #3633);
