@@ -49412,8 +49412,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_php.go","internal/substrate/dataflow_php_test.go"],
+            "issue": "3966",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872, #3966): new PHP sniffer (internal/substrate/dataflow_php.go) mirroring the ruby/python/jsts model — intra-method assignment tracking over `function … { … }` brace bodies + multi-hop (≤DataFlowMaxHops=3) local same-file method-call propagation ($this-\u003em()/self::m()/free fn), each bound by exact positional index, AND cross-file boundary emission continued by the links pass into resolved same-repo callees (continueDataFlowPHP). Sources: $request-\u003einput/query/post/get/json/header/cookie(’x’), $request-\u003erequest-\u003eget(’x’)/$request-\u003equery-\u003eget(’x’) (Symfony), $request-\u003eget(’x’), request(’x’), $request-\u003eprop, $_POST/$_GET/$_REQUEST[’x’]; whole-request $request-\u003eall()/validated()/only/except → field=\"\" (recovered at $data[’x’] index reads). Sinks: Eloquent write (Model::create/update/insert/firstOrCreate/updateOrCreate, $m-\u003esave()/update()), Doctrine $em-\u003epersist, raw SQL (DB::insert/statement, $pdo-\u003equery/prepare/execute), response (response()-\u003ejson/make/stream, view, json_encode), outbound HTTP (Guzzle $client-\u003epost/get/request, Laravel Http::post). HONEST-PARTIAL (precision-first): drops reassignment, dynamic keys ($request-\u003einput($k)), embedded-arg, splat (...$args) call sites, recursion/cycle, the 4th hop, external/unresolved imports; whole-array mass-assignment flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). COMPLETES the cross-language dataflow generalization (py/jsts/go/ruby/java/php); C# dataflow is #3960 (separate). Laravel: $request-\u003einput/query/all + Eloquent/response()-\u003ejson/view sinks.",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -51086,8 +51089,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_php.go","internal/substrate/dataflow_php_test.go"],
+            "issue": "3966",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872, #3966): new PHP sniffer (internal/substrate/dataflow_php.go) mirroring the ruby/python/jsts model — intra-method assignment tracking over `function … { … }` brace bodies + multi-hop (≤DataFlowMaxHops=3) local same-file method-call propagation ($this-\u003em()/self::m()/free fn), each bound by exact positional index, AND cross-file boundary emission continued by the links pass into resolved same-repo callees (continueDataFlowPHP). Sources: $request-\u003einput/query/post/get/json/header/cookie(’x’), $request-\u003erequest-\u003eget(’x’)/$request-\u003equery-\u003eget(’x’) (Symfony), $request-\u003eget(’x’), request(’x’), $request-\u003eprop, $_POST/$_GET/$_REQUEST[’x’]; whole-request $request-\u003eall()/validated()/only/except → field=\"\" (recovered at $data[’x’] index reads). Sinks: Eloquent write (Model::create/update/insert/firstOrCreate/updateOrCreate, $m-\u003esave()/update()), Doctrine $em-\u003epersist, raw SQL (DB::insert/statement, $pdo-\u003equery/prepare/execute), response (response()-\u003ejson/make/stream, view, json_encode), outbound HTTP (Guzzle $client-\u003epost/get/request, Laravel Http::post). HONEST-PARTIAL (precision-first): drops reassignment, dynamic keys ($request-\u003einput($k)), embedded-arg, splat (...$args) call sites, recursion/cycle, the 4th hop, external/unresolved imports; whole-array mass-assignment flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). COMPLETES the cross-language dataflow generalization (py/jsts/go/ruby/java/php); C# dataflow is #3960 (separate). Symfony: $request-\u003erequest-\u003eget/$request-\u003equery-\u003eget/$request-\u003eget + Doctrine $em-\u003epersist/response sinks.",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "partial",
