@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/types"
 
 	_ "github.com/cajasmota/archigraph/internal/custom/swift"
 )
@@ -171,5 +172,176 @@ func TestSwiftUINoMatch(t *testing.T) {
 	ents := extract(t, "custom_swift_swiftui", fi("imports.swift", "swift", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SwiftUI edges (navigation + state) — value-asserting
+// ---------------------------------------------------------------------------
+
+// extractFull returns the raw EntityRecords (with relationships) for edge tests.
+func extractFull(t *testing.T, name string, file extreg.FileInput) []types.EntityRecord {
+	t.Helper()
+	e, ok := extreg.Get(name)
+	if !ok {
+		t.Fatalf("extractor %q not registered", name)
+	}
+	ents, err := e.Extract(context.Background(), file)
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	return ents
+}
+
+// hasEdge reports whether some entity named fromName emits an edge of kind to
+// ToID. fromName "" matches any source.
+func hasEdge(ents []types.EntityRecord, fromName, kind, toID string) bool {
+	for _, e := range ents {
+		if fromName != "" && e.Name != fromName {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind == kind && r.ToID == toID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func edgeProp(ents []types.EntityRecord, fromName, kind, toID, key string) (string, bool) {
+	for _, e := range ents {
+		if fromName != "" && e.Name != fromName {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind == kind && r.ToID == toID {
+				v, ok := r.Properties[key]
+				return v, ok
+			}
+		}
+	}
+	return "", false
+}
+
+func TestSwiftUINavigatesToEdge(t *testing.T) {
+	src := `
+struct ContentView: View {
+    var body: some View {
+        NavigationStack {
+            NavigationLink(destination: DetailView()) { Text("Go") }
+        }
+    }
+}
+`
+	ents := extractFull(t, "custom_swift_swiftui", fi("ContentView.swift", "swift", src))
+	// ContentView NAVIGATES_TO DetailView (via the synthetic view: stub).
+	if !hasEdge(ents, "ContentView", "NAVIGATES_TO", "view:DetailView") {
+		t.Fatal("expected ContentView NAVIGATES_TO view:DetailView")
+	}
+	if v, _ := edgeProp(ents, "ContentView", "NAVIGATES_TO", "view:DetailView", "via"); v != "navigation_link" {
+		t.Errorf("expected via=navigation_link, got %q", v)
+	}
+}
+
+func TestSwiftUINavigatesValueEdge(t *testing.T) {
+	src := `
+struct ListView: View {
+    var body: some View {
+        NavigationStack {
+            NavigationLink(value: route) { Text("Open") }
+        }
+    }
+}
+`
+	ents := extractFull(t, "custom_swift_swiftui", fi("ListView.swift", "swift", src))
+	if !hasEdge(ents, "ListView", "NAVIGATES_TO", "navvalue:route") {
+		t.Fatal("expected ListView NAVIGATES_TO navvalue:route")
+	}
+	if v, _ := edgeProp(ents, "ListView", "NAVIGATES_TO", "navvalue:route", "via"); v != "navigation_link_value" {
+		t.Errorf("expected via=navigation_link_value, got %q", v)
+	}
+}
+
+func TestSwiftUIModalNavigatesEdge(t *testing.T) {
+	src := `
+struct HomeView: View {
+    @State var showing = false
+    var body: some View {
+        Text("Home")
+            .sheet(isPresented: $showing) { SettingsView() }
+    }
+}
+`
+	ents := extractFull(t, "custom_swift_swiftui", fi("HomeView.swift", "swift", src))
+	if !hasEdge(ents, "HomeView", "NAVIGATES_TO", "view:SettingsView") {
+		t.Fatal("expected HomeView NAVIGATES_TO view:SettingsView (sheet)")
+	}
+	if v, _ := edgeProp(ents, "HomeView", "NAVIGATES_TO", "view:SettingsView", "via"); v != "modal_sheet" {
+		t.Errorf("expected via=modal_sheet, got %q", v)
+	}
+}
+
+func TestSwiftUIFullScreenCoverNavigatesEdge(t *testing.T) {
+	src := `
+struct RootView: View {
+    var body: some View {
+        Text("Root")
+            .fullScreenCover(isPresented: $flag) { OnboardingView() }
+    }
+}
+`
+	ents := extractFull(t, "custom_swift_swiftui", fi("RootView.swift", "swift", src))
+	if !hasEdge(ents, "RootView", "NAVIGATES_TO", "view:OnboardingView") {
+		t.Fatal("expected RootView NAVIGATES_TO view:OnboardingView (fullScreenCover)")
+	}
+	if v, _ := edgeProp(ents, "RootView", "NAVIGATES_TO", "view:OnboardingView", "via"); v != "modal_fullScreenCover" {
+		t.Errorf("expected via=modal_fullScreenCover, got %q", v)
+	}
+}
+
+func TestSwiftUIUsesViewModelEdge(t *testing.T) {
+	src := `
+struct ProfileView: View {
+    @StateObject var vm = ProfileViewModel()
+    @ObservedObject var settings: SettingsStore
+    @EnvironmentObject var appState: AppState
+    var body: some View { Text("Profile") }
+}
+`
+	ents := extractFull(t, "custom_swift_swiftui", fi("ProfileView.swift", "swift", src))
+	// ProfileView USES ProfileViewModel / SettingsStore / AppState.
+	if !hasEdge(ents, "ProfileView", "USES", "type:SettingsStore") {
+		t.Fatal("expected ProfileView USES type:SettingsStore")
+	}
+	if !hasEdge(ents, "ProfileView", "USES", "type:AppState") {
+		t.Fatal("expected ProfileView USES type:AppState")
+	}
+	// @StateObject var vm = ProfileViewModel() — type comes from initializer; the
+	// shared regex captures the RHS type token.
+	if !hasEdge(ents, "ProfileView", "USES", "type:ProfileViewModel") {
+		t.Fatal("expected ProfileView USES type:ProfileViewModel")
+	}
+	if v, _ := edgeProp(ents, "ProfileView", "USES", "type:AppState", "property_wrapper"); v != "@EnvironmentObject" {
+		t.Errorf("expected property_wrapper=@EnvironmentObject, got %q", v)
+	}
+}
+
+func TestSwiftUIStateNoEdge(t *testing.T) {
+	// @State / @Binding are local value state — entity props, NOT edges.
+	src := `
+struct Counter: View {
+    @State var count: Int = 0
+    @Binding var on: Bool
+    var body: some View { Text("\(count)") }
+}
+`
+	ents := extractFull(t, "custom_swift_swiftui", fi("Counter.swift", "swift", src))
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.Kind == "USES" {
+				t.Errorf("@State/@Binding must not emit USES edge, got %s -> %s", e.Name, r.ToID)
+			}
+		}
 	}
 }
