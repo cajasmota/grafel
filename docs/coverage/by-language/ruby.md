@@ -34,7 +34,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟡 3/6 | ✅ 1/1 | 🟢 1/1 | ✅ 1/1 | 🟡 23/25 | 🟡 8/12 | |
 | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟡 3/6 | 🟢 1/1 | — | 🟢 1/1 | 🟡 22/25 | 🟡 7/12 | |
 | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟡 2/5 | — | 🟢 1/1 | 🟢 1/1 | 🟡 22/25 | 🟡 5/10 | |
-| [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/13 | |
+| [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 9/24 | 🟡 1/13 | |
 
 
 ## Tools
