@@ -115,6 +115,8 @@ type topicHit struct {
 //	"event:eventgrid:topic:type"    → "eventgrid"
 //	"redis:orders.placed"           → "redis"
 //	"nats:orders.placed"            → "nats"
+//	"stream:redis:events"           → "redis"  (Redis Streams, 3-segment)
+//	"stream:orders"                 → "kinesis" (serverless Kinesis, 2-segment)
 func brokerFromTopicName(name string) string {
 	// "event:eventbridge:..." and other event-bus forms: second segment is broker.
 	if strings.HasPrefix(name, "event:") {
@@ -124,12 +126,11 @@ func brokerFromTopicName(name string) string {
 		}
 		return "event"
 	}
-	// Redis pub/sub queue synthetics: "channel:redis-pubsub:<name>" and Redis
-	// Streams "stream:redis:<name>". The second segment carries the transport
-	// (redis-pubsub / redis); normalise both to the "redis" channel so emitted
-	// links read consistently with the rest of the topic pass (#1489).
-	if strings.HasPrefix(name, "channel:") || strings.HasPrefix(name, "stream:") {
-		rest := name[strings.IndexByte(name, ':')+1:]
+	// Redis pub/sub channel synthetics: "channel:redis-pubsub:<name>". The
+	// second segment carries the transport (redis-pubsub); normalise to the
+	// "redis" channel so emitted links read consistently (#1489).
+	if strings.HasPrefix(name, "channel:") {
+		rest := name[len("channel:"):]
 		if i := strings.IndexByte(rest, ':'); i > 0 {
 			transport := rest[:i]
 			if strings.HasPrefix(transport, "redis") {
@@ -138,6 +139,27 @@ func brokerFromTopicName(name string) string {
 			return transport
 		}
 		return "redis"
+	}
+	// Stream synthetics are emitted by two distinct passes with colliding
+	// prefixes, disambiguated by segment count (#3628 area #2):
+	//   - Redis Streams (redis_pubsub_edges.go): "stream:redis:<name>" — the
+	//     3-segment form carries the transport in segment 2.
+	//   - Kinesis (serverless_framework_edges.go): "stream:<name>" — a bare
+	//     2-segment form with no transport segment. Before #3628 this fell
+	//     through to the redis fallback below, so a Kinesis producer→consumer
+	//     topology edge was mislabelled channel="redis"; it now reads
+	//     "kinesis".
+	if strings.HasPrefix(name, "stream:") {
+		rest := name[len("stream:"):]
+		if i := strings.IndexByte(rest, ':'); i > 0 {
+			transport := rest[:i]
+			if strings.HasPrefix(transport, "redis") {
+				return "redis"
+			}
+			return transport
+		}
+		// 2-segment "stream:<name>" → Kinesis stream synthetic.
+		return "kinesis"
 	}
 	// Simple "broker:..." form (kafka, sns, sqs, redis, nats, pubsub, etc.).
 	if i := strings.IndexByte(name, ':'); i > 0 {

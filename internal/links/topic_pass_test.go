@@ -231,6 +231,20 @@ func TestTopicPass_BrokerFromTopicName(t *testing.T) {
 		{"redis:orders.placed", "redis"},
 		{"nats:orders.placed", "nats"},
 		{"pubsub:orders.placed", "pubsub"},
+		// #3628 area #2: the five brokers whose producer→consumer topology join
+		// was audited. pulsar/rabbitmq/mqtt/azure already carried correct
+		// channels; kinesis was mislabelled "redis" by the stream: collision.
+		{"topic:pulsar:persistent://public/default/orders", "topic"},
+		{"rabbitmq:orders", "rabbitmq"},
+		{"mqtt:sensors/temperature", "mqtt"},
+		{"azure:orders-topic", "azure"},
+		{"servicebus:orders", "servicebus"},
+		// Kinesis (serverless) 2-segment stream synthetic — now "kinesis",
+		// previously fell through to the redis fallback.
+		{"stream:orders", "kinesis"},
+		// Redis Streams 3-segment synthetic stays "redis" (regression guard
+		// for the stream: disambiguation).
+		{"stream:redis:events.log", "redis"},
 	}
 	for _, tc := range cases {
 		got := brokerFromTopicName(tc.name)
@@ -578,5 +592,157 @@ func TestTopicPass_BullMQQueueJoin(t *testing.T) {
 	}
 	if !linked {
 		t.Error("expected api-gateway→email-worker bullmq topic link")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #3628 area #2 — broker topology completeness.
+//
+// The producer→consumer topology join in topic_pass is keyed on entity *kind*
+// (SCOPE.MessageTopic / SCOPE.Queue), not on the broker prefix, so any broker
+// that emits one of those kinds with PUBLISHES_TO / SUBSCRIBES_TO edges and a
+// canonical cross-repo Name is joined. The meta-audit called out pulsar,
+// rabbitmq, mqtt, kinesis and azure (Service Bus / Event Hubs) as never being
+// joined; these tests assert the SPECIFIC producer→topic→consumer edge that
+// the join now (and, for the four already-correct brokers, already) produces,
+// and lock the kinesis channel-label fix (stream: collision with Redis
+// Streams) in place.
+// ---------------------------------------------------------------------------
+
+// brokerJoinFixture wires a single producer repo (PUBLISHES_TO topicName) and a
+// single consumer repo (SUBSCRIBES_TO topicName) sharing the canonical entity
+// Name, runs the passes, and returns the topic links produced.
+func brokerJoinFixture(t *testing.T, topicName, kind string) []Link {
+	t.Helper()
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "producer-svc",
+		Entities: []map[string]any{
+			{"id": "prod_fn", "name": "publish_event", "kind": "SCOPE.Operation", "source_file": "producer-svc/pub.go"},
+			{"id": "topic_p", "name": topicName, "kind": kind, "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "prod_fn", "to_id": "topic_p", "kind": "PUBLISHES_TO"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "consumer-svc",
+		Entities: []map[string]any{
+			{"id": "cons_fn", "name": "on_event", "kind": "SCOPE.Operation", "source_file": "consumer-svc/sub.go"},
+			{"id": "topic_c", "name": topicName, "kind": kind, "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "cons_fn", "to_id": "topic_c", "kind": "SUBSCRIBES_TO"},
+		},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("bg", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "bg-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var topicLinks []Link
+	for _, l := range doc.Links {
+		if l.Method == MethodTopic {
+			topicLinks = append(topicLinks, l)
+		}
+	}
+	return topicLinks
+}
+
+// TestTopicPass_BrokerTopologyCompleteness asserts the exact producer→consumer
+// join through the shared broker node for each of the five audited brokers.
+func TestTopicPass_BrokerTopologyCompleteness(t *testing.T) {
+	cases := []struct {
+		broker      string
+		topicName   string
+		kind        string
+		wantChannel string
+	}{
+		// Pulsar: pulsar_edges.go emits SCOPE.MessageTopic Name
+		// "topic:pulsar:<canonical-uri>".
+		{"pulsar", "topic:pulsar:persistent://public/default/orders.placed", "SCOPE.MessageTopic", "topic"},
+		// RabbitMQ: rabbitmq_edges.go emits SCOPE.Queue Name "rabbitmq:<queue>".
+		// Producer publishes to exchange "orders", consumer subscribes the same
+		// queue/exchange "orders" → join through the shared rabbitmq:orders node.
+		{"rabbitmq", "rabbitmq:orders", "SCOPE.Queue", "rabbitmq"},
+		// MQTT: cpp_messaging_edges.go emits SCOPE.MessageTopic Name
+		// "mqtt:<topic>".
+		{"mqtt", "mqtt:sensors/temperature", "SCOPE.MessageTopic", "mqtt"},
+		// Kinesis: serverless_framework_edges.go emits SCOPE.Queue Name
+		// "stream:<name>". Channel must read "kinesis", NOT "redis" (#3628).
+		{"kinesis", "stream:orders", "SCOPE.Queue", "kinesis"},
+		// Azure Service Bus / Event Hubs: azure-prefixed MessageTopic synthetic.
+		{"azure", "azure:orders-topic", "SCOPE.MessageTopic", "azure"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.broker, func(t *testing.T) {
+			links := brokerJoinFixture(t, tc.topicName, tc.kind)
+			if len(links) != 1 {
+				t.Fatalf("%s: want exactly 1 producer→consumer topology link, got %d: %+v", tc.broker, len(links), links)
+			}
+			l := links[0]
+			if l.Source != "producer-svc::prod_fn" {
+				t.Errorf("%s: source: want producer-svc::prod_fn, got %s", tc.broker, l.Source)
+			}
+			if l.Target != "consumer-svc::cons_fn" {
+				t.Errorf("%s: target: want consumer-svc::cons_fn, got %s", tc.broker, l.Target)
+			}
+			if l.Relation != RelationPublishesTo {
+				t.Errorf("%s: relation: want %s, got %s", tc.broker, RelationPublishesTo, l.Relation)
+			}
+			if l.Identifier == nil || *l.Identifier != tc.topicName {
+				t.Errorf("%s: identifier: want %q, got %v", tc.broker, tc.topicName, l.Identifier)
+			}
+			if l.Channel == nil || *l.Channel != tc.wantChannel {
+				t.Errorf("%s: channel: want %q, got %v", tc.broker, tc.wantChannel, l.Channel)
+			}
+		})
+	}
+}
+
+// TestTopicPass_BrokerNoFalseTopology asserts the honest-join contract for the
+// audited brokers: a producer whose topic has NO matching consumer (no
+// SUBSCRIBES_TO anywhere) yields no topology edge. Guards against fabricating
+// a cross-component link from a one-sided publisher.
+func TestTopicPass_BrokerNoFalseTopology(t *testing.T) {
+	root := fixtureRoot(t)
+	// producer-only repo for a rabbitmq exchange "orphan".
+	writeFixture(t, root, fixtureGraph{
+		Repo: "producer-only",
+		Entities: []map[string]any{
+			{"id": "prod_fn", "name": "publish_orphan", "kind": "SCOPE.Operation", "source_file": "producer-only/pub.go"},
+			{"id": "topic_p", "name": "rabbitmq:orphan", "kind": "SCOPE.Queue", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "prod_fn", "to_id": "topic_p", "kind": "PUBLISHES_TO"},
+		},
+	})
+	// A second repo that merely *mentions* a DIFFERENT kinesis stream as a
+	// consumer — no shared Name with the rabbitmq producer.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "unrelated-consumer",
+		Entities: []map[string]any{
+			{"id": "cons_fn", "name": "on_other", "kind": "SCOPE.Operation", "source_file": "unrelated-consumer/sub.go"},
+			{"id": "topic_c", "name": "stream:something-else", "kind": "SCOPE.Queue", "source_file": ""},
+		},
+		Edges: []map[string]string{
+			{"from_id": "cons_fn", "to_id": "topic_c", "kind": "SUBSCRIBES_TO"},
+		},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("ng", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "ng-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method == MethodTopic {
+			t.Errorf("expected NO topic link (no shared producer↔consumer topic), got %+v", l)
+		}
 	}
 }

@@ -4132,9 +4132,9 @@
         },
         "topic_attribution": {
           "status": "partial",
-          "cites": ["internal/engine/cpp_messaging_edges.go"],
-          "notes": "mqtt:\u003ctopic\u003e node (supports +/# wildcards); cross-repo joinable. Literal-only.",
-          "verified_at": "2026-05-31"
+          "cites": ["internal/engine/cpp_messaging_edges.go","internal/links/topic_pass.go"],
+          "notes": "mqtt:\u003ctopic\u003e SCOPE.MessageTopic node (supports +/# wildcards); topic_pass.go joins a PUBLISHES_TO producer to a SUBSCRIBES_TO consumer sharing the node Name into a cross-repo producer-\u003econsumer topology edge (channel=mqtt). Literal-only.",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -56894,8 +56894,9 @@
         },
         "topic_attribution": {
           "status": "partial",
-          "cites": ["internal/engine/pulsar_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/pulsar_edges.go","internal/links/topic_pass.go"],
+          "notes": "topic:pulsar:\u003curi\u003e SCOPE.MessageTopic node; topic_pass.go joins a PUBLISHES_TO producer to a SUBSCRIBES_TO consumer sharing the node Name into a cross-repo producer-\u003econsumer topology edge (channel=pulsar).",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -56917,8 +56918,9 @@
         },
         "topic_attribution": {
           "status": "full",
-          "cites": ["internal/engine/rabbitmq_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rabbitmq_edges.go","internal/links/topic_pass.go"],
+          "notes": "rabbitmq:\u003cqueue/exchange\u003e SCOPE.Queue node; topic_pass.go joins a PUBLISHES_TO producer (exchange 'orders') to a SUBSCRIBES_TO consumer of queue/exchange 'orders' sharing the node Name into a cross-repo producer-\u003econsumer topology edge (channel=rabbitmq).",
+          "verified_at": "2026-06-02"
         }
       }
     },
