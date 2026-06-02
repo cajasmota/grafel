@@ -507,6 +507,18 @@ func tailIdent(qname string) string {
 	return qname[idx+1:]
 }
 
+// headIdent returns the first `.` segment of a dotted name — the receiver of a
+// method call (`UserService` in `UserService.create`). For a bare identifier it
+// returns the identifier unchanged. Used by the import-aware gate to test
+// whether the call's receiver symbol was imported into the test file.
+func headIdent(qname string) string {
+	idx := strings.IndexByte(qname, '.')
+	if idx < 0 {
+		return qname
+	}
+	return qname[:idx]
+}
+
 // resolveCalls returns the list of (production function, confidence) pairs
 // derived from a single test function body.
 //
@@ -518,7 +530,16 @@ func tailIdent(qname string) string {
 // one low-confidence mapping to `convSymbol` (the naming-convention guess).
 // If `convSymbol` is empty a low-confidence mapping is still emitted
 // targeting the test function's stripped name (e.g. `TestGetUser` → `GetUser`).
-func resolveCalls(tf testFunction, prodFile, convSymbol string) []testedCall {
+//
+// importedSyms is the set of named symbols the test file imports (JS/TS
+// `import { X }`, Python `from m import X`). When this set is NON-EMPTY it gates
+// the direct-call signal for QUALITY (#3628): a call to an *imported* symbol is
+// the strongest test→SUT signal and stays high; a direct call to a head symbol
+// that was never imported (a probable local/builtin name collision) is held at
+// medium so it is never a high-confidence false link. An empty set disables the
+// gate entirely (Go same-package, wildcard imports, conventions with no named
+// imports) — behaviour is then identical to the pre-#3628 resolver.
+func resolveCalls(tf testFunction, prodFile, convSymbol string, importedSyms map[string]bool) []testedCall {
 	seen := map[string]string{} // qname → confidence
 
 	upgrade := func(qname, conf string) {
@@ -534,7 +555,10 @@ func resolveCalls(tf testFunction, prodFile, convSymbol string) []testedCall {
 		seen[qname] = conf
 	}
 
-	// Pass 1: direct calls → high.
+	gateImports := len(importedSyms) > 0
+
+	// Pass 1: direct calls → high (held at medium when import-aware and the
+	// receiver symbol was not imported).
 	for _, m := range directCallRE.FindAllStringSubmatch(tf.body, -1) {
 		if len(m) < 2 {
 			continue
@@ -550,7 +574,20 @@ func resolveCalls(tf testFunction, prodFile, convSymbol string) []testedCall {
 		if len(tail) < 3 {
 			continue
 		}
-		upgrade(qname, "high")
+		conf := "high"
+		if gateImports {
+			// The receiver of the call expression is the symbol that must have
+			// been imported: for `UserService.create()` it is `UserService`;
+			// for a bare `createOrder()` it is `createOrder`. If neither the
+			// receiver nor the whole dotted name was imported, hold the edge at
+			// medium rather than emitting a high-confidence link to a
+			// possibly-unrelated local. (#3628)
+			head := headIdent(qname)
+			if !importedSyms[head] && !importedSyms[qname] {
+				conf = "medium"
+			}
+		}
+		upgrade(qname, conf)
 	}
 
 	// Pass 2: mock targets → medium (may upgrade to high if already present).

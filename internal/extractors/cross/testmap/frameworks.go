@@ -95,6 +95,99 @@ func extractImportTokens(source string) map[string]bool {
 	return out
 }
 
+// namedImportRE captures the *named symbols* brought into scope by an import
+// statement (as opposed to importTokenRE, which captures the module path). The
+// set it produces is used by the resolver to gate the high-confidence direct
+// -call signal: a call to an imported symbol is the strongest test→SUT signal,
+// whereas a call to a same-named identifier that was never imported is more
+// likely a local/builtin collision and is held at medium.
+//
+// Covered styles (one capture group = the brace/parenthesised symbol list):
+//
+//	JS/TS:  import { UserService, createOrder } from '../user-service'
+//	JS/TS:  import UserService from './user-service'          (default — group 2)
+//	Python: from app.users import create_user, UserService
+//	Python: from app.users import (create_user, UserService)
+var namedImportBraceRE = regexp.MustCompile(
+	`(?m)\bimport\s*\{([^}]*)\}\s*from\b`,
+)
+
+// pyFromImportRE captures the symbol list of a Python `from x import a, b` /
+// `from x import (a, b)` statement. Group 1 = the comma-separated names.
+var pyFromImportRE = regexp.MustCompile(
+	`(?m)^\s*from\s+[\w.]+\s+import\s+\(?([^()\n#]+)\)?`,
+)
+
+// jsDefaultImportRE captures a JS/TS default import binding:
+// `import UserService from './user-service'`. Group 1 = the binding name.
+var jsDefaultImportRE = regexp.MustCompile(
+	`(?m)\bimport\s+([A-Za-z_$][\w$]*)\s*(?:,\s*\{[^}]*\}\s*)?from\b`,
+)
+
+// extractNamedImports returns the set of symbol names brought into scope by the
+// file's import statements (JS/TS named + default imports, Python from-imports).
+// Names are kept in their original case. An empty set means "no named imports
+// were recognised" — in that case the resolver does NOT gate on imports (so Go
+// same-package calls, wildcard imports, etc. keep their existing behaviour).
+//
+// Aliases (`import { A as B }`, `from x import a as b`) record the LOCAL binding
+// (B / b) — that is the name the test body actually calls.
+func extractNamedImports(source string) map[string]bool {
+	out := map[string]bool{}
+	addList := func(list string) {
+		for _, raw := range strings.Split(list, ",") {
+			name := strings.TrimSpace(raw)
+			if name == "" || name == "*" {
+				continue
+			}
+			// `A as B` → bind B (the local name used in the body).
+			if idx := strings.Index(name, " as "); idx >= 0 {
+				name = strings.TrimSpace(name[idx+len(" as "):])
+			}
+			// Strip a `type ` prefix (TS `import { type Foo }`).
+			name = strings.TrimPrefix(name, "type ")
+			name = strings.TrimSpace(name)
+			// Keep only plain identifiers.
+			if name != "" && isPlainIdent(name) {
+				out[name] = true
+			}
+		}
+	}
+	for _, m := range namedImportBraceRE.FindAllStringSubmatch(source, -1) {
+		if len(m) >= 2 {
+			addList(m[1])
+		}
+	}
+	for _, m := range pyFromImportRE.FindAllStringSubmatch(source, -1) {
+		if len(m) >= 2 {
+			addList(m[1])
+		}
+	}
+	for _, m := range jsDefaultImportRE.FindAllStringSubmatch(source, -1) {
+		if len(m) >= 2 && isPlainIdent(m[1]) {
+			out[m[1]] = true
+		}
+	}
+	return out
+}
+
+// isPlainIdent reports whether s is a single bare identifier (no dots, spaces,
+// braces, or operators) — the only form we record as an imported symbol.
+func isPlainIdent(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r == '_', r == '$':
+		case r >= '0' && r <= '9' && i > 0:
+		default:
+			return false
+		}
+	}
+	return true
+}
+
 // matchesAnyImport reports whether any hint appears in the token set
 // (substring match tolerant to nested import paths).
 func matchesAnyImport(tokens map[string]bool, hints []string) bool {

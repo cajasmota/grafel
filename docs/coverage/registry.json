@@ -63318,8 +63318,8 @@
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/engine/rules/go/test_patterns.yaml","internal/engine/tests_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/go/test_patterns.yaml","internal/engine/tests_edges.go","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63406,8 +63406,8 @@
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/engine/rules/javascript_typescript/frameworks/jest.yaml","internal/engine/tests_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/javascript_typescript/frameworks/jest.yaml","internal/engine/tests_edges.go","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63424,8 +63424,8 @@
         },
         "target_extraction": {
           "status": "partial",
-          "cites": ["internal/engine/rules/java/test_patterns.yaml"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/java/test_patterns.yaml","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63442,8 +63442,8 @@
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/engine/rules/java/frameworks/junit5.yaml","internal/engine/tests_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/java/frameworks/junit5.yaml","internal/engine/tests_edges.go","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63460,8 +63460,8 @@
         },
         "target_extraction": {
           "status": "partial",
-          "cites": ["internal/engine/rules/ruby/test_patterns.yaml"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/ruby/test_patterns.yaml","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63511,7 +63511,11 @@
           "status": "missing"
         },
         "target_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3753",
+          "notes": "Mockito when(svc.method()).thenReturn(...) stubs resolve to a medium-confidence TESTS edge on the stubbed production method via testmap mockSetupREs; direct calls on the SUT in @Test bodies resolve high.",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63662,8 +63666,8 @@
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/engine/rules/python/frameworks/pytest.yaml","internal/engine/tests_edges.go","internal/engine/tests_imports.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/python/frameworks/pytest.yaml","internal/engine/tests_edges.go","internal/engine/tests_imports.go","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63694,8 +63698,8 @@
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/engine/rules/ruby/frameworks/rspec.yaml","internal/engine/tests_edges.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/ruby/frameworks/rspec.yaml","internal/engine/tests_edges.go","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63782,8 +63786,10 @@
         },
         "target_extraction": {
           "status": "partial",
-          "cites": ["internal/engine/rules/java/test_patterns.yaml"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/engine/rules/java/test_patterns.yaml","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3753",
+          "notes": "TestNG @Test methods in *Test.java files route through testmap detectJUnit (filename hint); org.testng import-hint not yet registered, so import-only TestNG files are a known partial miss.",
+          "verified_at": "2026-06-02"
         }
       }
     },
@@ -63818,8 +63824,8 @@
         },
         "target_extraction": {
           "status": "full",
-          "cites": ["internal/extractors/config/discover.go","internal/extractors/config/discover_test.go"],
-          "verified_at": "2026-05-28"
+          "cites": ["internal/extractors/config/discover.go","internal/extractors/cross/testmap/extractor.go","internal/extractors/cross/testmap/frameworks.go","internal/extractors/cross/testmap/resolver.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },

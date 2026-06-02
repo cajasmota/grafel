@@ -615,6 +615,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	testType := inferTestType(file.Path)
 	prodFile, prodSymbol := productionFileFromTestPath(file.Path)
 
+	// #3628: the set of named symbols imported by this test file (JS/TS
+	// `import { X }`, Python `from m import X`). resolveCalls uses it to gate the
+	// high-confidence direct-call signal: a call to an imported symbol is the
+	// strongest test→SUT signal; a call to a same-named identifier that was never
+	// imported is held at medium so it is never a high-confidence false link. An
+	// empty set (Go same-package, wildcard imports, no named imports) disables
+	// the gate, preserving existing behaviour.
+	importedSyms := extractNamedImports(source)
+
 	// Issue #2080: emit ONE SCOPE.Pattern entity per test function.
 	// buildCollapsedEntity folds all resolved production calls into a single
 	// record with multiple embedded TESTS edges (FromID="" → entity owns the
@@ -622,7 +631,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// many @pytest.mark.parametrize parameter sets the test function has.
 	out := make([]types.EntityRecord, 0, len(tests))
 	for _, tf := range tests {
-		called := resolveCalls(tf, prodFile, prodSymbol)
+		called := resolveCalls(tf, prodFile, prodSymbol, importedSyms)
 		if len(called) == 0 {
 			continue
 		}
