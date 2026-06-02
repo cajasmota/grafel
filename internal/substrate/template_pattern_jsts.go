@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - i18n        : t("key"), i18n.t("key"), $t("key"), useTranslation
-//                   exported t-callable invocations.
+//     exported t-callable invocations.
 //   - log_format  : console.<level>("...{}..."), logger.<level>("...{}..."),
-//                   log.<level>("..."). Only literal first arg is captured.
+//     log.<level>("..."). Only literal first arg is captured.
 //   - sql         : Backtick or quoted string literals whose first non-
-//                   whitespace token is a SQL verb (case-insensitive).
+//     whitespace token is a SQL verb (case-insensitive).
 package substrate
 
 import "regexp"

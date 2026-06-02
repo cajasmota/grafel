@@ -3,14 +3,14 @@
 // Template-pattern scope for Solidity:
 //
 //   - i18n  : not_applicable — Solidity runs on the EVM; there is no user
-//             locale or i18n framework at the contract layer.
+//     locale or i18n framework at the contract layer.
 //   - sql   : not_applicable — Solidity has no SQL; storage access is via
-//             mapping / array reads / SSTORE, not SQL statements.
+//     mapping / array reads / SSTORE, not SQL statements.
 //   - log   : Solidity emits events and uses revert/require strings for
-//             on-chain "log messages". We capture:
-//             * `emit EventName("literal message")` strings
-//             * `require(..., "error msg")` / `revert("error msg")` literals
-//             These are the nearest analogue to log-format strings in EVM code.
+//     on-chain "log messages". We capture:
+//   - `emit EventName("literal message")` strings
+//   - `require(..., "error msg")` / `revert("error msg")` literals
+//     These are the nearest analogue to log-format strings in EVM code.
 //
 // Only the log_format kind is applicable for Solidity.
 package substrate

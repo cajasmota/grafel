@@ -65,16 +65,16 @@ var scalaTestAnnotations = map[string]bool{
 }
 
 var scalaLifecycleAnnotations = map[string]bool{
-	"PostConstruct":     true,
-	"PreDestroy":        true,
-	"BeforeAll":         true,
-	"AfterAll":          true,
-	"BeforeEach":        true,
-	"AfterEach":         true,
-	"Before":            true,
-	"After":             true,
-	"EventListener":     true,
-	"Scheduled":         true,
+	"PostConstruct": true,
+	"PreDestroy":    true,
+	"BeforeAll":     true,
+	"AfterAll":      true,
+	"BeforeEach":    true,
+	"AfterEach":     true,
+	"Before":        true,
+	"After":         true,
+	"EventListener": true,
+	"Scheduled":     true,
 }
 
 func sniffScalaEntryPoints(content string) []EntryPoint {

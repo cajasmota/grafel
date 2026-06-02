@@ -4,17 +4,17 @@
 // effect lattice maps as follows:
 //
 //   - mutation  : state-variable write (any assignment to a contract storage
-//                 variable — equivalent to SSTORE). This is the primary
-//                 observable side-effect in Solidity; contracts have no
-//                 OS filesystem or outbound HTTP.
+//     variable — equivalent to SSTORE). This is the primary
+//     observable side-effect in Solidity; contracts have no
+//     OS filesystem or outbound HTTP.
 //   - http_out  : external contract call via .call{...}() / .send() /
-//                 .transfer() / interface method on external address — these
-//                 are cross-contract invocations that can trigger re-entrancy,
-//                 semantically analogous to an outbound network call.
+//     .transfer() / interface method on external address — these
+//     are cross-contract invocations that can trigger re-entrancy,
+//     semantically analogous to an outbound network call.
 //   - db_read   : not_applicable — no SQL in Solidity; mapping/array reads
-//                 are pure EVM reads without a network boundary.
+//     are pure EVM reads without a network boundary.
 //   - db_write  : not_applicable — mapping/array writes are captured as
-//                 mutation above.
+//     mutation above.
 //   - fs_read / fs_write : not_applicable — EVM has no filesystem.
 //
 // Function attribution uses `function name(` / `modifier name(` headers.

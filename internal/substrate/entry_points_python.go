@@ -50,9 +50,9 @@ var pyQuotedNameRe = regexp.MustCompile(`['"]([A-Za-z_][\w]*)['"]`)
 // the runner invokes without an explicit caller. Module-level only;
 // class-method versions are reached via the class's reachability.
 var pyLifecycleNames = map[string]bool{
-	"setup_module":    true,
-	"teardown_module": true,
-	"setup_function":  true,
+	"setup_module":      true,
+	"teardown_module":   true,
+	"setup_function":    true,
 	"teardown_function": true,
 	"pytest_configure":  true,
 	"conftest":          true,

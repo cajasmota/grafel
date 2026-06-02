@@ -2,10 +2,10 @@
 //
 // Recognises:
 //   - i18n        : Gettext.gettext("key"), gettext("key"), dgettext("..."),
-//                   pgettext("..."). Phoenix's gen_gettext idioms.
+//     pgettext("..."). Phoenix's gen_gettext idioms.
 //   - log_format  : Logger.<level>("..."), IO.puts("..."), IO.inspect("...").
 //   - sql         : Quoted string literals whose first word is a SQL verb;
-//                   Ecto.Adapters.SQL.query!(repo, "SELECT ...").
+//     Ecto.Adapters.SQL.query!(repo, "SELECT ...").
 package substrate
 
 import "regexp"

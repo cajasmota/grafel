@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `x = ...` local assignments, typed `x : T = ...`,
-//            `@x = ...` instance variable assignments.
+//     `@x = ...` instance variable assignments.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Crystal keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `def name` header using the
 // scanCrystalFuncHeaders helper from effect_sinks_crystal.go.

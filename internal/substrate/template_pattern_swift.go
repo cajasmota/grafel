@@ -2,14 +2,14 @@
 //
 // Recognises:
 //   - i18n       : NSLocalizedString("key", ...), String(localized: "key"),
-//                  Bundle.main.localizedString(forKey: "key", ...),
-//                  SwiftUI Text("key") (common pattern).
+//     Bundle.main.localizedString(forKey: "key", ...),
+//     SwiftUI Text("key") (common pattern).
 //   - log_format : print("..."), NSLog("..."),
-//                  os.Logger().debug/info/warning/error("..."),
-//                  Logger.<level>("...") (swift-log / OSLog).
+//     os.Logger().debug/info/warning/error("..."),
+//     Logger.<level>("...") (swift-log / OSLog).
 //   - sql        : Quoted string literals whose first non-whitespace
-//                  token is a SQL verb — used with GRDB / SQLite.swift
-//                  raw query APIs.
+//     token is a SQL verb — used with GRDB / SQLite.swift
+//     raw query APIs.
 package substrate
 
 import "regexp"

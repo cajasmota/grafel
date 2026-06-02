@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - i18n        : Messages("key", ...) (Play), messagesApi("key"),
-//                   translate("key"), t("key").
+//     translate("key"), t("key").
 //   - log_format  : logger.<level>("..."), Logger.<level>("..."),
-//                   println("..."). Captures literal first arg.
+//     println("..."). Captures literal first arg.
 //   - sql         : Quoted/triple-quoted string literals whose first non-
-//                   whitespace token is a SQL verb.
+//     whitespace token is a SQL verb.
 package substrate
 
 import "regexp"

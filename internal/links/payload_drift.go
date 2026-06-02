@@ -166,13 +166,13 @@ type SchemaDrift struct {
 
 // payloadDriftDocument is the on-disk shape of the sidecar JSON.
 type payloadDriftDocument struct {
-	Version        int           `json:"version"`
-	Method         string        `json:"method"`
-	Group          string        `json:"group"`
-	Total          int           `json:"total"`
-	SchemaCount    int           `json:"schema_count"`
-	EnvelopeCount  int           `json:"envelope_count"`
-	Findings       []SchemaDrift `json:"findings"`
+	Version       int           `json:"version"`
+	Method        string        `json:"method"`
+	Group         string        `json:"group"`
+	Total         int           `json:"total"`
+	SchemaCount   int           `json:"schema_count"`
+	EnvelopeCount int           `json:"envelope_count"`
+	Findings      []SchemaDrift `json:"findings"`
 }
 
 // shapeKey identifies one shape bucket — the unique attribution of a
@@ -601,12 +601,12 @@ func buildDriftFinding(
 
 	out := SchemaDrift{
 		EndpointID:        link.Target,
-		EndpointName:     endpointName,
-		Direction:        string(dir),
-		ProducerEntity:   producerEntity,
-		ConsumerEntity:   consumerEntity,
-		Severity:         severity,
-		DriftClass:       classifyDrift(missingInProducer, missingInConsumer),
+		EndpointName:      endpointName,
+		Direction:         string(dir),
+		ProducerEntity:    producerEntity,
+		ConsumerEntity:    consumerEntity,
+		Severity:          severity,
+		DriftClass:        classifyDrift(missingInProducer, missingInConsumer),
 		MissingInProducer: missingInProducer,
 		MissingInConsumer: missingInConsumer,
 	}

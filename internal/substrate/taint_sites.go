@@ -4,18 +4,18 @@
 // taint-relevant primitives that occur within it:
 //
 //   - sources    : untrusted-input primitives (HTTP request body / query
-//                  / headers / cookies, env vars, file reads of
-//                  user-controlled paths, JSON deserialisation from an
-//                  untrusted byte slice).
+//     / headers / cookies, env vars, file reads of
+//     user-controlled paths, JSON deserialisation from an
+//     untrusted byte slice).
 //   - sinks      : security-sensitive operations (raw SQL exec with
-//                  string concatenation, shell exec, eval, regex
-//                  construction from a non-literal, file writes with a
-//                  non-literal path, HTML output without escaping).
+//     string concatenation, shell exec, eval, regex
+//     construction from a non-literal, file writes with a
+//     non-literal path, HTML output without escaping).
 //   - sanitizers : primitives that statically prove the value flowing
-//                  through them is safe at this point (parameterised
-//                  SQL, html.escape / bleach / DOMPurify, validation
-//                  library schema declarations — zod / joi /
-//                  marshmallow / pydantic).
+//     through them is safe at this point (parameterised
+//     SQL, html.escape / bleach / DOMPurify, validation
+//     library schema declarations — zod / joi /
+//     marshmallow / pydantic).
 //
 // The per-language sniffer is the only language-aware piece; the
 // generic propagation pass at internal/links/taint_flow.go consumes

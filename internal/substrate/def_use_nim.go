@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `var x = ...`, `let x = ...`, `const x = ...` (local bindings),
-//            `var x: T = ...`, bare `x = ...` reassignments.
+//     `var x: T = ...`, bare `x = ...` reassignments.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Nim keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `proc/func/method/template/macro`
 // header using the scanNimFuncHeaders helper from effect_sinks_nim.go.
@@ -19,8 +19,8 @@ func init() { RegisterDefUseSniffer("nim", sniffDefUseNim) }
 //	Group 1 (var/let/const form): `(var|let|const) name [: T] = ...`
 //	Group 2 (bare assignment)   : `name = ...` (not `==`)
 var nimDefRe = regexp.MustCompile(
-	`(?m)(?:\b(?:var|let|const)\s+([A-Za-z_][\w`+"`"+`]*)\s*(?::\s*[A-Za-z_][\w\[\], ]*\s*)?=(?:[^=])` +
-		`|^\s*([A-Za-z_][\w`+"`"+`]*)\s*=(?:[^=]))`,
+	`(?m)(?:\b(?:var|let|const)\s+([A-Za-z_][\w` + "`" + `]*)\s*(?::\s*[A-Za-z_][\w\[\], ]*\s*)?=(?:[^=])` +
+		`|^\s*([A-Za-z_][\w` + "`" + `]*)\s*=(?:[^=]))`,
 )
 
 var nimIdentUseRe = regexp.MustCompile(`\b([A-Za-z_][\w` + "`" + `]*)\b`)

@@ -189,13 +189,13 @@ func runModuleCyclePass(graphs []repoGraph, paths Paths) (PassResult, error) {
 // recursive strongConnect closure operates on the receiver, populating
 // `sccs` with every component on its way back up the DFS stack.
 type tarjanState struct {
-	adj      map[string][]string
-	index    map[string]int
-	lowlink  map[string]int
-	onStack  map[string]bool
-	stack    []string
-	counter  int
-	sccs     [][]string
+	adj     map[string][]string
+	index   map[string]int
+	lowlink map[string]int
+	onStack map[string]bool
+	stack   []string
+	counter int
+	sccs    [][]string
 }
 
 func newTarjanState(adj map[string][]string) *tarjanState {

@@ -115,9 +115,9 @@ func TestIssue2856_AngularStateSetter(t *testing.T) {
 		}
 	}
 	for name, wantState := range map[string]string{
-		"count.set":        "count",
-		"count.update":     "count",
-		"name.set":         "name",
+		"count.set":         "count",
+		"count.update":      "count",
+		"name.set":          "name",
 		"dispatch:loadUser": "loadUser",
 	} {
 		if got, ok := setters[name]; !ok {

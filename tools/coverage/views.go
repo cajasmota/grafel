@@ -77,20 +77,20 @@ func findRecord(reg *Registry, id string) *Record {
 
 // Stats summarises status counts across the registry.
 type Stats struct {
-	Total       int                       `json:"total"`
-	ByStatus    map[string]int            `json:"by_status"`
-	ByLanguage  map[string]LanguageStats  `json:"by_language"`
-	ByCategory  map[string]int            `json:"by_category"`
+	Total        int                      `json:"total"`
+	ByStatus     map[string]int           `json:"by_status"`
+	ByLanguage   map[string]LanguageStats `json:"by_language"`
+	ByCategory   map[string]int           `json:"by_category"`
 	Capabilities int                      `json:"capabilities"`
 }
 
 // LanguageStats aggregates per-language status counts.
 type LanguageStats struct {
-	Records    int `json:"records"`
-	Full       int `json:"full"`
-	Partial    int `json:"partial"`
-	Missing    int `json:"missing"`
-	NotAppl    int `json:"not_applicable"`
+	Records int `json:"records"`
+	Full    int `json:"full"`
+	Partial int `json:"partial"`
+	Missing int `json:"missing"`
+	NotAppl int `json:"not_applicable"`
 }
 
 // computeStats aggregates counters across the registry.

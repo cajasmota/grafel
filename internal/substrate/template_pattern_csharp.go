@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - i18n        : Localizer["key"], _localizer["key"], T("key"),
-//                   ResourceManager.GetString("key").
+//     ResourceManager.GetString("key").
 //   - log_format  : _logger.Log<Level>("..."), logger.Information("..."),
-//                   Console.WriteLine("..."). Captures literal first arg.
+//     Console.WriteLine("..."). Captures literal first arg.
 //   - sql         : Quoted/verbatim string literals whose first non-
-//                   whitespace token is a SQL verb (case-insensitive).
+//     whitespace token is a SQL verb (case-insensitive).
 package substrate
 
 import "regexp"

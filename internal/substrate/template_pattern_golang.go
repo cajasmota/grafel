@@ -2,13 +2,13 @@
 //
 // Recognises:
 //   - i18n        : i18n.T("key") / message.NewPrinter().Sprintf("key", ...) —
-//                   conservative pattern, no widely-used canonical idiom
-//                   so we restrict to .T("...") method calls.
+//     conservative pattern, no widely-used canonical idiom
+//     so we restrict to .T("...") method calls.
 //   - log_format  : fmt.Printf / fmt.Println / log.Printf / log.Println /
-//                   log.<Level>f("..."), klog.V(...).Infof("...") —
-//                   captures the format string literal.
+//     log.<Level>f("..."), klog.V(...).Infof("...") —
+//     captures the format string literal.
 //   - sql         : Backtick/quoted literals whose first non-whitespace
-//                   token is a SQL verb (case-insensitive).
+//     token is a SQL verb (case-insensitive).
 package substrate
 
 import "regexp"

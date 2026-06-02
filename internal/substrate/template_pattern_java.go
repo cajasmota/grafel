@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - i18n        : messages.getMessage("key", ...), messageSource.getMessage,
-//                   bundle.getString("key"), Translator.translate("key").
+//     bundle.getString("key"), Translator.translate("key").
 //   - log_format  : logger.<level>("..."), log.<level>("..."),
-//                   slf4j-style {} placeholders captured in the literal.
+//     slf4j-style {} placeholders captured in the literal.
 //   - sql         : Quoted string literals (single and concatenated)
-//                   whose first non-whitespace token is a SQL verb.
+//     whose first non-whitespace token is a SQL verb.
 package substrate
 
 import "regexp"

@@ -3,26 +3,26 @@
 // Recognises Elixir sink primitives:
 //
 //   - http_out  : HTTPoison.<get|post|put|patch|delete|head|request>,
-//                 Tesla.<verb> / Tesla.Client, Finch.build / Finch.request,
-//                 Mint.HTTP, Req.<verb> / Req.new, :httpc.request
+//     Tesla.<verb> / Tesla.Client, Finch.build / Finch.request,
+//     Mint.HTTP, Req.<verb> / Req.new, :httpc.request
 //   - db_read   : Ecto `Repo.all / Repo.get / Repo.get_by / Repo.one /
-//                 Repo.stream / Repo.preload / Repo.aggregate /
-//                 Repo.exists?`, `from(... in ..., select: ...) |> Repo.all`,
-//                 raw `Ecto.Adapters.SQL.query` with SELECT
+//     Repo.stream / Repo.preload / Repo.aggregate /
+//     Repo.exists?`, `from(... in ..., select: ...) |> Repo.all`,
+//     raw `Ecto.Adapters.SQL.query` with SELECT
 //   - db_write  : Ecto `Repo.insert / Repo.insert! / Repo.insert_all /
-//                 Repo.update / Repo.update! / Repo.update_all /
-//                 Repo.delete / Repo.delete! / Repo.delete_all /
-//                 Repo.transaction / Repo.insert_or_update`
+//     Repo.update / Repo.update! / Repo.update_all /
+//     Repo.delete / Repo.delete! / Repo.delete_all /
+//     Repo.transaction / Repo.insert_or_update`
 //   - fs_read   : `File.read / File.read! / File.stream! / File.open` (no
-//                 :write mode), File.exists?, File.ls, File.dir?, IO.read
+//     :write mode), File.exists?, File.ls, File.dir?, IO.read
 //   - fs_write  : `File.write / File.write! / File.cp / File.cp_r /
-//                 File.rm / File.rm_rf / File.mkdir / File.mkdir_p /
-//                 File.rename`, File.open with `[:write|:append|:exclusive]`
+//     File.rm / File.rm_rf / File.mkdir / File.mkdir_p /
+//     File.rename`, File.open with `[:write|:append|:exclusive]`
 //   - mutation  : `var = ...` rebinding is not a side-effect in Elixir
-//                 (immutable bindings); we approximate "mutation" via
-//                 `Agent.update / GenServer.cast / :ets.insert /
-//                 :persistent_term.put / Process.put` — observable state
-//                 mutations to OTP / runtime state.
+//     (immutable bindings); we approximate "mutation" via
+//     `Agent.update / GenServer.cast / :ets.insert /
+//     :persistent_term.put / Process.put` — observable state
+//     mutations to OTP / runtime state.
 //
 // Function attribution uses the nearest preceding `def` / `defp` /
 // `defmacro` / `defmacrop` header.

@@ -11,7 +11,7 @@
 //   - http_effect               — httpFetch calls fetch()
 //   - fs_effect                 — readConfig / writeLog use fs.readFile / fs.writeFile
 //   - db_effect                 — queryDB / insertRecord use .findOne() / .create()
-//                                 (Electron main-process runs Node.js, may use ORMs)
+//     (Electron main-process runs Node.js, may use ORMs)
 //   - mutation_effect           — AppState.setWindow assigns this._win
 //   - dead_code_detection       — export signals surfaced by dead_module_detector
 //   - def_use_chain_extraction  — const endpoint / resp / data in loadSettings

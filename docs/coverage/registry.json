@@ -20236,6 +20236,10 @@
             "status": "missing",
             "issue": "3699"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "3699"
@@ -31008,6 +31012,10 @@
             "status": "missing",
             "issue": "3619"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "3619"
@@ -33245,6 +33253,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "3619"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           },
           "fs_effect": {
             "status": "missing",
@@ -44058,6 +44070,10 @@
             "status": "missing",
             "issue": "3620"
           },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
+          },
           "fs_effect": {
             "status": "missing",
             "issue": "3620"
@@ -46454,6 +46470,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "3620"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           },
           "fs_effect": {
             "status": "missing",
@@ -50857,6 +50877,10 @@
           "env_fallback_recognition": {
             "status": "missing",
             "issue": "3621"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "backfill:dictionary-completeness"
           },
           "fs_effect": {
             "status": "missing",

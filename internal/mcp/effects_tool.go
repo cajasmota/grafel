@@ -2,15 +2,15 @@
 //
 // Returns the effect classification for a given entity. Schema:
 //
-//   {
-//     "entity_id":     "<id-or-qname>",
-//     "resolved":      { "id": ..., "name": ..., "kind": ..., "repo": ... },
-//     "effects":       ["db_write", "http_out"],
-//     "confidences":   { "db_write": 0.85, "http_out": 1.00 },
-//     "sinks":         { "db_write": ["orm.write"], ... },
-//     "effect_source": "direct" | "transitive" | "pure",
-//     "explanation":   "..."
-//   }
+//	{
+//	  "entity_id":     "<id-or-qname>",
+//	  "resolved":      { "id": ..., "name": ..., "kind": ..., "repo": ... },
+//	  "effects":       ["db_write", "http_out"],
+//	  "confidences":   { "db_write": 0.85, "http_out": 1.00 },
+//	  "sinks":         { "db_write": ["orm.write"], ... },
+//	  "effect_source": "direct" | "transitive" | "pure",
+//	  "explanation":   "..."
+//	}
 //
 // The effect set is read from the on-disk effects sidecar
 // (<group>-links-effects.json, written by

@@ -2,10 +2,10 @@
 //
 // Recognises:
 //   - Defs : `val <name> = ...`, `var <name> = ...`, optional type
-//            ascription `: T`, bare reassignments `<name> = ...`,
-//            `for (<name> <- ...)`.
+//     ascription `: T`, bare reassignments `<name> = ...`,
+//     `for (<name> <- ...)`.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Scala
-//            keywords and not on the LHS of a def we already captured.
+//     keywords and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `def` header via the
 // scanScalaFuncHeaders helper from effect_sinks_scala.go.
@@ -16,9 +16,10 @@ import "regexp"
 func init() { RegisterDefUseSniffer("scala", sniffDefUseScala) }
 
 // scalaDefUseRe matches val/var-decls, bare assignments, and for-generators.
-//   Group 1 (val/var) : `(val|var) <name>`.
-//   Group 2 (bare)    : `<name> = ` (not `==`, not `.x =`).
-//   Group 3 (for-gen) : `<name> <-`.
+//
+//	Group 1 (val/var) : `(val|var) <name>`.
+//	Group 2 (bare)    : `<name> = ` (not `==`, not `.x =`).
+//	Group 3 (for-gen) : `<name> <-`.
 var scalaDefUseRe = regexp.MustCompile(
 	`\b(?:val|var)\s+([A-Za-z_][\w]*)\b` +
 		`|(?m)^\s*([A-Za-z_][\w]*)\s*=(?:[^=])` +

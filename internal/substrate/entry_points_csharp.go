@@ -53,13 +53,13 @@ var csharpPublicMemberRe = regexp.MustCompile(
 // csharpStartupMethodNames are ASP.NET Core / Generic Host lifecycle
 // methods invoked by the host without an in-graph caller.
 var csharpStartupMethodNames = map[string]bool{
-	"Configure":                 true,
-	"ConfigureServices":         true,
-	"ConfigureAppConfiguration": true,
-	"ConfigureContainer":        true,
+	"Configure":                  true,
+	"ConfigureServices":          true,
+	"ConfigureAppConfiguration":  true,
+	"ConfigureContainer":         true,
 	"ConfigureHostConfiguration": true,
-	"ConfigureLogging":          true,
-	"ConfigureWebHostDefaults":  true,
+	"ConfigureLogging":           true,
+	"ConfigureWebHostDefaults":   true,
 }
 
 // csharpTestAttrs are test-marker attributes (NUnit, xUnit, MSTest).
@@ -75,16 +75,16 @@ var csharpTestAttrs = map[string]bool{
 
 // csharpLifecycleAttrs are setup / teardown attributes.
 var csharpLifecycleAttrs = map[string]bool{
-	"OneTimeSetUp":      true,
-	"OneTimeTearDown":   true,
-	"SetUp":             true,
-	"TearDown":          true,
-	"TestInitialize":    true,
-	"TestCleanup":       true,
-	"ClassInitialize":   true,
-	"ClassCleanup":      true,
+	"OneTimeSetUp":       true,
+	"OneTimeTearDown":    true,
+	"SetUp":              true,
+	"TearDown":           true,
+	"TestInitialize":     true,
+	"TestCleanup":        true,
+	"ClassInitialize":    true,
+	"ClassCleanup":       true,
 	"AssemblyInitialize": true,
-	"AssemblyCleanup":   true,
+	"AssemblyCleanup":    true,
 }
 
 func sniffCSharpEntryPoints(content string) []EntryPoint {

@@ -67,15 +67,15 @@ func (x *extractor) extractComponentProps(params *sitter.Node, componentName str
 		start, end := lines(node)
 		qn := fmt.Sprintf("%s.%s", componentName, propName)
 		e := types.EntityRecord{
-			Name:             propName,
-			QualifiedName:    x.qualify(qn),
-			Kind:             "SCOPE.Operation",
-			SourceFile:       x.filePath,
-			StartLine:        start,
-			EndLine:          end,
-			Language:         x.language,
-			Subtype:          "component_prop",
-			Signature:        sig,
+			Name:          propName,
+			QualifiedName: x.qualify(qn),
+			Kind:          "SCOPE.Operation",
+			SourceFile:    x.filePath,
+			StartLine:     start,
+			EndLine:       end,
+			Language:      x.language,
+			Subtype:       "component_prop",
+			Signature:     sig,
 			Properties: map[string]string{
 				"kind":      "SCOPE.Operation",
 				"subtype":   "component_prop",

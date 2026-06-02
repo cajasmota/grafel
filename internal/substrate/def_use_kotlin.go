@@ -2,10 +2,10 @@
 //
 // Recognises:
 //   - Defs : `val <name> = ...`, `var <name> = ...`, optional type
-//            ascription `: T`, bare reassignments `<name> = ...`,
-//            `for (<name> in ...)`.
+//     ascription `: T`, bare reassignments `<name> = ...`,
+//     `for (<name> in ...)`.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Kotlin
-//            keywords and not on the LHS of a def we already captured.
+//     keywords and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `fun` header via the
 // scanKotlinFuncHeaders helper from effect_sinks_kotlin.go.
@@ -16,9 +16,10 @@ import "regexp"
 func init() { RegisterDefUseSniffer("kotlin", sniffDefUseKotlin) }
 
 // kotlinDefRe matches val/var-decls, bare assignments, and for-loops.
-//   Group 1 (val/var)  : `(val|var) <name>[: T]`.
-//   Group 2 (bare)     : `<name> =`.
-//   Group 3 (for-in)   : `for (<name> in`.
+//
+//	Group 1 (val/var)  : `(val|var) <name>[: T]`.
+//	Group 2 (bare)     : `<name> =`.
+//	Group 3 (for-in)   : `for (<name> in`.
 var kotlinDefRe = regexp.MustCompile(
 	`\b(?:val|var)\s+([A-Za-z_][\w]*)\b` +
 		`|(?m)^\s*([A-Za-z_][\w]*)\s*=(?:[^=])` +

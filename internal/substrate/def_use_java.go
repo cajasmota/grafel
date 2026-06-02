@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `<Type> <name> = ...`, simple `<name> = ...` reassignments,
-//            `for (<Type> <name> :)` / `for (...; ...; ...)` index decls.
+//     `for (<Type> <name> :)` / `for (...; ...; ...)` index decls.
 //   - Uses : bare identifiers `\b<name>\b` (filtered against keywords and
-//            type names) not on the LHS of a def we already captured.
+//     type names) not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding Java method header (uses the
 // existing scanJavaFuncHeaders helper from effect_sinks_java.go).
@@ -15,9 +15,10 @@ import "regexp"
 func init() { RegisterDefUseSniffer("java", sniffDefUseJava) }
 
 // javaDefRe matches typed declarations and bare assignments.
-//   Group 1 (typed)   : `<Type> <name> =`     where Type is one identifier.
-//   Group 2 (bare)    : `<name> = ...`        not `==`, not `.x =`.
-//   Group 3 (forEach) : `for (<Type> <name> :`.
+//
+//	Group 1 (typed)   : `<Type> <name> =`     where Type is one identifier.
+//	Group 2 (bare)    : `<name> = ...`        not `==`, not `.x =`.
+//	Group 3 (forEach) : `for (<Type> <name> :`.
 var javaDefRe = regexp.MustCompile(
 	`\b(?:[A-Z][\w<>,\s\[\]]*|int|long|short|byte|char|boolean|float|double|var)\s+([A-Za-z_][\w]*)\s*=` +
 		`|(?m)^\s*([A-Za-z_][\w]*)\s*=(?:[^=])` +

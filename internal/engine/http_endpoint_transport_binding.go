@@ -78,11 +78,11 @@ var gqlHTTPAdapterSignals = []string{
 // gqlWSAdapterSignals are the GraphQL server-setup calls that serve
 // subscriptions over a WebSocket transport.
 var gqlWSAdapterSignals = []string{
-	"graphql-ws",                   // import marker
-	"useServer",                    // graphql-ws/lib/use/ws
-	"subscriptions-transport-ws",   // legacy import marker
-	"SubscriptionServer",           // legacy subscriptions-transport-ws
-	"WebSocketServer",              // ws server paired with useServer
+	"graphql-ws",                 // import marker
+	"useServer",                  // graphql-ws/lib/use/ws
+	"subscriptions-transport-ws", // legacy import marker
+	"SubscriptionServer",         // legacy subscriptions-transport-ws
+	"WebSocketServer",            // ws server paired with useServer
 	"@apollo/server/plugin/drainHttpServer",
 }
 

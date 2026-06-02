@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - i18n        : __("key"), _e("key"), trans("key"), __t("key"),
-//                   gettext("key") (Laravel / WordPress / Symfony idioms).
+//     gettext("key") (Laravel / WordPress / Symfony idioms).
 //   - log_format  : Log::<level>("..."), logger->info("...") (Monolog),
-//                   error_log("..."), echo "<literal>".
+//     error_log("..."), echo "<literal>".
 //   - sql         : Quoted strings starting with a SQL verb.
 package substrate
 

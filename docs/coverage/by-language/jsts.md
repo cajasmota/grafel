@@ -36,10 +36,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/22 | 🟢 10/10 | |
 | [Polka](../detail/lang.jsts.framework.polka.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 7/7 | |
-| [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟢 2/2 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/21 | 🔴 0/7 | |
+| [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟢 2/2 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/7 | |
 | [Restify](../detail/lang.jsts.framework.restify.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [Sails](../detail/lang.jsts.framework.sails.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 8/8 | |
-| [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/21 | 🔴 0/7 | |
+| [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/7 | |
 
 
 ### UI Frontend

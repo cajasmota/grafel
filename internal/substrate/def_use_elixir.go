@@ -2,10 +2,10 @@
 //
 // Recognises:
 //   - Defs : `<name> = ...` pattern-match binding (Elixir's primary form),
-//            function-head params `def f(<name>, ...)`.
+//     function-head params `def f(<name>, ...)`.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Elixir
-//            keywords / atoms and not on the LHS of a def we already
-//            captured on the same line.
+//     keywords / atoms and not on the LHS of a def we already
+//     captured on the same line.
 //
 // Function attribution: nearest preceding `def` / `defp` / `defmacro`
 // header via the scanElixirFuncHeaders helper from effect_sinks_elixir.go.
@@ -16,7 +16,8 @@ import "regexp"
 func init() { RegisterDefUseSniffer("elixir", sniffDefUseElixir) }
 
 // elixirDefUseRe matches simple bindings.
-//   Group 1 (assign)  : `<name> = ` (not `==`, not match-op `<-`).
+//
+//	Group 1 (assign)  : `<name> = ` (not `==`, not match-op `<-`).
 var elixirDefUseRe = regexp.MustCompile(
 	`(?m)^\s*([a-z_][\w]*[?!]?)\s*=(?:[^=])`,
 )

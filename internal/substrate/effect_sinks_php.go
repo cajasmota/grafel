@@ -3,22 +3,22 @@
 // Recognises PHP sink primitives:
 //
 //   - http_out  : curl_exec / curl_setopt(CURLOPT_URL) chains, Guzzle
-//                 (`$client->request|get|post|...`, `new GuzzleHttp\Client`),
-//                 `file_get_contents("http://...")`, Symfony HttpClient,
-//                 WordPress `wp_remote_get|post`
+//     (`$client->request|get|post|...`, `new GuzzleHttp\Client`),
+//     `file_get_contents("http://...")`, Symfony HttpClient,
+//     WordPress `wp_remote_get|post`
 //   - db_read   : PDO `->query / ->prepare / ->execute` paired with
-//                 SELECT-shaped SQL, mysqli `->query / ->prepare` (SELECT),
-//                 Eloquent `::all / ::find / ::where / ::first / ::get /
-//                 ::count / ::exists`, Doctrine `->find / ->findBy /
-//                 ->findOneBy / ->createQuery`, raw `mysql_query("SELECT")`
+//     SELECT-shaped SQL, mysqli `->query / ->prepare` (SELECT),
+//     Eloquent `::all / ::find / ::where / ::first / ::get /
+//     ::count / ::exists`, Doctrine `->find / ->findBy /
+//     ->findOneBy / ->createQuery`, raw `mysql_query("SELECT")`
 //   - db_write  : Eloquent `::create / ::update / ::delete / ::insert /
-//                 ::save / ::firstOrCreate / ::updateOrCreate`, Doctrine
-//                 `->persist / ->remove / ->flush`, PDO/mysqli execute
-//                 with INSERT|UPDATE|DELETE SQL, `mysql_query("INSERT")`
+//     ::save / ::firstOrCreate / ::updateOrCreate`, Doctrine
+//     `->persist / ->remove / ->flush`, PDO/mysqli execute
+//     with INSERT|UPDATE|DELETE SQL, `mysql_query("INSERT")`
 //   - fs_read   : file_get_contents (non-URL), fopen("r"), fread, file,
-//                 readfile, scandir, glob, is_file, is_dir, is_readable
+//     readfile, scandir, glob, is_file, is_dir, is_readable
 //   - fs_write  : file_put_contents, fopen("w"/"a"/"x"), fwrite, fputs,
-//                 unlink, rename, mkdir, rmdir, chmod, touch, copy
+//     unlink, rename, mkdir, rmdir, chmod, touch, copy
 //   - mutation  : `$this->prop = ...` assignment inside a method
 //
 // Function attribution uses the nearest preceding `function name(` header.

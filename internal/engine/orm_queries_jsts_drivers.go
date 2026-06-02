@@ -55,7 +55,7 @@ import (
 //   - JOIN <table>      (captured for is_join detection, not as primary)
 //
 // The table token may be schema-qualified (`public.users`) or quoted
-// (`"users"`, `` `users` ``); we capture the last dotted segment and strip
+// (`"users"`, “ `users` “); we capture the last dotted segment and strip
 // quotes downstream. Case-insensitive on the keyword.
 var sqlTableRe = regexp.MustCompile(
 	`(?i)\b(?:from|into|update)\s+["` + "`" + `]?([a-zA-Z_][\w$]*(?:\.[a-zA-Z_][\w$]*)?)["` + "`" + `]?`,

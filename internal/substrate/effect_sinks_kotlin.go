@@ -6,23 +6,23 @@
 // (Ktor HttpClient, Exposed DSL, kotlinx.coroutines IO):
 //
 //   - http_out  : Ktor `HttpClient { }.get|post|put|delete|request`,
-//                 OkHttp `OkHttpClient().newCall(...).execute()`,
-//                 RestTemplate / WebClient / HttpClient (JVM),
-//                 Fuel `<verb>(...)`, Retrofit interface `@GET/@POST` calls
+//     OkHttp `OkHttpClient().newCall(...).execute()`,
+//     RestTemplate / WebClient / HttpClient (JVM),
+//     Fuel `<verb>(...)`, Retrofit interface `@GET/@POST` calls
 //   - db_read   : JPA / Hibernate (`em.find / em.createQuery`, JpaRepo
-//                 `findBy*/get*/count*/exists*`), Exposed `select / .selectAll
-//                 / Table.select`, R2DBC `databaseClient.sql("SELECT")`,
-//                 Spring Data `findBy*`
+//     `findBy*/get*/count*/exists*`), Exposed `select / .selectAll
+//     / Table.select`, R2DBC `databaseClient.sql("SELECT")`,
+//     Spring Data `findBy*`
 //   - db_write  : JPA `em.persist / merge / remove`, JpaRepo `save*/delete*`,
-//                 Exposed `Table.insert / .update / .deleteWhere`, R2DBC
-//                 INSERT/UPDATE/DELETE shapes
+//     Exposed `Table.insert / .update / .deleteWhere`, R2DBC
+//     INSERT/UPDATE/DELETE shapes
 //   - fs_read   : File("...").readText / readLines / readBytes / inputStream,
-//                 Files.readAllBytes / readAllLines / lines, Paths.get,
-//                 BufferedReader(FileReader(...))
+//     Files.readAllBytes / readAllLines / lines, Paths.get,
+//     BufferedReader(FileReader(...))
 //   - fs_write  : File("...").writeText / appendText / writeBytes /
-//                 outputStream / delete / renameTo / mkdir(s), Files.write
-//                 / writeString / newOutputStream / createFile /
-//                 createDirectories / delete / move / copy
+//     outputStream / delete / renameTo / mkdir(s), Files.write
+//     / writeString / newOutputStream / createFile /
+//     createDirectories / delete / move / copy
 //   - mutation  : `this.<field> = ...` assignment inside a method
 //
 // Function attribution uses the nearest preceding `fun name(` header

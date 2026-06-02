@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - i18n        : getString(R.string.key, ...) (Android), context
-//                   .getString("key"), I18n.translate("key").
+//     .getString("key"), I18n.translate("key").
 //   - log_format  : Log.<level>(TAG, "..."), logger.<level>("..."),
-//                   println("...") with placeholder tokens.
+//     println("...") with placeholder tokens.
 //   - sql         : Quoted/triple-quoted string literals whose first non-
-//                   whitespace token is a SQL verb.
+//     whitespace token is a SQL verb.
 package substrate
 
 import "regexp"

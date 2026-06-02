@@ -14,8 +14,8 @@
 // effect propagation pass uses, then stamps a compact summary on the
 // entity properties:
 //
-//   def_use_chains    "<var>@<defLine>->-<useLine>,..." (bounded length)
-//   def_use_count     "<n>"
+//	def_use_chains    "<var>@<defLine>->-<useLine>,..." (bounded length)
+//	def_use_count     "<n>"
 //
 // The full chain list is also persisted in <group>-links-def-use.json
 // for archigraph_def_use to surface unbounded.

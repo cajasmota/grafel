@@ -3,17 +3,17 @@
 // Recognises Dart sink primitives:
 //
 //   - http_out  : package:http Client.get/post/put/patch/delete/send,
-//                 Dio.get/post/put/patch/delete/request/fetch,
-//                 http.get/post/put/patch/delete (top-level dart:io wrappers)
+//     Dio.get/post/put/patch/delete/request/fetch,
+//     http.get/post/put/patch/delete (top-level dart:io wrappers)
 //   - db_read   : sqflite db.query / db.rawQuery,
-//                 drift (moor) SELECT-shaped generated methods .get()/.watch()
+//     drift (moor) SELECT-shaped generated methods .get()/.watch()
 //   - db_write  : sqflite db.insert / db.update / db.delete / db.execute /
-//                 db.rawInsert / db.rawUpdate / db.rawDelete,
-//                 drift generated .into().insert / .update / .delete
+//     db.rawInsert / db.rawUpdate / db.rawDelete,
+//     drift generated .into().insert / .update / .delete
 //   - fs_read   : dart:io File(...).readAsString / readAsBytes / readAsLines /
-//                 readAsStringSync / openRead / openSync
+//     readAsStringSync / openRead / openSync
 //   - fs_write  : dart:io File(...).writeAsString / writeAsBytes /
-//                 writeAsStringSync / writeAsBytesSync / openWrite / create
+//     writeAsStringSync / writeAsBytesSync / openWrite / create
 //   - mutation  : `this.field = ...` inside a method body
 //
 // Function attribution uses the nearest preceding `name(` or `async name(`

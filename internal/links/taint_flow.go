@@ -7,30 +7,30 @@
 //
 // Pipeline:
 //
-//   1. For every repo, walk the unique source-file set, dispatch each
-//      file through substrate.TaintSnifferFor(lang). Each TaintMatch
-//      is bound to its declaring function via the same nearest-header
-//      heuristic the effect_propagation pass uses.
+//  1. For every repo, walk the unique source-file set, dispatch each
+//     file through substrate.TaintSnifferFor(lang). Each TaintMatch
+//     is bound to its declaring function via the same nearest-header
+//     heuristic the effect_propagation pass uses.
 //
-//   2. Bind each TaintMatch to a graph entity via (repo, file, name).
+//  2. Bind each TaintMatch to a graph entity via (repo, file, name).
 //
-//   3. Build the CALLS forward adjacency. For every function that
-//      owns at least one TaintKindSource match, run a bounded BFS
-//      (default depth 6, the same horizon as the call-chains
-//      Phase 1A's reverse-CALLS fixed-point handles). On each visited
-//      function:
-//        - if it owns a sanitizer match for the source's category,
-//          STOP propagation through this function for that category;
-//        - if it owns a sink match for any active category that has
-//          not yet been sanitised, emit a SecurityFinding.
+//  3. Build the CALLS forward adjacency. For every function that
+//     owns at least one TaintKindSource match, run a bounded BFS
+//     (default depth 6, the same horizon as the call-chains
+//     Phase 1A's reverse-CALLS fixed-point handles). On each visited
+//     function:
+//     - if it owns a sanitizer match for the source's category,
+//     STOP propagation through this function for that category;
+//     - if it owns a sink match for any active category that has
+//     not yet been sanitised, emit a SecurityFinding.
 //
-//   4. Confidence model: source confidence × ∏(0.95 per hop), capped
-//      by the sink confidence. A direct source→sink with no hops is
-//      `min(source_conf, sink_conf)`; each additional hop multiplies
-//      by hopDecay. Findings below the confidenceFloor are dropped.
+//  4. Confidence model: source confidence × ∏(0.95 per hop), capped
+//     by the sink confidence. A direct source→sink with no hops is
+//     `min(source_conf, sink_conf)`; each additional hop multiplies
+//     by hopDecay. Findings below the confidenceFloor are dropped.
 //
-//   5. Write findings to a sidecar <group>-links-taint.json document
-//      for the MCP archigraph_security_findings tool to read.
+//  5. Write findings to a sidecar <group>-links-taint.json document
+//     for the MCP archigraph_security_findings tool to read.
 //
 // Storage model: same as the effect pass — no new entity kind. The
 // SecurityFinding records are persisted as the sidecar JSON only; the
@@ -261,11 +261,11 @@ func computeFindings(byEntity map[string][]substrate.TaintMatch, entityRepo map[
 			// path, the running confidence, and the set of sanitised
 			// categories accumulated along the path.
 			type qe struct {
-				node       string
-				path       []string
-				conf       float64
-				sanitised  categorySet
-				depth      int
+				node      string
+				path      []string
+				conf      float64
+				sanitised categorySet
+				depth     int
 			}
 			// Seed the initial sanitizer set with sanitizers that live
 			// in the SAME function as the source. Without this, a

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 46
+- **Capability cells:** 47
 
 ## Capabilities
 
@@ -101,6 +101,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | 3699 | — | — |
 | Def use chain extraction | 🔴 `missing` | — | 3699 | — | — |
 | Env fallback recognition | 🔴 `missing` | — | 3699 | — | — |
+| Feature flag gating | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Fs effect | 🔴 `missing` | — | 3699 | — | — |
 | HTTP effect | 🔴 `missing` | — | 3699 | — | — |
 | Import resolution quality | 🔴 `missing` | — | 3699 | — | — |

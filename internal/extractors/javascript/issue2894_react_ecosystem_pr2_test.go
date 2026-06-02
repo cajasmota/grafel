@@ -5,10 +5,10 @@
 // MobX) and testdata/react_ecosystem/Swr.tsx (SWR). Each assertion is the
 // proving artifact for a coverage cell:
 //   - atom_store_extraction → recoil_atom / recoil_selector / jotai_atom /
-//                             valtio_proxy / mobx_store entities (atom_library,
-//                             atom_key stamped) + useRecoilState/useAtom hooks.
+//     valtio_proxy / mobx_store entities (atom_library,
+//     atom_key stamped) + useRecoilState/useAtom hooks.
 //   - swr_extraction        → useSWR/useSWRMutation/useSWRInfinite consumers
-//                             decorated swr=true + swr_keys.
+//     decorated swr=true + swr_keys.
 package javascript_test
 
 import (

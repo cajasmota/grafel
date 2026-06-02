@@ -49,21 +49,21 @@ var rubyCucumberStepRe = regexp.MustCompile(
 // rubyLifecycleNames are method names invoked by Rails / Rake / Sinatra
 // / DSL-style frameworks without a static caller.
 var rubyLifecycleNames = map[string]bool{
-	"initializer":     true,
-	"setup":           true,
-	"teardown":        true,
-	"before_action":   true,
-	"after_action":    true,
-	"around_action":   true,
-	"before_save":     true,
-	"after_save":      true,
-	"before_create":   true,
-	"after_create":    true,
-	"before_filter":   true,
-	"after_filter":    true,
-	"configure":       true,
-	"register":        true,
-	"boot":            true,
+	"initializer":   true,
+	"setup":         true,
+	"teardown":      true,
+	"before_action": true,
+	"after_action":  true,
+	"around_action": true,
+	"before_save":   true,
+	"after_save":    true,
+	"before_create": true,
+	"after_create":  true,
+	"before_filter": true,
+	"after_filter":  true,
+	"configure":     true,
+	"register":      true,
+	"boot":          true,
 }
 
 // rubyLifecycleCallRe matches a module-scope DSL call whose first token

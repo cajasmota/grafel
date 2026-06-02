@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `let x = ...`, `const x = ...`, `var x = ...`,
-//            simple `x = ...` assignments (not `.member =`, not `==`).
+//     simple `x = ...` assignments (not `.member =`, not `==`).
 //   - Uses : bare identifiers `\b<name>\b` that are not language keywords
-//            and are not on the LHS of an assignment we already captured.
+//     and are not on the LHS of an assignment we already captured.
 //
 // Function attribution uses the same nearest-preceding-header heuristic
 // as the JS/TS effect sniffer; nested closures lose some precision, but

@@ -485,11 +485,11 @@ type effectsDocument struct {
 }
 
 type effectEntry struct {
-	EntityID    string             `json:"entity_id"`
-	Effects     []string           `json:"effects"`
-	Confidences map[string]float64 `json:"confidences"`
+	EntityID    string              `json:"entity_id"`
+	Effects     []string            `json:"effects"`
+	Confidences map[string]float64  `json:"confidences"`
 	Sinks       map[string][]string `json:"sinks,omitempty"`
-	Source      string             `json:"source"` // "direct" | "transitive"
+	Source      string              `json:"source"` // "direct" | "transitive"
 }
 
 func writeEffectsDoc(path string, effects, direct map[string]*substrate.EffectSet, endpointDerived map[string]bool) error {

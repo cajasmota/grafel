@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `const x = ...;`, `var x = ...;`, `var x: T = ...;`,
-//            `const x: T = ...;`, bare `x = ...;` reassignments.
+//     `const x: T = ...;`, bare `x = ...;` reassignments.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Zig keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `fn name(` header using the
 // scanZigFuncHeaders helper from effect_sinks_zig.go.

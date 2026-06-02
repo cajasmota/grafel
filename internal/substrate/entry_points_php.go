@@ -48,15 +48,15 @@ var phpTestAnnotationRe = regexp.MustCompile(`(?m)^[ \t]*\*\s*@test\b`)
 
 // phpLifecycleMethodNames are Laravel / Symfony framework hooks.
 var phpLifecycleMethodNames = map[string]bool{
-	"register":   true,
-	"boot":       true,
-	"bootstrap":  true,
-	"configure":  true,
-	"terminate":  true,
-	"handle":     true,
-	"setUp":      true,
-	"tearDown":   true,
-	"setUpBeforeClass": true,
+	"register":           true,
+	"boot":               true,
+	"bootstrap":          true,
+	"configure":          true,
+	"terminate":          true,
+	"handle":             true,
+	"setUp":              true,
+	"tearDown":           true,
+	"setUpBeforeClass":   true,
 	"tearDownAfterClass": true,
 }
 

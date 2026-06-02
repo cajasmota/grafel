@@ -7,27 +7,27 @@
 //
 // Response schema:
 //
-//   {
-//     "group":     "<group-name>",
-//     "count":     <int>,
-//     "findings":  [
-//       {
-//         "fingerprint":      "<hex>",
-//         "category":         "sql_injection" | ...,
-//         "confidence":       0.85,
-//         "source":           { "id", "name", "kind", "qualified_name",
-//                               "repo", "source_file", "primitive",
-//                               "line" },
-//         "sink":             { ... mirror of source },
-//         "path":             ["entity-id-1", ..., "entity-id-N"],
-//         "explanation":      "Tainted data from req.body reaches a raw
-//                              SQL exec on line 42 without a
-//                              parameterised-query sanitizer."
-//       },
-//       ...
-//     ],
-//     "by_category": { "sql_injection": 3, ... }
-//   }
+//	{
+//	  "group":     "<group-name>",
+//	  "count":     <int>,
+//	  "findings":  [
+//	    {
+//	      "fingerprint":      "<hex>",
+//	      "category":         "sql_injection" | ...,
+//	      "confidence":       0.85,
+//	      "source":           { "id", "name", "kind", "qualified_name",
+//	                            "repo", "source_file", "primitive",
+//	                            "line" },
+//	      "sink":             { ... mirror of source },
+//	      "path":             ["entity-id-1", ..., "entity-id-N"],
+//	      "explanation":      "Tainted data from req.body reaches a raw
+//	                           SQL exec on line 42 without a
+//	                           parameterised-query sanitizer."
+//	    },
+//	    ...
+//	  ],
+//	  "by_category": { "sql_injection": 3, ... }
+//	}
 //
 // Confidence-floor reasoning: the taint pass drops findings below
 // 0.5 (#2772 spec: conservative > aggressive). The default
@@ -61,7 +61,7 @@ const defaultMinFindingConfidence = 0.7
 //   - min_confidence  (optional, default 0.7): lower bound, in [0, 1]
 //   - limit           (optional, default 50): cap on returned findings
 //   - source_repo     (optional): filter to findings whose source entity
-//                                 is in the named repo
+//     is in the named repo
 func (s *Server) handleSecurityFindings(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
 	_, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
@@ -135,13 +135,13 @@ func (s *Server) handleSecurityFindings(_ context.Context, req mcpapi.CallToolRe
 		out = out[:limit]
 	}
 	return jsonResult(map[string]any{
-		"group":              lg.Name,
-		"count":              len(out),
-		"findings":           out,
-		"by_category":        byCategory,
-		"min_confidence":     minConf,
-		"confidence_floor":   links.TaintFindingFloor(),
-		"taint_method":       doc.Method,
+		"group":            lg.Name,
+		"count":            len(out),
+		"findings":         out,
+		"by_category":      byCategory,
+		"min_confidence":   minConf,
+		"confidence_floor": links.TaintFindingFloor(),
+		"taint_method":     doc.Method,
 	}), nil
 }
 

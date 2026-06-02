@@ -49,9 +49,9 @@ import (
 // akkaHTTPFrameworks is the set of framework identifiers that activate the
 // Akka-HTTP extractor.
 var akkaHTTPFrameworks = map[string]bool{
-	"akka-http":   true,
-	"akka_http":   true,
-	"akkahttp":    true,
+	"akka-http":      true,
+	"akka_http":      true,
+	"akkahttp":       true,
 	"akka-http-java": true,
 }
 

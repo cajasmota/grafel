@@ -40,8 +40,8 @@ var dartSourceHTTPRe = regexp.MustCompile(
 
 // dartSinkSQLRawRe matches sqflite raw* methods with a non-literal SQL string.
 // Two forms are dangerous:
-//   1. A bare identifier as the SQL arg (the string is built elsewhere).
-//   2. A string literal followed by concatenation (`'SELECT ...' + userVar`).
+//  1. A bare identifier as the SQL arg (the string is built elsewhere).
+//  2. A string literal followed by concatenation (`'SELECT ...' + userVar`).
 var dartSinkSQLRawRe = regexp.MustCompile(
 	`\b(?:db|database|_db|_database)\s*\.\s*(?:rawQuery|rawInsert|rawUpdate|rawDelete)\s*\(\s*(?:[A-Za-z_$][\w$]*|['"][^'"]*['"]\s*\+)`,
 )
@@ -58,7 +58,8 @@ var dartSinkFSRe = regexp.MustCompile(
 )
 
 // dartSanitizerSQLRe matches the safe sqflite parameterised form:
-//   db.query(..., whereArgs: [...]) or db.rawQuery(sql, {substitutionValues: ...})
+//
+//	db.query(..., whereArgs: [...]) or db.rawQuery(sql, {substitutionValues: ...})
 var dartSanitizerSQLRe = regexp.MustCompile(
 	`\b(?:db|database|_db|_database)\s*\.\s*query\s*\([^)]*whereArgs\s*:` +
 		`|\b(?:db|database|_db|_database)\s*\.\s*rawQuery\s*\([^)]*substitutionValues\s*:`,

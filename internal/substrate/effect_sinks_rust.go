@@ -3,20 +3,20 @@
 // Recognises Rust sink primitives:
 //
 //   - http_out  : reqwest::Client / reqwest::get / .get|post|put|patch|
-//                 delete().send(), hyper Client::request, surf::<verb>,
-//                 ureq::get/post, isahc::<verb>
+//     delete().send(), hyper Client::request, surf::<verb>,
+//     ureq::get/post, isahc::<verb>
 //   - db_read   : sqlx `query!` / `query_as!` / `query / query_as`
-//                 with SELECT-shaped SQL or fetch_*, Diesel `.load /
-//                 .first / .get_result / .get_results / .find / .filter
-//                 ... .load`, sea-orm `.find / .find_by_id / .all / .one`
+//     with SELECT-shaped SQL or fetch_*, Diesel `.load /
+//     .first / .get_result / .get_results / .find / .filter
+//     ... .load`, sea-orm `.find / .find_by_id / .all / .one`
 //   - db_write  : sqlx `execute / fetch_one` on INSERT/UPDATE/DELETE,
-//                 Diesel `.insert_into / .update / .delete / .execute`,
-//                 sea-orm `.insert / .update / .delete / .save`
+//     Diesel `.insert_into / .update / .delete / .execute`,
+//     sea-orm `.insert / .update / .delete / .save`
 //   - fs_read   : std::fs::read / read_to_string / read_dir / File::open,
-//                 tokio::fs equivalents, std::path::Path::exists
+//     tokio::fs equivalents, std::path::Path::exists
 //   - fs_write  : std::fs::write / create_dir(_all) / remove_file /
-//                 remove_dir(_all) / rename / set_permissions /
-//                 File::create, tokio::fs::write, std::process::Command
+//     remove_dir(_all) / rename / set_permissions /
+//     File::create, tokio::fs::write, std::process::Command
 //   - mutation  : `self.field = ...` assignment inside a method
 //
 // Function attribution uses the nearest preceding `fn name(` header. The

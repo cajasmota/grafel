@@ -19,29 +19,29 @@ import (
 // in sync with the code?" — every cited path carries its existence
 // outcome inline.
 type MapStatusReport struct {
-	RecordID    string             `json:"record_id"`
-	Group       string             `json:"group,omitempty"`
-	Capability  string             `json:"capability"`
-	Found       bool               `json:"found"`
-	Status      string             `json:"status,omitempty"`
-	VerifiedAt  string             `json:"verified_at,omitempty"`
-	Issues      []string           `json:"issues_implemented,omitempty"`
-	Symbols     []MapStatusSymbol  `json:"symbols,omitempty"`
-	Tests       []MapStatusTest    `json:"tests,omitempty"`
-	SymbolsOK   int                `json:"symbols_ok"`
-	SymbolsBad  int                `json:"symbols_missing"`
-	FuncsOK     int                `json:"functions_ok"`
-	FuncsBad    int                `json:"functions_missing"`
-	TestsOK     int                `json:"tests_ok"`
-	TestsBad    int                `json:"tests_missing"`
+	RecordID   string            `json:"record_id"`
+	Group      string            `json:"group,omitempty"`
+	Capability string            `json:"capability"`
+	Found      bool              `json:"found"`
+	Status     string            `json:"status,omitempty"`
+	VerifiedAt string            `json:"verified_at,omitempty"`
+	Issues     []string          `json:"issues_implemented,omitempty"`
+	Symbols    []MapStatusSymbol `json:"symbols,omitempty"`
+	Tests      []MapStatusTest   `json:"tests,omitempty"`
+	SymbolsOK  int               `json:"symbols_ok"`
+	SymbolsBad int               `json:"symbols_missing"`
+	FuncsOK    int               `json:"functions_ok"`
+	FuncsBad   int               `json:"functions_missing"`
+	TestsOK    int               `json:"tests_ok"`
+	TestsBad   int               `json:"tests_missing"`
 }
 
 // MapStatusSymbol is one symbol citation enriched with per-function
 // existence results.
 type MapStatusSymbol struct {
-	File      string                  `json:"file"`
-	Exists    bool                    `json:"exists"`
-	Functions []MapStatusFunction     `json:"functions,omitempty"`
+	File      string              `json:"file"`
+	Exists    bool                `json:"exists"`
+	Functions []MapStatusFunction `json:"functions,omitempty"`
 }
 
 // MapStatusFunction is one (file, function) tuple's existence check.
@@ -212,4 +212,3 @@ func existsTag(ok bool) string {
 	}
 	return "[MISSING]"
 }
-

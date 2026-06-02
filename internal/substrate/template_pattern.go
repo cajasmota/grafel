@@ -4,14 +4,14 @@
 // Three template families are recognised:
 //
 //   - TemplateKindI18n   : translation keys (t("..."), gettext("..."),
-//                          i18n.t("..."), trans("..."), _("..."))
+//     i18n.t("..."), trans("..."), _("..."))
 //   - TemplateKindLog    : log-format primitives (console.log("..."),
-//                          logger.<level>("..."), log.<level>("...")
-//                          where the literal contains a format token
-//                          like "%s", "%d", "{}", "{name}").
+//     logger.<level>("..."), log.<level>("...")
+//     where the literal contains a format token
+//     like "%s", "%d", "{}", "{name}").
 //   - TemplateKindSQL    : SQL template literals — string literals whose
-//                          content starts with a SQL verb keyword
-//                          (SELECT/INSERT/UPDATE/DELETE/WITH).
+//     content starts with a SQL verb keyword
+//     (SELECT/INSERT/UPDATE/DELETE/WITH).
 //
 // The generic catalog pass in internal/links/template_pattern_pass.go
 // stores every match as a TemplatePattern record in the sidecar JSON

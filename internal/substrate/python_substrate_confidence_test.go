@@ -11,9 +11,9 @@
 // Cells proven to `partial` (sniffer fires and confidence values are emitted,
 // but comprehensive per-framework corpus validation is not yet implemented):
 //   - confidence_overlay  — sniffEffectsPython emits Confidence > 0 for
-//                           http, db-read, db-write, fs-read, fs-write, and
-//                           mutation effects; EffectiveConfidence interprets
-//                           these values correctly.
+//     http, db-read, db-write, fs-read, fs-write, and
+//     mutation effects; EffectiveConfidence interprets
+//     these values correctly.
 //
 // The confidence_overlay infrastructure (graph.Entity.Confidence,
 // internal/mcp/tools.go min_confidence filter, internal/types/confidence.go

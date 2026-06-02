@@ -2,9 +2,9 @@
 //
 // Covers the Observability lane for all 17 Python http_backend frameworks:
 //
-//   log_extraction   — stdlib logging, loguru, structlog
-//   metric_extraction — prometheus_client, statsd, datadog
-//   trace_extraction  — opentelemetry-sdk, ddtrace, jaeger-client
+//	log_extraction   — stdlib logging, loguru, structlog
+//	metric_extraction — prometheus_client, statsd, datadog
+//	trace_extraction  — opentelemetry-sdk, ddtrace, jaeger-client
 //
 // Detection is import-heuristic: the extractor recognises library imports and
 // canonical call-site patterns (logger.info, Counter("name").inc(), tracer.start_as_current_span)
@@ -23,8 +23,8 @@ package python
 
 import (
 	"context"
-	"strings"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -212,9 +212,9 @@ func extractPyLogging(src, fp string) []types.EntityRecord {
 			line := lineOf(src, idx[0])
 			out = append(out, entity(name, string(types.EntityKindPattern), "logger", fp, line,
 				map[string]string{
-					"signal":    "log",
-					"library":   "logging",
-					"kind":      "logger",
+					"signal":      "log",
+					"library":     "logging",
+					"kind":        "logger",
 					"logger_name": name,
 				}))
 		}
@@ -246,9 +246,9 @@ func extractPyLogging(src, fp string) []types.EntityRecord {
 			line := lineOf(src, idx[0])
 			out = append(out, entity("logger.bind", string(types.EntityKindPattern), "log_statement", fp, line,
 				map[string]string{
-					"signal":    "log",
-					"library":   "loguru",
-					"kind":      "log_statement",
+					"signal":  "log",
+					"library": "loguru",
+					"kind":    "log_statement",
 				}))
 		}
 	}

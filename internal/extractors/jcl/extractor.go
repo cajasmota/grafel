@@ -28,7 +28,7 @@
 //
 // Relationships emitted:
 //   - CALLS    — EXEC PGM=<program>  (step → COBOL program; the bridge edge,
-//                Properties: via="EXEC PGM", external="true", cross_language="cobol")
+//     Properties: via="EXEC PGM", external="true", cross_language="cobol")
 //   - CALLS    — EXEC PROC=<proc>    (step → procedure; via="EXEC PROC")
 //   - CONTAINS — job → its steps; proc → its steps
 //   - READS_FROM / WRITES_TO — step → dataset (DD DISP governs direction)
@@ -174,7 +174,7 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 	// Scope tracking. The current JOB owns its steps; an inline PROC (between
 	// `<name> PROC` and `PEND`) temporarily owns its steps instead.
 	jobIdx := -1
-	procIdx := -1     // index of the open inline PROC, -1 when none
+	procIdx := -1 // index of the open inline PROC, -1 when none
 	currentStepIdx := -1
 	stepSeq := 0 // disambiguates anonymous steps for stable names
 

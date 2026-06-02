@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `<Type> <name> = ...`, `var <name> = ...`, bare reassignments
-//            `<name> = ...`, `foreach (<Type> <name> in ...)`.
+//     `<name> = ...`, `foreach (<Type> <name> in ...)`.
 //   - Uses : bare identifiers `\b<name>\b` filtered against C# keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding C# method header via the
 // scanCSharpFuncHeaders helper from effect_sinks_csharp.go.
@@ -16,9 +16,10 @@ func init() { RegisterDefUseSniffer("csharp", sniffDefUseCSharp) }
 
 // csharpDefRe matches typed declarations, var-decls, bare assignments,
 // and foreach.
-//   Group 1 (typed/var) : `<Type|var> <name> =`.
-//   Group 2 (bare)      : `<name> = ` (not `==`, not `.X =`).
-//   Group 3 (foreach)   : `foreach (<Type|var> <name> in`.
+//
+//	Group 1 (typed/var) : `<Type|var> <name> =`.
+//	Group 2 (bare)      : `<name> = ` (not `==`, not `.X =`).
+//	Group 3 (foreach)   : `foreach (<Type|var> <name> in`.
 var csharpDefRe = regexp.MustCompile(
 	`\b(?:[A-Z][\w<>,\s\[\]?]*|int|long|short|byte|char|bool|float|double|decimal|string|object|var)\s+([A-Za-z_][\w]*)\s*=` +
 		`|(?m)^\s*([A-Za-z_][\w]*)\s*=(?:[^=])` +

@@ -46,14 +46,14 @@ var rustFnDeclRe = regexp.MustCompile(
 
 // rustTestAttrs are attributes that mark a function as a test entry.
 var rustTestAttrs = map[string]bool{
-	"test":             true,
-	"bench":            true,
-	"tokio::test":      true,
-	"async_std::test":  true,
-	"rstest":           true,
-	"actix_rt::test":   true,
-	"actix_web::test":  true,
-	"test_log::test":   true,
+	"test":            true,
+	"bench":           true,
+	"tokio::test":     true,
+	"async_std::test": true,
+	"rstest":          true,
+	"actix_rt::test":  true,
+	"actix_web::test": true,
+	"test_log::test":  true,
 }
 
 // rustLifecycleAttrs are attributes that mark a function as a runtime
@@ -62,14 +62,14 @@ var rustTestAttrs = map[string]bool{
 // function as cli_main when its name is `main`, so the lookback below
 // only emits lifecycle when the function name is not `main`.
 var rustLifecycleAttrs = map[string]bool{
-	"ctor::ctor":        true,
-	"ctor::dtor":        true,
-	"no_mangle":         true,
+	"ctor::ctor":          true,
+	"ctor::dtor":          true,
+	"no_mangle":           true,
 	"wasm_bindgen(start)": true,
-	"tokio::main":       true,
-	"actix_web::main":   true,
-	"tauri::command":    true,
-	"async_trait":       true,
+	"tokio::main":         true,
+	"actix_web::main":     true,
+	"tauri::command":      true,
+	"async_trait":         true,
 }
 
 func sniffRustEntryPoints(content string) []EntryPoint {

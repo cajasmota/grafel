@@ -2,14 +2,14 @@
 //
 // Recognises:
 //   - i18n       : Zig has no widely-adopted i18n library; the closest
-//                  static pattern is a bare .translate("key") method call
-//                  or a zig-intl comptime lookup. Only gettext-style calls
-//                  are recognised — minimal but not padded.
+//     static pattern is a bare .translate("key") method call
+//     or a zig-intl comptime lookup. Only gettext-style calls
+//     are recognised — minimal but not padded.
 //   - log_format : std.debug.print("...", .{...}),
-//                  std.log.debug/info/warn/err("..."),
-//                  std.io.getStdOut().writer().print("...").
+//     std.log.debug/info/warn/err("..."),
+//     std.io.getStdOut().writer().print("...").
 //   - sql        : Quoted string literals whose first non-whitespace
-//                  token is a SQL verb — used with sqlite / zqlite raw queries.
+//     token is a SQL verb — used with sqlite / zqlite raw queries.
 //
 // No SQL i18n candidates — Zig's ecosystem is pre-1.0 and i18n is rare.
 package substrate

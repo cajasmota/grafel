@@ -4,8 +4,8 @@
 //
 //   - gorilla/mux:  r.HandleFunc("/path", handler).Methods("GET")
 //   - net/http:     http.HandleFunc("/path", handler)
-//                   mux.HandleFunc("/path", handler)         // Go 1.22 ServeMux
-//                   mux.HandleFunc("GET /users/{id}", h)      // Go 1.22 method prefix
+//     mux.HandleFunc("/path", handler)         // Go 1.22 ServeMux
+//     mux.HandleFunc("GET /users/{id}", h)      // Go 1.22 method prefix
 //   - huma:         huma.Register(api, huma.Operation{Method: "GET", Path: "/x"}, h)
 //
 // All three frameworks share the same producer-side contract as the

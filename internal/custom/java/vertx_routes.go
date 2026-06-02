@@ -37,11 +37,11 @@ import (
 
 // vertxFrameworks is the set of framework identifiers that activate the Vert.x extractor.
 var vertxFrameworks = map[string]bool{
-	"vertx":      true,
-	"vert.x":     true,
-	"vert_x":     true,
-	"vertx_web":  true,
-	"vertx-web":  true,
+	"vertx":     true,
+	"vert.x":    true,
+	"vert_x":    true,
+	"vertx_web": true,
+	"vertx-web": true,
 }
 
 var (

@@ -1,11 +1,12 @@
 // Phase 3C/3D T3 def-use + template-pattern registration and coverage tests (#2779).
 //
 // Tests assert:
-//   (a) every applicable T3 language ships a def-use sniffer (3C)
-//   (b) every applicable T3 language ships a template-pattern sniffer (3D)
-//   (c) each sniffer correctly lifts at least one def + one use from a minimal fixture (3C)
-//   (d) each template sniffer correctly lifts at least one log_format match (3D)
-//       — i18n / sql are per-lang optional based on applicability.
+//
+//	(a) every applicable T3 language ships a def-use sniffer (3C)
+//	(b) every applicable T3 language ships a template-pattern sniffer (3D)
+//	(c) each sniffer correctly lifts at least one def + one use from a minimal fixture (3C)
+//	(d) each template sniffer correctly lifts at least one log_format match (3D)
+//	    — i18n / sql are per-lang optional based on applicability.
 //
 // N/A languages (no Phase 1A coverage): verilog, vhdl, idris, sml, reasonml,
 // rescript, elm, lisp, clojure, erlang, fsharp, haskell, ocaml, pony, groovy,

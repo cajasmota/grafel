@@ -81,9 +81,9 @@ type JPAFetchConfigEntry struct {
 
 // JPAColumnEntry represents a detected @Column with attribute depth.
 type JPAColumnEntry struct {
-	ColumnName string // name= value or ""
-	Nullable   string // "true" / "false" / ""
-	Length     string // numeric string or ""
+	ColumnName  string // name= value or ""
+	Nullable    string // "true" / "false" / ""
+	Length      string // numeric string or ""
 	OwnerEntity string
 	Line        int
 }

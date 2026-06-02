@@ -3,7 +3,7 @@
 // Effect classification tags every function with the set of side-effect
 // primitives it executes directly:
 //
-//   {db_read, db_write, http_out, fs_read, fs_write, mutation, env_read}
+//	{db_read, db_write, http_out, fs_read, fs_write, mutation, env_read}
 //
 // A function with none of these is pure (low confidence — absence of
 // detection does not prove absence of effect).

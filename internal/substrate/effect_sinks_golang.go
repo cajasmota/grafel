@@ -3,26 +3,26 @@
 // Recognises Go sink primitives:
 //
 //   - http_out  : http.Get/Post/Head/PostForm, (*http.Client).Do/Get/Post,
-//                 http.NewRequest + a subsequent Do is captured by the
-//                 receiver method form
+//     http.NewRequest + a subsequent Do is captured by the
+//     receiver method form
 //   - db_read   : db.Query / QueryContext / QueryRow / QueryRowContext,
-//                 (*sql.Stmt).Query*, GORM Find / First / Take / Last /
-//                 Count / Pluck / Scan, sqlx Get / Select
+//     (*sql.Stmt).Query*, GORM Find / First / Take / Last /
+//     Count / Pluck / Scan, sqlx Get / Select
 //   - db_write  : db.Exec / ExecContext, GORM Create / Save / Updates /
-//                 Update / Delete / Insert, sqlx NamedExec / MustExec
+//     Update / Delete / Insert, sqlx NamedExec / MustExec
 //   - fs_read   : os.Open / os.ReadFile / ioutil.ReadFile / os.ReadDir,
-//                 ioutil.ReadAll on a file reader (heuristic — not caught
-//                 without taint; covered later by Phase 2)
+//     ioutil.ReadAll on a file reader (heuristic — not caught
+//     without taint; covered later by Phase 2)
 //   - fs_write  : os.Create / os.WriteFile / os.MkdirAll / os.Mkdir /
-//                 os.Remove / os.RemoveAll / os.Rename / os.Chmod,
-//                 ioutil.WriteFile
+//     os.Remove / os.RemoveAll / os.Rename / os.Chmod,
+//     ioutil.WriteFile
 //   - mutation  : `<receiver>.<field> = ...` assignment inside a method
-//                 body. We attribute mutation by looking for any
-//                 identifier followed by `.field = ` and rely on the
-//                 nearest-header heuristic to bind the match to a method;
-//                 false positives on package-level struct-field writes
-//                 are tagged to the synthetic top-level scope (empty
-//                 function name) and elided by the propagation pass.
+//     body. We attribute mutation by looking for any
+//     identifier followed by `.field = ` and rely on the
+//     nearest-header heuristic to bind the match to a method;
+//     false positives on package-level struct-field writes
+//     are tagged to the synthetic top-level scope (empty
+//     function name) and elided by the propagation pass.
 //
 // Function attribution uses the same nearest-header heuristic as the
 // other T1 sniffers; Go's gofmt indentation makes the heuristic very

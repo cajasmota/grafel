@@ -8,28 +8,28 @@
 // std::ofstream, std::filesystem) are included via separate alternates.
 //
 //   - http_out  : `curl_easy_perform`, `curl_easy_setopt(..., CURLOPT_URL, ...)`,
-//                 `curl_multi_perform`, cpp-httplib `httplib::Client`,
-//                 Boost.Beast, POCO `HTTPClientSession`
+//     `curl_multi_perform`, cpp-httplib `httplib::Client`,
+//     Boost.Beast, POCO `HTTPClientSession`
 //   - db_read   : libpq `PQexec(... , "SELECT ...")`, `PQexecParams`,
-//                 `PQprepare`, MySQL C `mysql_query("SELECT...")`,
-//                 SQLite `sqlite3_prepare_v2(... "SELECT" ...)` /
-//                 `sqlite3_step` after a SELECT, ODBC `SQLExecDirect`
+//     `PQprepare`, MySQL C `mysql_query("SELECT...")`,
+//     SQLite `sqlite3_prepare_v2(... "SELECT" ...)` /
+//     `sqlite3_step` after a SELECT, ODBC `SQLExecDirect`
 //   - db_write  : libpq PQexec/PQexecParams with INSERT|UPDATE|DELETE,
-//                 MySQL `mysql_query("INSERT|UPDATE|DELETE...")`, SQLite
-//                 with non-SELECT, generic `PQexec` (assumed write at low
-//                 confidence when SQL keyword cannot be recognised)
+//     MySQL `mysql_query("INSERT|UPDATE|DELETE...")`, SQLite
+//     with non-SELECT, generic `PQexec` (assumed write at low
+//     confidence when SQL keyword cannot be recognised)
 //   - fs_read   : `fopen(..., "r")`, `freopen(..., "r")`, `read`, `pread`,
-//                 `open(..., O_RDONLY)`, std::ifstream, std::filesystem::
-//                 directory_iterator / read_symlink
+//     `open(..., O_RDONLY)`, std::ifstream, std::filesystem::
+//     directory_iterator / read_symlink
 //   - fs_write  : `fopen(..., "w"|"a"|"x"|...)`, `freopen("w"...)`,
-//                 `write`, `pwrite`, `open(..., O_WRONLY|O_CREAT...)`,
-//                 `mkdir`, `rmdir`, `unlink`, `rename`, `chmod`,
-//                 `std::ofstream`, `std::filesystem::create_directory*`,
-//                 `std::filesystem::remove*`
+//     `write`, `pwrite`, `open(..., O_WRONLY|O_CREAT...)`,
+//     `mkdir`, `rmdir`, `unlink`, `rename`, `chmod`,
+//     `std::ofstream`, `std::filesystem::create_directory*`,
+//     `std::filesystem::remove*`
 //   - mutation  : `this->member = ...` assignment inside a member
-//                 function. C-style struct mutation via `obj.field = ...`
-//                 is too noisy without alias analysis; deferred to
-//                 Phase 4.
+//     function. C-style struct mutation via `obj.field = ...`
+//     is too noisy without alias analysis; deferred to
+//     Phase 4.
 //
 // Function attribution uses the nearest preceding `name(...) {` header
 // on a line. C and C++ grammars admit many declaration shapes — we accept

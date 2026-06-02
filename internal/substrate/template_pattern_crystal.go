@@ -4,7 +4,7 @@
 //   - i18n       : I18n.translate("key"), I18n.t("key"), t("key").
 //   - log_format : puts "...", print "...", Log.debug/info/warn/error("...").
 //   - sql        : Quoted string literals whose first non-whitespace
-//                  token is a SQL verb — used with crystal-db / jennifer raw queries.
+//     token is a SQL verb — used with crystal-db / jennifer raw queries.
 package substrate
 
 import "regexp"

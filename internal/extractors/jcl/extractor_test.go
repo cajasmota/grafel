@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	cobol "github.com/cajasmota/archigraph/internal/extractors/cobol"
 	"github.com/cajasmota/archigraph/internal/extractor"
+	cobol "github.com/cajasmota/archigraph/internal/extractors/cobol"
 	"github.com/cajasmota/archigraph/internal/resolve"
 	"github.com/cajasmota/archigraph/internal/types"
 )

@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - i18n        : I18n.t("key"), I18n.translate("key"), t("key"),
-//                   bare _("key") helpers commonly used in Rails views.
+//     bare _("key") helpers commonly used in Rails views.
 //   - log_format  : logger.<level>("..."), Rails.logger.<level>("..."),
-//                   puts("...").
+//     puts("...").
 //   - sql         : Quoted/heredoc strings whose first non-whitespace
-//                   token is a SQL verb (case-insensitive).
+//     token is a SQL verb (case-insensitive).
 package substrate
 
 import "regexp"

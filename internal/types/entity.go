@@ -27,21 +27,21 @@ type EntityRecord struct {
 	// RepoID is the GitHub repository full name (e.g. "cajasmota/archigraph").
 	// Sourced from the ExtractTriggerMessage.RepoURL in the Extract Lambda.
 	// Required by the Typesense entity_embeddings schema for tenant isolation.
-	RepoID           string           `json:"repo_id,omitempty"`
-	Name             string           `json:"name"`
-	QualifiedName    string           `json:"qualified_name"`
-	Kind             string           `json:"kind"`
-	SourceFile       string           `json:"source_file"`
-	StartLine        int              `json:"start_line"`
-	EndLine          int              `json:"end_line"`
-	Language         string           `json:"language"`
-	Content          string           `json:"content"`
-	Description      string           `json:"description"`
-	Domain           string           `json:"domain"`
-	Subtype          string           `json:"subtype"`
-	Signature        string           `json:"signature"`
-	Tags             []string         `json:"tags,omitempty"`
-	QualityScore     float64          `json:"quality_score"`
+	RepoID        string   `json:"repo_id,omitempty"`
+	Name          string   `json:"name"`
+	QualifiedName string   `json:"qualified_name"`
+	Kind          string   `json:"kind"`
+	SourceFile    string   `json:"source_file"`
+	StartLine     int      `json:"start_line"`
+	EndLine       int      `json:"end_line"`
+	Language      string   `json:"language"`
+	Content       string   `json:"content"`
+	Description   string   `json:"description"`
+	Domain        string   `json:"domain"`
+	Subtype       string   `json:"subtype"`
+	Signature     string   `json:"signature"`
+	Tags          []string `json:"tags,omitempty"`
+	QualityScore  float64  `json:"quality_score"`
 	// Confidence in [0.0, 1.0] reflecting how certain the extraction is.
 	// Phase 1C (#2769). Zero/unset reads as 1.0 via EffectiveConfidence —
 	// the default semantics for direct-AST extractors that never stamp.

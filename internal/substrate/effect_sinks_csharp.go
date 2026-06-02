@@ -3,29 +3,29 @@
 // Recognises C# sink primitives:
 //
 //   - http_out  : HttpClient.GetAsync / PostAsync / PutAsync / DeleteAsync
-//                 / SendAsync / GetStringAsync / GetStreamAsync, WebClient
-//                 .Download* / .Upload*, RestClient (RestSharp) .Execute*,
-//                 HttpWebRequest.Create
+//     / SendAsync / GetStringAsync / GetStreamAsync, WebClient
+//     .Download* / .Upload*, RestClient (RestSharp) .Execute*,
+//     HttpWebRequest.Create
 //   - db_read   : Entity Framework DbSet `.Find / .FindAsync / .First /
-//                 .FirstOrDefault / .Single / .SingleOrDefault / .Where /
-//                 .ToList / .ToArray / .Count / .Any / .Include /
-//                 .AsQueryable / .FromSqlRaw / .FromSqlInterpolated`,
-//                 raw ADO.NET `SqlCommand.ExecuteReader / ExecuteScalar`,
-//                 Dapper `Query / QueryAsync / QueryFirst / QuerySingle`
+//     .FirstOrDefault / .Single / .SingleOrDefault / .Where /
+//     .ToList / .ToArray / .Count / .Any / .Include /
+//     .AsQueryable / .FromSqlRaw / .FromSqlInterpolated`,
+//     raw ADO.NET `SqlCommand.ExecuteReader / ExecuteScalar`,
+//     Dapper `Query / QueryAsync / QueryFirst / QuerySingle`
 //   - db_write  : EF DbSet `.Add / .AddAsync / .AddRange / .Update /
-//                 .UpdateRange / .Remove / .RemoveRange / .Attach`, EF
-//                 `SaveChanges / SaveChangesAsync / ExecuteSqlRaw /
-//                 ExecuteSqlInterpolated`, ADO.NET SqlCommand
-//                 `.ExecuteNonQuery`, Dapper `Execute / ExecuteAsync`
+//     .UpdateRange / .Remove / .RemoveRange / .Attach`, EF
+//     `SaveChanges / SaveChangesAsync / ExecuteSqlRaw /
+//     ExecuteSqlInterpolated`, ADO.NET SqlCommand
+//     `.ExecuteNonQuery`, Dapper `Execute / ExecuteAsync`
 //   - fs_read   : File.ReadAllText / .ReadAllBytes / .ReadAllLines /
-//                 .ReadLines / .OpenRead / .OpenText, Directory.Get*,
-//                 new FileStream(..., FileMode.Open, FileAccess.Read),
-//                 StreamReader ctor
+//     .ReadLines / .OpenRead / .OpenText, Directory.Get*,
+//     new FileStream(..., FileMode.Open, FileAccess.Read),
+//     StreamReader ctor
 //   - fs_write  : File.WriteAllText / .WriteAllBytes / .WriteAllLines /
-//                 .AppendAllText / .AppendAllLines / .Delete / .Move /
-//                 .Copy / .Create / .CreateText, Directory.CreateDirectory
-//                 / .Delete / .Move, FileStream with FileMode.Create or
-//                 FileAccess.Write, StreamWriter ctor
+//     .AppendAllText / .AppendAllLines / .Delete / .Move /
+//     .Copy / .Create / .CreateText, Directory.CreateDirectory
+//     / .Delete / .Move, FileStream with FileMode.Create or
+//     FileAccess.Write, StreamWriter ctor
 //   - mutation  : `this.<Property|field> = ...` assignment inside a method
 //
 // Function attribution uses the nearest preceding method header — same

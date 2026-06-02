@@ -3,14 +3,14 @@
 // Two Ruby web frameworks share this file:
 //
 //   - Rails  (config/routes.rb)
-//       get '/things/search', to: 'things#search'
-//       resources :things                          → 7 standard CRUD endpoints
-//       namespace :api do
-//         resources :widgets                       → prefixed with /api
-//       end
-//       scope '/v1' do
-//         get '/health', to: 'health#index'
-//       end
+//     get '/things/search', to: 'things#search'
+//     resources :things                          → 7 standard CRUD endpoints
+//     namespace :api do
+//     resources :widgets                       → prefixed with /api
+//     end
+//     scope '/v1' do
+//     get '/health', to: 'health#index'
+//     end
 //
 //     Handlers live in app/controllers/<name>_controller.rb (Rails convention).
 //     The synthesizer derives the expected controller file path from the
@@ -22,9 +22,9 @@
 //     (every Rails app has dozens of `index` / `show` / `create` methods).
 //
 //   - Sinatra (app.rb / inline DSL)
-//       get '/things' do
-//         ...
-//       end
+//     get '/things' do
+//     ...
+//     end
 //
 //     Handlers are inline blocks in the same file; we emit the endpoint
 //     with `def_line` pointing at the verb's line so the resolver

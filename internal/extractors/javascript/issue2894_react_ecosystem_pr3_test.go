@@ -4,10 +4,10 @@
 // against testdata/react_ecosystem/Forms.tsx. Each assertion is the proving
 // artifact for the coverage cell:
 //   - React Hook Form  → form_library=react_hook_form, form_hooks, form_resolver
-//                        (zod/yup), validation_schema (resolver schema ident),
-//                        form_fields (register('name') / <Controller name>).
+//     (zod/yup), validation_schema (resolver schema ident),
+//     form_fields (register('name') / <Controller name>).
 //   - Formik           → form_library=formik, form_components (Formik/Field/...),
-//                        validation_schema, form_fields (<Field name>).
+//     validation_schema, form_fields (<Field name>).
 package javascript_test
 
 import (

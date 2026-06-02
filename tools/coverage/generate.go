@@ -164,19 +164,19 @@ type subSection struct {
 // ActiveLanguages and PlaceholderLanguages totals power the headline
 // banner ("16 active · 22 placeholder").
 type summaryData struct {
-	Marker             string
-	TotalLanguages     int
-	ActiveLanguages    int
-	PlaceholderCount   int
-	TotalFrameworks    int
-	TotalTools         int
-	TotalORMs          int
-	TotalOther         int
-	ActiveRows         []pivotRow
-	CrossCutting       []crossCuttingRow
-	CrossCuttingTotal  crossCuttingRow
-	EmptyCrossCutting  []crossCuttingRow
-	PlaceholderLangs   []placeholderLanguage
+	Marker            string
+	TotalLanguages    int
+	ActiveLanguages   int
+	PlaceholderCount  int
+	TotalFrameworks   int
+	TotalTools        int
+	TotalORMs         int
+	TotalOther        int
+	ActiveRows        []pivotRow
+	CrossCutting      []crossCuttingRow
+	CrossCuttingTotal crossCuttingRow
+	EmptyCrossCutting []crossCuttingRow
+	PlaceholderLangs  []placeholderLanguage
 }
 
 // languagePageData feeds by-language/<lang>.md.tmpl.
@@ -515,13 +515,13 @@ func renderIssue(issue string) string {
 
 // templateFuncs are the helpers exposed to templates.
 var templateFuncs = template.FuncMap{
-	"glyph":            statusGlyph,
-	"langDsp":          languageDisplay,
-	"prettyKey":        prettyKey,
-	"humanizeCapKey":   humanizeCapKey,
-	"subHeading":       subcategoryHeading,
-	"groupCell":        groupCell,
-	"renderIssue":      renderIssue,
+	"glyph":          statusGlyph,
+	"langDsp":        languageDisplay,
+	"prettyKey":      prettyKey,
+	"humanizeCapKey": humanizeCapKey,
+	"subHeading":     subcategoryHeading,
+	"groupCell":      groupCell,
+	"renderIssue":    renderIssue,
 }
 
 // groupCell returns the digest string for groupName on a recordView or

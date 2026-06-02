@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `$<name> = ...`, augmented `$<name> += ...`, `foreach (... as
-//            $<name>)`, function parameters `function f($<name>, ...)`.
+//     $<name>)`, function parameters `function f($<name>, ...)`.
 //   - Uses : `$<name>` reads (PHP variables always carry the sigil), not
-//            on the LHS of a def already captured on the same line.
+//     on the LHS of a def already captured on the same line.
 //
 // Function attribution: nearest preceding `function` header via the
 // scanPHPFuncHeaders helper from effect_sinks_php.go.
@@ -15,8 +15,9 @@ import "regexp"
 func init() { RegisterDefUseSniffer("php", sniffDefUsePHP) }
 
 // phpDefRe matches assignment + foreach + function-param defs.
-//   Group 1 (assign)   : `$<name> = ` (not `==`, not array-key `=>`).
-//   Group 2 (foreach)  : `as $<name>` / `as $<key> => $<name>`.
+//
+//	Group 1 (assign)   : `$<name> = ` (not `==`, not array-key `=>`).
+//	Group 2 (foreach)  : `as $<name>` / `as $<key> => $<name>`.
 var phpDefRe = regexp.MustCompile(
 	`\$([A-Za-z_][\w]*)\s*(?:\+|-|\*|/|%|\.|\*\*|&|\||\^|<<|>>)?=(?:[^=])` +
 		`|\bas\s+\$([A-Za-z_][\w]*)\b`,

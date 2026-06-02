@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - Defs : `<Type> <name> = ...`, `auto <name> = ...`, bare
-//            reassignments `<name> = ...`, `for (<Type> <name> = ...; ...)`
-//            and range-for `for (<Type> <name> : ...)`.
+//     reassignments `<name> = ...`, `for (<Type> <name> = ...; ...)`
+//     and range-for `for (<Type> <name> : ...)`.
 //   - Uses : bare identifiers `\b<name>\b` filtered against C/C++
-//            keywords and standard-library type names and not on the LHS
-//            of a def we already captured.
+//     keywords and standard-library type names and not on the LHS
+//     of a def we already captured.
 //
 // Function attribution: nearest preceding C/C++ function header via the
 // scanCCPPFuncHeaders helper from effect_sinks_c_cpp.go.
@@ -18,9 +18,10 @@ func init() { RegisterDefUseSniffer("c-cpp", sniffDefUseCCPP) }
 
 // cppDefRe matches typed declarations, auto-decls, bare assignments,
 // and range-for.
-//   Group 1 (typed)    : `<Type|auto> <name> =`.
-//   Group 2 (bare)     : `<name> = ` (not `==`, not `.x =`, not `->x =`).
-//   Group 3 (range-for): `for (<Type|auto> <name> :`.
+//
+//	Group 1 (typed)    : `<Type|auto> <name> =`.
+//	Group 2 (bare)     : `<name> = ` (not `==`, not `.x =`, not `->x =`).
+//	Group 3 (range-for): `for (<Type|auto> <name> :`.
 var cppDefRe = regexp.MustCompile(
 	`\b(?:auto|int|long|short|char|float|double|bool|void|size_t|std::[A-Za-z_][\w:<>,\s]*|[A-Z][\w<>,:\s\*\&]*)\s+\*?\s*([A-Za-z_][\w]*)\s*=` +
 		`|(?m)^\s*([A-Za-z_][\w]*)\s*=(?:[^=])` +

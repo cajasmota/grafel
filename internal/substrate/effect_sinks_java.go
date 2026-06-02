@@ -3,21 +3,21 @@
 // Recognises Java sink primitives:
 //
 //   - http_out  : RestTemplate.<verb>, WebClient.method, HttpClient.send,
-//                 OkHttpClient.newCall, Feign / Retrofit interface calls
-//                 (heuristic — caught by the method-on-receiver shapes),
-//                 java.net.URL.openConnection / openStream
+//     OkHttpClient.newCall, Feign / Retrofit interface calls
+//     (heuristic — caught by the method-on-receiver shapes),
+//     java.net.URL.openConnection / openStream
 //   - db_read   : EntityManager.find / createQuery, JpaRepository.find*
-//                 / get* / count* / exists*, JdbcTemplate.queryFor*,
-//                 Statement.executeQuery, Spring Data Mongo .findBy*
+//     / get* / count* / exists*, JdbcTemplate.queryFor*,
+//     Statement.executeQuery, Spring Data Mongo .findBy*
 //   - db_write  : EntityManager.persist / merge / remove,
-//                 JpaRepository.save* / delete*, JdbcTemplate.update /
-//                 batchUpdate, Statement.executeUpdate
+//     JpaRepository.save* / delete*, JdbcTemplate.update /
+//     batchUpdate, Statement.executeUpdate
 //   - fs_read   : Files.readAllBytes / readAllLines / lines / newInputStream,
-//                 FileInputStream(<...>), new BufferedReader(new FileReader),
-//                 Paths.get(...).toFile().exists() style → modeled by Files.*
+//     FileInputStream(<...>), new BufferedReader(new FileReader),
+//     Paths.get(...).toFile().exists() style → modeled by Files.*
 //   - fs_write  : Files.write / writeString / newOutputStream / createFile
-//                 / createDirectories / delete / move / copy,
-//                 FileOutputStream(<...>), FileWriter(<...>)
+//     / createDirectories / delete / move / copy,
+//     FileOutputStream(<...>), FileWriter(<...>)
 //   - mutation  : `this.<field> = ...` assignment inside a method body
 //
 // Function attribution uses the same nearest-header heuristic as the

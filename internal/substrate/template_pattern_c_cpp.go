@@ -3,11 +3,11 @@
 // Recognises:
 //   - i18n        : gettext("key"), _("key"), N_("key") (GNU gettext idioms).
 //   - log_format  : printf("..."), fprintf(stderr, "..."), std::cerr <<,
-//                   spdlog::<level>("..."), LOG(...) << "..." (glog).
-//                   Conservative: only captures the literal first arg of
-//                   printf-family calls and the explicit spdlog/LOG forms.
+//     spdlog::<level>("..."), LOG(...) << "..." (glog).
+//     Conservative: only captures the literal first arg of
+//     printf-family calls and the explicit spdlog/LOG forms.
 //   - sql         : Quoted string literals whose first non-whitespace
-//                   token is a SQL verb.
+//     token is a SQL verb.
 package substrate
 
 import "regexp"

@@ -5,21 +5,21 @@
 // sttp, akka-http, http4s) and Java libraries (JPA, Files, java.io):
 //
 //   - http_out  : sttp `basicRequest.get(uri"...").send(backend)`, akka-http
-//                 `Http().singleRequest`, http4s `Client.expect / .run /
-//                 .stream`, dispatch, requests-scala (`requests.get/post`)
+//     `Http().singleRequest`, http4s `Client.expect / .run /
+//     .stream`, dispatch, requests-scala (`requests.get/post`)
 //   - db_read   : Slick `query.result / .filter / .map`, Doobie `sql"
-//                 SELECT...".query`, raw `Statement.executeQuery`, JPA
-//                 `em.find / em.createQuery`, Quill `quote(query[T])`
+//     SELECT...".query`, raw `Statement.executeQuery`, JPA
+//     `em.find / em.createQuery`, Quill `quote(query[T])`
 //   - db_write  : Slick `query += / .insertOrUpdate / .delete`, Doobie
-//                 `sql"INSERT/UPDATE/DELETE...".update`, JPA `em.persist
-//                 / merge / remove`, raw `executeUpdate`
+//     `sql"INSERT/UPDATE/DELETE...".update`, JPA `em.persist
+//     / merge / remove`, raw `executeUpdate`
 //   - fs_read   : `scala.io.Source.fromFile`, `Files.readAllBytes /
-//                 readAllLines`, `new FileInputStream / new FileReader`,
-//                 `os.read / os.list / os-lib`
+//     readAllLines`, `new FileInputStream / new FileReader`,
+//     `os.read / os.list / os-lib`
 //   - fs_write  : `Files.write / writeString / createFile / delete /
-//                 move / copy`, `new FileOutputStream / new FileWriter`,
-//                 `os.write / os.remove / os.makeDir / os.move / os.copy`,
-//                 `PrintWriter`
+//     move / copy`, `new FileOutputStream / new FileWriter`,
+//     `os.write / os.remove / os.makeDir / os.move / os.copy`,
+//     `PrintWriter`
 //   - mutation  : `this.<field> = ...` assignment in a class body
 //
 // Function attribution uses the nearest preceding `def name(` header.

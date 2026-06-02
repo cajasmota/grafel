@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `<name> = ...`, augmented `<name> += ...`, `for <name> in`,
-//            `with ... as <name>:` and function-parameter names.
+//     `with ... as <name>:` and function-parameter names.
 //   - Uses : bare identifiers `\b<name>\b` that are not Python keywords
-//            and not the LHS of a def we already captured on the same line.
+//     and not the LHS of a def we already captured on the same line.
 //
 // Function attribution: nearest preceding `def` / `async def`. Class
 // bodies are followed too (methods carry the method name).
@@ -15,9 +15,10 @@ import "regexp"
 func init() { RegisterDefUseSniffer("python", sniffDefUsePython) }
 
 // pyDefRe matches simple assignments and `for` / `with as` bindings.
-//   Group 1 (assign)    : `<name> = ` (not `==`, not `.attr =`).
-//   Group 2 (for)       : `for <name> in`.
-//   Group 3 (with as)   : `as <name>:` / `as <name>,`.
+//
+//	Group 1 (assign)    : `<name> = ` (not `==`, not `.attr =`).
+//	Group 2 (for)       : `for <name> in`.
+//	Group 3 (with as)   : `as <name>:` / `as <name>,`.
 var pyDefRe = regexp.MustCompile(
 	`(?m)^\s*([A-Za-z_][\w]*)\s*(?:\+|-|\*|/|%|//|\*\*|&|\||\^|<<|>>)?=(?:[^=])` +
 		`|\bfor\s+([A-Za-z_][\w]*)\s+in\b` +

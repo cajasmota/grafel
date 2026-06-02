@@ -4,9 +4,9 @@
 // propagation pass did NOT stamp with an effect set is marked as a
 // pure-function candidate. The stamping uses two new property keys:
 //
-//   pure              "true" | "false"
-//   pure_confidence   "0.30"   (matches Phase 1A's "pure" confidence floor;
-//                                absence-of-detection does not prove absence)
+//	pure              "true" | "false"
+//	pure_confidence   "0.30"   (matches Phase 1A's "pure" confidence floor;
+//	                             absence-of-detection does not prove absence)
 //
 // Why a separate pass instead of inlining into effect_propagation.go?
 //   - Effect propagation runs in-memory and stamps only entities with a

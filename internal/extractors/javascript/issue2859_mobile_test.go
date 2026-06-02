@@ -159,9 +159,9 @@ func TestMobile_NativeScript_ObservableStateSetters(t *testing.T) {
 
 	// Data Flow/state_management + Lifecycle/state_setter_emission via the
 	// NativeScript Observable idiom (set accessor, this.set, notifyPropertyChange).
-	assertStateSetter(t, ents, "counter")        // set accessor that notifies
+	assertStateSetter(t, ents, "counter")          // set accessor that notifies
 	assertStateSetter(t, ents, "incrementCounter") // this.set("counter", ...)
-	assertStateSetter(t, ents, "reset")          // notifyPropertyChange
+	assertStateSetter(t, ents, "reset")            // notifyPropertyChange
 
 	// Regression: a plain method that does not notify is NOT a state setter.
 	if e := entityWithSubtype(ents, "classify"); e == nil {

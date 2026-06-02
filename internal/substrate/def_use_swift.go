@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `let x = ...`, `var x = ...` (local bindings inside functions),
-//            `let x: T = ...`, bare `x = ...` reassignments.
+//     `let x: T = ...`, bare `x = ...` reassignments.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Swift keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `func name(` header using the
 // scanSwiftFuncHeaders helper from effect_sinks_swift.go.

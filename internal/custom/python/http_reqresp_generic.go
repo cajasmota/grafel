@@ -267,10 +267,10 @@ func (e *HTTPReqRespGenericExtractor) Extract(ctx context.Context, file extracto
 	// is decorated with a framework-specific route decorator OR is a handler-
 	// shaped method (falcon on_*, tornado HTTP methods, django get/post).
 	type funcDef struct {
-		name         string
-		paramStart   int // byte offset of the opening paren
-		decorBefore  string
-		matchStart   int
+		name        string
+		paramStart  int // byte offset of the opening paren
+		decorBefore string
+		matchStart  int
 	}
 
 	var funcs []funcDef

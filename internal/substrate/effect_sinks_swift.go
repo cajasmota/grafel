@@ -3,18 +3,18 @@
 // Recognises Swift sink primitives:
 //
 //   - http_out  : URLSession.shared.data(from:)/dataTask(with:)/upload(for:from:)
-//                 Alamofire.request/AF.request, URLRequest + URLSession
+//     Alamofire.request/AF.request, URLRequest + URLSession
 //   - db_read   : CoreData NSFetchRequest / context.fetch / .count / .object
-//                 SQLite.swift Table.select / run / fetchOne / scalar
+//     SQLite.swift Table.select / run / fetchOne / scalar
 //   - db_write  : CoreData context.save / context.delete / context.insert /
-//                 context.perform (write-flavoured),
-//                 SQLite.swift run(.insert) / run(.update) / run(.delete)
+//     context.perform (write-flavoured),
+//     SQLite.swift run(.insert) / run(.update) / run(.delete)
 //   - fs_read   : FileManager.default.fileExists / contentsOfDirectory /
-//                 contentsAtPath / String(contentsOfFile:) /
-//                 Data(contentsOf:) / url.resourceValues
+//     contentsAtPath / String(contentsOfFile:) /
+//     Data(contentsOf:) / url.resourceValues
 //   - fs_write  : FileManager.default.createDirectory / copyItem / moveItem /
-//                 removeItem / createFile,
-//                 try data.write(to:) / string.write(to:toFile:)
+//     removeItem / createFile,
+//     try data.write(to:) / string.write(to:toFile:)
 //   - mutation  : `self.field = ...` inside a method
 //
 // Function attribution uses `func name(` header lines.

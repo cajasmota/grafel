@@ -35,9 +35,9 @@ import (
 // springWebFluxFrameworks is the set of framework identifiers that activate
 // this extractor.
 var springWebFluxFrameworks = map[string]bool{
-	"spring_webflux":  true,
-	"spring-webflux":  true,
-	"springwebflux":   true,
+	"spring_webflux": true,
+	"spring-webflux": true,
+	"springwebflux":  true,
 }
 
 var (

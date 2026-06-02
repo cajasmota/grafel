@@ -3,9 +3,9 @@
 // Recognises:
 //   - i18n        : t!("key") (fluent / rust-i18n macros), gettext("key").
 //   - log_format  : log::<level>!("..."), tracing::<level>!("..."),
-//                   println!("...{}..."), eprintln!("...{}...").
+//     println!("...{}..."), eprintln!("...{}...").
 //   - sql         : sqlx::query("SELECT ..."), bare quoted/raw string
-//                   literals whose first non-whitespace token is a SQL verb.
+//     literals whose first non-whitespace token is a SQL verb.
 package substrate
 
 import "regexp"

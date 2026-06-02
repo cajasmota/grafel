@@ -562,4 +562,3 @@ func writeResolvesToDoc(path string, links []Link) error {
 	}
 	return os.WriteFile(path, buf, 0o644)
 }
-

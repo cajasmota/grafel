@@ -3,15 +3,15 @@
 // Recognises Crystal sink primitives:
 //
 //   - http_out  : HTTP::Client.get/post/put/patch/delete/exec,
-//                 HTTP::Client.new(...).get/post/exec, Crest.get/post
+//     HTTP::Client.new(...).get/post/exec, Crest.get/post
 //   - db_read   : DB.open / db.query / db.query_one / db.scalar /
-//                 db.query_each (crystal-db SELECT-flavoured)
+//     db.query_each (crystal-db SELECT-flavoured)
 //   - db_write  : db.exec("INSERT|UPDATE|DELETE|CREATE ..."),
-//                 db.exec (generic — lower confidence)
+//     db.exec (generic — lower confidence)
 //   - fs_read   : File.read / File.read_lines / File.open (read mode) /
-//                 File.each_line / Dir.entries / Dir.glob
+//     File.each_line / Dir.entries / Dir.glob
 //   - fs_write  : File.write / File.open(..., "w") / File.delete /
-//                 Dir.mkdir / Dir.mkdir_p / Dir.delete / FileUtils.cp / mv / rm
+//     Dir.mkdir / Dir.mkdir_p / Dir.delete / FileUtils.cp / mv / rm
 //   - mutation  : instance variable assignment `@field = ...`
 //
 // Function attribution uses `def name` / `private def name` header lines.

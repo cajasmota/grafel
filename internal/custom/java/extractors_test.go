@@ -4635,7 +4635,7 @@ public class DataSourceAutoConfig {
 		FilePath: "MyApplication.java",
 	})
 
-	autoConfigNames := make(map[string]string) // name -> autoconfig_annotation
+	autoConfigNames := make(map[string]string)  // name -> autoconfig_annotation
 	conditionalNames := make(map[string]string) // name -> conditional_annotation
 	for _, e := range r.Entities {
 		if e.Provenance == "INFERRED_FROM_SPRING_AUTOCONFIG" {

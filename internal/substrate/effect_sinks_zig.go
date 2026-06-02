@@ -3,19 +3,19 @@
 // Recognises Zig sink primitives:
 //
 //   - http_out  : std.http.Client.fetch / .request / std.net.tcpConnectToHost /
-//                 std.net.tcpConnectToAddress / zig-http / http.Client.fetch
+//     std.net.tcpConnectToAddress / zig-http / http.Client.fetch
 //   - db_read   : sqlite.Db.prepare / .exec (SELECT) / .one / .all /
-//                 zqlite SELECT-shaped calls
+//     zqlite SELECT-shaped calls
 //   - db_write  : sqlite.Db.exec("INSERT|UPDATE|DELETE") / .exec (write) /
-//                 zqlite write-shaped calls
+//     zqlite write-shaped calls
 //   - fs_read   : std.fs.cwd().openFile / std.fs.openFileAbsolute /
-//                 std.fs.Dir.readFile / dir.openFile / file.readAll /
-//                 file.readToEndAlloc / std.fs.cwd().readFile
+//     std.fs.Dir.readFile / dir.openFile / file.readAll /
+//     file.readToEndAlloc / std.fs.cwd().readFile
 //   - fs_write  : std.fs.cwd().createFile / std.fs.Dir.createFile /
-//                 file.writeAll / file.writeAllBytes / std.fs.cwd().writeFile /
-//                 dir.deleteFile / dir.deleteDir / dir.makeDir / std.os.rename
+//     file.writeAll / file.writeAllBytes / std.fs.cwd().writeFile /
+//     dir.deleteFile / dir.deleteDir / dir.makeDir / std.os.rename
 //   - mutation  : field assignment through a pointer-to-struct
-//                 (`self.field = ` or `ptr.field = `) — pointer semantics
+//     (`self.field = ` or `ptr.field = `) — pointer semantics
 //
 // Function attribution uses `fn name` header lines.
 // Zig's explicit `fn` keyword makes this unambiguous.

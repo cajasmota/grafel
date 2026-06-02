@@ -3,9 +3,9 @@
 // Recognises:
 //   - i18n       : tr("key") / translate("key") (nim-i18n / i18n packages).
 //   - log_format : echo "...", writeLine(stdout, "..."),
-//                  logging.info("...") / debug("...") / warn("...") / error("...").
+//     logging.info("...") / debug("...") / warn("...") / error("...").
 //   - sql        : Quoted string literals whose first non-whitespace
-//                  token is a SQL verb — used with nim-db / norm raw queries.
+//     token is a SQL verb — used with nim-db / norm raw queries.
 package substrate
 
 import "regexp"

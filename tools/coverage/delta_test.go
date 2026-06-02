@@ -247,8 +247,8 @@ func TestBuildDeltaMarkdownShape(t *testing.T) {
 		{"rec.a", "jsts", "(flat)", "auth_coverage", "partial"},
 	}, nil)
 	head := syntheticRegistry([][5]string{
-		{"rec.a", "jsts", "(flat)", "endpoint_synthesis", "full"},   // improved
-		{"rec.a", "jsts", "(flat)", "auth_coverage", "partial"},     // unchanged
+		{"rec.a", "jsts", "(flat)", "endpoint_synthesis", "full"}, // improved
+		{"rec.a", "jsts", "(flat)", "auth_coverage", "partial"},   // unchanged
 	}, nil)
 
 	md := buildDeltaMarkdown("origin/main", "HEAD", "", base, head)

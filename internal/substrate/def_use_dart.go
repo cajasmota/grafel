@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `var x = ...`, `final x = ...`, `const x = ...`,
-//            typed `String x = ...`, bare `x = ...` reassignments.
+//     typed `String x = ...`, bare `x = ...` reassignments.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Dart keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `void|type name(` header using
 // the scanDartFuncHeaders helper from effect_sinks_dart.go.

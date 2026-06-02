@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 37
+- **Capability cells:** 38
 
 ## Capabilities
 
@@ -77,6 +77,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | 3620 | — | — |
 | Def use chain extraction | 🔴 `missing` | — | 3620 | — | — |
 | Env fallback recognition | 🔴 `missing` | — | 3620 | — | — |
+| Feature flag gating | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Fs effect | 🔴 `missing` | — | 3620 | — | — |
 | HTTP effect | 🔴 `missing` | — | 3620 | — | — |
 | Import resolution quality | 🔴 `missing` | — | 3620 | — | — |

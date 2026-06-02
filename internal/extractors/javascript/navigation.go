@@ -316,14 +316,14 @@ func extractParamKeys(x *extractor, obj *sitter.Node) (params []string, varRef s
 //   - "route"       : the destination route/screen name
 //   - "params"      : comma-separated param key names (omitted when empty)
 //   - "params_keys" : JSON array string of sorted, deduped param keys (#2665).
-//                     Empty array "[]" indicates the params object existed but
-//                     contained no statically-extractable keys (e.g. variable
-//                     reference). Property is omitted entirely when no params
-//                     object was observed.
+//     Empty array "[]" indicates the params object existed but
+//     contained no statically-extractable keys (e.g. variable
+//     reference). Property is omitted entirely when no params
+//     object was observed.
 //   - "line"        : 1-indexed source line of the call site
 //   - "via"         : "navigation_call" (traceability tag)
 //   - "_var_ref"    : (temporary, #2672) variable name if params was a reference;
-//                     removed after resolution
+//     removed after resolution
 func emitNavigationEdge(route string, params []string, varRef string, call *sitter.Node) types.RelationshipRecord {
 	toID := "route:" + route
 	props := map[string]string{
@@ -753,7 +753,7 @@ func buildNavigatorFnVarTable(x *extractor, root *sitter.Node) map[string]bool {
 //  1. String literal first arg:
 //     navigate('/foo')           → route='/foo'
 //     navigate('/foo', {state: {a, b}})
-//                                → route='/foo', params=['a','b']
+//     → route='/foo', params=['a','b']
 //
 //  2. Template literal first arg (dynamic):
 //     navigate(`/users/${id}`)   → route='/users/{*}'
@@ -761,7 +761,7 @@ func buildNavigatorFnVarTable(x *extractor, root *sitter.Node) map[string]bool {
 //  3. Object-form first arg (react-router supports
 //     navigate({pathname, search, hash})):
 //     navigate({pathname: '/x', search: '?q=1'})
-//                                → route='/x', params=['search']
+//     → route='/x', params=['search']
 func extractDirectNavigatorCall(x *extractor, call *sitter.Node) (route string, params []string, ok bool) {
 	if call == nil {
 		return "", nil, false

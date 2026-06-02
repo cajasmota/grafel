@@ -2,11 +2,11 @@
 //
 // Recognises:
 //   - i18n        : gettext("..."), _("..."), ngettext("...","...",n),
-//                   _l("..."), translate("...").
+//     _l("..."), translate("...").
 //   - log_format  : logger.<level>("..."), logging.<level>("..."),
-//                   print("...{}..."). Only literal first arg is captured.
+//     print("...{}..."). Only literal first arg is captured.
 //   - sql         : Quoted/triple-quoted string literals whose first
-//                   non-whitespace token is a SQL verb (case-insensitive).
+//     non-whitespace token is a SQL verb (case-insensitive).
 package substrate
 
 import "regexp"

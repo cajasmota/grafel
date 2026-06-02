@@ -46,9 +46,9 @@ func TestAudit2678_Laravel_EndpointAttribution(t *testing.T) {
 	//   store → line 14
 	//   show  → line 19
 	want := map[string]int{
-		"http:GET:/things":       9,
-		"http:POST:/things":      14,
-		"http:GET:/things/{id}":  19,
+		"http:GET:/things":      9,
+		"http:POST:/things":     14,
+		"http:GET:/things/{id}": 19,
 	}
 	for _, g := range got {
 		w, ok := want[g.Name]

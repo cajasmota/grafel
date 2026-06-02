@@ -2,13 +2,13 @@
 //
 // Recognises:
 //   - i18n       : AppLocalizations.of(context).translate("key"),
-//                  S.of(context).key (Flutter gen-l10n), intl.Intl.message("..."),
-//                  tr("key") (easy_localization), AppLocalizations("key").
+//     S.of(context).key (Flutter gen-l10n), intl.Intl.message("..."),
+//     tr("key") (easy_localization), AppLocalizations("key").
 //   - log_format : print("..."), debugPrint("..."),
-//                  Logger().d/i/w/e("..."), log("...").
+//     Logger().d/i/w/e("..."), log("...").
 //   - sql        : Quoted string literals whose first non-whitespace
-//                  token is a SQL verb (case-insensitive), as used with
-//                  sqflite / drift raw queries.
+//     token is a SQL verb (case-insensitive), as used with
+//     sqflite / drift raw queries.
 //
 // No i18n standard is canonical in Dart; multiple popular packages are
 // detected conservatively.

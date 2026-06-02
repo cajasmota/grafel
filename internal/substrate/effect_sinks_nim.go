@@ -3,16 +3,16 @@
 // Recognises Nim sink primitives:
 //
 //   - http_out  : newHttpClient() / httpclient.get / client.get / client.post /
-//                 client.request, AsyncHttpClient methods
+//     client.request, AsyncHttpClient methods
 //   - db_read   : db_sqlite / db_postgres / db_mysql: db.getValue / db.getAllRows /
-//                 db.getRow / db.rows (SELECT-flavoured cursor ops)
+//     db.getRow / db.rows (SELECT-flavoured cursor ops)
 //   - db_write  : db.exec("INSERT|UPDATE|DELETE|CREATE"), db.execAffectedRows
 //   - fs_read   : readFile() / readLines() / open(..., fmRead) / lines() /
-//                 readAll() on FileHandle
+//     readAll() on FileHandle
 //   - fs_write  : writeFile() / open(..., fmWrite|fmAppend) / write() on FileHandle /
-//                 createDir() / removeFile() / removeDir() / copyFile() / moveFile()
+//     createDir() / removeFile() / removeDir() / copyFile() / moveFile()
 //   - mutation  : field assignment on object ref (receiver.field = ...) —
-//                 approximated as `result.<field> = ` or `obj.<field> = `
+//     approximated as `result.<field> = ` or `obj.<field> = `
 //
 // Function attribution uses `proc name` / `method name` / `func name` headers.
 package substrate
@@ -24,7 +24,7 @@ func init() { RegisterEffectSniffer("nim", sniffEffectsNim) }
 // nimFuncHeaderRe matches `proc`, `method`, `func`, `template`, `macro`
 // declarations. Capture group 1 is the name.
 var nimFuncHeaderRe = regexp.MustCompile(
-	`(?m)^\s*(?:proc|method|func|template|macro|iterator)\s+([A-Za-z_][\w`+"`"+`]*)\s*[*\s({]`,
+	`(?m)^\s*(?:proc|method|func|template|macro|iterator)\s+([A-Za-z_][\w` + "`" + `]*)\s*[*\s({]`,
 )
 
 // nimHTTPRe matches httpclient primitives.

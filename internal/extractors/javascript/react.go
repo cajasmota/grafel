@@ -7,16 +7,16 @@
 // hook_recognition — the extractor recognised Zustand/React-Query hook *calls*
 // (destructure_bindings.go) but did NOT:
 //
-//   1. classify a *custom hook definition* (`function useFoo()` / `const useBar
-//      = () => …`) as a hook entity, and
-//   2. emit a USES_HOOK edge from a component / custom hook to each `useXxx()`
-//      it invokes.
+//  1. classify a *custom hook definition* (`function useFoo()` / `const useBar
+//     = () => …`) as a hook entity, and
+//  2. emit a USES_HOOK edge from a component / custom hook to each `useXxx()`
+//     it invokes.
 //
 // This file closes that gap:
 //   - isReactHookName     — the `use` + Uppercase convention (the same rule the
-//                           React linter enforces for the Rules of Hooks).
+//     React linter enforces for the Rules of Hooks).
 //   - extractHookCalls    — scans a function body for `useXxx(…)` call sites and
-//                           returns USES_HOOK edges (deduplicated).
+//     returns USES_HOOK edges (deduplicated).
 //
 // hook definitions are tagged via the subtype set in handleFunctionDeclaration /
 // handleVariableDeclarator (subtype="react_hook") so archigraph_find can filter

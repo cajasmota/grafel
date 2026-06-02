@@ -3,24 +3,24 @@
 // Recognises Ruby sink primitives:
 //
 //   - http_out  : Net::HTTP.<get|post|start|...>, HTTParty.<verb>, RestClient
-//                 .<verb>, Faraday.<verb>, Excon.<verb>, open-uri's
-//                 URI.open / URI.parse(...).open
+//     .<verb>, Faraday.<verb>, Excon.<verb>, open-uri's
+//     URI.open / URI.parse(...).open
 //   - db_read   : ActiveRecord `.where / .find / .find_by / .find_each /
-//                 .all / .first / .last / .pluck / .count / .exists?`,
-//                 raw `connection.execute("SELECT ...")`, `ActiveRecord::
-//                 Base.connection.exec_query`
+//     .all / .first / .last / .pluck / .count / .exists?`,
+//     raw `connection.execute("SELECT ...")`, `ActiveRecord::
+//     Base.connection.exec_query`
 //   - db_write  : ActiveRecord `.create / .create! / .update / .update! /
-//                 .update_all / .destroy / .destroy_all / .delete /
-//                 .delete_all / .save / .save! / .insert / .insert_all /
-//                 .upsert / .upsert_all`, raw `connection.execute(
-//                 "INSERT|UPDATE|DELETE ...")`
+//     .update_all / .destroy / .destroy_all / .delete /
+//     .delete_all / .save / .save! / .insert / .insert_all /
+//     .upsert / .upsert_all`, raw `connection.execute(
+//     "INSERT|UPDATE|DELETE ...")`
 //   - fs_read   : File.read / .open (default "r"), File.readlines, IO.read,
-//                 Dir.entries / .glob / .[], Pathname#read
+//     Dir.entries / .glob / .[], Pathname#read
 //   - fs_write  : File.write / .open with "w"/"a"/"x"/binary modes,
-//                 File.delete / .unlink / .rename, FileUtils.cp / .mv /
-//                 .rm / .mkdir / .mkdir_p
+//     File.delete / .unlink / .rename, FileUtils.cp / .mv /
+//     .rm / .mkdir / .mkdir_p
 //   - mutation  : `@ivar = ...` instance-variable assignment inside a
-//                 method body. Excludes `==` comparisons.
+//     method body. Excludes `==` comparisons.
 //
 // Function attribution uses the nearest preceding `def` header — the
 // same heuristic the other sniffers use. Ruby's indentation-free grammar

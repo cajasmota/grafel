@@ -1743,7 +1743,7 @@ func lineOfByteOffset(src string, offset int) int {
 // implicit opening `(` immediately before `start`, and true. Returns
 // (0, false) if the close is missing. The scanner is aware of:
 //   - Python `'…'` / `"…"` string literals (with `\` escapes inside)
-//   - Triple-quoted `'''…'''` / `"""…"""` blocks (commonly used in
+//   - Triple-quoted `”'…”'` / `"""…"""` blocks (commonly used in
 //     `serializer_class` defaults but harmless to handle here)
 //
 // Nested `(` / `)` outside string literals increment / decrement the

@@ -2,10 +2,10 @@
 //
 // Recognises:
 //   - Defs : `let <name> = ...`, `let mut <name> = ...`,
-//            `let <name>: T = ...`, bare reassignments `<name> = ...`,
-//            `for <name> in ...`.
+//     `let <name>: T = ...`, bare reassignments `<name> = ...`,
+//     `for <name> in ...`.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Rust keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `fn` header via the
 // scanRustFuncHeaders helper from effect_sinks_rust.go.
@@ -17,9 +17,10 @@ func init() { RegisterDefUseSniffer("rust", sniffDefUseRust) }
 
 // rustDefRe matches let-bindings, bare assignments, and for-loop iter
 // patterns.
-//   Group 1 (let)     : `let [mut] <name>[: T] =`.
-//   Group 2 (bare)    : `<name> = ` (not `==`, not `.field =`).
-//   Group 3 (for-in)  : `for <name> in`.
+//
+//	Group 1 (let)     : `let [mut] <name>[: T] =`.
+//	Group 2 (bare)    : `<name> = ` (not `==`, not `.field =`).
+//	Group 3 (for-in)  : `for <name> in`.
 var rustDefRe = regexp.MustCompile(
 	`\blet\s+(?:mut\s+)?([A-Za-z_][\w]*)\b` +
 		`|(?m)^\s*([A-Za-z_][\w]*)\s*=(?:[^=])` +

@@ -22,9 +22,9 @@ func TestAudit2709_SubscriptEnumeration(t *testing.T) {
 	doc := runIndexerOn(t, "testdata/audit_subscript_enum", "audit2709", nil)
 
 	type ep struct {
-		Verb         string
-		Path         string
-		PolySubscr   string
+		Verb       string
+		Path       string
+		PolySubscr string
 	}
 	endpoints := make([]ep, 0, 8)
 	for i := range doc.Entities {

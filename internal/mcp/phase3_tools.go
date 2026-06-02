@@ -136,8 +136,8 @@ type moduleCycleSidecarMember struct {
 }
 
 type moduleCycleSidecar struct {
-	ID      int                       `json:"id"`
-	Size    int                       `json:"size"`
+	ID      int                        `json:"id"`
+	Size    int                        `json:"size"`
 	Members []moduleCycleSidecarMember `json:"members"`
 }
 

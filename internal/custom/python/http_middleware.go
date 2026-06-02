@@ -6,23 +6,23 @@
 //
 // Covered frameworks and their canonical middleware patterns:
 //
-//   aiohttp      — app.middlewares=[mw1, mw2] list assignment
-//   bottle       — @bottle.hook('before_request') / @app.hook(...)
-//   cherrypy     — cherrypy.tools.<name> = cherrypy.Tool(...) / @cherrypy.expose
-//                  pipeline via ['/'].tools.<name>.on = True
-//   falcon       — falcon.App(middleware=[...]) / app.add_middleware(mw)
-//   hug          — @hug.request_middleware / @hug.response_middleware
-//   litestar     — Litestar(middleware=[...]) / app.register(MiddlewareProtocol)
-//   pyramid      — config.add_tween('pkg.Tween') tween factory registration
-//   quart        — @app.before_request / @app.after_request (Flask-compatible)
-//   robyn        — app.before_request() / app.after_request() decorators
-//   sanic        — app.register_middleware(fn, 'request'|'response')
-//                  @app.middleware('request') decorator
-//   starlette    — Starlette(middleware=[...]) / app.add_middleware(Cls) /
-//                  @app.middleware("http") decorator
-//   strawberry   — strawberry.Schema(extensions=[...]) GraphQL middleware list
-//   tornado      — RequestHandler.prepare() + set_default_headers() hooks;
-//                  middleware via Application settings / transform classes
+//	aiohttp      — app.middlewares=[mw1, mw2] list assignment
+//	bottle       — @bottle.hook('before_request') / @app.hook(...)
+//	cherrypy     — cherrypy.tools.<name> = cherrypy.Tool(...) / @cherrypy.expose
+//	               pipeline via ['/'].tools.<name>.on = True
+//	falcon       — falcon.App(middleware=[...]) / app.add_middleware(mw)
+//	hug          — @hug.request_middleware / @hug.response_middleware
+//	litestar     — Litestar(middleware=[...]) / app.register(MiddlewareProtocol)
+//	pyramid      — config.add_tween('pkg.Tween') tween factory registration
+//	quart        — @app.before_request / @app.after_request (Flask-compatible)
+//	robyn        — app.before_request() / app.after_request() decorators
+//	sanic        — app.register_middleware(fn, 'request'|'response')
+//	               @app.middleware('request') decorator
+//	starlette    — Starlette(middleware=[...]) / app.add_middleware(Cls) /
+//	               @app.middleware("http") decorator
+//	strawberry   — strawberry.Schema(extensions=[...]) GraphQL middleware list
+//	tornado      — RequestHandler.prepare() + set_default_headers() hooks;
+//	               middleware via Application settings / transform classes
 //
 // Issue #3054.
 package python

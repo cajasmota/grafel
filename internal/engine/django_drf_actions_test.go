@@ -2524,10 +2524,10 @@ class NoteViewSet(ModelViewSet):
 // extraction pipeline.
 func TestScanBalancedClose(t *testing.T) {
 	cases := []struct {
-		body       string
-		start      int
-		wantClose  int
-		wantOK     bool
+		body      string
+		start     int
+		wantClose int
+		wantOK    bool
 	}{
 		// Simple balanced pair.
 		{"abc(xy)z", 4, 6, true},

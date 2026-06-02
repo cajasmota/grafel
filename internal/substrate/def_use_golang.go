@@ -2,10 +2,10 @@
 //
 // Recognises:
 //   - Defs : `<name> :=`, `var <name> ...`, `<name> = ...` reassignments,
-//            `for <name> :=`, `for <name>, <name2> := range`,
-//            short-declarations with multiple LHS names.
+//     `for <name> :=`, `for <name>, <name2> := range`,
+//     short-declarations with multiple LHS names.
 //   - Uses : bare identifiers `\b<name>\b` filtered against the Go
-//            keyword set and not on the LHS of a def we already captured.
+//     keyword set and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding Go function header (uses the
 // existing scanGoFuncHeaders helper from effect_sinks_golang.go).

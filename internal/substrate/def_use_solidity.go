@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : typed local declarations `uint256 x = ...;`, `address x = ...;`,
-//            `bool x = ...;`, bare `x = ...;` reassignments (not `==`).
+//     `bool x = ...;`, bare `x = ...;` reassignments (not `==`).
 //   - Uses : bare identifiers `\b<name>\b` filtered against Solidity keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `function name(` / `modifier name(`
 // header using the scanSolidityFuncHeaders helper from effect_sinks_solidity.go.

@@ -2,9 +2,9 @@
 //
 // Recognises:
 //   - Defs : `<name> = ...`, augmented `<name> += ...`, block params
-//            `|<name>, ...|`, method parameters `def m(<name>, ...)`.
+//     `|<name>, ...|`, method parameters `def m(<name>, ...)`.
 //   - Uses : bare identifiers `\b<name>\b` filtered against Ruby keywords
-//            and not on the LHS of a def we already captured.
+//     and not on the LHS of a def we already captured.
 //
 // Function attribution: nearest preceding `def` header (uses
 // scanRubyFuncHeaders from effect_sinks_ruby.go).
@@ -15,8 +15,9 @@ import "regexp"
 func init() { RegisterDefUseSniffer("ruby", sniffDefUseRuby) }
 
 // rubyDefRe matches simple assignments, block params, and method params.
-//   Group 1 (assign)     : `<name> = ` (not `==`, not `.attr =`).
-//   Group 2 (block param): `|<name>, ...|` — first name only.
+//
+//	Group 1 (assign)     : `<name> = ` (not `==`, not `.attr =`).
+//	Group 2 (block param): `|<name>, ...|` — first name only.
 var rubyDefRe = regexp.MustCompile(
 	`(?m)^\s*([A-Za-z_][\w]*)\s*(?:\+|-|\*|/|%|\*\*|&|\||\^|<<|>>|\|\||&&)?=(?:[^=])` +
 		`|\|\s*([A-Za-z_][\w]*)\s*[,|]`,
