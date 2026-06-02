@@ -2729,3 +2729,131 @@ class CustomViewSet(ModelViewSet):
 	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
 	assertNoProp(t, got, "http:GET:/custom", "paginated")
 }
+
+// TestApplyDjangoDRFRoutes_ProvenanceMixedViewSet is the #3831 value-asserting
+// test. A ModelViewSet that OVERRIDES `list` in its body but INHERITS
+// retrieve/update/partial_update/destroy from the DRF mixins, plus an @action,
+// must tag each router-expanded route with the right provenance + defining_class:
+//
+//   - GET /things         (list, overridden)        → explicit, ThingViewSet
+//   - GET /things/{pk}     (retrieve, inherited)      → inherited, RetrieveModelMixin
+//   - PUT /things/{pk}     (update, inherited)        → inherited, UpdateModelMixin
+//   - PATCH /things/{pk}   (partial_update, inherited)→ inherited, UpdateModelMixin
+//   - DELETE /things/{pk}  (destroy, inherited)       → inherited, DestroyModelMixin
+//   - POST /things         (create, inherited)        → inherited, CreateModelMixin
+//   - POST /things/{pk}/archive (@action)            → action, ThingViewSet
+func TestApplyDjangoDRFRoutes_ProvenanceMixedViewSet(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import ThingViewSet
+
+router = routers.DefaultRouter()
+router.register(r"things", ThingViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action
+
+class ThingViewSet(ModelViewSet):
+    def list(self, request, *args, **kwargs):
+        return None
+
+    @action(detail=True, methods=["post"], url_path="archive")
+    def archive(self, request, pk=None):
+        return None
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	// list is overridden in the body → explicit, defining_class = the ViewSet.
+	assertEndpointProp(t, got, "http:GET:/things", "provenance", drfProvExplicit)
+	assertEndpointProp(t, got, "http:GET:/things", "defining_class", "ThingViewSet")
+
+	// retrieve is inherited from RetrieveModelMixin.
+	assertEndpointProp(t, got, "http:GET:/things/{pk}", "provenance", drfProvInherited)
+	assertEndpointProp(t, got, "http:GET:/things/{pk}", "defining_class", "RetrieveModelMixin")
+
+	// update / partial_update both come from UpdateModelMixin.
+	assertEndpointProp(t, got, "http:PUT:/things/{pk}", "provenance", drfProvInherited)
+	assertEndpointProp(t, got, "http:PUT:/things/{pk}", "defining_class", "UpdateModelMixin")
+	assertEndpointProp(t, got, "http:PATCH:/things/{pk}", "provenance", drfProvInherited)
+	assertEndpointProp(t, got, "http:PATCH:/things/{pk}", "defining_class", "UpdateModelMixin")
+
+	// destroy is inherited from DestroyModelMixin.
+	assertEndpointProp(t, got, "http:DELETE:/things/{pk}", "provenance", drfProvInherited)
+	assertEndpointProp(t, got, "http:DELETE:/things/{pk}", "defining_class", "DestroyModelMixin")
+
+	// create is inherited from CreateModelMixin.
+	assertEndpointProp(t, got, "http:POST:/things", "provenance", drfProvInherited)
+	assertEndpointProp(t, got, "http:POST:/things", "defining_class", "CreateModelMixin")
+
+	// The @action route is provenance=action, defining_class = the ViewSet
+	// (the decorated method lives in the ViewSet body).
+	assertEndpointProp(t, got, "http:POST:/things/{pk}/archive", "provenance", drfProvAction)
+	assertEndpointProp(t, got, "http:POST:/things/{pk}/archive", "defining_class", "ThingViewSet")
+}
+
+// TestApplyDjangoDRFRoutes_ProvenanceAllExplicit is the #3831 negative case: a
+// ViewSet that overrides EVERY CRUD method in its body → every route is
+// provenance=explicit with defining_class = the ViewSet, and NO route carries
+// an inherited mixin defining_class.
+func TestApplyDjangoDRFRoutes_ProvenanceAllExplicit(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import FullViewSet
+
+router = routers.DefaultRouter()
+router.register(r"items", FullViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class FullViewSet(ModelViewSet):
+    def list(self, request, *a, **k): return None
+    def create(self, request, *a, **k): return None
+    def retrieve(self, request, *a, **k): return None
+    def update(self, request, *a, **k): return None
+    def partial_update(self, request, *a, **k): return None
+    def destroy(self, request, *a, **k): return None
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	for _, id := range []string{
+		"http:GET:/items",
+		"http:POST:/items",
+		"http:GET:/items/{pk}",
+		"http:PUT:/items/{pk}",
+		"http:PATCH:/items/{pk}",
+		"http:DELETE:/items/{pk}",
+	} {
+		assertEndpointProp(t, got, id, "provenance", drfProvExplicit)
+		assertEndpointProp(t, got, id, "defining_class", "FullViewSet")
+	}
+}
+
+// TestApplyDjangoDRFRoutes_ProvenanceUnresolvedIsSynthesized verifies that when
+// the ViewSet class cannot be located on disk (no body ever read), the assumed
+// CRUD family is tagged provenance=synthesized with no defining_class — the
+// honest-partial case distinct from `inherited` (#3831).
+func TestApplyDjangoDRFRoutes_ProvenanceUnresolvedIsSynthesized(t *testing.T) {
+	files := fileMap{
+		// No views.py — MysteryViewSet is never resolvable, so the pass falls
+		// back to the full CRUD family without reading any class body.
+		"urls.py": `
+from rest_framework import routers
+from somewhere.unknown import MysteryViewSet
+
+router = routers.DefaultRouter()
+router.register(r"mystery", MysteryViewSet)
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py"}, files.reader)
+
+	assertEndpointProp(t, got, "http:GET:/mystery", "provenance", drfProvSynthesized)
+	assertNoProp(t, got, "http:GET:/mystery", "defining_class")
+	assertEndpointProp(t, got, "http:DELETE:/mystery/{pk}", "provenance", drfProvSynthesized)
+	assertNoProp(t, got, "http:DELETE:/mystery/{pk}", "defining_class")
+}
