@@ -91,6 +91,7 @@ var allPatternExtractors = []patternFn{
 	ExtractSpringBoot,
 	ExtractSpringDIDeepen,
 	ExtractSpringEcosystem,
+	ExtractSpringGraphQL,
 	ExtractSpringRequestResponse,
 	ExtractSpringWebFlux,
 	ExtractStruts,
@@ -128,6 +129,21 @@ var frameworkMarkers = []frameworkMarker{
 	{"spring_webflux", "org.springframework.web.reactive"},
 	{"spring_webflux", "Mono<"},
 	{"spring_webflux", "Flux<"},
+
+	// Spring for GraphQL — annotation-driven GraphQL server.
+	{"spring_graphql", "org.springframework.graphql"},
+	{"spring_graphql", "@QueryMapping"},
+	{"spring_graphql", "@MutationMapping"},
+	{"spring_graphql", "@SubscriptionMapping"},
+	{"spring_graphql", "@SchemaMapping"},
+
+	// Netflix DGS — annotation-driven GraphQL server.
+	{"dgs", "com.netflix.graphql.dgs"},
+	{"dgs", "@DgsComponent"},
+	{"dgs", "@DgsQuery"},
+	{"dgs", "@DgsMutation"},
+	{"dgs", "@DgsSubscription"},
+	{"dgs", "@DgsData"},
 
 	// JPA / Hibernate.
 	{"jpa", "javax.persistence"},
