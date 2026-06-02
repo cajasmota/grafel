@@ -32,6 +32,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
@@ -246,6 +247,19 @@ type drfViewSetClass struct {
 	// without ever reading a class body, so a CRUD verb's body presence is
 	// unknown — its route provenance is `synthesized`, not `inherited` (#3831).
 	resolved bool
+	// serializerClass is the final dotted segment of the ViewSet's class-level
+	// `serializer_class = X` attribute (e.g. "RoleSerializer"), or "" when none
+	// is statically declared. It is one of the per-verb effective-contract
+	// fields T5 (#3835) stamps onto every router-expanded route the ViewSet
+	// backs. Honest-partial: a dynamic `get_serializer_class` override is not
+	// resolved here, so the field stays "" rather than guessing.
+	serializerClass string
+	// classBases is the recognised base-class leaf names the ViewSet extends
+	// (the `cbv_bases` parity subset — ModelViewSet, the CRUD mixins, ...), in
+	// source order. Used by the effective-contract pass (#3835) to attribute an
+	// inherited verb to its defining mixin via the baseknowledge pack when the
+	// flat crudVerbDefiningMixin table does not cover a custom base.
+	classBases []string
 }
 
 // crudVerbDefiningMixin maps each DRF CRUD method name to the rest_framework
@@ -402,6 +416,15 @@ func ApplyDjangoDRFRoutes(
 	// property for downstream consumers.
 	var currentURLPrefix string
 
+	// currentSerializer / currentBases carry the active ViewSet's static
+	// serializer_class leaf and recognised base-class leaves into the emit
+	// closure (the same indirection currentURLPrefix uses), so the per-verb
+	// effective-contract stamp (#3835) can attach the serializer and resolve an
+	// inherited verb's defining mixin from the baseknowledge pack. Reset per
+	// ViewSet alongside currentURLPrefix.
+	var currentSerializer string
+	var currentBases []string
+
 	// emit is invoked for every (verb, path) endpoint to materialise. sourceFile
 	// is the file the handler lives in (typically the ViewSet's source file —
 	// e.g. core/views/building_viewset.py — and ONLY the routers/urlconf file
@@ -475,6 +498,17 @@ func ApplyDjangoDRFRoutes(
 		if definingClass != "" {
 			props["defining_class"] = definingClass
 		}
+
+		// #3835 (T5) — stamp the per-verb EFFECTIVE CONTRACT by merging this
+		// route's provenance/defining_class with the baseknowledge pack's
+		// per-verb defaults (default_status, error_statuses incl. the 400-on-
+		// invalid for create/update) and the ViewSet's serializer. This is the
+		// single artifact T6 (#3836) surfaces to prevent the #278 defect class:
+		// an INHERITED create carries effective_status=201, effective_error_statuses=400,
+		// effective_source_class=CreateModelMixin even though the ViewSet body is
+		// empty. Honest-partial: when the verb's defining base is unknown to the
+		// pack, the pack-derived fields are omitted, keeping only what is resolvable.
+		stampDRFEffectiveContract(props, methodName, provenance, definingClass, viewSet, currentBases, currentSerializer)
 
 		out = append(out, types.EntityRecord{
 			ID:                 id,
@@ -635,6 +669,8 @@ func ApplyDjangoDRFRoutes(
 			// order as effectivePrefixes, so we can zip them to recover the
 			// parent prefix that applies to each composed prefix. This lets
 			// the emit closure attach url_prefix correctly.
+			currentSerializer = vc.serializerClass
+			currentBases = vc.classBases
 			for i, fullPrefix := range composedPrefixes {
 				if i < len(effectivePrefixes) {
 					currentURLPrefix = effectivePrefixes[i]
@@ -645,6 +681,8 @@ func ApplyDjangoDRFRoutes(
 				emitActionRoutes(emit, fullPrefix, vc, endpointSourceFile, viewSetName)
 			}
 			currentURLPrefix = "" // reset for safety
+			currentSerializer = ""
+			currentBases = nil
 		}
 	}
 	return out
@@ -1484,6 +1522,190 @@ func stampDRFEndpointPosture(props map[string]string, posture drfPosture) {
 	}
 }
 
+// effective-contract property keys stamped on every router-expanded route by
+// stampDRFEffectiveContract (#3835, T5). They are the per-verb EFFECTIVE
+// CONTRACT — the merge of route provenance (#3831) + ViewSet posture (#3864) +
+// the baseknowledge pack's per-verb defaults (#3832) — that T6 (#3836) surfaces
+// via archigraph_effective_contract. They are deliberately namespaced
+// `effective_*` (plus serializer_class) so they never collide with the raw
+// posture / provenance props already on the entity.
+const (
+	// effective_kind ∈ {explicit, inherited, action}. The verb taxonomy the
+	// contract answers: did the ViewSet override this verb in its body
+	// (explicit), inherit it from a mixin (inherited), or expose it via an
+	// @action (action)? Derived from the route provenance; the synthesized
+	// router-default family is reported as `inherited` (an assumed mixin verb)
+	// but carries no pack fields when the base is unknown (honest-partial).
+	propEffectiveKind = "effective_kind"
+	// effective_source_class is the FQN/leaf of the class that defines the
+	// verb's body — the ViewSet itself for explicit/action verbs, the
+	// implementing mixin for inherited verbs.
+	propEffectiveSourceClass = "effective_source_class"
+	// effective_status is the verb's default success HTTP status (create→201,
+	// update/list/retrieve→200, destroy→204) from the pack. Omitted when the
+	// pack has no curated default for the verb (StatusUnknown) — never fabricated.
+	propEffectiveStatus = "effective_status"
+	// effective_error_statuses is the comma-separated documented non-success
+	// status set the verb can produce as part of its contract — the #278 fact:
+	// create/update → 400 on invalid payload via is_valid(raise_exception=True).
+	// Omitted when none is curated.
+	propEffectiveErrorStatuses = "effective_error_statuses"
+	// effective_behaviour is the pack's short human-readable behavioural note
+	// for the verb (e.g. the is_valid→400 fact). Omitted when none is curated.
+	propEffectiveBehaviour = "effective_behaviour"
+	// effective_pagination is "true" when the pack marks the verb as paginated
+	// (DRF list) AND a pagination posture is in effect on the route. Omitted
+	// otherwise.
+	propEffectivePagination = "effective_pagination"
+	// effective_permission_applicable is "true" when the framework applies the
+	// class/project permission classes to this verb by default (every DRF route
+	// handler). Omitted when not applicable.
+	propEffectivePermissionApplicable = "effective_permission_applicable"
+	// serializer_class is the ViewSet's static serializer_class leaf, applicable
+	// to every verb it backs. Omitted when none is statically declared.
+	propEffectiveSerializerClass = "serializer_class"
+)
+
+// stampDRFEffectiveContract computes and stamps the per-verb EFFECTIVE CONTRACT
+// onto a router-expanded route's Properties map (#3835, T5). It is the single
+// artifact that prevents the #278 defect class: it merges
+//
+//   - route provenance + defining_class (#3831, passed in), with
+//   - the baseknowledge DRF pack's per-verb defaults (#3832 — default_status,
+//     error_statuses incl. the implicit 400-on-invalid, pagination/permission
+//     applicability, the mixin that owns the body), and
+//   - the ViewSet's static serializer_class (#3835).
+//
+// kind taxonomy (effective_kind):
+//   - provenance explicit    → kind=explicit, source_class=the ViewSet. Status
+//     from the pack default for the verb (resolved via the ViewSet's recognised
+//     bases) when available — the body-parse override is a follow-up; honest-
+//     partial omits status when no curated default exists.
+//   - provenance inherited   → kind=inherited, source_class=the defining mixin.
+//     Full pack contract (status / error_statuses / behaviour / pagination).
+//   - provenance action      → kind=action, source_class=the ViewSet. @action
+//     handlers have no framework-default status, so the pack fields are omitted
+//     (honest-partial — the status lives in the decorated body).
+//   - provenance synthesized → kind=inherited (assumed mixin verb) but, because
+//     the base was never resolved, the pack lookup uses crudVerbDefiningMixin so
+//     a standard CRUD verb still carries its default; a non-CRUD/ANY route omits
+//     the pack fields.
+//
+// HONEST-PARTIAL: an unknown base / verb the pack does not know yields NO
+// pack-derived fields — only what is resolvable (kind, source_class, serializer)
+// is stamped. A status is NEVER fabricated.
+//
+// No-op for the ANY-verb detail catch-all (method == "" and verb ANY): there is
+// no single owning verb to contract.
+func stampDRFEffectiveContract(props map[string]string, method, provenance, definingClass, viewSet string, bases []string, serializer string) {
+	if props == nil {
+		return
+	}
+
+	// serializer_class applies to every verb the ViewSet backs, independent of
+	// the pack (resolvable from the ViewSet body alone).
+	if serializer != "" {
+		props[propEffectiveSerializerClass] = serializer
+	}
+
+	// Map provenance → kind. An ANY catch-all (no method, synthesized) is not a
+	// single verb — emit no per-verb contract for it beyond the serializer.
+	kind := ""
+	switch provenance {
+	case drfProvExplicit:
+		kind = "explicit"
+	case drfProvInherited:
+		kind = "inherited"
+	case drfProvAction:
+		kind = "action"
+	case drfProvSynthesized:
+		if method == "" {
+			// ANY router-default catch-all — no owning verb.
+			return
+		}
+		kind = "inherited"
+	default:
+		return
+	}
+	props[propEffectiveKind] = kind
+	if definingClass != "" {
+		props[propEffectiveSourceClass] = definingClass
+	}
+
+	// @action verbs have no framework-default contract — their status lives in
+	// the decorated body. Stamp kind + source_class + serializer only.
+	if kind == "action" {
+		return
+	}
+
+	// Resolve the pack member for this verb. For an inherited verb the defining
+	// mixin is named directly (definingClass); for an explicit override or a
+	// synthesized CRUD default we resolve the mixin from the CRUD dispatch table
+	// (crudVerbDefiningMixin) and, failing that, scan the ViewSet's recognised
+	// bases. Honest-partial: no match → no pack fields.
+	contract, ok := resolveVerbPackContract(method, definingClass, bases)
+	if !ok {
+		return
+	}
+
+	if contract.PermissionApplicable {
+		props[propEffectivePermissionApplicable] = "true"
+	}
+	if contract.DefaultStatus != baseknowledge.StatusUnknown {
+		props[propEffectiveStatus] = strconv.Itoa(contract.DefaultStatus)
+	}
+	if len(contract.ErrorStatuses) > 0 {
+		parts := make([]string, len(contract.ErrorStatuses))
+		for i, s := range contract.ErrorStatuses {
+			parts[i] = strconv.Itoa(s)
+		}
+		props[propEffectiveErrorStatuses] = strings.Join(parts, ",")
+	}
+	if contract.Behaviour != "" {
+		props[propEffectiveBehaviour] = contract.Behaviour
+	}
+	// Pagination is part of the verb's contract only when the pack marks the
+	// verb paginated AND a pagination posture actually took effect on the route
+	// (stampDRFEndpointPosture set paginated=true). Honest-partial: a paginated
+	// verb with no configured paginator is not reported as paginated.
+	if contract.PaginationApplicable && props["paginated"] == "true" {
+		props[propEffectivePagination] = "true"
+	}
+}
+
+// resolveVerbPackContract looks up the baseknowledge DRF pack contract for a
+// CRUD verb. It tries, in order: the named defining class (set for inherited
+// verbs), the canonical mixin from crudVerbDefiningMixin (the DRF dispatch
+// table — covers explicit overrides and synthesized defaults of a standard CRUD
+// verb), then each of the ViewSet's recognised bases (covers a custom mixin the
+// pack still knows). Returns false when no pack contract names the verb.
+func resolveVerbPackContract(method, definingClass string, bases []string) (baseknowledge.Member, bool) {
+	if method == "" {
+		return baseknowledge.Member{}, false
+	}
+	reg := baseknowledge.Default()
+	tried := map[string]bool{}
+	try := func(base string) (baseknowledge.Member, bool) {
+		if base == "" || tried[base] {
+			return baseknowledge.Member{}, false
+		}
+		tried[base] = true
+		return reg.Member(base, method)
+	}
+	if m, ok := try(definingClass); ok {
+		return m, true
+	}
+	if m, ok := try(crudVerbDefiningMixin[method]); ok {
+		return m, true
+	}
+	for _, b := range bases {
+		if m, ok := try(b); ok {
+			return m, true
+		}
+	}
+	return baseknowledge.Member{}, false
+}
+
 // canonicalDjango is a small convenience wrapper around
 // httproutes.Canonicalize tuned for the Django framework.
 func canonicalDjango(raw string) string {
@@ -1677,6 +1899,19 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 	// can stamp it on every generated route. In DRF these class attributes
 	// apply to every action the ViewSet exposes.
 	out.posture = parseDRFPosture(classBody)
+	// #3835 — capture the class-level serializer_class so the per-verb effective
+	// contract can surface it. Reuse the same regex the response-shape pass uses
+	// (drfClassSerializerClassRe, response_shape_python.go) so the two agree on
+	// what counts as a static serializer_class. Honest-partial: a dynamic
+	// get_serializer_class() override is not resolved, leaving the field "".
+	if m := drfClassSerializerClassRe.FindStringSubmatch(classBody); len(m) >= 2 {
+		out.serializerClass = m[1]
+	}
+	// #3835 — record the recognised base classes (cbv_bases parity) so the
+	// effective-contract pass can attribute an inherited verb to the mixin the
+	// baseknowledge pack knows, even when the flat crudVerbDefiningMixin table
+	// does not name a custom base.
+	out.classBases = finalDottedSegments(drfClassNames(classBase))
 	// #3933 — resolve per-action permission overrides from a
 	// `def get_permissions(self):` body that branches on `self.action`, or from a
 	// `permission_classes_by_action = {...}` dict idiom. These attach the right
