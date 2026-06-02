@@ -722,6 +722,18 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// entity ID. Append-only — cannot regress the surrounding pipeline.
 	applyPass(applyPulsarEdges)
 
+	// Azure Service Bus / Event Hubs producer/consumer cross-repo edges
+	// (#3674, #3628 area #2). Completes azure broker topology: before this
+	// pass azure had NO messaging emitter, so its producer→consumer topology
+	// could never form even though the broker-agnostic topic_pass join was
+	// ready. Emits SCOPE.MessageTopic entities keyed `azure:<name>` +
+	// PUBLISHES_TO / SUBSCRIBES_TO edges for Azure.Messaging.ServiceBus /
+	// EventHubs (C#), @azure/service-bus + @azure/event-hubs (JS/TS), and
+	// azure-servicebus + azure-eventhub (Python). Dynamic names are skipped
+	// (honest-partial). Azure EventGrid stays with event_bus_edges.go.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	applyPass(applyAzureMessagingEdges)
+
 	// #727: Real-time event channel synthesis. Three append-only passes
 	// for WebSocket, Server-Sent Events, and GraphQL subscriptions. Each
 	// scans the file directly and emits ChannelEvent / Stream /

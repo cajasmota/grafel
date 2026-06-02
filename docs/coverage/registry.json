@@ -61151,16 +61151,22 @@
       "id": "msg.broker.azure-service-bus",
       "category": "message_broker",
       "language": "multi",
-      "label": "Azure Service Bus",
+      "label": "Azure Service Bus / Event Hubs",
       "capabilities": {
         "consumer_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/azure_messaging_edges.go"],
+          "verified_at": "2026-06-02"
         },
         "producer_extraction": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/azure_messaging_edges.go"],
+          "verified_at": "2026-06-02"
         },
         "topic_attribution": {
-          "status": "missing"
+          "status": "partial",
+          "cites": ["internal/engine/azure_messaging_edges.go"],
+          "verified_at": "2026-06-02"
         }
       }
     },
