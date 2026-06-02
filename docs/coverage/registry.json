@@ -7005,9 +7005,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "status": "full",
+            "cites": ["internal/custom/csharp/redis.go"],
+            "issue": "3643",
+            "notes": "Key/channel/stream topology extracted from StackExchange.Redis: concrete keys, prefix globs (user:*) from string-concat and $\"…{}\" interpolation heads; READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Mirrors the Python template (#3668). Value-asserting tests in internal/custom/csharp/redis_test.go (literal key, concat prefix, interpolated prefix, publish/subscribe channel, stream add/read, dynamic-key negative).",
             "verified_at": "2026-06-02"
           }
         },
@@ -39638,9 +39639,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "status": "full",
+            "cites": ["internal/custom/php/redis.go"],
+            "issue": "3643",
+            "notes": "Key/channel/stream topology extracted from predis/phpredis: concrete keys, prefix globs (user:*) from dot-concat and double-quoted interpolation heads (user:$id / user:{$id}); READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Mirrors the Python template (#3668). Value-asserting tests in internal/custom/php/redis_test.go (literal key, prefix glob, publish/subscribe channel, stream add/read, dynamic-key negative).",
             "verified_at": "2026-06-02"
           }
         },
@@ -50048,9 +50050,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "status": "full",
+            "cites": ["internal/custom/ruby/redis.go"],
+            "issue": "3643",
+            "notes": "Key/channel/stream topology extracted from redis-rb: concrete keys, prefix globs (user:*) from plus-concat and double-quoted interpolation heads (user:#{id}); single-quoted literals are not interpolated (treated as concrete keys). READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Mirrors the Python template (#3668). Value-asserting tests in internal/custom/ruby/redis_test.go (literal key, concat/interpolated prefix glob, single-quote no-interp, publish/subscribe channel, stream add, dynamic-key negative).",
             "verified_at": "2026-06-02"
           }
         },
@@ -52719,9 +52722,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3643",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "status": "full",
+            "cites": ["internal/custom/rust/redis.go"],
+            "issue": "3643",
+            "notes": "Key/channel/stream topology extracted from redis-rs (typed Commands trait con.get/set/publish/xadd + low-level cmd(\"VERB\").arg(\"key\") builder): concrete literal keys/channels/streams; READS_FROM/WRITES_TO/PUBLISHES_TO/SUBSCRIBES_TO edges to SCOPE.Datastore keyspace targets. Rust has no in-literal interpolation, so format!()/bare-var keys stay dynamic (honest-partial, no fabricated key). Mirrors the Python template (#3668). Value-asserting tests in internal/custom/rust/redis_test.go (literal key, turbofish, publish channel, stream add, cmd-builder GET/SET/PUBLISH, dynamic-key negative).",
             "verified_at": "2026-06-02"
           }
         },
