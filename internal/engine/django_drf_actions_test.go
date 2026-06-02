@@ -2555,3 +2555,177 @@ func TestScanBalancedClose(t *testing.T) {
 		}
 	}
 }
+
+// recordByID returns the EntityRecord with the given ID, or nil.
+func recordByID(records []types.EntityRecord, id string) *types.EntityRecord {
+	for i := range records {
+		if records[i].ID == id {
+			return &records[i]
+		}
+	}
+	return nil
+}
+
+// assertProp asserts a property key has an exact value on the named endpoint.
+func assertEndpointProp(t *testing.T, records []types.EntityRecord, id, key, want string) {
+	t.Helper()
+	e := recordByID(records, id)
+	if e == nil {
+		t.Fatalf("endpoint %q not emitted; got %v", id, idsFromRecords(records))
+	}
+	if got := e.Properties[key]; got != want {
+		t.Errorf("endpoint %q prop %q = %q, want %q", id, key, got, want)
+	}
+}
+
+// assertNoProp asserts a property key is absent (or empty) on the named endpoint.
+func assertNoProp(t *testing.T, records []types.EntityRecord, id, key string) {
+	t.Helper()
+	e := recordByID(records, id)
+	if e == nil {
+		t.Fatalf("endpoint %q not emitted; got %v", id, idsFromRecords(records))
+	}
+	if got, ok := e.Properties[key]; ok && got != "" {
+		t.Errorf("endpoint %q prop %q = %q, want absent", id, key, got)
+	}
+}
+
+// TestApplyDjangoDRFRoutes_PostureOnAllRouterExpandedRoutes is the #3864
+// value-asserting test: a ViewSet declaring pagination_class +
+// permission_classes + throttle_classes must propagate that posture onto
+// EVERY router-expanded route (list/create/retrieve/update/...), so the
+// endpoint posture is visible on the exact http_endpoint entities the MCP
+// `endpoints definitions` query returns.
+func TestApplyDjangoDRFRoutes_PostureOnAllRouterExpandedRoutes(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import ReportViewSet
+
+router = routers.DefaultRouter()
+router.register(r"reports", ReportViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.pagination import LimitOffsetPagination
+from rest_framework.throttling import UserRateThrottle
+
+class ReportViewSet(ModelViewSet):
+    pagination_class = LimitOffsetPagination
+    permission_classes = [IsAuthenticated]
+    throttle_classes = [UserRateThrottle]
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	// Every CRUD route must carry pagination + auth + rate-limit posture.
+	allRoutes := []string{
+		"http:GET:/reports",
+		"http:POST:/reports",
+		"http:GET:/reports/{pk}",
+		"http:PUT:/reports/{pk}",
+		"http:PATCH:/reports/{pk}",
+		"http:DELETE:/reports/{pk}",
+	}
+	for _, id := range allRoutes {
+		assertEndpointProp(t, got, id, "paginated", "true")
+		assertEndpointProp(t, got, id, "pagination_style", "offset")
+		assertEndpointProp(t, got, id, "pagination_params", "limit,offset")
+		assertEndpointProp(t, got, id, "pagination_source", "pagination_class=LimitOffsetPagination")
+		assertEndpointProp(t, got, id, "auth_required", "true")
+		assertEndpointProp(t, got, id, "rate_limited", "true")
+		assertEndpointProp(t, got, id, "rate_limit_source", "throttle_classes=UserRateThrottle")
+		// Middleware chain carries the permission + throttle classes (view scope).
+		assertEndpointProp(t, got, id, "middleware_names", "IsAuthenticated,UserRateThrottle")
+		assertEndpointProp(t, got, id, "middleware_scope", "view")
+		assertEndpointProp(t, got, id, "middleware_count", "2")
+	}
+}
+
+// TestApplyDjangoDRFRoutes_ActionPostureOverride verifies that a per-@action
+// posture override applies to that action's route ONLY, while the CRUD routes
+// keep the ViewSet-level posture.
+func TestApplyDjangoDRFRoutes_ActionPostureOverride(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import DocViewSet
+
+router = routers.DefaultRouter()
+router.register(r"docs", DocViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+from rest_framework.decorators import action
+from rest_framework.permissions import IsAuthenticated, AllowAny
+
+class DocViewSet(ModelViewSet):
+    permission_classes = [IsAuthenticated]
+
+    @action(detail=False, methods=["get"], url_path="public", permission_classes=[AllowAny])
+    def public_docs(self, request):
+        pass
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	// CRUD route keeps the ViewSet-level auth.
+	assertEndpointProp(t, got, "http:GET:/docs", "auth_required", "true")
+	assertEndpointProp(t, got, "http:GET:/docs", "middleware_names", "IsAuthenticated")
+	// The @action route overrode permission_classes=[AllowAny] → not required,
+	// and the chain reflects AllowAny rather than IsAuthenticated.
+	assertEndpointProp(t, got, "http:GET:/docs/public", "middleware_names", "AllowAny")
+	assertNoProp(t, got, "http:GET:/docs/public", "auth_required")
+}
+
+// TestApplyDjangoDRFRoutes_NoPostureNegative verifies the negative case: a
+// ViewSet that declares no pagination/permission/throttle gets NO posture
+// props on its routes (no fabricated posture — honest-partial).
+func TestApplyDjangoDRFRoutes_NoPostureNegative(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import BareViewSet
+
+router = routers.DefaultRouter()
+router.register(r"bare", BareViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class BareViewSet(ModelViewSet):
+    queryset = None
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+
+	for _, id := range []string{"http:GET:/bare", "http:GET:/bare/{pk}"} {
+		assertNoProp(t, got, id, "paginated")
+		assertNoProp(t, got, id, "auth_required")
+		assertNoProp(t, got, id, "rate_limited")
+		assertNoProp(t, got, id, "middleware_chain")
+	}
+}
+
+// TestApplyDjangoDRFRoutes_UnknownPaginatorNotStamped verifies honest-partial:
+// a custom (unrecognised) pagination class does NOT flip `paginated`.
+func TestApplyDjangoDRFRoutes_UnknownPaginatorNotStamped(t *testing.T) {
+	files := fileMap{
+		"urls.py": `
+from rest_framework import routers
+from views import CustomViewSet
+
+router = routers.DefaultRouter()
+router.register(r"custom", CustomViewSet)
+`,
+		"views.py": `
+from rest_framework.viewsets import ModelViewSet
+
+class CustomViewSet(ModelViewSet):
+    pagination_class = MyWeirdPaginator
+`,
+	}
+	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
+	assertNoProp(t, got, "http:GET:/custom", "paginated")
+}

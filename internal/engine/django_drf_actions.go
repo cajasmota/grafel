@@ -221,6 +221,13 @@ type drfViewSetClass struct {
 	// its explicit `def <method>(` declaration. Empty entry means the method is
 	// inherited from a mixin and has no body in this file (#2677).
 	methodLines map[string]int
+	// posture carries the ViewSet-level endpoint posture (pagination /
+	// permission / authentication / throttle classes) declared as class
+	// attributes. In DRF these apply to EVERY router-generated route the
+	// ViewSet backs, so the DRF expansion pass stamps them onto each
+	// synthesized http_endpoint (#3864). Zero value means "nothing declared"
+	// (honest-partial — no fabricated posture).
+	posture drfPosture
 }
 
 // drfAction is a single @action-decorated method on a ViewSet.
@@ -237,6 +244,43 @@ type drfAction struct {
 	// source file. Captured so the emitted http_endpoint attributes to the
 	// decorated method body rather than routers.py (#2677).
 	methodLine int
+	// posture carries any per-@action posture override. DRF lets an @action
+	// pass `permission_classes=[...]`, `throttle_classes=[...]`,
+	// `pagination_class=X`, `authentication_classes=[...]` in the decorator;
+	// those apply to THAT action's route only and override the ViewSet-level
+	// posture for it (#3864). hasPosture distinguishes "override declared"
+	// (even if empty, e.g. permission_classes=[]) from "no override".
+	posture    drfPosture
+	hasPosture bool
+}
+
+// drfPosture captures the DRF endpoint-posture knobs that a ViewSet (or an
+// individual @action override) declares: the pagination class, and the
+// permission / authentication / throttle class lists. The DRF expansion pass
+// translates these into the cross-stack endpoint-property contract
+// (paginated/pagination_*, middleware_chain/auth_required, rate_limited) and
+// stamps them onto every router-generated http_endpoint the ViewSet backs —
+// closing the gap where the inline posture passes never saw these synthetics
+// because they live in a separate slice with Kind="http_endpoint" and a
+// SourceFile that points at the ViewSet rather than the routers file (#3864).
+type drfPosture struct {
+	// paginationClass is the final dotted-segment of `pagination_class = X`
+	// (e.g. "LimitOffsetPagination"), or "" when none is declared.
+	paginationClass string
+	// permissionClasses / authenticationClasses / throttleClasses are the
+	// class symbols (final dotted segment) declared in the respective
+	// `*_classes = [...]` attribute, in source order.
+	permissionClasses     []string
+	authenticationClasses []string
+	throttleClasses       []string
+}
+
+// empty reports whether the posture declares nothing at all.
+func (p drfPosture) empty() bool {
+	return p.paginationClass == "" &&
+		len(p.permissionClasses) == 0 &&
+		len(p.authenticationClasses) == 0 &&
+		len(p.throttleClasses) == 0
 }
 
 // ApplyDjangoDRFRoutes expands DRF router.register() calls into the full
@@ -286,7 +330,7 @@ func ApplyDjangoDRFRoutes(
 	// when the ViewSet class cannot be resolved). sourceLine is the 1-based
 	// line of `def <handler>(` (for explicit / @action methods) or the class
 	// def line (for inherited mixin methods). #2677.
-	emit := func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string) {
+	emit := func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture) {
 		if canonical == "" || canonical == "/" {
 			return
 		}
@@ -333,6 +377,14 @@ func ApplyDjangoDRFRoutes(
 				// so the resolver takes the NoHandlerProp keep-path.
 			}
 		}
+
+		// #3864 — stamp endpoint posture (pagination / auth-middleware-chain /
+		// rate-limit) resolved from the backing ViewSet (or a per-@action
+		// override) onto this router-expanded synthetic. The inline posture
+		// passes never reach these entities (separate slice, Kind="http_endpoint",
+		// SourceFile=ViewSet not routers.py), so the DRF expansion is the only
+		// place ViewSet-level posture can be attributed to the generated routes.
+		stampDRFEndpointPosture(props, posture)
 
 		out = append(out, types.EntityRecord{
 			ID:                 id,
@@ -1028,7 +1080,7 @@ func expandRegisterPrefixes(
 // exactly ONE canonical placeholder per detail route — the ViewSet's
 // declared lookup_field (defaulting to "pk").
 func emitCRUDFamily(
-	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture),
 	fullPrefix string,
 	vc drfViewSetClass,
 	sourceFile string,
@@ -1053,7 +1105,7 @@ func crudMethodLine(vc drfViewSetClass, method string) int {
 // `lookup_field`) is the source of truth; subsequent calls with alternate
 // placeholders widen the cross-repo match surface (#704 companion).
 func emitOneCRUDFamily(
-	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture),
 	fullPrefix string,
 	placeholder string,
 	vc drfViewSetClass,
@@ -1061,28 +1113,30 @@ func emitOneCRUDFamily(
 	viewSetName string,
 ) {
 	detailBase := fullPrefix + "/{" + placeholder + "}"
+	// #3864 — all CRUD routes inherit the ViewSet-level posture.
+	pos := vc.posture
 
 	if vc.crudMethods["list"] {
-		emit("GET", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "list"), viewSetName, "list")
+		emit("GET", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "list"), viewSetName, "list", pos)
 	}
 	if vc.crudMethods["create"] {
-		emit("POST", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "create"), viewSetName, "create")
+		emit("POST", canonicalDjango(fullPrefix), sourceFile, crudMethodLine(vc, "create"), viewSetName, "create", pos)
 	}
 	hasDetailVerb := false
 	if vc.crudMethods["retrieve"] {
-		emit("GET", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "retrieve"), viewSetName, "retrieve")
+		emit("GET", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "retrieve"), viewSetName, "retrieve", pos)
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["update"] {
-		emit("PUT", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "update"), viewSetName, "update")
+		emit("PUT", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "update"), viewSetName, "update", pos)
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["partial_update"] {
-		emit("PATCH", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "partial_update"), viewSetName, "partial_update")
+		emit("PATCH", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "partial_update"), viewSetName, "partial_update", pos)
 		hasDetailVerb = true
 	}
 	if vc.crudMethods["destroy"] {
-		emit("DELETE", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "destroy"), viewSetName, "destroy")
+		emit("DELETE", canonicalDjango(detailBase), sourceFile, crudMethodLine(vc, "destroy"), viewSetName, "destroy", pos)
 		hasDetailVerb = true
 	}
 	// Emit an ANY-verb detail fallback ONLY when no per-verb detail routes
@@ -1092,7 +1146,7 @@ func emitOneCRUDFamily(
 	// verb-aware matcher must skip, and it defeated the iter3 calibration
 	// top add-rec #2 (detail routes still showing method=ANY). Fix #1692.
 	if !hasDetailVerb {
-		emit("ANY", canonicalDjango(detailBase), sourceFile, vc.classDefLine, viewSetName, "")
+		emit("ANY", canonicalDjango(detailBase), sourceFile, vc.classDefLine, viewSetName, "", pos)
 	}
 }
 
@@ -1100,13 +1154,19 @@ func emitOneCRUDFamily(
 // ViewSet. For detail=True actions the route is
 // /<prefix>/{lookup}/<url_path>/; for detail=False it is /<prefix>/<url_path>/.
 func emitActionRoutes(
-	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string),
+	emit func(verb, canonical, sourceFile string, sourceLine int, viewSet, methodName string, posture drfPosture),
 	fullPrefix string,
 	vc drfViewSetClass,
 	sourceFile string,
 	viewSetName string,
 ) {
 	for _, act := range vc.actions {
+		// #3864 — an @action's own posture override (if any) applies to its
+		// route; otherwise the route inherits the ViewSet-level posture.
+		actPosture := vc.posture
+		if act.hasPosture {
+			actPosture = act.posture
+		}
 		segment := act.urlPath
 		if segment == "" {
 			segment = act.methodName
@@ -1145,7 +1205,7 @@ func emitActionRoutes(
 				actionLine = vc.classDefLine
 			}
 			for _, verb := range methods {
-				emit(verb, canonical, sourceFile, actionLine, viewSetName, act.methodName)
+				emit(verb, canonical, sourceFile, actionLine, viewSetName, act.methodName, actPosture)
 			}
 		}
 	}
@@ -1213,6 +1273,102 @@ func emitViewSetMethodEntities(
 				"drf_method_origin": method,
 			},
 		})
+	}
+}
+
+// stampDRFEndpointPosture translates a resolved drfPosture into the cross-stack
+// endpoint-property contract and writes it onto a router-expanded synthetic's
+// Properties map. It mirrors, byte-for-byte, the properties the inline posture
+// passes set on http_endpoint_definition entities so a router-expanded
+// http_endpoint is indistinguishable from a same-file synthesized one at the
+// MCP surface (#3864):
+//
+//   - pagination_class  → paginated=true + pagination_style / pagination_params /
+//     pagination_source (same shape as applyEndpointPagination /
+//     drfClassPaginationVerdict). Only recognised classes
+//     (drfPaginationClassStyle) flip paginated — an unknown custom paginator
+//     stays unstamped (honest-partial).
+//   - permission/authentication/throttle_classes → an ORDERED view-scope
+//     middleware_chain (same contract as applyPythonMiddlewareCoverage /
+//     indexDRFViewMiddleware) plus auth_required when a non-AllowAny permission
+//     or any authentication class is declared.
+//   - throttle_classes → rate_limited=true + rate_limit_source (the flat
+//     rate-limit contract stampJSRateLimit uses; the concrete rate lives in
+//     settings, not statically resolvable here, so rate_limit is omitted —
+//     honest-partial).
+//
+// No-op when the posture declares nothing (an un-configured ViewSet's routes
+// stay unstamped — the negative case the spec requires).
+func stampDRFEndpointPosture(props map[string]string, posture drfPosture) {
+	if props == nil || posture.empty() {
+		return
+	}
+
+	// Pagination — only a recognised DRF paginator flips `paginated`.
+	if posture.paginationClass != "" {
+		if style, known := drfPaginationClassStyle[posture.paginationClass]; known {
+			props["paginated"] = "true"
+			props["pagination_style"] = style
+			if params := drfDefaultParamsFor(style); len(params) > 0 {
+				props["pagination_params"] = strings.Join(uniqueSorted(params), ",")
+			}
+			props["pagination_source"] = "pagination_class=" + posture.paginationClass
+		}
+	}
+
+	// Middleware chain (view scope): permission → authentication → throttle, in
+	// the same order indexDRFViewMiddleware assembles them.
+	var chain []middlewareEntry
+	authRequired := false
+	for _, sym := range posture.permissionClasses {
+		ak := middlewareAuthKind(sym)
+		if ak == "" {
+			ak = "auth"
+		}
+		// AllowAny is an explicit "no auth" permission — it must NOT set
+		// auth_required, matching DRF semantics.
+		if !strings.EqualFold(sym, "AllowAny") {
+			authRequired = true
+		}
+		chain = append(chain, middlewareEntry{
+			Name:     sym,
+			Expr:     sym,
+			Scope:    pythonMWScopeView,
+			AuthKind: ak,
+		})
+	}
+	for _, sym := range posture.authenticationClasses {
+		ak := middlewareAuthKind(sym)
+		if ak == "" {
+			ak = "auth"
+		}
+		authRequired = true
+		chain = append(chain, middlewareEntry{
+			Name:     sym,
+			Expr:     sym,
+			Scope:    pythonMWScopeView,
+			AuthKind: ak,
+		})
+	}
+	for _, sym := range posture.throttleClasses {
+		chain = append(chain, middlewareEntry{
+			Name:  sym,
+			Expr:  sym,
+			Scope: pythonMWScopeView,
+		})
+	}
+	chain = dedupeMiddlewareEntries(chain)
+	stampMiddlewareChainEntries(props, chain, pythonMWScopeOrder)
+
+	if authRequired {
+		props["auth_required"] = "true"
+	}
+
+	// Throttle classes ⇒ the route is rate-limited.
+	if len(posture.throttleClasses) > 0 {
+		props["rate_limited"] = "true"
+		props["rate_limit_scope"] = "view"
+		props["rate_limit_source"] = "throttle_classes=" + strings.Join(posture.throttleClasses, ",")
 	}
 }
 
@@ -1400,6 +1556,11 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 	if m := drfLookupFieldRe.FindStringSubmatch(classBody); len(m) >= 2 {
 		out.lookupField = m[1]
 	}
+	// #3864 — capture the ViewSet-level endpoint posture (pagination /
+	// permission / authentication / throttle classes) so the expansion pass
+	// can stamp it on every generated route. In DRF these class attributes
+	// apply to every action the ViewSet exposes.
+	out.posture = parseDRFPosture(classBody)
 	// classBody starts at classBodyStart in src; pass that offset so
 	// extractActions can compute absolute (src-relative) line numbers for
 	// each @action's `def NAME(` line (#2677).
@@ -1837,7 +1998,104 @@ func parseActionArgs(args, methodName string, defaultDetail bool) drfAction {
 			act.methods = append(act.methods, strings.ToUpper(tok))
 		}
 	}
+	// #3864 — a DRF @action may override the ViewSet's posture for its own
+	// route via `permission_classes=[...]`, `throttle_classes=[...]`,
+	// `authentication_classes=[...]`, `pagination_class=X` kwargs. When any of
+	// those appears in the decorator we record the override (hasPosture=true)
+	// so the expansion pass stamps the action's posture instead of the
+	// class-level one. An override that sets `permission_classes=[]` is a real
+	// "open this action" declaration and is honoured (hasPosture true, empty
+	// permissions).
+	if p, ok := parseActionPostureOverride(args); ok {
+		act.posture = p
+		act.hasPosture = true
+	}
 	return act
+}
+
+// drfActionPaginationClassRe captures `pagination_class=X` (or
+// `pagination_class = X`) inside an @action decorator's argument list. Group 1
+// is the (possibly dotted) class reference.
+var drfActionPaginationClassRe = regexp.MustCompile(
+	`pagination_class\s*=\s*([A-Za-z_][\w.]*)`,
+)
+
+// parseActionPostureOverride scans an @action decorator argument string for any
+// of the posture kwargs (permission_classes / authentication_classes /
+// throttle_classes / pagination_class). Returns the resolved posture and true
+// when at least one appears, or (zero, false) when the decorator declares no
+// posture override at all (the route then inherits the ViewSet posture).
+func parseActionPostureOverride(args string) (drfPosture, bool) {
+	var p drfPosture
+	found := false
+	for _, am := range drfClassesAttrRe.FindAllStringSubmatch(args, -1) {
+		found = true
+		kind := am[1] // permission | authentication | throttle
+		names := finalDottedSegments(drfClassNames(am[2]))
+		switch kind {
+		case "permission":
+			p.permissionClasses = names
+		case "authentication":
+			p.authenticationClasses = names
+		case "throttle":
+			p.throttleClasses = names
+		}
+	}
+	if m := drfActionPaginationClassRe.FindStringSubmatch(args); len(m) >= 2 {
+		found = true
+		p.paginationClass = finalDottedSegment(m[1])
+	}
+	return p, found
+}
+
+// parseDRFPosture extracts the ViewSet-level posture from a class body: the
+// `pagination_class` assignment and the permission/authentication/throttle
+// `*_classes` lists. Only the FIRST assignment of each kind in the body is
+// used (DRF allows exactly one). Returns the zero value when nothing is
+// declared (honest-partial).
+func parseDRFPosture(classBody string) drfPosture {
+	var p drfPosture
+	seenKind := map[string]bool{}
+	for _, am := range drfClassesAttrRe.FindAllStringSubmatch(classBody, -1) {
+		kind := am[1]
+		if seenKind[kind] {
+			continue
+		}
+		seenKind[kind] = true
+		names := finalDottedSegments(drfClassNames(am[2]))
+		switch kind {
+		case "permission":
+			p.permissionClasses = names
+		case "authentication":
+			p.authenticationClasses = names
+		case "throttle":
+			p.throttleClasses = names
+		}
+	}
+	if cls, ok := nearestPaginationClass(classBody, 0); ok {
+		p.paginationClass = cls
+	}
+	return p
+}
+
+// finalDottedSegment returns the last `.`-separated segment of a dotted ref
+// (e.g. "permissions.IsAdminUser" → "IsAdminUser").
+func finalDottedSegment(ref string) string {
+	if idx := strings.LastIndex(ref, "."); idx >= 0 {
+		return ref[idx+1:]
+	}
+	return ref
+}
+
+// finalDottedSegments maps finalDottedSegment over a slice, dropping empties.
+func finalDottedSegments(refs []string) []string {
+	out := make([]string, 0, len(refs))
+	for _, r := range refs {
+		if s := finalDottedSegment(strings.TrimSpace(r)); s != "" {
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // ---------------------------------------------------------------------------
