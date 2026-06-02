@@ -191,36 +191,6 @@ func IsHTTPWrapperHeuristic(name string, idx WrapperConfigIndex) bool {
 // React Query / SWR / RTK Query beyond-minimum patterns
 // ---------------------------------------------------------------------------
 
-// useQueryKeyRe matches React Query useQuery / useSuspenseQuery calls whose
-// first argument is an options object with a queryKey array whose first
-// element is a string literal.
-//
-// We look for the short form where the queryKey first element (a string
-// literal) doubles as the URL resource name:
-//
-//	useQuery({ queryKey: ['users'], queryFn: () => callApi('users', 'GET') })
-//	useSuspenseQuery({ queryKey: ['buildings'], ... })
-//
-// Capture groups:
-//
-//	1 = query key (resource name, e.g. 'users')
-var useQueryKeyRe = regexp.MustCompile(
-	`\buse(?:Suspense)?Query\s*\(\s*\{[^}]*queryKey\s*:\s*\[\s*['"]([^'"]+)['"]`,
-)
-
-// useMutationKeyRe matches React Query useMutation calls with a mutationKey
-// array whose first element is a string literal. These calls issue a POST
-// (or other mutating verb) to the named resource.
-//
-//	useMutation({ mutationKey: ['attachments', 'upload'], mutationFn: ... })
-//
-// Capture groups:
-//
-//	1 = mutation key / resource name (e.g. 'attachments')
-var useMutationKeyRe = regexp.MustCompile(
-	`\buseMutation\s*\(\s*\{[^}]*mutationKey\s*:\s*\[\s*['"]([^'"]+)['"]`,
-)
-
 // rtkQueryEndpointRe matches RTK Query createApi endpoint builder patterns:
 //
 //	createApi({ endpoints: builder => ({
@@ -232,50 +202,9 @@ var useMutationKeyRe = regexp.MustCompile(
 //
 //	1 = builder method ("query" or "mutation")
 //	2 = endpoint resource name (e.g. 'users')
+//
+// rtkQueryEndpointRe's resource group is consumed live by
+// synthesizeReactQueryCalls in http_endpoint_client_synthesis.go.
 var rtkQueryEndpointRe = regexp.MustCompile(
 	`\bbuilder\s*\.\s*(query|mutation)\s*\(\s*\{[^}]*query\s*:\s*\(\s*\)\s*=>\s*['"]([^'"]+)['"]`,
 )
-
-// ExtractReactQueryPaths returns the list of resource names found in
-// React Query / SWR / RTK Query patterns in the given JS/TS source. Each
-// returned string has already been normalized via normalizeBareName.
-func ExtractReactQueryPaths(content string) []string {
-	var paths []string
-	seen := make(map[string]bool)
-
-	for _, m := range useQueryKeyRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 2 {
-			continue
-		}
-		norm := normalizeBareName(m[1])
-		if !seen[norm] {
-			seen[norm] = true
-			paths = append(paths, norm)
-		}
-	}
-
-	for _, m := range useMutationKeyRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 2 {
-			continue
-		}
-		norm := normalizeBareName(m[1])
-		if !seen[norm] {
-			seen[norm] = true
-			paths = append(paths, norm)
-		}
-	}
-
-	for _, m := range rtkQueryEndpointRe.FindAllStringSubmatch(content, -1) {
-		// m[1] = builder method ("query"/"mutation"), m[2] = resource name.
-		if len(m) < 3 {
-			continue
-		}
-		norm := normalizeBareName(m[2])
-		if !seen[norm] {
-			seen[norm] = true
-			paths = append(paths, norm)
-		}
-	}
-
-	return paths
-}

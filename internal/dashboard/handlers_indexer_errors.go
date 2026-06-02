@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/audit"
+	idxerrors "github.com/cajasmota/archigraph/internal/errors"
 )
 
 // IndexerErrorReply is the JSON envelope for GET /api/indexer-errors.
@@ -145,33 +146,17 @@ func extractCode(e audit.Entry) string {
 }
 
 // hintAndDocs returns the canonical hint and docs URL for a given error code
-// string. Keeps the dashboard handler free of a direct import cycle on
-// internal/errors by re-deriving the strings from the code.
+// string. The values come from the internal/errors registry (the single
+// source of truth for IDX-NNN remediation text); constructing an IndexerError
+// is the cheapest way to read back the canonical hint + docs URL without
+// exporting the registry's private hint()/docsURL() helpers.
+//
+// internal/errors imports only the standard library, so there is no import
+// cycle with the dashboard package.
 func hintAndDocs(code string) (hint, docsURL string) {
 	if code == "" {
 		return "", ""
 	}
-	docsURL = "https://archigraph.dev/docs/errors/" + code
-	switch code {
-	case "IDX-001":
-		hint = "Check that the current user can read the repository path. " +
-			"Adjust permissions with chmod/chown or re-run as the owner."
-	case "IDX-002":
-		hint = "This file exceeds the 10 MiB limit. Add it to .archigraphignore to skip it."
-	case "IDX-003":
-		hint = "Convert the file to UTF-8 or add it to .archigraphignore."
-	case "IDX-004":
-		hint = "The file may be minified or machine-generated. Add it to .archigraphignore."
-	case "IDX-005":
-		hint = "Index fewer repos at once or exclude generated directories via .archigraphignore."
-	case "IDX-006":
-		hint = "Break the symlink cycle or add the looping path to .archigraphignore."
-	case "IDX-007":
-		hint = "Add a recognised manifest (go.mod, package.json, pyproject.toml) to the repo root."
-	case "IDX-008":
-		hint = "Add the file to .archigraphignore or file a bug report with the file path."
-	case "IDX-009":
-		hint = "Ensure all referenced repos are registered and indexed."
-	}
-	return
+	ie := idxerrors.New(idxerrors.Code(code), "", "", 0, nil)
+	return ie.Hint, ie.DocsURL
 }

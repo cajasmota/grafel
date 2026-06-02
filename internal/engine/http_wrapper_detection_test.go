@@ -372,8 +372,8 @@ export const api = createApi({
 
 // TestSynth2117_UseMutationWithMutationKey verifies that useMutation with a
 // mutationKey array emits a POST http_endpoint_call to the named resource.
-// Before #2117 the useQueryKeyRe only matched useQuery, so useMutation calls
-// produced zero cross-stack flows.
+// Before #2117 the React-Query detection only matched useQuery, so useMutation
+// calls produced zero cross-stack flows.
 func TestSynth2117_UseMutationWithMutationKey(t *testing.T) {
 	src := `import { useMutation } from '@tanstack/react-query';
 export function useUploadMutation() {
@@ -452,28 +452,6 @@ export const permitApi = createApi({
 		"http:POST:/permits",
 	}
 	requireContains(t, got, want, "#2117 RTK builder.mutation emits POST; builder.query emits GET")
-}
-
-// TestSynth2117_ExtractReactQueryPaths_IncludesMutation verifies the
-// ExtractReactQueryPaths helper (used by downstream tools) returns paths for
-// useMutation as well as useQuery calls.
-func TestSynth2117_ExtractReactQueryPaths_IncludesMutation(t *testing.T) {
-	src := `
-useQuery({ queryKey: ['permits'], queryFn: getPermits })
-useMutation({ mutationKey: ['permits'], mutationFn: createPermit })
-builder.query({ query: () => 'jurisdictions' })
-builder.mutation({ query: () => 'jurisdictions' })
-`
-	got := ExtractReactQueryPaths(src)
-	seen := make(map[string]bool)
-	for _, p := range got {
-		seen[p] = true
-	}
-	for _, want := range []string{"/permits/", "/jurisdictions/"} {
-		if !seen[want] {
-			t.Errorf("ExtractReactQueryPaths missing %q; got: %v", want, got)
-		}
-	}
 }
 
 // TestSynth806_BareNameMultipleVerbs verifies that different methods are

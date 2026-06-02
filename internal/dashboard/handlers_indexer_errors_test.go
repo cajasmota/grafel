@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/archigraph/internal/audit"
+	idxerrors "github.com/cajasmota/archigraph/internal/errors"
 )
 
 // setupIndexerErrServer returns a test Server with a temp audit log wired in.
@@ -178,5 +179,42 @@ func TestHandleIndexerErrors_HintAndDocsPresent(t *testing.T) {
 	}
 	if rec.DocsURL != "https://archigraph.dev/docs/errors/IDX-005" {
 		t.Errorf("DocsURL = %q; unexpected value", rec.DocsURL)
+	}
+}
+
+// TestHandleIndexerErrors_HintMatchesCanonicalRegistry proves the handler now
+// sources its remediation text from the internal/errors registry (the single
+// source of truth) rather than a duplicated in-handler string table. The hint
+// emitted over the API must be byte-identical to what idxerrors.New produces
+// for the same code — guarding against drift between the two former tables.
+func TestHandleIndexerErrors_HintMatchesCanonicalRegistry(t *testing.T) {
+	srv, logPath := setupIndexerErrServer(t)
+
+	l := audit.New(logPath)
+	l.AppendErr("index", "repo-big", map[string]any{"error_code": "IDX-002"}, "[IDX-002] file too large")
+	l.Close()
+
+	time.Sleep(50 * time.Millisecond)
+
+	w := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/api/indexer-errors", nil)
+	srv.handleIndexerErrors(w, req)
+
+	var reply IndexerErrorReply
+	json.NewDecoder(w.Body).Decode(&reply) //nolint:errcheck
+	if reply.Total != 1 {
+		t.Fatalf("Total = %d; want 1", reply.Total)
+	}
+	rec := reply.Errors[0]
+
+	canonical := idxerrors.New(idxerrors.CodeFileTooLarge, "", "", 0, nil)
+	if rec.Hint != canonical.Hint {
+		t.Errorf("Hint = %q; want canonical registry hint %q", rec.Hint, canonical.Hint)
+	}
+	if rec.DocsURL != canonical.DocsURL {
+		t.Errorf("DocsURL = %q; want %q", rec.DocsURL, canonical.DocsURL)
+	}
+	if rec.Hint == "" {
+		t.Error("canonical hint for IDX-002 must be non-empty")
 	}
 }
