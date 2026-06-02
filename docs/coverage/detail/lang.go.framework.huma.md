@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -16,6 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
+| Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | huma.Register(api, huma.Operation{Method,Path}, handler) -> endpoint. Engine synthesis (go_trio) + dedicated SCOPE-entity extractor; fixture-proven. |
 | Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | Final huma.Register argument attributed as handler; fixture-proven. |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | — |

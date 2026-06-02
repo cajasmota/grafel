@@ -651,6 +651,30 @@ records:
           issues_implemented: ["2989"]
           verified_at: "2026-05-29"
       Routing:
+        endpoint_pagination_posture:
+          # #3628 (epic) — stamps paginated / pagination_style
+          # (offset|page|cursor) / pagination_params / pagination_source onto
+          # the http_endpoint_definition op. DRF pagination_class (PageNumber/LimitOffset/Cursor) + settings DEFAULT_PAGINATION_CLASS.
+          # Honest-partial: a lone limit (no offset/page/cursor companion) is
+          # ambiguous and is left unstamped.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - drfClassPaginationVerdict
+                - drfDefaultPaginationVerdict
+                - nearestPaginationClass
+                - drfDefaultParamsFor
+            - file: internal/engine/http_endpoint_pagination_patterns.go
+          tests:
+            - file: internal/engine/http_endpoint_pagination_test.go
+              functions:
+                - TestPagination_DRFCursorClass
+                - TestPagination_DRFLimitOffsetClass
+                - TestPagination_DRFDefaultSetting
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
         endpoint_synthesis:
           status: full
           symbols:
@@ -1530,6 +1554,27 @@ records:
           issues_implemented: ["2989"]
           verified_at: "2026-05-29"
       Routing:
+        endpoint_pagination_posture:
+          # #3628 (epic) — stamps paginated / pagination_style
+          # (offset|page|cursor) / pagination_params / pagination_source onto
+          # the http_endpoint_definition op. FastAPI skip/limit/offset/page/cursor Query params + fastapi-pagination paginate().
+          # Honest-partial: a lone limit (no offset/page/cursor companion) is
+          # ambiguous and is left unstamped.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - pythonPaginationVerdict
+                - pythonSignatureParams
+                - classifyParamShape
+            - file: internal/engine/http_endpoint_pagination_patterns.go
+          tests:
+            - file: internal/engine/http_endpoint_pagination_test.go
+              functions:
+                - TestPagination_FastAPISkipLimit
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
         endpoint_synthesis:
           status: full
           symbols:
@@ -1637,6 +1682,30 @@ records:
           issues_implemented: ["2903"]
           verified_at: "2026-05-29"
       Routing:
+        endpoint_pagination_posture:
+          # #3628 (epic) — stamps paginated / pagination_style
+          # (offset|page|cursor) / pagination_params / pagination_source onto
+          # the http_endpoint_definition op. Express req.query limit+offset/page/cursor; Sequelize findAll({limit,offset}); Prisma take/skip/.cursor().
+          # Honest-partial: a lone limit (no offset/page/cursor companion) is
+          # ambiguous and is left unstamped.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - jsPaginationVerdict
+                - jsQueryParams
+                - classifyParamShape
+            - file: internal/engine/http_endpoint_pagination_patterns.go
+          tests:
+            - file: internal/engine/http_endpoint_pagination_test.go
+              functions:
+                - TestPagination_ExpressLimitOffset
+                - TestPagination_ExpressCursor
+                - TestPagination_PrismaCursor
+                - TestPagination_SequelizeLimitOffset
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
         endpoint_synthesis:
           status: full
           symbols:
@@ -2652,6 +2721,26 @@ records:
           issues_implemented: ["3628"]
           verified_at: "2026-06-02"
       Routing:
+        endpoint_pagination_posture:
+          # #3628 (epic) — stamps paginated / pagination_style
+          # (offset|page|cursor) / pagination_params / pagination_source onto
+          # the http_endpoint_definition op. Spring Data Pageable handler param / Page<>|Slice<> return -> page style (binds page/size).
+          # Honest-partial: a lone limit (no offset/page/cursor companion) is
+          # ambiguous and is left unstamped.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - springPaginationVerdict
+                - forwardSignatureWindow
+            - file: internal/engine/http_endpoint_pagination_patterns.go
+          tests:
+            - file: internal/engine/http_endpoint_pagination_test.go
+              functions:
+                - TestPagination_SpringPageable
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
         endpoint_synthesis:
           # #3347: path_params property is now emitted on every Route entity listing
           # the {id}-style path-variable names from the URL template. This enables
@@ -7111,6 +7200,26 @@ records:
           issues_implemented: ["3080", "3347"]
           verified_at: "2026-05-30"
       Routing:
+        endpoint_pagination_posture:
+          # #3628 (epic) — stamps paginated / pagination_style
+          # (offset|page|cursor) / pagination_params / pagination_source onto
+          # the http_endpoint_definition op. Spring WebFlux Pageable param / Page<> return -> page style.
+          # Honest-partial: a lone limit (no offset/page/cursor companion) is
+          # ambiguous and is left unstamped.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - springPaginationVerdict
+                - forwardSignatureWindow
+            - file: internal/engine/http_endpoint_pagination_patterns.go
+          tests:
+            - file: internal/engine/http_endpoint_pagination_test.go
+              functions:
+                - TestPagination_SpringPageable
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
         endpoint_synthesis:
           # ExtractSpringBoot + spring_routes.go (annotation-based) handle class/method
           # composition. spring_webflux_routes.go handles the functional DSL.
@@ -12753,6 +12862,27 @@ records:
 
   lang.kotlin.framework.spring-boot:
     capabilities:
+      Routing:
+        endpoint_pagination_posture:
+          # #3628 (epic) — stamps paginated / pagination_style
+          # (offset|page|cursor) / pagination_params / pagination_source onto
+          # the http_endpoint_definition op. Kotlin Spring Pageable param / Page<> return -> page style.
+          # Honest-partial: a lone limit (no offset/page/cursor companion) is
+          # ambiguous and is left unstamped.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - springPaginationVerdict
+                - forwardSignatureWindow
+            - file: internal/engine/http_endpoint_pagination_patterns.go
+          tests:
+            - file: internal/engine/http_endpoint_pagination_test.go
+              functions:
+                - TestPagination_SpringPageable
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Substrate:
         constant_propagation:
           status: full
@@ -15042,6 +15172,26 @@ records:
           verified_at: "2026-05-29"
   lang.python.framework.django:
     capabilities:
+      Routing:
+        endpoint_pagination_posture:
+          # #3628 (epic) — stamps paginated / pagination_style
+          # (offset|page|cursor) / pagination_params / pagination_source onto
+          # the http_endpoint_definition op. Django core Paginator(qs, n) in the view -> page style.
+          # Honest-partial: a lone limit (no offset/page/cursor companion) is
+          # ambiguous and is left unstamped.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_pagination.go
+              functions:
+                - applyEndpointPagination
+                - pythonPaginationVerdict
+            - file: internal/engine/http_endpoint_pagination_patterns.go
+          tests:
+            - file: internal/engine/http_endpoint_pagination_test.go
+              functions:
+                - TestPagination_DRFDefaultSetting
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Testing:
         tests_linkage:
           status: full

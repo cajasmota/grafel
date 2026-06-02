@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [lua](../by-language/lua.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -16,6 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
+| Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint synthesis | ✅ `full` | — | — | `internal/engine/lua_routes.go` | Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id->{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path. |
 | Handler attribution | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id->{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path. |
 | Route extraction | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id->{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path. |

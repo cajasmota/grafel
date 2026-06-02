@@ -26,25 +26,25 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Ariadne GraphQL](../detail/lang.python.framework.ariadne.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/12 | |
-| [Bottle](../detail/lang.python.framework.bottle.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [CherryPy](../detail/lang.python.framework.cherrypy.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Django](../detail/lang.python.framework.django.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/11 | |
-| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 25/25 | 🟡 12/16 | |
-| [Falcon](../detail/lang.python.framework.falcon.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 4/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟢 10/10 | |
-| [Flask](../detail/lang.python.framework.flask.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
-| [Graphene GraphQL](../detail/lang.python.framework.graphene.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/11 | |
-| [Hug](../detail/lang.python.framework.hug.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Pyramid](../detail/lang.python.framework.pyramid.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Quart](../detail/lang.python.framework.quart.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Robyn](../detail/lang.python.framework.robyn.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Starlette](../detail/lang.python.framework.starlette.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
-| [aiohttp](../detail/lang.python.framework.aiohttp.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Ariadne GraphQL](../detail/lang.python.framework.ariadne.md) | 🟡 3/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/12 | |
+| [Bottle](../detail/lang.python.framework.bottle.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [CherryPy](../detail/lang.python.framework.cherrypy.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Django](../detail/lang.python.framework.django.md) | 🟡 4/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/11 | |
+| [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟡 4/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 25/25 | 🟡 12/16 | |
+| [Falcon](../detail/lang.python.framework.falcon.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 5/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟢 10/10 | |
+| [Flask](../detail/lang.python.framework.flask.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
+| [Graphene GraphQL](../detail/lang.python.framework.graphene.md) | 🟡 3/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/11 | |
+| [Hug](../detail/lang.python.framework.hug.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Pyramid](../detail/lang.python.framework.pyramid.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Quart](../detail/lang.python.framework.quart.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Robyn](../detail/lang.python.framework.robyn.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Starlette](../detail/lang.python.framework.starlette.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/11 | |
+| [aiohttp](../detail/lang.python.framework.aiohttp.md) | 🟡 3/5 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/11 | |
 
 
 ### AI Integration

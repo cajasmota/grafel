@@ -93,6 +93,7 @@ subcategories:
       - endpoint_synthesis
       - handler_attribution
       - endpoint_deprecation_versioning
+      - endpoint_pagination_posture
       - auth_coverage
       - middleware_coverage
       - rate_limit_stamping
@@ -143,7 +144,7 @@ subcategories:
       - tests_edges_via_delay_apply
     groups:
       - name: Routing
-        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
+        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture]
       - name: Auth
         keys: [auth_coverage]
       - name: Validation
@@ -170,6 +171,7 @@ subcategories:
       - endpoint_synthesis
       - handler_attribution
       - endpoint_deprecation_versioning
+      - endpoint_pagination_posture
       - auth_coverage
       - middleware_coverage
       - rate_limit_stamping
@@ -220,7 +222,7 @@ subcategories:
       - metric_extraction
     groups:
       - name: Routing
-        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
+        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture]
       - name: Auth
         keys: [auth_coverage]
       - name: Validation
