@@ -65,7 +65,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	walk(file.Tree.RootNode(), file, "", &entities)
+	root := file.Tree.RootNode()
+	walk(root, file, "", &entities)
+	// Issue #3641 (epic #3625) — config-key consumption edges
+	// (getenv / $_ENV / Laravel env() / config()) → shared SCOPE.Config nodes.
+	emitConfigConsumerEdges(root, file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")

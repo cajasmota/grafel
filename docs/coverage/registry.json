@@ -7477,8 +7477,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -7713,8 +7716,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -7915,8 +7921,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -8113,8 +8122,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -8311,8 +8323,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -8552,8 +8567,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -8797,8 +8815,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -8960,8 +8981,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -9189,8 +9213,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "missing",
@@ -9407,8 +9434,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -9618,8 +9648,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -9859,8 +9892,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -10009,8 +10045,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -10098,8 +10137,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -10187,8 +10229,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -10337,8 +10382,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/csharp/config_consumer.go","internal/extractors/csharp/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "IConfiguration indexer/GetValue/GetConnectionString + Environment.GetEnvironmentVariable -\u003e config:\u003ckey\u003e (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -41564,8 +41612,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "missing",
@@ -41778,8 +41829,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -42024,8 +42078,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -42270,8 +42327,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -42503,8 +42563,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "missing",
@@ -42717,8 +42780,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -42969,8 +43035,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -43202,8 +43271,11 @@
             "issue": "backfill:dictionary-completeness"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "missing",
@@ -43416,8 +43488,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -43662,8 +43737,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -43908,8 +43986,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -44154,8 +44235,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -44408,8 +44492,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -44654,8 +44741,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -44900,8 +44990,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/php/config_consumer.go","internal/extractors/php/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "getenv/$_ENV + Laravel env()/config() -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -52742,8 +52835,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -52974,8 +53070,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -53207,8 +53306,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -53440,8 +53542,11 @@
             "issue": "3621"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3621"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "missing",
@@ -53649,8 +53754,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -53885,8 +53993,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -54125,8 +54236,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "partial",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...]/ENV.fetch -\u003e config:\u003ckey\u003e covered; Rails.application.credentials not yet extracted (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -54374,8 +54488,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
@@ -54615,8 +54732,11 @@
             "verified_at": "2026-05-28"
           },
           "config_consumption": {
-            "status": "missing",
-            "issue": "3641"
+            "status": "full",
+            "cites": ["internal/extractor/config_key.go","internal/extractors/ruby/config_consumer.go","internal/extractors/ruby/config_consumer_test.go"],
+            "issue": "3641",
+            "notes": "ENV[...], ENV.fetch -\u003e config:\u003ckey\u003e DEPENDS_ON_CONFIG edges (issue #3641)",
+            "verified_at": "2026-06-02"
           },
           "constant_propagation": {
             "status": "full",
