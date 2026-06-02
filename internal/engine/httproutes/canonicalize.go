@@ -161,6 +161,13 @@ const (
 	// carries no framework-specific parameter syntax, so canonicalisation is
 	// identity + slash normalisation (default case).
 	FrameworkGqlgen = "gqlgen"
+	// FrameworkGraphQLRuby (#3621) — graphql-ruby is the dominant GraphQL
+	// server for Ruby. Operation endpoints are synthesised as the canonical
+	// `/graphql/<RootType>/<field>` path shared with the JS/TS, Python, Go and
+	// C# GraphQL servers. The path carries no framework-specific parameter
+	// syntax, so canonicalisation is identity + slash normalisation (default
+	// case).
+	FrameworkGraphQLRuby = "graphql-ruby"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
