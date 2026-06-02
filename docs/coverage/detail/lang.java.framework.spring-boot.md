@@ -57,7 +57,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/java/java.go` | — |
+| Enum extraction | ✅ `full` | `2026-06-02` | — | `internal/extractor/enum_valueset.go`<br>`internal/extractors/java/enum_valueset.go`<br>`internal/extractors/java/java.go` | enum_declaration -> SCOPE.Component/enum AND a value-carrying SCOPE.Enum value-set node (buildJavaEnumValueSet, kind_hint=java_enum): bare constants recorded as members (Status: ACTIVE, INACTIVE), constructor-arg enums capture the first literal argument as the member value (Color: RED=#f00; Planet: MERCURY=1). Non-literal constructor args recorded value-less (honest-partial). |
 | Interface extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/java/java.go` | — |
 | Type alias extraction | — `not_applicable` | — | — | — | Java has no type alias syntax |
 | Type extraction | ✅ `full` | `2026-05-28` | — | `internal/extractors/java/java.go` | — |

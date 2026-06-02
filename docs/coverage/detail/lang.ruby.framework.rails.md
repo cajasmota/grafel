@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | — `not_applicable` | — | — | — | Ruby is dynamically typed — no enum keyword (duck typing idiom) |
+| Enum extraction | 🟢 `partial` | `2026-06-02` | — | `internal/extractor/enum_valueset.go`<br>`internal/extractors/ruby/enum_valueset.go` | Ruby is dynamically typed (no enum keyword), but Rails ActiveRecord declares value-sets via the enum DSL. buildRailsEnumValueSet emits a value-carrying SCOPE.Enum node per declaration (kind_hint=rails_enum): enum status: { active: 0, archived: 1 } -> values active=0, archived=1; array form enum priority: [:low, :high] -> members value-less; Rails 7 positional enum :state, {...} form supported. Non-literal/dynamic args skipped (honest-partial). |
 | Interface extraction | — `not_applicable` | — | — | — | Ruby is dynamically typed — no interface keyword (duck typing idiom) |
 | Type alias extraction | — `not_applicable` | — | — | — | Ruby is dynamically typed — no type keyword (duck typing idiom) |
 | Type extraction | — `not_applicable` | — | — | — | Ruby dynamically typed; framework exposes no static type DSL |

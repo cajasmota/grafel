@@ -30,7 +30,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/5 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [Echo](../detail/lang.go.framework.echo.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 8/12 | |
 | [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Gin](../detail/lang.go.framework.gin.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
+| [Gin](../detail/lang.go.framework.gin.md) | 🟡 3/5 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
 | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 3/5 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [Huma](../detail/lang.go.framework.huma.md) | 🟡 3/5 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |

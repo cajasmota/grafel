@@ -1392,6 +1392,10 @@ func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 	}
 	e.ID = e.ComputeID()
 	x.entities = append(x.entities, e)
+
+	// A string/number literal-union alias (`type Role = 'admin' | 'user'`) is an
+	// enumerated value-set; emit a SCOPE.Enum node alongside (data-model #3628).
+	x.emitTSLiteralUnionValueSet(n, name)
 }
 
 // handleEnumDeclaration handles TypeScript enum declarations: enum Direction { Up, Down }
@@ -1437,6 +1441,9 @@ func (x *extractor) handleEnumDeclaration(n *sitter.Node) {
 	}
 
 	x.emitWithProps(name, "SCOPE.Schema", n, "enum", fmt.Sprintf("enum %s", name), props, nil)
+
+	// Value-carrying SCOPE.Enum value-set node (data-model, epic #3628).
+	x.emitTSEnumValueSet(n, name)
 }
 
 // handleVariableDeclaration handles: const/let foo = (...) => {...} or = function(...) {...}

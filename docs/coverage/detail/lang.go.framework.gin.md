@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | — `not_applicable` | `2026-05-29` | — | — | Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable. |
+| Enum extraction | 🟢 `partial` | `2026-06-02` | — | `internal/extractor/enum_valueset.go`<br>`internal/extractors/golang/enum_valueset.go` | Go has no enum keyword; the idiom is a named int/string type + a const(...) block typed by it. extractGoEnums emits a value-carrying SCOPE.Enum value-set node per such block (kind_hint=go_iota): members in declaration order, explicit literal members capture their value (Color: Red=red; Level: Low=1), iota members recorded value-less (honest-partial, no fabricated ordinals). Const blocks typed only by a builtin / untyped are skipped. |
 | Interface extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/golang/extractor.go`<br>`internal/extractors/golang/extractor_test.go` | — |
 | Type alias extraction | 🟢 `partial` | `2026-05-29` | — | `internal/extractors/golang/extractor.go` | type X = Y alias declarations via tree-sitter base extractor; framework-specific type aliases (e.g. gin.HandlerFunc, echo.HandlerFunc) captured but not distinguished from user-defined aliases; no value-asserting framework-specific tests |
 | Type extraction | ✅ `full` | `2026-05-29` | — | `internal/extractors/golang/extractor.go`<br>`internal/extractors/golang/extractor_test.go` | — |
