@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 54
+- **Capability cells:** 55
 
 ## Capabilities
 
@@ -122,6 +122,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Request shape extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/tapir.go`<br>`internal/custom/scala/validation.go` | custom_scala_frameworks: tapir .in(jsonBody[T]) request body DTO captured as request_dto + dto_ref(role=request). Value-asserting test asserts request_dto=CreateUserRequest. File-local. |
+| Request sink dataflow | 🔴 `missing` | — | 3958 | — | No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no "kotlin"/"scala" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks. |
 | Response shape extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/tapir.go`<br>`internal/custom/scala/validation.go` | custom_scala_frameworks: tapir .out(jsonBody[T]) / .errorOut(jsonBody[T]) captured as response_dto/error_dto + dto_ref(role=response/error). Value-asserting test asserts response_dto=User, error_dto=ErrorInfo. File-local. |
 | Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

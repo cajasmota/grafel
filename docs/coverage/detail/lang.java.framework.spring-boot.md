@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 57
+- **Capability cells:** 58
 
 ## Capabilities
 
@@ -122,6 +122,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go` | — |
 | Reachability analysis | 🟢 `partial` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_java.go` | — |
 | Request shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | — |
+| Request sink dataflow | 🟢 `partial` | `2026-06-02` | 3958 | `internal/links/dataflow_pass.go`<br>`internal/substrate/dataflow.go`<br>`internal/substrate/dataflow_java.go`<br>`internal/substrate/dataflow_java_test.go` | SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872): new Java sniffer (internal/substrate/dataflow_java.go) registered on the "java" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts/go/ruby sniffers. Sources: Spring MVC/WebFlux controller-method params annotated @RequestBody/@RequestParam/@PathVariable/@RequestHeader/@RequestPart/@ModelAttribute/@CookieValue — each bound param is a request-derived root; field = annotation literal (@RequestParam("q")->q), else param name for scalar binders, else "" for @RequestBody whole-object (recovered from dto.getEmail()->email getter or dto.email member). Intra-method typed-decl + reassignment taint tracking + multi-hop (<=DataFlowMaxHops=3) local same-file call propagation by exact positional index, AND cross-file boundary emission continued by the links pass (continueDataFlowJava). Sinks: JPA/Spring Data/JDBC write (repo.save/saveAll/delete*/insert, entityManager.persist/merge/remove, jdbcTemplate.update/batchUpdate/execute), response (ResponseEntity.ok/status().body/new ResponseEntity, ServerResponse.bodyValue, return <tainted>), outbound HTTP (restTemplate.postForObject/exchange, webClient.bodyValue). HONEST-PARTIAL: drops static/constant values, non-request params (@Autowired), reassignment, embedded-arg expressions, varargs, recursion/cycle, the 4th hop, external/unresolved imports; whole-object @RequestBody flows with field="". DEPLOY-DEFERRED (daemon not rebuilt). PHP request_sink_dataflow remains the last follow-up. |
 | Response shape extraction | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | — |
 | Sanitizer recognition | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_java.go` | — |
 | Schema drift detection | ✅ `full` | `2026-05-27` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_java.go` | — |

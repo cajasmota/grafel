@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 54
+- **Capability cells:** 55
 
 ## Capabilities
 
@@ -122,6 +122,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🔴 `missing` | — | 3699 | — | — |
 | Reachability analysis | 🔴 `missing` | — | 3699 | — | — |
 | Request shape extraction | 🔴 `missing` | — | 3699 | — | — |
+| Request sink dataflow | 🔴 `missing` | — | 3958 | — | No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no "kotlin"/"scala" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks. |
 | Response shape extraction | 🔴 `missing` | — | 3699 | — | — |
 | Sanitizer recognition | 🔴 `missing` | — | 3699 | — | — |
 | Schema drift detection | 🔴 `missing` | — | 3699 | — | — |

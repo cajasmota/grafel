@@ -23624,6 +23624,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -24350,6 +24355,11 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -24670,6 +24680,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -24946,6 +24961,11 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "3699"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -25489,6 +25509,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -25831,6 +25856,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -26160,6 +26190,11 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -26506,6 +26541,13 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_java.go","internal/substrate/dataflow_java_test.go"],
+            "issue": "3958",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872): new Java sniffer (internal/substrate/dataflow_java.go) registered on the \"java\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts/go/ruby sniffers. Sources: Spring MVC/WebFlux controller-method params annotated @RequestBody/@RequestParam/@PathVariable/@RequestHeader/@RequestPart/@ModelAttribute/@CookieValue — each bound param is a request-derived root; field = annotation literal (@RequestParam(\"q\")-\u003eq), else param name for scalar binders, else \"\" for @RequestBody whole-object (recovered from dto.getEmail()-\u003eemail getter or dto.email member). Intra-method typed-decl + reassignment taint tracking + multi-hop (\u003c=DataFlowMaxHops=3) local same-file call propagation by exact positional index, AND cross-file boundary emission continued by the links pass (continueDataFlowJava). Sinks: JPA/Spring Data/JDBC write (repo.save/saveAll/delete*/insert, entityManager.persist/merge/remove, jdbcTemplate.update/batchUpdate/execute), response (ResponseEntity.ok/status().body/new ResponseEntity, ServerResponse.bodyValue, return \u003ctainted\u003e), outbound HTTP (restTemplate.postForObject/exchange, webClient.bodyValue). HONEST-PARTIAL: drops static/constant values, non-request params (@Autowired), reassignment, embedded-arg expressions, varargs, recursion/cycle, the 4th hop, external/unresolved imports; whole-object @RequestBody flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). PHP request_sink_dataflow remains the last follow-up.",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -26889,6 +26931,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -27232,6 +27279,11 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -27824,6 +27876,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -28173,6 +28230,13 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_java.go","internal/substrate/dataflow_java_test.go"],
+            "issue": "3958",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872): new Java sniffer (internal/substrate/dataflow_java.go) registered on the \"java\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts/go/ruby sniffers. Sources: Spring MVC/WebFlux controller-method params annotated @RequestBody/@RequestParam/@PathVariable/@RequestHeader/@RequestPart/@ModelAttribute/@CookieValue — each bound param is a request-derived root; field = annotation literal (@RequestParam(\"q\")-\u003eq), else param name for scalar binders, else \"\" for @RequestBody whole-object (recovered from dto.getEmail()-\u003eemail getter or dto.email member). Intra-method typed-decl + reassignment taint tracking + multi-hop (\u003c=DataFlowMaxHops=3) local same-file call propagation by exact positional index, AND cross-file boundary emission continued by the links pass (continueDataFlowJava). Sinks: JPA/Spring Data/JDBC write (repo.save/saveAll/delete*/insert, entityManager.persist/merge/remove, jdbcTemplate.update/batchUpdate/execute), response (ResponseEntity.ok/status().body/new ResponseEntity, ServerResponse.bodyValue, return \u003ctainted\u003e), outbound HTTP (restTemplate.postForObject/exchange, webClient.bodyValue). HONEST-PARTIAL: drops static/constant values, non-request params (@Autowired), reassignment, embedded-arg expressions, varargs, recursion/cycle, the 4th hop, external/unresolved imports; whole-object @RequestBody flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). PHP request_sink_dataflow remains the last follow-up.",
+            "verified_at": "2026-06-02"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -28467,6 +28531,11 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -28811,6 +28880,13 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
           },
+          "request_sink_dataflow": {
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_java.go","internal/substrate/dataflow_java_test.go"],
+            "issue": "3958",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872): new Java sniffer (internal/substrate/dataflow_java.go) registered on the \"java\" slug and dispatched by file extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the python/jsts/go/ruby sniffers. Sources: Spring MVC/WebFlux controller-method params annotated @RequestBody/@RequestParam/@PathVariable/@RequestHeader/@RequestPart/@ModelAttribute/@CookieValue — each bound param is a request-derived root; field = annotation literal (@RequestParam(\"q\")-\u003eq), else param name for scalar binders, else \"\" for @RequestBody whole-object (recovered from dto.getEmail()-\u003eemail getter or dto.email member). Intra-method typed-decl + reassignment taint tracking + multi-hop (\u003c=DataFlowMaxHops=3) local same-file call propagation by exact positional index, AND cross-file boundary emission continued by the links pass (continueDataFlowJava). Sinks: JPA/Spring Data/JDBC write (repo.save/saveAll/delete*/insert, entityManager.persist/merge/remove, jdbcTemplate.update/batchUpdate/execute), response (ResponseEntity.ok/status().body/new ResponseEntity, ServerResponse.bodyValue, return \u003ctainted\u003e), outbound HTTP (restTemplate.postForObject/exchange, webClient.bodyValue). HONEST-PARTIAL: drops static/constant values, non-request params (@Autowired), reassignment, embedded-arg expressions, varargs, recursion/cycle, the 4th hop, external/unresolved imports; whole-object @RequestBody flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). PHP request_sink_dataflow remains the last follow-up.",
+            "verified_at": "2026-06-02"
+          },
           "response_shape_extraction": {
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
@@ -29145,6 +29221,11 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -29682,6 +29763,11 @@
             "status": "full",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_java.go"],
             "verified_at": "2026-05-27"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -41135,6 +41221,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
@@ -41810,6 +41901,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
@@ -42076,6 +42172,11 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -42337,6 +42438,11 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -42624,6 +42730,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -42928,6 +43039,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -43409,6 +43525,11 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -43663,6 +43784,11 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -43962,6 +44088,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -44285,6 +44416,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
@@ -44607,6 +44743,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
@@ -44875,6 +45016,11 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -45191,6 +45337,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_kotlin.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -68437,6 +68588,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
@@ -68719,6 +68875,11 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "Resolver field argument type (e.g. UserArgs in user: UserArgs =\u003e ...) is visible in the field declaration but not deeply parsed into a shape.",
             "verified_at": "2026-05-30"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -69028,6 +69189,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
@@ -69329,6 +69495,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -69650,6 +69821,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
@@ -69962,6 +70138,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -70283,6 +70464,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
@@ -70573,6 +70759,11 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -71266,6 +71457,11 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
           },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+          },
           "response_shape_extraction": {
             "status": "partial",
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
@@ -71536,6 +71732,11 @@
           "request_shape_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -71813,6 +72014,11 @@
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go","internal/custom/scala/validation.go"],
             "notes": "custom_scala_frameworks: tapir .in(jsonBody[T]) request body DTO captured as request_dto + dto_ref(role=request). Value-asserting test asserts request_dto=CreateUserRequest. File-local.",
             "verified_at": "2026-05-30"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -72123,6 +72329,11 @@
             "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_scala.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/2771",
             "verified_at": "2026-05-28"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "3958",
+            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
           },
           "response_shape_extraction": {
             "status": "partial",
