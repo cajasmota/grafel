@@ -41,14 +41,59 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// angularClassDecorators maps a recognised Angular decorator identifier to the
-// SCOPE.Component subtype emitted for the decorated class.
+// angularClassDecorators maps a recognised class decorator identifier to the
+// SCOPE.Component subtype emitted for the decorated class. The map name is
+// historical (#2854 was Angular-only); it now also carries the NestJS
+// constructor-DI decorators so the base AST extractor routes those classes
+// through handleAngularClass — which emits the provider→consumer INJECTED_INTO
+// edges from the constructor parameter list.
+//
+// Why the NestJS controller/resolver/gateway decorators belong here (#3970):
+// @Injectable was already recognised, so NestJS *service* classes went through
+// the DI-aware path and kept their INJECTED_INTO edges. @Controller / @Resolver
+// / @WebSocketGateway were NOT, so a NestJS controller fell through to the
+// generic class path and emitted an edge-LESS SCOPE.Component/class node. That
+// node shares an entity ID (Kind+Name+SourceFile) with the NestJS custom
+// extractor's edge-bearing controller entity, and the edge-less AST node won the
+// same-id assembly dedup (first-writer-wins), dropping the controller's
+// INJECTED_INTO edges. Routing @Controller/@Resolver/@WebSocketGateway through
+// handleAngularClass makes the surviving AST node ALSO carry the INJECTED_INTO
+// edges, so they are reachable on the controller via inspect.di_edges
+// regardless of which same-id node wins. The constructor-injection scan
+// (angularConstructorInjections) is framework-agnostic, so it captures the
+// `constructor(private readonly svc: DevicesService)` providers identically.
 var angularClassDecorators = map[string]string{
 	"Component":  "angular_component",
 	"Directive":  "angular_directive",
 	"Injectable": "angular_service",
 	"Pipe":       "angular_pipe",
 	"NgModule":   "angular_module",
+	// NestJS constructor-DI decorators (#3970). Subtypes match the
+	// classLikeComponentSubtypes fold-source allowlist (controller/resolver/
+	// gateway) so the node folds/dedups cleanly with the custom extractor's
+	// same-named entity.
+	"Controller":       "controller",
+	"Resolver":         "resolver",
+	"WebSocketGateway": "gateway",
+}
+
+// nestClassDecorators is the subset of angularClassDecorators that belongs to
+// NestJS rather than Angular (#3970). It is used only to stamp the correct
+// `framework` property/edge label on the emitted entity — the structural
+// handling (subtype emission + constructor-DI INJECTED_INTO edges) is shared.
+var nestClassDecorators = map[string]bool{
+	"Controller":       true,
+	"Resolver":         true,
+	"WebSocketGateway": true,
+}
+
+// frameworkForDecorator returns the framework label for a recognised class
+// decorator: "nestjs" for the NestJS DI decorators, else "angular".
+func frameworkForDecorator(decorator string) string {
+	if nestClassDecorators[decorator] {
+		return "nestjs"
+	}
+	return "angular"
 }
 
 // reAngularPascalTag matches PascalCase / kebab custom-element tags in an inline
@@ -122,8 +167,9 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 		return false
 	}
 
+	framework := frameworkForDecorator(decorator)
 	props := map[string]string{
-		"framework":          "angular",
+		"framework":          framework,
 		"angular_decorator":  decorator,
 		"angular_class_kind": subtype,
 	}
@@ -171,7 +217,7 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 				Properties: map[string]string{
 					"consumer":  className,
 					"provider":  dep,
-					"framework": "angular",
+					"framework": framework,
 				},
 			})
 		}

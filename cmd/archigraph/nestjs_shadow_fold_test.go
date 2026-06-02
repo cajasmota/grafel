@@ -129,6 +129,83 @@ func TestClassShadowFold_ServiceKind_NoDanglingEdges(t *testing.T) {
 	}
 }
 
+// TestNestJSControllerDIEdgeSurvivesDedup is the deploy-8 (#3970) regression:
+// a NestJS @Controller class with a constructor-injected service. The custom
+// NestJS extractor emits a SCOPE.Component/controller entity carrying the
+// inbound INJECTED_INTO edge (NotificationService → NotificationController),
+// while the generic AST extractor emits a co-located SCOPE.Component/class node
+// for the SAME (Kind, Name, SourceFile) — i.e. the SAME entity ID — WITHOUT the
+// edge.
+//
+// The fold pass must designate the edge-bearing specialized entity as the
+// survivor (or re-home its edges onto the survivor) so the INJECTED_INTO edge
+// is REACHABLE on the surviving controller node — not clobbered by the edge-less
+// AST duplicate during same-ID assembly. We assert the SPECIFIC edge survives:
+// an INJECTED_INTO whose ToID is the controller's hex id and whose FromID is the
+// service's hex id (the exact edge inspect.di_edges would surface on the
+// controller). A len>0 check would be too weak — we pin the precise endpoints.
+func TestNestJSControllerDIEdgeSurvivesDedup(t *testing.T) {
+	doc := runIndexerOn(t, "testdata/nestjs_app", "nestjs_app", nil)
+	if len(doc.Entities) == 0 {
+		t.Fatal("nestjs_app: no entities extracted")
+	}
+
+	// Resolve the single class-declaration node for each class symbol (excluding
+	// file/import/module sentinels) and capture its hex id.
+	classNodeID := func(name string) string {
+		t.Helper()
+		var ids []string
+		for _, e := range doc.Entities {
+			if e.Name != name {
+				continue
+			}
+			if e.Subtype == "file" || e.Subtype == "import" || e.Subtype == "module" {
+				continue
+			}
+			ids = append(ids, e.ID)
+		}
+		if len(ids) != 1 {
+			t.Fatalf("%s: expected exactly 1 class-declaration node after fold, got %d (ids=%v)",
+				name, len(ids), ids)
+		}
+		return ids[0]
+	}
+
+	controllerID := classNodeID("NotificationController")
+	serviceID := classNodeID("NotificationService")
+
+	// The deploy-8 failure: the controller carries ZERO di_edges. Assert the
+	// EXACT inbound INJECTED_INTO edge survives, reachable on the controller.
+	found := false
+	for _, r := range doc.Relationships {
+		if r.Kind == "INJECTED_INTO" && r.ToID == controllerID && r.FromID == serviceID {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected NotificationService INJECTED_INTO NotificationController to survive same-id dedup "+
+			"(controllerID=%s serviceID=%s); the edge-bearing controller entity was clobbered by the edge-less AST duplicate",
+			controllerID, serviceID)
+	}
+
+	// Regression guard: the service→service DI edge (ChannelRegistry INJECTED_INTO
+	// NotificationService) must still resolve — @Injectable was never the bug, but
+	// the fix must not regress it.
+	registryID := classNodeID("ChannelRegistry")
+	svcFound := false
+	for _, r := range doc.Relationships {
+		if r.Kind == "INJECTED_INTO" && r.ToID == serviceID && r.FromID == registryID {
+			svcFound = true
+			break
+		}
+	}
+	if !svcFound {
+		t.Errorf("regression: expected ChannelRegistry INJECTED_INTO NotificationService to survive "+
+			"(serviceID=%s registryID=%s)", serviceID, registryID)
+	}
+}
+
 // entitySummary is a compact representation of an entity for test diagnostics.
 type entitySummary struct {
 	Kind    string
