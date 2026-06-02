@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency graph | — `not_applicable` | — | 3078 | — | — |
-| Target extraction | 🟢 `partial` | — | 3078 | `internal/engine/py_doctest_targets.go` | — |
+| Target extraction | 🔴 `missing` | — | 3078 | — | ApplyDoctestTargets removed (#3655): it was never wired into cmd/archigraph/index.go's applyPass list, so it emitted zero edges in production. Its edges were also test-entity self-loops (FromID==ToID), which ComputeCoverage discards because the ToID is not a production entity. Doctest tests-via-docstring is not yet extracted. |
 
 ## Provenance
 

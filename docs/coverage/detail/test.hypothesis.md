@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency graph | — `not_applicable` | — | 3078 | — | — |
-| Target extraction | 🟢 `partial` | — | 3078 | `internal/engine/py_hypothesis_targets.go`<br>`internal/engine/rules/python/test_patterns.yaml` | — |
+| Target extraction | 🔴 `missing` | — | 3078 | — | ApplyHypothesisTargets removed (#3655): never wired into cmd/archigraph/index.go's applyPass list, so it emitted zero edges in production. Its edges were also test-entity self-loops (FromID==ToID), which ComputeCoverage discards (ToID not a production entity). @given tests are ordinary pytest test functions already linked to production by ApplyTestsViaImports. |
 
 ## Provenance
 

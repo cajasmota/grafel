@@ -58001,9 +58001,9 @@
           "issue": "3078"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/py_doctest_targets.go"],
-          "issue": "3078"
+          "status": "missing",
+          "issue": "3078",
+          "notes": "ApplyDoctestTargets removed (#3655): it was never wired into cmd/archigraph/index.go's applyPass list, so it emitted zero edges in production. Its edges were also test-entity self-loops (FromID==ToID), which ComputeCoverage discards because the ToID is not a production entity. Doctest tests-via-docstring is not yet extracted."
         }
       }
     },
@@ -58138,9 +58138,9 @@
           "issue": "3078"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/py_hypothesis_targets.go","internal/engine/rules/python/test_patterns.yaml"],
-          "issue": "3078"
+          "status": "missing",
+          "issue": "3078",
+          "notes": "ApplyHypothesisTargets removed (#3655): never wired into cmd/archigraph/index.go's applyPass list, so it emitted zero edges in production. Its edges were also test-entity self-loops (FromID==ToID), which ComputeCoverage discards (ToID not a production entity). @given tests are ordinary pytest test functions already linked to production by ApplyTestsViaImports."
         }
       }
     },
@@ -58313,9 +58313,9 @@
           "issue": "3078"
         },
         "target_extraction": {
-          "status": "partial",
-          "cites": ["internal/engine/py_nose2_targets.go","internal/engine/rules/python/test_patterns.yaml"],
-          "issue": "3078"
+          "status": "missing",
+          "issue": "3078",
+          "notes": "ApplyNose2Targets removed (#3655): never wired into cmd/archigraph/index.go's applyPass list, so it emitted zero edges in production. Its edges were also test-entity self-loops (FromID==ToID), which ComputeCoverage discards (ToID not a production entity). nose2 TestCase methods are already discovered and linked to production by ApplyTestsViaImports."
         }
       }
     },
