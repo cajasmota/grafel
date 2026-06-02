@@ -68634,9 +68634,10 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "full",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass (py/jsts/go/ruby/java/php + scala). dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. Sources (aligned with taint_sites_scala.go): Play request.body/queryString/getQueryString(\"k\"), Akka/Pekko entity(as[T]){dto=\u003e} and parameter(\"q\"){q=\u003e}, http4s req.as[T]/req.params. Sinks: Slick q+= / .insertOrUpdate / .update / em.persist (db_write), Play Ok(...)/Akka-Pekko complete(...) (response), sttp basicRequest.post(...).body(...) (http_call). Intra-fn val/var assignment tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries continued by the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named), incl. negatives (logged-not-sunk, constant-fed sink, reassignment, embedded-expr). Full: both source and sink idioms resolve first-class for this framework."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -69235,9 +69236,10 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass. dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. PARTIAL here: the sink side resolves first-class (Slick q+= / .update / em.persist db_write; complete(...)/Ok(...) response; sttp basicRequest.post(...).body(...) http_call), but this framework's request-source binding is recognised only via the shared heuristic surface (request.body / request.params(\"k\") / req.as[T]) rather than a framework-specific decoder, so one end is heuristic (precision-over-recall: unrecognised source shapes are dropped, never fabricated). Intra-fn val/var tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries via the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named) plus negatives."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -69867,9 +69869,10 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass. dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. PARTIAL here: the sink side resolves first-class (Slick q+= / .update / em.persist db_write; complete(...)/Ok(...) response; sttp basicRequest.post(...).body(...) http_call), but this framework's request-source binding is recognised only via the shared heuristic surface (request.body / request.params(\"k\") / req.as[T]) rather than a framework-specific decoder, so one end is heuristic (precision-over-recall: unrecognised source shapes are dropped, never fabricated). Intra-fn val/var tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries via the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named) plus negatives."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -70185,9 +70188,10 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "full",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass (py/jsts/go/ruby/java/php + scala). dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. Sources (aligned with taint_sites_scala.go): Play request.body/queryString/getQueryString(\"k\"), Akka/Pekko entity(as[T]){dto=\u003e} and parameter(\"q\"){q=\u003e}, http4s req.as[T]/req.params. Sinks: Slick q+= / .insertOrUpdate / .update / em.persist (db_write), Play Ok(...)/Akka-Pekko complete(...) (response), sttp basicRequest.post(...).body(...) (http_call). Intra-fn val/var assignment tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries continued by the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named), incl. negatives (logged-not-sunk, constant-fed sink, reassignment, embedded-expr). Full: both source and sink idioms resolve first-class for this framework."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -70510,9 +70514,10 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass. dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. PARTIAL here: the sink side resolves first-class (Slick q+= / .update / em.persist db_write; complete(...)/Ok(...) response; sttp basicRequest.post(...).body(...) http_call), but this framework's request-source binding is recognised only via the shared heuristic surface (request.body / request.params(\"k\") / req.as[T]) rather than a framework-specific decoder, so one end is heuristic (precision-over-recall: unrecognised source shapes are dropped, never fabricated). Intra-fn val/var tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries via the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named) plus negatives."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -70806,9 +70811,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "full",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass (py/jsts/go/ruby/java/php + scala). dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. Sources (aligned with taint_sites_scala.go): Play request.body/queryString/getQueryString(\"k\"), Akka/Pekko entity(as[T]){dto=\u003e} and parameter(\"q\"){q=\u003e}, http4s req.as[T]/req.params. Sinks: Slick q+= / .insertOrUpdate / .update / em.persist (db_write), Play Ok(...)/Akka-Pekko complete(...) (response), sttp basicRequest.post(...).body(...) (http_call). Intra-fn val/var assignment tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries continued by the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named), incl. negatives (logged-not-sunk, constant-fed sink, reassignment, embedded-expr). Full: both source and sink idioms resolve first-class for this framework."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -71503,9 +71509,10 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass. dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. PARTIAL here: the sink side resolves first-class (Slick q+= / .update / em.persist db_write; complete(...)/Ok(...) response; sttp basicRequest.post(...).body(...) http_call), but this framework's request-source binding is recognised only via the shared heuristic surface (request.body / request.params(\"k\") / req.as[T]) rather than a framework-specific decoder, so one end is heuristic (precision-over-recall: unrecognised source shapes are dropped, never fabricated). Intra-fn val/var tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries via the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named) plus negatives."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -71779,9 +71786,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass. dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. PARTIAL here: the sink side resolves first-class (Slick q+= / .update / em.persist db_write; complete(...)/Ok(...) response; sttp basicRequest.post(...).body(...) http_call), but this framework's request-source binding is recognised only via the shared heuristic surface (request.body / request.params(\"k\") / req.as[T]) rather than a framework-specific decoder, so one end is heuristic (precision-over-recall: unrecognised source shapes are dropped, never fabricated). Intra-fn val/var tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries via the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named) plus negatives."
           },
           "response_shape_extraction": {
             "status": "missing",
@@ -72061,9 +72069,10 @@
             "verified_at": "2026-05-30"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass. dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. PARTIAL here: the sink side resolves first-class (Slick q+= / .update / em.persist db_write; complete(...)/Ok(...) response; sttp basicRequest.post(...).body(...) http_call), but this framework's request-source binding is recognised only via the shared heuristic surface (request.body / request.params(\"k\") / req.as[T]) rather than a framework-specific decoder, so one end is heuristic (precision-over-recall: unrecognised source shapes are dropped, never fabricated). Intra-fn val/var tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries via the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named) plus negatives."
           },
           "response_shape_extraction": {
             "status": "full",
@@ -72376,9 +72385,10 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3958",
-            "notes": "No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no \"kotlin\"/\"scala\" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks."
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_scala.go","internal/substrate/dataflow_scala_test.go"],
+            "issue": "3991",
+            "notes": "SCOPED request-input -\u003e sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source-\u003esink dataflow pass. dataflow_scala.go registers a sniffer on the \"scala\" slug, dispatched by .scala/.sc through LanguageForPath. PARTIAL here: the sink side resolves first-class (Slick q+= / .update / em.persist db_write; complete(...)/Ok(...) response; sttp basicRequest.post(...).body(...) http_call), but this framework's request-source binding is recognised only via the shared heuristic surface (request.body / request.params(\"k\") / req.as[T]) rather than a framework-specific decoder, so one end is heuristic (precision-over-recall: unrecognised source shapes are dropped, never fabricated). Intra-fn val/var tracking, member-field lift (dto.email-\u003eemail), bounded multi-hop (\u003c=3) + cross-file boundaries via the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named) plus negatives."
           },
           "response_shape_extraction": {
             "status": "partial",
