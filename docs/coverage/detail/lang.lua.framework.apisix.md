@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Handler attribution | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/lua/kong.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/lua/kong.go` | — |

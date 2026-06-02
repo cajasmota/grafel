@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |
 | Handler attribution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/akka_http_routes.go` | — |
 | Route extraction | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |

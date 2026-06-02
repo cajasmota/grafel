@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/fasthttp.go`<br>`internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/fasthttp.go`<br>`internal/engine/rules/go/frameworks/fasthttp.yaml` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/fasthttp.go`<br>`internal/engine/rules/go/frameworks/fasthttp.yaml` | — |

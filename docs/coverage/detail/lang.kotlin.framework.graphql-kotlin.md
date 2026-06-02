@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | class : Query/Mutation/Subscription marker-interface roots → each public member fun is a GraphQL field synthesised as a GRAPHQL endpoint /graphql/<Operation>/<field>. Value-asserted (user, users, createUser) in TestGraphQLKotlin_ResolverFields/_NameRename. File-local: cross-file root composition via SchemaGeneratorConfig not chased. |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | Each synthesised GraphQL field carries handler_name=<Class>.<fun> and resolver_fun, binding the field to its Kotlin resolver function even under @GraphQLName rename (field=createUser, resolver_fun=addUser). Asserted in TestGraphQLKotlin_NameRename. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | GraphQL operation paths /graphql/<Operation>/<field> derived from the Query/Mutation/Subscription supertype; @GraphQLName renames the field segment, @GraphQLIgnore and private/protected/internal funs excluded. Asserted in TestGraphQLKotlin_ResolverFields/_IgnoreAndPrivate. |

@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | 3065 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_py_routing_3065_test.go`<br>`internal/engine/rules/python/frameworks/hug.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-29` | 3065 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_py_routing_3065_test.go`<br>`internal/engine/rules/python/frameworks/hug.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-29` | 3065 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_py_routing_3065_test.go`<br>`internal/engine/rules/python/frameworks/hug.yaml` | — |

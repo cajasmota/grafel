@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/ruby/cuba_routing.go` | Cuba on 'path' string segments and :param parametric routing tree synthesis. Part of #3282. |
 | Handler attribution | 🟢 `partial` | — | — | `internal/custom/ruby/cuba_routing.go` | Cuba on get/post/put/patch/delete verb handler attribution. Part of #3282. |
 | Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/routes.go` | — |

@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | SCOPE.Operation entities emitted from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex |
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | Handler names extracted from ENDPOINT macro third arg; partial = regex heuristic |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/oatpp_routes.go` | Path strings from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex heuristic |

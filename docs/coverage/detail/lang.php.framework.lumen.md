@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Lumen app->get/post/router->method routes extracted; endpoint synthesis via regex route parsing |
 | Handler attribution | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Lumen controller string patterns (Controller@method) extracted alongside routes |
 | Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |

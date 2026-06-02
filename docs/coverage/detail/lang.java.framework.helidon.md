@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | `2026-05-29` | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | MicroProfile JAX-RS @Path + verb annotations covered by java_annotation_routes.go; partial (no class-level @Path composition with vert.x-style mounts) |
 | Handler attribution | 🟢 `partial` | `2026-05-29` | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | JAX-RS method-level handler attribution via SCOPE.Operation entity; same pass as Quarkus/Jakarta EE |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | JAX-RS @Path annotation route extraction; class+method composition; MicroProfile flavor same as Quarkus |

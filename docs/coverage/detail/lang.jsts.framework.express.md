@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 42
+- **Capability cells:** 43
 
 ## Capabilities
 
@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | ✅ `full` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_deprecation.go`<br>`internal/engine/http_endpoint_deprecation_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628 epic: api_version (path /api/vN,/vN) + deprecated/deprecated_since/deprecated_replacement/deprecation_source on http_endpoint_definition via applyEndpointAPIVersion+applyEndpointDeprecation. JS/TS: JSDoc @deprecated on handler, deprecated:true, Sunset/Deprecation response header. |
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | 2932 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/express.yaml`<br>`internal/extractors/javascript/framework_dsl.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | 2932 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/javascript_typescript/frameworks/express.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-29` | 3062 | `internal/custom/javascript/express.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go`<br>`internal/engine/http_endpoint_synthesis_test.go` | — |

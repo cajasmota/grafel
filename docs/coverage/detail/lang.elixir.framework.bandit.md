@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | — `not_applicable` | — | — | — | Bandit has no endpoint/route concept; it is a transport adapter |
 | Handler attribution | 🟢 `partial` | — | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml`<br>`internal/substrate/entry_points_elixir.go` | Bandit delegates to Plug-compatible handlers; Plug.call/2 attribution tracked via entry-point sniffer |
 | Route extraction | — `not_applicable` | — | — | — | Bandit is a low-level HTTP server (replaces Cowboy); routing belongs to Phoenix/Plug layer above it |

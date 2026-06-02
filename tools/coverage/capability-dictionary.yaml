@@ -92,6 +92,7 @@ subcategories:
     capabilities:
       - endpoint_synthesis
       - handler_attribution
+      - endpoint_deprecation_versioning
       - auth_coverage
       - middleware_coverage
       - route_extraction
@@ -141,7 +142,7 @@ subcategories:
       - tests_edges_via_delay_apply
     groups:
       - name: Routing
-        keys: [endpoint_synthesis, handler_attribution, route_extraction]
+        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
       - name: Auth
         keys: [auth_coverage]
       - name: Validation
@@ -167,6 +168,7 @@ subcategories:
     capabilities:
       - endpoint_synthesis
       - handler_attribution
+      - endpoint_deprecation_versioning
       - auth_coverage
       - middleware_coverage
       - route_extraction
@@ -216,7 +218,7 @@ subcategories:
       - metric_extraction
     groups:
       - name: Routing
-        keys: [endpoint_synthesis, handler_attribution, route_extraction]
+        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
       - name: Auth
         keys: [auth_coverage]
       - name: Validation

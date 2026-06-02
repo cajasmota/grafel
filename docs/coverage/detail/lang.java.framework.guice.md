@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🔴 `missing` | — | 3699 | — | — |
 | Handler attribution | 🔴 `missing` | — | 3699 | — | — |
 | Route extraction | 🔴 `missing` | — | 3699 | — | — |

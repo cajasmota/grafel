@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | — `not_applicable` | — | — | — | Cats Effect is an effect-system runtime, not a web backend — no routing/DI/transaction/AOP container. |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/frameworks/cats_effect.yaml` | — |
 | Route extraction | — `not_applicable` | — | — | — | Cats Effect is an effect-system runtime, not a web backend — no routing/DI/transaction/AOP container. |

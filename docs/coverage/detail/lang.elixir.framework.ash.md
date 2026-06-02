@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/ash_framework.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/ash_framework.yaml` | — |
 | Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/engine/rules/elixir/frameworks/ash_framework.yaml` | Ash resources + AshPhoenix router integration detected via engine YAML; resource actions serve as route equivalents |

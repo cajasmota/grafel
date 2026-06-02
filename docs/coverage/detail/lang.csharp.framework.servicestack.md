@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | servicestack route endpoint_synthesis via regex extractor; heuristic |
 | Handler attribution | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | servicestack module/endpoint class declarations detected via regex; heuristic |
 | Route extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | servicestack route path strings extracted via regex; heuristic |

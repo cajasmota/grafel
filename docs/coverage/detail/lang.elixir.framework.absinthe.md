@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml`<br>`internal/engine/rules/graphql/frameworks/absinthe_elixir.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/elixir_routes.go`<br>`internal/engine/elixir_routes_test.go` | synthesizeAbsinthe maps each top-level 'field :name' under an Absinthe query/mutation/subscription block to http:GRAPHQL:/graphql/<Root>/<field> (Strawberry/Apollo convention, #3066), tracking do/end depth so nested object-type fields are excluded. Value-asserting test (TestAbsinthe_Schema proves Query/users, Query/user, Mutation/create_user and excludes nested object fields). |

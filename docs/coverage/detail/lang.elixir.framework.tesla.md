@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_elixir_tesla.go`<br>`internal/engine/http_endpoint_elixir_tesla_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Tesla use-module + BaseUrl middleware + Tesla.<verb>/bare-verb client calls -> outbound http_endpoint_call with verb+canonical path (#3511) |
 | Handler attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

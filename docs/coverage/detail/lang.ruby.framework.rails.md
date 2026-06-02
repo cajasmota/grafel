@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 43
+- **Capability cells:** 44
 
 ## Capabilities
 
@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_ruby_producer.go`<br>`internal/engine/rules/ruby/frameworks/ruby_on_rails.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_ruby_producer.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/ruby/rails_routes.go`<br>`internal/custom/ruby/rails_routes_test.go`<br>`internal/engine/rules/ruby/frameworks/ruby_on_rails.yaml` | Deep config/routes.rb DSL extractor (custom_ruby_rails_routes): resources->7 RESTful routes + resource->6 singular, nested resources path composition (/photos/:photo_id/comments), namespace + scope + scope module: prefixing, member/collection (+inline on:), only:/except: filters, root, get/post/put/patch/delete to:'c#a', match via:, mount engines, concern/concerns: expansion. Each route emits resolved full path + HTTP method + controller#action handler with CALLS structural-ref to the action method. Value-asserting tests in rails_routes_test.go assert exact path+method+handler sets (TestRailsRoutes_ResourcesSevenRESTful, _NestedResources, _Namespace, _ScopePath/_ScopeModule, _MemberCollection, _OnlyFilter/_ExceptFilter, _Root, _MatchVia, _Mount, _Concerns, _RealisticCombined). Honest remainder: constraints blocks recorded but not expanded; direct/resolve URL helpers not modelled. |

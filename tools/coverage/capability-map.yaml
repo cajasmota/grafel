@@ -1512,6 +1512,29 @@ records:
               functions: [synthesizeFastAPI]
           issues_implemented: ["2976"]
           verified_at: "2026-05-29"
+        endpoint_deprecation_versioning:
+          # #3628 (epic) — stamps api_version (path-derived) + deprecated /
+          # deprecated_since / deprecated_replacement / deprecation_source onto
+          # the http_endpoint_definition op. Python signals: @deprecated decorator
+          # (typing_extensions / deprecated pkg), DRF/drf-spectacular
+          # deprecated=True, and a Sphinx `.. deprecated:: <ver>` handler docstring.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - pythonDeprecationVerdict
+                - pythonHandlerBody
+                - apiVersionFromPath
+          tests:
+            - file: internal/engine/http_endpoint_deprecation_test.go
+              functions:
+                - TestDeprecation_PythonDRFExtendSchema
+                - TestDeprecation_PythonDecorator
+                - TestAPIVersion_PathV1Bare
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Middleware:
         middleware_coverage:
           status: partial
@@ -1594,6 +1617,30 @@ records:
             - file: internal/engine/rules/javascript_typescript/frameworks/express.yaml
           issues_implemented: ["2687"]
           verified_at: "2026-05-28"
+        endpoint_deprecation_versioning:
+          # #3628 (epic) — stamps api_version (path-derived) + deprecated /
+          # deprecated_since / deprecated_replacement / deprecation_source onto
+          # the http_endpoint_definition op. JS/TS signals: JSDoc @deprecated on
+          # the route handler, OpenAPI-style `deprecated: true`, and a
+          # Sunset/Deprecation response-header write in the handler body.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - jsDeprecationVerdict
+                - responseHeaderDeprecationVerdict
+                - apiVersionFromPath
+          tests:
+            - file: internal/engine/http_endpoint_deprecation_test.go
+              functions:
+                - TestDeprecation_JSDocOnRouteHandler
+                - TestDeprecation_SunsetResponseHeader
+                - TestAPIVersion_PathV2
+                - TestAPIVersion_NoFalseSegment
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Middleware:
         middleware_coverage:
           status: partial
@@ -2572,6 +2619,29 @@ records:
                 - extractRouteTemplatePathParams
           issues_implemented: ["2680", "3347"]
           verified_at: "2026-05-30"
+        endpoint_deprecation_versioning:
+          # #3628 (epic) — stamps api_version (path-derived) + deprecated /
+          # deprecated_since / deprecated_replacement / deprecation_source onto
+          # the http_endpoint_definition op. Java/Spring signals: @Deprecated on
+          # the @GetMapping/@RequestMapping handler method (with optional since="…"
+          # attribute and an adjacent @deprecated Javadoc replacement hint). A
+          # non-route @Deprecated method does not leak onto a sibling endpoint.
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+                - javaDeprecationVerdict
+                - routeDeclarationLine
+                - apiVersionFromPath
+          tests:
+            - file: internal/engine/http_endpoint_deprecation_test.go
+              functions:
+                - TestDeprecation_SpringDeprecatedMapping
+                - TestDeprecation_NonRouteDeprecatedDoesNotLeak
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Auth:
         auth_coverage:
           status: full

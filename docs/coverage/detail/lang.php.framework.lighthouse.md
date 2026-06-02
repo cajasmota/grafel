@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-31` | — | `internal/custom/php/lighthouse.go`<br>`internal/custom/php/lighthouse_test.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-31` | — | `internal/custom/php/lighthouse.go`<br>`internal/custom/php/lighthouse_test.go` | — |
 | Route extraction | ✅ `full` | `2026-05-31` | — | `internal/custom/php/lighthouse.go`<br>`internal/custom/php/lighthouse_test.go` | — |

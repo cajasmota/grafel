@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_jsts_client_1483.go`<br>`internal/engine/http_endpoint_jsts_client_1483_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Finch.build(:verb,url) literal + interpolated-variable -> outbound http_endpoint_call (#1483/#3511) |
 | Handler attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

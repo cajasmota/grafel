@@ -26,22 +26,22 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/8 | |
-| [Apache Struts](../detail/lang.java.framework.struts.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/8 | |
-| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 1/14 | |
-| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 2/17 | |
-| [Google Guice (DI)](../detail/lang.java.framework.guice.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🟡 3/17 | |
-| [Helidon](../detail/lang.java.framework.helidon.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 1/14 | |
-| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 14/17 | |
-| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 4/17 | |
-| [Javalin](../detail/lang.java.framework.javalin.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/8 | |
-| [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 14/17 | |
-| [Netflix DGS](../detail/lang.java.framework.dgs.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/17 | |
-| [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 4/17 | |
-| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 3/3 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 23/23 | 🟡 16/19 | |
-| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 13/17 | |
-| [Spring for GraphQL](../detail/lang.java.framework.spring-graphql.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/17 | |
-| [Vert.x](../detail/lang.java.framework.vertx.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/8 | |
+| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/7 | |
+| [Apache Struts](../detail/lang.java.framework.struts.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/7 | |
+| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 1/13 | |
+| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 2/16 | |
+| [Google Guice (DI)](../detail/lang.java.framework.guice.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🟡 3/16 | |
+| [Helidon](../detail/lang.java.framework.helidon.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 1/13 | |
+| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 13/16 | |
+| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/16 | |
+| [Javalin](../detail/lang.java.framework.javalin.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/7 | |
+| [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 13/16 | |
+| [Netflix DGS](../detail/lang.java.framework.dgs.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/16 | |
+| [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 4/16 | |
+| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 4/4 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 23/23 | 🟡 15/18 | |
+| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 12/16 | |
+| [Spring for GraphQL](../detail/lang.java.framework.spring-graphql.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/16 | |
+| [Vert.x](../detail/lang.java.framework.vertx.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 21/22 | 🟡 3/7 | |
 
 
 ### UI Frontend
@@ -96,21 +96,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟡 3/4 | |
-| [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟡 7/8 | |
-| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | 🟡 7/8 | |
-| [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | 🟡 7/8 | |
-| [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | 🟡 7/8 | |
-| [MongoDB Java Driver](../detail/lang.java.driver.mongodb.md) | 🟡 1/2 | |
-| [MyBatis](../detail/lang.java.orm.mybatis.md) | 🟡 7/8 | |
-| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | 🟡 4/6 | |
-| [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | 🟡 7/8 | |
-| [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | 🔴 0/4 | |
-| [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | 🔴 0/4 | |
-| [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | 🟡 5/8 | |
-| [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | 🔴 0/4 | |
-| [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | 🔴 0/4 | |
-| [jOOQ](../detail/lang.java.orm.jooq.md) | 🟡 6/7 | |
+| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟢 3/3 | |
+| [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟢 7/7 | |
+| [EclipseLink](../detail/lang.java.orm.eclipselink.md) | 🟢 7/7 | |
+| [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | 🟢 7/7 | |
+| [JPA / Jakarta Persistence API](../detail/lang.java.orm.jpa.md) | 🟢 7/7 | |
+| [MongoDB Java Driver](../detail/lang.java.driver.mongodb.md) | ✅ 1/1 | |
+| [MyBatis](../detail/lang.java.orm.mybatis.md) | 🟢 7/7 | |
+| [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | 🟡 4/5 | |
+| [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | 🟢 7/7 | |
+| [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | 🔴 0/3 | |
+| [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | 🔴 0/3 | |
+| [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | 🟡 5/7 | |
+| [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | 🔴 0/3 | |
+| [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | 🔴 0/3 | |
+| [jOOQ](../detail/lang.java.orm.jooq.md) | 🟢 6/6 | |
 
 
 ## Other

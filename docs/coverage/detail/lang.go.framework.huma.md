@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | huma.Register(api, huma.Operation{Method,Path}, handler) -> endpoint. Engine synthesis (go_trio) + dedicated SCOPE-entity extractor; fixture-proven. |
 | Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | Final huma.Register argument attributed as handler; fixture-proven. |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | — |

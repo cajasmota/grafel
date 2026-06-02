@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/pistache_routes.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/pistache_routes.go` | — |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/pistache_routes.go` | Path strings extracted from Routes::Get/Post/etc and router.get; partial = regex heuristic |

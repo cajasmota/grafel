@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | — `not_applicable` | — | — | — | libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |
 | Handler attribution | — `not_applicable` | — | — | — | libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |
 | Route extraction | — `not_applicable` | — | — | — | libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided |

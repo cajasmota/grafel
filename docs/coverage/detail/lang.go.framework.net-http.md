@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/nethttp.go`<br>`internal/engine/go_routes.go`<br>`internal/engine/rules/go/frameworks/net_http_stdlib.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/golang/nethttp.go`<br>`internal/engine/go_routes.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/extractors_test.go`<br>`internal/custom/golang/nethttp.go` | regex-based: http.HandleFunc + http.Handle on DefaultServeMux + http.NewServeMux() + Go 1.22+ method-prefixed patterns (GET /path) tested; misses cross-file route splits and dynamic path construction |

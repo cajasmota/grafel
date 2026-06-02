@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | — `not_applicable` | — | — | — | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/elixir/frameworks/nerves.yaml` | — |
 | Route extraction | — `not_applicable` | — | — | — | Nerves is an embedded/IoT firmware framework; no HTTP routing concept. NervesHub is separate. |

@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Phalcon app->get/post/router->method routes and group prefixes extracted |
 | Handler attribution | 🟢 `partial` | — | — | `internal/custom/php/frameworks.go` | Phalcon controller class detection alongside route definitions |
 | Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |

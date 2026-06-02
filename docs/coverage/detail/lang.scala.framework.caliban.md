@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | graphQL(RootResolver(...)) synthesises one GRAPHQL endpoint per resolver case-class field, path /graphql/<Root>/<field>, positional Query/Mutation/Subscription root. TestCalibanResolverFields. |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | handler_name = <Root>.<field> bound from resolver case-class field. TestCalibanResolverFields. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | GraphQL field path /graphql/<Root>/<field> recorded as route_path. TestCalibanResolverFields. |

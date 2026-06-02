@@ -2333,6 +2333,10 @@
       "label": "ACE (Adaptive Communication Environment)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "ace is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
@@ -2573,6 +2577,10 @@
       "label": "Boost (Boost.Asio + utilities)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "boost is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
@@ -2813,6 +2821,10 @@
       "label": "Boost.Asio",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "boost-asio is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
@@ -3053,6 +3065,10 @@
       "label": "cpprestsdk (Casablanca)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/cpprestsdk_routes.go"],
@@ -3302,6 +3318,10 @@
       "label": "Crow",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/crow_routes.go"],
@@ -3551,6 +3571,10 @@
       "label": "Drogon",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/drogon_routes.go"],
@@ -3952,6 +3976,10 @@
       "label": "libev",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
@@ -4192,6 +4220,10 @@
       "label": "libevent",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
@@ -4458,6 +4490,10 @@
       "label": "libuv",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "libuv is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
@@ -4775,6 +4811,10 @@
       "label": "Oat++",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/oatpp_routes.go"],
@@ -5023,6 +5063,10 @@
       "label": "Pistache",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/pistache_routes.go"],
@@ -5272,6 +5316,10 @@
       "label": "POCO C++ Libraries",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/poco_routes.go"],
@@ -5873,6 +5921,10 @@
       "label": "Restbed",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/restbed_routes.go"],
@@ -6122,6 +6174,10 @@
       "label": "RESTinio",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/cpp/restinio_routes.go"],
@@ -7545,6 +7601,10 @@
       "label": "ASP.NET Core",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/aspnet_core_routes.go","internal/engine/rules/csharp/frameworks/asp_net_core.yaml"],
@@ -7795,6 +7855,10 @@
       "label": "ASP.NET MVC (legacy)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/csharp/frameworks/asp_net_mvc.yaml"],
@@ -8653,6 +8717,10 @@
       "label": "Carter",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/csharp/minor_routes.go"],
@@ -8905,6 +8973,10 @@
       "label": "FastEndpoints",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/csharp/minor_routes.go"],
@@ -9323,6 +9395,10 @@
       "label": "HotChocolate (GraphQL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_hotchocolate.go","internal/engine/http_endpoint_hotchocolate_test.go"],
@@ -9536,6 +9612,10 @@
       "label": "NancyFX",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/csharp/minor_routes.go"],
@@ -10002,6 +10082,10 @@
       "label": "ServiceStack",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/csharp/minor_routes.go"],
@@ -11713,6 +11797,10 @@
       "label": "Absinthe (GraphQL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/elixir/frameworks/absinthe.yaml","internal/engine/rules/graphql/frameworks/absinthe_elixir.yaml"],
@@ -11968,6 +12056,10 @@
       "label": "Ash Framework",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/elixir/frameworks/ash_framework.yaml"],
@@ -12221,6 +12313,10 @@
       "label": "Bandit",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "Bandit has no endpoint/route concept; it is a transport adapter"
@@ -12493,6 +12589,10 @@
       "label": "Cowboy",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/substrate/entry_points_elixir.go"],
@@ -12743,6 +12843,10 @@
       "label": "Finch",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_client_1483.go","internal/engine/http_endpoint_jsts_client_1483_test.go","internal/engine/http_endpoint_synthesis.go"],
@@ -13104,6 +13208,10 @@
       "label": "Guardian",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -13307,6 +13415,10 @@
       "label": "Nerves (embedded)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable"
           },
@@ -13544,6 +13656,10 @@
       "label": "Oban (job queue)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable"
           },
@@ -13791,6 +13907,10 @@
       "label": "Phoenix",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/phoenix_routes.go","internal/engine/rules/elixir/frameworks/phoenix.yaml"],
@@ -14265,6 +14385,10 @@
       "label": "Plug",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/elixir/plug.go"],
@@ -14520,6 +14644,10 @@
       "label": "Req",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_elixir_tesla.go","internal/engine/http_endpoint_elixir_tesla_test.go","internal/engine/http_endpoint_synthesis.go"],
@@ -14728,6 +14856,10 @@
       "label": "Tesla",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_elixir_tesla.go","internal/engine/http_endpoint_elixir_tesla_test.go","internal/engine/http_endpoint_synthesis.go"],
@@ -15560,6 +15692,10 @@
       "label": "Beego",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/beego.go","internal/engine/rules/go/frameworks/beego.yaml"],
@@ -15809,6 +15945,10 @@
       "label": "Buffalo",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/buffalo.go","internal/engine/rules/go/frameworks/buffalo.yaml"],
@@ -16058,6 +16198,10 @@
       "label": "chi",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/chi.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/chi.yaml"],
@@ -16314,6 +16458,10 @@
       "label": "Echo",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/echo.yaml"],
@@ -16570,6 +16718,10 @@
       "label": "fasthttp",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/fasthttp.go","internal/engine/rules/go/frameworks/fasthttp.yaml"],
@@ -16826,6 +16978,10 @@
       "label": "Fiber",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/fiber.yaml"],
@@ -17082,6 +17238,10 @@
       "label": "uber/fx (DI)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "3628"
@@ -17393,6 +17553,10 @@
       "label": "Gin",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/go_routes.go","internal/engine/rules/go/frameworks/gin.yaml"],
@@ -17649,6 +17813,10 @@
       "label": "go-zero",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/go/frameworks/go_zero.yaml"],
@@ -18118,6 +18286,10 @@
       "label": "Gorilla Mux",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/gorilla_mux.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/gorilla_mux.yaml"],
@@ -18376,6 +18548,10 @@
       "label": "gqlgen (GraphQL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_gqlgen_3613_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/gqlgen_go.yaml"],
@@ -18588,6 +18764,10 @@
       "label": "Hertz (CloudWeGo)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/hertz.go","internal/custom/golang/hertz_huma_test.go","internal/custom/golang/testdata/hertz_routes.go"],
@@ -18839,6 +19019,10 @@
       "label": "Huma",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/hertz_huma_test.go","internal/custom/golang/huma.go","internal/custom/golang/testdata/huma_routes.go","internal/engine/http_endpoint_go_trio.go"],
@@ -19089,6 +19273,10 @@
       "label": "Iris",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/iris.go","internal/engine/rules/go/frameworks/iris.yaml"],
@@ -19338,6 +19526,10 @@
       "label": "Kratos (Bilibili)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/go/frameworks/kratos.yaml"],
@@ -19586,6 +19778,10 @@
       "label": "net/http (stdlib)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/nethttp.go","internal/engine/go_routes.go","internal/engine/rules/go/frameworks/net_http_stdlib.yaml"],
@@ -19850,6 +20046,10 @@
       "label": "Revel",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/golang/revel.go","internal/engine/rules/go/frameworks/revel.yaml"],
@@ -20098,6 +20298,10 @@
       "label": "google/wire (DI)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "3628"
@@ -20950,6 +21154,10 @@
       "label": "Akka HTTP (Java DSL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
@@ -21684,6 +21892,10 @@
       "label": "Netflix DGS",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/java/patterns_dispatch.go","internal/custom/java/spring_graphql.go"],
@@ -21923,6 +22135,10 @@
       "label": "Dropwizard",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/java_annotation_routes.go","internal/engine/rules/java/frameworks/dropwizard.yaml"],
@@ -22223,6 +22439,10 @@
       "label": "Google Guice (DI)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "3699"
@@ -22673,6 +22893,10 @@
       "label": "Helidon",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/java_annotation_routes.go","internal/engine/rules/java/frameworks/microprofile.yaml"],
@@ -22986,6 +23210,10 @@
       "label": "Jakarta EE (Servlet / EE Platform)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/java/frameworks/jakarta_ee.yaml"],
@@ -23299,6 +23527,10 @@
       "label": "Javalin",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
@@ -23597,6 +23829,10 @@
       "label": "JAX-RS / Jakarta REST",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/java_annotation_routes.go","internal/engine/rules/java/frameworks/jakarta_ee.yaml"],
@@ -23958,6 +24194,10 @@
       "label": "Micronaut",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/java_annotation_routes.go","internal/engine/rules/java/frameworks/micronaut.yaml"],
@@ -24273,6 +24513,10 @@
       "label": "Eclipse MicroProfile",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/java/frameworks/microprofile.yaml"],
@@ -24839,6 +25083,10 @@
       "label": "Quarkus",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/java_annotation_routes.go","internal/engine/rules/java/frameworks/quarkus.yaml"],
@@ -25150,6 +25398,13 @@
       "label": "Spring Boot / Spring MVC",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3628",
+            "notes": "#3628 epic: api_version + deprecation on http_endpoint_definition. Java/Spring: @Deprecated on @GetMapping/@RequestMapping handler (since= attr + @deprecated Javadoc replacement); non-route @Deprecated does not leak.",
+            "verified_at": "2026-06-02"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/java/frameworks/spring_boot.yaml","internal/engine/rules/java/frameworks/spring_mvc.yaml","internal/engine/spring_routes.go"],
@@ -25480,6 +25735,10 @@
       "label": "Spring for GraphQL",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/java/patterns_dispatch.go","internal/custom/java/spring_graphql.go"],
@@ -25719,6 +25978,10 @@
       "label": "Spring WebFlux (reactive)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/java/frameworks/spring_webflux.yaml","internal/engine/spring_routes.go"],
@@ -26044,6 +26307,10 @@
       "label": "Apache Struts",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/java/frameworks/apache_struts.yaml"],
@@ -26556,6 +26823,10 @@
       "label": "Vert.x",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/java/frameworks/vert_x.yaml"],
@@ -28508,6 +28779,10 @@
       "label": "AdonisJS",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/rules/javascript_typescript/frameworks/adonisjs.yaml","testdata/fixtures/typescript/adonisjs_group_prefix.ts","testdata/fixtures/typescript/adonisjs_routes.ts"],
@@ -29707,6 +29982,13 @@
       "label": "Express",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3628",
+            "notes": "#3628 epic: api_version (path /api/vN,/vN) + deprecated/deprecated_since/deprecated_replacement/deprecation_source on http_endpoint_definition via applyEndpointAPIVersion+applyEndpointDeprecation. JS/TS: JSDoc @deprecated on handler, deprecated:true, Sunset/Deprecation response header.",
+            "verified_at": "2026-06-02"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_test.go","internal/engine/rules/javascript_typescript/frameworks/express.yaml","internal/extractors/javascript/framework_dsl.go"],
@@ -29996,6 +30278,10 @@
       "label": "Fastify",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_extra.go","internal/engine/http_endpoint_synthesis_test.go","internal/engine/rules/javascript_typescript/frameworks/fastify.yaml"],
@@ -30279,6 +30565,10 @@
       "label": "Feathers",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/rules/javascript_typescript/frameworks/feathers.yaml","testdata/fixtures/typescript/feathers_routes.ts"],
@@ -31000,6 +31290,10 @@
       "label": "Hapi",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/rules/javascript_typescript/frameworks/hapi.yaml","testdata/fixtures/typescript/hapi_routes.ts"],
@@ -31281,6 +31575,10 @@
       "label": "Hono",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/extractors/javascript/framework_dsl.go"],
@@ -31789,6 +32087,10 @@
       "label": "Koa",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/extractors/javascript/framework_dsl.go"],
@@ -32110,6 +32412,10 @@
       "label": "Marble.js",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/rules/javascript_typescript/frameworks/marblejs.yaml","testdata/fixtures/typescript/marblejs_routes.ts"],
@@ -32609,6 +32915,10 @@
       "label": "NestJS",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/javascript/nestjs.go","internal/engine/http_endpoint_synthesis.go","internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml"],
@@ -33430,6 +33740,10 @@
       "label": "Polka",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/rules/javascript_typescript/frameworks/polka.yaml","testdata/fixtures/typescript/polka_routes.ts"],
@@ -33698,6 +34012,10 @@
       "label": "Pothos (GraphQL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/pothos_jsts.yaml"],
@@ -34776,6 +35094,10 @@
       "label": "Restify",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/rules/javascript_typescript/frameworks/restify.yaml","testdata/fixtures/typescript/restify_routes.ts"],
@@ -35044,6 +35366,10 @@
       "label": "Sails",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/rules/javascript_typescript/frameworks/sails.yaml","testdata/fixtures/typescript/sails_routes.ts"],
@@ -36061,6 +36387,10 @@
       "label": "TypeGraphQL (GraphQL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml"],
@@ -37129,6 +37459,10 @@
       "label": "Arrow (functional Kotlin)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "Arrow is a functional-programming library, not a web backend — no routing/DI/transaction/AOP container."
@@ -37779,6 +38113,10 @@
       "label": "kotlinx.coroutines (structured concurrency)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "kotlinx.coroutines is a concurrency runtime, not a web backend — no routing/DI/transaction/AOP container."
@@ -38044,6 +38382,10 @@
       "label": "Dagger / Hilt (Android DI)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -38276,6 +38618,10 @@
       "label": "graphql-kotlin",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/kotlin/graphql_kotlin.go"],
@@ -38513,6 +38859,10 @@
       "label": "http4k",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/kotlin/frameworks/http4k.yaml"],
@@ -38784,6 +39134,10 @@
       "label": "Javalin (Kotlin)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "cites": ["internal/custom/java/javalin_routes.go","internal/custom/java/kotlin_port_test.go"],
@@ -39276,6 +39630,10 @@
       "label": "Koin (Kotlin DI)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -39508,6 +39866,10 @@
       "label": "kotlinx.serialization (Kotlin DTO/serialization)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -39738,6 +40100,10 @@
       "label": "Ktor",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/kotlin/frameworks/ktor.yaml"],
@@ -40021,6 +40387,10 @@
       "label": "Micronaut (Kotlin)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/kotlin/frameworks/micronaut_kotlin.yaml"],
@@ -40318,6 +40688,10 @@
       "label": "Quarkus (Kotlin)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/kotlin/frameworks/quarkus_kotlin.yaml"],
@@ -40615,6 +40989,10 @@
       "label": "Retrofit (HTTP client)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_kotlin_client.go","internal/engine/http_endpoint_kotlin_client_test.go","internal/engine/http_endpoint_synthesis.go"],
@@ -40850,6 +41228,10 @@
       "label": "Spring Boot (Kotlin)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/kotlin/frameworks/spring_boot_kotlin.yaml","internal/engine/spring_routes_kotlin.go"],
@@ -41601,6 +41983,10 @@
       "label": "Apache APISIX",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -41812,6 +42198,10 @@
       "label": "Kong",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
@@ -42022,6 +42412,10 @@
       "label": "Lapis",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/lua_routes.go"],
@@ -42271,6 +42665,10 @@
       "label": "OpenResty",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/lua_routes.go"],
@@ -43032,6 +43430,10 @@
       "label": "API Platform",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/php/apiplatform.go","internal/custom/php/apiplatform_test.go"],
@@ -43240,6 +43642,10 @@
       "label": "CakePHP",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/php/frameworks/cakephp.yaml"],
@@ -43493,6 +43899,10 @@
       "label": "CodeIgniter",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/php/frameworks/codeigniter.yaml"],
@@ -43746,6 +44156,10 @@
       "label": "Drupal",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/php/frameworks/drupal.yaml"],
@@ -43999,6 +44413,10 @@
       "label": "graphql-php",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/php/graphql.go","internal/custom/php/graphql_test.go"],
@@ -44207,6 +44625,10 @@
       "label": "Laminas (formerly Zend)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/php/frameworks/laminas.yaml"],
@@ -44460,6 +44882,10 @@
       "label": "Laravel",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_php_producer.go","internal/engine/rules/php/frameworks/laravel.yaml"],
@@ -44719,6 +45145,10 @@
       "label": "Lighthouse",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/php/lighthouse.go","internal/custom/php/lighthouse_test.go"],
@@ -44927,6 +45357,10 @@
       "label": "Lumen",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
@@ -45180,6 +45614,10 @@
       "label": "Magento",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/php/frameworks/magento.yaml"],
@@ -45433,6 +45871,10 @@
       "label": "Phalcon",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/php/frameworks.go"],
@@ -45686,6 +46128,10 @@
       "label": "Slim",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/php/frameworks/slim.yaml"],
@@ -45939,6 +46385,10 @@
       "label": "Symfony",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_php_producer.go","internal/engine/rules/php/frameworks/symfony.yaml"],
@@ -46200,6 +46650,10 @@
       "label": "WordPress",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/php/frameworks/wordpress.yaml"],
@@ -46453,6 +46907,10 @@
       "label": "Yii",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/php/frameworks/yii.yaml"],
@@ -47555,6 +48013,10 @@
       "label": "aiohttp",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/aiohttp.yaml"],
@@ -47827,6 +48289,10 @@
       "label": "Ariadne GraphQL",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
@@ -48051,6 +48517,10 @@
       "label": "Bottle",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/bottle.yaml"],
@@ -48547,6 +49017,10 @@
       "label": "CherryPy",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/cherrypy.yaml"],
@@ -48822,6 +49296,10 @@
       "label": "Django",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/django_routes.go","internal/engine/django_urlconf_nested.go","internal/engine/rules/python/frameworks/django.yaml"],
@@ -49102,6 +49580,10 @@
       "label": "Django REST Framework",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/django_drf_actions.go","internal/extractors/python/django_drf_actions.go"],
@@ -49624,6 +50106,10 @@
       "label": "Falcon",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/falcon.yaml"],
@@ -49899,6 +50385,13 @@
       "label": "FastAPI",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3628",
+            "notes": "#3628 epic: api_version + deprecation on http_endpoint_definition. Python: @deprecated decorator, DRF/drf-spectacular deprecated=True, Sphinx .. deprecated:: docstring.",
+            "verified_at": "2026-06-02"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/fastapi.yaml"],
@@ -50180,6 +50673,10 @@
       "label": "Flask",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/flask.yaml"],
@@ -50467,6 +50964,10 @@
       "label": "Graphene GraphQL",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
@@ -50680,6 +51181,10 @@
       "label": "Hug",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/hug.yaml"],
@@ -50992,6 +51497,10 @@
       "label": "Litestar",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/litestar.yaml"],
@@ -51264,6 +51773,10 @@
       "label": "Pyramid",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/pyramid.yaml"],
@@ -51535,6 +52048,10 @@
       "label": "Quart",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/quart.yaml"],
@@ -51809,6 +52326,10 @@
       "label": "Robyn",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/robyn.yaml"],
@@ -52293,6 +52814,10 @@
       "label": "Sanic",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/sanic.yaml"],
@@ -52564,6 +53089,10 @@
       "label": "Starlette",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/starlette.yaml"],
@@ -52835,6 +53364,10 @@
       "label": "Strawberry GraphQL",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/graphql/frameworks/strawberry_python.yaml","internal/engine/rules/python/frameworks/strawberry_graphql.yaml"],
@@ -53109,6 +53642,10 @@
       "label": "Tornado",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/rules/python/frameworks/tornado.yaml"],
@@ -54657,6 +55194,10 @@
       "label": "Cuba",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/ruby/cuba_routing.go"],
@@ -54900,6 +55441,10 @@
       "label": "dry-rb (ecosystem)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable"
           },
@@ -55139,6 +55684,10 @@
       "label": "Grape",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/ruby/frameworks/grape.yaml"],
@@ -55379,6 +55928,10 @@
       "label": "graphql-ruby (GraphQL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_graphql_ruby.go","internal/engine/http_endpoint_graphql_ruby_test.go","internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go"],
@@ -55592,6 +56145,10 @@
       "label": "Hanami",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/ruby/frameworks/hanami.yaml"],
@@ -55835,6 +56392,10 @@
       "label": "Padrino",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/ruby/frameworks/padrino.yaml"],
@@ -56078,6 +56639,10 @@
       "label": "Ruby on Rails",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_ruby_producer.go","internal/engine/rules/ruby/frameworks/ruby_on_rails.yaml"],
@@ -56338,6 +56903,10 @@
       "label": "Roda",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/ruby/frameworks/roda.yaml"],
@@ -56581,6 +57150,10 @@
       "label": "Sinatra",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_ruby_producer.go","internal/engine/rules/ruby/frameworks/sinatra.yaml"],
@@ -57670,6 +58243,10 @@
       "label": "Actix Web",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rules/rust/frameworks/actix_web.yaml"],
@@ -57917,6 +58494,10 @@
       "label": "async-graphql",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/rust/async_graphql.go","internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go"],
@@ -58136,6 +58717,10 @@
       "label": "Axum",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_axum.go","internal/engine/rules/rust/frameworks/axum.yaml"],
@@ -58383,6 +58968,10 @@
       "label": "Gotham",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go"],
@@ -58632,6 +59221,10 @@
       "label": "hyper",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go"],
@@ -58911,6 +59504,10 @@
       "label": "Poem",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go"],
@@ -59189,6 +59786,10 @@
       "label": "Rocket",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/rocket_routes.go","internal/engine/rules/rust/frameworks/rocket.yaml"],
@@ -59436,6 +60037,10 @@
       "label": "Salvo",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go"],
@@ -59842,6 +60447,10 @@
       "label": "Tide",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go"],
@@ -60091,6 +60700,10 @@
       "label": "Tonic",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/rust/graphql_grpc_test.go","internal/custom/rust/helpers.go","internal/custom/rust/tonic.go"],
@@ -60311,6 +60924,10 @@
       "label": "Tower (service abstraction)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
@@ -60562,6 +61179,10 @@
       "label": "utoipa",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/utoipa.go","internal/custom/rust/utoipa_test.go"],
@@ -60777,6 +61398,10 @@
       "label": "Warp",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/rust/minor_fw_routing.go"],
@@ -61393,6 +62018,10 @@
       "label": "Akka HTTP / Pekko HTTP",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/scala/frameworks/akka_http_pekko_http.yaml"],
@@ -61681,6 +62310,10 @@
       "label": "Caliban",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/scala/caliban.go","internal/custom/scala/caliban_test.go"],
@@ -61931,6 +62564,10 @@
       "label": "Cask",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/scala/frameworks.go"],
@@ -62222,6 +62859,10 @@
       "label": "Cats Effect (concurrency runtime)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "not_applicable",
             "notes": "Cats Effect is an effect-system runtime, not a web backend — no routing/DI/transaction/AOP container."
@@ -62499,6 +63140,10 @@
       "label": "Finatra (Twitter Finagle)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/scala/frameworks/finatra.yaml"],
@@ -62794,6 +63439,10 @@
       "label": "http4s",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/scala/frameworks/http4s.yaml"],
@@ -63082,6 +63731,10 @@
       "label": "Lagom",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/scala/frameworks/lagom.yaml"],
@@ -63377,6 +64030,10 @@
       "label": "Apache Pekko HTTP",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/custom/scala/frameworks.go"],
@@ -64016,6 +64673,10 @@
       "label": "Scalatra",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/scala/frameworks/scalatra.yaml"],
@@ -64305,6 +64966,10 @@
       "label": "sttp (HTTP client)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/engine/http_endpoint_scala_client.go","internal/engine/http_endpoint_scala_client_test.go","internal/engine/http_endpoint_synthesis.go"],
@@ -64540,6 +65205,10 @@
       "label": "tapir (endpoint DSL)",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go"],
@@ -64794,6 +65463,10 @@
       "label": "ZIO HTTP / ZIO",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "partial",
             "cites": ["internal/engine/rules/scala/frameworks/zio.yaml"],
@@ -65991,6 +66664,10 @@
       "label": "Vapor",
       "capabilities": {
         "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "missing",
+            "issue": "3628"
+          },
           "endpoint_synthesis": {
             "status": "full",
             "cites": ["internal/custom/swift/vapor.go"],

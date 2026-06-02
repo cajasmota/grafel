@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | graphene.ObjectType Query/Mutation/Subscription root classes; resolve_<field> methods and graphene.<X>(...) class-attribute fields -> http:GRAPHQL:/graphql/<Root>/<field>, identical shape to Strawberry/gqlgen. synthesizeGraphene. |
 | Handler attribution | ✅ `full` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | resolve_<field> method is the handler; source_handler=SCOPE.Operation:<Root>.resolve_<field> rebinds to a HANDLES edge. Default-resolver fields (no method) emitted honest-partial with the conventional resolver name. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | Operation endpoints synthesised from root-class fields; field name is the snake_case attribute (no name mangling). Dynamic/programmatically-named fields not resolved (honest-partial). |

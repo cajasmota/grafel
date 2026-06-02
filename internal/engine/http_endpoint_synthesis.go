@@ -504,6 +504,12 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	// emitted here — the unresolved `Function:<name>` FromID is a soft
 	// reference that the graph walk tolerates gracefully.
 
+	// #3628 (api deprecation + version stamping) — capture the entity-slice
+	// length before the per-language synthesizers run so applyEndpointDeprecation
+	// and applyEndpointAPIVersion stamp deprecation / api_version onto exactly the
+	// http_endpoint_definition entities this file just emitted (any language).
+	deprecationBefore := len(entities)
+
 	switch lang {
 	case "java":
 		// Capture the producer-side entity count before the Java backend
@@ -973,6 +979,21 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 			}
 		})
 	}
+
+	// #3628 (epic) — endpoint API-version + deprecation stamping. Both passes
+	// mutate Properties on the producer-side http_endpoint_definition entities
+	// emitted above (index >= deprecationBefore, same source file); they never
+	// add or remove entities, so they cannot regress upstream synthesis.
+	//
+	//   - applyEndpointAPIVersion: resolves `api_version` from the endpoint's own
+	//     canonical `path` property (/api/v1, /v2, …) — language-agnostic.
+	//   - applyEndpointDeprecation: resolves `deprecated` (+ deprecated_since /
+	//     deprecated_replacement) from the deprecation marker that decorates the
+	//     endpoint's handler in the source file (JS/TS JSDoc @deprecated, Spring
+	//     @Deprecated, DRF deprecated=True, Python @deprecated / docstring, a
+	//     Sunset/Deprecation response header, or a `// DEPRECATED` comment).
+	applyEndpointAPIVersion(entities, path, deprecationBefore)
+	applyEndpointDeprecation(lang, string(content), path, entities, deprecationBefore)
 
 	// #722 — response/request shape extraction. Mutates Properties on
 	// the synthetic entities emitted above; never adds or removes

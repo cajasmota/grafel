@@ -15,6 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/actix_web.go`<br>`internal/custom/rust/extractors_test.go`<br>`internal/custom/rust/helpers.go` | Extracts attribute-macro and manual web::get().to() routes; normalises path params; composes web::scope() prefix onto manual routes |

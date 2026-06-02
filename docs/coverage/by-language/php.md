@@ -26,21 +26,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [API Platform](../detail/lang.php.framework.api-platform.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 1/10 | |
-| [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Drupal](../detail/lang.php.framework.drupal.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Laravel](../detail/lang.php.framework.laravel.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟢 9/9 | |
-| [Lighthouse](../detail/lang.php.framework.lighthouse.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 1/10 | |
-| [Lumen](../detail/lang.php.framework.lumen.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Magento](../detail/lang.php.framework.magento.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Phalcon](../detail/lang.php.framework.phalcon.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Slim](../detail/lang.php.framework.slim.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Symfony](../detail/lang.php.framework.symfony.md) | ✅ 3/3 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 8/9 | |
-| [WordPress](../detail/lang.php.framework.wordpress.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [Yii](../detail/lang.php.framework.yii.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
-| [graphql-php](../detail/lang.php.framework.graphql-php.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 1/10 | |
+| [API Platform](../detail/lang.php.framework.api-platform.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 1/10 | |
+| [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Drupal](../detail/lang.php.framework.drupal.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Laravel](../detail/lang.php.framework.laravel.md) | 🟡 3/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟢 9/9 | |
+| [Lighthouse](../detail/lang.php.framework.lighthouse.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 1/10 | |
+| [Lumen](../detail/lang.php.framework.lumen.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Magento](../detail/lang.php.framework.magento.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Phalcon](../detail/lang.php.framework.phalcon.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Slim](../detail/lang.php.framework.slim.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | 🟡 3/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 8/9 | |
+| [WordPress](../detail/lang.php.framework.wordpress.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [Yii](../detail/lang.php.framework.yii.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/9 | |
+| [graphql-php](../detail/lang.php.framework.graphql-php.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 1/10 | |
 
 
 ## Tools
@@ -61,17 +61,17 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟡 1/2 | |
-| [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟡 8/9 | |
-| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟡 8/9 | |
-| [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | 🟡 8/9 | |
-| [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | 🟡 1/3 | |
-| [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | 🟡 1/3 | |
-| [PDO SQLite](../detail/lang.php.driver.sqlite.md) | 🟡 1/3 | |
-| [Propel](../detail/lang.php.orm.propel.md) | 🟡 8/9 | |
-| [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | 🟡 5/6 | |
-| [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | 🟡 1/2 | |
-| [elasticsearch-php](../detail/lang.php.driver.elastic.md) | 🟡 1/2 | |
-| [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🟡 1/2 | |
-| [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟡 3/4 | |
-| [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/2 | |
+| [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | ✅ 1/1 | |
+| [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟢 8/8 | |
+| [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ✅ 8/8 | |
+| [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | ✅ 8/8 | |
+| [PDO MySQL / mysqli](../detail/lang.php.driver.mysql.md) | 🟡 1/2 | |
+| [PDO PostgreSQL](../detail/lang.php.driver.postgres.md) | 🟡 1/2 | |
+| [PDO SQLite](../detail/lang.php.driver.sqlite.md) | 🟡 1/2 | |
+| [Propel](../detail/lang.php.orm.propel.md) | 🟢 8/8 | |
+| [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | 🟢 5/5 | |
+| [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | ✅ 1/1 | |
+| [elasticsearch-php](../detail/lang.php.driver.elastic.md) | ✅ 1/1 | |
+| [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | ✅ 1/1 | |
+| [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟢 3/3 | |
+| [phpredis / Predis](../detail/lang.php.driver.redis.md) | ✅ 1/1 | |
