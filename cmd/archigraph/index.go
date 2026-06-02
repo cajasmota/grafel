@@ -61,6 +61,7 @@ const (
 	PassCommitCouple  = "commit-couple"  // Pass 8.5: VCS-derived COMMIT_COUPLED soft edges (#21)
 	PassCoupling      = "coupling"       // Pass 8.6: structural Ca/Ce/instability per Module (#3634)
 	PassDepHygiene    = "dep-hygiene"    // Pass 8.7: persist deplinker used/unused status onto deps (#3640)
+	PassSharedDB      = "shared-db"      // Pass 8.8: shared-database cross-service coupling (#3628 area #13)
 	PassEmbed         = "embed"          // Pass 9: semantic embeddings sidecar (#461 / ADR-0019)
 	PassTestsWalkUp   = "tests-walkup"   // Pass 3.5: derive TESTS edges via helper walk-up
 )
@@ -1571,6 +1572,30 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 					"entities_annotated=%d edges_annotated=%d\n",
 				dhStats.Declared, dhStats.Used, dhStats.Unused, dhStats.Phantom,
 				dhStats.EntitiesAnnotated, dhStats.EdgesAnnotated)
+		}
+	}
+
+	// Pass 8.8 — shared-database cross-service coupling (#3628 area #13). Runs
+	// AFTER module-agg (Pass 8) so synthetic Module nodes exist and every
+	// entity carries Properties["module"]. Detects when ≥2 DISTINCT modules
+	// access the SAME table/collection (via ACCESSES_TABLE / JOINS_COLLECTION /
+	// SCOPE.DataAccess attribution): annotates the shared SCOPE.DataAccess
+	// entities with shared/accessor_count/accessor_modules and emits a
+	// SHARES_DATA edge between each co-accessing Module pair — the cross-service
+	// DATA coupling axis, orthogonal to structural (Pass 8.6) and temporal
+	// (Pass 8.5) coupling. Honest: only when the shared table + ≥2 distinct
+	// real-module accessors genuinely exist. Skippable via --skip-pass=shared-db.
+	if !i.skipPasses[PassSharedDB] {
+		sdStats := engine.ApplySharedDataCoupling(doc)
+		if sdStats.Skipped {
+			if verbose() {
+				fmt.Fprintf(os.Stderr, "archigraph: shared-db skipped (no module graph or data access)\n")
+			}
+		} else if verbose() || sdStats.SharedTables > 0 {
+			fmt.Fprintf(os.Stderr,
+				"archigraph: shared-db tables=%d shared=%d data_access_annotated=%d coupling_edges=%d\n",
+				sdStats.TablesConsidered, sdStats.SharedTables,
+				sdStats.DataAccessAnnotated, sdStats.CouplingEdges)
 		}
 	}
 
