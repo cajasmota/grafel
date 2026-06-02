@@ -11,8 +11,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Dependency attribution | 🔴 `missing` | — | 3828 | — | No resource/dependency extraction yet for this datastore; tracked in #3828 (sibling datastores done — genuine build-gap). |
-| Resource extraction | 🔴 `missing` | — | 3828 | — | No resource/dependency extraction yet for this datastore; tracked in #3828 (sibling datastores done — genuine build-gap). |
+| Dependency attribution | 🟢 `partial` | `2026-06-02` | 3828 | `internal/engine/orm_queries_drivers_other.go` | No resource/dependency extraction yet for this datastore; tracked in #3828 (sibling datastores done — genuine build-gap). |
+| Resource extraction | 🟢 `partial` | `2026-06-02` | 3828 | `internal/engine/orm_queries_drivers_other.go` | Cassandra/Scylla CQL session.execute("... FROM table") across C#/PHP/Rust/Python/Java/Ruby/JS parses the FROM/INTO/UPDATE table into a Class:<Table> resource node + QUERIES dependency edge from the connecting function (emitCQLTargets). Runtime-built CQL honest-skipped. |
 
 ## Code-level coverage
 

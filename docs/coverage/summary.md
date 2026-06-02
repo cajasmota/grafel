@@ -1,13 +1,13 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 224 · **ORMs**: 155 · **Tools**: 111 · **Other**: 161
+**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 224 · **ORMs**: 156 · **Tools**: 111 · **Other**: 161
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-| [JS/TS](by-language/jsts.md) | 32 | 21 | 18 | 4 |
+| [JS/TS](by-language/jsts.md) | 32 | 21 | 19 | 4 |
 | [python](by-language/python.md) | 23 | 15 | 18 | 10 |
 | [java](by-language/java.md) | 22 | 10 | 15 | 4 |
 | [go](by-language/go.md) | 20 | 8 | 17 | 0 |
@@ -32,7 +32,7 @@
 
 | Category | Records | Full | Partial | Missing |
 |---|---:|---:|---:|---:|
-| [Databases](by-category/databases.md) | 12 | 0 | 8 | 4 |
+| [Databases](by-category/databases.md) | 12 | 0 | 12 | 0 |
 | [Platform / k8s](by-category/platform.md) | 34 | 20 | 14 | 0 |
 | [Message Brokers](by-category/message_broker.md) | 21 | 9 | 10 | 2 |
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
@@ -40,7 +40,7 @@
 | [Observability](by-category/observability.md) | 13 | 1 | 5 | 7 |
 | [Protocols](by-category/protocol.md) | 12 | 5 | 4 | 3 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 119 | 43 | 49 | 27 |
+| **Total** | 119 | 43 | 53 | 23 |
 
 ### Platform subcategories
 
@@ -80,4 +80,4 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 224 frameworks · 111 tools · 155 ORMs · 161 other
+Total: 224 frameworks · 111 tools · 156 ORMs · 161 other
