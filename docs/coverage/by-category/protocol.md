@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # protocol
 
-**Total**: 11 records · **multi**: 11
+**Total**: 12 records · **multi**: 12
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -9,6 +9,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 |---|---|---|---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [Apache Avro (.avsc / .avpr)](../detail/protocol.avro.md) | 🔴 | ✅ | 🔴 | ✅ | 🔴 | 🔴 | |
 | [multi](../by-language/multi.md) | [C ↔ asm ABI bridge](../detail/protocol.c-asm.md) | ✅ | — | ✅ | — | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [CLI command entry-points (click/argparse/typer, commander/yargs/oclif, cobra, picocli/Spring Shell, Thor/Rake)](../detail/cli.command-extraction.md) | — | — | ✅ | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [GraphQL](../detail/protocol.graphql.md) | 🟢 | — | ✅ | — | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [JCL → COBOL job bridge](../detail/protocol.jcl-cobol.md) | ✅ | — | ✅ | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [JSON Schema (*.schema.json)](../detail/protocol.json-schema.md) | 🔴 | ✅ | 🔴 | ✅ | 🔴 | 🔴 | |

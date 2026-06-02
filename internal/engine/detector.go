@@ -758,6 +758,15 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// GitHub Actions schedule triggers (path-driven, not language-gated).
 	// Append-only — cannot regress surrounding passes.
 	applyPass(applyScheduledJobEdges)
+	// CLI command entry-point detection (epic #3628). Emits SCOPE.Command
+	// entities + HANDLES_COMMAND edges (the CLI sibling of an HTTP endpoint's
+	// route -> handler) for click/argparse/typer (Python), commander/yargs/
+	// oclif (Node), cobra (Go), picocli/Spring Shell (Java), and Thor/Rake
+	// (Ruby). Dynamic command names / handler refs are skipped, and every
+	// detector is gated behind a framework-import pre-filter so a non-CLI
+	// .command() / .action() on an unrelated object mints nothing.
+	// Append-only - cannot regress surrounding passes.
+	applyPass(applyCLICommandEdges)
 	// #3628 area: ORM model lifecycle-hook / signal → handler TRIGGERS.
 	// Emits SCOPE.ModelEvent:<Model>.<event> nodes + TRIGGERS edges to the
 	// handler for Django signals, SQLAlchemy events, ActiveRecord callbacks,

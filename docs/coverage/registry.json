@@ -950,6 +950,30 @@
       }
     },
     {
+      "id": "cli.command-extraction",
+      "category": "protocol",
+      "language": "multi",
+      "label": "CLI command entry-points (click/argparse/typer, commander/yargs/oclif, cobra, picocli/Spring Shell, Thor/Rake)",
+      "capabilities": {
+        "cross_repo_linkage": {
+          "status": "not_applicable",
+          "notes": "CLI commands are a single-process entry-point (binary invoked by a user/shell), not a cross-repo wire protocol — there is no remote producer/consumer pair to join, so cross-repo linkage does not apply (mirrors the scheduled-job entry-point model in scheduled_jobs_edges.go)."
+        },
+        "method_attribution": {
+          "status": "full",
+          "cites": ["internal/engine/cli_command_edges.go","internal/engine/cli_command_edges_test.go"],
+          "notes": "Epic #3628: each SCOPE.Command joins its handler via a HANDLES_COMMAND edge (SCOPE.Command:\u003cid\u003e -\u003e Function:\u003chandler\u003e) — the CLI analog of an HTTP endpoint's HANDLES edge. Handler resolution: click/typer -\u003e decorated def; argparse -\u003e set_defaults(func=do_sync) bound via the shared sub-parser variable; commander -\u003e .action(handler); yargs -\u003e 4th positional arg / handler: key; oclif -\u003e the class run() method; cobra -\u003e Run/RunE bare fn ref; picocli -\u003e the class call()/run(); Spring Shell -\u003e the annotated method; Thor -\u003e the def itself. Honest-partial (command node, NO edge): cobra inline Run:func(...){} literals, Rake anonymous task blocks, and yargs/commander inline arrow handlers — asserted by value-asserting negative tests (TestCLI_GoCobra_InlineFuncNoHandlerEdge, TestCLI_RubyRake_Task) that the handler edge count is 0.",
+          "verified_at": "2026-06-02"
+        },
+        "service_extraction": {
+          "status": "full",
+          "cites": ["internal/engine/cli_command_edges.go","internal/engine/cli_command_edges_test.go","internal/types/kinds.go"],
+          "notes": "Epic #3628: command-line command entry-point detection — the CLI sibling of an HTTP endpoint. New LIVE engine pass applyCLICommandEdges (registered in detector.go after applyScheduledJobEdges) mints a SCOPE.Command node per statically-declared command, keyed `\u003cframework\u003e:\u003cpath\u003e:\u003cname\u003e` (props: command, handler, framework). Frameworks: click (@cli.command('migrate') / @click.command() default-name func-\u003edashes), typer (@app.command()), argparse (subparsers.add_parser('sync')) [Python]; commander (program.command('serve')...action(h)), yargs (positional .command('build',desc,builder,h) + object {command,handler} forms), oclif (class X extends Command) [Node]; cobra (\u0026cobra.Command{Use:\"serve\",Run:serve}) [Go]; picocli (@Command(name=\"serve\") class), Spring Shell (@ShellMethod(key=\"...\")) [Java]; Thor (desc '...' + def name), Rake (task :build do) [Ruby]. Positional-arg syntax stripped to the leading verb (command('clone \u003csrc\u003e') -\u003e clone; Use:\"migrate [flags]\" -\u003e migrate). Honest-partial: dynamic command names (command(nameVar)) emit nothing; every detector is gated behind a framework-import pre-filter so a non-CLI .command()/.action() on an unrelated object (e.g. a DB driver) mints nothing. Value-asserting tests assert the exact SCOPE.Command node ID per framework.",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
       "id": "config.docker-compose",
       "category": "platform",
       "language": "multi",

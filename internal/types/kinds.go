@@ -102,6 +102,16 @@ const (
 	// without any new linker code.
 	EntityKindEventBusEvent EntityKind = "SCOPE.EventBusEvent"
 
+	// CLI command entry-point detection (epic #3628). A SCOPE.Command is a
+	// statically-declared command-line command — the CLI sibling of an HTTP
+	// endpoint. Covers click/argparse/typer (Python), commander/yargs/oclif
+	// (Node), cobra (Go), picocli/Spring Shell (Java), and Thor/Rake (Ruby).
+	// One entity per statically-named command (or subcommand path). The
+	// command's handler function is joined via a HANDLES_COMMAND edge
+	// (Command → handler fn), modelling the CLI entry-point → handler flow.
+	// Dynamic command names / handler refs are skipped (honest-partial).
+	EntityKindCommand EntityKind = "SCOPE.Command"
+
 	// #3704 (epic #3628, area #20): finite-state-machine (FSM) topology.
 	// A single declared state in an application-level state machine — XState
 	// (JS/TS), Ruby AASM, Spring StateMachine (Java), or the Python
@@ -244,6 +254,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindServerlessFunction,
 		// #927:
 		EntityKindEventBusEvent,
+		// CLI command entry-points (epic #3628):
+		EntityKindCommand,
 		// #3704 FSM topology:
 		EntityKindState,
 		// #1217:
@@ -481,6 +493,14 @@ const (
 	// counterpart of CALLS — a handler function HANDLES a ServerlessFunction.
 	// CALLS is already declared above (RelationshipKindCalls) and is reused here.
 	RelationshipKindHandles RelationshipKind = "HANDLES"
+
+	// CLI command entry-point edges (epic #3628). HANDLES_COMMAND is the CLI
+	// sibling of an HTTP endpoint's HANDLES edge: it joins a SCOPE.Command
+	// entity to the function that runs when that command is invoked
+	// (Command → handler fn). Emitted by applyCLICommandEdges for
+	// click/argparse/typer (Python), commander/yargs/oclif (Node), cobra (Go),
+	// picocli/Spring Shell (Java), and Thor/Rake (Ruby).
+	RelationshipKindHandlesCommand RelationshipKind = "HANDLES_COMMAND"
 
 	// #927: Managed event-bus edges. Both sides emit a synthetic EventBusEvent
 	// entity with the same bus-prefixed key, so the import-channel linker joins
@@ -1045,6 +1065,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindGRPCHandles,
 		// #925 serverless:
 		RelationshipKindHandles,
+		// CLI command entry-points (epic #3628):
+		RelationshipKindHandlesCommand,
 		// #927 managed event buses:
 		RelationshipKindEventBridgeTriggers,
 		RelationshipKindEventGridTriggers,
