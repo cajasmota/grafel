@@ -8617,8 +8617,10 @@
           },
           "def_use_chain_extraction": {
             "status": "partial",
-            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_csharp.go"],
-            "issue": "backfill:dictionary-completeness"
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/dataflow_csharp.go","internal/substrate/def_use.go","internal/substrate/def_use_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "The C# def-use chain (def_use_csharp.go) is now consumed by the connected request→sink dataflow pass (internal/substrate/dataflow_csharp.go, #3960) to propagate taint across assignments and bounded local-call hops. Remains partial (dictionary-completeness backfill still open).",
+            "verified_at": "2026-06-02"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -8675,8 +8677,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_csharp.go","internal/substrate/dataflow_csharp_test.go"],
+            "issue": "3960",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872, #3960): new C# sniffer (internal/substrate/dataflow_csharp.go) registered on the \"csharp\" slug and dispatched by .cs extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the java/python/jsts/go/ruby/php sniffers and COMPLETING the cross-language dataflow generalization (all 7 langs). Sources: ASP.NET Core / MVC action params [FromBody]/[FromQuery]/[FromForm]/[FromHeader]/[FromRoute] — each bound param is a request-derived root; field = attribute literal ([FromQuery(Name=\"q\")]-\u003eq), else param name for scalar binders, else \"\" for [FromBody] whole-object (recovered from dto.Email property access); PLUS in-body Request.Query[\"x\"]/Request.Form[\"x\"]/Request.RouteValues[\"id\"] accessors seeded as local roots with the key literal as field. Intra-method var/typed-decl + reassignment taint tracking + multi-hop (\u003c=DataFlowMaxHops=3) local same-file call propagation by exact positional index, AND cross-file boundary emission continued by the links pass (continueDataFlowCSharp). Sinks: EF Core write (_context.Set.Add/AddRange/Update/Remove/Attach, SaveChanges/SaveChangesAsync, ExecuteSqlRaw), Dapper (connection.Execute/ExecuteAsync), response (Ok/Json/Content/Created/return \u003ctainted\u003e), outbound HTTP (httpClient.PostAsync/PutAsync/SendAsync/PostAsJsonAsync). HONEST-PARTIAL: drops static/constant values, non-request params (injected services), reassignment, embedded-arg expressions, params arrays, recursion/cycle, the 4th hop, external/unresolved imports; whole-object [FromBody] and dynamic member access flow with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -8697,13 +8702,15 @@
           },
           "taint_sink_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_csharp.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/taint_flow.go","internal/substrate/dataflow_csharp.go","internal/substrate/taint_sites_csharp.go"],
+            "notes": "Now connected to its originating request source by the dataflow pass (internal/substrate/dataflow_csharp.go, #3960): EF/Dapper/response/outbound-HTTP sinks are reached from a [From*]/Request.* source via source→sink stitching (DATA_FLOWS_TO). Remains partial (honest-partial; ambiguous positions and the 4th hop drop).",
+            "verified_at": "2026-06-02"
           },
           "taint_source_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_csharp.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/taint_flow.go","internal/substrate/dataflow_csharp.go","internal/substrate/taint_sites_csharp.go"],
+            "notes": "Now stitched end-to-end by the connected request→sink dataflow pass (internal/substrate/dataflow_csharp.go, #3960): the [From*]/Request.* source recognised here is followed through assignment + bounded multi-hop into a recognised sink, materialising DATA_FLOWS_TO with the resolved source field. Remains partial (honest-partial sniffer: dynamic/whole-object/embedded args drop or carry field=\"\").",
+            "verified_at": "2026-06-02"
           },
           "template_pattern_catalog": {
             "status": "partial",
@@ -8898,8 +8905,10 @@
           },
           "def_use_chain_extraction": {
             "status": "partial",
-            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_csharp.go"],
-            "issue": "backfill:dictionary-completeness"
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/dataflow_csharp.go","internal/substrate/def_use_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "The C# def-use chain (def_use_csharp.go) is now consumed by the connected request→sink dataflow pass (internal/substrate/dataflow_csharp.go, #3960) to propagate taint across assignments and bounded local-call hops. Remains partial (dictionary-completeness backfill still open).",
+            "verified_at": "2026-06-02"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -8956,8 +8965,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_csharp.go","internal/substrate/dataflow_csharp_test.go"],
+            "issue": "3960",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872, #3960): new C# sniffer (internal/substrate/dataflow_csharp.go) registered on the \"csharp\" slug and dispatched by .cs extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the java/python/jsts/go/ruby/php sniffers and COMPLETING the cross-language dataflow generalization (all 7 langs). Sources: ASP.NET Core / MVC action params [FromBody]/[FromQuery]/[FromForm]/[FromHeader]/[FromRoute] — each bound param is a request-derived root; field = attribute literal ([FromQuery(Name=\"q\")]-\u003eq), else param name for scalar binders, else \"\" for [FromBody] whole-object (recovered from dto.Email property access); PLUS in-body Request.Query[\"x\"]/Request.Form[\"x\"]/Request.RouteValues[\"id\"] accessors seeded as local roots with the key literal as field. Intra-method var/typed-decl + reassignment taint tracking + multi-hop (\u003c=DataFlowMaxHops=3) local same-file call propagation by exact positional index, AND cross-file boundary emission continued by the links pass (continueDataFlowCSharp). Sinks: EF Core write (_context.Set.Add/AddRange/Update/Remove/Attach, SaveChanges/SaveChangesAsync, ExecuteSqlRaw), Dapper (connection.Execute/ExecuteAsync), response (Ok/Json/Content/Created/return \u003ctainted\u003e), outbound HTTP (httpClient.PostAsync/PutAsync/SendAsync/PostAsJsonAsync). HONEST-PARTIAL: drops static/constant values, non-request params (injected services), reassignment, embedded-arg expressions, params arrays, recursion/cycle, the 4th hop, external/unresolved imports; whole-object [FromBody] and dynamic member access flow with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -8978,13 +8990,15 @@
           },
           "taint_sink_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_csharp.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/taint_flow.go","internal/substrate/dataflow_csharp.go","internal/substrate/taint_sites_csharp.go"],
+            "notes": "Now connected to its originating request source by the dataflow pass (internal/substrate/dataflow_csharp.go, #3960): EF/Dapper/response/outbound-HTTP sinks are reached from a [From*]/Request.* source via source→sink stitching (DATA_FLOWS_TO). Remains partial (honest-partial; ambiguous positions and the 4th hop drop).",
+            "verified_at": "2026-06-02"
           },
           "taint_source_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_csharp.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/taint_flow.go","internal/substrate/dataflow_csharp.go","internal/substrate/taint_sites_csharp.go"],
+            "notes": "Now stitched end-to-end by the connected request→sink dataflow pass (internal/substrate/dataflow_csharp.go, #3960): the [From*]/Request.* source recognised here is followed through assignment + bounded multi-hop into a recognised sink, materialising DATA_FLOWS_TO with the resolved source field. Remains partial (honest-partial sniffer: dynamic/whole-object/embedded args drop or carry field=\"\").",
+            "verified_at": "2026-06-02"
           },
           "template_pattern_catalog": {
             "status": "partial",
@@ -9803,8 +9817,10 @@
           },
           "def_use_chain_extraction": {
             "status": "partial",
-            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_csharp.go"],
-            "issue": "backfill:dictionary-completeness"
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/dataflow_csharp.go","internal/substrate/def_use_csharp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "The C# def-use chain (def_use_csharp.go) is now consumed by the connected request→sink dataflow pass (internal/substrate/dataflow_csharp.go, #3960) to propagate taint across assignments and bounded local-call hops. Remains partial (dictionary-completeness backfill still open).",
+            "verified_at": "2026-06-02"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -9861,8 +9877,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_csharp.go","internal/substrate/dataflow_csharp_test.go"],
+            "issue": "3960",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872, #3960): new C# sniffer (internal/substrate/dataflow_csharp.go) registered on the \"csharp\" slug and dispatched by .cs extension through LanguageForPath (internal/links/dataflow_pass.go), mirroring the java/python/jsts/go/ruby/php sniffers and COMPLETING the cross-language dataflow generalization (all 7 langs). Sources: ASP.NET Core / MVC action params [FromBody]/[FromQuery]/[FromForm]/[FromHeader]/[FromRoute] — each bound param is a request-derived root; field = attribute literal ([FromQuery(Name=\"q\")]-\u003eq), else param name for scalar binders, else \"\" for [FromBody] whole-object (recovered from dto.Email property access); PLUS in-body Request.Query[\"x\"]/Request.Form[\"x\"]/Request.RouteValues[\"id\"] accessors seeded as local roots with the key literal as field. Intra-method var/typed-decl + reassignment taint tracking + multi-hop (\u003c=DataFlowMaxHops=3) local same-file call propagation by exact positional index, AND cross-file boundary emission continued by the links pass (continueDataFlowCSharp). Sinks: EF Core write (_context.Set.Add/AddRange/Update/Remove/Attach, SaveChanges/SaveChangesAsync, ExecuteSqlRaw), Dapper (connection.Execute/ExecuteAsync), response (Ok/Json/Content/Created/return \u003ctainted\u003e), outbound HTTP (httpClient.PostAsync/PutAsync/SendAsync/PostAsJsonAsync). HONEST-PARTIAL: drops static/constant values, non-request params (injected services), reassignment, embedded-arg expressions, params arrays, recursion/cycle, the 4th hop, external/unresolved imports; whole-object [FromBody] and dynamic member access flow with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt).",
+            "verified_at": "2026-06-02"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -9883,13 +9902,15 @@
           },
           "taint_sink_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_csharp.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/taint_flow.go","internal/substrate/dataflow_csharp.go","internal/substrate/taint_sites_csharp.go"],
+            "notes": "Now connected to its originating request source by the dataflow pass (internal/substrate/dataflow_csharp.go, #3960): EF/Dapper/response/outbound-HTTP sinks are reached from a [From*]/Request.* source via source→sink stitching (DATA_FLOWS_TO). Remains partial (honest-partial; ambiguous positions and the 4th hop drop).",
+            "verified_at": "2026-06-02"
           },
           "taint_source_detection": {
             "status": "partial",
-            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_csharp.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/links/taint_flow.go","internal/substrate/dataflow_csharp.go","internal/substrate/taint_sites_csharp.go"],
+            "notes": "Now stitched end-to-end by the connected request→sink dataflow pass (internal/substrate/dataflow_csharp.go, #3960): the [From*]/Request.* source recognised here is followed through assignment + bounded multi-hop into a recognised sink, materialising DATA_FLOWS_TO with the resolved source field. Remains partial (honest-partial sniffer: dynamic/whole-object/embedded args drop or carry field=\"\").",
+            "verified_at": "2026-06-02"
           },
           "template_pattern_catalog": {
             "status": "partial",
