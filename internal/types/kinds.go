@@ -215,6 +215,7 @@ func AllEntityKinds() []EntityKind {
 		EntityKindCustomValidator,
 		// #3628 area #17:
 		EntityKindFeatureFlag,
+		EntityKindPlugin,
 		// #3624 GraphQL DataLoader:
 		EntityKindDataLoader,
 	}
@@ -628,6 +629,19 @@ const (
 	// ("launchdarkly", "unleash", "openfeature", "flipper", "flagsmith").
 	EntityKindFeatureFlag EntityKind = "SCOPE.FeatureFlag"
 
+	// #3628 area #25: Plugin / extension-system entities. Plugin represents a
+	// single plugin / extension that a build tool, application, or framework
+	// registers — e.g. a Webpack/Vite/Rollup plugin in a bundler config, a
+	// Babel/ESLint plugin, a pytest plugin or setuptools entry-point plugin, or
+	// a Maven/Gradle build plugin. Cross-file identity = the plugin's name
+	// string within its ecosystem, encoded in the synthetic ID
+	// `plugin:<ecosystem>:<name>`. The config / build file that declares the
+	// plugin links to it via REGISTERS_PLUGIN so the graph can answer "which
+	// plugins does this build/app register". Subtype = the registering system
+	// ("webpack", "vite", "rollup", "babel", "eslint", "pytest",
+	// "setuptools", "maven", "gradle").
+	EntityKindPlugin EntityKind = "SCOPE.Plugin"
+
 	// #2904: Request-validation / DTO-extraction linkage edges. Emitted by
 	// the JS/TS extractor when a route handler / controller method is wired
 	// to a schema validator or a typed DTO, turning validators that were
@@ -787,6 +801,25 @@ const (
 	// Dynamic flag keys (non-literal first argument) are NOT emitted — no
 	// fabricated flag entity. Append-only; never modifies existing edges.
 	RelationshipKindGatedBy RelationshipKind = "GATED_BY"
+	// #3628 area #25: plugin / extension-system registration edge.
+	//   REGISTERS_PLUGIN : config / build file (or app entry) → SCOPE.Plugin
+	//                      entity (synthetic ID `plugin:<ecosystem>:<name>`).
+	//                      Reads "this build/app registers plugin X", enabling
+	//                      "which plugins does this build register" queries.
+	// Emitted by the plugin-system pass (plugin_system_edges.go) for Webpack /
+	// Vite / Rollup bundler configs, Babel / ESLint configs, pytest +
+	// setuptools entry-point plugins, and Maven / Gradle build plugins.
+	// Properties:
+	//   "plugin"    : the plugin name string
+	//   "system"    : the registering system ("webpack", "vite", "rollup",
+	//                 "babel", "eslint", "pytest", "setuptools", "maven",
+	//                 "gradle")
+	//   "group"     : (setuptools only) the entry-point group the plugin
+	//                 registers under (e.g. "flake8.extension")
+	//   "line"      : 1-indexed source line of the plugin declaration
+	// Dynamically-computed plugin names (non-literal) are NOT emitted — no
+	// fabricated plugin entity. Append-only; never modifies existing edges.
+	RelationshipKindRegistersPlugin RelationshipKind = "REGISTERS_PLUGIN"
 	// #3704 (epic #3628, area #20): finite-state-machine transition edge.
 	// Emitted by the FSM-topology pass (state_machine_edges.go) for XState
 	// (JS/TS), Ruby AASM, Spring StateMachine (Java), and the Python
@@ -952,6 +985,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindInvalidates,
 		// #3628 area #17 feature-flag gating edge:
 		RelationshipKindGatedBy,
+		// #3628 area #25 plugin / extension-system registration:
+		RelationshipKindRegistersPlugin,
 		// #3704 FSM state-transition edge:
 		RelationshipKindTransitionsTo,
 		// #3628 area #13 shared-database cross-service coupling edge:

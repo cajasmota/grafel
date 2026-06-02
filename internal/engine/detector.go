@@ -577,6 +577,16 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// the surrounding pipeline's bug-rate on files without flag checks.
 	applyPass(applyFeatureFlagEdges)
 
+	// Plugin / extension-system registration topology (#3628 area #25). For
+	// every recognised build/config file (webpack/vite/rollup config, Babel,
+	// ESLint, pytest_plugins, setuptools entry_points, pom.xml, build.gradle),
+	// emits a synthetic SCOPE.Plugin entity (`plugin:<ecosystem>:<name>`) and
+	// a REGISTERS_PLUGIN edge from the declaring file so the graph can answer
+	// "which plugins does this build/app register". Only literal plugin names
+	// are emitted; dynamic names are skipped. No-op on non-config files.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	applyPass(applyPluginSystemEdges)
+
 	// Kafka producer/consumer cross-repo edges (wave 1 of #726). Emits
 	// synthetic MessageTopic entities + PUBLISHES_TO / SUBSCRIBES_TO edges
 	// using the same cross-repo matching strategy as #534: identical
