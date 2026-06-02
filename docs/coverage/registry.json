@@ -23360,9 +23360,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/akka_http_routes.go","testdata/fixtures/sources/java/akka_http/RouteDefinition.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "partial",
+            "cites": ["internal/custom/java/akka_http_routes.go","internal/custom/java/framework_auth.go","internal/custom/java/framework_auth_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3862",
+            "notes": "#3862: framework_auth.go stamps the flat auth contract on Akka-HTTP route entities. authenticateOAuth2/authenticateBasic directives → auth_required=true + auth_mechanism=oauth2/basic; authorize(hasRole('X')) → auth_roles (medium confidence, directive subtree is file-level). Value-asserting tests: authenticateOAuth2 directive → auth_required=true auth_mechanism=oauth2; authenticateBasic + authorize(hasRole('ADMIN')) → auth_mechanism=basic auth_roles=ADMIN; plain route with no directive → auth_required absent.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -24124,8 +24126,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/java/framework_auth.go","internal/custom/java/framework_auth_test.go","internal/custom/java/spring_graphql.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3862",
+            "notes": "#3862: spring_graphql.go stamps the flat Spring-compatible auth contract on the synthesized GRAPHQL resolver endpoints (Spring Security under DGS). @Secured/@PreAuthorize/@RolesAllowed/@PermitAll on a @DgsQuery/@DgsMutation resolver → auth_required + auth_roles/auth_scopes/auth_permissions (ROLE_/SCOPE_ prefixes split like Spring MVC). DGS mapping regexes now tolerate an interleaved security annotation. Value-asserting tests: @Secured(\"ROLE_ADMIN\") on @DgsQuery allUsers → /graphql/Query/allUsers auth_required=true auth_roles=ADMIN; @PreAuthorize(hasRole('MANAGER') and hasAuthority('SCOPE_write')) → auth_roles=MANAGER auth_scopes=write; unannotated resolver → auth_required absent.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -24392,9 +24397,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/dropwizard.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "partial",
+            "cites": ["internal/custom/java/dropwizard.go","internal/custom/java/framework_auth_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3862",
+            "notes": "#3862: dropwizard.go stamps auth_guard (the signal archigraph_auth_coverage reads) + auth_roles on Dropwizard-Auth entities, plus @Auth principal-injection detection. @RolesAllowed(\"ADMIN\") → auth_required + auth_roles=ADMIN + auth_guard=RolesAllowed; @Auth User param → auth_required + auth_guard=Auth; @Authenticated → auth_guard=Authenticated. JAX-RS @RolesAllowed/@PermitAll/@DenyAll on @Path resource methods also flow through engine ResolveJavaAuthPolicy. Value-asserting tests assert auth_required + auth_roles + auth_guard on the resource method. Honest-partial: the Authenticator wiring is config-level.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -25877,9 +25884,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "partial",
+            "cites": ["internal/custom/java/framework_auth.go","internal/custom/java/framework_auth_test.go","internal/custom/java/javalin_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3862",
+            "notes": "#3862: framework_auth.go stamps the flat Spring-compatible auth contract (auth_required/auth_method/auth_confidence/auth_guard/auth_roles) directly on Javalin route entities. Per-route roles(Role.ADMIN) inline guard → auth_required=true + auth_roles (high confidence); app/config.accessManager wired → every route auth_required (low confidence). Value-asserting tests: roles(Role.ADMIN) on /admin → auth_required=true auth_roles=ADMIN; roles(Role.ADMIN, Role.STAFF) → ADMIN,STAFF; unprotected route with no accessManager → auth_required absent. Honest-partial: bare app.get(path, handler) is unprotected.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -28848,11 +28857,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/struts_routes.go","internal/custom/java/struts_routes_test.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "Detects JAAS (LoginContext/Subject) and Spring Security (SecurityContextHolder/@PreAuthorize/@Secured) integration markers; Struts has no built-in auth, so detection is heuristic based on common integration patterns",
-            "verified_at": "2026-05-29"
+            "status": "partial",
+            "cites": ["internal/custom/java/framework_auth.go","internal/custom/java/framework_auth_test.go","internal/custom/java/struts_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3862",
+            "notes": "#3862: framework_auth.go stamps the flat auth contract on Struts route entities. struts.xml \u003cinterceptor-ref name=\"roles\"\u003e with \u003cparam name=\"allowedRoles\"\u003e → auth_required=true + auth_roles (high confidence); @InterceptorRef naming a secure/auth/roles stack on @Action → auth_required (low confidence). Value-asserting tests: roles interceptor allowedRoles=ADMIN,MANAGER on an XML action → auth_required=true auth_roles=ADMIN,MANAGER; struts.xml with no roles interceptor → auth_required absent. Honest-partial: Struts has no built-in auth; interceptor-stack contents are file-local.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -29384,10 +29393,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/vertx_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "verified_at": "2026-05-29"
+            "status": "partial",
+            "cites": ["internal/custom/java/framework_auth.go","internal/custom/java/framework_auth_test.go","internal/custom/java/vertx_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3862",
+            "notes": "#3862: framework_auth.go stamps the flat auth contract on Vert.x route entities. JWTAuthHandler/OAuth2AuthHandler/BasicAuthHandler mounted on the router → auth_required=true + auth_mechanism=jwt/oauth2/basic (medium confidence, file-level subtree attribution); @RolesAllowed → auth_roles. Value-asserting tests: JWTAuthHandler on a route → auth_required=true auth_mechanism=jwt; BasicAuthHandler + @RolesAllowed({ADMIN}) → auth_mechanism=basic auth_roles=ADMIN; router with no auth handler → auth_required absent.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {
@@ -42655,10 +42665,11 @@
         },
         "Auth": {
           "auth_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "JavalinJWT, accessManager pattern, JavalinJWT.getTokenPayload — Kotlin Javalin uses identical DSL to Java, same extractor applies"
+            "status": "partial",
+            "cites": ["internal/custom/java/framework_auth.go","internal/custom/java/framework_auth_test.go","internal/custom/java/javalin_routes.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3862",
+            "notes": "#3862: Kotlin Javalin uses the identical app.get(path, handler, roles(Role.X)) DSL; the same framework_auth.go stamping in javalin_routes.go applies. roles(...) inline guard → auth_required=true + auth_roles; accessManager → auth_required (low confidence). See java javalin tests.",
+            "verified_at": "2026-06-02"
           }
         },
         "Validation": {

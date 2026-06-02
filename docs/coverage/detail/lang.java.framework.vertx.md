@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go`<br>`internal/custom/java/vertx_routes.go` | #3862: framework_auth.go stamps the flat auth contract on Vert.x route entities. JWTAuthHandler/OAuth2AuthHandler/BasicAuthHandler mounted on the router → auth_required=true + auth_mechanism=jwt/oauth2/basic (medium confidence, file-level subtree attribution); @RolesAllowed → auth_roles. Value-asserting tests: JWTAuthHandler on a route → auth_required=true auth_mechanism=jwt; BasicAuthHandler + @RolesAllowed({ADMIN}) → auth_mechanism=basic auth_roles=ADMIN; router with no auth handler → auth_required absent. |
 
 ### Validation
 

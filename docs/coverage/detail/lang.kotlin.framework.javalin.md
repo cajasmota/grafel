@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | JavalinJWT, accessManager pattern, JavalinJWT.getTokenPayload — Kotlin Javalin uses identical DSL to Java, same extractor applies |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go`<br>`internal/custom/java/javalin_routes.go` | #3862: Kotlin Javalin uses the identical app.get(path, handler, roles(Role.X)) DSL; the same framework_auth.go stamping in javalin_routes.go applies. roles(...) inline guard → auth_required=true + auth_roles; accessManager → auth_required (low confidence). See java javalin tests. |
 
 ### Validation
 

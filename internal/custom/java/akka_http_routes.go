@@ -144,6 +144,45 @@ var (
 			`void\s+(\w+)\s*\(`)
 )
 
+// akkaHTTPHasRoleRE captures a literal role from a hasRole("ADMIN") check inside
+// an authorize(...) directive. A purely predicate-based authorize (no literal
+// role) is still recognised as auth_required but contributes no roles.
+var akkaHTTPHasRoleRE = regexp.MustCompile(`hasRole\s*\(\s*"([^"]+)"`)
+
+// akkaHTTPFileAuth resolves the file-level auth posture for an Akka-HTTP route
+// source. authenticateOAuth2 / authenticateBasic establish the authentication
+// mechanism; an authorize(...) directive adds authorization (role/permission)
+// checks. Returns the zero authStamp (method == "") when no auth directive is
+// present, so an unprotected route file stamps nothing.
+func akkaHTTPFileAuth(source string) authStamp {
+	var roles []string
+	// Pull roles from hasRole("X") inside any authorize(...) directive.
+	for _, m := range akkaHTTPHasRoleRE.FindAllStringSubmatch(source, -1) {
+		roles = append(roles, m[1])
+	}
+
+	switch {
+	case akkaHTTPAuthOAuth2RE.MatchString(source):
+		return authStamp{
+			required: true, method: "directive", confidence: "medium",
+			guard: "authenticateOAuth2", mechanism: "oauth2", roles: roles,
+		}
+	case akkaHTTPAuthBasicRE.MatchString(source):
+		return authStamp{
+			required: true, method: "directive", confidence: "medium",
+			guard: "authenticateBasic", mechanism: "basic", roles: roles,
+		}
+	case akkaHTTPAuthorizationRE.MatchString(source):
+		// authorize(...) without an authenticate* directive: authorization-only
+		// (authentication wired elsewhere) — still a real auth requirement.
+		return authStamp{
+			required: true, method: "directive", confidence: "medium",
+			guard: "authorize", roles: roles,
+		}
+	}
+	return authStamp{}
+}
+
 // ExtractAkkaHTTP runs the Akka-HTTP extractor for route, middleware, DTO,
 // auth, and test-linkage patterns.
 func ExtractAkkaHTTP(ctx PatternContext) PatternResult {
@@ -161,6 +200,16 @@ func ExtractAkkaHTTP(ctx PatternContext) PatternResult {
 
 	seen := make(map[string]bool)
 	seenRels := make(map[relKey]bool)
+
+	// File-level auth posture (#3862). Akka-HTTP auth is directive-based:
+	// authenticateBasic / authenticateOAuth2 / authorize wrap a route subtree.
+	// Pinpointing the exact subtree a directive guards requires brace-matching
+	// the directive lambdas, which is beyond single-file regex; we instead
+	// resolve a file-level posture (mechanism + whether an authorize() directive
+	// adds role/permission checks) and stamp every route in the file. A route
+	// file that opens with authenticateOAuth2(...) is gating its routes. Honest-
+	// partial: confidence "medium". Files with no auth directive stamp nothing.
+	fileAuth := akkaHTTPFileAuth(ctx.Source)
 
 	// ---------------------------------------------------------------------------
 	// Route extraction + handler attribution
@@ -209,6 +258,13 @@ func ExtractAkkaHTTP(ctx PatternContext) PatternResult {
 			// pathPrefix-only or concat-wrapped route blocks).
 			verb := "ANY"
 			ref := fmt.Sprintf("akka-http:route:%s:%s:%s", verb, rawPath, ctx.FilePath)
+			props := map[string]any{
+				"http_verb":  verb,
+				"path":       rawPath,
+				"framework":  "akka-http",
+				"route_type": "directive_dsl",
+			}
+			fileAuth.stamp(props)
 			e := SecondaryEntity{
 				Name:       rawPath,
 				Kind:       "Route",
@@ -216,18 +272,20 @@ func ExtractAkkaHTTP(ctx PatternContext) PatternResult {
 				LineStart:  lineOf(ctx.Source, idx[0]),
 				Provenance: "INFERRED_FROM_AKKA_HTTP_PATH",
 				Ref:        ref,
-				Properties: map[string]any{
-					"http_verb":  verb,
-					"path":       rawPath,
-					"framework":  "akka-http",
-					"route_type": "directive_dsl",
-				},
+				Properties: props,
 			}
 			addEntity(&result, seen, e)
 		} else {
 			for _, mm := range methodMatches {
 				verb := strings.ToUpper(mm[1])
 				ref := fmt.Sprintf("akka-http:route:%s:%s:%s", verb, rawPath, ctx.FilePath)
+				props := map[string]any{
+					"http_verb":  verb,
+					"path":       rawPath,
+					"framework":  "akka-http",
+					"route_type": "directive_dsl",
+				}
+				fileAuth.stamp(props)
 				e := SecondaryEntity{
 					Name:       rawPath,
 					Kind:       "Route",
@@ -235,12 +293,7 @@ func ExtractAkkaHTTP(ctx PatternContext) PatternResult {
 					LineStart:  lineOf(ctx.Source, idx[0]),
 					Provenance: "INFERRED_FROM_AKKA_HTTP_PATH",
 					Ref:        ref,
-					Properties: map[string]any{
-						"http_verb":  verb,
-						"path":       rawPath,
-						"framework":  "akka-http",
-						"route_type": "directive_dsl",
-					},
+					Properties: props,
 				}
 				addEntity(&result, seen, e)
 
@@ -289,6 +342,13 @@ func ExtractAkkaHTTP(ctx PatternContext) PatternResult {
 		}
 		rawPrefix := ctx.Source[idx[2]:idx[3]]
 		ref := fmt.Sprintf("akka-http:route-prefix:%s:%s", rawPrefix, ctx.FilePath)
+		props := map[string]any{
+			"http_verb":  "ANY",
+			"path":       rawPrefix,
+			"framework":  "akka-http",
+			"route_type": "path_prefix",
+		}
+		fileAuth.stamp(props)
 		e := SecondaryEntity{
 			Name:       rawPrefix,
 			Kind:       "Route",
@@ -296,12 +356,7 @@ func ExtractAkkaHTTP(ctx PatternContext) PatternResult {
 			LineStart:  lineOf(ctx.Source, idx[0]),
 			Provenance: "INFERRED_FROM_AKKA_HTTP_PATH_PREFIX",
 			Ref:        ref,
-			Properties: map[string]any{
-				"http_verb":  "ANY",
-				"path":       rawPrefix,
-				"framework":  "akka-http",
-				"route_type": "path_prefix",
-			},
+			Properties: props,
 		}
 		addEntity(&result, seen, e)
 	}

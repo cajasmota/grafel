@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/struts_routes.go`<br>`internal/custom/java/struts_routes_test.go` | Detects JAAS (LoginContext/Subject) and Spring Security (SecurityContextHolder/@PreAuthorize/@Secured) integration markers; Struts has no built-in auth, so detection is heuristic based on common integration patterns |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go`<br>`internal/custom/java/struts_routes.go` | #3862: framework_auth.go stamps the flat auth contract on Struts route entities. struts.xml <interceptor-ref name="roles"> with <param name="allowedRoles"> → auth_required=true + auth_roles (high confidence); @InterceptorRef naming a secure/auth/roles stack on @Action → auth_required (low confidence). Value-asserting tests: roles interceptor allowedRoles=ADMIN,MANAGER on an XML action → auth_required=true auth_roles=ADMIN,MANAGER; struts.xml with no roles interceptor → auth_required absent. Honest-partial: Struts has no built-in auth; interceptor-stack contents are file-local. |
 
 ### Validation
 

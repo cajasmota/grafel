@@ -114,6 +114,26 @@ var (
 	strutsSecurityInterceptorRE = regexp.MustCompile(
 		`(?i)(?:security|auth(?:entication|orization)?|login)\s*interceptor`)
 
+	// Auth: the built-in Struts 2 `roles` interceptor reference in struts.xml,
+	// e.g. <interceptor-ref name="roles">. This is the canonical declarative
+	// role gate. Presence inside a <package>/<action> means those actions require
+	// the roles declared in the interceptor's allowedRoles / disallowedRoles
+	// params.
+	strutsRolesInterceptorRefRE = regexp.MustCompile(
+		`(?s)<interceptor-ref\b[^>]*\bname\s*=\s*"roles"[^>]*>(.*?)</interceptor-ref>`)
+
+	// Auth: a <param name="allowedRoles">ADMIN,USER</param> inside the roles
+	// interceptor-ref. Capture group 1 = the comma-separated role list.
+	strutsAllowedRolesParamRE = regexp.MustCompile(
+		`(?s)<param\b[^>]*\bname\s*=\s*"allowedRoles"[^>]*>\s*([^<]*?)\s*</param>`)
+
+	// Auth: @Action with a security interceptor stack referenced via
+	// interceptorRefs, e.g.
+	//   @Action(value="/admin", interceptorRefs={@InterceptorRef("secureStack")})
+	// We treat a referenced stack whose name names auth/security/roles as a gate.
+	strutsActionInterceptorRefRE = regexp.MustCompile(
+		`(?i)@InterceptorRef\s*\(\s*"([^"]*(?:secure|security|auth|roles|login)[^"]*)"`)
+
 	// ActionSupport subclass — the canonical Struts 2 action base class.
 	strutsActionSupportRE = regexp.MustCompile(
 		`\bextends\s+ActionSupport\b`)
@@ -282,6 +302,19 @@ func ExtractStruts(ctx PatternContext) PatternResult {
 		}
 	}
 
+	// File-level auth posture for annotation routes (#3862). Struts has no
+	// intrinsic auth; protection comes from a security/roles interceptor in the
+	// stack. We recognise an @InterceptorRef naming a secure/auth/roles stack as
+	// a gate (low confidence — the stack contents live in struts.xml). Honest-
+	// partial: an action file with no such ref stamps nothing.
+	annotationAuth := authStamp{}
+	if m := strutsActionInterceptorRefRE.FindStringSubmatch(ctx.Source); m != nil {
+		annotationAuth = authStamp{
+			required: true, method: "middleware", confidence: "low",
+			guard: "interceptor:" + m[1],
+		}
+	}
+
 	// -------------------------------------------------------------------------
 	// Route extraction: @Action annotation
 	// -------------------------------------------------------------------------
@@ -293,6 +326,14 @@ func ExtractStruts(ctx PatternContext) PatternResult {
 		fullPath := joinStrutsPath(namespace, rawPath)
 		ref := fmt.Sprintf("struts:route:GET:%s:%s", fullPath, ctx.FilePath)
 
+		props := map[string]any{
+			"http_verb":  "ANY",
+			"path":       fullPath,
+			"framework":  "struts",
+			"route_type": "annotation",
+		}
+		annotationAuth.stamp(props)
+
 		e := SecondaryEntity{
 			Name:       fullPath,
 			Kind:       "Route",
@@ -300,12 +341,7 @@ func ExtractStruts(ctx PatternContext) PatternResult {
 			LineStart:  lineOf(ctx.Source, idx[0]),
 			Provenance: "INFERRED_FROM_STRUTS_ACTION_ANNOTATION",
 			Ref:        ref,
-			Properties: map[string]any{
-				"http_verb":  "ANY",
-				"path":       fullPath,
-				"framework":  "struts",
-				"route_type": "annotation",
-			},
+			Properties: props,
 		}
 		addEntity(&result, seen, e)
 
@@ -340,6 +376,10 @@ func ExtractStruts(ctx PatternContext) PatternResult {
 	// Route extraction: struts.xml <action> elements (XML-only path)
 	// -------------------------------------------------------------------------
 	if isXML {
+		// Resolve the file-level roles-interceptor posture: a <interceptor-ref
+		// name="roles"> with an allowedRoles param gates the package's actions.
+		xmlAuth := strutsXMLRolesAuth(ctx.Source)
+
 		pkgs := parseStrutsXML(ctx.Source)
 		for _, pkg := range pkgs {
 			ns := pkg.Namespace
@@ -355,6 +395,18 @@ func ExtractStruts(ctx PatternContext) PatternResult {
 				}
 				ref := fmt.Sprintf("struts:route:xml:%s:%s", fullPath, ctx.FilePath)
 
+				props := map[string]any{
+					"http_verb":     "ANY",
+					"path":          fullPath,
+					"framework":     "struts",
+					"route_type":    "xml_config",
+					"action_class":  action.Class,
+					"action_method": method,
+					"package_name":  pkg.Name,
+					"namespace":     ns,
+				}
+				xmlAuth.stamp(props)
+
 				e := SecondaryEntity{
 					Name:       fullPath,
 					Kind:       "Route",
@@ -362,16 +414,7 @@ func ExtractStruts(ctx PatternContext) PatternResult {
 					LineStart:  1,
 					Provenance: "INFERRED_FROM_STRUTS_XML_ACTION",
 					Ref:        ref,
-					Properties: map[string]any{
-						"http_verb":     "ANY",
-						"path":          fullPath,
-						"framework":     "struts",
-						"route_type":    "xml_config",
-						"action_class":  action.Class,
-						"action_method": method,
-						"package_name":  pkg.Name,
-						"namespace":     ns,
-					},
+					Properties: props,
 				}
 				addEntity(&result, seen, e)
 
@@ -559,6 +602,30 @@ func ExtractStruts(ctx PatternContext) PatternResult {
 	extractStrutsRequestValidation(ctx, &result, seen)
 
 	return result
+}
+
+// strutsXMLRolesAuth resolves the auth posture declared by a Struts 2 `roles`
+// interceptor in a struts.xml document. A <interceptor-ref name="roles"> gates
+// the actions in its package; an allowedRoles param names the required roles.
+// Returns the zero authStamp (method == "") when no roles interceptor is
+// present, so a struts.xml with no role gate stamps nothing.
+func strutsXMLRolesAuth(content string) authStamp {
+	m := strutsRolesInterceptorRefRE.FindStringSubmatch(content)
+	if m == nil {
+		return authStamp{}
+	}
+	var roles []string
+	if pm := strutsAllowedRolesParamRE.FindStringSubmatch(m[1]); pm != nil {
+		for _, r := range strings.Split(pm[1], ",") {
+			if r = strings.TrimSpace(r); r != "" {
+				roles = append(roles, r)
+			}
+		}
+	}
+	return authStamp{
+		required: true, method: "middleware", confidence: "high",
+		guard: "roles-interceptor", roles: roles,
+	}
 }
 
 // joinStrutsPath joins a namespace prefix with an action path, ensuring

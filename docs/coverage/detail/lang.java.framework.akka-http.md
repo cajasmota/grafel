@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/akka_http_routes.go`<br>`internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go` | #3862: framework_auth.go stamps the flat auth contract on Akka-HTTP route entities. authenticateOAuth2/authenticateBasic directives → auth_required=true + auth_mechanism=oauth2/basic; authorize(hasRole('X')) → auth_roles (medium confidence, directive subtree is file-level). Value-asserting tests: authenticateOAuth2 directive → auth_required=true auth_mechanism=oauth2; authenticateBasic + authorize(hasRole('ADMIN')) → auth_mechanism=basic auth_roles=ADMIN; plain route with no directive → auth_required absent. |
 
 ### Validation
 

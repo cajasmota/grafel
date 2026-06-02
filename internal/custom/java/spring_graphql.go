@@ -95,6 +95,7 @@ var (
 	//   @SubscriptionMapping Flux<Event> events() {
 	reSpringGQLMapping = regexp.MustCompile(
 		`(?s)@(QueryMapping|MutationMapping|SubscriptionMapping)\b\s*(\([^)]*\))?\s*` +
+			`(?:@\w+(?:\([^)]*\))?\s*)*` +
 			`(?:(?:public|protected|private)\s+)?(?:static\s+)?(?:final\s+)?` +
 			`(?:<[^>]*>\s*)?[\w.$<>\[\], ?]+?\s+(\w+)\s*\(`,
 	)
@@ -103,18 +104,24 @@ var (
 	// group 2 = method name (used as the field fallback when field= absent).
 	reSpringSchemaMapping = regexp.MustCompile(
 		`(?s)@SchemaMapping\b\s*(\([^)]*\))?\s*` +
+			`(?:@\w+(?:\([^)]*\))?\s*)*` +
 			`(?:(?:public|protected|private)\s+)?(?:static\s+)?(?:final\s+)?` +
 			`(?:<[^>]*>\s*)?[\w.$<>\[\], ?]+?\s+(\w+)\s*\(`,
 	)
 	// Netflix DGS shorthand annotations whose operation is fixed by name.
+	// The (?:@\w+...)* segment tolerates a security annotation
+	// (@Secured / @PreAuthorize / @RolesAllowed) interleaved between the DGS
+	// mapping annotation and the resolver method (#3862).
 	reDgsShorthand = regexp.MustCompile(
 		`(?s)@(DgsQuery|DgsMutation|DgsSubscription)\b\s*(\([^)]*\))?\s*` +
+			`(?:@\w+(?:\([^)]*\))?\s*)*` +
 			`(?:(?:public|protected|private)\s+)?(?:static\s+)?(?:final\s+)?` +
 			`(?:<[^>]*>\s*)?[\w.$<>\[\], ?]+?\s+(\w+)\s*\(`,
 	)
 	// Netflix DGS general @DgsData(parentType="Query", field="x").
 	reDgsData = regexp.MustCompile(
 		`(?s)@DgsData\b\s*(\([^)]*\))?\s*` +
+			`(?:@\w+(?:\([^)]*\))?\s*)*` +
 			`(?:(?:public|protected|private)\s+)?(?:static\s+)?(?:final\s+)?` +
 			`(?:<[^>]*>\s*)?[\w.$<>\[\], ?]+?\s+(\w+)\s*\(`,
 	)
@@ -159,6 +166,186 @@ func firstArg(re *regexp.Regexp, args string) string {
 	return ""
 }
 
+// Spring Security annotation regexes used to gate GraphQL resolver methods.
+var (
+	gqlSecuredRE      = regexp.MustCompile(`@Secured\s*\(\s*([^)]*)\)`)
+	gqlPreAuthorizeRE = regexp.MustCompile(`@PreAuthorize\s*\(\s*"([^"]*)"\s*\)`)
+	gqlRolesAllowedRE = regexp.MustCompile(`@RolesAllowed\s*\(\s*([^)]*)\)`)
+	gqlPermitAllRE    = regexp.MustCompile(`@PermitAll\b`)
+	gqlQuotedRE       = regexp.MustCompile(`"([^"]+)"`)
+	gqlSpELRoleRE     = regexp.MustCompile(`(?:hasRole|hasAnyRole)\s*\(\s*([^)]+)\)`)
+	gqlSpELAuthRE     = regexp.MustCompile(`(?:hasAuthority|hasAnyAuthority)\s*\(\s*([^)]+)\)`)
+	gqlSpELQuotedRE   = regexp.MustCompile(`['"]([^'"]+)['"]`)
+)
+
+// gqlMethodAuth resolves the auth posture of a GraphQL resolver method from the
+// Spring Security annotations in the annotation block that decorates it.
+// `mapOffset` is the start offset of the resolver's mapping annotation
+// (@DgsQuery / @QueryMapping / ...); security annotations sit adjacent to it, so
+// we scan a window from a few lines before the mapping annotation up to the
+// method's opening paren. Returns the zero authStamp (method == "") when no
+// security annotation is present — an unauthenticated resolver stamps nothing.
+//
+// Mirrors the Spring MVC contract: @Secured/@PreAuthorize roles strip the
+// ROLE_ prefix; @PreAuthorize hasAuthority splits into scopes/permissions;
+// @PermitAll marks the operation explicitly public.
+func gqlMethodAuth(src string, mapOffset int, _ string) authStamp {
+	// The auth annotations for this resolver live in the contiguous annotation
+	// block that decorates the method: a run of `@Annotation(...)` tokens
+	// (possibly multi-line) ending at the method declaration. We collect that
+	// block starting from the mapping annotation (mapOffset) and walking forward
+	// over annotation tokens and modifiers until the method's return type +
+	// name + '(' — stopping BEFORE the next method so we never bleed across
+	// resolvers.
+	window := gqlMethodAnnotationBlock(src, mapOffset)
+
+	if gqlPermitAllRE.MatchString(window) {
+		return authStamp{required: false, method: "annotation", confidence: "high", guard: "PermitAll"}
+	}
+	var roles, scopes, perms []string
+	guard := ""
+	// @Secured("ROLE_ADMIN")
+	if m := gqlSecuredRE.FindStringSubmatch(window); m != nil {
+		guard = "Secured"
+		for _, q := range gqlQuotedRE.FindAllStringSubmatch(m[1], -1) {
+			classifyAuthority(q[1], &roles, &scopes, &perms)
+		}
+	}
+	// @RolesAllowed({"ADMIN"})
+	if m := gqlRolesAllowedRE.FindStringSubmatch(window); m != nil {
+		if guard == "" {
+			guard = "RolesAllowed"
+		}
+		for _, q := range gqlQuotedRE.FindAllStringSubmatch(m[1], -1) {
+			roles = append(roles, q[1])
+		}
+	}
+	// @PreAuthorize("hasRole('ADMIN') and hasAuthority('SCOPE_read')")
+	if m := gqlPreAuthorizeRE.FindStringSubmatch(window); m != nil {
+		if guard == "" {
+			guard = "PreAuthorize"
+		}
+		expr := m[1]
+		for _, rm := range gqlSpELRoleRE.FindAllStringSubmatch(expr, -1) {
+			for _, q := range gqlSpELQuotedRE.FindAllStringSubmatch(rm[1], -1) {
+				roles = append(roles, strings.TrimPrefix(q[1], "ROLE_"))
+			}
+		}
+		for _, am := range gqlSpELAuthRE.FindAllStringSubmatch(expr, -1) {
+			for _, q := range gqlSpELQuotedRE.FindAllStringSubmatch(am[1], -1) {
+				classifyAuthority(q[1], &roles, &scopes, &perms)
+			}
+		}
+	}
+	if guard == "" {
+		return authStamp{}
+	}
+	return authStamp{
+		required: true, method: "annotation", confidence: "high",
+		guard: guard, roles: roles, scopes: scopes, permissions: perms,
+	}
+}
+
+// gqlMethodAnnotationBlock returns the source span of the annotation block that
+// decorates the resolver method whose mapping annotation begins at mapOffset.
+// It walks BACK from mapOffset over any preceding annotation lines (so a
+// @PreAuthorize placed above the @DgsQuery is included) until a statement
+// boundary ('}' / ';' closing the previous member), and FORWARD from mapOffset
+// to the method's own parameter-list '(' (skipping annotation argument parens),
+// so a @Secured placed between @DgsQuery and the method is included — without
+// ever spilling into the next or previous resolver.
+func gqlMethodAnnotationBlock(src string, mapOffset int) string {
+	// Backward: stop at the nearest preceding '}' or ';' (end of the prior
+	// member). Everything after it up to mapOffset is leading annotations.
+	start := mapOffset
+	for i := mapOffset - 1; i >= 0; i-- {
+		if src[i] == '}' || src[i] == ';' || src[i] == '{' {
+			start = i + 1
+			break
+		}
+		if i == 0 {
+			start = 0
+		}
+	}
+	// Forward: from mapOffset, find the method param-list '(' at paren depth 0,
+	// skipping balanced annotation argument lists.
+	end := mapOffset
+	for end < len(src) {
+		c := src[end]
+		if c == '(' {
+			// Is this paren an annotation argument list? It is when the token
+			// chain immediately before it traces back to an '@name'. We detect a
+			// simpler sufficient condition: the identifier before '(' is preceded
+			// (ignoring whitespace/identifier chars) by '@'. If so, skip the
+			// balanced parens; otherwise this is the method param list.
+			if gqlIsAnnotationParen(src, start, end) {
+				end = gqlSkipBalancedParens(src, end)
+				continue
+			}
+			break
+		}
+		if c == '{' || c == ';' || c == '}' {
+			break
+		}
+		end++
+	}
+	if end > len(src) {
+		end = len(src)
+	}
+	if start > end {
+		start = end
+	}
+	return src[start:end]
+}
+
+// gqlIsAnnotationParen reports whether the '(' at parenPos opens an annotation
+// argument list (rather than a method parameter list). It walks back over the
+// identifier preceding the paren; if that identifier is immediately preceded by
+// '@' it is an annotation invocation.
+func gqlIsAnnotationParen(src string, lo, parenPos int) bool {
+	i := parenPos - 1
+	for i >= lo && (src[i] == ' ' || src[i] == '\t' || src[i] == '\n' || src[i] == '\r') {
+		i--
+	}
+	// Skip the identifier characters.
+	end := i
+	for i >= lo && (isWordByte(src[i])) {
+		i--
+	}
+	if end == i { // no identifier before '('
+		return false
+	}
+	// Skip whitespace between '@' and the annotation name.
+	for i >= lo && (src[i] == ' ' || src[i] == '\t') {
+		i--
+	}
+	return i >= lo && src[i] == '@'
+}
+
+// gqlSkipBalancedParens returns the offset just past the matching ')' for the
+// '(' at open. Falls back to open+1 on imbalance.
+func gqlSkipBalancedParens(src string, open int) int {
+	depth := 0
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return open + 1
+}
+
+// isWordByte reports whether b is a Java identifier byte.
+func isWordByte(b byte) bool {
+	return b == '_' || b == '$' ||
+		(b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z') || (b >= '0' && b <= '9')
+}
+
 // ExtractSpringGraphQL emits canonical GraphQL operation endpoints for Spring
 // for GraphQL and Netflix DGS resolver methods, plus a HANDLES edge from each
 // endpoint to its resolver method.
@@ -200,6 +387,24 @@ func ExtractSpringGraphQL(ctx PatternContext) PatternResult {
 		path := "/graphql/" + operation + "/" + field
 		name := "GRAPHQL " + path
 
+		endpointProps := map[string]any{
+			"framework":         framework,
+			"http_method":       "GRAPHQL",
+			"verb":              "GRAPHQL",
+			"route_path":        path,
+			"path":              path,
+			"graphql_operation": operation,
+			"graphql_root":      owner,
+			"graphql_field":     field,
+			"resolver_method":   methodName,
+			"handler_name":      handlerName,
+		}
+		// Auth (#3862, DGS/Spring-for-GraphQL): @Secured / @PreAuthorize /
+		// @RolesAllowed on the resolver method (Spring Security under DGS) gate
+		// the GraphQL operation endpoint. Resolve the method's annotation block
+		// and stamp the flat auth contract on the endpoint, matching Spring MVC.
+		gqlMethodAuth(src, offset, owner+"."+methodName).stamp(endpointProps)
+
 		endpointRef := "scope:operation:" + framework + "_endpoint:" + fp + ":" + operation + "." + field
 		addEntity(&result, seenEnt, SecondaryEntity{
 			Name:       name,
@@ -210,18 +415,7 @@ func ExtractSpringGraphQL(ctx PatternContext) PatternResult {
 			LineEnd:    lineNo,
 			Provenance: provenance,
 			Ref:        endpointRef,
-			Properties: map[string]any{
-				"framework":         framework,
-				"http_method":       "GRAPHQL",
-				"verb":              "GRAPHQL",
-				"route_path":        path,
-				"path":              path,
-				"graphql_operation": operation,
-				"graphql_root":      owner,
-				"graphql_field":     field,
-				"resolver_method":   methodName,
-				"handler_name":      handlerName,
-			},
+			Properties: endpointProps,
 		})
 
 		// Resolver-method entity + HANDLES edge (endpoint → resolver).

@@ -120,6 +120,53 @@ var (
 			`void\s+(\w+)\s*\(`)
 )
 
+// vertxRolesAllowedRE matches @RolesAllowed({"ADMIN"}) / @RolesAllowed("ADMIN")
+// when a Vert.x app layers JAX-RS-style authorization annotations on handlers.
+var vertxRolesAllowedRE = regexp.MustCompile(`@RolesAllowed\s*\(\s*([^)]*)\)`)
+
+// vertxAuthTokenRE pulls quoted role tokens from a @RolesAllowed argument list.
+var vertxAuthTokenRE = regexp.MustCompile(`"([^"]+)"`)
+
+// vertxFileAuth resolves the file-level auth posture for a Vert.x router source:
+// the auth mechanism (jwt > oauth2 > basic, in decreasing specificity) wired via
+// an AuthenticationHandler, plus any @RolesAllowed roles. Returns the zero
+// authStamp (method == "") when the file carries no recognised auth handler /
+// annotation, so an unprotected router stamps nothing.
+func vertxFileAuth(source string) authStamp {
+	var roles []string
+	for _, m := range vertxRolesAllowedRE.FindAllStringSubmatch(source, -1) {
+		for _, t := range vertxAuthTokenRE.FindAllStringSubmatch(m[1], -1) {
+			roles = append(roles, t[1])
+		}
+	}
+
+	switch {
+	case vertxJWTAuthRE.MatchString(source):
+		return authStamp{
+			required: true, method: "middleware", confidence: "medium",
+			guard: "JWTAuthHandler", mechanism: "jwt", roles: roles,
+		}
+	case vertxOAuth2RE.MatchString(source):
+		return authStamp{
+			required: true, method: "middleware", confidence: "medium",
+			guard: "OAuth2AuthHandler", mechanism: "oauth2", roles: roles,
+		}
+	case vertxBasicAuthRE.MatchString(source):
+		return authStamp{
+			required: true, method: "middleware", confidence: "medium",
+			guard: "BasicAuthHandler", mechanism: "basic", roles: roles,
+		}
+	case len(roles) > 0:
+		// @RolesAllowed present without an explicit handler create() call (the
+		// handler may be wired in another file) — still a real role requirement.
+		return authStamp{
+			required: true, method: "annotation", confidence: "medium",
+			guard: "RolesAllowed", roles: roles,
+		}
+	}
+	return authStamp{}
+}
+
 // ExtractVertx runs the Vert.x extractor for route, middleware, DTO, auth,
 // and test-linkage patterns.
 func ExtractVertx(ctx PatternContext) PatternResult {
@@ -137,6 +184,16 @@ func ExtractVertx(ctx PatternContext) PatternResult {
 
 	seen := make(map[string]bool)
 	seenRels := make(map[relKey]bool)
+
+	// File-level auth posture (#3862). A Vert.x AuthenticationHandler mounted on
+	// the router protects the routes that follow it on the same router. Detecting
+	// the precise route-subtree a handler guards is beyond single-file regex, so
+	// we resolve a file-level mechanism (jwt/basic/oauth2) and stamp every route
+	// in the file with that posture — a router file that wires JWTAuthHandler is
+	// gating its routes. Honest-partial: confidence is "medium" (mechanism is
+	// certain, per-route attribution is not), and a file with NO auth handler
+	// stamps nothing.
+	fileAuth := vertxFileAuth(ctx.Source)
 
 	// ---------------------------------------------------------------------------
 	// Route extraction + handler attribution
@@ -158,6 +215,14 @@ func ExtractVertx(ctx PatternContext) PatternResult {
 
 		ref := fmt.Sprintf("vertx:route:%s:%s:%s", verb, rawPath, ctx.FilePath)
 
+		props := map[string]any{
+			"http_verb":  verb,
+			"path":       rawPath,
+			"framework":  "vertx",
+			"route_type": "lambda_dsl",
+		}
+		fileAuth.stamp(props)
+
 		e := SecondaryEntity{
 			Name:       rawPath,
 			Kind:       "Route",
@@ -165,12 +230,7 @@ func ExtractVertx(ctx PatternContext) PatternResult {
 			LineStart:  lineOf(ctx.Source, idx[0]),
 			Provenance: "INFERRED_FROM_VERTX_ROUTE",
 			Ref:        ref,
-			Properties: map[string]any{
-				"http_verb":  verb,
-				"path":       rawPath,
-				"framework":  "vertx",
-				"route_type": "lambda_dsl",
-			},
+			Properties: props,
 		}
 		addEntity(&result, seen, e)
 

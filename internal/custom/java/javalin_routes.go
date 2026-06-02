@@ -85,6 +85,20 @@ var (
 	javalinAccessManagerRE = regexp.MustCompile(
 		`(?m)\b(?:app|config)\s*\.\s*accessManager\s*\(`)
 
+	// Per-route role guard: the trailing roles(...) argument of a route
+	// registration, e.g.
+	//   app.get("/admin", handler, roles(Role.ADMIN))
+	//   app.post("/x", AdminHandler::handle, roles(Role.ADMIN, Role.USER))
+	// Javalin's AccessManager receives this RouteRole set; a non-empty set means
+	// the route requires those roles. Capture group 1 = the role argument list.
+	javalinRouteRolesRE = regexp.MustCompile(
+		`\broles\s*\(\s*([^)]*?)\s*\)`)
+
+	// A single role token inside roles(...): Role.ADMIN, MyRoles.USER, ADMIN,
+	// or "ADMIN". Capture group 1 = the role leaf name (enum constant or string).
+	javalinRoleTokenRE = regexp.MustCompile(
+		`(?:\w+\s*\.\s*)?(\w+)|"([^"]+)"`)
+
 	// Tests: JavalinTest.create / JavalinTest.test / TestUtil.test —
 	// Javalin's test utility setup detection. Both create (v4) and test (v5) forms.
 	javalinTestRE = regexp.MustCompile(
@@ -97,6 +111,49 @@ var (
 			`(?:\s*@\w+(?:\s*\([^)]*\))?\s*)*\s*(?:public\s+|protected\s+|private\s+)?(?:\w+\s+)*` +
 			`void\s+(\w+)\s*\(`)
 )
+
+// javalinRouteRoles extracts the role names from an inline roles(...) guard in a
+// Javalin route registration. pathEnd is the offset just past the closing quote
+// of the route path; we scan the remainder of that statement (up to the next
+// route call or two newlines) for a roles(...) argument and return the role leaf
+// names. Returns nil when the route carries no roles(...) guard (honest-partial:
+// a bare app.get("/x", handler) is unprotected).
+func javalinRouteRoles(source string, pathEnd int) []string {
+	if pathEnd >= len(source) {
+		return nil
+	}
+	// Bound the scan to this route statement: stop at the next "app." route
+	// registration or after two newlines, whichever comes first, so a later
+	// route's roles(...) is never mis-attributed.
+	end := pathEnd
+	newlines := 0
+	for end < len(source) && newlines < 2 {
+		if source[end] == '\n' {
+			newlines++
+		}
+		if strings.HasPrefix(source[end:], "app.") || strings.HasPrefix(source[end:], "app ") {
+			break
+		}
+		end++
+	}
+	stmt := source[pathEnd:end]
+	m := javalinRouteRolesRE.FindStringSubmatch(stmt)
+	if m == nil {
+		return nil
+	}
+	var roles []string
+	for _, tm := range javalinRoleTokenRE.FindAllStringSubmatch(m[1], -1) {
+		tok := tm[1]
+		if tm[2] != "" { // quoted string form
+			tok = tm[2]
+		}
+		tok = strings.TrimSpace(tok)
+		if tok != "" {
+			roles = append(roles, tok)
+		}
+	}
+	return roles
+}
 
 // ExtractJavalin runs the Javalin extractor for route, middleware, DTO, auth,
 // and test-linkage patterns.
@@ -117,6 +174,14 @@ func ExtractJavalin(ctx PatternContext) PatternResult {
 	seen := make(map[string]bool)
 	seenRels := make(map[relKey]bool)
 
+	// File-level auth posture: an AccessManager wired on the app means EVERY
+	// route is gated through it. Routes that carry an explicit roles(...) set get
+	// a high-confidence role policy; routes with no inline roles inherit a
+	// low-confidence "auth required" posture (the AccessManager decides at
+	// runtime). Without an AccessManager and without inline roles we stamp
+	// nothing (honest-partial).
+	hasAccessManager := javalinAccessManagerRE.MatchString(ctx.Source)
+
 	// ---------------------------------------------------------------------------
 	// Route extraction + handler attribution
 	// ---------------------------------------------------------------------------
@@ -135,6 +200,32 @@ func ExtractJavalin(ctx PatternContext) PatternResult {
 		verb := strings.ToUpper(rawVerb)
 		ref := fmt.Sprintf("javalin:route:%s:%s:%s", verb, rawPath, ctx.FilePath)
 
+		props := map[string]any{
+			"http_verb":  verb,
+			"path":       rawPath,
+			"framework":  "javalin",
+			"route_type": "lambda_dsl",
+		}
+
+		// Auth: inline roles(...) guard on this route registration, scanned from
+		// the route's own statement (path → end of statement).
+		if roles := javalinRouteRoles(ctx.Source, idx[5]); len(roles) > 0 {
+			authStamp{
+				required:   true,
+				method:     "middleware",
+				confidence: "high",
+				guard:      "roles(" + strings.Join(roles, ",") + ")",
+				roles:      roles,
+			}.stamp(props)
+		} else if hasAccessManager {
+			authStamp{
+				required:   true,
+				method:     "middleware",
+				confidence: "low",
+				guard:      "accessManager",
+			}.stamp(props)
+		}
+
 		e := SecondaryEntity{
 			Name:       rawPath,
 			Kind:       "Route",
@@ -142,12 +233,7 @@ func ExtractJavalin(ctx PatternContext) PatternResult {
 			LineStart:  lineOf(ctx.Source, idx[0]),
 			Provenance: "INFERRED_FROM_JAVALIN_ROUTE",
 			Ref:        ref,
-			Properties: map[string]any{
-				"http_verb":  verb,
-				"path":       rawPath,
-				"framework":  "javalin",
-				"route_type": "lambda_dsl",
-			},
+			Properties: props,
 		}
 		addEntity(&result, seen, e)
 

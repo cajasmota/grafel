@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/dropwizard.go` | — |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/dropwizard.go`<br>`internal/custom/java/framework_auth_test.go` | #3862: dropwizard.go stamps auth_guard (the signal archigraph_auth_coverage reads) + auth_roles on Dropwizard-Auth entities, plus @Auth principal-injection detection. @RolesAllowed("ADMIN") → auth_required + auth_roles=ADMIN + auth_guard=RolesAllowed; @Auth User param → auth_required + auth_guard=Auth; @Authenticated → auth_guard=Authenticated. JAX-RS @RolesAllowed/@PermitAll/@DenyAll on @Path resource methods also flow through engine ResolveJavaAuthPolicy. Value-asserting tests assert auth_required + auth_roles + auth_guard on the resource method. Honest-partial: the Authenticator wiring is config-level. |
 
 ### Validation
 

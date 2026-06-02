@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | — |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go`<br>`internal/custom/java/javalin_routes.go` | #3862: framework_auth.go stamps the flat Spring-compatible auth contract (auth_required/auth_method/auth_confidence/auth_guard/auth_roles) directly on Javalin route entities. Per-route roles(Role.ADMIN) inline guard → auth_required=true + auth_roles (high confidence); app/config.accessManager wired → every route auth_required (low confidence). Value-asserting tests: roles(Role.ADMIN) on /admin → auth_required=true auth_roles=ADMIN; roles(Role.ADMIN, Role.STAFF) → ADMIN,STAFF; unprotected route with no accessManager → auth_required absent. Honest-partial: bare app.get(path, handler) is unprotected. |
 
 ### Validation
 

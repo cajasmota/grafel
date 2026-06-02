@@ -1,6 +1,37 @@
 package java
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
+
+// dwRolesAllowedArgRE captures the @RolesAllowed argument list so the roles can
+// be surfaced as the auth_roles flat field (matching the Spring contract).
+var (
+	dwRolesAllowedArgRE = regexp.MustCompile(`@RolesAllowed\s*\(\s*([^)]*)\)`)
+	dwQuotedTokenRE     = regexp.MustCompile(`"([^"]+)"`)
+)
+
+// dwRolesFrom extracts the role names from the @RolesAllowed annotation at or
+// before methodOffset (the regex match anchors on the method declaration that
+// follows the annotation). Returns nil when no quoted role is present.
+func dwRolesFrom(source string, methodOffset int) []string {
+	// Scan a short window ending at the method declaration for the annotation.
+	start := methodOffset - 200
+	if start < 0 {
+		start = 0
+	}
+	window := source[start:methodOffset]
+	m := dwRolesAllowedArgRE.FindStringSubmatch(window)
+	if m == nil {
+		return nil
+	}
+	var roles []string
+	for _, q := range dwQuotedTokenRE.FindAllStringSubmatch(m[1], -1) {
+		roles = append(roles, q[1])
+	}
+	return roles
+}
 
 // Dropwizard custom extractor — DI, auth, middleware, transactions, DTO, tests.
 //
@@ -63,6 +94,16 @@ var (
 	dwPermitAllRE = regexp.MustCompile(
 		`(?s)@PermitAll\b[^{;]*?(?:(?:public|protected|private)\s+)?` +
 			`(?:[\w.]+(?:\s*<[^>]*>)?(?:\[\])?\s+)(\w+)\s*\(`)
+
+	// Auth: @Auth principal injection on a resource method parameter, e.g.
+	//   public Response me(@Auth User user) { ... }
+	// Dropwizard-Auth resolves the @Auth-annotated parameter from the configured
+	// Authenticator, so the presence of @Auth on a method param means that method
+	// requires authentication. Capture group 1 = the enclosing resource method.
+	dwAuthPrincipalRE = regexp.MustCompile(
+		`(?s)(?:public|protected|private)\s+(?:static\s+)?` +
+			`(?:<[^>]*>\s*)?(?:[\w.]+(?:\s*<[^>]*>)?(?:\[\])?\s+)(\w+)\s*\(` +
+			`[^)]*@Auth\b`)
 
 	// Middleware: ContainerRequestFilter implementation — middleware_coverage.
 	dwContainerFilterRE = regexp.MustCompile(
@@ -236,6 +277,33 @@ func ExtractDropwizard(ctx PatternContext) PatternResult {
 				"auth_annotation": "Authenticated",
 				"framework":       "dropwizard",
 				"auth_required":   true,
+				// auth_guard is the key archigraph_auth_coverage reads to count
+				// the co-located JAX-RS endpoint as covered (#3862).
+				"auth_guard": "Authenticated",
+			},
+		})
+	}
+
+	// @Auth principal injection — auth_coverage. A @Auth-annotated resource
+	// method parameter means Dropwizard-Auth authenticates the request.
+	for _, m := range dwAuthPrincipalRE.FindAllStringSubmatchIndex(source, -1) {
+		methodName := source[m[2]:m[3]]
+		ownerClass := findEnclosingClass(source, m[0])
+		fullName := methodName
+		if ownerClass != "" {
+			fullName = ownerClass + "." + methodName
+		}
+		ref := "scope:operation:dw_auth_principal:" + fp + ":" + fullName
+		addEntity(&result, seenRefs, SecondaryEntity{
+			Name: fullName, Kind: "SCOPE.Operation", Subtype: "function",
+			SourceFile: fp,
+			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_DROPWIZARD_AUTH_PRINCIPAL", Ref: ref,
+			Properties: map[string]any{
+				"auth_annotation": "Auth",
+				"framework":       "dropwizard",
+				"auth_required":   true,
+				"auth_guard":      "Auth",
 			},
 		})
 	}
@@ -249,16 +317,21 @@ func ExtractDropwizard(ctx PatternContext) PatternResult {
 			fullName = ownerClass + "." + methodName
 		}
 		ref := "scope:operation:dw_roles_allowed:" + fp + ":" + fullName
+		props := map[string]any{
+			"auth_annotation": "RolesAllowed",
+			"framework":       "dropwizard",
+			"auth_required":   true,
+			"auth_guard":      "RolesAllowed",
+		}
+		if roles := dwRolesFrom(source, m[2]); len(roles) > 0 {
+			props["auth_roles"] = strings.Join(roles, ",")
+		}
 		addEntity(&result, seenRefs, SecondaryEntity{
 			Name: fullName, Kind: "SCOPE.Operation", Subtype: "function",
 			SourceFile: fp,
 			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 			Provenance: "INFERRED_FROM_DROPWIZARD_ROLES_ALLOWED", Ref: ref,
-			Properties: map[string]any{
-				"auth_annotation": "RolesAllowed",
-				"framework":       "dropwizard",
-				"auth_required":   true,
-			},
+			Properties: props,
 		})
 	}
 

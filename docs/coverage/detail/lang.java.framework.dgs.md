@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Auth coverage | 🟢 `partial` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3862) | `internal/custom/java/framework_auth.go`<br>`internal/custom/java/framework_auth_test.go`<br>`internal/custom/java/spring_graphql.go` | #3862: spring_graphql.go stamps the flat Spring-compatible auth contract on the synthesized GRAPHQL resolver endpoints (Spring Security under DGS). @Secured/@PreAuthorize/@RolesAllowed/@PermitAll on a @DgsQuery/@DgsMutation resolver → auth_required + auth_roles/auth_scopes/auth_permissions (ROLE_/SCOPE_ prefixes split like Spring MVC). DGS mapping regexes now tolerate an interleaved security annotation. Value-asserting tests: @Secured("ROLE_ADMIN") on @DgsQuery allUsers → /graphql/Query/allUsers auth_required=true auth_roles=ADMIN; @PreAuthorize(hasRole('MANAGER') and hasAuthority('SCOPE_write')) → auth_roles=MANAGER auth_scopes=write; unannotated resolver → auth_required absent. |
 
 ### Validation
 
