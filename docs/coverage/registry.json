@@ -18898,6 +18898,57 @@
       }
     },
     {
+      "id": "lang.java.driver.mongodb",
+      "category": "orm",
+      "subcategory": "orm_mapper",
+      "language": "java",
+      "label": "MongoDB Java Driver",
+      "capabilities": {
+        "Models": {
+          "model_extraction": {
+            "status": "not_applicable",
+            "notes": "NoSQL driver — no relational schema/ORM model in user code"
+          },
+          "schema_extraction": {
+            "status": "not_applicable",
+            "notes": "NoSQL driver — no relational schema/ORM model in user code"
+          }
+        },
+        "Relationships": {
+          "association_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "foreign_key_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "lazy_loading_recognition": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "relationship_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          }
+        },
+        "Queries": {
+          "query_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "Driver topology: database.getCollection('x') literal captured via scanJavaDrivers (javaGetCollectionRe); QUERIES edge to Class:\u003cCollection\u003e; dynamic names honest-skipped.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Migrations": {
+          "migration_parsing": {
+            "status": "not_applicable"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.java.framework.akka-http",
       "category": "http_framework",
       "subcategory": "jvm_backend",
@@ -43525,6 +43576,57 @@
       }
     },
     {
+      "id": "lang.python.driver.mongodb",
+      "category": "orm",
+      "subcategory": "orm_mapper",
+      "language": "python",
+      "label": "pymongo / motor",
+      "capabilities": {
+        "Models": {
+          "model_extraction": {
+            "status": "not_applicable",
+            "notes": "NoSQL driver — no relational schema/ORM model in user code"
+          },
+          "schema_extraction": {
+            "status": "not_applicable",
+            "notes": "NoSQL driver — no relational schema/ORM model in user code"
+          }
+        },
+        "Relationships": {
+          "association_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "foreign_key_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "lazy_loading_recognition": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "relationship_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          }
+        },
+        "Queries": {
+          "query_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "Driver topology: db.get_collection('x') / db['x'] subscript captured via scanPythonDrivers (pyMongoCollGetRe/pyMongoSubscriptRe); QUERIES edge to Class:\u003cCollection\u003e; dynamic names honest-skipped.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Migrations": {
+          "migration_parsing": {
+            "status": "not_applicable"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.python.driver.mysql",
       "category": "orm",
       "subcategory": "orm_mapper",
@@ -49947,6 +50049,57 @@
             "status": "missing",
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
             "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Migrations": {
+          "migration_parsing": {
+            "status": "not_applicable"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.ruby.driver.mongodb",
+      "category": "orm",
+      "subcategory": "orm_mapper",
+      "language": "ruby",
+      "label": "mongo Ruby Driver",
+      "capabilities": {
+        "Models": {
+          "model_extraction": {
+            "status": "not_applicable",
+            "notes": "NoSQL driver — no relational schema/ORM model in user code"
+          },
+          "schema_extraction": {
+            "status": "not_applicable",
+            "notes": "NoSQL driver — no relational schema/ORM model in user code"
+          }
+        },
+        "Relationships": {
+          "association_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "foreign_key_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "lazy_loading_recognition": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          },
+          "relationship_extraction": {
+            "status": "not_applicable",
+            "notes": "raw driver — no ORM relationship/lazy-load layer"
+          }
+        },
+        "Queries": {
+          "query_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "Driver topology: client[:x] symbol / client['x'] string collection accessor captured via scanRubyDrivers (rubyMongoCollRe/rubyMongoCollStrRe); QUERIES edge to Class:\u003cCollection\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
