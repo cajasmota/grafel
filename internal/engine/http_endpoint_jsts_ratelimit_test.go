@@ -23,7 +23,7 @@ type rateLimitEndpoint struct {
 	limited, rate, scope, source string
 }
 
-func mustEndpoint(t *testing.T, eps map[string]rateLimitEndpoint, key string) rateLimitEndpoint {
+func mustRateLimitEndpoint(t *testing.T, eps map[string]rateLimitEndpoint, key string) rateLimitEndpoint {
 	t.Helper()
 	e, ok := eps[key]
 	if !ok {
@@ -48,7 +48,7 @@ app.get('/api/x', limiter, (req, res) => res.send('x'));
 app.get('/api/open', (req, res) => res.send('ok'));
 `
 	eps := rlProps(t, "typescript", "app.ts", src)
-	x := mustEndpoint(t, eps, "GET /api/x")
+	x := mustRateLimitEndpoint(t, eps, "GET /api/x")
 	if x.limited != "true" {
 		t.Fatalf("GET /api/x: rate_limited=%q, want true", x.limited)
 	}
@@ -59,7 +59,7 @@ app.get('/api/open', (req, res) => res.send('ok'));
 		t.Errorf("GET /api/x: scope=%q, want route", x.scope)
 	}
 	// Negative: an endpoint with no limiter is not stamped.
-	open := mustEndpoint(t, eps, "GET /api/open")
+	open := mustRateLimitEndpoint(t, eps, "GET /api/open")
 	if open.limited != "" {
 		t.Errorf("GET /api/open: rate_limited=%q, want empty (not fabricated)", open.limited)
 	}
@@ -75,7 +75,7 @@ const app = express();
 app.post('/login', rateLimit({ windowMs: 15 * 60 * 1000, max: 5 }), (req, res) => res.end());
 `
 	eps := rlProps(t, "typescript", "app.ts", src)
-	login := mustEndpoint(t, eps, "POST /login")
+	login := mustRateLimitEndpoint(t, eps, "POST /login")
 	if login.limited != "true" || login.rate != "5/900s" {
 		t.Errorf("POST /login: limited=%q rate=%q, want true 5/900s", login.limited, login.rate)
 	}
@@ -94,7 +94,7 @@ app.get('/b', (req, res) => res.end());
 `
 	eps := rlProps(t, "typescript", "app.ts", src)
 	for _, key := range []string{"GET /a", "GET /b"} {
-		e := mustEndpoint(t, eps, key)
+		e := mustRateLimitEndpoint(t, eps, key)
 		if e.limited != "true" {
 			t.Errorf("%s: rate_limited=%q, want true", key, e.limited)
 		}
@@ -117,7 +117,7 @@ const limiter = rateLimit({ windowMs: 60000, max: 100 });
 app.get('/free', (req, res) => res.end());
 `
 	eps := rlProps(t, "typescript", "app.ts", src)
-	free := mustEndpoint(t, eps, "GET /free")
+	free := mustRateLimitEndpoint(t, eps, "GET /free")
 	if free.limited != "" {
 		t.Errorf("GET /free: rate_limited=%q, want empty (limiter never applied)", free.limited)
 	}
@@ -133,7 +133,7 @@ const app = express();
 app.get('/imported', rateLimiter, (req, res) => res.end());
 `
 	eps := rlProps(t, "typescript", "app.ts", src)
-	e := mustEndpoint(t, eps, "GET /imported")
+	e := mustRateLimitEndpoint(t, eps, "GET /imported")
 	if e.limited != "true" {
 		t.Errorf("GET /imported: rate_limited=%q, want true", e.limited)
 	}
