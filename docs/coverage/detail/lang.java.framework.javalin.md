@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | 🟢 `partial` | — | 3085 | `internal/engine/http_endpoint_synthesis.go` | — |
-| Handler attribution | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | — |
+| Handler attribution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/javalin_routes.go` | — |
 | Route extraction | 🟢 `partial` | — | 3085 | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | — |
-| Request validation | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | — |
+| DTO extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/javalin_routes.go` | — |
+| Request validation | ✅ `full` | `2026-06-01` | — | `internal/custom/java/javalin_routes.go` | — |
 
 ### Middleware
 

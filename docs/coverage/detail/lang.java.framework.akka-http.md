@@ -16,7 +16,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Endpoint synthesis | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |
-| Handler attribution | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| Handler attribution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/akka_http_routes.go` | — |
 | Route extraction | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |
 
 ### Auth
@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
-| Request validation | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/akka_http_routes.go`<br>`testdata/fixtures/sources/java/akka_http/RouteDefinition.java` | — |
+| DTO extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/akka_http_routes.go` | — |
+| Request validation | ✅ `full` | `2026-06-01` | — | `internal/custom/java/akka_http_routes.go` | — |
 
 ### Middleware
 

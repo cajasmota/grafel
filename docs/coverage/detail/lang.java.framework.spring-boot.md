@@ -29,7 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/spring_request_response.go` | SCOPE.Schema(kind=dto) entities emitted for @RequestBody parameter types and ResponseEntity<T>/Mono<T>/Flux<T> return types; generic collections (List/Map/Set) skipped via srrSkipTypes |
+| DTO extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/spring_request_response.go` | SCOPE.Schema(kind=dto) entities emitted for @RequestBody parameter types and ResponseEntity<T>/Mono<T>/Flux<T> return types; generic collections (List/Map/Set) skipped via srrSkipTypes |
 | Request validation | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_params.go` | Bean Validation annotations (@NotNull, @NotBlank, @NotEmpty, @Valid, @Min, @Max, @Size, @Pattern, @Email) captured per handler parameter; required flag set; no field-level constraint recursion |
 
 ### Middleware

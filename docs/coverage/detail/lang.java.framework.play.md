@@ -96,7 +96,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Auth coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | — |
 | Endpoint synthesis | 🟢 `partial` | — | 3090 | `internal/engine/http_endpoint_synthesis.go` | — |
-| Handler attribution | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | — |
+| Handler attribution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/play_routes.go` | — |
 | Middleware coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/play_routes.go` | — |
 
 ## Provenance

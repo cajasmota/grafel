@@ -134,19 +134,19 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|---|
-| [java](../by-language/java.md) | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟡 2/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
-| [java](../by-language/java.md) | [Apache Struts](../detail/lang.java.framework.struts.md) | 🟡 2/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
+| [java](../by-language/java.md) | [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/7 | |
+| [java](../by-language/java.md) | [Apache Struts](../detail/lang.java.framework.struts.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/7 | |
 | [java](../by-language/java.md) | [Dropwizard](../detail/lang.java.framework.dropwizard.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/13 | |
 | [java](../by-language/java.md) | [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 2/16 | |
 | [java](../by-language/java.md) | [Helidon](../detail/lang.java.framework.helidon.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/13 | |
 | [java](../by-language/java.md) | [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/16 | |
 | [java](../by-language/java.md) | [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/16 | |
-| [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | 🟡 2/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
+| [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/7 | |
 | [java](../by-language/java.md) | [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/16 | |
 | [java](../by-language/java.md) | [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 4/16 | |
-| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 3/3 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 7/18 | |
-| [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 2/16 | |
-| [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 1/7 | |
+| [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 3/3 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 21/21 | 🟡 8/18 | |
+| [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/16 | |
+| [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | 🟢 3/3 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟢 20/20 | 🟡 3/7 | |
 | [kotlin](../by-language/kotlin.md) | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟢 1/1 | — | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟢 3/3 | |
 | [kotlin](../by-language/kotlin.md) | [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/20 | 🟡 3/16 | |
 | [kotlin](../by-language/kotlin.md) | [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🔴 0/3 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟢 21/21 | 🟡 5/6 | |
@@ -196,7 +196,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [elixir](../by-language/elixir.md) | [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | 🟢 2/2 | 🟢 3/3 | ✅ 1/1 | 🟢 21/21 | 🟢 5/5 | |
-| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | 🟡 1/2 | 🟢 2/2 | 🔴 0/1 | 🟡 19/21 | 🟡 1/4 | |
+| [java](../by-language/java.md) | [Play Framework](../detail/lang.java.framework.play.md) | 🟡 1/2 | 🟢 2/2 | 🔴 0/1 | 🟡 19/21 | 🟡 2/4 | |
 | [JS/TS](../by-language/jsts.md) | [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 8/8 | |
 | [JS/TS](../by-language/jsts.md) | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 21/21 | ✅ 11/11 | |

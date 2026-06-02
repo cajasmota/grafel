@@ -29,8 +29,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
-| Request validation | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/vertx_routes.go` | — |
+| DTO extraction | ✅ `full` | `2026-06-01` | — | `internal/custom/java/vertx_routes.go` | — |
+| Request validation | ✅ `full` | `2026-06-01` | — | `internal/custom/java/vertx_routes.go` | — |
 
 ### Middleware
 
