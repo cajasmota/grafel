@@ -14,6 +14,24 @@ Auto-generated. Back to [summary](../summary.md).
 | Dependency attribution | 🔴 `missing` | — | — | — | — |
 | Resource extraction | 🔴 `missing` | — | — | — | — |
 
+## Code-level coverage
+
+This infra record tracks datastore-level extraction (resources, dependency
+attribution). The deep, code-level coverage for this technology lives in the
+per-language driver/ORM records below — each one is a separate detail page.
+
+| Record | Language | Kind | Status |
+|--------|----------|------|--------|
+| [`lang.csharp.driver.neo4j`](./lang.csharp.driver.neo4j.md) | C# | driver | 4 missing, 7 n/a |
+| [`lang.elixir.driver.neo4j`](./lang.elixir.driver.neo4j.md) | elixir | driver | 1 full, 2 partial, 3 missing, 5 n/a |
+| [`lang.go.driver.neo4j`](./lang.go.driver.neo4j.md) | go | driver | 1 full, 2 partial, 3 missing, 5 n/a |
+| [`lang.java.orm.neo4j`](./lang.java.orm.neo4j.md) | java | orm | 1 full, 3 partial, 4 missing, 3 n/a |
+| [`lang.jsts.driver.neo4j`](./lang.jsts.driver.neo4j.md) | JS/TS | driver | 2 full, 2 partial, 3 missing, 4 n/a |
+| [`lang.php.driver.neo4j`](./lang.php.driver.neo4j.md) | php | driver | 1 full, 2 partial, 3 missing, 5 n/a |
+| [`lang.python.driver.neo4j`](./lang.python.driver.neo4j.md) | python | driver | 1 full, 2 partial, 4 missing, 4 n/a |
+| [`lang.ruby.driver.neo4j`](./lang.ruby.driver.neo4j.md) | ruby | driver | 1 full, 2 partial, 4 missing, 4 n/a |
+| [`lang.rust.driver.neo4j`](./lang.rust.driver.neo4j.md) | rust | driver | 1 full, 2 partial, 3 missing, 5 n/a |
+
 ## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON

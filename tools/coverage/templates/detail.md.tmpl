@@ -36,6 +36,24 @@ Auto-generated. Back to [summary](../summary.md).
 | {{humanizeCapKey .Key}} | {{glyph .Cap.Status}} `{{.Cap.Status}}` | {{if .Cap.VerifiedAt}}`{{.Cap.VerifiedAt}}`{{else}}—{{end}} | {{renderIssue .Cap.Issue}} | {{if .Cap.Cites}}{{range $i, $p := .Cap.Cites}}{{if $i}}<br>{{end}}`{{$p}}`{{end}}{{else}}—{{end}} | {{if .Cap.Notes}}{{.Cap.Notes}}{{else}}—{{end}} |
 {{- end}}
 {{end}}
+{{end}}{{if .RelatedRecords}}## Code-level coverage
+
+This infra record tracks datastore-level extraction (resources, dependency
+attribution). The deep, code-level coverage for this technology lives in the
+per-language driver/ORM records below — each one is a separate detail page.
+
+| Record | Language | Kind | Status |
+|--------|----------|------|--------|
+{{- range .RelatedRecords}}
+| [`{{.ID}}`](./{{.ID}}.md) | {{langDsp .Language}} | {{.Kind}} | {{.Digest}} |
+{{- end}}
+
+{{end}}{{if .InfraRecord}}## Datastore
+
+This driver/ORM record provides code-level coverage for the
+[`{{.InfraRecord.ID}}`](./{{.InfraRecord.ID}}.md) infra record ({{.InfraRecord.Label}}),
+which tracks datastore-level extraction for the same technology.
+
 {{end}}## Provenance
 
 This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON

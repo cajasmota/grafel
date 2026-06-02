@@ -264,6 +264,15 @@ type detailPageData struct {
 	Grouped           bool
 	FrameworkSpecific []frameworkSpecificView
 	TotalCells        int
+	// RelatedRecords is populated for `databases`-category infra records
+	// (db.<tech>): the per-language driver/ORM records that target the
+	// SAME datastore, each with a compact status digest. Empty (section
+	// omitted) for records with no related driver/ORM coverage.
+	RelatedRecords []relatedRecordDigest
+	// InfraRecord is populated for driver/ORM records: the
+	// `databases`-category infra record they target, rendered as a
+	// back-link. nil when the record targets no recognised datastore.
+	InfraRecord *relatedRecordDigest
 }
 
 // frameworkSpecificView is one free-form capability group rendered on a
@@ -829,6 +838,8 @@ func generate(reg *Registry, outRoot string) error {
 				Grouped:           view.Grouped,
 				FrameworkSpecific: fsViews,
 				TotalCells:        totalCells,
+				RelatedRecords:    relatedDriverORMRecords(rec, sortedRecs),
+				InfraRecord:       infraRecordFor(rec, sortedRecs),
 			}); err != nil {
 			return err
 		}
