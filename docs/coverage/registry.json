@@ -15654,9 +15654,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
-            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
-            "notes": "balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/route_middleware.go","internal/custom/golang/route_middleware_test.go"],
+            "notes": "balanced .Use(...) chain parser with paren-depth tracking emits one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...). #3628 child: route_middleware.go ALSO binds the ORDERED chain to each route op (SCOPE.Operation/endpoint) via middleware_chain (JSON [{name,expr,scope,order,auth_kind?}], outermost-first: engine .Use -\u003e group .Group args/.Use -\u003e inline route mw), plus middleware_count/middleware_names (chain order)/middleware_scope (engine|group|route, +-joined). Answers 'what middleware runs before this route, in order' at endpoint granularity, at parity with the JS/TS http_endpoint_jsts_middleware pass (#2853). Auth middleware appears IN the chain (auth_kind set) not double-modeled; it remains separately stamped by route_auth.go (#3734). Value-asserting tests assert middleware identity AND relative order index (Logger\u003cCORS\u003cRateLimit; group AuthRequired\u003cLogger; echo trailing handler dropped; chi engine Logger\u003cRecoverer). Honest-partial: dynamically/spread-built chains and chi closure-subrouter group .Use are skipped (no fabricated order).",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -15903,9 +15903,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
-            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
-            "notes": "balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/route_middleware.go","internal/custom/golang/route_middleware_test.go"],
+            "notes": "balanced .Use(...) chain parser with paren-depth tracking emits one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...). #3628 child: route_middleware.go ALSO binds the ORDERED chain to each route op (SCOPE.Operation/endpoint) via middleware_chain (JSON [{name,expr,scope,order,auth_kind?}], outermost-first: engine .Use -\u003e group .Group args/.Use -\u003e inline route mw), plus middleware_count/middleware_names (chain order)/middleware_scope (engine|group|route, +-joined). Answers 'what middleware runs before this route, in order' at endpoint granularity, at parity with the JS/TS http_endpoint_jsts_middleware pass (#2853). Auth middleware appears IN the chain (auth_kind set) not double-modeled; it remains separately stamped by route_auth.go (#3734). Value-asserting tests assert middleware identity AND relative order index (Logger\u003cCORS\u003cRateLimit; group AuthRequired\u003cLogger; echo trailing handler dropped; chi engine Logger\u003cRecoverer). Honest-partial: dynamically/spread-built chains and chi closure-subrouter group .Use are skipped (no fabricated order).",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -16947,9 +16947,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
-            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/middleware_auth_test.go"],
-            "notes": "balanced .Use(...) chain parser with paren-depth tracking; one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...); string-literal mount prefix skipped; fixture-driven tests per framework",
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/golang/helpers.go","internal/custom/golang/route_middleware.go","internal/custom/golang/route_middleware_test.go"],
+            "notes": "balanced .Use(...) chain parser with paren-depth tracking emits one SCOPE.Pattern per middleware in registration order (mw_order 0,1,2,...). #3628 child: route_middleware.go ALSO binds the ORDERED chain to each route op (SCOPE.Operation/endpoint) via middleware_chain (JSON [{name,expr,scope,order,auth_kind?}], outermost-first: engine .Use -\u003e group .Group args/.Use -\u003e inline route mw), plus middleware_count/middleware_names (chain order)/middleware_scope (engine|group|route, +-joined). Answers 'what middleware runs before this route, in order' at endpoint granularity, at parity with the JS/TS http_endpoint_jsts_middleware pass (#2853). Auth middleware appears IN the chain (auth_kind set) not double-modeled; it remains separately stamped by route_auth.go (#3734). Value-asserting tests assert middleware identity AND relative order index (Logger\u003cCORS\u003cRateLimit; group AuthRequired\u003cLogger; echo trailing handler dropped; chi engine Logger\u003cRecoverer). Honest-partial: dynamically/spread-built chains and chi closure-subrouter group .Use are skipped (no fabricated order).",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {

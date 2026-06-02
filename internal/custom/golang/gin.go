@@ -80,6 +80,10 @@ func (e *ginExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 	// #3734 — endpoint protection. Resolve route/group/engine-level auth
 	// middleware once so each route op can be stamped with auth_required.
 	authIdx := buildGoRouteAuthIndex(src)
+	// ordered middleware-chain binding (#3628): resolve the FULL chain
+	// (logging/cors/recovery/rate-limit/auth/…) per scope so each route op can
+	// be stamped with middleware_chain — "what runs before this route, in order".
+	mwIdx := buildGoRouteMiddlewareIndex(src)
 
 	// 1. gin.Default()/gin.New() engine -> SCOPE.Service
 	for _, m := range reGinEngine.FindAllStringSubmatchIndex(src, -1) {
@@ -118,6 +122,8 @@ func (e *ginExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		// #3734 — stamp endpoint protection from the route's own inline
 		// middleware, its group var, or an engine-wide auth .Use().
 		authIdx.resolve(routerVar, method, ownPath).stamp(ent.Properties)
+		// bind the ordered middleware chain (outermost-first) to this route op.
+		stampGoMiddlewareChain(ent.Properties, mwIdx.resolve(routerVar, method, ownPath))
 		add(ent)
 	}
 

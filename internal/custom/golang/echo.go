@@ -77,6 +77,9 @@ func (e *echoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 	// handler (`e.GET(path, h, mw)`); the shared index classifies each route /
 	// group / engine arg independently, so both orderings resolve.
 	authIdx := buildGoRouteAuthIndex(src)
+	// ordered middleware-chain binding (#3628): full chain per scope so each
+	// route op carries middleware_chain — "what runs before this route, in order".
+	mwIdx := buildGoRouteMiddlewareIndex(src)
 
 	// 1. echo.New() engine -> SCOPE.Service
 	for _, m := range reEchoEngine.FindAllStringSubmatchIndex(src, -1) {
@@ -114,6 +117,8 @@ func (e *echoExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 			"http_method", method, "route_path", path, "router_var", routerVar)
 		// #3734 — stamp endpoint protection (inline > group > engine-wide).
 		authIdx.resolve(routerVar, method, ownPath).stamp(ent.Properties)
+		// bind the ordered middleware chain (outermost-first) to this route op.
+		stampGoMiddlewareChain(ent.Properties, mwIdx.resolve(routerVar, method, ownPath))
 		add(ent)
 	}
 

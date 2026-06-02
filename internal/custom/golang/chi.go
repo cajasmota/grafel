@@ -76,6 +76,12 @@ func (e *chiExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		entities = append(entities, ent)
 	}
 
+	// ordered middleware-chain binding (#3628): chi's dominant idiom is the
+	// engine-wide `r.Use(mw)` stack; bind that ordered chain to each route op.
+	// Closure-based subrouter groups (`r.Route("/x", func(r){...})`) are the
+	// honest-partial boundary — their per-group .Use is not var-scoped.
+	mwIdx := buildGoRouteMiddlewareIndex(src)
+
 	// 1. chi.NewRouter() -> SCOPE.Service
 	for _, m := range reChiRouter.FindAllStringSubmatchIndex(src, -1) {
 		varName := src[m[2]:m[3]]
@@ -107,6 +113,7 @@ func (e *chiExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "chi", "provenance", "INFERRED_FROM_CHI_ROUTE",
 			"http_method", method, "route_path", path, "router_var", routerVar)
+		stampGoMiddlewareChain(ent.Properties, mwIdx.resolve(routerVar, method, path))
 		add(ent)
 	}
 
