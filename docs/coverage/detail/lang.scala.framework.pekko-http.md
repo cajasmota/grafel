@@ -52,16 +52,16 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/scala/frameworks.go` | custom_scala_frameworks (shared): test suites detected (ScalaTest/Specs2/MUnit/TestKit incl PekkoSpec/ScalaTestWithActorTestKit/ZIOSpec). PARTIAL: test->route linkage not resolved cross-file. |
+| Tests linkage | ✅ `full` | `2026-06-03` | — | `internal/extractors/cross/testmap/frameworks.go` | Deep testmap Scala TESTS linkage (testmap/frameworks.go): scalatest/specs2/MUnit/ZIO leaf cases with subject-from-spec-name + body-call resolution; assertion/matcher stopwords. Framework-agnostic (operates on test source). Value-asserting test pins a specific test->target edge for this framework. Fixture: TestScalaTrailing_Pekko_TestsLinkage. |
 
 ### Type System
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | custom_scala_type_system extractor (type_system.go): sealed trait/abstract class + Scala 3 enum -> SCOPE.Type ADT with enum_cases. Framework-agnostic. Fixture: TestTrailing_Pekko_TypeSystem. |
+| Interface extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | custom_scala_type_system extractor (type_system.go): trait -> SCOPE.Interface/trait, abstract class -> abstract_class. Framework-agnostic. Fixture: TestTrailing_Pekko_TypeSystem. |
+| Type alias extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | custom_scala_type_system extractor (type_system.go): type Alias = T and opaque type -> SCOPE.Type/type_alias. Framework-agnostic. Fixture: TestTrailing_Pekko_TypeSystem. |
+| Type extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | custom_scala_type_system extractor (type_system.go, gated only on language==scala): case class/class/object -> SCOPE.Type. Framework-agnostic. Fixture: TestTrailing_Pekko_TypeSystem. |
 
 ### DI
 
@@ -100,7 +100,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DB effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DB effect | 🟢 `partial` | `2026-06-03` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_scala.go` | Scala effect sniffer (effect_sinks_scala.go, RegisterEffectSniffer('scala')) recognises Slick/Doobie/Quill/JPA read+write primitives; framework-agnostic, fires on any .scala file. Fixture: TestScalaTrailing_Pekko_Effects. |
 
 ### Substrate
 
@@ -109,27 +109,27 @@ Auto-generated. Back to [summary](../summary.md).
 | Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Config consumption | 🔴 `missing` | — | 3641 | — | — |
 | Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | 🟢 `partial` | `2026-06-03` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_scala.go` | Language-agnostic reachability/dead-code pass over Scala entry points (entry_points_scala.go) + IMPORTS/CALLS edges; framework-agnostic, fires on any .scala file. |
+| Def use chain extraction | 🟢 `partial` | `2026-06-03` | — | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_scala.go` | Scala def-use sniffer (RegisterDefUseSniffer('scala'), def_use_scala.go) fires on any .scala file via LanguageForPath; def_use_pass.go invokes it for all scala entities. File-local val/var/for-generator def->use pairs. Fixture: TestScalaTrailing_Pekko_DefUse. |
 | Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Error flow | 🔴 `missing` | — | 3628 | — | — |
 | Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
-| Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| HTTP effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | 🟢 `partial` | `2026-06-03` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_scala.go` | Scala effect sniffer (effect_sinks_scala.go) recognises Source.fromFile/Files/os-lib read+write primitives; framework-agnostic. |
+| HTTP effect | 🟢 `partial` | `2026-06-03` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_scala.go` | Scala effect sniffer (effect_sinks_scala.go) recognises outbound HTTP primitives (sttp/akka-pekko/http4s/requests); framework-agnostic. |
 | Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | 🟢 `partial` | `2026-06-03` | — | `internal/links/module_cycle_pass.go` | Language-agnostic module-cycle pass uses IMPORTS edges emitted by the Scala extractor pipeline; framework-agnostic. |
+| Mutation effect | 🟢 `partial` | `2026-06-03` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_scala.go` | Scala effect sniffer (effect_sinks_scala.go) recognises this.<field>= mutation; framework-agnostic. |
+| Pure function tagging | 🟢 `partial` | `2026-06-03` | — | `internal/links/pure_function_pass.go` | Language-agnostic pure-function pass tags Scala functions with no effect properties; framework-agnostic (esp. apt for effectful/functional Scala idioms). |
+| Reachability analysis | 🟢 `partial` | `2026-06-03` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_scala.go` | Language-agnostic reachability pass seeded from Scala entry points (entry_points_scala.go); framework-agnostic. |
+| Request shape extraction | 🟢 `partial` | `2026-06-03` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_scala.go` | Scala payload-shape sniffer (payload_shapes_scala.go, RegisterPayloadShapeSniffer('scala')) extracts request shapes from case-class bodies / req.as[T]; framework-agnostic. Fixture: TestScalaTrailing_Pekko_PayloadShape. |
 | Request sink dataflow | ✅ `full` | — | 3991 | `internal/links/dataflow_pass.go`<br>`internal/substrate/dataflow.go`<br>`internal/substrate/dataflow_scala.go`<br>`internal/substrate/dataflow_scala_test.go` | SCOPED request-input -> sink DATA_FLOWS_TO (#3628 area #22, epic #3872, audit #3887), added via #3991: Scala is now the 8th language with a connected source->sink dataflow pass (py/jsts/go/ruby/java/php + scala). dataflow_scala.go registers a sniffer on the "scala" slug, dispatched by .scala/.sc through LanguageForPath. Sources (aligned with taint_sites_scala.go): Play request.body/queryString/getQueryString("k"), Akka/Pekko entity(as[T]){dto=>} and parameter("q"){q=>}, http4s req.as[T]/req.params. Sinks: Slick q+= / .insertOrUpdate / .update / em.persist (db_write), Play Ok(...)/Akka-Pekko complete(...) (response), sttp basicRequest.post(...).body(...) (http_call). Intra-fn val/var assignment tracking, member-field lift (dto.email->email), bounded multi-hop (<=3) + cross-file boundaries continued by the links pass. Value-asserting tests connect the specific source field to the specific sink (both ends named), incl. negatives (logged-not-sunk, constant-fed sink, reassignment, embedded-expr). Full: both source and sink idioms resolve first-class for this framework. |
-| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | 🟢 `partial` | `2026-06-03` | — | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_scala.go` | Scala payload-shape sniffer (payload_shapes_scala.go) extracts response shapes from Json.obj / case-class bodies; framework-agnostic. Fixture: TestScalaTrailing_Pekko_PayloadShape / Json.obj path. |
+| Sanitizer recognition | 🟢 `partial` | `2026-06-03` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | Scala taint sniffer (taint_sites_scala.go) recognises parameterised-SQL/HTML-escape/Form-mapping sanitizers; framework-agnostic. |
 | Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint sink detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Taint source detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | 🟢 `partial` | `2026-06-03` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | Scala taint sniffer (taint_sites_scala.go) recognises SQL-splice/command/path/XSS/ReDoS sinks; framework-agnostic. |
+| Taint source detection | 🟢 `partial` | `2026-06-03` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | Scala taint sniffer (taint_sites_scala.go, RegisterTaintSniffer('scala')) recognises request/param/sys.env/decode sources; framework-agnostic, fires on any .scala file. Fixture: TestScalaTrailing_Pekko_Taint. |
 | Template pattern catalog | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Vulnerability finding | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | 🟢 `partial` | `2026-06-03` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | Scala taint flow (taint_flow.go over taint_sites_scala.go) reports source->sink findings; framework-agnostic. |
 
 ## Provenance
 
