@@ -31529,7 +31529,8 @@
           "navigation_extraction": {
             "status": "partial",
             "cites": ["internal/custom/kotlin/compose.go"],
-            "verified_at": "2026-05-30"
+            "notes": "compose.go (#3576) emits screen-\u003eroute NAVIGATES_TO edges: navController.navigate(\"detail/42\") inside an enclosing @Composable produces HomeScreen -NAVIGATES_TO-\u003e route:detail/{id}, with concrete path-arg segments (numbers/$var/${expr}) normalized back to the declared {id} template; constant routes (\"home\") pass through unchanged. Value-asserted in compose_edges_test.go (TestComposeNavigatesToEdge asserts HomeScreen NAVIGATES_TO route:detail/{id} and DetailScreen NAVIGATES_TO route:home). Edges leave FromID empty so the resolver substitutes the enclosing composable's host ID at assembly. PARTIAL: sealed-class Screen.X.route indirection emits a NAVIGATES_TO edge marked unresolved=true (TestComposeNavigatesToRouteConstPartial) because the literal route string lives in another file and cannot be resolved in-file.",
+            "verified_at": "2026-06-02"
           },
           "screen_detection": {
             "status": "partial",
@@ -31560,7 +31561,8 @@
           "state_management": {
             "status": "partial",
             "cites": ["internal/custom/kotlin/compose.go"],
-            "verified_at": "2026-05-30"
+            "notes": "compose.go emits StateFlow/MutableStateFlow/collectAsState state entities, plus (#3576) view-\u003eviewmodel USES edges: val vm: HomeViewModel = viewModel() / hiltViewModel() / koinViewModel\u003cT\u003e() inside an enclosing @Composable produces HomeScreen -USES-\u003e HomeViewModel (the ViewModel type is already an entity via kotlin extraction; the edge wires the screen to it). Value-asserted in compose_edges_test.go (TestComposeUsesViewModelEdge asserts HomeScreen USES HomeViewModel, ProfileScreen USES ProfileViewModel, SettingsScreen USES SettingsViewModel, and the negative no-cross-screen-leak case). Partial: cross-file StateFlow ownership and dynamic state holders remain unmodeled.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {
@@ -33078,7 +33080,8 @@
           "navigation_extraction": {
             "status": "partial",
             "cites": ["internal/custom/kotlin/compose.go"],
-            "verified_at": "2026-05-30"
+            "notes": "compose.go (#3576) runs on all Kotlin including KMP shared modules and emits screen-\u003eroute NAVIGATES_TO edges from navController.navigate(\"route\") call sites attributed to the enclosing @Composable, with concrete path-arg segments normalized to {id}. Value-asserted in compose_edges_test.go (TestComposeNavigatesToEdge). PARTIAL: sealed-class Screen.X.route route-constant indirection emits an edge marked unresolved=true (cross-file constant, not resolvable in-file).",
+            "verified_at": "2026-06-02"
           },
           "screen_detection": {
             "status": "partial",
@@ -33109,7 +33112,8 @@
           "state_management": {
             "status": "partial",
             "cites": ["internal/custom/kotlin/compose.go"],
-            "verified_at": "2026-05-30"
+            "notes": "compose.go emits StateFlow/collectAsState state entities plus (#3576) view-\u003eviewmodel USES edges (HomeScreen -USES-\u003e HomeViewModel) from viewModel()/hiltViewModel()/koinViewModel\u003cT\u003e() injection inside an enclosing @Composable; runs on KMP shared Kotlin identically. Value-asserted in compose_edges_test.go (TestComposeUsesViewModelEdge). Partial: cross-file state ownership unmodeled.",
+            "verified_at": "2026-06-02"
           }
         },
         "Type System": {

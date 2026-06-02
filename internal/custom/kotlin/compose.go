@@ -3,6 +3,7 @@ package kotlin
 import (
 	"context"
 	"regexp"
+	"strconv"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -35,10 +36,26 @@ var (
 		`navigation\s*\(\s*(?:route\s*=\s*)?["']([^"']+)["']`,
 	)
 	reViewModelGeneric = regexp.MustCompile(
-		`\b(?:viewModel|hiltViewModel)\s*<([A-Z][A-Za-z0-9_]*)>\s*\(`,
+		`\b(?:viewModel|hiltViewModel|koinViewModel)\s*<([A-Z][A-Za-z0-9_]*)>\s*\(`,
 	)
 	reViewModelAssign = regexp.MustCompile(
-		`val\s+\w+\s*:\s*([A-Z][A-Za-z0-9_]*)\s*=\s*(?:viewModel|hiltViewModel)\s*\(`,
+		`val\s+\w+\s*:\s*([A-Z][A-Za-z0-9_]*)\s*=\s*(?:viewModel|hiltViewModel|koinViewModel)\s*\(`,
+	)
+
+	// Navigation transition: navController.navigate("route") /
+	// navController.navigate("detail/42") / navController.navigate(Screen.Detail.route).
+	// Group 1 = string-literal route (in-file resolvable); group 2 = bare
+	// expression route (e.g. Screen.Detail.route — cross-file indirection).
+	reNavNavigateLiteral = regexp.MustCompile(
+		`\.navigate\s*\(\s*["']([^"']+)["']`,
+	)
+	reNavNavigateExpr = regexp.MustCompile(
+		`\.navigate\s*\(\s*([A-Z][A-Za-z0-9_.]*\.route)\b`,
+	)
+	// Enclosing @Composable function header (name capture) used to attribute
+	// navigate(...) / viewModel() call sites to the screen that contains them.
+	reComposableHeader = regexp.MustCompile(
+		`@Composable\s+(?:(?:private|internal|public)\s+)?fun\s+([A-Z][A-Za-z0-9_]*)\s*\(`,
 	)
 
 	// State management: StateFlow<T>, MutableStateFlow<T>, collectAsState, collectAsStateWithLifecycle
@@ -284,8 +301,178 @@ func (e *composeExtractor) Extract(ctx context.Context, file extractor.FileInput
 		entities = append(entities, ent)
 	}
 
+	// ---------------------------------------------------------------------
+	// Edges (issue #3576). Both NAVIGATES_TO and USES are emitted as embedded
+	// relationships with an empty FromID so the resolver substitutes the host
+	// entity ID (the enclosing @Composable) at edge-assembly time. ToID is a
+	// bare name that the name-keyed resolver matches against the declared
+	// route / ViewModel entity.
+	//
+	// relsByComposable groups every edge by the name of the @Composable that
+	// owns the call site; attached to that composable's entity record below.
+	spans := composableSpans(src)
+	relsByComposable := make(map[string][]types.RelationshipRecord)
+	edgeSeen := make(map[string]bool)
+
+	// 10. Navigation transitions -> NAVIGATES_TO (screen -> route).
+	// navController.navigate("detail/42") inside HomeScreen{} emits
+	// HomeScreen -NAVIGATES_TO-> route:detail/{id}.
+	emitNav := func(rawRoute, via string, off int) {
+		from := enclosingComposable(spans, off)
+		if from == "" {
+			return // navigate() outside any @Composable — unattributable
+		}
+		route := normalizeRoute(rawRoute)
+		key := "nav|" + from + "|" + route + "|" + via
+		if edgeSeen[key] {
+			return
+		}
+		edgeSeen[key] = true
+		props := map[string]string{
+			"route":     route,
+			"via":       via,
+			"caller":    from,
+			"framework": "compose",
+			"line":      strconv.Itoa(lineOf(src, off)),
+		}
+		if via == "navigate_route_const" {
+			// Sealed-class Screen.X.route indirection: the literal route string
+			// lives in another file, so the target is partial/unresolved here.
+			props["unresolved"] = "true"
+		}
+		relsByComposable[from] = append(relsByComposable[from], types.RelationshipRecord{
+			ToID:       "route:" + route,
+			Kind:       "NAVIGATES_TO",
+			Properties: props,
+		})
+	}
+	for _, m := range reNavNavigateLiteral.FindAllStringSubmatchIndex(src, -1) {
+		emitNav(src[m[2]:m[3]], "navigate_call", m[0])
+	}
+	for _, m := range reNavNavigateExpr.FindAllStringSubmatchIndex(src, -1) {
+		emitNav(src[m[2]:m[3]], "navigate_route_const", m[0])
+	}
+
+	// 11. view -> viewmodel -> USES (composable -> ViewModel type).
+	// val vm: MyViewModel = viewModel() inside HomeScreen{} emits
+	// HomeScreen -USES-> MyViewModel.
+	emitUses := func(vmType, via string, off int) {
+		from := enclosingComposable(spans, off)
+		if from == "" {
+			return
+		}
+		key := "uses|" + from + "|" + vmType
+		if edgeSeen[key] {
+			return
+		}
+		edgeSeen[key] = true
+		relsByComposable[from] = append(relsByComposable[from], types.RelationshipRecord{
+			ToID: vmType,
+			Kind: "USES",
+			Properties: map[string]string{
+				"viewmodel": vmType,
+				"via":       via,
+				"caller":    from,
+				"framework": "compose",
+				"line":      strconv.Itoa(lineOf(src, off)),
+			},
+		})
+	}
+	for _, m := range reViewModelGeneric.FindAllStringSubmatchIndex(src, -1) {
+		emitUses(src[m[2]:m[3]], "viewmodel", m[0])
+	}
+	for _, m := range reViewModelAssign.FindAllStringSubmatchIndex(src, -1) {
+		emitUses(src[m[2]:m[3]], "viewmodel_assign", m[0])
+	}
+
+	// Attach collected edges to their owning composable entity record.
+	if len(relsByComposable) > 0 {
+		for i := range entities {
+			if rels, ok := relsByComposable[entities[i].Name]; ok &&
+				entities[i].Kind == "SCOPE.UIComponent" {
+				entities[i].Relationships = append(entities[i].Relationships, rels...)
+			}
+		}
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
+}
+
+// composableSpan records the byte range owned by one @Composable function so
+// call sites (navigate(...), viewModel()) can be attributed to the enclosing
+// screen. The span runs from the function header to the close of its body's
+// top-level brace block.
+type composableSpan struct {
+	name       string
+	start, end int
+}
+
+// composableSpans returns the byte ranges of every @Composable function in src,
+// in source order. Used to attribute navigate(...) / viewModel() call sites to
+// their enclosing composable.
+func composableSpans(src string) []composableSpan {
+	var spans []composableSpan
+	for _, m := range reComposableHeader.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		// Body block starts at the first '{' after the header's '('.
+		bodyStart := -1
+		for i := m[1]; i < len(src); i++ {
+			if src[i] == '{' {
+				bodyStart = i
+				break
+			}
+			if src[i] == '=' { // single-expression composable, no brace body
+				break
+			}
+		}
+		end := len(src)
+		if bodyStart != -1 {
+			depth := 0
+			for i := bodyStart; i < len(src); i++ {
+				switch src[i] {
+				case '{':
+					depth++
+				case '}':
+					depth--
+					if depth == 0 {
+						end = i + 1
+						i = len(src) // break outer
+					}
+				}
+			}
+		}
+		spans = append(spans, composableSpan{name: name, start: m[0], end: end})
+	}
+	return spans
+}
+
+// enclosingComposable returns the name of the composable whose span contains
+// off, or "" if none. Inner (later-starting) spans win so nested call sites are
+// attributed to the closest enclosing screen.
+func enclosingComposable(spans []composableSpan, off int) string {
+	best := ""
+	bestStart := -1
+	for _, s := range spans {
+		if off >= s.start && off < s.end && s.start > bestStart {
+			best = s.name
+			bestStart = s.start
+		}
+	}
+	return best
+}
+
+// reRouteParamSeg matches a single concrete path segment that is a navigation
+// argument value (a bare number, a $var, or a ${expr} interpolation) so it can
+// be normalised back to the declared {id}-style template param.
+var reRouteParamSeg = regexp.MustCompile(`/(?:\d+|\$\{[^}]*\}|\$[A-Za-z_][A-Za-z0-9_]*)`)
+
+// normalizeRoute rewrites a concrete navigate("detail/42") destination into the
+// declared route template "detail/{id}" by replacing value segments with {id}.
+// Already-templated routes (detail/{id}) and constant routes (home) pass
+// through unchanged.
+func normalizeRoute(route string) string {
+	return reRouteParamSeg.ReplaceAllString(route, "/{id}")
 }
 
 // extractBraceBlock returns the content of the balanced brace block starting at or after start.

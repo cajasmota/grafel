@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Deep link extraction | — `not_applicable` | — | — | — | KMP (Kotlin Multiplatform) is a shared code framework, not a navigation host. Deep links are a platform-specific concern handled by Compose Navigation (Android) or native iOS routing — not by the KMP shared module itself. N/A is the honest classification. |
-| Navigation extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
+| Navigation extraction | 🟢 `partial` | `2026-06-02` | — | `internal/custom/kotlin/compose.go` | compose.go (#3576) runs on all Kotlin including KMP shared modules and emits screen->route NAVIGATES_TO edges from navController.navigate("route") call sites attributed to the enclosing @Composable, with concrete path-arg segments normalized to {id}. Value-asserted in compose_edges_test.go (TestComposeNavigatesToEdge). PARTIAL: sealed-class Screen.X.route route-constant indirection emits an edge marked unresolved=true (cross-file constant, not resolvable in-file). |
 | Screen detection | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Platform
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | Recording win via new extractor: kotlinBranchCondExtractor is the same agnostic Kotlin if/when/filter pass that runs on all Kotlin source including KMP shared modules. Branch conditions in expect/actual code are captured identically. |
-| State management | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
+| State management | 🟢 `partial` | `2026-06-02` | — | `internal/custom/kotlin/compose.go` | compose.go emits StateFlow/collectAsState state entities plus (#3576) view->viewmodel USES edges (HomeScreen -USES-> HomeViewModel) from viewModel()/hiltViewModel()/koinViewModel<T>() injection inside an enclosing @Composable; runs on KMP shared Kotlin identically. Value-asserted in compose_edges_test.go (TestComposeUsesViewModelEdge). Partial: cross-file state ownership unmodeled. |
 
 ### Type System
 

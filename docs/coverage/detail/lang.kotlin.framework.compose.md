@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Deep link extraction | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: composeDeepLinkExtractor emits deep_link entities from navDeepLink { uriPattern = ... } blocks and standalone uriPattern = ... declarations in Compose Navigation composable() blocks. Partial because activity-level intent-filter deep links in AndroidManifest.xml require separate XML parsing. |
-| Navigation extraction | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
+| Navigation extraction | 🟢 `partial` | `2026-06-02` | — | `internal/custom/kotlin/compose.go` | compose.go (#3576) emits screen->route NAVIGATES_TO edges: navController.navigate("detail/42") inside an enclosing @Composable produces HomeScreen -NAVIGATES_TO-> route:detail/{id}, with concrete path-arg segments (numbers/$var/${expr}) normalized back to the declared {id} template; constant routes ("home") pass through unchanged. Value-asserted in compose_edges_test.go (TestComposeNavigatesToEdge asserts HomeScreen NAVIGATES_TO route:detail/{id} and DetailScreen NAVIGATES_TO route:home). Edges leave FromID empty so the resolver substitutes the enclosing composable's host ID at assembly. PARTIAL: sealed-class Screen.X.route indirection emits a NAVIGATES_TO edge marked unresolved=true (TestComposeNavigatesToRouteConstPartial) because the literal route string lives in another file and cannot be resolved in-file. |
 | Screen detection | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
 
 ### Platform
@@ -42,7 +42,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Branch conditions | 🟢 `partial` | — | — | `internal/custom/kotlin/jpa_compose_ext.go` | New extractor: kotlinBranchCondExtractor emits branch_condition entities from if(), when() (with is/enum branches), inline if ternary, and filter{}/takeIf{} lambdas. Covers Data Flow branch condition extraction for Compose Kotlin code. Partial because deeply nested or lambda-captured conditions may be missed. |
-| State management | 🟢 `partial` | `2026-05-30` | — | `internal/custom/kotlin/compose.go` | — |
+| State management | 🟢 `partial` | `2026-06-02` | — | `internal/custom/kotlin/compose.go` | compose.go emits StateFlow/MutableStateFlow/collectAsState state entities, plus (#3576) view->viewmodel USES edges: val vm: HomeViewModel = viewModel() / hiltViewModel() / koinViewModel<T>() inside an enclosing @Composable produces HomeScreen -USES-> HomeViewModel (the ViewModel type is already an entity via kotlin extraction; the edge wires the screen to it). Value-asserted in compose_edges_test.go (TestComposeUsesViewModelEdge asserts HomeScreen USES HomeViewModel, ProfileScreen USES ProfileViewModel, SettingsScreen USES SettingsViewModel, and the negative no-cross-screen-leak case). Partial: cross-file StateFlow ownership and dynamic state holders remain unmodeled. |
 
 ### Type System
 
