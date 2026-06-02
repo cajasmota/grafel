@@ -93,6 +93,14 @@ var (
 	// per-action Pundit authorize call inside a method body: authorize @post
 	caPunditAuthorizeRe = regexp.MustCompile(`(?m)^\s*authorize\s+[@a-z_]`)
 
+	// Pundit `authorize @post, :destroy?` — the trailing symbol is the explicit
+	// policy method. Group 1 = the policy-method name (without the `?`).
+	caPunditActionRe = regexp.MustCompile(`(?m)^\s*authorize\s+[@A-Za-z_][\w.]*\s*,\s*:([a-z_]+)\??`)
+
+	// CanCanCan `authorize! :destroy, @post` — the leading symbol is the ability.
+	// Group 1 = the ability name.
+	caCanCanActionRe = regexp.MustCompile(`(?m)^\s*authorize!\s+:([a-z_]+)`)
+
 	// only:/except: option lists, reused from the routes parser shape.
 	caOnlyRe   = regexp.MustCompile(`\bonly:\s*(?:\[([^\]]*)\]|:(\w+))`)
 	caExceptRe = regexp.MustCompile(`\bexcept:\s*(?:\[([^\]]*)\]|:(\w+))`)
@@ -128,7 +136,8 @@ func (e *railsControllerAuthExtractor) Extract(ctx context.Context, file extract
 		!(strings.Contains(src, "before_action") ||
 			strings.Contains(src, "load_and_authorize_resource") ||
 			strings.Contains(src, "authorize_resource") ||
-			strings.Contains(src, "authorize ")) {
+			strings.Contains(src, "authorize ") ||
+			strings.Contains(src, "authorize!")) {
 		return nil, nil
 	}
 
@@ -184,6 +193,10 @@ type caActionPosture struct {
 	guard      string
 	method     string
 	confidence string
+	// permission is the specific Pundit policy method / CanCanCan ability the
+	// action checks (`authorize @post, :destroy?` → "destroy"). Empty when the
+	// guard is a coarse authenticate before_action (authn, not authz).
+	permission string
 }
 
 func (p caActionPosture) stamp(props map[string]string) {
@@ -195,6 +208,11 @@ func (p caActionPosture) stamp(props map[string]string) {
 	props["auth_confidence"] = p.confidence
 	if p.guard != "" {
 		props["auth_guard"] = p.guard
+	}
+	// #authz — the specific authorization action required, so
+	// archigraph_auth_coverage answers "what permission does this route require?".
+	if p.permission != "" {
+		props["auth_permissions"] = p.permission
 	}
 }
 
@@ -292,12 +310,28 @@ func caResolveAction(level caControllerLevelAuth, body, action string) caActionP
 		}
 	}
 
-	// Per-action Pundit authorize inside the action body (medium — the guard is
-	// body-local, not a declarative before_action).
-	if caActionBodyHasAuthorize(body, action) {
-		return caActionPosture{
-			required: true, guard: "authorize",
-			method: "pundit", confidence: "medium",
+	// Per-action Pundit / CanCanCan authorize inside the action body (medium —
+	// the guard is body-local, not a declarative before_action). When the call
+	// names an explicit action symbol (`authorize @post, :destroy?` /
+	// `authorize! :destroy, @post`) capture it as the required permission.
+	if actionBody, ok := caActionBody(body, action); ok {
+		if caPunditAuthorizeRe.MatchString(actionBody) {
+			perm := ""
+			if m := caPunditActionRe.FindStringSubmatch(actionBody); m != nil {
+				perm = m[1]
+			}
+			return caActionPosture{
+				required: true, guard: "authorize",
+				method: "pundit", confidence: "medium",
+				permission: perm,
+			}
+		}
+		if m := caCanCanActionRe.FindStringSubmatch(actionBody); m != nil {
+			return caActionPosture{
+				required: true, guard: "authorize!",
+				method: "cancancan", confidence: "medium",
+				permission: m[1],
+			}
 		}
 	}
 
@@ -335,20 +369,20 @@ func caPrivateOffset(body string) int {
 	return -1
 }
 
-// caActionBodyHasAuthorize reports whether the named action's method body
-// contains a Pundit `authorize` call. Scans from the action's `def` to its
-// matching `end` (heuristic: the next top-level `def` or the body end).
-func caActionBodyHasAuthorize(body, action string) bool {
+// caActionBody returns the source span of the named action's method body (from
+// the action's `def` to the next top-level `def` or the body end). The bool is
+// false when the action is not found.
+func caActionBody(body, action string) (string, bool) {
 	defRe := regexp.MustCompile(`(?m)^\s*def\s+` + regexp.QuoteMeta(action) + `\b`)
 	loc := defRe.FindStringIndex(body)
 	if loc == nil {
-		return false
+		return "", false
 	}
 	rest := body[loc[1]:]
 	if nxt := caActionDefRe.FindStringIndex(rest); nxt != nil {
 		rest = rest[:nxt[0]]
 	}
-	return caPunditAuthorizeRe.MatchString(rest)
+	return rest, true
 }
 
 // caClassBody returns the source of a controller class body starting at offset

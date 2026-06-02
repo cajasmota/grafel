@@ -168,6 +168,35 @@ def admin_panel():
 	}
 }
 
+// Django `@permission_required('orders.delete_order')` on a function view must
+// stamp the specific required permission on auth_permissions (cross-language
+// flat contract), answering "what permission does this route require?".
+func TestDjangoAuth_PermissionRequiredView(t *testing.T) {
+	src := `
+from django.contrib.auth.decorators import permission_required
+
+@permission_required('orders.delete_order')
+def delete_order(request, pk):
+    return None
+`
+	ents := extract(t, "python_django", src)
+	var found bool
+	for _, e := range ents {
+		if e.Props["decorator"] == "permission_required" {
+			found = true
+			if e.Props["auth_permissions"] != "orders.delete_order" {
+				t.Fatalf("auth_permissions = %q, want orders.delete_order", e.Props["auth_permissions"])
+			}
+			if e.Props["auth_required"] != "true" {
+				t.Fatalf("auth_required = %q, want true", e.Props["auth_required"])
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("no permission_required view emitted (got %d entities)", len(ents))
+	}
+}
+
 // Negative: an unguarded Flask route is unprotected.
 func TestFlaskAuth_NoDecoratorUnprotected(t *testing.T) {
 	src := `

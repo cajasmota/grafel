@@ -1018,11 +1018,21 @@ records:
       Auth:
         auth_coverage:
           status: partial
+          # resolveFlaskDecoratorAuth (auth_endpoint.go) stamps auth_required/
+          # auth_guard plus the SPECIFIC authz: @roles_required('admin') →
+          # auth_roles, @permission_required('app.delete_order') →
+          # auth_permissions. DRF permission/scope classes are split likewise.
           symbols:
             - file: internal/custom/python/flask.go
               functions: [Extract]
-          issues_implemented: ["2977"]
-          verified_at: "2026-05-29"
+            - file: internal/custom/python/auth_endpoint.go
+              functions:
+                - resolveFlaskDecoratorAuth
+                - resolveDRFDecoratorAuth
+                - drfPermissionArgs
+                - drfScopeArgs
+          issues_implemented: ["2977", "3628"]
+          verified_at: "2026-06-02"
       Middleware:
         middleware_coverage:
           status: partial
@@ -1679,6 +1689,27 @@ records:
             - file: internal/engine/rules/javascript_typescript/frameworks/express.yaml
           issues_implemented: []
           verified_at: "2026-05-28"
+      Auth:
+        auth_coverage:
+          # http_endpoint_jsts_auth.go resolves the per-endpoint auth posture
+          # from the route middleware chain (requireAuth/passport) AND the
+          # SPECIFIC required authz from parameterised middleware:
+          # requireScope('write:users') → auth_scopes,
+          # checkPermission('users:delete') → auth_permissions, casl can(...).
+          status: partial
+          symbols:
+            - file: internal/engine/http_endpoint_jsts_auth.go
+              functions:
+                - indexRouteLevelAuth
+                - jsMiddlewareGrants
+                - permsFromSignals
+                - scopesFromSignals
+            - file: internal/engine/http_endpoint_jsts_auth_test.go
+              functions:
+                - TestAuthz_ExpressRequireScope
+                - TestAuthz_ExpressCheckPermission
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Validation:
         request_validation:
           status: full
@@ -1731,11 +1762,25 @@ records:
           verified_at: "2026-05-28"
       Auth:
         auth_coverage:
+          # http_endpoint_jsts_auth.go resolves the per-endpoint auth posture
+          # (@UseGuards method/class) AND the SPECIFIC required authz:
+          # @Roles('admin') → auth_roles, @RequirePermissions('user:delete') →
+          # auth_permissions, @Scopes('write:users') → auth_scopes.
           status: partial
           symbols:
             - file: internal/engine/rules/javascript_typescript/frameworks/nestjs.yaml
-          issues_implemented: []
-          verified_at: "2026-05-28"
+            - file: internal/engine/http_endpoint_jsts_auth.go
+              functions:
+                - resolveEndpointAuth
+                - indexNestMethodGuards
+                - permsFromSignals
+                - scopesFromSignals
+            - file: internal/engine/http_endpoint_jsts_auth_test.go
+              functions:
+                - TestAuthz_NestRequirePermissions
+                - TestAuthz_NestScopes
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Middleware:
         middleware_coverage:
           status: partial
@@ -2675,18 +2720,24 @@ records:
           verified_at: "2026-06-02"
       Auth:
         auth_coverage:
+          # Endpoint auth posture (auth_required/method/confidence) PLUS the
+          # specific required authorization: roles (@RolesAllowed/@Secured/
+          # hasRole), fine-grained permissions (hasAuthority('user:delete'),
+          # hasPermission(...,'delete')) and OAuth scopes (hasAuthority('SCOPE_x'))
+          # split across auth_roles/auth_permissions/auth_scopes by
+          # parsePreAuthorizeExpr.
           status: full
           symbols:
             - file: internal/engine/java_auth_policy.go
               functions:
                 - ResolveJavaAuthPolicy
                 - matchAnnotationPolicy
-                - parsePreAuthorizeRoles
+                - parsePreAuthorizeExpr
                 - EncodeAuthPolicy
                 - DecodeAuthPolicy
                 - BuildJavaAuthContext
-          issues_implemented: ["2680"]
-          verified_at: "2026-05-28"
+          issues_implemented: ["2680", "3628"]
+          verified_at: "2026-06-02"
       Middleware:
         middleware_coverage:
           # java_annotation_params.go surfaces @PathVariable/@RequestHeader etc. param
@@ -7203,6 +7254,27 @@ records:
               functions: [runTaintFlowPass, computeFindings]
           issues_implemented: ["2773"]
           verified_at: "2026-05-28"
+      Auth:
+        auth_coverage:
+          # controller_auth.go resolves per-action auth posture from Devise
+          # before_action :authenticate_user! (+ only:/except:/skip) and per-
+          # action Pundit/CanCanCan guards, AND captures the SPECIFIC required
+          # authorization action: `authorize @post, :destroy?` /
+          # `authorize! :destroy, @post` → auth_permissions=destroy.
+          status: partial
+          symbols:
+            - file: internal/custom/ruby/controller_auth.go
+              functions:
+                - Extract
+                - caResolveAction
+                - resolveControllerLevelAuth
+          tests:
+            - file: internal/custom/ruby/controller_auth_test.go
+              functions:
+                - TestControllerAuthPunditExplicitAction
+                - TestControllerAuthCanCanCanBang
+          issues_implemented: ["3734", "3628"]
+          verified_at: "2026-06-02"
       Middleware:
         middleware_coverage:
           status: partial

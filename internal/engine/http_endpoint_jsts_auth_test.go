@@ -289,3 +289,107 @@ func TestAuth_SailsCrossFileAttribution(t *testing.T) {
 	// Action-level override: AuthController.logout is gated.
 	requireProtected(t, eps, "POST /logout", "config")
 }
+
+// ---------------------------------------------------------------------------
+// Fine-grained authz capture: required permission / scope per endpoint (#authz)
+// ---------------------------------------------------------------------------
+
+// NestJS method-level @RequirePermissions('user:delete') alongside the guard
+// must surface the SPECIFIC permission on auth_permissions for that endpoint.
+func TestAuthz_NestRequirePermissions(t *testing.T) {
+	src := `
+import { Controller, Delete, UseGuards } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+  @Delete(':id')
+  @UseGuards(PermissionsGuard)
+  @RequirePermissions('user:delete')
+  remove() {}
+}
+`
+	eps := authProps(t, "typescript", "users.controller.ts", src)
+	e, ok := eps["DELETE /users/{id}"]
+	if !ok {
+		t.Fatalf("DELETE /users/{id} not synthesised (got: %v)", keysOf(eps))
+	}
+	if e.Properties["auth_permissions"] != "user:delete" {
+		t.Errorf("auth_permissions=%q, want user:delete (props: %v)", e.Properties["auth_permissions"], e.Properties)
+	}
+}
+
+// NestJS @Scopes('write:users') must surface the scope on auth_scopes.
+func TestAuthz_NestScopes(t *testing.T) {
+	src := `
+import { Controller, Post, UseGuards } from '@nestjs/common';
+
+@Controller('users')
+export class UsersController {
+  @Post()
+  @UseGuards(ScopesGuard)
+  @Scopes('write:users')
+  create() {}
+}
+`
+	eps := authProps(t, "typescript", "users.controller.ts", src)
+	e := eps["POST /users"]
+	if e.Properties["auth_scopes"] != "write:users" {
+		t.Errorf("auth_scopes=%q, want write:users (props: %v)", e.Properties["auth_scopes"], e.Properties)
+	}
+}
+
+// Express route-level requireScope('write:users') middleware must surface the
+// scope on auth_scopes for that route.
+func TestAuthz_ExpressRequireScope(t *testing.T) {
+	src := `
+const express = require('express');
+const app = express();
+app.put('/users/:id', requireAuth, requireScope('write:users'), (req, res) => res.send('ok'));
+`
+	eps := authProps(t, "javascript", "app.js", src)
+	e, ok := eps["PUT /users/{id}"]
+	if !ok {
+		t.Fatalf("PUT /users/{id} not synthesised (got: %v)", keysOf(eps))
+	}
+	if e.Properties["auth_scopes"] != "write:users" {
+		t.Errorf("auth_scopes=%q, want write:users (props: %v)", e.Properties["auth_scopes"], e.Properties)
+	}
+}
+
+// Express checkPermission('users:delete') middleware → auth_permissions.
+func TestAuthz_ExpressCheckPermission(t *testing.T) {
+	src := `
+const express = require('express');
+const app = express();
+app.delete('/users/:id', requireAuth, checkPermission('users:delete'), (req, res) => res.send('ok'));
+`
+	eps := authProps(t, "javascript", "app.js", src)
+	e, ok := eps["DELETE /users/{id}"]
+	if !ok {
+		t.Fatalf("DELETE /users/{id} not synthesised (got: %v)", keysOf(eps))
+	}
+	if e.Properties["auth_permissions"] != "users:delete" {
+		t.Errorf("auth_permissions=%q, want users:delete (props: %v)", e.Properties["auth_permissions"], e.Properties)
+	}
+}
+
+// Negative: a dynamic @Roles(roleVar) / requireScope(scopeVar) with no string
+// literal must not fabricate a permission/scope/role.
+func TestAuthz_DynamicNoFabrication(t *testing.T) {
+	src := `
+const express = require('express');
+const app = express();
+app.get('/x', requireAuth, requireScope(scopeVar), (req, res) => res.send('ok'));
+`
+	eps := authProps(t, "javascript", "app.js", src)
+	e, ok := eps["GET /x"]
+	if !ok {
+		t.Fatalf("GET /x not synthesised (got: %v)", keysOf(eps))
+	}
+	if e.Properties["auth_required"] != "true" {
+		t.Errorf("GET /x: expected auth_required=true (requireAuth present)")
+	}
+	if v := e.Properties["auth_scopes"]; v != "" {
+		t.Errorf("GET /x: expected no auth_scopes for dynamic scope, got %q", v)
+	}
+}

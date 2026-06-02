@@ -211,6 +211,71 @@ end
 	}
 }
 
+// TestControllerAuthPunditExplicitAction — `authorize @post, :destroy?` must
+// capture the specific policy action on auth_permissions (#authz).
+func TestControllerAuthPunditExplicitAction(t *testing.T) {
+	src := `class PostsController < ApplicationController
+  def destroy
+    @post = Post.find(params[:id])
+    authorize @post, :destroy?
+    @post.destroy
+  end
+end
+`
+	eps := runControllerAuth(t, src)
+	e, ok := eps["posts#destroy"]
+	if !ok {
+		t.Fatalf("posts#destroy should be protected (got %v)", keysOf(eps))
+	}
+	if e.Properties["auth_permissions"] != "destroy" {
+		t.Errorf("posts#destroy: auth_permissions=%q, want destroy (props: %v)", e.Properties["auth_permissions"], e.Properties)
+	}
+	if e.Properties["auth_method"] != "pundit" {
+		t.Errorf("posts#destroy: auth_method=%q, want pundit", e.Properties["auth_method"])
+	}
+}
+
+// TestControllerAuthCanCanCanBang — `authorize! :destroy, @post` captures the
+// CanCanCan ability on auth_permissions.
+func TestControllerAuthCanCanCanBang(t *testing.T) {
+	src := `class ArticlesController < ApplicationController
+  def destroy
+    @article = Article.find(params[:id])
+    authorize! :destroy, @article
+    @article.destroy
+  end
+end
+`
+	eps := runControllerAuth(t, src)
+	e, ok := eps["articles#destroy"]
+	if !ok {
+		t.Fatalf("articles#destroy should be protected (got %v)", keysOf(eps))
+	}
+	if e.Properties["auth_permissions"] != "destroy" {
+		t.Errorf("articles#destroy: auth_permissions=%q, want destroy (props: %v)", e.Properties["auth_permissions"], e.Properties)
+	}
+	if e.Properties["auth_method"] != "cancancan" {
+		t.Errorf("articles#destroy: auth_method=%q, want cancancan", e.Properties["auth_method"])
+	}
+}
+
+// Negative: a coarse `authorize @report` with no explicit action symbol must
+// NOT fabricate a permission (it is protected but the action is implicit).
+func TestControllerAuthPunditNoExplicitActionNoPermission(t *testing.T) {
+	src := `class ReportsController < ApplicationController
+  def show
+    @report = Report.find(params[:id])
+    authorize @report
+  end
+end
+`
+	eps := runControllerAuth(t, src)
+	e := eps["reports#show"]
+	if v := e.Properties["auth_permissions"]; v != "" {
+		t.Errorf("reports#show: expected no auth_permissions for implicit authorize, got %q", v)
+	}
+}
+
 // TestControllerAuthNamespaced — Admin::UsersController → admin/users handler.
 func TestControllerAuthNamespaced(t *testing.T) {
 	src := `class Admin::UsersController < ApplicationController

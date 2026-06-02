@@ -48,14 +48,15 @@ import (
 
 // pyEndpointAuth is the resolved auth posture for one route endpoint.
 type pyEndpointAuth struct {
-	Required   bool
-	Method     string // "dependency" | "decorator" | "permission_classes"
-	Guard      string // primary guard symbol (evidence)
-	Scopes     []string
-	Roles      []string
-	Confidence string // "high" | "medium" | "low"
-	found      bool   // an explicit auth signal was recognised
-	publicSet  bool   // an explicit public marker was recognised (AllowAny)
+	Required    bool
+	Method      string // "dependency" | "decorator" | "permission_classes"
+	Guard       string // primary guard symbol (evidence)
+	Scopes      []string
+	Roles       []string
+	Permissions []string // fine-grained permission strings (DRF/Flask args)
+	Confidence  string   // "high" | "medium" | "low"
+	found       bool     // an explicit auth signal was recognised
+	publicSet   bool     // an explicit public marker was recognised (AllowAny)
 }
 
 // stamp writes the resolved posture onto an endpoint Properties map, mirroring
@@ -85,6 +86,11 @@ func (a pyEndpointAuth) stamp(props map[string]string) {
 			r := append([]string(nil), a.Roles...)
 			sort.Strings(r)
 			props["auth_roles"] = strings.Join(r, ",")
+		}
+		if len(a.Permissions) > 0 {
+			p := append([]string(nil), a.Permissions...)
+			sort.Strings(p)
+			props["auth_permissions"] = strings.Join(p, ",")
 		}
 		return
 	}
@@ -220,8 +226,19 @@ func resolveFlaskDecoratorAuth(decoratorBlock string) pyEndpointAuth {
 	a.Confidence = "high"
 	a.Guard = m[1]
 	if len(m) > 2 && m[2] != "" {
+		// `@roles_required('admin')` / `@roles_accepted(...)` name roles;
+		// `@permission_required('app.delete_order')` names a fine-grained
+		// permission. Route each decorator's quoted args to the right bucket so
+		// the captured value answers "what permission does this route require?".
+		toPermissions := m[1] == "permission_required"
 		for _, q := range faQuotedRe.FindAllStringSubmatch(m[2], -1) {
-			if tok := strings.TrimSpace(q[1]); tok != "" {
+			tok := strings.TrimSpace(q[1])
+			if tok == "" {
+				continue
+			}
+			if toPermissions {
+				a.Permissions = append(a.Permissions, tok)
+			} else {
 				a.Roles = append(a.Roles, tok)
 			}
 		}
@@ -286,7 +303,78 @@ func resolveDRFDecoratorAuth(decoratorBlock string) pyEndpointAuth {
 	// Role-bearing permission classes (IsAdminUser → ADMIN) are surfaced as a
 	// guard only; DRF permission classes are opaque policies, not named roles,
 	// so we do not synthesise speculative role strings.
+	//
+	// BUT a parameterised permission/scope class carries the SPECIFIC required
+	// grant as a literal arg — `HasPermission('orders.delete')`,
+	// `HasScope('read')` — so capture those into permissions/scopes.
+	a.Permissions = append(a.Permissions, drfPermissionArgs(raw)...)
+	a.Scopes = append(a.Scopes, drfScopeArgs(decoratorBlock, raw)...)
 	return a
+}
+
+// drfScopeClassRe matches an OAuth2 scope permission class in a
+// permission_classes list (django-oauth-toolkit `TokenHasScope` /
+// `TokenHasReadWriteScope`, DRF-style `HasScope`). Group 1 = the class name,
+// group 2 = its optional call args (`HasScope('read')`).
+var drfScopeClassRe = regexp.MustCompile(`\b(TokenHas\w*Scope\w*|HasScope|HasAnyScope)\b\s*(?:\(([^)]*)\))?`)
+
+// drfPermClassCallRe matches a permission-class entry that carries explicit
+// literal args, e.g. `HasPermission('orders.delete')` /
+// `RequiresPermission("app.edit")`. Group 1 = class name, group 2 = raw args.
+var drfPermClassCallRe = regexp.MustCompile(`\b(\w*Permission\w*)\s*\(([^)]*)\)`)
+
+// drfRequiredScopesRe matches a `required_scopes = ['read', 'write']` attribute
+// that django-oauth-toolkit's TokenHasScope reads. Group 1 = the raw list. The
+// attribute may sit alongside the view in the same decorator block region.
+var drfRequiredScopesRe = regexp.MustCompile(`required_scopes\s*=\s*\[([^\]]*)\]`)
+
+// drfPermissionArgs extracts the literal permission strings carried as call
+// args by a parameterised permission class (`HasPermission('orders.delete')`).
+// A scope class (TokenHasScope/HasScope) is handled by drfScopeArgs instead, so
+// it is skipped here to avoid double-classifying a scope as a permission.
+func drfPermissionArgs(raw string) []string {
+	var out []string
+	for _, m := range drfPermClassCallRe.FindAllStringSubmatch(raw, -1) {
+		if drfScopeClassRe.MatchString(m[1]) {
+			continue
+		}
+		for _, q := range faQuotedRe.FindAllStringSubmatch(m[2], -1) {
+			if tok := strings.TrimSpace(q[1]); tok != "" {
+				out = append(out, tok)
+			}
+		}
+	}
+	return out
+}
+
+// drfScopeArgs extracts the OAuth2 scopes an endpoint requires. Two sources:
+// an inline scope-class call arg (`HasScope('read')`) and a `required_scopes`
+// attribute that the TokenHasScope permission class consults. The
+// `required_scopes` attribute is captured only when a scope permission class is
+// actually present (otherwise the kwarg is unrelated noise).
+func drfScopeArgs(decoratorBlock, raw string) []string {
+	var out []string
+	scopeClassPresent := false
+	for _, m := range drfScopeClassRe.FindAllStringSubmatch(raw, -1) {
+		scopeClassPresent = true
+		if len(m) > 2 && m[2] != "" {
+			for _, q := range faQuotedRe.FindAllStringSubmatch(m[2], -1) {
+				if tok := strings.TrimSpace(q[1]); tok != "" {
+					out = append(out, tok)
+				}
+			}
+		}
+	}
+	if scopeClassPresent {
+		if rm := drfRequiredScopesRe.FindStringSubmatch(decoratorBlock); rm != nil {
+			for _, q := range faQuotedRe.FindAllStringSubmatch(rm[1], -1) {
+				if tok := strings.TrimSpace(q[1]); tok != "" {
+					out = append(out, tok)
+				}
+			}
+		}
+	}
+	return out
 }
 
 // drfPermClassList parses a permission-class list literal into leaf class

@@ -44,6 +44,7 @@ package engine
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
@@ -110,6 +111,17 @@ var jsAuthGuardArgRe = regexp.MustCompile(`([A-Za-z_$][\w$]*)\s*(?:\([^)]*\))?`)
 // jsRolesDecoratorRe captures NestJS `@Roles('admin', 'user')` /
 // `@Roles(Role.Admin)` role declarations. Group 1 = the raw argument list.
 var jsRolesDecoratorRe = regexp.MustCompile(`@Roles\s*\(([^)]*)\)`)
+
+// jsPermissionsDecoratorRe captures NestJS fine-grained permission decorators —
+// `@RequirePermissions('user:delete')` (nest-access-control / casl convention),
+// `@Permissions('orders.read')`, `@CheckPermissions(...)`. Group 1 = the raw
+// argument list. The leading word boundary keeps it from matching a longer
+// identifier suffix.
+var jsPermissionsDecoratorRe = regexp.MustCompile(`@(?:RequirePermissions|Permissions|CheckPermissions|RequirePermission)\s*\(([^)]*)\)`)
+
+// jsScopesDecoratorRe captures NestJS OAuth scope decorators —
+// `@Scopes('write:users')` / `@RequireScopes('read')`. Group 1 = the raw args.
+var jsScopesDecoratorRe = regexp.MustCompile(`@(?:Scopes|RequireScopes|RequireScope)\s*\(([^)]*)\)`)
 
 // jsQuotedTokenRe pulls single- or double-quoted tokens out of an argument
 // list (the Java extractQuotedTokens helper is double-quote only; JS/TS role
@@ -263,9 +275,19 @@ func resolveJSTSFileAuth(content, file string) jsAuthContext {
 		if gm == nil || len(parseGuardArgs(gm[1])) == 0 {
 			continue
 		}
+		ctext := "class @UseGuards(" + strings.TrimSpace(gm[1]) + ")"
+		if rm := jsRolesDecoratorRe.FindStringSubmatch(block); rm != nil {
+			ctext += " @Roles(" + strings.TrimSpace(rm[1]) + ")"
+		}
+		if pm := jsPermissionsDecoratorRe.FindStringSubmatch(block); pm != nil {
+			ctext += " @RequirePermissions(" + strings.TrimSpace(pm[1]) + ")"
+		}
+		if sm := jsScopesDecoratorRe.FindStringSubmatch(block); sm != nil {
+			ctext += " @Scopes(" + strings.TrimSpace(sm[1]) + ")"
+		}
 		ctx.classGuards = append(ctx.classGuards, AuthSignal{
 			Kind: "guard",
-			Text: "class @UseGuards(" + strings.TrimSpace(gm[1]) + ")",
+			Text: ctext,
 			File: file,
 			Line: lineAtOffset(content, m[0]),
 		})
@@ -373,6 +395,8 @@ func resolveEndpointAuth(
 	if sigs, ok := routeAuth[key]; ok && len(sigs) > 0 {
 		return AuthPolicy{
 			Required: true, Method: "middleware", Confidence: "high",
+			Permissions: permsFromSignals(sigs),
+			Scopes:      scopesFromSignals(sigs),
 			SourceChain: sigs,
 		}
 	}
@@ -382,6 +406,8 @@ func resolveEndpointAuth(
 			return AuthPolicy{
 				Required: true, Method: "guard", Confidence: "high",
 				Roles:       rolesFromSignals(sigs),
+				Permissions: permsFromSignals(sigs),
+				Scopes:      scopesFromSignals(sigs),
 				SourceChain: sigs,
 			}
 		}
@@ -427,6 +453,8 @@ func resolveEndpointAuth(
 		return AuthPolicy{
 			Required: true, Method: "guard", Confidence: "medium",
 			Roles:       rolesFromSignals(ctx.classGuards),
+			Permissions: permsFromSignals(ctx.classGuards),
+			Scopes:      scopesFromSignals(ctx.classGuards),
 			SourceChain: ctx.classGuards,
 		}
 	}
@@ -464,21 +492,41 @@ func nestHandlerName(ref string) string {
 // rolesFromSignals scans @Roles decorators captured alongside guard signals.
 // (Roles are merged into the guard source chain text by the indexers.)
 func rolesFromSignals(sigs []AuthSignal) []string {
-	var roles []string
+	return jsTokensFromSignals(sigs, "@Roles(")
+}
+
+// permsFromSignals scans @RequirePermissions decorators merged into a guard
+// signal's source-chain text and returns the specific required permissions.
+func permsFromSignals(sigs []AuthSignal) []string {
+	return jsTokensFromSignals(sigs, "@RequirePermissions(")
+}
+
+// scopesFromSignals scans @Scopes decorators merged into a guard signal's
+// source-chain text and returns the specific required OAuth scopes.
+func scopesFromSignals(sigs []AuthSignal) []string {
+	return jsTokensFromSignals(sigs, "@Scopes(")
+}
+
+// jsTokensFromSignals extracts the quoted string tokens from a `marker(...)`
+// decorator embedded in any signal's Text. Returns nil when the marker is
+// absent or carries only non-literal args (e.g. `@Roles(roleEnumVar)`), so a
+// dynamic decorator never fabricates a token.
+func jsTokensFromSignals(sigs []AuthSignal, marker string) []string {
+	var out []string
 	for _, s := range sigs {
-		if i := strings.Index(s.Text, "@Roles("); i >= 0 {
-			inner := s.Text[i+len("@Roles("):]
+		if i := strings.Index(s.Text, marker); i >= 0 {
+			inner := s.Text[i+len(marker):]
 			if j := strings.IndexByte(inner, ')'); j >= 0 {
 				inner = inner[:j]
 			}
 			for _, q := range jsQuotedTokenRe.FindAllStringSubmatch(inner, -1) {
 				if tok := strings.TrimSpace(q[1]); tok != "" {
-					roles = append(roles, tok)
+					out = append(out, tok)
 				}
 			}
 		}
 	}
-	return roles
+	return out
 }
 
 // stampAuthPolicy writes the resolved policy onto an endpoint Properties map
@@ -496,6 +544,19 @@ func stampAuthPolicy(props map[string]string, policy AuthPolicy) {
 	}
 	if len(policy.Roles) > 0 {
 		props["auth_roles"] = strings.Join(policy.Roles, ",")
+	}
+	// #authz — the specific fine-grained permission / scope required by the
+	// endpoint (Nest @RequirePermissions / @Scopes), so archigraph_auth_coverage
+	// answers "what permission does this route require?".
+	if len(policy.Permissions) > 0 {
+		perms := append([]string(nil), policy.Permissions...)
+		sort.Strings(perms)
+		props["auth_permissions"] = strings.Join(perms, ",")
+	}
+	if len(policy.Scopes) > 0 {
+		scs := append([]string(nil), policy.Scopes...)
+		sort.Strings(scs)
+		props["auth_scopes"] = strings.Join(scs, ",")
 	}
 	// MCP signal-1 keys (auth_coverage.go): a single recognised middleware /
 	// guard symbol so the tool's cheap property check fires without parsing
@@ -550,12 +611,75 @@ func indexRouteLevelAuth(content, _ string) map[string][]AuthSignal {
 			continue
 		}
 		key := verb + " " + canonical
+		text := "route-level: " + sym
+		// Capture a parameterised authz middleware's literal grant —
+		// `requireScope('write:users')` → scope, `checkPermission('x')` →
+		// permission — by appending a marker the stamp step parses.
+		if perms, scopes := jsMiddlewareGrants(rest); len(perms) > 0 || len(scopes) > 0 {
+			if len(perms) > 0 {
+				text += " @RequirePermissions(" + strings.Join(jsQuoteAll(perms), ",") + ")"
+			}
+			if len(scopes) > 0 {
+				text += " @Scopes(" + strings.Join(jsQuoteAll(scopes), ",") + ")"
+			}
+		}
 		out[key] = append(out[key], AuthSignal{
 			Kind: "middleware",
-			Text: "route-level: " + sym,
+			Text: text,
 			File: "",
 			Line: lineAtOffset(content, m[0]),
 		})
+	}
+	return out
+}
+
+// jsScopeMiddlewareRe matches a scope-gating middleware call carrying a literal
+// scope, e.g. `requireScope('write:users')` / `hasScope("read")` /
+// `checkScope('admin')`. Group 1 = the raw argument list.
+var jsScopeMiddlewareRe = regexp.MustCompile(`(?i)\b(?:require|has|check|need|assert)scopes?\s*\(([^)]*)\)`)
+
+// jsPermMiddlewareRe matches a permission-gating middleware call carrying a
+// literal permission, e.g. `checkPermission('users:delete')` /
+// `requirePermission("edit")` / `can('delete','User')` (casl). Group 1 = args.
+var jsPermMiddlewareRe = regexp.MustCompile(`(?i)\b(?:check|require|has|need|assert)permissions?\s*\(([^)]*)\)`)
+
+// jsCaslCanRe matches a casl ability check `can('delete', 'User')`. Group 1 =
+// the action (the permission verb). The subject (group-2-ish) is left out — the
+// permission is the action.
+var jsCaslCanRe = regexp.MustCompile(`\bcan\s*\(\s*['"` + "`" + `]([^'"` + "`" + `]+)['"` + "`" + `]`)
+
+// jsMiddlewareGrants scans an Express route middleware chain for parameterised
+// authz middlewares and returns the literal permissions and scopes they
+// require. Dynamic args (no string literal) yield nothing — never fabricated.
+func jsMiddlewareGrants(rest string) (perms, scopes []string) {
+	for _, m := range jsScopeMiddlewareRe.FindAllStringSubmatch(rest, -1) {
+		for _, q := range jsQuotedTokenRe.FindAllStringSubmatch(m[1], -1) {
+			if tok := strings.TrimSpace(q[1]); tok != "" {
+				scopes = append(scopes, tok)
+			}
+		}
+	}
+	for _, m := range jsPermMiddlewareRe.FindAllStringSubmatch(rest, -1) {
+		for _, q := range jsQuotedTokenRe.FindAllStringSubmatch(m[1], -1) {
+			if tok := strings.TrimSpace(q[1]); tok != "" {
+				perms = append(perms, tok)
+			}
+		}
+	}
+	for _, m := range jsCaslCanRe.FindAllStringSubmatch(rest, -1) {
+		if tok := strings.TrimSpace(m[1]); tok != "" {
+			perms = append(perms, tok)
+		}
+	}
+	return perms, scopes
+}
+
+// jsQuoteAll wraps each token in single quotes so the merged decorator-marker
+// text is parsed back by jsTokensFromSignals (which expects quoted literals).
+func jsQuoteAll(toks []string) []string {
+	out := make([]string, len(toks))
+	for i, t := range toks {
+		out[i] = "'" + t + "'"
 	}
 	return out
 }
@@ -622,6 +746,12 @@ func indexNestMethodGuards(content, _ string) map[string][]AuthSignal {
 		text := "@UseGuards(" + strings.TrimSpace(gm[1]) + ")"
 		if rm := jsRolesDecoratorRe.FindStringSubmatch(block); rm != nil {
 			text += " @Roles(" + strings.TrimSpace(rm[1]) + ")"
+		}
+		if pm := jsPermissionsDecoratorRe.FindStringSubmatch(block); pm != nil {
+			text += " @RequirePermissions(" + strings.TrimSpace(pm[1]) + ")"
+		}
+		if sm := jsScopesDecoratorRe.FindStringSubmatch(block); sm != nil {
+			text += " @Scopes(" + strings.TrimSpace(sm[1]) + ")"
 		}
 		out[method] = append(out[method], AuthSignal{
 			Kind: "guard",

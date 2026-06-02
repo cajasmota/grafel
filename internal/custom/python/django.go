@@ -416,7 +416,19 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		funcName := source[idx[4]:idx[5]]
 		line := lineOf(source, idx[0])
 		out = append(out, entity(funcName, "SCOPE.Operation", "function", file.Path, line,
-			map[string]string{"framework": "django", "pattern_type": "view_decorator", "decorator": "permission_required", "permission": permission, "auth_required": "true"}))
+			map[string]string{
+				"framework":    "django",
+				"pattern_type": "view_decorator",
+				"decorator":    "permission_required",
+				"permission":   permission,
+				// #authz — the specific required permission on the cross-language
+				// flat contract so archigraph_auth_coverage answers
+				// "what permission does this route require?" uniformly.
+				"auth_permissions": permission,
+				"auth_method":      "decorator",
+				"auth_confidence":  "high",
+				"auth_required":    "true",
+			}))
 	}
 
 	// 12. Form / ModelForm per-field type introspection (issue #3346).

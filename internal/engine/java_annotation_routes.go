@@ -58,6 +58,7 @@ package engine
 import (
 	"encoding/json"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
@@ -794,6 +795,19 @@ func buildMethodEndpointsWithAuth(
 		}
 		if len(policy.Roles) > 0 {
 			props["auth_roles"] = strings.Join(policy.Roles, ",")
+		}
+		// #authz — the specific fine-grained permission / scope required by the
+		// endpoint (Spring hasAuthority / hasPermission), sorted for a
+		// deterministic flat companion field.
+		if len(policy.Permissions) > 0 {
+			perms := append([]string(nil), policy.Permissions...)
+			sort.Strings(perms)
+			props["auth_permissions"] = strings.Join(perms, ",")
+		}
+		if len(policy.Scopes) > 0 {
+			scs := append([]string(nil), policy.Scopes...)
+			sort.Strings(scs)
+			props["auth_scopes"] = strings.Join(scs, ",")
 		}
 		if methodConsumes != "" {
 			props["consumes"] = methodConsumes

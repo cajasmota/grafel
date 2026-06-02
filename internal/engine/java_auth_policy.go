@@ -49,9 +49,15 @@ import (
 //   - medium = config-driven policy matching the endpoint path.
 //   - low    = framework default (no explicit signal).
 type AuthPolicy struct {
-	Required    bool         `json:"required"`
-	Method      string       `json:"method"` // "annotation" | "middleware" | "config" | "framework_default" | "unknown"
-	Roles       []string     `json:"roles,omitempty"`
+	Required bool     `json:"required"`
+	Method   string   `json:"method"` // "annotation" | "middleware" | "config" | "framework_default" | "unknown"
+	Roles    []string `json:"roles,omitempty"`
+	// Permissions are fine-grained authorization grants required by the
+	// endpoint (e.g. `user:delete`, `orders.read`) — distinct from coarse
+	// roles. Populated from Spring hasAuthority/hasPermission, DRF custom
+	// permission classes, NestJS @RequirePermissions, Express checkPermission
+	// and Rails Pundit action policies.
+	Permissions []string     `json:"permissions,omitempty"`
 	Scopes      []string     `json:"scopes,omitempty"`
 	Confidence  string       `json:"confidence"` // "high" | "medium" | "low"
 	SourceChain []AuthSignal `json:"source_chain,omitempty"`
@@ -115,12 +121,28 @@ var (
 // across frameworks.
 var authRoleArgRe = regexp.MustCompile(`"([^"]+)"`)
 
-// preAuthRoleRe extracts role names from a Spring SpEL expression such as
-// `hasRole('ADMIN')`, `hasAnyRole('ADMIN','USER')`, or `hasAuthority('SCOPE_x')`.
-var preAuthRoleRe = regexp.MustCompile(`(?:hasRole|hasAnyRole|hasAuthority|hasAnyAuthority)\s*\(\s*([^)]+)\)`)
+// preAuthRoleRe extracts the role names declared via the role-specific SpEL
+// helpers `hasRole('ADMIN')` / `hasAnyRole('ADMIN','USER')`. These always name
+// roles (Spring prepends the `ROLE_` authority prefix internally), so they map
+// to auth_roles.
+var preAuthRoleRe = regexp.MustCompile(`(?:hasRole|hasAnyRole)\s*\(\s*([^)]+)\)`)
+
+// preAuthAuthorityRe extracts the authority strings declared via
+// `hasAuthority('user:delete')` / `hasAnyAuthority('SCOPE_read','x')`. An
+// authority is a free-form granted-authority string: it is a fine-grained
+// PERMISSION (e.g. `user:delete`) unless it carries Spring's role/scope
+// prefix, in which case it is classified as a role or a scope respectively.
+var preAuthAuthorityRe = regexp.MustCompile(`(?:hasAuthority|hasAnyAuthority)\s*\(\s*([^)]+)\)`)
+
+// preAuthPermissionRe extracts the arguments from a Spring
+// `hasPermission(#id, 'Order', 'delete')` / `hasPermission(target, 'read')`
+// ACL check. The LAST quoted argument is the permission name (`delete`,
+// `read`). We only capture quoted (literal) permission strings and never
+// fabricate one from a non-literal target.
+var preAuthPermissionRe = regexp.MustCompile(`hasPermission\s*\(([^)]*)\)`)
 
 // preAuthQuotedRe pulls quoted args (single or double quoted) out of the SpEL
-// expression captured by preAuthRoleRe.
+// expression captured by the helpers above.
 var preAuthQuotedRe = regexp.MustCompile(`['"]([^'"]+)['"]`)
 
 // ResolveJavaAuthPolicy combines per-method, per-class, and project-level
@@ -275,14 +297,20 @@ func matchAnnotationPolicy(annoText string, line int, file, _ string) (AuthPolic
 		}, true
 	}
 
-	// @PreAuthorize("...") — Spring SpEL.
+	// @PreAuthorize("...") — Spring SpEL. The SpEL expression can declare roles
+	// (hasRole), fine-grained permissions (hasAuthority('user:delete'),
+	// hasPermission(...,'delete')) and OAuth scopes (hasAuthority('SCOPE_read')),
+	// so we split the captured authority tokens across roles/permissions/scopes
+	// rather than dumping everything into roles.
 	if m := javaPreAuthorizeRe.FindStringSubmatch(annoText); m != nil {
-		roles := parsePreAuthorizeRoles(m[1])
+		roles, perms, scopes := parsePreAuthorizeExpr(m[1])
 		return AuthPolicy{
-			Required:   true,
-			Method:     "annotation",
-			Roles:      roles,
-			Confidence: "high",
+			Required:    true,
+			Method:      "annotation",
+			Roles:       roles,
+			Permissions: perms,
+			Scopes:      scopes,
+			Confidence:  "high",
 			SourceChain: []AuthSignal{{
 				Kind: "annotation",
 				Text: "@PreAuthorize(\"" + m[1] + "\")",
@@ -319,20 +347,58 @@ func stripRolePrefix(roles []string) []string {
 	return out
 }
 
-// parsePreAuthorizeRoles parses a Spring SpEL expression such as
-// `hasRole('ADMIN')` or `hasAnyRole('ADMIN','USER')` and returns the
-// captured role names. Returns nil when no role helper is recognised.
-func parsePreAuthorizeRoles(spel string) []string {
-	var roles []string
+// parsePreAuthorizeExpr parses a Spring SpEL `@PreAuthorize` expression and
+// splits the authorization tokens it declares into roles, permissions and
+// scopes:
+//
+//   - hasRole('ADMIN') / hasAnyRole(...)            → roles
+//   - hasAuthority('user:delete')                   → permissions
+//   - hasAuthority('SCOPE_read') / 'scope:read'     → scopes (prefix stripped)
+//   - hasAuthority('ROLE_ADMIN')                    → roles (prefix stripped)
+//   - hasPermission(#id, 'Order', 'delete')         → permissions (last literal)
+//
+// Dynamic / non-literal arguments (e.g. `hasRole(roleVar)`, a hasPermission
+// target that is a variable) yield no token — we never fabricate a value.
+func parsePreAuthorizeExpr(spel string) (roles, perms, scopes []string) {
+	// hasRole / hasAnyRole — always roles.
 	for _, m := range preAuthRoleRe.FindAllStringSubmatch(spel, -1) {
 		for _, q := range preAuthQuotedRe.FindAllStringSubmatch(m[1], -1) {
-			r := strings.TrimPrefix(strings.TrimSpace(q[1]), "ROLE_")
-			if r != "" {
+			if r := strings.TrimPrefix(strings.TrimSpace(q[1]), "ROLE_"); r != "" {
 				roles = append(roles, r)
 			}
 		}
 	}
-	return roles
+	// hasAuthority / hasAnyAuthority — classify each authority string.
+	for _, m := range preAuthAuthorityRe.FindAllStringSubmatch(spel, -1) {
+		for _, q := range preAuthQuotedRe.FindAllStringSubmatch(m[1], -1) {
+			tok := strings.TrimSpace(q[1])
+			if tok == "" {
+				continue
+			}
+			switch {
+			case strings.HasPrefix(tok, "ROLE_"):
+				roles = append(roles, strings.TrimPrefix(tok, "ROLE_"))
+			case strings.HasPrefix(tok, "SCOPE_"):
+				scopes = append(scopes, strings.TrimPrefix(tok, "SCOPE_"))
+			case strings.HasPrefix(tok, "scope:"):
+				scopes = append(scopes, strings.TrimPrefix(tok, "scope:"))
+			default:
+				perms = append(perms, tok)
+			}
+		}
+	}
+	// hasPermission(target, [domainObjectType,] 'permission') — the last quoted
+	// literal is the permission name.
+	for _, m := range preAuthPermissionRe.FindAllStringSubmatch(spel, -1) {
+		quoted := preAuthQuotedRe.FindAllStringSubmatch(m[1], -1)
+		if len(quoted) == 0 {
+			continue
+		}
+		if last := strings.TrimSpace(quoted[len(quoted)-1][1]); last != "" {
+			perms = append(perms, last)
+		}
+	}
+	return roles, perms, scopes
 }
 
 // quarkusPermMatches reports whether any of the permission's path patterns
@@ -394,6 +460,9 @@ func EncodeAuthPolicy(p AuthPolicy) string {
 	cp := p
 	if len(cp.Roles) > 1 {
 		sort.Strings(cp.Roles)
+	}
+	if len(cp.Permissions) > 1 {
+		sort.Strings(cp.Permissions)
 	}
 	if len(cp.Scopes) > 1 {
 		sort.Strings(cp.Scopes)

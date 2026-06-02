@@ -200,6 +200,87 @@ func TestResolveJavaAuthPolicy_PreAuthorize(t *testing.T) {
 	}
 }
 
+// @PreAuthorize("hasAuthority('user:delete')") must capture the fine-grained
+// permission on auth_permissions, NOT conflate it into auth_roles.
+func TestResolveJavaAuthPolicy_PreAuthorizeAuthorityPermission(t *testing.T) {
+	policy := ResolveJavaAuthPolicy(
+		`@DeleteMapping("/users/{id}")
+@PreAuthorize("hasAuthority('user:delete')")`,
+		51,
+		"", "UserController", 9,
+		"client-fixture-x/UserController.java",
+		"/users/{id}",
+		JavaAuthContext{},
+	)
+	if !policy.Required {
+		t.Fatal("expected required=true for @PreAuthorize hasAuthority")
+	}
+	if strings.Join(policy.Permissions, ",") != "user:delete" {
+		t.Errorf("expected permissions=[user:delete], got %v", policy.Permissions)
+	}
+	if len(policy.Roles) != 0 {
+		t.Errorf("expected no roles for a hasAuthority permission, got %v", policy.Roles)
+	}
+}
+
+// @PreAuthorize("hasAuthority('SCOPE_read')") is an OAuth scope, not a role or
+// a bare permission — the SCOPE_ prefix must route it to auth_scopes.
+func TestResolveJavaAuthPolicy_PreAuthorizeScope(t *testing.T) {
+	policy := ResolveJavaAuthPolicy(
+		`@GetMapping("/reports")
+@PreAuthorize("hasAuthority('SCOPE_reports:read')")`,
+		60,
+		"", "ReportController", 9,
+		"client-fixture-x/ReportController.java",
+		"/reports",
+		JavaAuthContext{},
+	)
+	if strings.Join(policy.Scopes, ",") != "reports:read" {
+		t.Errorf("expected scopes=[reports:read], got %v", policy.Scopes)
+	}
+	if len(policy.Roles) != 0 || len(policy.Permissions) != 0 {
+		t.Errorf("expected no roles/permissions for a SCOPE_ authority, got roles=%v perms=%v", policy.Roles, policy.Permissions)
+	}
+}
+
+// @PreAuthorize("hasPermission(#id, 'Order', 'delete')") — the trailing literal
+// is the permission name; the dynamic target #id must not become a permission.
+func TestResolveJavaAuthPolicy_PreAuthorizeHasPermission(t *testing.T) {
+	policy := ResolveJavaAuthPolicy(
+		`@DeleteMapping("/orders/{id}")
+@PreAuthorize("hasPermission(#id, 'Order', 'delete')")`,
+		70,
+		"", "OrderController", 9,
+		"client-fixture-x/OrderController.java",
+		"/orders/{id}",
+		JavaAuthContext{},
+	)
+	if strings.Join(policy.Permissions, ",") != "delete" {
+		t.Errorf("expected permissions=[delete], got %v", policy.Permissions)
+	}
+}
+
+// Negative: @PreAuthorize("hasRole(roleVar)") with a non-literal role argument
+// must NOT fabricate a role/permission.
+func TestResolveJavaAuthPolicy_PreAuthorizeDynamicRoleNoFabrication(t *testing.T) {
+	policy := ResolveJavaAuthPolicy(
+		`@GetMapping("/x")
+@PreAuthorize("hasRole(roleVar)")`,
+		80,
+		"", "DynController", 9,
+		"client-fixture-x/DynController.java",
+		"/x",
+		JavaAuthContext{},
+	)
+	if !policy.Required {
+		t.Fatal("expected required=true (the annotation is present)")
+	}
+	if len(policy.Roles) != 0 || len(policy.Permissions) != 0 || len(policy.Scopes) != 0 {
+		t.Errorf("expected no fabricated tokens for a dynamic role, got roles=%v perms=%v scopes=%v",
+			policy.Roles, policy.Permissions, policy.Scopes)
+	}
+}
+
 func TestResolveJavaAuthPolicy_DenyAll(t *testing.T) {
 	policy := ResolveJavaAuthPolicy(
 		"@GET\n@DenyAll",
