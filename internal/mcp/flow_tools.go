@@ -699,8 +699,16 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 // entity. Higher means "more risky to touch". Factors:
 //   - in-degree (more callers → higher blast radius if it breaks)
 //   - is the entity a public API endpoint or topic publisher
-//   - lack of test coverage indicator (entity has "test_coverage" property)
-func impactRiskScore(e *graph.Entity, inDegree int) float64 {
+//   - lack of test coverage indicator
+//
+// Test-coverage signal (#3974): an entity is treated as covered when EITHER it
+// carries a positive "test_coverage" property OR it has ≥1 inbound TESTS edge
+// (a real test→SUT relation from test→SUT extraction, #3754/#3855). Relying on
+// the property alone falsely flagged genuinely-tested entities (e.g. AuthService
+// with inbound TESTS edges) as "no test coverage". A test-spec entity itself
+// (isTestEntity) is not production code, so the no-coverage penalty never
+// applies to it.
+func impactRiskScore(e *graph.Entity, inDegree int, hasInboundTests, isTestEntity bool) float64 {
 	score := 0.0
 
 	// In-degree contribution: log-scale, max contribution 0.5.
@@ -723,9 +731,9 @@ func impactRiskScore(e *graph.Entity, inDegree int) float64 {
 		score += 0.25
 	}
 
-	// No test coverage: increase risk.
-	cov := e.Properties["test_coverage"]
-	if cov == "" || cov == "0" || cov == "none" {
+	// No test coverage: increase risk — but only for production entities that
+	// have neither a positive coverage property nor an inbound TESTS edge.
+	if !isTestEntity && !entityHasTestCoverage(e, hasInboundTests) {
 		score += 0.25
 	}
 
@@ -733,6 +741,34 @@ func impactRiskScore(e *graph.Entity, inDegree int) float64 {
 		score = 1.0
 	}
 	return score
+}
+
+// entityHasTestCoverage reports whether an entity has genuine test linkage.
+// True when EITHER a positive "test_coverage" property is present (non-empty,
+// not "0"/"none") OR the entity has ≥1 inbound TESTS edge. Centralised so the
+// risk score and the risk_reason string stay in agreement (#3974).
+func entityHasTestCoverage(e *graph.Entity, hasInboundTests bool) bool {
+	if hasInboundTests {
+		return true
+	}
+	cov := e.Properties["test_coverage"]
+	return cov != "" && cov != "0" && cov != "none"
+}
+
+// isTestSpecEntity reports whether an entity is itself test/spec code rather
+// than production code to flag (#3974). A test-spec entity must not be labelled
+// "no test coverage": it is not a unit under test. We use the same test-file
+// convention predicate as dead-code analysis, plus an explicit Pattern/Test
+// kind check for spec-pattern nodes that may not live in a conventional path.
+func isTestSpecEntity(e *graph.Entity) bool {
+	if isTestFileMCP(e.SourceFile) {
+		return true
+	}
+	k := strings.ToLower(e.Kind)
+	if strings.Contains(k, "test") || strings.Contains(k, "spec") {
+		return true
+	}
+	return false
 }
 
 // impactRadiusMaxResults bounds the affected-set returned for a single
@@ -918,9 +954,16 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 	namedCallerMap := map[string]int{}
 	moduleCallerMap := map[string]int{}
 	totalDegreeMap := map[string]int{}
+	// inboundTestsMap counts inbound TESTS edges per entity (#3974). An entity
+	// with ≥1 inbound TESTS edge has genuine test linkage and must not be
+	// labelled "no test coverage" regardless of its test_coverage property.
+	inboundTestsMap := map[string]int{}
 	for i := range r.Doc.Relationships {
 		rel := &r.Doc.Relationships[i]
 		totalDegreeMap[rel.ToID]++
+		if rel.Kind == "TESTS" {
+			inboundTestsMap[rel.ToID]++
+		}
 		if src := byID[rel.FromID]; src != nil {
 			if isModuleFileEntity(src) {
 				moduleCallerMap[rel.ToID]++
@@ -966,8 +1009,10 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 		if e == nil {
 			continue
 		}
-		risk := impactRiskScore(e, totalDegreeMap[id])
-		reason := buildRiskReason(e, namedCallerMap[id], moduleCallerMap[id], totalDegreeMap[id])
+		hasTests := inboundTestsMap[id] > 0
+		isTestSpec := isTestSpecEntity(e)
+		risk := impactRiskScore(e, totalDegreeMap[id], hasTests, isTestSpec)
+		reason := buildRiskReason(e, namedCallerMap[id], moduleCallerMap[id], totalDegreeMap[id], hasTests, isTestSpec)
 		results = append(results, affected{
 			EntityID:   prefixedID(r.Repo, e.ID),
 			Name:       e.Name,
@@ -1032,7 +1077,12 @@ func (s *Server) handleImpactRadius(_ context.Context, req mcpapi.CallToolReques
 // container entities (SCOPE.Component, SCOPE.Module, File, Module, etc.). total is
 // their sum. When the two counts differ we emit a qualified breakdown so consumers
 // understand how much of the in-degree is actual named callers vs structural noise.
-func buildRiskReason(e *graph.Entity, namedCallers, moduleNodes, total int) string {
+// hasInboundTests reports whether the entity has ≥1 inbound TESTS edge, and
+// isTestEntity reports whether the entity is itself test/spec code (#3974). The
+// "no test coverage" label is suppressed when the entity has genuine test
+// linkage (positive coverage property OR an inbound TESTS edge) and is never
+// emitted for a test-spec entity, which is not production code under test.
+func buildRiskReason(e *graph.Entity, namedCallers, moduleNodes, total int, hasInboundTests, isTestEntity bool) string {
 	parts := []string{}
 	if total > 5 {
 		if moduleNodes == 0 {
@@ -1049,8 +1099,10 @@ func buildRiskReason(e *graph.Entity, namedCallers, moduleNodes, total int) stri
 	} else if strings.Contains(k, "topic") || strings.Contains(k, "queue") {
 		parts = append(parts, "message channel")
 	}
-	cov := e.Properties["test_coverage"]
-	if cov == "" || cov == "0" || cov == "none" {
+	// Only flag missing test coverage for production entities with no genuine
+	// test linkage. An inbound TESTS edge or a positive coverage property means
+	// the entity IS tested; a test-spec entity is not a unit to flag (#3974).
+	if !isTestEntity && !entityHasTestCoverage(e, hasInboundTests) {
 		parts = append(parts, "no test coverage")
 	}
 	if len(parts) == 0 {

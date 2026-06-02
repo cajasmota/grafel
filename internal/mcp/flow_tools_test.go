@@ -723,6 +723,113 @@ func TestImpactRadius_RootHasNoUpstreamImpact(t *testing.T) {
 	}
 }
 
+// TestImpactRadius_InboundTestsSuppressesNoCoverageLabel verifies #3974
+// end-to-end through the handler: two sibling callers of the root entity are
+// identical except one has an inbound TESTS edge (from a test entity) and the
+// other has none. The TESTS-covered caller must NOT carry "no test coverage" in
+// its risk_reason, while the uncovered caller still does. This asserts the
+// AuthService-class bug (genuinely-tested entity mislabelled uncovered) is fixed.
+func TestImpactRadius_InboundTestsSuppressesNoCoverageLabel(t *testing.T) {
+	entities := []graph.Entity{
+		// Root whose impact we query (changing it affects its callers).
+		{ID: "ent-core", Name: "CoreService", Kind: "Class", SourceFile: "core.go"},
+		// Covered caller: production class WITH an inbound TESTS edge.
+		{ID: "ent-auth", Name: "AuthService", Kind: "Class", SourceFile: "auth.go"},
+		// Uncovered caller: identical production class, NO TESTS edge.
+		{ID: "ent-billing", Name: "BillingService", Kind: "Class", SourceFile: "billing.go"},
+		// A test/spec entity that exercises AuthService.
+		{ID: "ent-auth-test", Name: "TestAuthService", Kind: "Function", SourceFile: "auth_test.go"},
+	}
+	rels := []graph.Relationship{
+		// Both services depend on CoreService → both are in its impact radius.
+		{FromID: "ent-auth", ToID: "ent-core", Kind: "CALLS"},
+		{FromID: "ent-billing", ToID: "ent-core", Kind: "CALLS"},
+		// AuthService has real test linkage via an inbound TESTS edge.
+		{FromID: "ent-auth-test", ToID: "ent-auth", Kind: "TESTS"},
+	}
+	doc := minDoc(entities, rels)
+	srv := newTestServer(t, doc)
+
+	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
+		"entity_id": "ent-core",
+		"hops":      float64(1),
+	})
+	affected, ok := out["affected"].([]any)
+	if !ok || len(affected) == 0 {
+		t.Fatalf("expected affected entities, got %v", out["affected"])
+	}
+	reasons := map[string]string{}
+	scores := map[string]float64{}
+	for _, a := range affected {
+		m := a.(map[string]any)
+		name, _ := m["name"].(string)
+		reasons[name], _ = m["risk_reason"].(string)
+		scores[name], _ = m["risk_score"].(float64)
+	}
+
+	authReason, ok := reasons["AuthService"]
+	if !ok {
+		t.Fatal("AuthService not found in affected list")
+	}
+	billingReason, ok := reasons["BillingService"]
+	if !ok {
+		t.Fatal("BillingService not found in affected list")
+	}
+
+	// The covered (TESTS-linked) entity must NOT be flagged uncovered.
+	if strings.Contains(authReason, "no test coverage") {
+		t.Errorf("AuthService has an inbound TESTS edge; risk_reason must NOT say 'no test coverage', got %q", authReason)
+	}
+	// The uncovered sibling must STILL be flagged (honest — no false suppression).
+	if !strings.Contains(billingReason, "no test coverage") {
+		t.Errorf("BillingService has zero TESTS edges; risk_reason MUST say 'no test coverage', got %q", billingReason)
+	}
+	// The label change must move the score: covered scores strictly lower.
+	if scores["AuthService"] >= scores["BillingService"] {
+		t.Errorf("covered AuthService (%v) must score lower than uncovered BillingService (%v)", scores["AuthService"], scores["BillingService"])
+	}
+}
+
+// TestImpactRadius_TestSpecEntityNotMislabelled verifies #3974: when a test-spec
+// entity itself lands in an impact radius (e.g. it depends on the root), it must
+// not be mislabelled "no test coverage" — it is not production code under test.
+func TestImpactRadius_TestSpecEntityNotMislabelled(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "ent-helper", Name: "sharedHelper", Kind: "Function", SourceFile: "helper.go"},
+		// A test/spec entity that calls the helper → lands in helper's impact radius.
+		{ID: "ent-spec", Name: "helperSpec", Kind: "Function", SourceFile: "helper.spec.ts"},
+	}
+	rels := []graph.Relationship{
+		{FromID: "ent-spec", ToID: "ent-helper", Kind: "CALLS"},
+	}
+	doc := minDoc(entities, rels)
+	srv := newTestServer(t, doc)
+
+	out := callFlowTool(t, srv.handleImpactRadius, map[string]any{
+		"entity_id": "ent-helper",
+		"hops":      float64(1),
+	})
+	affected, ok := out["affected"].([]any)
+	if !ok || len(affected) == 0 {
+		t.Fatalf("expected affected entities, got %v", out["affected"])
+	}
+	var specEntry map[string]any
+	for _, a := range affected {
+		m := a.(map[string]any)
+		if m["name"] == "helperSpec" {
+			specEntry = m
+			break
+		}
+	}
+	if specEntry == nil {
+		t.Fatal("helperSpec not found in affected list")
+	}
+	reason, _ := specEntry["risk_reason"].(string)
+	if strings.Contains(reason, "no test coverage") {
+		t.Errorf("a test-spec entity must not be labelled 'no test coverage'; got %q", reason)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // TestImpactRadius reliability (#3925): input-driven errors → graceful results
 // ---------------------------------------------------------------------------
@@ -1453,7 +1560,7 @@ func TestFindDeadCode_ImportedNotFlagged(t *testing.T) {
 
 func TestImpactRiskScore_HighInDegree(t *testing.T) {
 	e := &graph.Entity{Kind: "Function", Properties: map[string]string{}}
-	score := impactRiskScore(e, 50)
+	score := impactRiskScore(e, 50, false, false)
 	if score <= 0 {
 		t.Errorf("high in-degree should produce score > 0, got %v", score)
 	}
@@ -1461,7 +1568,7 @@ func TestImpactRiskScore_HighInDegree(t *testing.T) {
 
 func TestImpactRiskScore_APIBoundary(t *testing.T) {
 	e := &graph.Entity{Kind: "http_endpoint_definition", Properties: map[string]string{}}
-	score := impactRiskScore(e, 0)
+	score := impactRiskScore(e, 0, false, false)
 	if score < 0.25 {
 		t.Errorf("API boundary entity should score >= 0.25, got %v", score)
 	}
@@ -1470,10 +1577,37 @@ func TestImpactRiskScore_APIBoundary(t *testing.T) {
 func TestImpactRiskScore_WithCoverage(t *testing.T) {
 	eCovered := &graph.Entity{Kind: "Function", Properties: map[string]string{"test_coverage": "85"}}
 	eUncovered := &graph.Entity{Kind: "Function", Properties: map[string]string{}}
-	scoreCovered := impactRiskScore(eCovered, 0)
-	scoreUncovered := impactRiskScore(eUncovered, 0)
+	scoreCovered := impactRiskScore(eCovered, 0, false, false)
+	scoreUncovered := impactRiskScore(eUncovered, 0, false, false)
 	if scoreCovered >= scoreUncovered {
 		t.Errorf("covered entity (%v) should score lower than uncovered (%v)", scoreCovered, scoreUncovered)
+	}
+}
+
+// TestImpactRiskScore_InboundTestsSuppressesNoCoverage verifies #3974: an entity
+// with an inbound TESTS edge (hasInboundTests=true) but no test_coverage property
+// must score LOWER than an identical entity with neither signal, because the
+// TESTS edge is genuine test linkage and the no-coverage penalty must not apply.
+func TestImpactRiskScore_InboundTestsSuppressesNoCoverage(t *testing.T) {
+	e := &graph.Entity{Kind: "Class", Name: "AuthService", Properties: map[string]string{}}
+	withTests := impactRiskScore(e, 0, true /*hasInboundTests*/, false)
+	withoutTests := impactRiskScore(e, 0, false, false)
+	if withTests >= withoutTests {
+		t.Errorf("entity with inbound TESTS edge (%v) must score lower than one with zero TESTS (%v)", withTests, withoutTests)
+	}
+	// Concretely: no other risk factors → TESTS-covered entity scores 0.0.
+	if withTests != 0.0 {
+		t.Errorf("AuthService with inbound TESTS and no other risk should score 0.0, got %v", withTests)
+	}
+}
+
+// TestImpactRiskScore_TestSpecEntityNotFlagged verifies #3974: a test-spec entity
+// itself is not production code, so the no-coverage penalty must never apply.
+func TestImpactRiskScore_TestSpecEntityNotFlagged(t *testing.T) {
+	spec := &graph.Entity{Kind: "Function", Name: "TestLogin", SourceFile: "auth_test.go", Properties: map[string]string{}}
+	score := impactRiskScore(spec, 0, false /*no inbound TESTS*/, true /*isTestEntity*/)
+	if score != 0.0 {
+		t.Errorf("test-spec entity must not be penalised for no coverage; got %v", score)
 	}
 }
 
