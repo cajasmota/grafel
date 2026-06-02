@@ -10486,17 +10486,64 @@ records:
 
   lang.csharp.driver.neo4j:
     capabilities:
+      Models:
+        schema_extraction:
+          # Node labels in Cypher patterns ((n:Person), (:Movie)) carried in C#
+          # driver string literals (RunAsync("..."), Neo4jClient .Match("..."))
+          # => SCOPE.Schema nodes (reCSCypherLabel). Labels are a soft schema
+          # recovered from query strings by regex, hence partial.
+          status: partial
+          symbols:
+            - file: internal/custom/csharp/neo4j.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/neo4j_test.go
+          issues_implemented: ["3616"]
+          verified_at: "2026-06-02"
+      Relationships:
+        relationship_extraction:
+          # Relationship types in Cypher patterns (-[:ACTED_IN]->, -[r:KNOWS]-)
+          # carried in C# Neo4j.Driver / Neo4jClient string literals
+          # => SCOPE.Schema subtype=relationship (reCSCypherRelType). When BOTH
+          # endpoints carry a static node label and the relation a static type
+          # ((a:Person)-[:ACTED_IN]->(m:Movie)), the graph-schema topology is
+          # additionally promoted to a traversable GRAPH_RELATES edge between the
+          # node-label entities (reCSCypherTriple), the graph-DB analogue of
+          # Mongo's JOINS_COLLECTION and the Java SDN @Relationship edge. The
+          # arrow head decides the OUTGOING source endpoint; undirected patterns
+          # record direction=UNDIRECTED. Dynamic / parameterised relations
+          # (untyped -[r]->, string interpolation) stay type-only —
+          # honest-partial — but the statically-resolvable topology is full.
+          # Completes the Neo4j GRAPH_RELATES set: java (#3663) + python/jsts
+          # (#3670) + go (#3612) + csharp (#3616). Reverses the #3635 downgrade.
+          status: full
+          symbols:
+            - file: internal/custom/csharp/neo4j.go
+              functions: [Extract]
+          tests:
+            - file: internal/custom/csharp/neo4j_test.go
+          issues_implemented: ["3616"]
+          verified_at: "2026-06-02"
       Queries:
         query_attribution:
           # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
           # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
-          # issue #3262.
+          # issue #3262. Additionally, RunAsync("CYPHER") / .Match("CYPHER")
+          # call sites are captured as SCOPE.Operation query entities with a
+          # coarse verb sniffed from the leading Cypher clause (neo4jCSVerbKind).
           status: partial
           symbols:
             - file: internal/substrate/effect_sinks_csharp.go
               functions: [sniffEffectsCSharp]
-          issues_implemented: ["3262"]
-          verified_at: "2026-05-30"
+            - file: internal/custom/csharp/neo4j.go
+              functions: [Extract, neo4jCSVerbKind]
+          issues_implemented: ["3262", "3616"]
+          verified_at: "2026-06-02"
+      Migrations:
+        migration_parsing:
+          status: not_applicable
+          notes: "Neo4j is schema-flexible / graph-native; the driver has no migration runner (constraints/indexes are applied via ad-hoc Cypher)."
+          issues_implemented: ["3616"]
 
   lang.csharp.driver.npgsql:
     capabilities:
