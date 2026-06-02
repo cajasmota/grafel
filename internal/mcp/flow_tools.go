@@ -22,6 +22,34 @@ import (
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
+// neighborTruncationNote builds the truncation note for find_callers /
+// find_callees when the token-budget cap shed neighbors (#1738, #3648).
+//
+// Pre-#3648 the note only reported a raw count ("15 callers omitted"), which
+// gave the agent no way to tell whether it had lost the production callers it
+// needed or merely some test callers. Because neighbors are now sorted
+// production-first, the dropped tail skews toward test callers — the note makes
+// that explicit ("15 callers omitted: 12 test, 3 production") so the caller
+// knows exactly what is missing and how to recover it.
+//
+// kind is the plural neighbor noun ("callers" or "callees").
+func neighborTruncationNote(kind string, tokenBudget, budgetBytes, dropped, droppedProd, droppedTest int) string {
+	breakdown := ""
+	if droppedProd > 0 || droppedTest > 0 {
+		breakdown = fmt.Sprintf(" (%d test, %d production)", droppedTest, droppedProd)
+	}
+	hint := "pass a larger token_budget or reduce depth"
+	if droppedProd > 0 {
+		hint = "production " + kind + " were dropped — raise token_budget or reduce depth to see them"
+	} else if droppedTest > 0 {
+		hint = "only test " + kind + " were dropped; raise token_budget if you need them"
+	}
+	return fmt.Sprintf(
+		"response capped at token_budget=%d (~%d bytes); %d %s omitted%s — %s",
+		tokenBudget, budgetBytes, dropped, kind, breakdown, hint,
+	)
+}
+
 // ---------------------------------------------------------------------------
 // archigraph_neighbors (#1753) — unified callers + callees + both.
 // ---------------------------------------------------------------------------
@@ -82,6 +110,9 @@ func mergeNeighbors(in map[string]any, inErr *mcpapi.CallToolResult, out map[str
 		if v, ok := in["truncation_note"]; ok {
 			merged["callers_truncation_note"] = v
 		}
+		if v, ok := in["omitted"]; ok {
+			merged["callers_omitted"] = v
+		}
 	}
 	if out != nil {
 		if v, ok := out["callees"]; ok {
@@ -89,6 +120,9 @@ func mergeNeighbors(in map[string]any, inErr *mcpapi.CallToolResult, out map[str
 		}
 		if v, ok := out["truncation_note"]; ok {
 			merged["callees_truncation_note"] = v
+		}
+		if v, ok := out["omitted"]; ok {
+			merged["callees_omitted"] = v
 		}
 	}
 	merged["direction"] = "both"
@@ -167,6 +201,11 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		SourceFile string `json:"file,omitempty"`
 		StartLine  int    `json:"line,omitempty"`
 		HopCount   int    `json:"hop_count"`
+		// isTest is excluded from the wire shape (json:"-") — it is an internal
+		// ranking/accounting signal only. #3648: production callers outrank test
+		// callers so they survive the token-budget cap, and the truncation note
+		// reports how many of each kind were dropped.
+		isTest bool `json:"-"`
 	}
 
 	for _, r := range repos {
@@ -252,6 +291,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 					EntityID: prefixedID(r.Repo, id),
 					Name:     name,
 					HopCount: d,
+					isTest:   isTestFileMCP(id),
 				})
 				continue
 			}
@@ -286,6 +326,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 				SourceFile: e.SourceFile,
 				StartLine:  e.StartLine,
 				HopCount:   d,
+				isTest:     isTestFileMCP(e.SourceFile),
 			}
 			if verbose {
 				c.Kind = stripScopePrefix(e.Kind)
@@ -315,6 +356,15 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		sort.Slice(callers, func(i, j int) bool {
 			if callers[i].HopCount != callers[j].HopCount {
 				return callers[i].HopCount < callers[j].HopCount
+			}
+			// #3648: within the same hop level, production callers rank ahead of
+			// test callers so they survive the token-budget cap. A high-degree
+			// node (e.g. 34 callers, default budget ~800 tokens) previously shed
+			// the tail in insertion order, silently dropping production callers
+			// while keeping test ones. Production-first ordering guarantees the
+			// callers an agent most needs to reason about are the last to go.
+			if callers[i].isTest != callers[j].isTest {
+				return !callers[i].isTest // production (false) before test (true)
 			}
 			// Within the same hop level, sort by call frequency (descending).
 			// Extract unprefixed ID from EntityID for frequency lookup.
@@ -351,7 +401,19 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			budgetBytes = 64 * 1024
 		}
 		preCapLen := len(callers)
+		// #3648: capture the dropped tail so the truncation note can report a
+		// production/test breakdown. callers is already sorted production-first,
+		// so the dropped slice is the cap boundary onward.
+		precap := callers
 		callers = capByRenderedBytes(callers, budgetBytes, false)
+		droppedTest, droppedProd := 0, 0
+		for _, c := range precap[len(callers):] {
+			if c.isTest {
+				droppedTest++
+			} else {
+				droppedProd++
+			}
+		}
 
 		// #1618: distinguish "entity found, zero callers" from "entity not found".
 		// An empty callers array with result="no_incoming_edges" is an explicit
@@ -366,10 +428,14 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			"count":       len(callers),
 		}
 		if preCapLen > len(callers) {
-			result["truncation_note"] = fmt.Sprintf(
-				"response capped at token_budget=%d (~%d bytes); %d callers omitted — pass a larger token_budget or reduce depth",
-				tokenBudget, budgetBytes, preCapLen-len(callers),
+			result["truncation_note"] = neighborTruncationNote(
+				"callers", tokenBudget, budgetBytes, preCapLen-len(callers), droppedProd, droppedTest,
 			)
+			result["omitted"] = map[string]any{
+				"total":      preCapLen - len(callers),
+				"production": droppedProd,
+				"test":       droppedTest,
+			}
 		}
 		if len(callers) == 0 && preCapLen == 0 {
 			result["result"] = "no_incoming_edges"
@@ -435,6 +501,8 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		SourceFile string `json:"file,omitempty"`
 		StartLine  int    `json:"line,omitempty"`
 		HopCount   int    `json:"hop_count"`
+		// isTest: internal ranking/accounting signal only (json:"-"). #3648.
+		isTest bool `json:"-"`
 	}
 
 	for _, r := range repos {
@@ -486,6 +554,7 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 				SourceFile: e.SourceFile,
 				StartLine:  e.StartLine,
 				HopCount:   d,
+				isTest:     isTestFileMCP(e.SourceFile),
 			}
 			if verbose {
 				c.Kind = stripScopePrefix(e.Kind)
@@ -496,6 +565,11 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		sort.Slice(callees, func(i, j int) bool {
 			if callees[i].HopCount != callees[j].HopCount {
 				return callees[i].HopCount < callees[j].HopCount
+			}
+			// #3648: production callees outrank test callees so they survive the
+			// token-budget cap (mirrors find_callers).
+			if callees[i].isTest != callees[j].isTest {
+				return !callees[i].isTest
 			}
 			return callees[i].Name < callees[j].Name
 		})
@@ -516,7 +590,16 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 			budgetBytes = 64 * 1024
 		}
 		preCapLen := len(callees)
+		precap := callees // #3648: retain pre-cap slice for the dropped breakdown.
 		callees = capByRenderedBytes(callees, budgetBytes, false)
+		droppedTest, droppedProd := 0, 0
+		for _, c := range precap[len(callees):] {
+			if c.isTest {
+				droppedTest++
+			} else {
+				droppedProd++
+			}
+		}
 
 		// #1618: distinguish "entity found, zero callees" from "entity not found".
 		// An empty callees array with result="no_outgoing_edges" is an explicit
@@ -531,10 +614,14 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 			"count":       len(callees),
 		}
 		if preCapLen > len(callees) {
-			result["truncation_note"] = fmt.Sprintf(
-				"response capped at token_budget=%d (~%d bytes); %d callees omitted — pass a larger token_budget or reduce depth",
-				tokenBudget, budgetBytes, preCapLen-len(callees),
+			result["truncation_note"] = neighborTruncationNote(
+				"callees", tokenBudget, budgetBytes, preCapLen-len(callees), droppedProd, droppedTest,
 			)
+			result["omitted"] = map[string]any{
+				"total":      preCapLen - len(callees),
+				"production": droppedProd,
+				"test":       droppedTest,
+			}
 		}
 		if len(callees) == 0 && preCapLen == 0 {
 			result["result"] = "no_outgoing_edges"

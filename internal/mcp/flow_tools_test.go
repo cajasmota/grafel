@@ -1539,3 +1539,133 @@ func TestFindCallersIntegration_FrequencyRankedOnRealHandler(t *testing.T) {
 		t.Errorf("rank 3: expected FuncA (count=1), got %q; full order=%v", names[2], names)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #3648 — high-degree truncation: production callers must survive the cap.
+// ---------------------------------------------------------------------------
+
+// buildHighDegreeCallersDoc builds a target with many callers: `prod` production
+// callers (in src/*.go) and `test` test callers (in *_test.go), all calling the
+// target directly (hop 1). Used to verify production-first ranking and the
+// dropped-breakdown truncation note.
+func buildHighDegreeCallersDoc(prod, test int) *graph.Document {
+	ents := []graph.Entity{
+		{ID: "target", Name: "Target", Kind: "Function", SourceFile: "src/target.go", StartLine: 1},
+	}
+	var rels []graph.Relationship
+	for i := 0; i < prod; i++ {
+		id := fmt.Sprintf("prod-%02d", i)
+		ents = append(ents, graph.Entity{
+			ID: id, Name: fmt.Sprintf("ProdCaller%02d", i), Kind: "Function",
+			SourceFile: fmt.Sprintf("src/prod_%02d.go", i), StartLine: 10,
+		})
+		rels = append(rels, graph.Relationship{FromID: id, ToID: "target", Kind: "CALLS"})
+	}
+	for i := 0; i < test; i++ {
+		id := fmt.Sprintf("test-%02d", i)
+		ents = append(ents, graph.Entity{
+			ID: id, Name: fmt.Sprintf("TestCaller%02d", i), Kind: "Function",
+			SourceFile: fmt.Sprintf("src/feature_%02d_test.go", i), StartLine: 20,
+		})
+		rels = append(rels, graph.Relationship{FromID: id, ToID: "target", Kind: "CALLS"})
+	}
+	return minDoc(ents, rels)
+}
+
+// TestFindCallers_HighDegreeProductionSurvivesTruncation asserts that under a
+// tight token_budget the production callers are retained and only test callers
+// are shed, and that the truncation note reports the dropped breakdown. This is
+// the #3648 regression: previously the tail was shed in insertion order, so
+// production callers could be dropped while test callers were kept.
+func TestFindCallers_HighDegreeProductionSurvivesTruncation(t *testing.T) {
+	const prodN, testN = 5, 25
+	doc := buildHighDegreeCallersDoc(prodN, testN)
+	srv := newTestServer(t, doc)
+
+	// Tight budget so most callers are shed, but enough to fit all production.
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id":    "target",
+		"token_budget": 300,
+	})
+	if out == nil {
+		t.Fatal("nil result map")
+	}
+
+	callers, _ := out["callers"].([]any)
+	if len(callers) == 0 {
+		t.Fatal("no callers returned")
+	}
+	if len(callers) >= prodN+testN {
+		t.Fatalf("budget did not truncate: got %d callers (total %d)", len(callers), prodN+testN)
+	}
+
+	// Every production caller must be present; count survivors by kind.
+	survivedProd, survivedTest := 0, 0
+	for _, c := range callers {
+		m := c.(map[string]any)
+		name := m["name"].(string)
+		if strings.HasPrefix(name, "ProdCaller") {
+			survivedProd++
+		} else if strings.HasPrefix(name, "TestCaller") {
+			survivedTest++
+		} else {
+			t.Errorf("unexpected caller name %q", name)
+		}
+	}
+	if survivedProd != prodN {
+		t.Errorf("production callers dropped: %d/%d survived (test callers should be dropped first)", survivedProd, prodN)
+	}
+	// The whole point: production retained AHEAD of test even though test
+	// callers are far more numerous and were inserted in between.
+	if survivedTest != len(callers)-prodN {
+		t.Errorf("survivor accounting off: prod=%d test=%d total=%d", survivedProd, survivedTest, len(callers))
+	}
+
+	// Truncation note + omitted breakdown.
+	note, ok := out["truncation_note"].(string)
+	if !ok || note == "" {
+		t.Fatal("expected truncation_note on a truncated response")
+	}
+	if !strings.Contains(note, "test") || !strings.Contains(note, "production") {
+		t.Errorf("note lacks kind breakdown: %q", note)
+	}
+	omitted, ok := out["omitted"].(map[string]any)
+	if !ok {
+		t.Fatal("expected omitted breakdown map")
+	}
+	droppedProd := int(omitted["production"].(float64))
+	droppedTest := int(omitted["test"].(float64))
+	if droppedProd != 0 {
+		t.Errorf("no production callers should be dropped, got %d (note=%q)", droppedProd, note)
+	}
+	if droppedTest != testN-survivedTest {
+		t.Errorf("dropped-test count wrong: omitted=%d, expected %d", droppedTest, testN-survivedTest)
+	}
+	if droppedTest == 0 {
+		t.Error("expected some test callers to be dropped under tight budget")
+	}
+}
+
+// TestFindCallers_ProductionDroppedWarnsExplicitly asserts that when the budget
+// is SO tight that even production callers must be shed, the note flags it
+// (different hint than the test-only case).
+func TestFindCallers_ProductionDroppedWarnsExplicitly(t *testing.T) {
+	doc := buildHighDegreeCallersDoc(20, 5)
+	srv := newTestServer(t, doc)
+
+	out := callFlowTool(t, srv.handleFindCallers, map[string]any{
+		"entity_id":    "target",
+		"token_budget": 100, // floor; forces production to be dropped too
+	})
+	note, _ := out["truncation_note"].(string)
+	omitted, _ := out["omitted"].(map[string]any)
+	if omitted == nil {
+		t.Fatal("expected omitted breakdown")
+	}
+	if int(omitted["production"].(float64)) == 0 {
+		t.Skip("budget fit all production; not exercising the prod-dropped path")
+	}
+	if !strings.Contains(note, "production "+"callers were dropped") {
+		t.Errorf("note should warn that production callers were dropped: %q", note)
+	}
+}
