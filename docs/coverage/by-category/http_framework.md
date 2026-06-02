@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 221 records · **C/C++**: 19 · **C#**: 16 · **dart**: 1 · **elixir**: 14 · **go**: 18 · **java**: 22 · **JS/TS**: 32 · **kotlin**: 17 · **lua**: 4 · **php**: 15 · **python**: 23 · **ruby**: 8 · **rust**: 14 · **scala**: 14 · **swift**: 4
+**Total**: 222 records · **C/C++**: 19 · **C#**: 16 · **dart**: 1 · **elixir**: 14 · **go**: 18 · **java**: 22 · **JS/TS**: 32 · **kotlin**: 17 · **lua**: 4 · **php**: 15 · **python**: 23 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 4
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -120,6 +120,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟡 22/23 | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ✅ 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟢 2/2 | — | 🟢 1/1 | 🟢 1/1 | 🟡 21/23 | 🟢 5/5 | |
+| [ruby](../by-language/ruby.md) | [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/21 | 🔴 0/7 | |
 | [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟢 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |

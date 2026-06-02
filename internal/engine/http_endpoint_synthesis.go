@@ -771,6 +771,16 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// StartLine on the synthetic so the audit2678 attribution lands on the
 		// verb block's line in app.rb.
 		synthesizeSinatra(string(content), path, emitFile)
+		// Producer side (#3621): graphql-ruby GraphQL server. Maps each
+		// `field :<name>` on a root operation type class (QueryType /
+		// MutationType / SubscriptionType, subclasses of *BaseObject) to the
+		// canonical http:GRAPHQL:/graphql/<Root>/<field> operation-endpoint
+		// shape shared with the JS/TS, Python, Go and C# GraphQL servers — so
+		// GraphQL client links and the cross-repo linker join to them — with a
+		// same-file HANDLES attribution to the same-name `def <name>` resolver
+		// method. Gated on a graphql-ruby file-signal so it no-ops on every
+		// other Ruby file.
+		synthesizeGraphQLRuby(string(content), path, emitFile)
 		// Consumer side (#721 wave 2b): Net::HTTP, Faraday, HTTParty, RestClient.
 		synthesizeRubyClientWithRuntime(string(content), emitClientRuntime)
 	case "csharp":

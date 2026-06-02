@@ -50738,6 +50738,190 @@
       }
     },
     {
+      "id": "lang.ruby.framework.graphql-ruby",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "ruby",
+      "label": "graphql-ruby (GraphQL)",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_graphql_ruby.go","internal/engine/http_endpoint_graphql_ruby_test.go","internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3621",
+            "notes": "synthesizeGraphQLRuby emits http:GRAPHQL:/graphql/\u003cQuery|Mutation|Subscription\u003e/\u003cfield\u003e per `field :name` on a root operation type class (QueryType/MutationType/SubscriptionType, subclasses of *BaseObject or GraphQL::Schema::Object) — EXACT canonical shape as gqlgen (Go) / Strawberry (Python) / HotChocolate (C#) / Apollo (JS) / Absinthe so client links + cross-repo linker join. Field name = the Ruby `field :name` snake_case symbol verbatim (graphql-ruby keeps snake_case on the wire). Value-asserting tests assert the EXACT endpoint ids for Query/users, Query/user, Mutation/create_user, Mutation/delete_user, Subscription/user_added.",
+            "verified_at": "2026-06-02"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_graphql_ruby.go","internal/engine/http_endpoint_graphql_ruby_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3621",
+            "notes": "Each `field :name` is attributed to its same-name resolver method `def name` on the type class via source_handler=SCOPE.Operation:\u003cfield\u003e plus a same-file handler_file hint; the resolver post-pass rebinds it to a HANDLES edge against the extracted Ruby method entity. Value-asserted in the tests.",
+            "verified_at": "2026-06-02"
+          },
+          "route_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_graphql_ruby.go","internal/engine/http_endpoint_graphql_ruby_test.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3621",
+            "notes": "Operation endpoints synthesised from `field :name` declarations on the convention-named root type classes. Honest-partial: keys on the conventional QueryType/MutationType/SubscriptionType class names rather than the schema's query(...)/mutation(...) registration, and resolves the default same-name `def` resolver — does not yet follow `resolver: SomeResolver` / `method:` field overrides or dynamically generated fields.",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "3621"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "3621"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.ruby.framework.hanami",
       "category": "http_framework",
       "subcategory": "http_backend",

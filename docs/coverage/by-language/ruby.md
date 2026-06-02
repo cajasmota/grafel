@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # ruby
 
-**Frameworks**: 8 · **Tools**: 6 · **ORMs**: 13 · **Other**: 2
+**Frameworks**: 9 · **Tools**: 6 · **ORMs**: 13 · **Other**: 2
 
 Back to [summary](../summary.md).
 
@@ -34,6 +34,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟡 22/23 | 🟢 6/6 | |
 | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ✅ 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟢 2/2 | — | 🟢 1/1 | 🟢 1/1 | 🟡 21/23 | 🟢 5/5 | |
+| [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/21 | 🔴 0/7 | |
 
 
 ## Tools
