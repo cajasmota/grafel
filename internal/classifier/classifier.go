@@ -527,6 +527,12 @@ var extensionLanguageMap = map[string]string{
 	".yml":  "yaml",
 	// TOML — no toml extractor; route to text so it is not silently dropped
 	".toml": "toml",
+	// nginx config (#3633, epic #3625) — *.nginx site files. No language
+	// extractor exists; the file still reaches the Pass 2.5 detector (where the
+	// deployment-topology pass parses upstream/proxy_pass request-flow), because
+	// classified files are added to the Pass 2.5 set even when extraction is a
+	// no-op (cmd/archigraph/index.go).
+	".nginx": "nginx",
 	// GraphQL
 	".graphql": "graphql",
 	".gql":     "graphql",
@@ -623,6 +629,12 @@ var basenameLanguageMap = map[string]string{
 	"Justfile":  "just",
 	"justfile":  "just",
 	".justfile": "just",
+	// Reverse-proxy / API-gateway configs (#3633, epic #3625). These carry no
+	// language extractor; they still reach the Pass 2.5 detector, where the
+	// deployment-topology pass parses their request-flow topology
+	// (nginx upstream/proxy_pass, Caddy reverse_proxy).
+	"nginx.conf": "nginx",
+	"Caddyfile":  "caddy",
 }
 
 // detectLanguage returns the language token for the given normalised path, or

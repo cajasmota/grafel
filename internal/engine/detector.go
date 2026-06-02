@@ -753,6 +753,19 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// topology join (previously a #927-deferred stub). Append-only — cannot
 	// regress surrounding passes. resources: is left to the CFN pass.
 	applyPass(applyServerlessFrameworkEdges)
+	// Deployment / request-flow topology edges (#3633, epic #3625). Restores the
+	// previously-orphaned deployment_topology enricher as a live pass. Parses the
+	// reverse-proxy / API-gateway / container-orchestration configs that sit in
+	// FRONT of the application — nginx (upstream/proxy_pass), Caddy
+	// (reverse_proxy), docker-compose (services + depends_on), Kong (declarative
+	// services/routes), and Traefik (dynamic routers→services) — and emits
+	// canonical SCOPE.Service nodes plus DEPENDS_ON / ROUTES_TO edges modelling
+	// the request flow. Backend services are keyed `service:<name>` so a proxy
+	// upstream and a compose service of the same name collapse onto one node.
+	// K8s Ingress→Service and serverless.yml topology are handled by their own
+	// dedicated passes (applyKubernetesEdges, applyServerlessFrameworkEdges).
+	// Append-only — cannot regress surrounding passes.
+	applyPass(applyDeploymentTopologyEdges)
 	// Workflow orchestration edges (#934). Emits SCOPE.Workflow, SCOPE.Activity,
 	// and SCOPE.StateMachine entities plus STARTS_WORKFLOW, EXECUTES_ACTIVITY,
 	// and STEPFUNCTION_STEP_INVOKES edges for Temporal (Python, Go, Java, Node),

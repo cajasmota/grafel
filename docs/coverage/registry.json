@@ -1287,6 +1287,26 @@
       }
     },
     {
+      "id": "infra.deployment.request-topology",
+      "category": "platform",
+      "language": "multi",
+      "label": "Reverse-proxy / gateway request topology",
+      "capabilities": {
+        "dependency_attribution": {
+          "status": "full",
+          "cites": ["internal/classifier/classifier.go","internal/engine/deployment_topology_edges.go","internal/engine/deployment_topology_edges_test.go"],
+          "notes": "#3633 (epic #3625): restored the previously-orphaned deployment_topology enricher as a LIVE engine pass (applyDeploymentTopologyEdges, registered in detector.go after the IaC/serverless passes). Models the proxy/gateway request-flow that was invisible in the graph: nginx `proxy_pass http://\u003cname\u003e` matched to an `upstream \u003cname\u003e` block -\u003e gateway DEPENDS_ON service:\u003cname\u003e (a bare-host proxy_pass -\u003e ROUTES_TO); Caddy `reverse_proxy \u003chost:port\u003e` -\u003e gateway ROUTES_TO service:\u003chost\u003e; docker-compose `\u003csvc\u003e depends_on \u003cdep\u003e` (both short list + long mapping form) -\u003e service:\u003csvc\u003e DEPENDS_ON service:\u003cdep\u003e; Kong declarative service-with-routes -\u003e gateway ROUTES_TO service:\u003cname\u003e; Traefik dynamic router.service -\u003e gateway ROUTES_TO service:\u003cname\u003e. Backend services keyed `service:\u003cname\u003e` so a proxy upstream and a compose service collapse onto one SCOPE.Service node. nginx.conf/Caddyfile/.nginx classified (no extractor needed; classified files still reach the Pass 2.5 detector). K8s Ingress-\u003eService and serverless.yml topology are owned by infra.container.kubernetes / the serverless cell. Value-asserting tests assert each specific edge; honest-partial: dynamic/templated targets ({...}/${...}) are omitted, not guessed.",
+          "verified_at": "2026-06-02"
+        },
+        "resource_extraction": {
+          "status": "partial",
+          "cites": ["internal/engine/deployment_topology_edges.go","internal/engine/deployment_topology_edges_test.go"],
+          "notes": "#3633: mints SCOPE.Service nodes for the proxy/gateway layer (one per config, role=gateway) and for every backend it routes to (role=backend) plus docker-compose services (role=compose_service). Partial because only the request-flow-relevant fields are extracted (service identity + dependency targets), not full per-resource config (ports/volumes/networks remain with the docker ruleset / yaml extractor).",
+          "verified_at": "2026-06-02"
+        }
+      }
+    },
+    {
       "id": "infra.iac.ansible",
       "category": "platform",
       "language": "multi",

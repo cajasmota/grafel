@@ -412,38 +412,10 @@ func TestEnrichCouplingScore_Isolated(t *testing.T) {
 	}
 }
 
-// deployment_topology
-
-func TestDeploymentTopologyAppliesToFile_Nginx(t *testing.T) {
-	if !DeploymentTopologyAppliesToFile("config/nginx.conf") {
-		t.Fatal("expected true for nginx.conf")
-	}
-}
-
-func TestDeploymentTopologyAppliesToFile_K8s(t *testing.T) {
-	if !DeploymentTopologyAppliesToFile("k8s/ingress.yml") {
-		t.Fatal("expected true for k8s/ingress.yml")
-	}
-}
-
-func TestExtractDeploymentTopology_Nginx(t *testing.T) {
-	src := "server {\n  location /api/ {\n    proxy_pass http://backend:8080/;\n  }\n  location /health {\n    proxy_pass http://backend:8080/health;\n  }\n}\n"
-	if entries := ExtractDeploymentTopology(src, "nginx.conf"); len(entries) < 2 {
-		t.Fatalf("expected >=2 nginx entries, got %d", len(entries))
-	}
-}
-
-func TestExtractDeploymentTopology_DockerCompose(t *testing.T) {
-	src := "version: \"3\"\nservices:\n  web:\n    image: nginx\n  api:\n    image: myapp\n"
-	entries := ExtractDeploymentTopology(src, "docker-compose.yml")
-	names := map[string]bool{}
-	for _, e := range entries {
-		names[e.Name] = true
-	}
-	if !names["web"] || !names["api"] {
-		t.Fatalf("expected web and api, got %+v", entries)
-	}
-}
+// deployment_topology — the orphaned deployment_topology_extractor was restored
+// as a LIVE engine pass (internal/engine/deployment_topology_edges.go, #3633);
+// its behaviour is now covered by deployment_topology_edges_test.go, which
+// asserts the real graph edges it emits.
 
 // event_flow
 
