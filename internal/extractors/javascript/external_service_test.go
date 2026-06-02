@@ -86,6 +86,50 @@ function upload() {
 	}
 }
 
+// TestJSService_AWSCognitoClient: `new CognitoIdentityProviderClient()` from
+// @aws-sdk/client-cognito-identity-provider → aws-cognito (#3868).
+func TestJSService_AWSCognitoClient(t *testing.T) {
+	src := []byte(`import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
+
+function signUp() {
+  const client = new CognitoIdentityProviderClient({});
+  return client;
+}
+`)
+	recs := extract(t, src, "javascript", parseJS(t, src))
+	if !jsSvcEdge(recs, "signUp", "aws-cognito") {
+		t.Fatalf("missing DEPENDS_ON_SERVICE(signUp -> aws-cognito)")
+	}
+	if id, _ := jsSvcNode(recs, "aws-cognito"); id == "" {
+		t.Errorf("missing SCOPE.ExternalService:aws-cognito node")
+	}
+}
+
+// TestJSService_AWSCognitoConverges: user-pool and identity-pool client
+// constructors fold into ONE aws-cognito node.
+func TestJSService_AWSCognitoConverges(t *testing.T) {
+	src := []byte(`import { CognitoIdentityProviderClient } from "@aws-sdk/client-cognito-identity-provider";
+import { CognitoIdentityClient } from "@aws-sdk/client-cognito-identity";
+
+function userPool() {
+  return new CognitoIdentityProviderClient({});
+}
+function identityPool() {
+  return new CognitoIdentityClient({});
+}
+`)
+	recs := extract(t, src, "javascript", parseJS(t, src))
+	if !jsSvcEdge(recs, "userPool", "aws-cognito") {
+		t.Fatalf("missing DEPENDS_ON_SERVICE(userPool -> aws-cognito)")
+	}
+	if !jsSvcEdge(recs, "identityPool", "aws-cognito") {
+		t.Fatalf("missing DEPENDS_ON_SERVICE(identityPool -> aws-cognito)")
+	}
+	if _, count := jsSvcNode(recs, "aws-cognito"); count != 1 {
+		t.Errorf("expected exactly 1 aws-cognito node, got %d", count)
+	}
+}
+
 // TestJSService_SentryNamespaceInit: `import * as Sentry` + `Sentry.init()`.
 func TestJSService_SentryNamespaceInit(t *testing.T) {
 	src := []byte(`import * as Sentry from "@sentry/node";

@@ -31,14 +31,21 @@ func TestServiceForImportSource(t *testing.T) {
 
 func TestAWSServiceFromArg(t *testing.T) {
 	cases := map[string]string{
-		`"s3"`:      "aws-s3",
-		"ses":       "aws-ses",
-		"sesv2":     "aws-ses",
-		"sns":       "aws-sns",
-		"sqs":       "aws-sqs",
-		"dynamodb":  "aws-dynamodb",
-		"events":    "aws-eventbridge",
-		"frobulate": "", // unknown service → drop
+		`"s3"`:     "aws-s3",
+		"ses":      "aws-ses",
+		"sesv2":    "aws-ses",
+		"sns":      "aws-sns",
+		"sqs":      "aws-sqs",
+		"dynamodb": "aws-dynamodb",
+		"events":   "aws-eventbridge",
+		// Cognito: both boto3 hyphenated strings and aws-sdk v3 ctor-derived
+		// CamelCase-collapsed tokens converge on the single aws-cognito service.
+		"cognito-idp":             "aws-cognito",
+		`"cognito-idp"`:           "aws-cognito",
+		"cognito-identity":        "aws-cognito",
+		"CognitoIdentityProvider": "aws-cognito", // aws-sdk v3 ctor token
+		"CognitoIdentity":         "aws-cognito",
+		"frobulate":               "", // unknown service → drop
 	}
 	for in, want := range cases {
 		if got := AWSServiceFromArg(in); got != want {

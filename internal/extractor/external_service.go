@@ -58,6 +58,7 @@ const (
 	ServiceFirebase     = "firebase"
 	ServiceAlgolia      = "algolia"
 	ServiceAWSGeneric   = "aws-generic"
+	ServiceAWSCognito   = "aws-cognito"
 	awsServicePrefix    = "aws-"
 	externalServiceName = "service:"
 )
@@ -93,22 +94,48 @@ func ExternalServiceTargetID(service string) string {
 //	"sns"       -> "aws-sns"
 //	"sqs"       -> "aws-sqs"
 //	"dynamodb"  -> "aws-dynamodb"
+//
+// Some services are addressed by more than one token across SDKs: boto3 uses
+// hyphenated service strings ("cognito-idp", "cognito-identity") while the
+// aws-sdk v3 client class derives a CamelCase-collapsed token
+// ("cognitoidentityprovider", "cognitoidentity"). awsServiceAliases maps every
+// such spelling to one canonical service so both call sites converge on a
+// single node (e.g. all four cognito tokens -> "aws-cognito").
 func AWSServiceFromArg(raw string) string {
 	s := strings.ToLower(strings.TrimSpace(raw))
 	// Strip surrounding quotes left by a literal-string token.
 	s = strings.Trim(s, "'\"`")
+	if alias, ok := awsServiceAliases[s]; ok {
+		return awsServicePrefix + alias
+	}
 	switch s {
-	case "s3", "ses", "sesv2", "sns", "sqs", "dynamodb", "lambda", "kinesis",
-		"secretsmanager", "ssm", "cloudwatch", "kms", "eventbridge", "events":
-		if s == "sesv2" {
-			return awsServicePrefix + "ses"
-		}
-		if s == "events" {
-			return awsServicePrefix + "eventbridge"
-		}
+	case "s3", "ses", "sns", "sqs", "dynamodb", "lambda", "kinesis",
+		"secretsmanager", "ssm", "cloudwatch", "kms", "eventbridge":
 		return awsServicePrefix + s
 	}
 	return ""
+}
+
+// awsServiceAliases maps non-canonical AWS service tokens — SDK-version and
+// language variations — to their canonical "aws-<svc>" suffix. Centralised so a
+// boto3 string ("cognito-idp") and an aws-sdk v3 client class
+// ("CognitoIdentityProviderClient" -> "cognitoidentityprovider") resolve to the
+// same node. Keep entries lowercase, unquoted; AWSServiceFromArg normalises the
+// input the same way before lookup.
+var awsServiceAliases = map[string]string{
+	// SES v2 SDK is the same service as SES.
+	"sesv2": "ses",
+	// EventBridge's legacy SDK token is "events".
+	"events": "eventbridge",
+	// Cognito user pools — boto3 "cognito-idp" / aws-sdk v3
+	// CognitoIdentityProviderClient.
+	"cognito-idp":             "cognito",
+	"cognitoidentityprovider": "cognito",
+	// Cognito identity pools (federated identities) — boto3 "cognito-identity"
+	// / aws-sdk v3 CognitoIdentityClient. Folded into the same aws-cognito node
+	// since both are the AWS Cognito service from an integration-topology view.
+	"cognito-identity": "cognito",
+	"cognitoidentity":  "cognito",
 }
 
 // ServiceForImportSource maps an SDK import source module / package to its

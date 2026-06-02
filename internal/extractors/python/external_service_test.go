@@ -108,6 +108,74 @@ def get_table():
 	}
 }
 
+// TestPyService_AWSCognito: boto3.client("cognito-idp") → aws-cognito (#3868).
+func TestPyService_AWSCognito(t *testing.T) {
+	src := `import boto3
+
+def sign_up(username, password):
+    idp = boto3.client("cognito-idp")
+    return idp.sign_up(Username=username, Password=password)
+`
+	recs := extractPy(t, src, "auth.py")
+
+	if !svcEdge(recs, "sign_up", "aws-cognito") {
+		t.Fatalf("missing DEPENDS_ON_SERVICE(sign_up -> aws-cognito)")
+	}
+	if svcNodeID(recs, "aws-cognito") == "" {
+		t.Errorf("missing SCOPE.ExternalService:aws-cognito node")
+	}
+	// Literal present → must NOT fall back to the generic node.
+	if svcEdge(recs, "sign_up", "aws-generic") {
+		t.Errorf("unexpected aws-generic edge when literal 'cognito-idp' present")
+	}
+}
+
+// TestPyService_AWSCognitoIdentityConverges: the identity-pool token folds into
+// the SAME aws-cognito node as the user-pool token — one convergence node.
+func TestPyService_AWSCognitoIdentityConverges(t *testing.T) {
+	src := `import boto3
+
+def user_pool():
+    return boto3.client("cognito-idp")
+
+def identity_pool():
+    return boto3.client("cognito-identity")
+`
+	recs := extractPy(t, src, "auth.py")
+
+	if !svcEdge(recs, "user_pool", "aws-cognito") {
+		t.Fatalf("missing DEPENDS_ON_SERVICE(user_pool -> aws-cognito)")
+	}
+	if !svcEdge(recs, "identity_pool", "aws-cognito") {
+		t.Fatalf("missing DEPENDS_ON_SERVICE(identity_pool -> aws-cognito)")
+	}
+	// Exactly one aws-cognito node despite two distinct boto3 tokens.
+	n := 0
+	for i := range recs {
+		if recs[i].Kind == string(types.EntityKindExternalService) &&
+			recs[i].QualifiedName == extractor.ExternalServiceTargetID("aws-cognito") {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("expected exactly 1 aws-cognito node, got %d", n)
+	}
+}
+
+// TestPyService_AWSCognitoDynamicNoFabrication: a dynamic service arg must NOT
+// fabricate an aws-cognito node (honest-partial).
+func TestPyService_AWSCognitoDynamicNoFabrication(t *testing.T) {
+	src := `import boto3
+
+def make(svc):
+    return boto3.client(svc)
+`
+	recs := extractPy(t, src, "auth.py")
+	if svcEdge(recs, "make", "aws-cognito") {
+		t.Errorf("dynamic service arg must not fabricate an aws-cognito edge")
+	}
+}
+
 // TestPyService_Convergence: two functions using Stripe converge on ONE node.
 func TestPyService_Convergence(t *testing.T) {
 	src := `import stripe
