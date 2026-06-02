@@ -208,6 +208,11 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// so that callTarget can rewrite CALLS-to-hook-result edges.
 	x.hookVarToModule = x.buildHookVarToModule(root)
 
+	// Issue #3628 area #11 (non-OTel observability) — build the prom-client
+	// metric-variable map before walk() so that stampObservability can resolve
+	// `<var>.inc()/.observe()/.startTimer()` body calls to metric:<name>.
+	x.metricVars = x.buildMetricVars(root)
+
 	// Phase 2 of #2658 — build the navigation hook-var table before walk()
 	// so that extractNavigationCall can detect hook-rename bindings like
 	// `const nav = useNavigation(); nav.navigate('X')`.
@@ -520,6 +525,17 @@ type extractor struct {
 	// a first-class graph fact for the Express/Fastify family.
 	// Nil when no schema-lib imports are present (fast-path).
 	schemaLibDTOs map[string]string
+
+	// metricVars — Issue #3628 area #11 (non-OTel observability). Built once
+	// per file in buildMetricVars (called from Extract before walk). Maps a
+	// variable name bound to a prom-client metric constructor
+	// (`new client.Counter({name:'orders'})`) to the declared metric name. A
+	// constructor with a non-literal / absent name maps to "" (known-metric,
+	// dynamic-name). When a function body calls `<var>.inc()/.observe()/
+	// .startTimer()` on one of these vars, stampObservability emits an
+	// INSTRUMENTS edge → metric:<name>. Nil when no prom-client metric is
+	// declared in the file (fast-path).
+	metricVars map[string]string
 }
 
 // dispatchMapInfo records the handlers registered in a Record<string, Fn>
@@ -816,6 +832,10 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 	x.stampBranchConditions(body)
 	// Issue #3689 — stamp OpenTelemetry span-creation sites (INSTRUMENTS edges).
 	x.stampTracingSpans(body)
+	// Issue #3628 area #11 — stamp non-OTel observability sites (Sentry
+	// startSpan/startTransaction, dd-trace tracer.trace/wrap, prom-client
+	// metric mutations) as INSTRUMENTS edges alongside the OTel pass.
+	x.stampObservability(body)
 
 	// Recurse into the body for nested declarations.
 	// Increment funcDepth so handleVariableDeclarator suppresses non-addressable
@@ -938,6 +958,10 @@ func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string, cb *classBi
 	x.stampBranchConditions(body)
 	// Issue #3689 — stamp OpenTelemetry span-creation sites (INSTRUMENTS edges).
 	x.stampTracingSpans(body)
+	// Issue #3628 area #11 — stamp non-OTel observability sites (Sentry
+	// startSpan/startTransaction, dd-trace tracer.trace/wrap, prom-client
+	// metric mutations) as INSTRUMENTS edges alongside the OTel pass.
+	x.stampObservability(body)
 }
 
 // isNativeScriptStateSetter recognises the NativeScript Observable
@@ -1104,6 +1128,10 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 	x.stampBranchConditions(body)
 	// Issue #3689 — stamp OpenTelemetry span-creation sites (INSTRUMENTS edges).
 	x.stampTracingSpans(body)
+	// Issue #3628 area #11 — stamp non-OTel observability sites (Sentry
+	// startSpan/startTransaction, dd-trace tracer.trace/wrap, prom-client
+	// metric mutations) as INSTRUMENTS edges alongside the OTel pass.
+	x.stampObservability(body)
 
 	// Recurse into the body for nested declarations.
 	// Increment funcDepth so nested const declarations inside this arrow
@@ -1456,6 +1484,10 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		x.stampBranchConditions(body)
 		// Issue #3689 — stamp OpenTelemetry span-creation sites (INSTRUMENTS).
 		x.stampTracingSpans(body)
+		// Issue #3628 area #11 — stamp non-OTel observability sites (Sentry
+		// startSpan/startTransaction, dd-trace tracer.trace/wrap, prom-client
+		// metric mutations) as INSTRUMENTS edges alongside the OTel pass.
+		x.stampObservability(body)
 		if body != nil {
 			// Increment funcDepth so nested const declarations inside this
 			// arrow body are not emitted as addressable entities (#1748).
@@ -1497,6 +1529,10 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 		x.stampBranchConditions(body)
 		// Issue #3689 — stamp OpenTelemetry span-creation sites (INSTRUMENTS).
 		x.stampTracingSpans(body)
+		// Issue #3628 area #11 — stamp non-OTel observability sites (Sentry
+		// startSpan/startTransaction, dd-trace tracer.trace/wrap, prom-client
+		// metric mutations) as INSTRUMENTS edges alongside the OTel pass.
+		x.stampObservability(body)
 		if body != nil {
 			// Increment funcDepth so nested const declarations inside this
 			// function-expression body are not emitted as addressable entities (#1748).

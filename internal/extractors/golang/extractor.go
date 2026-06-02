@@ -900,6 +900,12 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 	// for the target name in the package directory).
 	intraFileFuncs := collectIntraFileFuncNames(nodes, src)
 
+	// Issue #3628 area #11 — non-OTel observability (ddtrace/Sentry/Prometheus).
+	// Build the file-level Prometheus metric registry once so `reqs.Inc()` body
+	// calls resolve to the metric declared by `reqs := prometheus.NewCounter(...)`
+	// anywhere in the file (package- or function-scope). nil when no metric.
+	metricReg := buildGoMetricRegistry(root, src)
+
 	var records []types.EntityRecord
 	funcCount := 0
 
@@ -1058,6 +1064,12 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 		// bare function/method name used to key dynamic-name stubs.
 		relationships = append(relationships,
 			goTracingSpanEdges(bodyNode, nameText, fromID, src)...)
+
+		// Issue #3628 area #11 — non-OTel observability: ddtrace tracer.StartSpan/
+		// StartSpanFromContext, Sentry sentry.StartSpan, Prometheus metric
+		// mutations on known metric vars → INSTRUMENTS span:/metric: stubs.
+		relationships = append(relationships,
+			goObservabilityEdges(bodyNode, nameText, fromID, metricReg, src)...)
 
 		rec := types.EntityRecord{
 			Name:               name,

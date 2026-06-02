@@ -1581,9 +1581,9 @@
         },
         "trace_extraction": {
           "status": "partial",
-          "cites": ["internal/extractors/python/observability.go"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/3762",
-          "notes": "#3628 area #11: ddtrace span-creation sites in Python emit INSTRUMENTS edges (enclosing op -\u003e span:\u003cname\u003e stub). Decorator @tracer.wrap() defaults the span name to the function name; @tracer.wrap(name=\"...\")/resource=\"...\" use the explicit name; manual tracer.trace(\"op\") body calls carry the first positional name. Honest-partial: dynamic span names emit traced=true+dynamic=true without a fabricated name; only Python is covered (Go ddtrace.StartSpan / JS not yet).",
+          "cites": ["internal/extractors/golang/observability.go","internal/extractors/javascript/observability.go","internal/extractors/python/observability.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3768",
+          "notes": "#3628 area #11: ddtrace span-creation sites now emit INSTRUMENTS edges (enclosing op -\u003e span:\u003cname\u003e stub) in Python, Go and JS/TS. Python (#3762): @tracer.wrap()/tracer.trace(\"op\"). Go: tracer.StartSpan(\"web.request\") and tracer.StartSpanFromContext(ctx, \"op\") take the first string-literal arg as the span name. JS/TS dd-trace: tracer.trace('op', cb) / tracer.wrap('op', fn) take the first string-literal arg. Honest-partial: dynamic span names emit traced=true+dynamic=true keyed on the enclosing fn without a fabricated name; .StartSpan/.trace on a non-tracer receiver is not emitted (precision).",
           "verified_at": "2026-06-02"
         }
       }
@@ -1707,9 +1707,9 @@
         },
         "metric_extraction": {
           "status": "partial",
-          "cites": ["internal/engine/rules/_engine/comment_marker_extractor.yaml","internal/extractors/python/observability.go"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/3762",
-          "notes": "#3628 area #11: prometheus_client Python metrics emit INSTRUMENTS edges (enclosing op -\u003e metric:\u003cname\u003e stub). A module-level metric declaration X = Counter|Gauge|Summary|Histogram|Info|Enum(\"name\", ...) is registered, then @X.time()/@X.count_exceptions()/@X.track_inprogress() decorators and X.inc()/dec()/observe()/set() body calls resolve to metric:name with the metric name captured. Honest-partial: a non-literal metric name yields traced=true+dynamic=true; a .inc()/.time() on a variable that is NOT a known module-level metric is NOT emitted (precision). Only Python is covered.",
+          "cites": ["internal/engine/rules/_engine/comment_marker_extractor.yaml","internal/extractors/golang/observability.go","internal/extractors/javascript/observability.go","internal/extractors/python/observability.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3768",
+          "notes": "#3628 area #11: prometheus client metrics emit INSTRUMENTS edges (enclosing op -\u003e metric:\u003cname\u003e stub) in Python, Go and JS/TS. Python (#3762): module-level X = Counter|Gauge|Summary|Histogram(\"name\") + @X.time()/X.inc()/observe(). Go: a metric var bound to prometheus.New{Counter,Gauge,Summary,Histogram}[Vec](prometheus.*Opts{Name:\"x\"}) (package- or fn-scope) resolves .Inc()/Dec()/Add()/Sub()/Observe()/Set() body calls to metric:x. JS/TS prom-client: a var bound to new client.{Counter,Gauge,Histogram,Summary}({name:'x'}) resolves .inc()/.dec()/.set()/.observe()/.startTimer() body calls to metric:x. Honest-partial: a non-literal metric name yields traced=true+dynamic=true; a metric method on a variable that is NOT a known metric declaration is NOT emitted (precision).",
           "verified_at": "2026-06-02"
         },
         "trace_extraction": {
@@ -1731,9 +1731,9 @@
         },
         "trace_extraction": {
           "status": "partial",
-          "cites": ["internal/extractors/python/observability.go"],
-          "issue": "https://github.com/cajasmota/archigraph/issues/3762",
-          "notes": "#3628 area #11: Sentry Python performance-tracing sites emit INSTRUMENTS edges (enclosing op -\u003e span:\u003cname\u003e stub). Bare @sentry_sdk.trace / @sentry.trace decorators key the span on the function name; sentry_sdk.start_transaction(...) / start_span(...) body calls take the name from name=/op=/description= kwargs. Honest-partial: dynamic names emit traced=true+dynamic=true without fabrication; only Python is covered.",
+          "cites": ["internal/extractors/golang/observability.go","internal/extractors/javascript/observability.go","internal/extractors/python/observability.go"],
+          "issue": "https://github.com/cajasmota/archigraph/issues/3768",
+          "notes": "#3628 area #11: Sentry performance-tracing sites emit INSTRUMENTS edges (enclosing op -\u003e span:\u003cname\u003e stub) in Python, Go and JS/TS. Python (#3762): @sentry_sdk.trace, start_transaction/start_span. Go: sentry.StartSpan(ctx, \"op\") takes the first string-literal arg as the span name. JS/TS: Sentry.startSpan({name:'op'}, cb) / Sentry.startTransaction({name:'op'}) / startInactiveSpan take the `name` property of the first object-literal arg. Honest-partial: dynamic names emit traced=true+dynamic=true keyed on the enclosing fn without fabrication; .StartSpan on a non-sentry receiver is not emitted.",
           "verified_at": "2026-06-02"
         }
       }
