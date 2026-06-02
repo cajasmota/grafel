@@ -11,8 +11,9 @@ import (
 	"context"
 	"testing"
 
-	extreg "github.com/cajasmota/archigraph/internal/extractor"
 	_ "github.com/cajasmota/archigraph/internal/custom/java"
+	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 // ---------------------------------------------------------------------------
@@ -194,6 +195,192 @@ public class UserNode {
 	}
 	if !hasSub(ents, "relationship") {
 		t.Errorf("expected relationship entity from OGM @Relationship, got %v", ents)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// GRAPH_RELATES — graph-schema domain topology as a traversable edge (#3611)
+// ---------------------------------------------------------------------------
+
+// findGraphRelates returns the GRAPH_RELATES edge from the @Node entity named
+// `fromNode` to the structural ref "Class:<toType>", or nil if absent.
+func findGraphRelates(ents []types.EntityRecord, fromNode, toType string) *types.RelationshipRecord {
+	for i := range ents {
+		if !(ents[i].Kind == "SCOPE.Schema" && ents[i].Subtype == "node" && ents[i].Name == fromNode) {
+			continue
+		}
+		for j := range ents[i].Relationships {
+			r := &ents[i].Relationships[j]
+			if r.Kind == string(types.RelationshipKindGraphRelates) && r.ToID == "Class:"+toType {
+				return r
+			}
+		}
+	}
+	return nil
+}
+
+// TestNeo4jGraphRelatesEdge proves the headline capability: an @Node owning an
+// @Relationship field to another same-file @Node type emits a traversable
+// GRAPH_RELATES edge carrying the Neo4j rel_type and direction — the graph-DB
+// analogue of JOINS_COLLECTION.  Person ──GRAPH_RELATES(ACTED_IN)──▶ Movie.
+func TestNeo4jGraphRelatesEdge(t *testing.T) {
+	ctx := context.Background()
+	e, _ := extreg.Get("custom_java_neo4j")
+
+	src := `
+import org.springframework.data.neo4j.core.schema.Node;
+import org.springframework.data.neo4j.core.schema.Relationship;
+import org.springframework.data.neo4j.core.schema.Relationship.Direction;
+
+@Node("Movie")
+public class Movie {
+    @org.springframework.data.neo4j.core.schema.Id
+    private Long id;
+}
+
+@Node("Person")
+public class Person {
+    @org.springframework.data.neo4j.core.schema.Id
+    private Long id;
+
+    @Relationship(type = "ACTED_IN", direction = Direction.OUTGOING)
+    private Movie movie;
+}
+`
+	ents, err := e.Extract(ctx, extreg.FileInput{Path: "Graph.java", Language: "java", Content: []byte(src)})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	edge := findGraphRelates(ents, "Person", "Movie")
+	if edge == nil {
+		t.Fatalf("expected Person ─GRAPH_RELATES→ Class:Movie edge, got %+v", ents)
+	}
+	if edge.Properties["rel_type"] != "ACTED_IN" {
+		t.Errorf("rel_type: want ACTED_IN, got %q", edge.Properties["rel_type"])
+	}
+	if edge.Properties["direction"] != "OUTGOING" {
+		t.Errorf("direction: want OUTGOING, got %q", edge.Properties["direction"])
+	}
+	if edge.Properties["field_name"] != "movie" {
+		t.Errorf("field_name: want movie, got %q", edge.Properties["field_name"])
+	}
+	if edge.Properties["framework"] != "neo4j" {
+		t.Errorf("framework: want neo4j, got %q", edge.Properties["framework"])
+	}
+
+	// The owner @Node entity is the source ("table"); the reverse edge must NOT
+	// exist (direction is encoded as a property, not by swapping endpoints).
+	if findGraphRelates(ents, "Movie", "Person") != nil {
+		t.Error("did not expect a reverse Movie ─GRAPH_RELATES→ Person edge")
+	}
+}
+
+// TestNeo4jGraphRelatesGenericCollection proves the edge resolves through a
+// generic collection field: @Relationship List<Person> on Person → self-edge
+// Person ─GRAPH_RELATES(KNOWS)→ Person.
+func TestNeo4jGraphRelatesGenericCollection(t *testing.T) {
+	ctx := context.Background()
+	e, _ := extreg.Get("custom_java_neo4j")
+
+	src := `
+import org.springframework.data.neo4j.core.schema.Node;
+import org.springframework.data.neo4j.core.schema.Relationship;
+import java.util.List;
+
+@Node
+public class Person {
+    @org.springframework.data.neo4j.core.schema.Id
+    private Long id;
+
+    @Relationship(type = "KNOWS", direction = Relationship.Direction.OUTGOING)
+    private List<Person> friends;
+}
+`
+	ents, err := e.Extract(ctx, extreg.FileInput{Path: "Person.java", Language: "java", Content: []byte(src)})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	edge := findGraphRelates(ents, "Person", "Person")
+	if edge == nil {
+		t.Fatalf("expected Person ─GRAPH_RELATES→ Class:Person self-edge, got %+v", ents)
+	}
+	if edge.Properties["rel_type"] != "KNOWS" {
+		t.Errorf("rel_type: want KNOWS, got %q", edge.Properties["rel_type"])
+	}
+}
+
+// TestNeo4jGraphRelatesCrossFileDeferred proves honest-partial behaviour: when
+// the @Relationship target type is NOT a same-file @Node (cross-file), no
+// GRAPH_RELATES edge is emitted — the topology stays as `target_node` props on
+// the relationship Component only. (ActorEntity/DirectorEntity are referenced
+// but never declared @Node here.)
+func TestNeo4jGraphRelatesCrossFileDeferred(t *testing.T) {
+	ctx := context.Background()
+	e, _ := extreg.Get("custom_java_neo4j")
+
+	src := `
+import org.springframework.data.neo4j.core.schema.Node;
+import org.springframework.data.neo4j.core.schema.Relationship;
+import org.springframework.data.neo4j.core.schema.Relationship.Direction;
+import java.util.List;
+
+@Node("Movie")
+public class MovieEntity {
+    @org.springframework.data.neo4j.core.schema.Id
+    private Long id;
+
+    @Relationship(type = "ACTED_IN", direction = Direction.INCOMING)
+    private List<ActorEntity> actors;
+}
+`
+	ents, err := e.Extract(ctx, extreg.FileInput{Path: "MovieEntity.java", Language: "java", Content: []byte(src)})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Kind == string(types.RelationshipKindGraphRelates) {
+				t.Errorf("expected NO GRAPH_RELATES edge for cross-file target, got %+v", r)
+			}
+		}
+	}
+}
+
+// TestNeo4jGraphRelatesNonRelationshipFieldNoEdge proves the negative: a plain
+// @Property field (no @Relationship) on an @Node emits no GRAPH_RELATES edge.
+func TestNeo4jGraphRelatesNonRelationshipFieldNoEdge(t *testing.T) {
+	ctx := context.Background()
+	e, _ := extreg.Get("custom_java_neo4j")
+
+	src := `
+import org.springframework.data.neo4j.core.schema.Node;
+import org.springframework.data.neo4j.core.schema.Property;
+
+@Node("Movie")
+public class Movie {
+    @org.springframework.data.neo4j.core.schema.Id
+    private Long id;
+}
+
+@Node("Person")
+public class Person {
+    @Property("name")
+    private String name;
+
+    private Movie favourite;
+}
+`
+	ents, err := e.Extract(ctx, extreg.FileInput{Path: "Graph.java", Language: "java", Content: []byte(src)})
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Kind == string(types.RelationshipKindGraphRelates) {
+				t.Errorf("plain field must not emit GRAPH_RELATES, got %+v", r)
+			}
+		}
 	}
 }
 

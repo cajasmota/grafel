@@ -22941,10 +22941,10 @@
             "notes": "Neo4j Spring Data has no lazy-loading concept equivalent to relational ORMs; not applicable"
           },
           "relationship_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/java/neo4j.go"],
-            "issue": "3098",
-            "notes": "Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists."
+            "status": "full",
+            "cites": ["internal/custom/java/neo4j.go","internal/custom/java/neo4j_test.go"],
+            "issue": "3611",
+            "notes": "@Relationship(type=,direction=) fields are extracted AND emitted as traversable GRAPH_RELATES graph-schema edges owner-@Node -\u003e target-@Node (mirrors JOINS_COLLECTION for graph DBs); the app's domain graph topology is now a navigable subgraph rather than opaque string props. Full for same-file @Node targets (value-asserting test TestNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN)-\u003e Movie); cross-file target resolution is honest-partial (deferred to the resolver / future cross-file pass, kept as target_node props only)."
           }
         },
         "Queries": {

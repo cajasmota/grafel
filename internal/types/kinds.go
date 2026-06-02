@@ -302,6 +302,16 @@ const (
 	// pattern_type.
 	RelationshipKindJoinsCollection RelationshipKind = "JOINS_COLLECTION"
 
+	// #3611 (epic #3606): Neo4j graph-schema domain-topology edge. Emitted from
+	// an @Node-annotated owner node-label entity → the target @Node entity named
+	// by an @Relationship(type=…, direction=…) field. Mirrors JOINS_COLLECTION
+	// for graph databases: encodes the application's domain graph schema
+	// (e.g. (:Person)-[:ACTED_IN]->(:Movie)) as a traversable subgraph rather
+	// than as opaque string props on a relationship component. Properties on the
+	// edge: rel_type (the Neo4j relationship type), direction (OUTGOING/INCOMING),
+	// field_name, framework, provenance.
+	RelationshipKindGraphRelates RelationshipKind = "GRAPH_RELATES"
+
 	// #721: Consumer-side HTTP fetch edge. Emitted from a calling
 	// function/method entity → the synthetic http_endpoint entity that
 	// represents the URL the client invokes. Lets the process-flow BFS
@@ -683,6 +693,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		// #723:
 		RelationshipKindQueries,
 		RelationshipKindJoinsCollection,
+		// #3611 (epic #3606):
+		RelationshipKindGraphRelates,
 		// #721:
 		RelationshipKindFetches,
 		// #726 wave 1:

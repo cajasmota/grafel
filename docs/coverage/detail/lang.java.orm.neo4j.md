@@ -25,7 +25,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Association extraction | 🟢 `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor (Spring Data Neo4j @Node/@Relationship annotations not handled). Tracked in issue #3001. |
 | Foreign key extraction | — `not_applicable` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j is a graph database with no foreign key concept; foreign_key_extraction is not applicable |
 | Lazy loading recognition | — `not_applicable` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j Spring Data has no lazy-loading concept equivalent to relational ORMs; not applicable |
-| Relationship extraction | 🟢 `partial` | — | 3098 | `internal/custom/java/neo4j.go` | Neo4j graph relationships require @Relationship annotation extraction from Spring Data Neo4j; no extractor exists. |
+| Relationship extraction | ✅ `full` | — | 3611 | `internal/custom/java/neo4j.go`<br>`internal/custom/java/neo4j_test.go` | @Relationship(type=,direction=) fields are extracted AND emitted as traversable GRAPH_RELATES graph-schema edges owner-@Node -> target-@Node (mirrors JOINS_COLLECTION for graph DBs); the app's domain graph topology is now a navigable subgraph rather than opaque string props. Full for same-file @Node targets (value-asserting test TestNeo4jGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN)-> Movie); cross-file target resolution is honest-partial (deferred to the resolver / future cross-file pass, kept as target_node props only). |
 
 ### Queries
 

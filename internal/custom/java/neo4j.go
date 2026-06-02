@@ -89,10 +89,16 @@ var (
 	// Extract direction= from @Relationship attributes.
 	neo4jRelDirRE = regexp.MustCompile(`\bdirection\s*=\s*(?:Direction\.)?(\w+)`)
 
-	// Field declaration following @Relationship.
+	// Field declaration following @Relationship. Captures:
+	//   group 1 = generic type param (e.g. Person in List<Person>), if present
+	//   group 2 = the declared (outer) type token (e.g. List, or Movie for a
+	//             non-collection field)
+	//   group 3 = the field name
+	// For a collection field the target node type is group 1; for a plain field
+	// it is group 2.
 	neo4jRelFieldRE = regexp.MustCompile(
 		`(?:private|protected|public|)\s+(?:(?:final|transient)\s+)*` +
-			`(?:\w+(?:<(\w+)>)?|(\w+))\s+(\w+)\s*;`)
+			`(\w+)(?:<(\w+)>)?\s+(\w+)\s*;`)
 )
 
 func (e *neo4jExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
@@ -124,8 +130,13 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		name   string
 		label  string
 		offset int
+		idx    int // index into `entities` of the emitted node entity
 	}
 	var nodes []nodeInfo
+	// knownNodes lets the @Relationship pass resolve a field's target type to a
+	// same-file @Node class (honest-partial: cross-file targets are unresolved
+	// and their GRAPH_RELATES edge is deferred — only string props are kept).
+	knownNodes := make(map[string]bool)
 
 	emitNode := func(className, label string, offset int) {
 		if label == "" {
@@ -135,8 +146,13 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		setProps(&ent, "framework", "neo4j",
 			"node_label", label,
 			"provenance", "INFERRED_FROM_NEO4J_NODE")
+		idx := len(entities)
 		add(ent)
-		nodes = append(nodes, nodeInfo{name: className, label: label, offset: offset})
+		// add() dedupes; only record the node if the entity was actually appended.
+		if len(entities) == idx+1 {
+			nodes = append(nodes, nodeInfo{name: className, label: label, offset: offset, idx: idx})
+			knownNodes[className] = true
+		}
 	}
 
 	// Spring Data Neo4j @Node.
@@ -163,6 +179,18 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		for _, n := range nodes {
 			if n.offset <= offset {
 				best = n.name
+			}
+		}
+		return best
+	}
+
+	// owningNodeIdx returns the index into `entities` of the @Node entity whose
+	// declaration most closely precedes offset (-1 if none).
+	owningNodeIdx := func(offset int) int {
+		best := -1
+		for _, n := range nodes {
+			if n.offset <= offset {
+				best = n.idx
 			}
 		}
 		return best
@@ -238,12 +266,15 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		if fm == nil {
 			continue
 		}
-		// Capture generic type param or plain type, and field name.
+		// The target node type is the generic param (group 2) for a collection
+		// field (e.g. List<Person> → Person), otherwise the declared outer type
+		// (group 1) for a plain field (e.g. Movie movie → Movie). Field name is
+		// group 3.
 		var targetType, fieldName string
-		if fm[2] >= 0 {
-			targetType = rest[fm[2]:fm[3]]
-		} else if fm[4] >= 0 {
+		if fm[4] >= 0 {
 			targetType = rest[fm[4]:fm[5]]
+		} else if fm[2] >= 0 {
+			targetType = rest[fm[2]:fm[3]]
 		}
 		fieldName = rest[fm[6]:fm[7]]
 
@@ -270,6 +301,36 @@ func (e *neo4jExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]
 		}
 		setProps(&ent, kvs...)
 		add(ent)
+
+		// --- GRAPH_RELATES edge (#3611, epic #3606) ---
+		// Mirror the JOINS_COLLECTION model: emit the domain graph schema as a
+		// traversable edge owner-@Node ──GRAPH_RELATES──▶ target-@Node, instead
+		// of leaving the topology encoded only as `target_node` string props on
+		// the relationship Component above. The edge hangs off the owner @Node
+		// entity (the graph "table"); the resolver fills FromID from it and
+		// resolves ToID via its byName index ("Class:<TargetType>" matches the
+		// target @Node's SCOPE.Schema entity, same convention as the Django
+		// model cross-refs). Only emitted when the owner is an @Node and the
+		// target type resolves to a known same-file @Node class — cross-file
+		// targets are honest-partial and stay as props only.
+		ownerIdx := owningNodeIdx(m[0])
+		if ownerIdx >= 0 && targetType != "" && knownNodes[targetType] {
+			relProps := map[string]string{
+				"framework":  "neo4j",
+				"rel_type":   relType,
+				"direction":  direction,
+				"field_name": fieldName,
+				"provenance": "INFERRED_FROM_NEO4J_RELATIONSHIP",
+			}
+			entities[ownerIdx].Relationships = append(
+				entities[ownerIdx].Relationships,
+				types.RelationshipRecord{
+					ToID:       "Class:" + targetType,
+					Kind:       string(types.RelationshipKindGraphRelates),
+					Properties: relProps,
+				},
+			)
+		}
 	}
 
 	return entities, nil
