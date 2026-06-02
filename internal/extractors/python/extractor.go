@@ -189,9 +189,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// don't use the pattern).
 	constReg := buildModuleConstRegistry(root, file.Content, importMap)
 
+	// Issue #3762 — pre-scan module-level Prometheus metric declarations
+	// (`X = Summary("name", ...)`) so the observability pass can resolve
+	// `@X.time()` decorators / `X.inc()` body calls to a metric name. Returns
+	// nil when no metric is declared (zero cost for non-Prometheus files).
+	metricReg := buildPyMetricRegistry(root, file.Content)
+
 	// Walk top-level children.
 	walkBeforeCount := len(entities)
-	walkNode(root, file, "", &entities, &functionCount, &classCount, importMap, constReg)
+	walkNode(root, file, "", &entities, &functionCount, &classCount, importMap, constReg, metricReg)
 
 	// Issue #699b — emit CONTAINS edges from the file entity to every
 	// top-level class (SCOPE.Component/class) and module-level function
@@ -552,6 +558,7 @@ func walkNode(
 	classCount *int,
 	imports pythonImportMap,
 	constReg moduleConstRegistry,
+	metricReg pyMetricRegistry,
 ) {
 	if node == nil {
 		return
@@ -597,7 +604,7 @@ func walkNode(
 			if body != nil {
 				before := len(*out)
 				for i := range int(body.ChildCount()) {
-					walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports, constReg)
+					walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports, constReg, metricReg)
 				}
 				// Issue #526 — class-attribute assignments (DRF ViewSet
 				// `serializer_class = ...`, Django Model `title =
@@ -721,6 +728,10 @@ func walkNode(
 			// Issue #3689 — stamp OpenTelemetry span-creation sites (no decorator
 			// parent for a bare function_definition).
 			stampPythonTracingSpans(node, nil, selfName, file.Content, out, funcIdx)
+			// Issue #3762 — stamp non-OTel instrumentation (ddtrace/Sentry/
+			// Prometheus/New Relic). Bare function → no decorator parent; body
+			// calls (tracer.trace, METRIC.inc, …) are still scanned.
+			stampPythonObservability(node, nil, selfName, metricReg, file.Content, out, funcIdx)
 		}
 		return // do not recurse into function body for nested definitions
 
@@ -751,6 +762,9 @@ func walkNode(
 				// both the body and the decorator list (node is the
 				// decorated_definition wrapping inner).
 				stampPythonTracingSpans(inner, node, selfName, file.Content, out, decoratedFuncIdx)
+				// Issue #3762 — stamp non-OTel instrumentation (ddtrace/Sentry/
+				// Prometheus/New Relic) from the decorator list + body.
+				stampPythonObservability(inner, node, selfName, metricReg, file.Content, out, decoratedFuncIdx)
 			}
 		case "class_definition":
 			rec := buildClass(inner, file)
@@ -778,7 +792,7 @@ func walkNode(
 				if body != nil {
 					before := len(*out)
 					for i := range int(body.ChildCount()) {
-						walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports, constReg)
+						walkNode(body.Child(i), file, childParent, out, funcCount, classCount, imports, constReg, metricReg)
 					}
 					// Issue #526 — see the bare class_definition branch.
 					extractClassFields(body, file, childParent, out)
@@ -840,7 +854,7 @@ func walkNode(
 	default:
 		// Recurse into all other node types.
 		for i := range int(node.ChildCount()) {
-			walkNode(node.Child(i), file, parentClass, out, funcCount, classCount, imports, constReg)
+			walkNode(node.Child(i), file, parentClass, out, funcCount, classCount, imports, constReg, metricReg)
 		}
 	}
 }
