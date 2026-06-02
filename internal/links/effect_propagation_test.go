@@ -428,6 +428,132 @@ def add_numbers():
 	}
 }
 
+// TestEffectPropagation_ScheduledJobInheritsTransitiveHelperEffects is the
+// #3934 fix: a Celery ScheduledJob whose task body does NO IO directly but
+// DELEGATES its write to a helper it CALLS. The helper owns the db_write/
+// db_delete sink; the body inherits it transitively via the CALLS fixed-point;
+// the ScheduledJob WRAPPER (a separate node with no outgoing CALLS) must in
+// turn inherit it from the body. Before #3934 the wrapper bound only the body's
+// DIRECT sinks (#3869) — none here — so it reported `pure`.
+func TestEffectPropagation_ScheduledJobInheritsTransitiveHelperEffects(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "tasks.py", `
+from celery import shared_task
+
+@shared_task
+def clear_inspections_task():
+    _do_clear()
+`)
+	writeFile(t, root, "helpers.py", `
+def _do_clear():
+    Inspection.objects.all().delete()
+`)
+	graphs := []repoGraph{{
+		Repo:     "upvate-core",
+		FileRoot: root,
+		Entities: []entityNode{
+			// The task body — bare function name, owns the CALLS edge to the helper.
+			{ID: "op", Name: "clear_inspections_task", Kind: "SCOPE.Operation", SourceFile: "tasks.py"},
+			// The helper that actually performs the DB delete (direct sink owner).
+			{ID: "helper", Name: "_do_clear", Kind: "SCOPE.Operation", SourceFile: "helpers.py"},
+			// The synthetic ScheduledJob wrapper: name is the celery job ID, bare
+			// task name is in `handler`. It has NO outgoing CALLS of its own.
+			{ID: "job", Name: "celery:tasks.py:clear_inspections_task", Kind: "SCOPE.ScheduledJob",
+				SourceFile: "tasks.py", Properties: map[string]string{
+					"handler":   "clear_inspections_task",
+					"framework": "celery",
+				}},
+		},
+		Edges: []edgeRef{
+			// CALLS lives on the BODY function, not the wrapper.
+			{FromID: "op", ToID: "helper", Kind: "CALLS"},
+		},
+	}}
+	if _, err := runEffectPropagationPass(graphs, Paths{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var job *entityNode
+	for i := range graphs[0].Entities {
+		if graphs[0].Entities[i].Kind == "SCOPE.ScheduledJob" {
+			job = &graphs[0].Entities[i]
+		}
+	}
+	if job == nil {
+		t.Fatal("ScheduledJob entity missing from graph")
+	}
+	if job.Properties == nil {
+		t.Fatal("ScheduledJob node left unstamped — #3934 transitive-via-helper gap")
+	}
+	effs := job.Properties[EffectPropertyKeyList]
+	// The .delete() ORM sink classifies as db_write (and may add db_delete);
+	// the wrapper must carry the helper's transitive effect, not be pure.
+	if !strings.Contains(effs, "db_write") && !strings.Contains(effs, "db_delete") {
+		t.Fatalf("ScheduledJob (celery:...:clear_inspections_task) effects=%q; "+
+			"want db_write/db_delete inherited TRANSITIVELY via the helper (#3934)", effs)
+	}
+	// Effects arrived through a helper the body CALLS, not a direct sink on the
+	// wrapper itself → source must be transitive.
+	if got := job.Properties[EffectPropertyKeySource]; got != "transitive" {
+		t.Errorf("ScheduledJob effect_source=%q; want transitive (inherited via helper)", got)
+	}
+	// The body itself must also carry the transitive effect (sanity on the join).
+	if !strings.Contains(graphs[0].Entities[0].Properties[EffectPropertyKeyList], "db_write") &&
+		!strings.Contains(graphs[0].Entities[0].Properties[EffectPropertyKeyList], "db_delete") {
+		t.Errorf("task body effects=%q; want transitive db_write/db_delete",
+			graphs[0].Entities[0].Properties[EffectPropertyKeyList])
+	}
+}
+
+// TestEffectPropagation_ScheduledJobTransitivePureStaysPure is the #3934
+// negative: a ScheduledJob whose body AND every callee are genuinely pure must
+// not acquire a fabricated effect — the body-closure inheritance only copies
+// effects that genuinely resolved on the body.
+func TestEffectPropagation_ScheduledJobTransitivePureStaysPure(t *testing.T) {
+	root := t.TempDir()
+	writeFile(t, root, "tasks.py", `
+from celery import shared_task
+
+@shared_task
+def compute_task():
+    return _pure_add()
+`)
+	writeFile(t, root, "helpers.py", `
+def _pure_add():
+    return 1 + 2
+`)
+	graphs := []repoGraph{{
+		Repo:     "upvate-core",
+		FileRoot: root,
+		Entities: []entityNode{
+			{ID: "op", Name: "compute_task", Kind: "SCOPE.Operation", SourceFile: "tasks.py"},
+			{ID: "helper", Name: "_pure_add", Kind: "SCOPE.Operation", SourceFile: "helpers.py"},
+			{ID: "job", Name: "celery:tasks.py:compute_task", Kind: "SCOPE.ScheduledJob",
+				SourceFile: "tasks.py", Properties: map[string]string{
+					"handler":   "compute_task",
+					"framework": "celery",
+				}},
+		},
+		Edges: []edgeRef{
+			{FromID: "op", ToID: "helper", Kind: "CALLS"},
+		},
+	}}
+	if _, err := runEffectPropagationPass(graphs, Paths{}, nil); err != nil {
+		t.Fatal(err)
+	}
+	var job *entityNode
+	for i := range graphs[0].Entities {
+		if graphs[0].Entities[i].Kind == "SCOPE.ScheduledJob" {
+			job = &graphs[0].Entities[i]
+		}
+	}
+	if job == nil {
+		t.Fatal("ScheduledJob entity missing from graph")
+	}
+	if v, ok := job.Properties[EffectPropertyKeyList]; ok {
+		t.Errorf("pure-chain ScheduledJob carries fabricated effects=%q; want unstamped", v)
+	}
+}
+
 func confFromProps(props map[string]string, effect string) float64 {
 	if props == nil {
 		return 0
