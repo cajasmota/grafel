@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # elixir
 
-**Frameworks**: 14 · **Tools**: 5 · **ORMs**: 10 · **Other**: 2
+**Frameworks**: 14 · **Tools**: 5 · **ORMs**: 10 · **Other**: 3
 
 Back to [summary](../summary.md).
 
@@ -88,4 +88,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Category | Status | Notes |
 |---|---|---|---|
 | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | [message_broker](../by-category/message_broker.md) | 🟢 | |
+| [Phoenix Channels](../detail/msg.phoenix-channels.md) | [message_broker](../by-category/message_broker.md) | 🔴 | |
 | [Ueberauth (Elixir OAuth)](../detail/lang.elixir.framework.ueberauth.md) | [security](../by-category/security.md) | 🔴 | |

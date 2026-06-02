@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 31 records · **C/C++**: 3 · **elixir**: 1 · **JS/TS**: 1 · **multi**: 20 · **python**: 3 · **ruby**: 1 · **rust**: 2
+**Total**: 33 records · **C/C++**: 3 · **elixir**: 2 · **JS/TS**: 1 · **multi**: 21 · **python**: 3 · **ruby**: 1 · **rust**: 2
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -11,6 +11,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [C/C++](../by-language/c-cpp.md) | [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [C/C++](../by-language/c-cpp.md) | [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [elixir](../by-language/elixir.md) | [Phoenix Channels](../detail/msg.phoenix-channels.md) | 🔴 | ✅ | 🟢 | 🔴 | |
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [AMQP (generic)](../detail/msg.broker.amqp.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS EventBridge](../detail/msg.broker.eventbridge.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
@@ -30,6 +31,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [RabbitMQ](../detail/msg.broker.rabbitmq.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Redis pub/sub & streams](../detail/msg.broker.redis.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Server-Sent Events](../detail/msg.sse.md) | ✅ | ✅ | — | ✅ | |
+| [multi](../by-language/multi.md) | [SignalR](../detail/msg.signalr.md) | 🔴 | ✅ | — | 🔴 | |
 | [multi](../by-language/multi.md) | [WebSocket](../detail/msg.websocket.md) | ✅ | ✅ | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Webhooks](../detail/msg.webhook.md) | ✅ | ✅ | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [Celery (Python task queue)](../detail/msg.celery.md) | ✅ | ✅ | ✅ | ✅ | |
