@@ -39342,9 +39342,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: $session-\u003eexecute('... FROM t') CQL table parsed via scanPHPDrivers/emitCQLTargets; QUERIES edge to Class:\u003cTable\u003e; dynamic CQL honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -39391,9 +39392,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: ['TableName'=\u003e'X'] literal captured via scanPHPDrivers/emitDynamoTargets; QUERIES edge to Class:\u003cTable\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -39440,9 +39442,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: ['index'=\u003e'x'] literal captured via scanPHPDrivers/emitElasticTargets; QUERIES edge to Class:\u003cIndex\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -39489,9 +39492,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: $mongo-\u003eselectCollection('db','coll') / -\u003ecollection('x') captured via scanPHPDrivers; QUERIES edge to Class:\u003cCollection\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -43385,9 +43389,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: session.execute('... FROM t') CQL table parsed via scanPythonDrivers/emitCQLTargets; QUERIES edge to Class:\u003cTable\u003e; dynamic CQL honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -43434,9 +43439,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: dynamodb.Table('X') / TableName='X' captured via scanPythonDrivers/emitDynamoTargets; QUERIES edge to Class:\u003cTable\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -43483,9 +43489,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: es.search(index='x') literal captured via scanPythonDrivers/emitElasticTargets; QUERIES edge to Class:\u003cIndex\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -49814,9 +49821,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: session.execute('... FROM t') CQL table parsed via scanRubyDrivers/emitCQLTargets; QUERIES edge to Class:\u003cTable\u003e; dynamic CQL honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -49863,9 +49871,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: dynamodb.get_item(table_name:'X') captured via scanRubyDrivers/emitDynamoTargets; QUERIES edge to Class:\u003cTable\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -52448,9 +52457,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: session.query('... FROM t') scylla CQL parsed via scanRustDrivers/emitCQLTargets; QUERIES edge to Class:\u003cTable\u003e; dynamic CQL honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },
@@ -52595,9 +52605,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "full",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_drivers_other.go","internal/engine/orm_queries_drivers_other_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Driver topology: db.collection::\u003cT\u003e('x') captured via scanRustDrivers; QUERIES edge to Class:\u003cCollection\u003e; dynamic names honest-skipped.",
             "verified_at": "2026-06-02"
           }
         },

@@ -71,9 +71,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟢 8/8 | |
 | [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/8 | |
 | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🔴 0/1 | |
-| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🔴 0/1 | |
+| [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | ✅ 1/1 | |
 | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/1 | |
-| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🔴 0/1 | |
+| [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | ✅ 1/1 | |
 | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/1 | |
 | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟢 3/3 | |
 | [redis-rs](../detail/lang.rust.driver.redis.md) | ✅ 1/1 | |

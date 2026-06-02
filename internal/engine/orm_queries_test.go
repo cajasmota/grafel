@@ -339,6 +339,9 @@ func TestORM_NoEdgesOnNonORMFile(t *testing.T) {
 		{"go", "util.go", "package util\nfunc Add(a, b int) int { return a + b }\n"},
 		{"java", "Util.java", "public class Util { public int add(int a, int b) { return a + b; } }\n"},
 		{"ruby", "util.rb", "def add(a, b)\n  a + b\nend\n"},
+		{"csharp", "Util.cs", "public class Util { public int Add(int a, int b) { return a + b; } }\n"},
+		{"php", "util.php", "<?php\nfunction add($a, $b) { return $a + $b; }\n"},
+		{"rust", "util.rs", "pub fn add(a: i32, b: i32) -> i32 { a + b }\n"},
 	}
 	for _, c := range cases {
 		t.Run(c.lang, func(t *testing.T) {
