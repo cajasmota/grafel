@@ -144,10 +144,42 @@ var (
 	// self.class, ApplicationRecord). The trailing `do`/`{` distinguishes a
 	// transaction BLOCK from an unrelated `foo.transaction` attribute read.
 	rubyTransactionRE = regexp.MustCompile(`(?:\b[A-Z]\w*(?:::\w+)*|\bself\b)\s*\.\s*transaction\b\s*(?:\(\s*[^)]*\)\s*)?(?:do\b|\{)`)
+
+	// Sequel transaction boundaries (#3950). Sequel opens a transaction on a
+	// DATABASE-HANDLE receiver — conventionally the `DB` constant, but the
+	// handle is just as often held in a local var (`db`), an ivar (`@db`), or
+	// a dataset (`DB[:users].transaction do`). The trailing `do`/`{`
+	// distinguishes a transaction BLOCK from an attribute read. We accept:
+	//   * the canonical `DB` constant   : `DB.transaction do`
+	//   * a `Sequel.…`/`Sequel::…` path : `Sequel::DATABASES.first.transaction do`
+	//   * a dataset receiver            : `DB[:users].transaction do`
+	//   * a lowercase / ivar handle     : `db.transaction do`, `@db.transaction do`
+	// The lowercase/ivar arm is the genuine gap the Rails regex (constant-only
+	// receiver) cannot reach.
+	rubySequelTxRE = regexp.MustCompile(
+		`(?:\bDB\b(?:\s*\[\s*:?\w+\s*\])?` + // DB / DB[:users]
+			`|\bSequel(?:::\w+)*(?:\s*\.\s*\w+)*` + // Sequel::DATABASES.first
+			`|\b(?:@{1,2})?[a-z_]\w*(?:\s*\[\s*:?\w+\s*\])?)` + // db / @db / dset / db[:users]
+			`\s*\.\s*transaction\b\s*(?:\(\s*[^)]*\)\s*)?(?:do\b|\{)`,
+	)
+	// A Sequel database handle / dataset must be plausibly present for the
+	// lowercase-receiver arm to fire, to avoid stamping an unrelated
+	// `payments.transaction do` block in a non-Sequel codebase. The DB
+	// constant, a `DB[:` dataset, a `Sequel.` reference, or a `.dataset`
+	// builder anywhere in the body is sufficient evidence.
+	rubySequelEvidenceRE = regexp.MustCompile(`\bDB\b|\bSequel\b|\.\s*dataset\b|\[\s*:\w+\s*\]`)
 )
 
-// DetectRuby returns the transaction stamp for a Ruby method body.
+// DetectRuby returns the transaction stamp for a Ruby method body. Sequel
+// (#3950) is recognised ahead of the generic Rails check so the canonical
+// `DB.transaction do` boundary is credited as sequel_transaction rather than
+// mislabelled rails_transaction; the lowercase/ivar handle form (which the
+// constant-only Rails regex misses entirely) is also covered when Sequel
+// evidence is present in the body.
 func DetectRuby(src string) Stamp {
+	if rubySequelTxRE.MatchString(src) && rubySequelEvidenceRE.MatchString(src) {
+		return Stamp{Transactional: true, Source: "sequel_transaction"}
+	}
 	if rubyTransactionRE.MatchString(src) {
 		return Stamp{Transactional: true, Source: "rails_transaction"}
 	}

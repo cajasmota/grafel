@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/orms/sequel.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-06-02` | 3950 | `internal/engine/rules/ruby/orms/sequel.yaml`<br>`internal/substrate/effect_sinks_ruby.go` | — |
 
 ### Migrations
 
@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
+| Transaction function stamping | ✅ `full` | `2026-06-02` | 3950 | `internal/extractors/ruby/ruby.go`<br>`internal/txscope/txscope.go` | — |
 
 ## Provenance
 

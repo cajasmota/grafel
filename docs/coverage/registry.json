@@ -63555,8 +63555,9 @@
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/ruby/orms/sequel.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/rules/ruby/orms/sequel.yaml","internal/substrate/effect_sinks_ruby.go"],
+            "issue": "3950",
+            "verified_at": "2026-06-02"
           }
         },
         "Migrations": {
@@ -63572,8 +63573,10 @@
         },
         "Transactions": {
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "full",
+            "cites": ["internal/extractors/ruby/ruby.go","internal/txscope/txscope.go"],
+            "issue": "3950",
+            "verified_at": "2026-06-02"
           }
         }
       }

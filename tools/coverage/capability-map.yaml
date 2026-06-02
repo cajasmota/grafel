@@ -16664,6 +16664,27 @@ records:
             - file: internal/custom/ruby/activerecord_test.go
           issues_implemented: ["3282"]
           verified_at: "2026-05-30"
+      Queries:
+        query_attribution:
+          # #3950: Sequel dataset writes `DB[:table]…insert/update/delete/
+          # multi_insert/import/truncate` surface as db_write effect-sinks that
+          # NAME the target table in the sink tag (e.g. sequel.write(users)),
+          # giving write-effect attribution at the table level. The DB[:table]
+          # dataset literal makes the write unambiguous (full confidence); a
+          # pure dataset read `DB[:users]…all` does NOT produce a db_write.
+          # Model/instance writes (Model.create, .save/.update/.destroy) reuse
+          # the shared ActiveRecord write-verb sniffer. Partial: the table is
+          # named only for the DB[:table] dataset form, not for model-class or
+          # instance-handle writes where the table is not lexically recoverable.
+          status: partial
+          symbols:
+            - file: internal/substrate/effect_sinks_ruby.go
+              functions: [sniffEffectsRuby, appendRubySequelDatasetWrites]
+          tests:
+            - file: internal/substrate/effects_test.go
+              functions: [TestSniffEffectsRuby_SequelDatasetWrites]
+          issues_implemented: ["3950"]
+          verified_at: "2026-06-03"
       Migrations:
         migration_parsing:
           status: partial
@@ -16674,6 +16695,31 @@ records:
             - file: internal/custom/ruby/activerecord_test.go
           issues_implemented: ["3282"]
           verified_at: "2026-05-30"
+      Transactions:
+        transaction_function_stamping:
+          # #3950: Sequel `DB.transaction do … end` boundaries stamp
+          # transactional=true + tx_source=sequel_transaction DIRECTLY on the
+          # enclosing method entity (shared internal/txscope detector, wired via
+          # the Ruby extractor's stampRubyTx). Recognised forms: the canonical
+          # DB constant (DB.transaction do), a dataset receiver
+          # (DB[:users].transaction do), and lowercase/ivar connection handles
+          # (db.transaction / @db.transaction) gated on Sequel evidence in the
+          # body — the lowercase form is the gap the constant-only Rails regex
+          # could not reach. Rails receivers stay tx_source=rails_transaction.
+          # Full: all canonical Sequel boundary forms fire with a named tx_source
+          # and a negative guard (no Sequel evidence -> no stamp). No transitive
+          # propagation (honesty boundary).
+          status: full
+          symbols:
+            - file: internal/txscope/txscope.go
+              functions: [DetectRuby]
+            - file: internal/extractors/ruby/ruby.go
+              functions: [stampRubyTx]
+          tests:
+            - file: internal/txscope/txscope_test.go
+              functions: [TestDetectRuby_SequelDBTransaction, TestDetectRuby_SequelDatasetTransaction, TestDetectRuby_SequelLowercaseHandleTransaction, TestDetectRuby_SequelNegativeNoEvidence]
+          issues_implemented: ["3950"]
+          verified_at: "2026-06-03"
 
   lang.ruby.orm.datamapper:
     capabilities:

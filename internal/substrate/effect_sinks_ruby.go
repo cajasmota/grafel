@@ -13,7 +13,9 @@
 //     .update_all / .destroy / .destroy_all / .delete /
 //     .delete_all / .save / .save! / .insert / .insert_all /
 //     .upsert / .upsert_all`, raw `connection.execute(
-//     "INSERT|UPDATE|DELETE ...")`
+//     "INSERT|UPDATE|DELETE ...")`, and Sequel dataset writes
+//     `DB[:table]…insert/update/delete/multi_insert/import/
+//     truncate` (table named in the sink, e.g. sequel.write(users))
 //   - fs_read   : File.read / .open (default "r"), File.readlines, IO.read,
 //     Dir.entries / .glob / .[], Pathname#read
 //   - fs_write  : File.write / .open with "w"/"a"/"x"/binary modes,
@@ -72,6 +74,26 @@ var rubyCursorWriteRe = regexp.MustCompile(
 	`\.\s*execute\s*\(\s*['"](?i:\s*(?:INSERT|UPDATE|DELETE|REPLACE|MERGE|TRUNCATE)\b)`,
 )
 
+// rubySequelDatasetWriteRe matches Sequel dataset writes anchored on the
+// `DB[:table]` dataset literal so the table name is recoverable (#3950):
+//
+//	DB[:users].insert(name: 'x')
+//	DB[:users].where(id: 1).update(name: 'x')
+//	DB[:logs].where(stale: true).delete
+//	DB[:users].multi_insert(rows)  /  .import(cols, rows)  /  .update_all(...)
+//
+// Capture group 1 is the table symbol/string so the sink can name the table.
+// The terminal write verb may be separated from the dataset by an arbitrary
+// chain of read-only refinements (.where/.exclude/.filter/.join/...), matched
+// permissively as `[^\n;]*?` up to the write verb. Only mutating verbs are
+// listed, so a pure read chain (e.g. `DB[:users].where(id: 1).all`) does NOT
+// match — preserving the read/write split.
+var rubySequelDatasetWriteRe = regexp.MustCompile(
+	`\bDB\s*\[\s*:?["']?(\w+)["']?\s*\]` + // DB[:users] / DB['users']
+		`[^\n;]*?` + // optional read-only refinement chain
+		`\.\s*(?:insert|multi_insert|import|update|update_all|delete|truncate|insert_ignore)\b`,
+)
+
 // rubyFSReadRe matches read-only filesystem primitives.
 var rubyFSReadRe = regexp.MustCompile(
 	`\bFile\s*\.\s*(?:read|readlines|open\s*\(\s*[^,)]+\s*\)|foreach)\b` +
@@ -115,6 +137,7 @@ func sniffEffectsRuby(content string) []EffectMatch {
 	out = appendRubyMatches(out, content, headers, rubyCursorSelectRe, EffectDBRead, "connection.execute(SELECT)", 1.0)
 	out = appendRubyMatches(out, content, headers, rubyDBWriteRe, EffectDBWrite, "activerecord.write", 0.85)
 	out = appendRubyMatches(out, content, headers, rubyCursorWriteRe, EffectDBWrite, "connection.execute(WRITE)", 1.0)
+	out = appendRubySequelDatasetWrites(out, content, headers)
 	out = appendRubyMatches(out, content, headers, rubyFSReadRe, EffectFSRead, "File.read/IO.read", 1.0)
 	out = appendRubyMatches(out, content, headers, rubyFSWriteRe, EffectFSWrite, "File.write/FileUtils", 1.0)
 	out = appendRubyMatches(out, content, headers, rubyProcessRe, EffectFSWrite, "Process.spawn/system", 0.9)
@@ -143,6 +166,30 @@ func appendRubyMatches(out []EffectMatch, content string, headers []funcHeader, 
 			Effect:     eff,
 			Sink:       sink,
 			Confidence: conf,
+		})
+	}
+	return out
+}
+
+// appendRubySequelDatasetWrites stamps a db_write EffectMatch for each Sequel
+// dataset write (`DB[:table]…insert/update/delete`), naming the table in the
+// sink tag (#3950) — e.g. `sequel.write(users)`. Full confidence: the
+// `DB[:table]` dataset literal makes the write unambiguous (unlike the generic
+// `.update`/`.save` heuristic which can fire on an unknown receiver).
+func appendRubySequelDatasetWrites(out []EffectMatch, content string, headers []funcHeader) []EffectMatch {
+	for _, m := range rubySequelDatasetWriteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		line := lineOfOffset(content, m[0])
+		fn := nearestHeader(headers, line)
+		table := content[m[2]:m[3]]
+		out = append(out, EffectMatch{
+			Function:   fn,
+			Line:       line,
+			Effect:     EffectDBWrite,
+			Sink:       "sequel.write(" + table + ")",
+			Confidence: 1.0,
 		})
 	}
 	return out

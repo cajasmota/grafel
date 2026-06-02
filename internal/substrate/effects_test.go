@@ -440,6 +440,72 @@ end
 	mustHave(t, byEffect, EffectMutation, "assign")
 }
 
+// TestSniffEffectsRuby_SequelDatasetWrites asserts Sequel dataset writes
+// surface as db_write effects naming the target table, and that a pure
+// dataset read does NOT (#3950).
+func TestSniffEffectsRuby_SequelDatasetWrites(t *testing.T) {
+	const src = `
+class AccountRepo
+  def insert_user
+    DB[:users].insert(name: 'x')
+  end
+
+  def rename_user
+    DB[:users].where(id: 1).update(name: 'x')
+  end
+
+  def purge_logs
+    DB[:logs].where(stale: true).delete
+  end
+
+  def list_users
+    DB[:users].where(id: 1).all
+  end
+end
+`
+	got := sniffEffectsRuby(src)
+	byEffect := groupByEffect(got)
+	mustHave(t, byEffect, EffectDBWrite, "insert_user")
+	mustHave(t, byEffect, EffectDBWrite, "rename_user")
+	mustHave(t, byEffect, EffectDBWrite, "purge_logs")
+
+	// The pure read `DB[:users]...all` in list_users must NOT carry db_write.
+	if byEffect[EffectDBWrite]["list_users"] {
+		t.Errorf("pure Sequel read in list_users must not be db_write")
+	}
+
+	// Assert the table name is recoverable in the sink tag.
+	wantSinks := map[string]string{
+		"insert_user": "sequel.write(users)",
+		"rename_user": "sequel.write(users)",
+		"purge_logs":  "sequel.write(logs)",
+	}
+	for fn, want := range wantSinks {
+		found := false
+		for _, m := range got {
+			if m.Function == fn && m.Effect == EffectDBWrite && m.Sink == want {
+				found = true
+				if m.Confidence != 1.0 {
+					t.Errorf("%s: sequel dataset write should be full confidence, got %.2f", fn, m.Confidence)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: expected db_write sink %q naming the table; got matches %+v", fn, want, sequelSinks(got, fn))
+		}
+	}
+}
+
+func sequelSinks(ms []EffectMatch, fn string) []string {
+	var out []string
+	for _, m := range ms {
+		if m.Function == fn && m.Effect == EffectDBWrite {
+			out = append(out, m.Sink)
+		}
+	}
+	return out
+}
+
 func TestSniffEffectsPHP_PrimitiveCoverage(t *testing.T) {
 	const src = `<?php
 class UserService {

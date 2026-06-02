@@ -134,6 +134,63 @@ func TestDetectRuby_NegativeNonDBTransaction(t *testing.T) {
 	}
 }
 
+func TestDetectRuby_SequelDBTransaction(t *testing.T) {
+	// Sequel's canonical `DB.transaction do` boundary must be credited as
+	// sequel_transaction (not mislabelled rails_transaction). #3950.
+	src := `
+  def transfer
+    DB.transaction do
+      DB[:accounts].where(id: 1).update(balance: 0)
+      DB[:ledger].insert(amount: 5)
+    end
+  end`
+	s := DetectRuby(src)
+	if !s.Transactional || s.Source != "sequel_transaction" {
+		t.Fatalf("DB.transaction do should stamp sequel_transaction, got %+v", s)
+	}
+}
+
+func TestDetectRuby_SequelDatasetTransaction(t *testing.T) {
+	// A dataset receiver `DB[:users].transaction do` is a Sequel boundary.
+	s := DetectRuby("def go\n  DB[:users].transaction do\n    DB[:users].insert(a: 1)\n  end\nend")
+	if !s.Transactional || s.Source != "sequel_transaction" {
+		t.Fatalf("DB[:users].transaction should stamp sequel_transaction, got %+v", s)
+	}
+}
+
+func TestDetectRuby_SequelLowercaseHandleTransaction(t *testing.T) {
+	// The genuine gap: a lowercase / ivar connection handle that the
+	// constant-only Rails regex cannot reach, gated on Sequel evidence.
+	src := `
+  def pay
+    db = Sequel.connect(ENV['DB_URL'])
+    db.transaction do
+      db[:users].update(name: 'x')
+    end
+  end`
+	s := DetectRuby(src)
+	if !s.Transactional || s.Source != "sequel_transaction" {
+		t.Fatalf("db.transaction with Sequel evidence should stamp sequel_transaction, got %+v", s)
+	}
+}
+
+func TestDetectRuby_SequelNegativeNoEvidence(t *testing.T) {
+	// A lowercase `payments.transaction do` with NO Sequel evidence anywhere
+	// in the body must NOT be stamped — avoids false positives in non-Sequel
+	// codebases.
+	if s := DetectRuby("def pay\n  payments.transaction do\n    charge!\n  end\nend"); s.Transactional {
+		t.Fatalf("lowercase transaction without Sequel evidence must not stamp: %+v", s)
+	}
+}
+
+func TestDetectRuby_RailsStillRailsDespiteLowercaseGap(t *testing.T) {
+	// Rails receiver (uppercase, no DB/Sequel evidence) must stay rails_transaction.
+	s := DetectRuby("def pay\n  User.transaction do\n    user.save!\n  end\nend")
+	if !s.Transactional || s.Source != "rails_transaction" {
+		t.Fatalf("Rails User.transaction must remain rails_transaction, got %+v", s)
+	}
+}
+
 func TestDetectJSTS_SequelizeTransaction(t *testing.T) {
 	src := `async function transfer() {
     await sequelize.transaction(async (t) => {
