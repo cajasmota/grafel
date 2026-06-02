@@ -229,6 +229,17 @@ type drfViewSetClass struct {
 	// synthesized http_endpoint (#3864). Zero value means "nothing declared"
 	// (honest-partial — no fabricated posture).
 	posture drfPosture
+	// actionPermissions maps a DRF action name (a CRUD verb like "create" /
+	// "list" or an @action method name) to the permission-class list that the
+	// ViewSet's `def get_permissions(self):` override or a
+	// `permission_classes_by_action = {...}` dict resolves for THAT action
+	// (#3933). When present, the per-action list overrides the flat
+	// permission_classes union for the matching route. A key of "" carries the
+	// default branch (`return [IsAuthenticated()]` / dict `default`) that
+	// applies to every action not otherwise listed. nil means no statically
+	// resolvable per-action override exists — the route falls back to the flat
+	// union posture (honest-partial).
+	actionPermissions map[string][]string
 	// resolved reports whether the ViewSet class was actually located and
 	// parsed on disk (parseViewSetClass found the `class <name>(...)`
 	// declaration). When false, the caller fell back to modelViewSetMethods()
@@ -1192,14 +1203,16 @@ func emitOneCRUDFamily(
 	viewSetName string,
 ) {
 	detailBase := fullPrefix + "/{" + placeholder + "}"
-	// #3864 — all CRUD routes inherit the ViewSet-level posture.
-	pos := vc.posture
 
 	// emitCRUD wraps emit with the #3831 provenance/defining_class computed for
 	// the given CRUD method, so each route is tagged explicit | inherited |
-	// synthesized with the right defining class.
+	// synthesized with the right defining class. #3864 — each CRUD route inherits
+	// the ViewSet-level posture; #3933 — when get_permissions / a
+	// permission_classes_by_action dict resolves a per-action permission for this
+	// method, that overrides the flat-union permission_classes for THIS route only.
 	emitCRUD := func(verb, canonical string, line int, method string) {
 		prov, defClass := drfCRUDProvenance(vc, viewSetName, method)
+		pos := postureForAction(vc, method)
 		emit(verb, canonical, sourceFile, line, viewSetName, method, pos, prov, defClass)
 	}
 
@@ -1236,7 +1249,7 @@ func emitOneCRUDFamily(
 		// The ANY catch-all only appears when the ViewSet could not be resolved
 		// (empty crudMethods), so the detail route is a pure router default with
 		// no body anywhere → synthesized, no defining_class (#3831).
-		emit("ANY", canonicalDjango(detailBase), sourceFile, vc.classDefLine, viewSetName, "", pos, drfProvSynthesized, "")
+		emit("ANY", canonicalDjango(detailBase), sourceFile, vc.classDefLine, viewSetName, "", vc.posture, drfProvSynthesized, "")
 	}
 }
 
@@ -1253,9 +1266,15 @@ func emitActionRoutes(
 	for _, act := range vc.actions {
 		// #3864 — an @action's own posture override (if any) applies to its
 		// route; otherwise the route inherits the ViewSet-level posture.
+		// #3933 — precedence: an explicit `permission_classes=[...]` kwarg on the
+		// @action decorator wins outright; failing that, a per-action permission
+		// resolved from get_permissions / permission_classes_by_action overrides
+		// the flat-union permission_classes for this action's route.
 		actPosture := vc.posture
 		if act.hasPosture {
 			actPosture = act.posture
+		} else {
+			actPosture = postureForAction(vc, act.methodName)
 		}
 		segment := act.urlPath
 		if segment == "" {
@@ -1658,6 +1677,13 @@ func parseViewSetClass(src, viewSetName string) drfViewSetClass {
 	// can stamp it on every generated route. In DRF these class attributes
 	// apply to every action the ViewSet exposes.
 	out.posture = parseDRFPosture(classBody)
+	// #3933 — resolve per-action permission overrides from a
+	// `def get_permissions(self):` body that branches on `self.action`, or from a
+	// `permission_classes_by_action = {...}` dict idiom. These attach the right
+	// permission to the right route (e.g. POST /x → IsAdminUser, GET /x → AllowAny)
+	// instead of the flat union parseDRFPosture stamps. Dynamic / non-literal
+	// conditions are left unresolved (honest-partial → flat-union fallback).
+	out.actionPermissions = parseDRFActionPermissions(classBody)
 	// classBody starts at classBodyStart in src; pass that offset so
 	// extractActions can compute absolute (src-relative) line numbers for
 	// each @action's `def NAME(` line (#2677).
