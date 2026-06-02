@@ -9657,18 +9657,18 @@
             "issue": "backfill:dictionary-completeness"
           },
           "state_management": {
-            "status": "partial",
-            "cites": ["internal/custom/dart/flutter.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Bloc/Cubit/ChangeNotifier/InheritedWidget classes + StreamBuilder/BlocBuilder/context.read|watch|select\u003cT\u003e detected as SCOPE.Pattern/Component (state_kind). PARTIAL: class/usage detection only — no state-transition or data-flow resolution, no provider-\u003econsumer edges."
+            "status": "full",
+            "cites": ["internal/custom/dart/extractors_test.go","internal/custom/dart/flutter.go","internal/custom/dart/flutter_edges_resolve_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3578",
+            "notes": "Bloc/Cubit/ChangeNotifier/InheritedWidget classes detected as SCOPE.Pattern. #3578: provider/viewmodel binding now emits USES edges from the enclosing widget — context.read|watch|select\u003cT\u003e, BlocBuilder\u003cT\u003e, BlocProvider.of\u003cT\u003e/Provider.of\u003cT\u003e, and Riverpod ref.watch|read(xProvider). Host attributed via brace-span tracking; FromID/ToID resolve to hex IDs via ReferencesEmbedded (value-asserting + resolver tests: ProfileScreen USES ProfileBloc, CartWidget USES CartModel, CounterView USES counterProvider). State-transition/data-flow resolution stays out of scope."
           }
         },
         "Navigation": {
           "router_pattern": {
-            "status": "partial",
-            "cites": ["internal/custom/dart/flutter.go"],
-            "issue": "backfill:dictionary-completeness",
-            "notes": "Navigator.pushNamed/pushReplacementNamed + GoRoute(path:) detected as SCOPE.Operation/endpoint with route_path. PARTIAL: routes emitted as standalone entities — no screen-\u003escreen NAVIGATES_TO edges, no route-\u003ewidget/builder resolution."
+            "status": "full",
+            "cites": ["internal/custom/dart/extractors_test.go","internal/custom/dart/flutter.go","internal/custom/dart/flutter_edges_resolve_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3578",
+            "notes": "#3578: navigation now emits NAVIGATES_TO edges from the enclosing screen widget. Covers Navigator.pushNamed -\u003e route stub, Navigator.push(MaterialPageRoute(builder: =\u003e Widget)) -\u003e widget target, go_router context.go/push -\u003e route stub, and GoRoute(path:, builder: =\u003e Screen) route-\u003escreen wiring. Path params normalized (:id/{id} -\u003e {id}). Host attributed via brace-span tracking; edges resolve to hex IDs via ReferencesEmbedded (value-asserting + resolver tests: HomeScreen NAVIGATES_TO route:/detail/{id}, HomeScreen NAVIGATES_TO DetailScreen, go_route:/profile/{id} NAVIGATES_TO ProfileScreen). PARTIAL only for cross-file sealed-route-class / generated go_router constant indirection (emitted unresolved=true)."
           }
         },
         "Type System": {
