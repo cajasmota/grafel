@@ -361,6 +361,16 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		x.emitTemplateRenderEdges(root)
 	}()
 
+	// Localization topology (child of epic #3628) — USES_TRANSLATION edges from
+	// functions / components to a shared SCOPE.TranslationKey node for
+	// react-i18next / i18next `t('k')` / `i18n.t('k')` / `<Trans i18nKey>` and
+	// vue-i18n `$t('k')` shapes (dynamic keys dropped; bare `t` requires an i18n
+	// import in the file). Runs after walk so enclosing entities exist.
+	func() {
+		defer func() { _ = recover() }()
+		x.emitTranslationKeyEdges(root)
+	}()
+
 	// Third pass (#713): platform-variant and test-file relationship emission.
 	// Detects React Native platform-specific file naming (.ios.tsx,
 	// .android.tsx, .tablet.tsx, …) and emits PLATFORM_VARIANT_OF edges.

@@ -72,6 +72,47 @@ records:
         issues_implemented: ["3628"]
         verified_at: "2026-06-02"
 
+  analysis.localization.i18n-keys:
+    capabilities:
+      translation_key_usage:
+        # #3628 area: i18n / localization KEY-USAGE detection. Each language
+        # extractor emits a USES_TRANSLATION edge from the enclosing function /
+        # component to a synthetic SCOPE.TranslationKey node (Name
+        # "i18n:<key>") so every reference site of a key converges on ONE node
+        # — answering "where is the 'errors.notFound' string used?" and
+        # supporting untranslated-key analysis. Shared node/edge builders +
+        # JS/TS i18n import dictionary in internal/extractor/translation_key.go.
+        # PARTIAL: jsts (react-i18next / i18next / vue-i18n / <Trans>), python
+        # (Django/gettext), ruby (Rails I18n), php (Laravel) lanes.
+        # Precision-first / REQUIRE-I18N-CONTEXT: a bare `t('x')` needs an i18n
+        # import; a dynamic key (`t(keyVar)`, interpolated) or a non-i18n
+        # `_('x')` (lodash) emits NO node/edge.
+        status: partial
+        symbols:
+          - file: internal/extractor/translation_key.go
+            functions: [TranslationKeyName, TranslationKeyTargetID, TranslationKeyEntity, EmitTranslationKeyEdges, IsI18nImportSource, IsStaticTranslationKey]
+          - file: internal/extractors/javascript/translation_key.go
+            functions: [emitTranslationKeyEdges, fileHasI18nImport, jsTranslationCall, jsFirstStringArg, jsxTransKey, i18nMemberRootTail]
+          - file: internal/extractors/python/translation_key.go
+            functions: [emitTranslationKeyEdges, pyTranslationCall, pyTransFirstStringArg, isI18nPythonSource]
+          - file: internal/extractors/ruby/translation_key.go
+            functions: [emitTranslationKeyEdges, rubyTranslationCall, rubyFirstStringArg]
+          - file: internal/extractors/php/translation_key.go
+            functions: [emitTranslationKeyEdges, phpTranslationCall]
+        tests:
+          - file: internal/extractor/translation_key_test.go
+            functions: [TestIsI18nImportSource, TestIsStaticTranslationKey, TestEmitTranslationKeyEdges_Convergence]
+          - file: internal/extractors/javascript/translation_key_test.go
+            functions: [TestJSTrans_ReactI18next, TestJSTrans_I18nReceiver, TestJSTrans_TransComponent, TestJSTrans_VueI18n, TestJSTrans_Convergence, TestJSTrans_BareTNoImport_Skipped, TestJSTrans_DynamicKey_Skipped, TestJSTrans_InterpolatedKey_Skipped]
+          - file: internal/extractors/python/translation_key_test.go
+            functions: [TestPyTrans_DjangoGettextUnderscore, TestPyTrans_GettextLazy, TestPyTrans_GettextModuleAttr, TestPyTrans_Convergence, TestPyTrans_NonI18nUnderscore_Skipped, TestPyTrans_DynamicKey_Skipped]
+          - file: internal/extractors/ruby/translation_key_test.go
+            functions: [TestRubyTrans_I18nT, TestRubyTrans_I18nTranslate, TestRubyTrans_RelativeKey, TestRubyTrans_BarePlain_Skipped, TestRubyTrans_DynamicKey_Skipped]
+          - file: internal/extractors/php/translation_key_test.go
+            functions: [TestPHPTrans_LaravelDoubleUnderscore, TestPHPTrans_TransHelper, TestPHPTrans_Convergence, TestPHPTrans_DynamicKey_Skipped]
+        issues_implemented: ["3628"]
+        verified_at: "2026-06-02"
+
   lang.cobol.runtime.ibm-enterprise:
     capabilities:
       core_extraction:

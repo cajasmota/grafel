@@ -254,6 +254,26 @@ const (
 	//                    "rails_enum", "csharp_enum").
 	// See internal/extractor/enum_valueset.go.
 	EntityKindEnum EntityKind = "SCOPE.Enum"
+	// EntityKindTranslationKey is a synthetic, file-agnostic node representing a
+	// single i18n / localization translation KEY by its literal value — e.g.
+	// "errors.notFound", "messages.welcome", "users.title", "Welcome". It is the
+	// convergence point for the localization capability (child of #3628): every
+	// function / component that references the SAME key via a recognised i18n
+	// function gets a USES_TRANSLATION edge to the SAME key node, so the graph
+	// answers "where is the 'errors.notFound' string used?" (a key's inbound
+	// USES_TRANSLATION edges are its reference sites) and supports
+	// untranslated-key analysis (keys with no catalog backing). Like
+	// SCOPE.ExternalService it carries a constant synthetic SourceFile
+	// (TranslationKeySourceFile) so EntityRecord.ComputeID(SourceFile+Kind+Name)
+	// collapses the same key across files/languages/frameworks (react-i18next /
+	// i18next t('k') / <Trans i18nKey>, vue-i18n $t('k'), Django/gettext _('m') /
+	// {% trans %}, Rails I18n.t('k') / t('.k'), Laravel __('k') / trans('k'))
+	// into one node. Name = "i18n:<key>". Precision-first / honest-partial: an
+	// edge is emitted only when the i18n function CONTEXT is recognised (import
+	// or unambiguous framework symbol) and the key is a STATIC literal; a dynamic
+	// key (`t(keyVar)`, interpolated) or a non-i18n `_('x')` (lodash) /
+	// unrelated `t(...)` emits NO node/edge. See internal/extractor/translation_key.go.
+	EntityKindTranslationKey EntityKind = "SCOPE.TranslationKey"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -334,6 +354,7 @@ func AllEntityKinds() []EntityKind {
 		EntityKindChannel,
 		// #3628 data-model: enum / value-set node.
 		EntityKindEnum,
+		EntityKindTranslationKey,
 	}
 }
 
@@ -1072,6 +1093,24 @@ const (
 	// integration edge would mislead "what services do we depend on?". See
 	// internal/extractor/external_service.go.
 	RelationshipKindDependsOnService RelationshipKind = "DEPENDS_ON_SERVICE"
+	// RelationshipKindUsesTranslation points an enclosing function / component at
+	// a synthetic SCOPE.TranslationKey node for each STATIC i18n key it
+	// references via a recognised translation function (localization capability,
+	// child of #3628). Direction: caller → key. Two callers that reference the
+	// same key converge on ONE key node, so the node's inbound USES_TRANSLATION
+	// set is the key's full reference footprint ("where is 'errors.notFound'
+	// used?") and the absence of a backing catalog flags an untranslated key.
+	// Recognised shapes:
+	//   JS/TS   react-i18next/i18next `t('errors.notFound')`, `i18n.t('x')`,
+	//           `<Trans i18nKey="x">`; vue-i18n `$t('x')` / `t('x')` (useI18n).
+	//   Python  Django/gettext `_('Welcome')`, `gettext('x')`, `gettext_lazy('x')`.
+	//   Ruby    Rails `I18n.t('users.title')`, relative `t('.title')`.
+	//   PHP     Laravel `__('messages.welcome')`, `trans('x')`.
+	// Precision-first / honest-partial: emitted ONLY when the i18n CONTEXT is
+	// recognised (import or unambiguous framework symbol) and the key is a static
+	// literal — a dynamic key (`t(keyVar)`) or a non-i18n `_('x')` (lodash) /
+	// unrelated `t(...)` emits NO edge. See internal/extractor/translation_key.go.
+	RelationshipKindUsesTranslation RelationshipKind = "USES_TRANSLATION"
 	// [realtime] WS room/channel grouping (child of #3628). Both edges point a
 	// callable (function / method) at a synthetic SCOPE.Channel node
 	// (Name "channel:<room>") so a join and a broadcast on the SAME room
@@ -1254,6 +1293,7 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindThrows,
 		RelationshipKindCatches,
 		RelationshipKindDependsOnService,
+		RelationshipKindUsesTranslation,
 		// [realtime] WS room/channel grouping: JOINS_CHANNEL / BROADCASTS_TO.
 		RelationshipKindJoinsChannel,
 		RelationshipKindBroadcastsTo,

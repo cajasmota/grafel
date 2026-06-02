@@ -355,6 +355,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitTemplateRenderEdges(root, file, &entities)
 	}()
 
+	// Localization topology (child of #3628) — supplemental pass that links
+	// functions / methods to a shared SCOPE.TranslationKey node via
+	// USES_TRANSLATION for Django / gettext `_('msg')` / `gettext('x')` shapes
+	// (import-gated to a recognised gettext source; dynamic keys dropped).
+	func() {
+		defer func() { _ = recover() }()
+		emitTranslationKeyEdges(root, file, &entities)
+	}()
+
 	// Issue #1884 — supplemental package-module pass (Wave 1).
 	// Emits one Module entity per Python package boundary (__init__.py or
 	// plain .py module) so docgen can seed per-package pages and flow

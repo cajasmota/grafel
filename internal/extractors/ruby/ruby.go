@@ -54,6 +54,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// `render template:/partial:` shapes (symbol / implicit-convention renders
 	// and dynamic names are dropped).
 	emitTemplateRenderEdges(root, file.Content, &entities)
+	// Localization topology (child of epic #3628) — USES_TRANSLATION edges from
+	// methods to a shared SCOPE.TranslationKey node for Rails `I18n.t('k')` /
+	// relative `t('.k')` shapes (dynamic keys + ambiguous bare `t('plain')`
+	// dropped).
+	emitTranslationKeyEdges(root, file.Content, &entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")

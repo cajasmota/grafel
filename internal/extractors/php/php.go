@@ -74,6 +74,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// controller actions to a shared SCOPE.Template node for view('name') /
 	// View::make('name') shapes (dynamic / interpolated names are dropped).
 	emitTemplateRenderEdges(root, file, &entities)
+	// Localization topology (child of epic #3628) — USES_TRANSLATION edges from
+	// functions / methods to a shared SCOPE.TranslationKey node for Laravel
+	// `__('k')` / `trans('k')` shapes (dynamic / interpolated keys dropped).
+	emitTranslationKeyEdges(root, file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")
