@@ -1076,15 +1076,15 @@
       "capabilities": {
         "dependency_attribution": {
           "status": "partial",
-          "cites": ["internal/custom/java/caching.go","internal/custom/javascript/caching.go","internal/custom/python/caching.go","internal/custom/ruby/caching.go"],
+          "cites": ["internal/custom/golang/caching.go","internal/custom/java/caching.go","internal/custom/javascript/caching.go","internal/custom/python/caching.go","internal/custom/ruby/caching.go"],
           "issue": "3692",
-          "notes": "CACHES (read-through/write) + INVALIDATES (evict) edges from function/method to cache region/key. Cross-language consistent target ref cache:\u003cfw\u003e:\u003cregion\u003e."
+          "notes": "CACHES (read-through/write) + INVALIDATES (evict) edges from function/method/call-site to cache region/key. Cross-language consistent target ref cache:\u003cfw\u003e:\u003cregion\u003e — Set/Get/Delete and @Cacheable/@CacheEvict of the same literal key converge on one region node so what-invalidates-what is traversable."
         },
         "resource_extraction": {
           "status": "partial",
-          "cites": ["internal/custom/java/caching.go","internal/custom/javascript/caching.go","internal/custom/python/caching.go","internal/custom/ruby/caching.go"],
+          "cites": ["internal/custom/golang/caching.go","internal/custom/java/caching.go","internal/custom/javascript/caching.go","internal/custom/python/caching.go","internal/custom/ruby/caching.go"],
           "issue": "3692",
-          "notes": "Cache-region/key SCOPE.Datastore nodes from Spring @Cacheable/@CacheEvict/@CachePut, Python lru_cache/Flask-Caching/cachetools, Rails.cache.fetch/delete, NestJS @CacheKey + cache-manager. Dynamic keys honest-partial."
+          "notes": "Cache-region/key SCOPE.Datastore nodes from Spring @Cacheable/@CacheEvict/@CachePut, Python lru_cache/Flask-Caching/cachetools + Django low-level cache.get/set/delete and @cache_page, Rails.cache.fetch/delete, NestJS @CacheKey + cache-manager, Go ristretto Set/Get/Del + groupcache NewGroup/Get. Dynamic keys honest-partial."
         }
       }
     },

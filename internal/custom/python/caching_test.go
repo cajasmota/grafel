@@ -141,3 +141,114 @@ def get_user(uid):
 		}
 	}
 }
+
+// findInvalidatesEdge returns the INVALIDATES edge whose target == wantRef.
+func findInvalidatesEdge(ents []types.EntityRecord, wantRef string) *types.RelationshipRecord {
+	for i := range ents {
+		for j := range ents[i].Relationships {
+			r := &ents[i].Relationships[j]
+			if r.Kind == string(types.RelationshipKindInvalidates) && r.ToID == wantRef {
+				return r
+			}
+		}
+	}
+	return nil
+}
+
+// Django low-level cache: cache.set + cache.delete on the SAME literal key must
+// converge — CACHES(set→region:users) AND INVALIDATES(delete→region:users) on
+// the one "cache:django:users" node. This convergence is the whole value.
+func TestPyCaching_Django_SetDelete_Converge(t *testing.T) {
+	src := `
+from django.core.cache import cache
+
+def cache_users(users):
+    cache.set('users', users, 300)
+
+def evict_users():
+    cache.delete('users')
+`
+	ents := runPyCaching(t, src)
+	ref := "cache:django:users"
+	if !hasCacheRegion(ents, ref) {
+		t.Fatalf("expected django cache region %q", ref)
+	}
+	cE := findCachesEdge(ents, ref)
+	if cE == nil {
+		t.Fatalf("expected cache.set CACHES region users")
+	}
+	if cE.Properties["mode"] != "write" {
+		t.Errorf("set mode = %q, want write", cE.Properties["mode"])
+	}
+	iE := findInvalidatesEdge(ents, ref)
+	if iE == nil {
+		t.Fatalf("expected cache.delete INVALIDATES region users (converging on the same node)")
+	}
+	if iE.Properties["mode"] != "evict" {
+		t.Errorf("delete mode = %q, want evict", iE.Properties["mode"])
+	}
+}
+
+func TestPyCaching_Django_Get_ReadThrough(t *testing.T) {
+	src := `
+from django.core.cache import cache
+def read():
+    return cache.get('profile')
+`
+	ents := runPyCaching(t, src)
+	e := findCachesEdge(ents, "cache:django:profile")
+	if e == nil {
+		t.Fatalf("expected cache.get CACHES region profile")
+	}
+	if e.Properties["mode"] != "read_through" {
+		t.Errorf("get mode = %q, want read_through", e.Properties["mode"])
+	}
+}
+
+func TestPyCaching_Django_CachesSubscript(t *testing.T) {
+	src := `
+from django.core.cache import caches
+def read():
+    return caches['default'].get('sess')
+`
+	ents := runPyCaching(t, src)
+	if findCachesEdge(ents, "cache:django:sess") == nil {
+		t.Fatalf("expected caches['default'].get CACHES region sess")
+	}
+}
+
+func TestPyCaching_Django_CachePage_Dynamic(t *testing.T) {
+	src := `
+@cache_page(60 * 15)
+def my_view(request):
+    return render(request)
+`
+	ents := runPyCaching(t, src)
+	e := findCachesEdge(ents, "cache:django:<request_path>")
+	if e == nil {
+		t.Fatalf("expected @cache_page CACHES the per-URL page region")
+	}
+	if e.Properties["dynamic"] != "true" {
+		t.Errorf("@cache_page region should be dynamic (per-URL)")
+	}
+}
+
+// Negative: a dynamic (variable) cache key must NOT mint a concrete region.
+func TestPyCaching_Django_DynamicKey_NoConcreteRegion(t *testing.T) {
+	src := `
+from django.core.cache import cache
+def read(uid):
+    return cache.get(uid)
+`
+	ents := runPyCaching(t, src)
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Datastore" && e.Subtype == "cache_region" {
+			if e.Properties["region"] != "<dynamic>" {
+				t.Fatalf("variable key should yield <dynamic> region, got %q", e.Properties["region"])
+			}
+			if e.Properties["dynamic"] != "true" {
+				t.Fatalf("variable-key region must be marked dynamic")
+			}
+		}
+	}
+}
