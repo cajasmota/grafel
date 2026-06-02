@@ -18,6 +18,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"strings"
 
 	"go.opentelemetry.io/otel"
@@ -625,6 +626,10 @@ var exactBasenameLanguageMap = map[string]string{
 	"Package.swift": "swift_package",
 }
 
+// apiGwOcelotJSONRe matches Ocelot config files with the conventional
+// ocelot.<env>.json naming (ocelot.json is matched explicitly). #3723.
+var apiGwOcelotJSONRe = regexp.MustCompile(`(?i)^ocelot\.[a-z0-9_-]+\.json$`)
+
 // basenameLanguageMap maps exact file basenames (case-sensitive) to language
 // tokens. Checked only when the file has no extension or its extension is not
 // in extensionLanguageMap.
@@ -706,6 +711,13 @@ func detectLanguage(norm string) string {
 		// spec forms already classify as "yaml" via the extension map.
 		if b := path.Base(lower); b == "openapi.json" || b == "swagger.json" ||
 			strings.HasSuffix(b, ".openapi.json") || strings.HasSuffix(b, ".swagger.json") {
+			return "json"
+		}
+		// #3723 (epic #3628 area #21) — Ocelot (.NET) API-gateway config. The
+		// conventional basename ocelot.json (and ocelot.<env>.json) has no other
+		// meaning; route it to "json" so it reaches the Pass 2.5 detector, where
+		// applyAPIGatewayRoutingEdges parses Routes[]→downstream service topology.
+		if b := path.Base(lower); b == "ocelot.json" || apiGwOcelotJSONRe.MatchString(b) {
 			return "json"
 		}
 		switch {

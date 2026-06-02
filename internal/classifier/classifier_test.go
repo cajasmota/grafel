@@ -1264,6 +1264,29 @@ func TestClassify_DebeziumConnectorJSON(t *testing.T) {
 	}
 }
 
+// TestClassify_OcelotJSON: the Ocelot (.NET) gateway config basename
+// (ocelot.json / ocelot.<env>.json) routes to language="json" so it reaches the
+// Pass 2.5 detector (applyAPIGatewayRoutingEdges). #3723.
+func TestClassify_OcelotJSON(t *testing.T) {
+	c := newTestClassifier(t)
+	for _, p := range []string{
+		"src/Gateway/ocelot.json",
+		"ocelot.json",
+		"config/ocelot.Production.json",
+		"ocelot.dev.json",
+	} {
+		t.Run(p, func(t *testing.T) {
+			r := c.Classify(context.Background(), p)
+			if r.Skip {
+				t.Errorf("%s should not be skipped: %q", p, r.SkipReason)
+			}
+			if r.Language != "json" {
+				t.Errorf("expected Language=json, got %q", r.Language)
+			}
+		})
+	}
+}
+
 func TestClassify_GenericJSONNotIndexed(t *testing.T) {
 	c := newTestClassifier(t)
 	// These must NOT be picked up — they would balloon indexing scope and

@@ -784,6 +784,21 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// dedicated passes (applyKubernetesEdges, applyServerlessFrameworkEdges).
 	// Append-only — cannot regress surrounding passes.
 	applyPass(applyDeploymentTopologyEdges)
+	// API-gateway route topology edges (#3723, epic #3628 area #21). Complements
+	// applyDeploymentTopologyEdges (which owns the reverse-proxy / infra gateways
+	// nginx/Caddy/Kong/Traefik) by modelling the APPLICATION-FRAMEWORK API
+	// gateways whose config declares a route + the upstream service it forwards
+	// to: Spring Cloud Gateway (application.yml spring.cloud.gateway.routes +
+	// Java RouteLocatorBuilder DSL), Ocelot (ocelot.json Routes[]), Express
+	// Gateway (gateway.config.yml apiEndpoints+serviceEndpoints), and
+	// http-proxy-middleware (createProxyMiddleware({target})). Mints a
+	// SCOPE.Route node per gateway route and a ROUTES_TO edge to the upstream
+	// `service:<name>` SCOPE.Service node — the SAME canonical key the
+	// deployment-topology pass uses, so a gateway route to `lb://user-service`
+	// and a compose service `user-service` collapse onto one node. Honest-partial:
+	// dynamic/templated upstreams (${...}) are omitted, not guessed. Append-only
+	// — cannot regress surrounding passes.
+	applyPass(applyAPIGatewayRoutingEdges)
 	// Workflow orchestration edges (#934). Emits SCOPE.Workflow, SCOPE.Activity,
 	// and SCOPE.StateMachine entities plus STARTS_WORKFLOW, EXECUTES_ACTIVITY,
 	// and STEPFUNCTION_STEP_INVOKES edges for Temporal (Python, Go, Java, Node),
