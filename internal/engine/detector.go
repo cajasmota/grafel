@@ -75,6 +75,29 @@ type compiledRuleSet struct {
 	fileConventions   []compiledFileConvention
 }
 
+// dormantBucketAliases maps a flavor-named rule bucket (the directory key the
+// loader uses) to the concrete classifier language(s) its files actually carry,
+// so the bucket's compiled rule sets are appended onto those language keys and
+// fire on real files. See the aliasing block in compile() for the rationale
+// (#3593). Only buckets whose frameworks/*.yaml carry engine schema keys are
+// listed; doc-only buckets (html_templates) are omitted because aliasing them
+// would add no extraction.
+//
+//   - cicd        → yaml       (.github/workflows, .gitlab-ci.yml, …)
+//   - ansible     → yaml       (playbooks / roles / inventory .yml)
+//   - kubernetes  → yaml       (manifest .yaml/.yml)
+//   - docker      → dockerfile + yaml
+//     (dockerfile.yaml rules target Dockerfiles → `dockerfile`; the sibling
+//     docker_compose.yaml rules target compose files → `yaml`. The bucket is
+//     indivisible at load time, so it is aliased onto both; non-matching
+//     patterns are inert.)
+var dormantBucketAliases = map[string][]string{
+	"cicd":       {"yaml"},
+	"ansible":    {"yaml"},
+	"kubernetes": {"yaml"},
+	"docker":     {"dockerfile", "yaml"},
+}
+
 // Detector applies YAML-driven framework extraction rules to source files.
 // It is safe for concurrent use.
 type Detector struct {
@@ -176,6 +199,42 @@ func (d *Detector) compile() {
 			if len(d.compiled[alias]) == 0 {
 				d.compiled[alias] = jsts
 			}
+		}
+	}
+
+	// Dormant CI/infra-bucket aliasing (#3593). The loader buckets every
+	// `rules/<dir>/**` tree under its top-level dirname, but Detect resolves
+	// compiled rule sets by `file.Language` — the concrete vocabulary the
+	// classifier emits. Several rule buckets are named for a *flavor*
+	// (`cicd`, `ansible`, `kubernetes`, `docker`) that the classifier never
+	// produces as a `file.Language`: CI/Ansible/K8s manifests are all tagged
+	// `yaml` (.yaml/.yml), Dockerfiles `dockerfile`, and docker-compose files
+	// `yaml`. Without an alias these buckets' source_patterns /
+	// relationship_rules / file_conventions never fire on real files — the
+	// lookup `d.compiled["yaml"]` missed the `cicd`/`ansible`/`kubernetes`
+	// buckets entirely (the same class of latent bug the jsts alias above
+	// fixed for #2865).
+	//
+	// Unlike the jsts case — where javascript/typescript have no bucket of
+	// their own and a single source overwrites — multiple flavor buckets
+	// target the SAME concrete language (cicd + ansible + kubernetes +
+	// docker-compose all → yaml), so we APPEND each bucket's compiled sets
+	// onto the target key rather than overwrite. Rule sets are regex-gated,
+	// so a bucket whose patterns don't match a given file is a no-op; firing
+	// the union on every file of the target language is safe and is exactly
+	// how the per-language Go synthesis passes already operate.
+	//
+	// `html_templates` is intentionally NOT aliased here: none of its
+	// frameworks/*.yaml files carry engine schema keys (source_patterns /
+	// file_conventions / relationship_rules) — they are documentation-only
+	// descriptors — so aliasing it onto `html` would add zero extraction.
+	for bucket, targets := range dormantBucketAliases {
+		sets, ok := d.compiled[bucket]
+		if !ok || len(sets) == 0 {
+			continue
+		}
+		for _, target := range targets {
+			d.compiled[target] = append(d.compiled[target], sets...)
 		}
 	}
 }

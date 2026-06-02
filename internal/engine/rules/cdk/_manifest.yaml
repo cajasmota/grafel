@@ -1,9 +1,0 @@
-meta: language.yaml
-frameworks: frameworks/ [aws_cdk]
-detection_per_language: extras.yaml
-construct_to_scope_mapping: extras.yaml
-structural_patterns: extras.yaml
-complexity_signals: complexity.yaml
-skip_patterns: skip_patterns.yaml
-extraction_targets: extras.yaml
-domain_roots: extras.yaml
