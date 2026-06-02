@@ -31,66 +31,28 @@ import (
 	sitter "github.com/smacker/go-tree-sitter"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/frameworks/baseknowledge"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// cbvBaseInheritedMethods maps the bare leaf name of each recognised
-// Django / DRF generic base class to the set of method names it
-// contributes to its subclass's HTTP surface.
+// The recognised Django / DRF generic base classes and the HTTP-handler
+// method names they contribute to a subclass's surface now live in the
+// shared, typed catalog `internal/frameworks/baseknowledge` (DRF pack) —
+// the single source of truth that MRO resolution (#3833) and
+// effective-contract synthesis (#3835) also consume.
 //
-// Source: Django docs (generic class-based views) + DRF docs (generic
-// viewsets / generic API views). The list intentionally covers ONLY
-// the canonical HTTP-handler methods — helpers like `get_queryset`,
-// `get_serializer_class`, `perform_create` etc. are excluded because
-// subclasses override them as customization hooks rather than treat
-// them as part of the public API contract.
-var cbvBaseInheritedMethods = map[string][]string{
-	// Django generic class-based views (django.views.generic.*).
-	"View":             {"get", "post", "put", "patch", "delete", "head", "options", "trace"},
-	"TemplateView":     {"get"},
-	"RedirectView":     {"get", "post", "put", "patch", "delete", "head", "options"},
-	"ListView":         {"get"},
-	"DetailView":       {"get"},
-	"FormView":         {"get", "post"},
-	"CreateView":       {"get", "post"},
-	"UpdateView":       {"get", "post"},
-	"DeleteView":       {"get", "post", "delete"},
-	"ArchiveIndexView": {"get"},
-	"YearArchiveView":  {"get"},
-	"MonthArchiveView": {"get"},
-	"DayArchiveView":   {"get"},
-	"WeekArchiveView":  {"get"},
-	"TodayArchiveView": {"get"},
-	"DateDetailView":   {"get"},
-	"ProcessFormView":  {"get", "post"},
-	"BaseCreateView":   {"get", "post"},
-	"BaseUpdateView":   {"get", "post"},
-	"BaseDeleteView":   {"get", "post", "delete"},
-
-	// DRF generic API views (rest_framework.generics.*).
-	"GenericAPIView":               {},
-	"CreateAPIView":                {"post"},
-	"ListAPIView":                  {"get"},
-	"RetrieveAPIView":              {"get"},
-	"DestroyAPIView":               {"delete"},
-	"UpdateAPIView":                {"put", "patch"},
-	"ListCreateAPIView":            {"get", "post"},
-	"RetrieveUpdateAPIView":        {"get", "put", "patch"},
-	"RetrieveDestroyAPIView":       {"get", "delete"},
-	"RetrieveUpdateDestroyAPIView": {"get", "put", "patch", "delete"},
-
-	// DRF viewsets (rest_framework.viewsets.*).
-	"ViewSet":              {},
-	"GenericViewSet":       {},
-	"ReadOnlyModelViewSet": {"list", "retrieve"},
-	"ModelViewSet":         {"list", "retrieve", "create", "update", "partial_update", "destroy"},
-
-	// DRF mixins (rest_framework.mixins.*).
-	"CreateModelMixin":   {"create"},
-	"ListModelMixin":     {"list"},
-	"RetrieveModelMixin": {"retrieve"},
-	"UpdateModelMixin":   {"update", "partial_update"},
-	"DestroyModelMixin":  {"destroy"},
+// `cbvInheritedMembers` resolves a base-class leaf name to the inherited
+// method names that base contributes, via the catalog. It returns the
+// method names (the property this annotation stamps is name-only by
+// design — Option A, #2011) and whether the base is recognised at all
+// (so empty-but-known bases like GenericViewSet still register as
+// `cbv_bases` without adding methods, exactly as the old map did).
+func cbvInheritedMembers(baseLeaf string) (methods []string, known bool) {
+	c, ok := baseknowledge.Default().Lookup(baseLeaf)
+	if !ok {
+		return nil, false
+	}
+	return c.MemberNames(), true
 }
 
 // emitCBVInheritedMethodAnnotations walks every class entity in the
@@ -130,7 +92,7 @@ func emitCBVInheritedMethodAnnotations(_ *sitter.Node, file extractor.FileInput,
 			if dot := strings.LastIndexByte(baseLeaf, '.'); dot >= 0 {
 				baseLeaf = baseLeaf[dot+1:]
 			}
-			methods, ok := cbvBaseInheritedMethods[baseLeaf]
+			methods, ok := cbvInheritedMembers(baseLeaf)
 			if !ok {
 				continue
 			}
@@ -165,7 +127,7 @@ func emitCBVInheritedMethodAnnotations(_ *sitter.Node, file extractor.FileInput,
 			if dot := strings.LastIndexByte(baseLeaf, '.'); dot >= 0 {
 				baseLeaf = baseLeaf[dot+1:]
 			}
-			if _, ok := cbvBaseInheritedMethods[baseLeaf]; ok {
+			if _, ok := cbvInheritedMembers(baseLeaf); ok {
 				bases = append(bases, baseLeaf)
 			}
 		}

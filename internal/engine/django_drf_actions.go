@@ -35,6 +35,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
+	"github.com/cajasmota/archigraph/internal/frameworks/baseknowledge"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -1692,38 +1693,43 @@ func extractClassBody(src string, offset int) string {
 func classifyViewSetParent(base string) map[string]bool {
 	out := map[string]bool{}
 	hasKnownBase := false
+
+	// addVerbs pulls the CRUD verb set the named DRF base contributes from
+	// the shared knowledge catalog (internal/frameworks/baseknowledge, DRF
+	// pack — the single source of truth #3832) and unions it into `out`.
+	// We still drive WHICH bases to look for from the literal base-list
+	// text via containsIdent so the whole-identifier matching and the
+	// substring-trap guard (ReadOnlyModelViewSet vs ModelViewSet) are
+	// preserved exactly; only the verb sets are sourced from the pack
+	// instead of being duplicated here.
+	addVerbs := func(baseName string) {
+		hasKnownBase = true
+		for verb := range baseknowledge.Default().MembersOf(baseName) {
+			out[verb] = true
+		}
+	}
+
 	// Check ReadOnlyModelViewSet first since "ModelViewSet" is a substring
 	// of it; ordering matters.
 	if containsIdent(base, "ReadOnlyModelViewSet") {
-		hasKnownBase = true
-		out["list"] = true
-		out["retrieve"] = true
+		addVerbs("ReadOnlyModelViewSet")
 	} else if containsIdent(base, "ModelViewSet") {
-		hasKnownBase = true
-		for _, m := range []string{"list", "create", "retrieve", "update", "partial_update", "destroy"} {
-			out[m] = true
-		}
+		addVerbs("ModelViewSet")
 	}
 	if containsIdent(base, "ListModelMixin") {
-		hasKnownBase = true
-		out["list"] = true
+		addVerbs("ListModelMixin")
 	}
 	if containsIdent(base, "CreateModelMixin") {
-		hasKnownBase = true
-		out["create"] = true
+		addVerbs("CreateModelMixin")
 	}
 	if containsIdent(base, "RetrieveModelMixin") {
-		hasKnownBase = true
-		out["retrieve"] = true
+		addVerbs("RetrieveModelMixin")
 	}
 	if containsIdent(base, "UpdateModelMixin") {
-		hasKnownBase = true
-		out["update"] = true
-		out["partial_update"] = true
+		addVerbs("UpdateModelMixin")
 	}
 	if containsIdent(base, "DestroyModelMixin") {
-		hasKnownBase = true
-		out["destroy"] = true
+		addVerbs("DestroyModelMixin")
 	}
 	if containsIdent(base, "GenericViewSet") || containsIdent(base, "ViewSet") {
 		hasKnownBase = true
@@ -1776,14 +1782,11 @@ func isIdentByte(b byte) bool {
 // modelViewSetMethods is the canonical full CRUD set for a
 // rest_framework.viewsets.ModelViewSet.
 func modelViewSetMethods() map[string]bool {
-	return map[string]bool{
-		"list":           true,
-		"create":         true,
-		"retrieve":       true,
-		"update":         true,
-		"partial_update": true,
-		"destroy":        true,
+	out := map[string]bool{}
+	for verb := range baseknowledge.Default().MembersOf("ModelViewSet") {
+		out[verb] = true
 	}
+	return out
 }
 
 // extractActions returns every @action / @detail_route / @list_route
