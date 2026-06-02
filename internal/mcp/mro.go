@@ -361,22 +361,39 @@ func hasRealBody(e *graph.Entity) bool {
 	return e.StartLine > 0 && e.EndLine >= e.StartLine
 }
 
-// baseRef is a resolved EXTENDS target: the written base name plus, when the
-// base is declared in the indexed repo, the in-repo entity.
+// baseRef is a resolved inheritance target: the written base name plus, when
+// the base is declared in the indexed repo, the in-repo entity. `viaImplements`
+// records that the edge was an IMPLEMENTS (interface / trait) rather than an
+// EXTENDS — used for interface-default-method resolution (#3839).
 type baseRef struct {
-	name   string        // base class name as written / FQN if available
-	entity *graph.Entity // non-nil when the base is an indexed class
+	name          string        // base class name as written / FQN if available
+	entity        *graph.Entity // non-nil when the base is an indexed class
+	viaImplements bool          // true when reached via IMPLEMENTS (interface default)
 }
 
-// extendsBases returns the EXTENDS bases of class entity c, in edge order. The
-// base name prefers the edge's base_name property (the dotted FQN, PR A1) and
-// falls back to the ToID leaf / target entity name.
+// extendsBases returns the inheritance bases of class entity c, in edge order.
+//
+// It walks BOTH the EXTENDS edges (superclass / Go struct embedding) AND the
+// IMPLEMENTS edges (interface / trait), so the MRO resolver can promote:
+//   - a Go struct's embedded-type methods (EXTENDS kind=embedded_struct, #3839),
+//   - a Java/Kotlin class's inherited interface DEFAULT methods (IMPLEMENTS to an
+//     interface whose method carries a real body, #3839).
+//
+// Following IMPLEMENTS is safe because the actual member resolution
+// (classDeclaredMember) requires the base member to have a REAL BODY: an
+// abstract interface method (no body, the common case) simply won't match, so
+// only genuine default-method bodies resolve. An external/abstract interface
+// with no indexed body falls through to the honest-unresolved path — never
+// fabricated.
+//
+// The base name prefers the edge's base_name property (the dotted FQN, PR A1)
+// and falls back to the ToID leaf / target entity name.
 func extendsBases(lr *LoadedRepo, c *graph.Entity) []baseRef {
 	adj := lr.getAdjacency()
 	rels := lr.Doc.Relationships
 	var out []baseRef
 	for _, ed := range adj.Outgoing(c.ID) {
-		if ed.kind != "EXTENDS" {
+		if ed.kind != "EXTENDS" && ed.kind != "IMPLEMENTS" {
 			continue
 		}
 		name := ""
@@ -393,7 +410,7 @@ func extendsBases(lr *LoadedRepo, c *graph.Entity) []baseRef {
 				name = leafAfterColon(ed.target)
 			}
 		}
-		out = append(out, baseRef{name: name, entity: target})
+		out = append(out, baseRef{name: name, entity: target, viaImplements: ed.kind == "IMPLEMENTS"})
 	}
 	return out
 }
@@ -442,13 +459,23 @@ func classDeclaredMember(lr *LoadedRepo, cls *graph.Entity, member string) *grap
 		candidates = append(candidates, cls.QualifiedName+"."+member)
 	}
 	for _, qn := range candidates {
+		// The qualified-name key "Owner.member" already pins the member to its
+		// owning class, so we do NOT require the member to live in the same file
+		// as the (sub)class entity we walked from. This is load-bearing for
+		// cross-file inheritance: a Go struct embedding `*BaseService` declared
+		// in another file, or a Java class implementing an interface whose
+		// default method body lives in the interface's own file, must still
+		// resolve to that out-of-file body (#3839).
 		if e := lr.LabelIndex.ByQName[strings.ToLower(qn)]; e != nil &&
-			isMemberEntity(e) && hasRealBody(e) && e.SourceFile == cls.SourceFile {
+			isMemberEntity(e) && hasRealBody(e) {
 			return e
 		}
 	}
 	// Fall back to a same-file scan: a member whose leaf matches and whose
-	// owning prefix is the class (handles QName-shape variation).
+	// owning prefix is the class (handles QName-shape variation). This path
+	// stays file-scoped because it matches on a bare leaf+prefix (no globally
+	// unique key), so a cross-file scan could pull an unrelated same-named
+	// method; the ByQName path above already covers the cross-file case.
 	for i := range lr.Doc.Entities {
 		e := &lr.Doc.Entities[i]
 		if e.SourceFile != cls.SourceFile || !isMemberEntity(e) || !hasRealBody(e) {

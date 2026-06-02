@@ -179,6 +179,55 @@ func TestPython_DeclaredParentStillResolvable(t *testing.T) {
 	}
 }
 
+// TestExtends_CarriesBaseName is the #3839 regression: every EXTENDS /
+// IMPLEMENTS edge must carry a `base_name` property with the base FQN as
+// written, so the MRO walk and the cbv_inherited_methods consumer can resolve
+// the defining class across files/modules without re-parsing the ToID.
+func TestExtends_CarriesBaseName(t *testing.T) {
+	cases := []struct {
+		name, lang, path, src, wantKind, wantBase string
+	}{
+		{
+			name: "python_extends_dotted", lang: "python", path: "app/views.py",
+			src:      "class RoleViewSet(viewsets.ModelViewSet):\n    pass\n",
+			wantKind: "EXTENDS", wantBase: "viewsets.ModelViewSet",
+		},
+		{
+			name: "java_implements", lang: "java", path: "Impl.java",
+			src:      "class Impl implements Runnable {\n}\n",
+			wantKind: "IMPLEMENTS", wantBase: "Runnable",
+		},
+		{
+			name: "go_embedding", lang: "go", path: "service.go",
+			src:      "type Service struct {\n\t*BaseService\n}\n",
+			wantKind: "EXTENDS", wantBase: "BaseService",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			got := runExtract(t, tc.lang, tc.path, tc.src)
+			var found bool
+			for _, e := range got {
+				for _, rel := range e.Relationships {
+					if rel.Kind != tc.wantKind {
+						continue
+					}
+					bn := rel.Properties["base_name"]
+					if bn == "" {
+						t.Errorf("%s edge missing base_name property", tc.wantKind)
+					}
+					if bn == tc.wantBase {
+						found = true
+					}
+				}
+			}
+			if !found {
+				t.Errorf("expected %s edge with base_name=%q, got entities=%v", tc.wantKind, tc.wantBase, entityNames(got))
+			}
+		})
+	}
+}
+
 // TestJava_InterfaceExtendsEmitsEdge is the regression for issue #612: a Java
 // `interface Foo extends Bar<T>, Baz` declaration must emit an EXTENDS edge
 // from Foo to each parent interface, with generic type arguments stripped.

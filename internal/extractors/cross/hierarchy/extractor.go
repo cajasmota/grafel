@@ -337,7 +337,10 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, parentID, "EXTENDS", map[string]string{"language": language})
+				res.addRel(clsID, parentID, "EXTENDS", map[string]string{
+					"language":  language,
+					"base_name": parentName,
+				})
 				res.extendsFound++
 			}
 		}
@@ -361,7 +364,10 @@ func extractJTCSharp(source, filePath, language string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, ifID, "IMPLEMENTS", map[string]string{"language": language})
+				res.addRel(clsID, ifID, "IMPLEMENTS", map[string]string{
+					"language":  language,
+					"base_name": ifaceName,
+				})
 				res.implementsFound++
 			}
 		}
@@ -410,7 +416,10 @@ func extractJTCInterface(source, filePath, language string, res *result) {
 				continue
 			}
 			parentID := ifaceRef(parentName, language)
-			res.addRel(ifaceID, parentID, "EXTENDS", map[string]string{"language": language})
+			res.addRel(ifaceID, parentID, "EXTENDS", map[string]string{
+				"language":  language,
+				"base_name": parentName,
+			})
 			res.extendsFound++
 		}
 	}
@@ -483,7 +492,10 @@ func extractPython(source, filePath string, res *result) {
 					},
 					QualityScore: 0.9,
 				})
-				res.addRel(clsID, ifID, "IMPLEMENTS", map[string]string{"language": "python"})
+				res.addRel(clsID, ifID, "IMPLEMENTS", map[string]string{
+					"language":  "python",
+					"base_name": clean,
+				})
 				res.implementsFound++
 			} else {
 				// Issue #74: do NOT synthesise a placeholder entity for the
@@ -499,7 +511,10 @@ func extractPython(source, filePath string, res *result) {
 				// rewrite still-unresolved endpoints to "ext:<name>"
 				// placeholders with Kind="SCOPE.External".
 				parentID := classRef(filePath, clean, "python")
-				res.addRel(clsID, parentID, "EXTENDS", map[string]string{"language": "python"})
+				res.addRel(clsID, parentID, "EXTENDS", map[string]string{
+					"language":  "python",
+					"base_name": clean,
+				})
 				res.extendsFound++
 			}
 		}
@@ -536,7 +551,10 @@ func extractRuby(source, filePath string, res *result) {
 			},
 			QualityScore: 0.9,
 		})
-		res.addRel(clsID, parentID, "EXTENDS", map[string]string{"language": "ruby"})
+		res.addRel(clsID, parentID, "EXTENDS", map[string]string{
+			"language":  "ruby",
+			"base_name": parentName,
+		})
 		res.extendsFound++
 	}
 }
@@ -582,7 +600,7 @@ func extractGo(source, filePath string, res *result) {
 				QualityScore: 0.9,
 			})
 			res.addRel(clsID, parentID, "EXTENDS",
-				map[string]string{"language": "go", "kind": "embedded_struct"})
+				map[string]string{"language": "go", "kind": "embedded_struct", "base_name": emb})
 			res.extendsFound++
 		}
 	}
@@ -619,7 +637,7 @@ func extractRust(source, filePath string, res *result) {
 			QualityScore: 0.9,
 		})
 		res.addRel(structID, traitID, "IMPLEMENTS",
-			map[string]string{"language": "rust", "kind": "trait_impl"})
+			map[string]string{"language": "rust", "kind": "trait_impl", "base_name": traitName})
 		res.implementsFound++
 	}
 }
@@ -677,7 +695,7 @@ func extractElixir(source, filePath string, res *result) {
 			QualityScore: 0.9,
 		})
 		res.addRel(modID, behID, "IMPLEMENTS",
-			map[string]string{"language": "elixir", "kind": "behaviour"})
+			map[string]string{"language": "elixir", "kind": "behaviour", "base_name": behaviourName})
 		res.implementsFound++
 	}
 }
