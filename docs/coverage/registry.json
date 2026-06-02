@@ -6697,8 +6697,9 @@
         "Validation": {
           "dto_extraction": {
             "status": "full",
-            "cites": ["internal/custom/csharp/validation.go","internal/custom/csharp/validation_test.go"],
-            "notes": "DTO types inferred from FluentValidation AbstractValidator\u003cT\u003e type arg and DataAnnotation model classes; heuristic"
+            "cites": ["internal/custom/csharp/aspnet_request_response.go","internal/custom/csharp/extractors_test.go","internal/custom/csharp/validation.go","internal/custom/csharp/validation_test.go"],
+            "notes": "DTO types inferred from FluentValidation AbstractValidator\u003cT\u003e type arg and DataAnnotation model classes. aspnet_request_response.go ALSO emits traversable endpoint→DTO graph edges (#3629): an action SCOPE.Operation entity with ACCEPTS_INPUT → [FromBody] request DTO and RETURNS → ActionResult\u003cT\u003e/concrete response DTO (Class:\u003cName\u003e structural ref; FromID=action entity). Previously these extractors emitted DTO entities only, so expand/traces/payload_drift could not follow endpoint→DTO; now they can, restoring parity with Java Spring. Tests: TestAspNetReqRespAcceptsInputAndReturnsEdges, TestAspNetReqRespEdgeHasFromID, TestAspNetReqRespPrimitiveParamNoEdge.",
+            "verified_at": "2026-06-02"
           },
           "request_validation": {
             "status": "full",
@@ -42452,8 +42453,8 @@
           "dto_extraction": {
             "status": "full",
             "cites": ["internal/custom/python/fastapi.go","internal/custom/python/fastapi_reqresp.go"],
-            "notes": "fastapi_reqresp.go extracts Pydantic BaseModel body params (ACCEPTS_INPUT), response_model= kwarg (RETURNS), and return type annotations for all FastAPI route decorators; fastapi.go extracts APIRouter, Depends(), and per-route metadata. Fixture test TestFastAPIReqResp_FullFixture proves CreateOrderRequest/UpdateOrderRequest body params + OrderResponse response_model and annotation returns. Pydantic v1/v2 unwrapping via unwrapType. Depends/Query/Path injection tokens skipped.",
-            "verified_at": "2026-05-30"
+            "notes": "fastapi_reqresp.go extracts Pydantic BaseModel body params and response_model=/return annotations for all FastAPI route decorators AND emits traversable endpoint→DTO graph edges (#3629): each endpoint SCOPE.Operation carries ACCEPTS_INPUT → request DTO (body param) and RETURNS → response DTO (response_model= or return annotation), ToID=Class:\u003cName\u003e structural ref the resolver binds by name. Previously DTO entities were emitted but no edges, so expand/traces/payload_drift could not follow endpoint→DTO; now they can (parity with Java Spring). fastapi.go extracts APIRouter, Depends(), per-route metadata. Pydantic v1/v2 unwrapping via unwrapType; Depends/Query/Path injection tokens skipped. Tests: TestFastAPIReqResp_AcceptsInputEdge, TestFastAPIReqResp_ReturnsEdgeResponseModel, TestFastAPIReqResp_ReturnsEdgeAnnotation, TestFastAPIReqResp_PrimitiveParamNoEdge, TestFastAPIReqResp_FullFixture.",
+            "verified_at": "2026-06-02"
           },
           "request_validation": {
             "status": "full",
@@ -42692,8 +42693,8 @@
           "dto_extraction": {
             "status": "full",
             "cites": ["internal/custom/python/flask.go","internal/custom/python/flask_reqresp.go"],
-            "notes": "flask_reqresp.go extracts marshmallow Schema.load() call sites in route handler bodies (ACCEPTS_INPUT), and return type annotations (RETURNS). flask.go emits FlaskForm/class entities as schema-level DTOs. canonicalSchemaName converts snake_case schema vars to PascalCase. Tests: TestFlaskReqResp_SchemaLoad, TestFlaskReqResp_Returns, TestFlaskReqResp_PascalCaseSchema, TestFlask_FlaskForm.",
-            "verified_at": "2026-05-30"
+            "notes": "flask_reqresp.go extracts marshmallow Schema.load() call sites (request DTO) and return annotations (response DTO) AND emits traversable endpoint→DTO graph edges (#3629): the endpoint SCOPE.Operation carries ACCEPTS_INPUT → schema (statically-resolvable schema.load()) and RETURNS → return-annotation type, ToID=Class:\u003cName\u003e. Honest-partial by design: dynamic/untyped request.get_json() bodies and runtime-serialized responses stay edge-less (only statically resolvable DTOs get edges). Previously entity-only; edges now restore endpoint→DTO traversal for expand/traces/payload_drift. flask.go emits FlaskForm/class entities; canonicalSchemaName converts snake_case vars to PascalCase. Tests: TestFlaskReqResp_AcceptsInputEdge, TestFlaskReqResp_ReturnsEdge, TestFlaskReqResp_UntypedNoEdge, TestFlaskReqResp_PascalCaseSchema.",
+            "verified_at": "2026-06-02"
           },
           "request_validation": {
             "status": "partial",

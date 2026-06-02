@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/types"
 
 	_ "github.com/cajasmota/archigraph/internal/custom/csharp"
 )
@@ -149,6 +150,67 @@ func TestAspNetReqRespNoMatch(t *testing.T) {
 	ents := extract(t, "custom_csharp_aspnet_reqresp", fi("Helper.cs", "csharp", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// hasEdge reports whether any entity carries an edge of (kind -> toID). #3629.
+func hasEdge(ents []types.EntityRecord, kind, toID string) bool {
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.Kind == kind && r.ToID == toID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// #3629: [FromBody] OrderDto emits an ACCEPTS_INPUT edge to the request DTO,
+// and ActionResult<OrderResult> emits a RETURNS edge to the response DTO.
+func TestAspNetReqRespAcceptsInputAndReturnsEdges(t *testing.T) {
+	src := `
+public class OrdersController : ControllerBase {
+    [HttpPost]
+    public async Task<ActionResult<OrderResult>> Create([FromBody] OrderDto dto) => Ok();
+}
+`
+	ents := extractFull(t, "custom_csharp_aspnet_reqresp", fi("OrdersController.cs", "csharp", src))
+	if !hasEdge(ents, "ACCEPTS_INPUT", "Class:OrderDto") {
+		t.Errorf("expected ACCEPTS_INPUT -> Class:OrderDto edge, got %+v", ents)
+	}
+	if !hasEdge(ents, "RETURNS", "Class:OrderResult") {
+		t.Errorf("expected RETURNS -> Class:OrderResult edge, got %+v", ents)
+	}
+}
+
+// #3629: edges must anchor on a non-empty FromID (the action operation entity)
+// so expand/traces can traverse endpoint→DTO.
+func TestAspNetReqRespEdgeHasFromID(t *testing.T) {
+	src := `public ActionResult<UserDto> Get([FromBody] UserQuery q) => Ok();`
+	ents := extractFull(t, "custom_csharp_aspnet_reqresp", fi("UsersController.cs", "csharp", src))
+	var checked int
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.FromID == "" {
+				t.Errorf("edge %s -> %s has empty FromID", r.Kind, r.ToID)
+			}
+			if r.FromID != e.ID {
+				t.Errorf("edge FromID %q != owning entity ID %q", r.FromID, e.ID)
+			}
+			checked++
+		}
+	}
+	if checked == 0 {
+		t.Fatal("expected at least one endpoint→DTO edge")
+	}
+}
+
+// #3629 negative: a primitive [FromBody] param emits no DTO edge.
+func TestAspNetReqRespPrimitiveParamNoEdge(t *testing.T) {
+	src := `public IActionResult Delete([FromBody] int id) => Ok();`
+	ents := extractFull(t, "custom_csharp_aspnet_reqresp", fi("Controller.cs", "csharp", src))
+	if hasEdge(ents, "ACCEPTS_INPUT", "Class:int") {
+		t.Error("primitive [FromBody] int should not emit an ACCEPTS_INPUT edge")
 	}
 }
 

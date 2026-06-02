@@ -1810,6 +1810,108 @@ func TestFastAPIReqResp_NoMatch(t *testing.T) {
 	}
 }
 
+// hasRel reports whether any entity carries an edge of (kind -> toID). #3629.
+func hasRel(ents []extractResult, kind, toID string) bool {
+	for _, e := range ents {
+		for _, r := range e.Rels {
+			if r.Kind == kind && r.ToID == toID {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// #3629: FastAPI body param emits an ACCEPTS_INPUT edge to the request DTO.
+func TestFastAPIReqResp_AcceptsInputEdge(t *testing.T) {
+	src := `@app.post("/users")
+def create_user(user: UserCreate):
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	if !hasRel(ents, "ACCEPTS_INPUT", "Class:UserCreate") {
+		t.Fatal("expected ACCEPTS_INPUT -> Class:UserCreate edge from create_user")
+	}
+}
+
+// #3629: FastAPI response_model= emits a RETURNS edge to the response DTO.
+func TestFastAPIReqResp_ReturnsEdgeResponseModel(t *testing.T) {
+	src := `@app.get("/users", response_model=UserOut)
+def list_users():
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	if !hasRel(ents, "RETURNS", "Class:UserOut") {
+		t.Fatal("expected RETURNS -> Class:UserOut edge from response_model")
+	}
+}
+
+// #3629: FastAPI return annotation emits a RETURNS edge (generic-unwrapped).
+func TestFastAPIReqResp_ReturnsEdgeAnnotation(t *testing.T) {
+	src := `@app.get("/users")
+def list_users() -> List[UserOut]:
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	if !hasRel(ents, "RETURNS", "Class:UserOut") {
+		t.Fatal("expected RETURNS -> Class:UserOut edge from return annotation")
+	}
+}
+
+// #3629 negative: a primitive/path param emits no DTO edge.
+func TestFastAPIReqResp_PrimitiveParamNoEdge(t *testing.T) {
+	src := `@app.get("/items/{item_id}")
+def get_item(item_id: int):
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	for _, e := range ents {
+		if len(e.Rels) != 0 {
+			t.Fatalf("expected no DTO edges for primitive param, got %+v", e.Rels)
+		}
+	}
+}
+
+// #3629: Flask marshmallow schema.load() emits ACCEPTS_INPUT to the schema.
+func TestFlaskReqResp_AcceptsInputEdge(t *testing.T) {
+	src := `@app.route("/orders", methods=["POST"])
+def create_order():
+    data = OrderSchema().load(request.json)
+    return jsonify(data)
+`
+	ents := extract(t, "python_flask_reqresp", src)
+	if !hasRel(ents, "ACCEPTS_INPUT", "Class:OrderSchema") {
+		t.Fatalf("expected ACCEPTS_INPUT -> Class:OrderSchema edge, got %+v", ents)
+	}
+}
+
+// #3629: Flask return annotation emits a RETURNS edge to the response type.
+func TestFlaskReqResp_ReturnsEdge(t *testing.T) {
+	src := `@app.get("/orders")
+def list_orders() -> OrderResponse:
+    pass
+`
+	ents := extract(t, "python_flask_reqresp", src)
+	if !hasRel(ents, "RETURNS", "Class:OrderResponse") {
+		t.Fatalf("expected RETURNS -> Class:OrderResponse edge, got %+v", ents)
+	}
+}
+
+// #3629 negative: a Flask handler with no typed schema/return emits no edge.
+func TestFlaskReqResp_UntypedNoEdge(t *testing.T) {
+	src := `@app.route("/ping")
+def ping():
+    data = request.get_json()
+    return jsonify({"ok": True})
+`
+	ents := extract(t, "python_flask_reqresp", src)
+	for _, e := range ents {
+		if len(e.Rels) != 0 {
+			t.Fatalf("expected no edges for untyped Flask handler, got %+v", e.Rels)
+		}
+	}
+}
+
 // TestFastAPIReqResp_FullFixture exercises fastapi_reqresp.go against the
 // testdata/fastapi_reqresp_fixture.py fixture. It proves that:
 //   - Pydantic body parameters are emitted as dto + accepts_input entities

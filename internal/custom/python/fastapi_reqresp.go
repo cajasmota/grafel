@@ -94,8 +94,17 @@ func (e *FastAPIReqRespExtractor) Extract(ctx context.Context, file extractor.Fi
 				continue
 			}
 			emitDTO(dtoName, line, "dto")
-			out = append(out, entity(handlerName+":accepts:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
-				map[string]string{"framework": "fastapi", "pattern_type": "accepts_input", "param_name": paramName, "dto_type": dtoName}))
+			ep := entity(handlerName+":accepts:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
+				map[string]string{"framework": "fastapi", "pattern_type": "accepts_input", "param_name": paramName, "dto_type": dtoName})
+			// ACCEPTS_INPUT edge: endpoint -> request DTO type (#3629).
+			// FromID is left empty so graph assembly binds it to this endpoint
+			// entity; ToID is the structural ref to the real Pydantic class.
+			ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
+				ToID:       "Class:" + dtoName,
+				Kind:       string(types.RelationshipKindAcceptsInput),
+				Properties: map[string]string{"framework": "fastapi", "match_source": "body_param_annotation", "param_name": paramName, "dto_type": dtoName},
+			})
+			out = append(out, ep)
 		}
 
 		// RETURNS: response_model= kwarg
@@ -103,8 +112,14 @@ func (e *FastAPIReqRespExtractor) Extract(ctx context.Context, file extractor.Fi
 			dtoName := unwrapType(rm[1])
 			if dtoName != "" {
 				emitDTO(dtoName, line, "response")
-				out = append(out, entity(handlerName+":returns:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
-					map[string]string{"framework": "fastapi", "pattern_type": "returns", "dto_type": dtoName, "match_source": "response_model_decorator"}))
+				ep := entity(handlerName+":returns:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
+					map[string]string{"framework": "fastapi", "pattern_type": "returns", "dto_type": dtoName, "match_source": "response_model_decorator"})
+				ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
+					ToID:       "Class:" + dtoName,
+					Kind:       string(types.RelationshipKindReturns),
+					Properties: map[string]string{"framework": "fastapi", "match_source": "response_model_decorator", "dto_type": dtoName},
+				})
+				out = append(out, ep)
 			}
 		}
 
@@ -114,8 +129,14 @@ func (e *FastAPIReqRespExtractor) Extract(ctx context.Context, file extractor.Fi
 			dtoName := unwrapType(strings.TrimSpace(ret[1]))
 			if dtoName != "" {
 				emitDTO(dtoName, line, "response")
-				out = append(out, entity(handlerName+":returns:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
-					map[string]string{"framework": "fastapi", "pattern_type": "returns", "dto_type": dtoName, "match_source": "return_type_annotation"}))
+				ep := entity(handlerName+":returns:"+dtoName, "SCOPE.Operation", "endpoint", file.Path, line,
+					map[string]string{"framework": "fastapi", "pattern_type": "returns", "dto_type": dtoName, "match_source": "return_type_annotation"})
+				ep.Relationships = append(ep.Relationships, types.RelationshipRecord{
+					ToID:       "Class:" + dtoName,
+					Kind:       string(types.RelationshipKindReturns),
+					Properties: map[string]string{"framework": "fastapi", "match_source": "return_type_annotation", "dto_type": dtoName},
+				})
+				out = append(out, ep)
 			}
 		}
 	}
