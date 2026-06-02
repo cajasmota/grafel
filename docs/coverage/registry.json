@@ -28396,6 +28396,17 @@
             "verified_at": "2026-05-29"
           }
         }
+      },
+      "framework_specific": {
+        "DataLoader (N+1 batching)": {
+          "dataloader_extraction": {
+            "status": "partial",
+            "cites": ["internal/extractors/javascript/graphql_dataloader.go","internal/extractors/javascript/issue3624_dataloader_test.go","internal/types/kinds.go"],
+            "issue": "3624",
+            "notes": "new DataLoader(batchFn) (the 'dataloader' npm pkg) -\u003e SCOPE.DataLoader entity named by the assigned const/field + BATCHES edge to the wrapped batch fn (bare ident or single-call delegating arrow); loader.load(id)/loadMany(ids) in a resolver body -\u003e USES edge resolver-\u003eloader, via=graphql_dataloader. Value-asserted: userLoader BATCHES batchUsers + resolveAuthor USES userLoader. PARTIAL (honest): only statically-named loaders; dynamic/factory-built loaders and lambda batch fns get no BATCHES edge.",
+            "verified_at": "2026-06-02"
+          }
+        }
       }
     },
     {
@@ -44175,6 +44186,17 @@
           "vulnerability_finding": {
             "status": "missing",
             "issue": "3620"
+          }
+        }
+      },
+      "framework_specific": {
+        "DataLoader (N+1 batching)": {
+          "dataloader_extraction": {
+            "status": "partial",
+            "cites": ["internal/custom/python/graphql_dataloader.go","internal/custom/python/graphql_dataloader_test.go","internal/types/kinds.go"],
+            "issue": "3624",
+            "notes": "aiodataloader DataLoader(load_fn=batch_users) / DataLoader(batch_users) -\u003e SCOPE.DataLoader entity named by the assigned var + BATCHES edge to the named batch fn; \u003cloader\u003e.load(id)/.load_many(ids) in a resolver body -\u003e USES edge resolver-\u003eloader (resolver = nearest enclosing def), via=graphql_dataloader. Value-asserted: user_loader BATCHES batch_users + author resolver USES user_loader. PARTIAL (honest): regex+enclosing-def heuristic; lambda batch fns get no BATCHES edge; top-level .load() with no enclosing def skipped.",
+            "verified_at": "2026-06-02"
           }
         }
       }

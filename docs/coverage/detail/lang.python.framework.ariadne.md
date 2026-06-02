@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 38
+- **Capability cells:** 39
 
 ## Capabilities
 
@@ -93,6 +93,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🔴 `missing` | — | 3620 | — | — |
 | Template pattern catalog | 🔴 `missing` | — | 3620 | — | — |
 | Vulnerability finding | 🔴 `missing` | — | 3620 | — | — |
+
+## Framework-specific
+
+### DataLoader (N+1 batching)
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Dataloader extraction | 🟢 `partial` | `2026-06-02` | 3624 | `internal/custom/python/graphql_dataloader.go`<br>`internal/custom/python/graphql_dataloader_test.go`<br>`internal/types/kinds.go` | aiodataloader DataLoader(load_fn=batch_users) / DataLoader(batch_users) -> SCOPE.DataLoader entity named by the assigned var + BATCHES edge to the named batch fn; <loader>.load(id)/.load_many(ids) in a resolver body -> USES edge resolver->loader (resolver = nearest enclosing def), via=graphql_dataloader. Value-asserted: user_loader BATCHES batch_users + author resolver USES user_loader. PARTIAL (honest): regex+enclosing-def heuristic; lambda batch fns get no BATCHES edge; top-level .load() with no enclosing def skipped. |
 
 ## Provenance
 

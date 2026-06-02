@@ -138,6 +138,21 @@ const (
 	// on-disk graphs indexed before this release can still be read without
 	// a migration step. No extractor emits this kind after #1217.
 	HTTPEndpointKindLegacy EntityKind = "http_endpoint"
+
+	// #3624 (epic #3607): GraphQL DataLoader N+1 batch-loader topology.
+	// A DataLoader instance batches per-key fetches to avoid the N+1 query
+	// problem in GraphQL field resolvers. One entity per statically-named
+	// loader: a `new DataLoader(batchFn)` construction in JS/TS (the
+	// `dataloader` npm package) or a `DataLoader(load_fn=batch_fn)`
+	// construction in Python (the `aiodataloader` package used by
+	// Strawberry/Ariadne). The loader is named by the const/field/variable it
+	// is assigned to. Two edges connect it to the rest of the graph:
+	//   - RelationshipKindBatches : loader → batch function (the wrapped
+	//     per-key fetch function).
+	//   - RelationshipKindUses    : resolver → loader, emitted at each
+	//     `loader.load(id)` / `loader.loadMany(ids)` call site. This surfaces
+	//     which field resolver avoids N+1 via which batch loader.
+	EntityKindDataLoader EntityKind = "SCOPE.DataLoader"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -200,6 +215,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindCustomValidator,
 		// #3628 area #17:
 		EntityKindFeatureFlag,
+		// #3624 GraphQL DataLoader:
+		EntityKindDataLoader,
 	}
 }
 
@@ -374,6 +391,13 @@ const (
 	RelationshipKindStreamsTo         RelationshipKind = "STREAMS_TO"
 	RelationshipKindGraphQLSubscribes RelationshipKind = "GRAPHQL_SUBSCRIBES"
 	RelationshipKindGraphQLPublishes  RelationshipKind = "GRAPHQL_PUBLISHES"
+
+	// #3624 (epic #3607): GraphQL DataLoader N+1 batch wiring.
+	//   BATCHES : SCOPE.DataLoader → batch function (the wrapped per-key
+	//             fetch function that the loader coalesces calls into).
+	// The complementary resolver→loader edge reuses RelationshipKindUses
+	// ("USES"), emitted at each `loader.load(id)` call site.
+	RelationshipKindBatches RelationshipKind = "BATCHES"
 
 	// #728: Scheduled-job and webhook edges.
 	//   TRIGGERS : SCOPE.ScheduledJob → handler function/method
@@ -862,6 +886,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindStreamsTo,
 		RelationshipKindGraphQLSubscribes,
 		RelationshipKindGraphQLPublishes,
+		// #3624 GraphQL DataLoader:
+		RelationshipKindBatches,
 		// #728 scheduled jobs + webhooks:
 		RelationshipKindTriggers,
 		// #725 gRPC:

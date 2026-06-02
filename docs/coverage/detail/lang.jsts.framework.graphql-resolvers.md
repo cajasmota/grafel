@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** RPC Framework
-- **Capability cells:** 28
+- **Capability cells:** 29
 
 ## Capabilities
 
@@ -58,6 +58,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | 3076 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3076 | `internal/substrate/template_pattern_jsts.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3076 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/uimm_substrate_test.go`<br>`testdata/fixtures/typescript/substrate_graphql/resolver.ts` | — |
+
+## Framework-specific
+
+### DataLoader (N+1 batching)
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Dataloader extraction | 🟢 `partial` | `2026-06-02` | 3624 | `internal/extractors/javascript/graphql_dataloader.go`<br>`internal/extractors/javascript/issue3624_dataloader_test.go`<br>`internal/types/kinds.go` | new DataLoader(batchFn) (the 'dataloader' npm pkg) -> SCOPE.DataLoader entity named by the assigned const/field + BATCHES edge to the wrapped batch fn (bare ident or single-call delegating arrow); loader.load(id)/loadMany(ids) in a resolver body -> USES edge resolver->loader, via=graphql_dataloader. Value-asserted: userLoader BATCHES batchUsers + resolveAuthor USES userLoader. PARTIAL (honest): only statically-named loaders; dynamic/factory-built loaders and lambda batch fns get no BATCHES edge. |
 
 ## Provenance
 

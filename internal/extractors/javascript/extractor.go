@@ -241,6 +241,14 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// Without this, traces terminated at useAuthStore ("no_outgoing_calls").
 	x.zustand.emitStoreActionEntities(x)
 
+	// Issue #3624 (epic #3607) — build the GraphQL DataLoader tracker before
+	// walk() so that extractCallRelationships can emit USES edges for
+	// `<loader>.load(id)` call sites. buildDataLoaderTracker also emits a
+	// SCOPE.DataLoader entity (+ a BATCHES edge to the wrapped batch function)
+	// for each statically-named `new DataLoader(...)` construction. No-ops when
+	// the file does not import the "dataloader" package.
+	x.dataLoader = x.buildDataLoaderTracker(root)
+
 	// Issue #2894 PR1 — React Ecosystem framework_specific group: emit
 	// decorated Redux slice/store, RTK Query api/endpoint and createAsyncThunk
 	// entities (+ CONTAINS edges) before walk() so they're present alongside the
@@ -475,6 +483,15 @@ type extractor struct {
 	// emits a CALLS edge tagged Properties["via"]="zustand_store".
 	// Nil when no zustand import is found in the file (fast-path).
 	zustand *zustandTracker
+
+	// dataLoader — Issue #3624 (epic #3607). Built once per file in
+	// buildDataLoaderTracker (called from Extract before walk). Tracks
+	// statically-named GraphQL DataLoader instances (`new DataLoader(...)` from
+	// the "dataloader" package). When a resolver body calls `<loader>.load(id)`
+	// extractCallRelationships emits a USES edge tagged
+	// Properties["via"]="graphql_dataloader". Nil when no dataloader import is
+	// found in the file (fast-path).
+	dataLoader *dataLoaderTracker
 
 	// destructureBindings — Issue #2625. Built once per file in
 	// buildDestructureBindings (called from Extract before walk). Tracks
@@ -2245,6 +2262,21 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 				if !seen[zr.ToID] {
 					seen[zr.ToID] = true
 					rels = append(rels, zr)
+				}
+			}
+		}
+
+		// Issue #3624 — GraphQL DataLoader: `<loader>.load(id)` /
+		// `<loader>.loadMany(ids)` inside a resolver body emits a USES edge from
+		// the enclosing function (callerName) to the loader entity. We key the
+		// dedup set on a "uses:" prefix so a same-named CALLS edge isn't
+		// suppressed (and vice-versa).
+		if dlRels := x.dataLoader.dataLoaderLoadEdges(x, call); len(dlRels) > 0 {
+			for _, dr := range dlRels {
+				key := "uses:" + dr.ToID
+				if !seen[key] {
+					seen[key] = true
+					rels = append(rels, dr)
 				}
 			}
 		}

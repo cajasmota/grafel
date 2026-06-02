@@ -93,7 +93,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [php](../by-language/php.md) | [WordPress](../detail/lang.php.framework.wordpress.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [php](../by-language/php.md) | [Yii](../detail/lang.php.framework.yii.md) | 🟢 3/3 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [php](../by-language/php.md) | [graphql-php](../detail/lang.php.framework.graphql-php.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🟡 1/7 | |
-| [python](../by-language/python.md) | [Ariadne GraphQL](../detail/lang.python.framework.ariadne.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/7 | |
+| [python](../by-language/python.md) | [Ariadne GraphQL](../detail/lang.python.framework.ariadne.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🟡 1/8 | |
 | [python](../by-language/python.md) | [Bottle](../detail/lang.python.framework.bottle.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [CherryPy](../detail/lang.python.framework.cherrypy.md) | ✅ 3/3 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [python](../by-language/python.md) | [Django](../detail/lang.python.framework.django.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 7/7 | |
@@ -260,7 +260,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | 🟡 2/23 | 🟢 4/4 | |
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | 🟡 21/23 | 🟢 4/4 | |
 | [elixir](../by-language/elixir.md) | [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | 🟡 3/23 | 🟡 3/4 | |
-| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🟡 22/23 | 🟢 4/4 | |
+| [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🟡 22/23 | 🟢 5/5 | |
 | [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | 🟡 22/23 | ✅ 4/4 | |
 | [scala](../by-language/scala.md) | [ScalaPB / zio-grpc / fs2-grpc](../detail/lang.scala.framework.scalapb-grpc.md) | 🟡 2/23 | 🟢 4/4 | |
 
