@@ -79,6 +79,30 @@ var (
 	)
 )
 
+// sequelizeAssocCardinality maps a Sequelize association method to the shared
+// ORM relationship-cardinality vocabulary (one_to_many / many_to_one /
+// many_to_many / one_to_one), used as the `cardinality` prop on the
+// GRAPH_RELATES edge between the source and target model nodes.
+//
+//	User.hasMany(Order)       → one_to_many   (User has many Orders)
+//	Order.belongsTo(User)     → many_to_one   (many Orders belong to one User)
+//	User.hasOne(Profile)      → one_to_one
+//	User.belongsToMany(Role)  → many_to_many
+func sequelizeAssocCardinality(method string) string {
+	switch method {
+	case "hasMany":
+		return "one_to_many"
+	case "belongsTo":
+		return "many_to_one"
+	case "hasOne":
+		return "one_to_one"
+	case "belongsToMany":
+		return "many_to_many"
+	default:
+		return ""
+	}
+}
+
 // sequelizeMigrationOpSubtype normalizes a queryInterface method to a shared
 // schema-change op subtype.
 func sequelizeMigrationOpSubtype(method string) string {
@@ -231,6 +255,22 @@ func (e *sequelizeExtractor) Extract(ctx context.Context, file extreg.FileInput)
 		setProps(&ent, "framework", "sequelize", "source_model", sourceModel,
 			"association_type", assocType, "target_model", targetModel,
 			"provenance", "INFERRED_FROM_SEQUELIZE_ASSOCIATION")
+		// GRAPH_RELATES model↔model edge with cardinality. Both endpoints are
+		// capitalised model identifiers (User.hasMany(Order)); the resolver's
+		// byName index links Class:<Model> to the @Entity/define model node.
+		if card := sequelizeAssocCardinality(assocType); card != "" {
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				FromID: "Class:" + sourceModel,
+				ToID:   "Class:" + targetModel,
+				Kind:   string(types.RelationshipKindGraphRelates),
+				Properties: map[string]string{
+					"framework":        "sequelize",
+					"cardinality":      card,
+					"association_type": assocType,
+					"provenance":       "INFERRED_FROM_SEQUELIZE_ASSOCIATION",
+				},
+			})
+		}
 		addEntity(ent)
 	}
 

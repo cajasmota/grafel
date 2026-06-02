@@ -250,6 +250,25 @@ func enrichDjangoModelFieldsAndManagers(
 								Kind:       "REFERENCES",
 								Properties: props,
 							})
+
+						// GRAPH_RELATES model↔model edge with cardinality, hung off
+						// the owning model class node (parallel to the field-level
+						// REFERENCES edge above). ForeignKey → many_to_one,
+						// OneToOneField → one_to_one, ManyToManyField → many_to_many.
+						if card := djangoRelCardinality(leafType); card != "" {
+							(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+								types.RelationshipRecord{
+									FromID: buildDjangoModelClassRef(file.Path, parentClass),
+									ToID:   buildDjangoModelClassRef(file.Path, targetName),
+									Kind:   string(types.RelationshipKindGraphRelates),
+									Properties: map[string]string{
+										"django_rel":  leafType,
+										"cardinality": card,
+										"field_name":  attr,
+										"self_ref":    boolToString(isSelf),
+									},
+								})
+						}
 					}
 				}
 				continue
@@ -468,6 +487,26 @@ func parseTargetExpr(node *sitter.Node, src []byte, parentClass string) (classNa
 // rewriter strips the file segment when falling back to byName lookup.
 func buildDjangoModelClassRef(filePath, className string) string {
 	return "scope:component:ref:python:" + filepath.ToSlash(filePath) + ":" + className
+}
+
+// djangoRelCardinality maps a Django relational field type to the shared ORM
+// relationship-cardinality vocabulary, used as the `cardinality` prop on the
+// GRAPH_RELATES edge between the owning model node and the referenced model.
+//
+//	ForeignKey      → many_to_one   (many rows point at one target)
+//	OneToOneField   → one_to_one
+//	ManyToManyField → many_to_many
+func djangoRelCardinality(fieldType string) string {
+	switch fieldType {
+	case "ForeignKey":
+		return "many_to_one"
+	case "OneToOneField":
+		return "one_to_one"
+	case "ManyToManyField":
+		return "many_to_many"
+	default:
+		return ""
+	}
 }
 
 // isCapitalisedIdent reports whether s looks like a Python class identifier

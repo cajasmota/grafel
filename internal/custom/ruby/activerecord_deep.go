@@ -280,18 +280,22 @@ func targetModel(macro, assocName string, o assocOptions) string {
 // table link, and rich association + foreign-key entities.
 func extractARModelsAndAssociations(src string, file extractor.FileInput, add func(types.EntityRecord)) {
 	// Model class → table link (Models / model_extraction + schema link).
+	// The model entity is built up-front but added LAST so association loops
+	// below can hang GRAPH_RELATES edges off it (one model class per file is the
+	// Rails convention reARModelClass keys on).
 	var modelName, tableName string
+	var modelEnt *types.EntityRecord
 	if m := reARModelClass.FindStringSubmatchIndex(src); m != nil {
 		modelName = src[m[2]:m[3]]
 		tableName = modelToTable(modelName)
-		ent := makeEntity("model:"+modelName, "SCOPE.Schema", "model", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent,
+		me := makeEntity("model:"+modelName, "SCOPE.Schema", "model", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&me,
 			"framework", "activerecord",
 			"provenance", "INFERRED_FROM_AR_MODEL_CLASS",
 			"model_class", modelName,
 			"table_name", tableName,
 		)
-		add(ent)
+		modelEnt = &me
 	}
 
 	for _, m := range reARAssociationDeep.FindAllStringSubmatchIndex(src, -1) {
@@ -340,6 +344,30 @@ func extractARModelsAndAssociations(src string, file extractor.FileInput, add fu
 		}
 		add(rel)
 
+		// GRAPH_RELATES model↔model edge with cardinality, hung off the owner
+		// model node. Polymorphic associations have no single concrete target
+		// class, so they stay honest-partial (relation entity only, no edge).
+		// `target` already honors class_name: and Rails singular/plural
+		// inflection, so the ToID resolves to the real target model node via the
+		// Class:<Name> byName convention.
+		if modelEnt != nil && target != "" && !o.polymorph {
+			if card := arAssocCardinality(macro); card != "" {
+				modelEnt.Relationships = append(modelEnt.Relationships,
+					types.RelationshipRecord{
+						FromID: "Class:" + modelName,
+						ToID:   "Class:" + target,
+						Kind:   string(types.RelationshipKindGraphRelates),
+						Properties: map[string]string{
+							"framework":        "activerecord",
+							"cardinality":      card,
+							"association_type": macro,
+							"association_name": assocName,
+							"provenance":       "INFERRED_FROM_AR_ASSOCIATION_DEEP",
+						},
+					})
+			}
+		}
+
 		// Foreign-key entity (Relationships / foreign_key_extraction).
 		// belongs_to defines the FK on *this* model's table (convention x_id),
 		// or the explicit foreign_key. has_one/has_many put the FK on the other
@@ -365,6 +393,35 @@ func extractARModelsAndAssociations(src string, file extractor.FileInput, add fu
 			}
 			add(fkEnt)
 		}
+	}
+
+	// Add the model node last so it carries the GRAPH_RELATES edges accumulated
+	// above. (Deferred from the top of the function.)
+	if modelEnt != nil {
+		add(*modelEnt)
+	}
+}
+
+// arAssocCardinality maps an ActiveRecord association macro to the shared ORM
+// relationship-cardinality vocabulary, used as the `cardinality` prop on the
+// GRAPH_RELATES edge between the owner model node and the target model node.
+//
+//	has_many :orders                  → one_to_many
+//	belongs_to :user                  → many_to_one
+//	has_one :profile                  → one_to_one
+//	has_and_belongs_to_many :tags     → many_to_many
+func arAssocCardinality(macro string) string {
+	switch macro {
+	case "has_many":
+		return "one_to_many"
+	case "belongs_to":
+		return "many_to_one"
+	case "has_one":
+		return "one_to_one"
+	case "has_and_belongs_to_many":
+		return "many_to_many"
+	default:
+		return ""
 	}
 }
 
