@@ -100,9 +100,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
 | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟢 8/8 | |
 | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟢 7/7 | |
-| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🔴 0/1 | |
-| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🔴 0/1 | |
-| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🔴 0/1 | |
+| [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ✅ 1/1 | |
+| [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ✅ 1/1 | |
+| [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ✅ 1/1 | |
 | [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/4 | |
 | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |

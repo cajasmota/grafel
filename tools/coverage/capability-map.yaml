@@ -10418,15 +10418,21 @@ records:
     capabilities:
       Queries:
         query_attribution:
-          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
-          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
-          # issue #3262.
-          status: partial
+          # TOPOLOGY (#3645): session.Execute("SELECT ... FROM events") CQL is
+          # parsed to the touched table via scanCSharpDrivers/emitCQLTargets in
+          # orm_queries_drivers_other.go, emitting a QUERIES edge to
+          # Class:<Table>. Generic read/write classification still via
+          # effect_sinks_csharp.go (#3262). Dynamic CQL strings honest-skipped.
+          status: full
           symbols:
+            - file: internal/engine/orm_queries_drivers_other.go
+              functions: [scanCSharpDrivers, emitCQLTargets]
             - file: internal/substrate/effect_sinks_csharp.go
               functions: [sniffEffectsCSharp]
-          issues_implemented: ["3262"]
-          verified_at: "2026-05-30"
+          tests:
+            - file: internal/engine/orm_queries_drivers_other_test.go
+          issues_implemented: ["3262", "3645"]
+          verified_at: "2026-06-02"
       Models:
         schema_extraction:
           # Cassandra LINQ driver [Table("ks.tbl")] / [Column("col")] POCO
@@ -10444,15 +10450,22 @@ records:
     capabilities:
       Queries:
         query_attribution:
-          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
-          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
-          # issue #3262.
-          status: partial
+          # TOPOLOGY (#3645): the `TableName = "Products"` literal on a
+          # GetItemRequest/PutItemRequest is captured via scanCSharpDrivers/
+          # emitDynamoTargets in orm_queries_drivers_other.go, emitting a
+          # QUERIES edge to Class:<Table>. Generic read/write classification
+          # still via effect_sinks_csharp.go (#3262). Dynamic table names
+          # (TableName = var) honest-skipped.
+          status: full
           symbols:
+            - file: internal/engine/orm_queries_drivers_other.go
+              functions: [scanCSharpDrivers, emitDynamoTargets]
             - file: internal/substrate/effect_sinks_csharp.go
               functions: [sniffEffectsCSharp]
-          issues_implemented: ["3262"]
-          verified_at: "2026-05-30"
+          tests:
+            - file: internal/engine/orm_queries_drivers_other_test.go
+          issues_implemented: ["3262", "3645"]
+          verified_at: "2026-06-02"
       Models:
         schema_extraction:
           # AWSSDK.DynamoDBv2 [DynamoDBTable]/[DynamoDBHashKey]/[DynamoDBRangeKey]/
@@ -10471,15 +10484,21 @@ records:
     capabilities:
       Queries:
         query_attribution:
-          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
-          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
-          # issue #3262.
-          status: partial
+          # TOPOLOGY (#3645): the NEST `.Index("logs")` literal is captured via
+          # scanCSharpDrivers/emitElasticTargets in
+          # orm_queries_drivers_other.go, emitting a QUERIES edge to
+          # Class:<Index>. Generic read/write classification still via
+          # effect_sinks_csharp.go (#3262). Dynamic index names honest-skipped.
+          status: full
           symbols:
+            - file: internal/engine/orm_queries_drivers_other.go
+              functions: [scanCSharpDrivers, emitElasticTargets]
             - file: internal/substrate/effect_sinks_csharp.go
               functions: [sniffEffectsCSharp]
-          issues_implemented: ["3262"]
-          verified_at: "2026-05-30"
+          tests:
+            - file: internal/engine/orm_queries_drivers_other_test.go
+          issues_implemented: ["3262", "3645"]
+          verified_at: "2026-06-02"
       Models:
         schema_extraction:
           # NEST/Elastic.Clients.Elasticsearch [ElasticsearchType]/[PropertyName]/
@@ -10498,15 +10517,21 @@ records:
     capabilities:
       Queries:
         query_attribution:
-          # .Query<T>() / .Execute() patterns detected via csharpDBReadRe /
-          # csharpDBWriteRe in effect_sinks_csharp.go; partial confidence 0.85;
-          # issue #3262.
-          status: partial
+          # TOPOLOGY (#3645): db.GetCollection<T>("users") is captured via
+          # scanCSharpDrivers in orm_queries_drivers_other.go, emitting a
+          # QUERIES edge to Class:<Collection>. Generic read/write
+          # classification still via effect_sinks_csharp.go (#3262). Dynamic
+          # collection names honest-skipped.
+          status: full
           symbols:
+            - file: internal/engine/orm_queries_drivers_other.go
+              functions: [scanCSharpDrivers]
             - file: internal/substrate/effect_sinks_csharp.go
               functions: [sniffEffectsCSharp]
-          issues_implemented: ["3262"]
-          verified_at: "2026-05-30"
+          tests:
+            - file: internal/engine/orm_queries_drivers_other_test.go
+          issues_implemented: ["3262", "3645"]
+          verified_at: "2026-06-02"
       Models:
         schema_extraction:
           # MongoDB.Bson [BsonCollection]/[BsonElement]/[BsonIgnore] attrs detected

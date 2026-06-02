@@ -98,7 +98,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [kotlin](../by-language/kotlin.md) | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟢 7/7 | |
 | [kotlin](../by-language/kotlin.md) | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟢 7/7 | |
 | [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 7/8 | |
-| [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🔴 0/1 | |
+| [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | ✅ 1/1 | |
 | [php](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟢 8/8 | |
 | [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | ✅ 8/8 | |
 | [php](../by-language/php.md) | [Eloquent (Laravel)](../detail/lang.php.orm.eloquent.md) | ✅ 8/8 | |
@@ -107,9 +107,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [php](../by-language/php.md) | [PDO SQLite](../detail/lang.php.driver.sqlite.md) | 🟡 1/2 | |
 | [php](../by-language/php.md) | [Propel](../detail/lang.php.orm.propel.md) | 🟢 8/8 | |
 | [php](../by-language/php.md) | [RedBeanPHP](../detail/lang.php.orm.redbeanphp.md) | 🟢 5/5 | |
-| [php](../by-language/php.md) | [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | 🔴 0/1 | |
-| [php](../by-language/php.md) | [elasticsearch-php](../detail/lang.php.driver.elastic.md) | 🔴 0/1 | |
-| [php](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🔴 0/1 | |
+| [php](../by-language/php.md) | [datastax/php-driver (Cassandra)](../detail/lang.php.driver.cassandra.md) | ✅ 1/1 | |
+| [php](../by-language/php.md) | [elasticsearch-php](../detail/lang.php.driver.elastic.md) | ✅ 1/1 | |
+| [php](../by-language/php.md) | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | ✅ 1/1 | |
 | [php](../by-language/php.md) | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🔴 0/1 | |
 | [php](../by-language/php.md) | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🔴 0/1 | |
 | [python](../by-language/python.md) | [Alembic (migration tool)](../detail/lang.python.orm.alembic.md) | 🟢 2/2 | |
@@ -122,20 +122,20 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [python](../by-language/python.md) | [SQLAlchemy](../detail/lang.python.orm.sqlalchemy.md) | ✅ 8/8 | |
 | [python](../by-language/python.md) | [SQLModel](../detail/lang.python.orm.sqlmodel.md) | 🟢 8/8 | |
 | [python](../by-language/python.md) | [Tortoise ORM](../detail/lang.python.orm.tortoise.md) | 🟢 7/7 | |
-| [python](../by-language/python.md) | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | 🔴 0/1 | |
-| [python](../by-language/python.md) | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | 🔴 0/1 | |
-| [python](../by-language/python.md) | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | 🔴 0/1 | |
+| [python](../by-language/python.md) | [boto3 DynamoDB](../detail/lang.python.driver.dynamodb.md) | ✅ 1/1 | |
+| [python](../by-language/python.md) | [cassandra-driver](../detail/lang.python.driver.cassandra.md) | ✅ 1/1 | |
+| [python](../by-language/python.md) | [elasticsearch-py](../detail/lang.python.driver.elastic.md) | ✅ 1/1 | |
 | [python](../by-language/python.md) | [neo4j (Python driver) / neomodel OGM](../detail/lang.python.driver.neo4j.md) | 🟡 3/4 | |
 | [python](../by-language/python.md) | [psycopg / asyncpg (PostgreSQL drivers)](../detail/lang.python.driver.postgres.md) | 🟢 2/2 | |
 | [python](../by-language/python.md) | [redis-py](../detail/lang.python.driver.redis.md) | ✅ 1/1 | |
 | [python](../by-language/python.md) | [sqlite3 (stdlib)](../detail/lang.python.driver.sqlite.md) | 🟢 2/2 | |
-| [ruby](../by-language/ruby.md) | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🔴 0/1 | |
+| [ruby](../by-language/ruby.md) | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | ✅ 1/1 | |
 | [ruby](../by-language/ruby.md) | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | ✅ 8/8 | |
 | [ruby](../by-language/ruby.md) | [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟢 8/8 | |
 | [ruby](../by-language/ruby.md) | [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟡 5/6 | |
 | [ruby](../by-language/ruby.md) | [ROM (Ruby Object Mapper)](../detail/lang.ruby.orm.rom-rb.md) | 🟢 8/8 | |
 | [ruby](../by-language/ruby.md) | [Sequel](../detail/lang.ruby.orm.sequel.md) | 🟢 8/8 | |
-| [ruby](../by-language/ruby.md) | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | 🔴 0/1 | |
+| [ruby](../by-language/ruby.md) | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | ✅ 1/1 | |
 | [ruby](../by-language/ruby.md) | [elasticsearch-ruby](../detail/lang.ruby.driver.elastic.md) | 🟡 1/2 | |
 | [ruby](../by-language/ruby.md) | [mysql2 (Ruby driver)](../detail/lang.ruby.driver.mysql.md) | 🔴 0/1 | |
 | [ruby](../by-language/ruby.md) | [neo4j-ruby-driver / activegraph OGM](../detail/lang.ruby.driver.neo4j.md) | 🟡 3/4 | |
@@ -147,9 +147,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟢 8/8 | |
 | [rust](../by-language/rust.md) | [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/8 | |
 | [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🔴 0/1 | |
-| [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🔴 0/1 | |
+| [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | ✅ 1/1 | |
 | [rust](../by-language/rust.md) | [elasticsearch-rs](../detail/lang.rust.driver.elastic.md) | 🔴 0/1 | |
-| [rust](../by-language/rust.md) | [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | 🔴 0/1 | |
+| [rust](../by-language/rust.md) | [mongodb (Rust driver)](../detail/lang.rust.driver.mongodb.md) | ✅ 1/1 | |
 | [rust](../by-language/rust.md) | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🔴 0/1 | |
 | [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🔴 0/1 | |

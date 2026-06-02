@@ -138,6 +138,9 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 	switch lang {
 	case "python":
 		scanPythonORM(src, funcs, emit)
+		// Driver-topology: pymongo collection target, boto3 DynamoDB
+		// TableName, Elasticsearch index, Cassandra CQL (#3645).
+		scanPythonDrivers(src, funcs, emit)
 		// Sibling pass: parse the pymongo `.aggregate(<pipeline>)` pipeline
 		// (inline list literal OR a same-function variable binding) into
 		// per-stage entities + $lookup/$graphLookup join edges (#3440).
@@ -159,8 +162,20 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		scanGoORM(src, funcs, emit)
 	case "java":
 		scanJavaORM(src, funcs, emit)
+		// Driver-topology: native MongoDB Java driver getCollection("x"),
+		// DynamoDB SDK TableName, Cassandra CQL FROM/INTO (#3645).
+		scanJavaDrivers(src, funcs, emit)
 	case "ruby":
 		scanRubyORM(src, funcs, emit)
+		// Driver-topology: Mongo Ruby driver client[:coll], aws-sdk-dynamodb
+		// table_name, Cassandra CQL (#3645).
+		scanRubyDrivers(src, funcs, emit)
+	case "csharp":
+		scanCSharpDrivers(src, funcs, emit)
+	case "php":
+		scanPHPDrivers(src, funcs, emit)
+	case "rust":
+		scanRustDrivers(src, funcs, emit)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -171,7 +186,8 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 // the pass is skipped cheaply for unsupported files.
 func ormQueriesSupportsLanguage(lang string) bool {
 	switch lang {
-	case "python", "javascript", "typescript", "go", "java", "ruby":
+	case "python", "javascript", "typescript", "go", "java", "ruby",
+		"csharp", "php", "rust":
 		return true
 	default:
 		return false
@@ -270,6 +286,25 @@ var (
 	)
 
 	rubyOrmFuncRe = regexp.MustCompile(`(?m)^[ \t]*def\s+(?:self\.)?([A-Za-z_]\w*[?!]?)`)
+
+	// C#: a method header with a modifier (public/…)/async, a return type,
+	// the name, and an opening paren. Mirrors csharpMethodHeaderRe in the
+	// substrate sniffer but only needs the name capture here.
+	csharpOrmFuncRe = regexp.MustCompile(
+		`(?m)^\s*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|unsafe|new|extern|partial|readonly)\s+)+` +
+			`(?:<[^>]+>\s+)?[A-Za-z_][\w<>\[\],?.\s]*\s+([A-Za-z_]\w*)\s*\(`,
+	)
+
+	// PHP: `function name(` (with optional visibility/static/abstract/final
+	// modifiers). Covers both free functions and class methods.
+	phpOrmFuncRe = regexp.MustCompile(
+		`(?m)(?:public|private|protected|static|abstract|final|\s)*function\s+&?\s*([A-Za-z_]\w*)\s*\(`,
+	)
+
+	// Rust: `fn name(` with optional pub/async/const/unsafe/extern modifiers.
+	rustOrmFuncRe = regexp.MustCompile(
+		`(?m)^\s*(?:pub\s+(?:\([^)]*\)\s*)?)?(?:async\s+|const\s+|unsafe\s+|extern\s+(?:"[^"]*"\s+)?)*fn\s+([A-Za-z_]\w*)`,
+	)
 )
 
 func indexEnclosingFunctions(lang, content string) []funcSpan {
@@ -285,6 +320,12 @@ func indexEnclosingFunctions(lang, content string) []funcSpan {
 		re = javaOrmFuncRe
 	case "ruby":
 		re = rubyOrmFuncRe
+	case "csharp":
+		re = csharpOrmFuncRe
+	case "php":
+		re = phpOrmFuncRe
+	case "rust":
+		re = rustOrmFuncRe
 	default:
 		return nil
 	}
