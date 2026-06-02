@@ -115,6 +115,18 @@ func resolveMember(lr *LoadedRepo, e *graph.Entity) memberResolution {
 		return memberResolution{Provenance: provUnresolved, Note: "no repo/entity"}
 	}
 
+	// #3973 — endpoint→mixin bridge. The rewrite agent navigates via the
+	// ENDPOINT (a router-expanded http_endpoint), not the inherited-method
+	// stub. An inherited endpoint never reaches classifyMember (it is not a DRF
+	// synthetic op nor a dotted-name method), so get_source/neighbors on it
+	// never hopped to the defining mixin. The endpoint already carries the
+	// resolution it needs (provenance:inherited + defining_class + the
+	// ViewSet-qualified drf_view_method), so resolve it directly without an
+	// EXTENDS walk (the endpoint owns no EXTENDS edges of its own).
+	if res, ok := resolveInheritedEndpoint(lr, e); ok {
+		return res
+	}
+
 	member, owningName, isBodyless := classifyMember(e)
 	if member == "" || owningName == "" {
 		// Not a recognisable inherited member — treat as explicit (caller keeps
@@ -208,6 +220,111 @@ func resolveMember(lr *LoadedRepo, e *graph.Entity) memberResolution {
 		OwningClass: owningName,
 		Note:        note,
 	}
+}
+
+// isInheritedEndpointEntity reports whether e is a router-expanded
+// http_endpoint that the engine tagged as inheriting its handler verb from a
+// base/mixin (provenance:inherited, #3831). These carry defining_class + the
+// ViewSet-qualified drf_view_method but no body and no EXTENDS edges of their
+// own — the inheritance fact lives entirely in their properties.
+func isInheritedEndpointEntity(e *graph.Entity) bool {
+	if e == nil || e.Properties == nil {
+		return false
+	}
+	if !isEndpointEntity(e) {
+		return false
+	}
+	return e.Properties["provenance"] == drfRouteProvInherited
+}
+
+// isEndpointEntity reports whether e is an http_endpoint route entity,
+// tolerating the scope-prefixed and bare spellings the index uses plus the
+// DRF router-expansion pattern tag.
+func isEndpointEntity(e *graph.Entity) bool {
+	if isHTTPEndpointKind(e.Kind) {
+		return true
+	}
+	return e.Properties != nil && e.Properties["pattern_type"] == "drf_router_expanded"
+}
+
+// drfRouteProvInherited mirrors the engine's drfProvInherited route-provenance
+// tag value (internal/engine/django_drf_actions.go). Duplicated here as a
+// const so the MCP read path recognises an inherited endpoint without a
+// cross-package import of an engine-internal symbol.
+const drfRouteProvInherited = "inherited"
+
+// resolveInheritedEndpoint bridges an inherited http_endpoint to the contract /
+// body of the mixin verb that backs it (#3973). Unlike a method stub, the
+// endpoint carries the resolution explicitly:
+//   - defining_class:  the implementing mixin (FQN or bare leaf, e.g.
+//     "rest_framework.mixins.ListModelMixin" / "ListModelMixin").
+//   - drf_view_method: the ViewSet-qualified handler ("UserProfileViewSet.list")
+//     or, for an ANY catch-all, just the ViewSet name.
+//
+// Resolution, mirroring resolveMember's EXTENDS-walk outcomes:
+//   - in-repo defining class that declares the verb with a body -> resolve to
+//     that entity (provInheritedInRepo), get_source returns the base body.
+//   - external mixin known to the pack -> provInheritedExternal with the pack
+//     contract, get_source synthesizes the contract stub.
+//   - honest-partial: defining_class missing/unknown OR member underivable ->
+//     (zero, false) so resolveMember falls through to the normal path (which,
+//     for an endpoint, is provExplicit — its own real body unchanged).
+//
+// The second return is false when e is NOT an inherited endpoint, so the
+// negative case (explicit endpoint) is untouched.
+func resolveInheritedEndpoint(lr *LoadedRepo, e *graph.Entity) (memberResolution, bool) {
+	if !isInheritedEndpointEntity(e) {
+		return memberResolution{}, false
+	}
+	defining := e.Properties["defining_class"]
+	viewMethod := e.Properties["drf_view_method"]
+	if defining == "" || viewMethod == "" {
+		// honest-partial: tagged inherited but no defining class / no handler
+		// to attribute. Fall through — never fabricate.
+		return memberResolution{}, false
+	}
+	// drf_view_method is "ViewSet.verb" for a verb route; an ANY catch-all
+	// records just the ViewSet with no verb. Without a verb we cannot name a
+	// member contract — fall through honestly.
+	member := leafAfterDot(viewMethod)
+	owning := prefixBeforeDot(viewMethod)
+	if owning == "" || member == "" || member == viewMethod {
+		return memberResolution{}, false
+	}
+
+	// (a) in-repo defining class that declares the verb with a real body.
+	if def := findClassEntity(lr, defining); def != nil {
+		if m := classDeclaredMember(lr, def, member); m != nil {
+			return memberResolution{
+				Provenance:     provInheritedInRepo,
+				Member:         member,
+				OwningClass:    owning,
+				DefiningClass:  defining,
+				DefiningEntity: m,
+			}, true
+		}
+	}
+
+	// (b) external mixin known to the baseknowledge pack.
+	reg := baseknowledge.Default()
+	if m, ok := reg.Member(defining, member); ok {
+		contract := m
+		dc := contract.DefiningClass
+		if dc == "" {
+			dc = canonicalBaseFQN(reg, defining)
+		}
+		return memberResolution{
+			Provenance:    provInheritedExternal,
+			Member:        member,
+			OwningClass:   owning,
+			DefiningClass: dc,
+			Contract:      &contract,
+		}, true
+	}
+
+	// honest-partial: tagged inherited with a defining class neither indexed
+	// nor in the pack. Fall through to the normal path rather than fabricate.
+	return memberResolution{}, false
 }
 
 // classifyMember extracts (memberName, owningClassName, isBodylessSynthetic)
