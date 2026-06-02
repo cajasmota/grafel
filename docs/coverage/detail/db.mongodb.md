@@ -36,7 +36,7 @@ one is a separate detail page.
 | [`lang.python.orm.beanie`](./lang.python.orm.beanie.md) | python | orm | 5 partial, 4 missing, 2 n/a |
 | [`lang.python.orm.mongoengine`](./lang.python.orm.mongoengine.md) | python | orm | 5 partial, 4 missing, 2 n/a |
 | [`lang.ruby.driver.mongodb`](./lang.ruby.driver.mongodb.md) | ruby | driver | 1 full, 3 missing, 7 n/a |
-| [`lang.ruby.orm.mongoid`](./lang.ruby.orm.mongoid.md) | ruby | orm | 5 partial, 4 missing, 2 n/a |
+| [`lang.ruby.orm.mongoid`](./lang.ruby.orm.mongoid.md) | ruby | orm | 6 partial, 3 missing, 2 n/a |
 | [`lang.rust.driver.mongodb`](./lang.rust.driver.mongodb.md) | rust | driver | 1 full, 3 missing, 7 n/a |
 
 ## Provenance

@@ -208,6 +208,15 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		// table_name, Cassandra CQL (#3645).
 		scanRubyDrivers(src, funcs, emit)
 		scanInfra()
+		// Sibling pass: Mongoid `Model.collection.aggregate([...])` pipeline
+		// $lookup/$graphLookup joins → per-stage SCOPE.DataAccess entities +
+		// JOINS_COLLECTION edges, and Mongoid association macros
+		// (belongs_to/has_many/embeds_many/...) → JOINS_COLLECTION relation
+		// edges, matching the Python/Mongoose/Go/Java contract (#3847).
+		scanRubyMongoidAggregation(src, funcs, path, lang,
+			func(ent types.EntityRecord) { entities = append(entities, ent) },
+			func(rel types.RelationshipRecord) { relationships = append(relationships, rel) },
+		)
 	case "csharp":
 		scanCSharpDrivers(src, funcs, emit)
 		scanInfra()

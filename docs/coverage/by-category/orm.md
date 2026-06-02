@@ -135,7 +135,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [ruby](../by-language/ruby.md) | [AWS SDK DynamoDB (Ruby)](../detail/lang.ruby.driver.dynamodb.md) | 🟡 1/4 | |
 | [ruby](../by-language/ruby.md) | [ActiveRecord](../detail/lang.ruby.orm.activerecord.md) | 🟢 11/11 | |
 | [ruby](../by-language/ruby.md) | [DataMapper / Hanami Model (legacy)](../detail/lang.ruby.orm.datamapper.md) | 🟡 8/11 | |
-| [ruby](../by-language/ruby.md) | [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟡 5/9 | |
+| [ruby](../by-language/ruby.md) | [Mongoid](../detail/lang.ruby.orm.mongoid.md) | 🟡 6/9 | |
 | [ruby](../by-language/ruby.md) | [ROM (Ruby Object Mapper)](../detail/lang.ruby.orm.rom-rb.md) | 🟡 8/11 | |
 | [ruby](../by-language/ruby.md) | [Sequel](../detail/lang.ruby.orm.sequel.md) | 🟡 8/11 | |
 | [ruby](../by-language/ruby.md) | [cassandra-driver (Ruby)](../detail/lang.ruby.driver.cassandra.md) | 🟡 1/4 | |

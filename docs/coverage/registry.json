@@ -62962,9 +62962,9 @@
         "Relationships": {
           "association_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"],
+            "cites": ["internal/engine/orm_queries_ruby_mongoid_agg.go","internal/engine/orm_queries_ruby_mongoid_agg_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Mongoid has_many, belongs_to, has_one, has_and_belongs_to_many, embeds_many, embeds_one, embedded_in. Part of #3282."
+            "notes": "Mongoid association macros (belongs_to, has_many, has_one, embeds_many, embeds_one, embedded_in, has_and_belongs_to_many) declared inside an `include Mongoid::Document` class now emit a native JOINS_COLLECTION relation edge Class:\u003cowning model\u003e -\u003e Class:\u003cassociated model\u003e (scanRubyMongoidAssociations, #3847), matching the Mongoose ref/populate contract. Target model is the explicit `class_name:` option else the camelised-singular of the association symbol (has_many :line_items -\u003e Class:LineItem). Honest-partial: dynamic class_name -\u003e falls back to symbol; a macro outside a Mongoid::Document class is gated out."
           },
           "foreign_key_extraction": {
             "status": "not_applicable",
@@ -62978,16 +62978,17 @@
           },
           "relationship_extraction": {
             "status": "partial",
-            "cites": ["internal/custom/ruby/activerecord.go"],
+            "cites": ["internal/engine/orm_queries_ruby_mongoid_agg.go","internal/engine/orm_queries_ruby_mongoid_agg_test.go"],
             "issue": "backfill:dictionary-completeness",
-            "notes": "Mongoid has_many, belongs_to, embeds_many, embeds_one relationship macros. Part of #3282."
+            "notes": "Mongoid relationship macros (belongs_to/has_many/embeds_many/embeds_one/embedded_in/has_one/has_and_belongs_to_many) emit JOINS_COLLECTION relation edges via scanRubyMongoidAssociations (#3847, epic #3837), the Ruby sibling of the Mongoose ref/populate relation pass. Part of #3282."
           }
         },
         "Queries": {
           "query_attribution": {
-            "status": "missing",
+            "status": "partial",
+            "cites": ["internal/engine/orm_queries.go","internal/engine/orm_queries_ruby_mongoid_agg.go","internal/engine/orm_queries_ruby_mongoid_agg_test.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3645",
-            "notes": "YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor.",
+            "notes": "Mongoid `Model.collection.aggregate([...])` pipeline $lookup/$graphLookup joins now extracted (scanRubyMongoidAggregation, #3847, epic #3837): each $lookup emits a JOINS_COLLECTION edge aggregating-collection -\u003e from collection (Class:Book -\u003e Class:Author) plus a SCOPE.DataAccess stage entity, matching the Python/Mongoose/Go/Java contract. Ruby hash-rocket (`'from' =\u003e 'authors'`) and symbol-colon separators both parsed; aggregating collection resolved from the model class name or `store_in collection: 'books'`. Honest-partial: dynamic from / variable-bound pipeline -\u003e no edge; general query-verb attribution still missing (#3645).",
             "verified_at": "2026-06-02"
           }
         },
