@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/rust/frameworks/actix_web.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/actix_web.go`<br>`internal/custom/rust/extractors_test.go`<br>`internal/custom/rust/helpers.go` | Extracts attribute-macro and manual web::get().to() routes; normalises path params; composes web::scope() prefix onto manual routes |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

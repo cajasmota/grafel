@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C/C++](../by-language/c-cpp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | SCOPE.Operation entities from Restbed Resource registration; partial = regex |
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | Handler names from set_method_handler third arg; partial = regex |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/restbed_routes.go` | Paths from Resource set_path/set_method_handler; partial = regex + same-file var correlation |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

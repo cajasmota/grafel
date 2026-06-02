@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [php](../by-language/php.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_php_producer.go`<br>`internal/engine/rules/php/frameworks/symfony.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_php_producer.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/php/symfony.go` | PHP8 attribute routes with methods/name, @Route annotations, YAML routes (config/routes.yaml) with path+method extraction; class-level prefix support |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

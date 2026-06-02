@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_jsts_client_1483.go`<br>`internal/engine/http_endpoint_jsts_client_1483_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Finch.build(:verb,url) literal + interpolated-variable -> outbound http_endpoint_call (#1483/#3511) |
 | Handler attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

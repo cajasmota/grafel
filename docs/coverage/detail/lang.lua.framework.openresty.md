@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [lua](../by-language/lua.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | — | — | `internal/engine/lua_routes.go` | OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id->{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path. |
 | Handler attribution | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id->{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path. |
 | Route extraction | ✅ `full` | — | — | `internal/custom/lua/routing.go`<br>`internal/engine/lua_routes.go` | OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id->{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path. |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

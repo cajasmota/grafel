@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/minor_fw_routing.go` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/rust/minor_fw_routing.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/rust/minor_fw_routing.go`<br>`internal/custom/rust/minor_fw_routing_test.go` | Extracts (&Method::VERB, "/path") match-arm routes; raw hyper paths are literal string matches with no param syntax, so param normalisation is N/A and dynamic-segment routes (manual path splitting) are not recovered |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

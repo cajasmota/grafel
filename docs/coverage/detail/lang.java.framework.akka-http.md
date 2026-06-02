@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |
 | Handler attribution | ✅ `full` | `2026-06-01` | — | `internal/custom/java/akka_http_routes.go` | — |
 | Route extraction | 🟢 `partial` | — | 3092 | `internal/engine/http_endpoint_synthesis.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | huma.Register(api, huma.Operation{Method,Path}, handler) -> endpoint. Engine synthesis (go_trio) + dedicated SCOPE-entity extractor; fixture-proven. |
 | Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | Final huma.Register argument attributed as handler; fixture-proven. |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/huma.go`<br>`internal/custom/golang/testdata/huma_routes.go`<br>`internal/engine/http_endpoint_go_trio.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

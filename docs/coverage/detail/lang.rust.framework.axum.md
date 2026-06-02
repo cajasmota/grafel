@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_axum.go`<br>`internal/engine/rules/rust/frameworks/axum.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/http_endpoint_axum.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/axum.go`<br>`internal/custom/rust/extractors_test.go`<br>`internal/custom/rust/helpers.go` | Extracts verb+path; normalises :id/<id>/{id} to canonical {id}; composes .nest() prefix; expands chained method routers get(h).post(h) |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz.go`<br>`internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/testdata/hertz_routes.go` | Regex AST extractor: server.Default/New engine, h.GET/POST/... verb routes, nested h.Group prefix resolution, Static mounts; fixture-proven. |
 | Handler attribution | ✅ `full` | `2026-05-29` | — | `internal/custom/golang/hertz.go`<br>`internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/testdata/hertz_routes.go` | Trailing-arg handler attribution on each verb route (skips inline middleware); fixture-proven. |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/custom/golang/hertz.go`<br>`internal/custom/golang/hertz_huma_test.go`<br>`internal/custom/golang/testdata/hertz_routes.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

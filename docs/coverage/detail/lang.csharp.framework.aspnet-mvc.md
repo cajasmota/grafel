@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/csharp/frameworks/asp_net_mvc.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/csharp/frameworks/asp_net_mvc.yaml` | — |
 | Route extraction | ✅ `full` | — | — | `internal/custom/csharp/aspnet_core.go`<br>`internal/engine/aspnet_core_routes.go`<br>`internal/engine/rules/csharp/frameworks/asp_net_mvc.yaml` | MVC controller [Route] + [HttpGet/Post/Put/Delete/Patch] attribute routes extracted; route path strings captured by asp_net_mvc.yaml source_patterns and aspnet_core.go reAspNetHTTPMethod/reAspNetMinimalAPI. |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

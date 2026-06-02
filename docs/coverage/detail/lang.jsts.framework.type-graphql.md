@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-02` | 3619 | `internal/engine/http_endpoint_graphql_jsts_codefirst.go`<br>`internal/engine/http_endpoint_resolve.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go`<br>`internal/engine/httproutes/canonicalize.go`<br>`internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml` | — |
 | Handler attribution | ✅ `full` | — | 3619 | `internal/engine/http_endpoint_graphql_jsts_codefirst.go`<br>`internal/engine/http_endpoint_resolve.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go`<br>`internal/engine/httproutes/canonicalize.go`<br>`internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml` | @Query/@Mutation/@Subscription method in an @Resolver class -> http:GRAPHQL:/graphql/<Root>/<field>; source_handler=SCOPE.Operation:<method> rebinds to a HANDLES (IMPLEMENTS) edge against the extracted method symbol (proven end-to-end in TestResolve_TypeGraphQL_HandlesEdge). |
 | Route extraction | 🟢 `partial` | — | 3619 | `internal/engine/http_endpoint_graphql_jsts_codefirst.go`<br>`internal/engine/http_endpoint_resolve.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go`<br>`internal/engine/httproutes/canonicalize.go`<br>`internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml` | Root @Query/@Mutation/@Subscription methods only; @FieldResolver (non-root) methods are skipped, matching gqlgen/spring-graphql. Field name = method name or the { name: '...' } decorator option. Honest-partial: a dynamic/computed name option is not recovered. |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

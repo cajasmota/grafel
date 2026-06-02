@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | graphQL(RootResolver(...)) synthesises one GRAPHQL endpoint per resolver case-class field, path /graphql/<Root>/<field>, positional Query/Mutation/Subscription root. TestCalibanResolverFields. |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | handler_name = <Root>.<field> bound from resolver case-class field. TestCalibanResolverFields. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/caliban.go`<br>`internal/custom/scala/caliban_test.go` | GraphQL field path /graphql/<Root>/<field> recorded as route_path. TestCalibanResolverFields. |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

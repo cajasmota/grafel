@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/ruby/cuba_routing.go` | Cuba on 'path' string segments and :param parametric routing tree synthesis. Part of #3282. |
 | Handler attribution | 🟢 `partial` | — | — | `internal/custom/ruby/cuba_routing.go` | Cuba on get/post/put/patch/delete verb handler attribution. Part of #3282. |
 | Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/routes.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

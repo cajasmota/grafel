@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/substrate/entry_points_elixir.go` | Cowboy handler init/handle callbacks recognised as framework_lifecycle entry-points |
 | Handler attribution | 🟢 `partial` | — | — | `internal/substrate/entry_points_elixir.go` | init/2 and handle/2 callbacks recognised as framework_lifecycle; cowboy_handler behaviour tracked via @behaviour |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/elixir_routes.go`<br>`internal/engine/elixir_routes_test.go` | synthesizeCowboy parses :cowboy_router.compile dispatch tables, emitting an ANY http_endpoint per {"/path", Handler, _} route (:id->{id}), attributed to the handler module; the :_ host wildcard rule is skipped and the gate requires a cowboy_router/cowboy_handler signal. Value-asserting test (TestCowboy_Dispatch proves ANY /, ANY /users/{id}, ANY /ws with handler attribution). |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -231,6 +231,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitExceptionFlowEdges(root, file, &entities)
 	}()
 
+	// View-layer topology (epic #3628) — RENDERS edges from Spring MVC
+	// controller methods that return a static view name to a shared
+	// SCOPE.Template node. Honest REST-vs-MVC boundary: @RestController /
+	// @ResponseBody methods are skipped (String return is a body, not a view),
+	// and dynamic view names are dropped.
+	func() {
+		defer func() { _ = recover() }()
+		emitTemplateRenderEdges(root, file, &entities)
+	}()
+
 	// Track B (analog of #642/#650 for Java) — IMPORTS ToID rewrite.
 	// Rewrites IMPORTS edges whose source_module's longest dotted
 	// prefix matches a known external JVM package to an

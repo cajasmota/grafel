@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/utoipa.go`<br>`internal/custom/rust/utoipa_test.go` | each #[utoipa::path] attribute -> SCOPE.Operation endpoint (verb + canonical path) |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/utoipa.go`<br>`internal/custom/rust/utoipa_test.go` | handler fn name captured from the fn following each #[utoipa::path] attribute |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/helpers.go`<br>`internal/custom/rust/utoipa.go`<br>`internal/custom/rust/utoipa_test.go` | utoipa::path(verb, path=...) yields canonical verb+path (normalises {id}/:id/<id>); captures handler fn; enriches bare axum/actix routes with documented contract |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/kotlin/frameworks/ktor.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/kotlin/frameworks/ktor.yaml` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/ktor_routes.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

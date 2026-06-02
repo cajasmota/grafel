@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-31` | — | `internal/engine/http_endpoint_scala_client.go`<br>`internal/engine/http_endpoint_scala_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | sttp basicRequest/quickRequest/emptyRequest verb combinators (.get/.post/.put/.patch/.delete/.head/.options) with uri"..." literals -> one outbound http_endpoint_call (consumer) per call site + FETCHES from the enclosing def; host stripped, $id/${...} interpolation -> {param}. Value-asserted (GET/POST /v1/users, PUT /v1/users/{param}). |
 | Handler attribution | ✅ `full` | `2026-05-31` | — | `internal/engine/http_endpoint_scala_client.go`<br>`internal/engine/http_endpoint_scala_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | FETCHES edge attributes each outbound sttp call to the enclosing def (nearest preceding def <name>). Value-asserted via requireFetches in http_endpoint_scala_client_test.go. |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -18,6 +18,11 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-27` | — | `internal/engine/http_endpoint_synthesis.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-27` | — | `internal/engine/http_endpoint_synthesis.go` | — |
 
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

@@ -921,6 +921,19 @@ records:
 
   lang.python.framework.flask:
     capabilities:
+      View:
+        view_rendering:
+          status: full
+          symbols:
+            - file: internal/extractors/python/template_render.go
+              functions: [emitTemplateRenderEdges, pyRenderCallTemplate, pyNthStringArg, pyTemplateNameAttr]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/python/template_render_test.go
+              functions: [TestPyTemplate_FlaskRenderTemplate, TestPyTemplate_Convergence, TestPyTemplate_DynamicDropped]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Type System:
         interface_extraction:
           status: partial
@@ -1583,6 +1596,19 @@ records:
 
   lang.jsts.framework.express:
     capabilities:
+      View:
+        view_rendering:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/template_render.go
+              functions: [emitTemplateRenderEdges, jsRenderCallTemplate, isResponseReceiver]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/javascript/template_render_test.go
+              functions: [TestJSTemplate_ExpressResRender, TestJSTemplate_Convergence, TestJSTemplate_DynamicDropped, TestJSTemplate_NonResponseReceiver]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Data:
         db_effect:
           status: full
@@ -1770,6 +1796,19 @@ records:
 
   lang.jsts.framework.koa:
     capabilities:
+      View:
+        view_rendering:
+          status: full
+          symbols:
+            - file: internal/extractors/javascript/template_render.go
+              functions: [emitTemplateRenderEdges, jsRenderCallTemplate, isResponseReceiver]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/javascript/template_render_test.go
+              functions: [TestJSTemplate_PathArrow, TestJSTemplate_DynamicDropped]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Data:
         db_effect:
           status: full
@@ -2461,6 +2500,19 @@ records:
 
   lang.java.framework.spring-boot:
     capabilities:
+      View:
+        view_rendering:
+          status: full
+          symbols:
+            - file: internal/extractors/java/template_render.go
+              functions: [emitTemplateRenderEdges, javaSpringViewName, javaReturnViewName, annotationNames]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/java/template_render_test.go
+              functions: [TestJavaTemplate_SpringMVCViewName, TestJavaTemplate_ModelAndView, TestJavaTemplate_RestControllerNoView, TestJavaTemplate_ResponseBodyNoView, TestJavaTemplate_Convergence]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Observability:
         log_extraction:
           status: full
@@ -7044,6 +7096,19 @@ records:
 
   lang.ruby.framework.rails:
     capabilities:
+      View:
+        view_rendering:
+          status: partial
+          symbols:
+            - file: internal/extractors/ruby/template_render.go
+              functions: [emitTemplateRenderEdges, rubyRenderTemplate, rubyPairParts]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/ruby/template_render_test.go
+              functions: [TestRubyTemplate_ExplicitString, TestRubyTemplate_TemplateKeyword, TestRubyTemplate_PartialKeyword, TestRubyTemplate_SymbolDropped, TestRubyTemplate_Convergence]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Substrate:
         feature_flag_gating:
           status: full
@@ -7227,6 +7292,19 @@ records:
 
   lang.php.framework.laravel:
     capabilities:
+      View:
+        view_rendering:
+          status: full
+          symbols:
+            - file: internal/extractors/php/template_render.go
+              functions: [emitTemplateRenderEdges, phpViewCallTemplate, phpViewMakeTemplate]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/php/template_render_test.go
+              functions: [TestPHPTemplate_LaravelViewHelper, TestPHPTemplate_DotNotation, TestPHPTemplate_ViewMakeFacade, TestPHPTemplate_DynamicDropped, TestPHPTemplate_Convergence]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Substrate:
         constant_propagation:
           status: full
@@ -14939,6 +15017,19 @@ records:
           verified_at: "2026-05-29"
   lang.python.framework.django:
     capabilities:
+      View:
+        view_rendering:
+          status: full
+          symbols:
+            - file: internal/extractors/python/template_render.go
+              functions: [emitTemplateRenderEdges, pyRenderCallTemplate, pyNthStringArg, pyTemplateNameAttr]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/python/template_render_test.go
+              functions: [TestPyTemplate_DjangoRender, TestPyTemplate_DjangoTemplateView]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-02"
       Testing:
         tests_linkage:
           status: full

@@ -141,9 +141,12 @@ subcategories:
       - drf_default_auth_throttle_settings
       - validate_on_submit_detection
       - tests_edges_via_delay_apply
+      - view_rendering
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
+      - name: View
+        keys: [view_rendering]
       - name: Auth
         keys: [auth_coverage]
       - name: Validation
@@ -217,9 +220,12 @@ subcategories:
       - trace_extraction
       - log_extraction
       - metric_extraction
+      - view_rendering
     groups:
       - name: Routing
         keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning]
+      - name: View
+        keys: [view_rendering]
       - name: Auth
         keys: [auth_coverage]
       - name: Validation

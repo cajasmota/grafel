@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 46
+- **Capability cells:** 47
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | schema-first Ariadne: QueryType()/MutationType()/SubscriptionType()/ObjectType("Query") binders + @<binder>.field("<name>") decorator resolvers -> http:GRAPHQL:/graphql/<Root>/<field>, identical shape to Strawberry. synthesizeAriadne. |
 | Handler attribution | ✅ `full` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | decorated resolver function is the handler; source_handler=SCOPE.Operation:<funcName> rebinds to a HANDLES edge. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | 3620 | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go`<br>`internal/engine/httproutes/canonicalize.go` | Binder var -> root type resolved from QueryType/MutationType/SubscriptionType ctor or ObjectType("<Type>") arg; field name is the literal decorator string. Dynamically-named fields and set_field()/schema-directive bindings not resolved (honest-partial). |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

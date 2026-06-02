@@ -2350,6 +2350,12 @@
             "notes": "ace is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -2599,6 +2605,12 @@
             "notes": "boost is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -2846,6 +2858,12 @@
           "route_extraction": {
             "status": "not_applicable",
             "notes": "boost-asio is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -3098,6 +3116,12 @@
             "status": "full",
             "cites": ["internal/custom/cpp/cpprestsdk_routes.go"],
             "notes": "Path strings extracted from http_listener init + support() calls; partial = regex heuristic"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -3358,6 +3382,12 @@
             "notes": "Path strings extracted from CROW_ROUTE/CROW_BP_ROUTE macros; partial = regex heuristic"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -3614,6 +3644,12 @@
             "status": "full",
             "cites": ["internal/custom/cpp/drogon_routes.go"],
             "notes": "Path strings extracted from ADD_METHOD_TO/METHOD_ADD/registerHandler; partial = regex heuristic"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -4023,6 +4059,12 @@
             "notes": "libev is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -4270,6 +4312,12 @@
           "route_extraction": {
             "status": "not_applicable",
             "notes": "libevent is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -4545,6 +4593,12 @@
           "route_extraction": {
             "status": "not_applicable",
             "notes": "libuv is a low-level async I/O library; no HTTP route-registration DSL exists — routing is app-level, not framework-provided"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -4876,6 +4930,12 @@
             "notes": "Path strings from ENDPOINT/ENDPOINT_ASYNC macros; partial = regex heuristic"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -5131,6 +5191,12 @@
             "status": "full",
             "cites": ["internal/custom/cpp/pistache_routes.go"],
             "notes": "Path strings extracted from Routes::Get/Post/etc and router.get; partial = regex heuristic"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -5389,6 +5455,12 @@
             "status": "full",
             "cites": ["internal/custom/cpp/poco_routes.go"],
             "notes": "Paths from addHandler\u003cT\u003e/router.add/server.addHandler; partial = regex heuristic"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -6001,6 +6073,12 @@
             "notes": "Paths from Resource set_path/set_method_handler; partial = regex + same-file var correlation"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -6257,6 +6335,12 @@
             "status": "full",
             "cites": ["internal/custom/cpp/restinio_routes.go"],
             "notes": "Paths from router-\u003ehttp_get/post/etc and add_handler; partial = regex heuristic"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -7691,6 +7775,12 @@
             "notes": "Minimal-API app.MapGet/Post/Put/Delete route path strings extracted via reAspNetMinimalAPI; attribute routes via reAspNetHTTPMethod; route_path property set on each emitted entity."
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -7948,6 +8038,12 @@
             "status": "full",
             "cites": ["internal/custom/csharp/aspnet_core.go","internal/engine/aspnet_core_routes.go","internal/engine/rules/csharp/frameworks/asp_net_mvc.yaml"],
             "notes": "MVC controller [Route] + [HttpGet/Post/Put/Delete/Patch] attribute routes extracted; route path strings captured by asp_net_mvc.yaml source_patterns and aspnet_core.go reAspNetHTTPMethod/reAspNetMinimalAPI."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -8823,6 +8919,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -9082,6 +9184,12 @@
             "issue": "3263",
             "notes": "fastendpoints route path strings extracted via regex; heuristic",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -9511,6 +9619,12 @@
             "verified_at": "2026-06-02"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -9731,6 +9845,12 @@
             "issue": "3263",
             "notes": "nancyfx route path strings extracted via regex; heuristic",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -10206,6 +10326,12 @@
             "issue": "3263",
             "notes": "servicestack route path strings extracted via regex; heuristic",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -11923,6 +12049,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -12187,6 +12319,12 @@
             "notes": "Ash resources + AshPhoenix router integration detected via engine YAML; resource actions serve as route equivalents"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -12444,6 +12582,12 @@
           "route_extraction": {
             "status": "not_applicable",
             "notes": "Bandit is a low-level HTTP server (replaces Cowboy); routing belongs to Phoenix/Plug layer above it"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -12730,6 +12874,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -12985,6 +13135,12 @@
           "route_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -13355,6 +13511,12 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -13565,6 +13727,12 @@
           "route_extraction": {
             "status": "not_applicable",
             "notes": "Nerves is an embedded/IoT firmware framework; no HTTP routing concept. NervesHub is separate."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -13811,6 +13979,12 @@
           "route_extraction": {
             "status": "not_applicable",
             "notes": "Oban is a background job processor; no HTTP routing. Jobs are enqueued via Oban.insert/2."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -14071,6 +14245,12 @@
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/phoenix_routes.go","internal/engine/phoenix_routes_test.go"],
             "notes": "synthesizePhoenix emits canonical http_endpoint per get/post/put/patch/delete/head/options verb + resources CRUD expansion (only:/except: filters) with nested scope-prefix composition and :id-\u003e{id} normalisation; controller#action attributed via handler_file hint. Value-asserting engine tests (TestPhoenix_VerbInScope/Resources/NestedScope/ControllerHandlerRef) prove exact (verb,path,controller#action).",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -14556,6 +14736,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -14818,6 +15004,12 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -15033,6 +15225,12 @@
           "route_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -15878,6 +16076,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -16134,6 +16338,12 @@
             "cites": ["internal/custom/golang/buffalo.go","internal/engine/rules/go/frameworks/buffalo.yaml"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -16393,6 +16603,12 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "regex-based: direct .GET/.POST/.DELETE/.PATCH etc + .Group()/.Route() prefix resolution tested; misses cross-file route splits, dynamic path construction, indirect router variable aliasing, and conditional registration",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -16660,6 +16876,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -16922,6 +17144,12 @@
             "cites": ["internal/custom/golang/fasthttp.go","internal/engine/rules/go/frameworks/fasthttp.yaml"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -17190,6 +17418,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -17448,6 +17682,12 @@
           "route_extraction": {
             "status": "missing",
             "issue": "3628"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -17775,6 +18015,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -18037,6 +18283,12 @@
             "cites": ["internal/engine/rules/go/frameworks/go_zero.yaml"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -18518,6 +18770,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -18788,6 +19046,12 @@
             "verified_at": "2026-06-02"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -19005,6 +19269,12 @@
             "cites": ["internal/custom/golang/hertz.go","internal/custom/golang/hertz_huma_test.go","internal/custom/golang/testdata/hertz_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -19267,6 +19537,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -19522,6 +19798,12 @@
             "cites": ["internal/custom/golang/iris.go","internal/engine/rules/go/frameworks/iris.yaml"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -19782,6 +20064,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -20038,6 +20326,12 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "regex-based: http.HandleFunc + http.Handle on DefaultServeMux + http.NewServeMux() + Go 1.22+ method-prefixed patterns (GET /path) tested; misses cross-file route splits and dynamic path construction",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -20312,6 +20606,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -20563,6 +20863,12 @@
           "route_extraction": {
             "status": "missing",
             "issue": "3628"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -21429,6 +21735,12 @@
             "issue": "3092"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -22171,6 +22483,12 @@
             "verified_at": "2026-06-02"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -22410,6 +22728,12 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "Dropwizard uses Jersey (JAX-RS); @Path/@GET/@POST annotations covered by java_annotation_routes.go",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -22709,6 +23033,12 @@
           "route_extraction": {
             "status": "missing",
             "issue": "3699"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -23172,6 +23502,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -23484,6 +23820,12 @@
             "cites": ["internal/engine/java_annotation_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -23802,6 +24144,12 @@
             "issue": "3085"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -24103,6 +24451,12 @@
             "cites": ["internal/engine/java_annotation_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -24470,6 +24824,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -24787,6 +25147,12 @@
             "cites": ["internal/engine/java_annotation_routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -25359,6 +25725,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -25676,6 +26048,15 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "Annotation-driven route composition scanned (@RequestMapping/@GetMapping/etc.); path-variable expression resolution not implemented",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "full",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/java/template_render.go","internal/extractors/java/template_render_test.go"],
+            "issue": "3628",
+            "notes": "@Controller method String/ModelAndView view name -\u003e RENDERS SCOPE.Template; @RestController/@ResponseBody skipped (REST not MVC); dynamic names dropped (#3628)",
+            "verified_at": "2026-06-02"
           }
         },
         "Auth": {
@@ -26014,6 +26395,12 @@
             "verified_at": "2026-06-02"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -26252,6 +26639,12 @@
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "3080",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -26581,6 +26974,12 @@
             "cites": ["internal/custom/java/struts_routes.go"],
             "notes": "Extracts @Action(value=...) annotations and struts.xml \u003caction\u003e elements; @Namespace prefix composition; HANDLED_BY relationships to action classes",
             "verified_at": "2026-06-01"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -27097,6 +27496,12 @@
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "issue": "https://github.com/cajasmota/archigraph/issues/3086",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -29057,6 +29462,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -30268,6 +30679,15 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "full",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/javascript/template_render.go","internal/extractors/javascript/template_render_test.go"],
+            "issue": "3628",
+            "notes": "res.render('view') -\u003e RENDERS SCOPE.Template; response-receiver heuristic; dynamic/template-literal names dropped (#3628)",
+            "verified_at": "2026-06-02"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -30567,6 +30987,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -30858,6 +31284,12 @@
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
             "issue": "3062",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -31590,6 +32022,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -31876,6 +32314,12 @@
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
             "issue": "3062",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -32395,6 +32839,15 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "full",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/javascript/template_render.go","internal/extractors/javascript/template_render_test.go"],
+            "issue": "3628",
+            "notes": "ctx.render('view') -\u003e RENDERS SCOPE.Template; dynamic names dropped (#3628)",
+            "verified_at": "2026-06-02"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -32727,6 +33180,12 @@
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
             "issue": "3062",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -33235,6 +33694,12 @@
             "cites": ["internal/custom/javascript/nestjs.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_test.go"],
             "issue": "3062",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -34067,6 +34532,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -34341,6 +34812,12 @@
             "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/pothos_jsts.yaml"],
             "issue": "3619",
             "notes": "builder.queryField/mutationField/subscriptionField + the builder.queryType/mutationType/subscriptionType fields:(t)=\u003e({...}) maps -\u003e http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e (EXACT canonical shape as gqlgen/Apollo/Strawberry so client links #3667 join). Honest-partial: a non-literal (variable/computed) field name is not recovered."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -35431,6 +35908,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -35706,6 +36189,12 @@
             "cites": ["internal/engine/http_endpoint_jsts_backend.go","internal/engine/http_endpoint_jsts_backend_test.go","internal/engine/http_endpoint_synthesis_jsts_route_3062_test.go"],
             "issue": "3062",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -36732,6 +37221,12 @@
             "cites": ["internal/engine/http_endpoint_graphql_jsts_codefirst.go","internal/engine/http_endpoint_resolve.go","internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphql_jsts_codefirst_3619_test.go","internal/engine/httproutes/canonicalize.go","internal/engine/rules/graphql/frameworks/type_graphql_jsts.yaml"],
             "issue": "3619",
             "notes": "Root @Query/@Mutation/@Subscription methods only; @FieldResolver (non-root) methods are skipped, matching gqlgen/spring-graphql. Field name = method name or the { name: '...' } decorator option. Honest-partial: a dynamic/computed name option is not recovered."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -37806,6 +38301,12 @@
             "notes": "Arrow is a functional-programming library, not a web backend — no routing/DI/transaction/AOP container."
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -38460,6 +38961,12 @@
             "notes": "kotlinx.coroutines is a concurrency runtime, not a web backend — no routing/DI/transaction/AOP container."
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -38728,6 +39235,12 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -38970,6 +39483,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -39206,6 +39725,12 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -39487,6 +40012,12 @@
             "issue": "https://github.com/cajasmota/archigraph/issues/3586",
             "notes": "java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -39976,6 +40507,12 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -40210,6 +40747,12 @@
           "route_extraction": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -40447,6 +40990,12 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/ktor_routes.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -40734,6 +41283,12 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -41037,6 +41592,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -41337,6 +41898,12 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -41575,6 +42142,12 @@
             "status": "full",
             "cites": ["internal/custom/kotlin/routing.go","internal/custom/kotlin/routing_test.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -42333,6 +42906,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -42552,6 +43131,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -42769,6 +43354,12 @@
             "status": "full",
             "cites": ["internal/custom/lua/routing.go","internal/engine/lua_routes.go"],
             "notes": "Lapis routes synthesized to canonical http_endpoint via synthesizeLapis (app:get/post/put/patch/delete/options/head verb routes, named + unnamed app:match, respond_to verb tables) with :id-\u003e{id} normalization (httproutes.FrameworkLapis) and app/route-name handler attribution; value-asserting tests in lua_routes_test.go. Custom extractor also stamps canonical_path."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -43027,6 +43618,12 @@
             "status": "full",
             "cites": ["internal/custom/lua/routing.go","internal/engine/lua_routes.go"],
             "notes": "OpenResty routes synthesized to canonical http_endpoint via synthesizeOpenResty: nginx location stanzas (content_by_lua-gated, ANY verb) + lua-resty-router r:get/post/... DSL with :id-\u003e{id} normalization (httproutes.FrameworkOpenResty); value-asserting tests in lua_routes_test.go. Pure nginx.conf location blocks (non-lua-classified) covered by custom extractor internal/custom/lua/routing.go which stamps canonical_path."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -43799,6 +44396,12 @@
             "verified_at": "2026-05-31"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -44015,6 +44618,12 @@
             "cites": ["internal/custom/php/frameworks.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -44279,6 +44888,12 @@
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -44539,6 +45154,12 @@
             "cites": ["internal/custom/php/frameworks.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -44802,6 +45423,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -45018,6 +45645,12 @@
             "cites": ["internal/custom/php/frameworks.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -45280,6 +45913,15 @@
             "cites": ["internal/engine/http_endpoint_php_producer.go","internal/engine/http_endpoint_php_producer_lrroute_test.go"],
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "full",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/php/template_render.go","internal/extractors/php/template_render_test.go"],
+            "issue": "3628",
+            "notes": "view('users.list') / View::make() -\u003e RENDERS SCOPE.Template; dot-notation normalized to slash; dynamic names dropped (#3628)",
+            "verified_at": "2026-06-02"
           }
         },
         "Auth": {
@@ -45549,6 +46191,12 @@
             "verified_at": "2026-05-31"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -45765,6 +46413,12 @@
             "cites": ["internal/custom/php/frameworks.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -46029,6 +46683,12 @@
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -46289,6 +46949,12 @@
             "cites": ["internal/custom/php/frameworks.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -46553,6 +47219,12 @@
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -46813,6 +47485,12 @@
             "cites": ["internal/custom/php/symfony.go"],
             "notes": "PHP8 attribute routes with methods/name, @Route annotations, YAML routes (config/routes.yaml) with path+method extraction; class-level prefix support",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -47085,6 +47763,12 @@
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -47345,6 +48029,12 @@
             "cites": ["internal/custom/php/frameworks.go"],
             "issue": "backfill:dictionary-completeness",
             "notes": "Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -48457,6 +49147,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -48744,6 +49440,12 @@
             "verified_at": "2026-06-02"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -48969,6 +49671,12 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -49479,6 +50187,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -49758,6 +50472,15 @@
             "status": "full",
             "cites": ["internal/engine/django_routes.go","internal/engine/django_urlconf_nested.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "full",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/python/template_render.go","internal/extractors/python/template_render_test.go"],
+            "issue": "3628",
+            "notes": "render(request,'x.html') + TemplateView.template_name -\u003e RENDERS SCOPE.Template; dynamic names dropped (#3628)",
+            "verified_at": "2026-06-02"
           }
         },
         "Auth": {
@@ -50047,6 +50770,12 @@
             "status": "full",
             "cites": ["internal/extractors/python/python_relational_bundle_test.go","internal/extractors/python/router_register.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -50583,6 +51312,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -50865,6 +51600,12 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -51157,6 +51898,15 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "full",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/python/template_render.go","internal/extractors/python/template_render_test.go"],
+            "issue": "3628",
+            "notes": "render_template('x.html') -\u003e RENDERS SCOPE.Template; dynamic/f-string names dropped (#3628)",
+            "verified_at": "2026-06-02"
           }
         },
         "Auth": {
@@ -51463,6 +52213,12 @@
             "verified_at": "2026-06-02"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -51680,6 +52436,12 @@
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_py_routing_3065_test.go","internal/engine/rules/python/frameworks/hug.yaml"],
             "issue": "3065",
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -52000,6 +52762,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -52279,6 +53047,12 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -52564,6 +53338,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -52842,6 +53622,12 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/httproutes/canonicalize.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -53337,6 +54123,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -53615,6 +54407,12 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -53900,6 +54698,12 @@
             "verified_at": "2026-05-29"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -54178,6 +54982,12 @@
             "status": "full",
             "cites": ["internal/engine/http_endpoint_synthesis.go"],
             "verified_at": "2026-05-29"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -55738,6 +56548,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -55988,6 +56804,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable"
@@ -56235,6 +57057,12 @@
             "status": "full",
             "cites": ["internal/custom/ruby/grape_deep.go"],
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -56492,6 +57320,12 @@
             "verified_at": "2026-06-02"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -56707,6 +57541,12 @@
             "cites": ["internal/custom/ruby/routes.go"],
             "issue": "backfill:dictionary-completeness",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -56961,6 +57801,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -57211,6 +58057,15 @@
             "cites": ["internal/custom/ruby/rails_routes.go","internal/custom/ruby/rails_routes_test.go","internal/engine/rules/ruby/frameworks/ruby_on_rails.yaml"],
             "notes": "Deep config/routes.rb DSL extractor (custom_ruby_rails_routes): resources-\u003e7 RESTful routes + resource-\u003e6 singular, nested resources path composition (/photos/:photo_id/comments), namespace + scope + scope module: prefixing, member/collection (+inline on:), only:/except: filters, root, get/post/put/patch/delete to:'c#a', match via:, mount engines, concern/concerns: expansion. Each route emits resolved full path + HTTP method + controller#action handler with CALLS structural-ref to the action method. Value-asserting tests in rails_routes_test.go assert exact path+method+handler sets (TestRailsRoutes_ResourcesSevenRESTful, _NestedResources, _Namespace, _ScopePath/_ScopeModule, _MemberCollection, _OnlyFilter/_ExceptFilter, _Root, _MatchVia, _Mount, _Concerns, _RealisticCombined). Honest remainder: constraints blocks recorded but not expanded; direct/resolve URL helpers not modelled.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "partial",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/ruby/template_render.go","internal/extractors/ruby/template_render_test.go"],
+            "issue": "3628",
+            "notes": "explicit render 'path' / template:/partial: -\u003e RENDERS SCOPE.Template; symbol (render :index) + implicit-convention renders honest-skipped; dynamic names dropped (#3628)",
+            "verified_at": "2026-06-02"
           }
         },
         "Auth": {
@@ -57482,6 +58337,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -57732,6 +58593,12 @@
             "cites": ["internal/custom/ruby/routes.go","internal/custom/ruby/routes_test.go","internal/custom/ruby/sinatra_deep.go","internal/custom/ruby/sinatra_deep_test.go"],
             "notes": "Extracts all Sinatra verb blocks (get/post/put/patch/delete/head/options) with exact route path and HTTP method. Covers class-based Sinatra::Base/Sinatra::Application and standalone apps (require 'sinatra'). Named params /:id, splat /*path, regex routes all emitted. Full parity with TS/JS Express route_extraction. Closes #3344.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -58832,6 +59699,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -59090,6 +59963,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -59314,6 +60193,12 @@
             "cites": ["internal/custom/rust/axum.go","internal/custom/rust/extractors_test.go","internal/custom/rust/helpers.go"],
             "notes": "Extracts verb+path; normalises :id/\u003cid\u003e/{id} to canonical {id}; composes .nest() prefix; expands chained method routers get(h).post(h)",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -59570,6 +60455,12 @@
             "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
             "notes": "route.verb(path).to(h); :id params normalised to {id}; verb+path+handler asserted",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -59829,6 +60720,12 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "Extracts (\u0026Method::VERB, \"/path\") match-arm routes; raw hyper paths are literal string matches with no param syntax, so param normalisation is N/A and dynamic-segment routes (manual path splitting) are not recovered",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -60118,6 +61015,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -60405,6 +61308,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -60659,6 +61568,12 @@
             "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
             "notes": "Router with_path/.path().verb(h); \u003cid\u003e path params normalised to {id}",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -61076,6 +61991,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -61336,6 +62257,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -61563,6 +62490,12 @@
             "issue": "backfill:dictionary-completeness",
             "notes": "tower is a middleware/service-composition layer, not a router: ServiceBuilder.layer()/.service() are extracted but tower defines no verb+path routes, so route_extraction is structurally partial",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -61825,6 +62758,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -62045,6 +62984,12 @@
             "cites": ["internal/custom/rust/helpers.go","internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
             "notes": "warp::path! filter chains; typed segments (u32) normalised to {param}; verb+path+handler attribution",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -62672,6 +63617,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -62966,6 +63917,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -63218,6 +64175,12 @@
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: @cask.get/@cask.post annotation routes with path extraction. File-local.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -63510,6 +64473,12 @@
             "notes": "Cats Effect is an effect-system runtime, not a web backend — no routing/DI/transaction/AOP container."
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "not_applicable",
@@ -63792,6 +64761,12 @@
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -64093,6 +65068,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "full",
@@ -64383,6 +65364,12 @@
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -64686,6 +65673,12 @@
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks: pekko-http detected as its own framework (org.apache.pekko import) and routed through the shared akka-http branch (case akka-http,pekko-http). path(\"users\"/LongNumber)/pathPrefix + method directives combined via nearest-path positional context, canonicalScalaPathExpr ({id} from LongNumber). Value-asserting test TestPekkoHttpRoute pins GET:/api/users/{id} + POST + framework=pekko-http. File-local.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -65327,6 +66320,12 @@
             "verified_at": "2026-05-30"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "partial",
@@ -65620,6 +66619,12 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
+          }
+        },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
@@ -65859,6 +66864,12 @@
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/tapir.go"],
             "notes": "custom_scala_frameworks: tapir endpoint-DSL. Each endpoint(.get/.post/.method(Method.X)).in(\"seg\" / path[T](\"name\")).in(query[T]) chain parsed into one http_route with http_method + canonical http_path ({name} from path[T], query params separate). Value-asserting tests TestTapirEndpointRouteAndDTOs/PostRequestBodyDTO/MethodExplicitForm/NamedPathParam pin verb+path. File-local.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -66115,6 +67126,12 @@
             "cites": ["internal/custom/scala/frameworks.go","internal/custom/scala/routing.go"],
             "notes": "custom_scala_frameworks extractor: framework-specific route DSL patterns. File-local.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {
@@ -67318,6 +68335,12 @@
             "cites": ["internal/custom/swift/vapor.go"],
             "notes": "vapor.go custom extractor handles app.get/post/put/delete/patch/options route registrations, RouteCollection conformances, and .grouped prefix declarations; emits SCOPE.Operation/endpoint with http_method and route_path properties; proven by TestVaporRoute and TestVaporRouteCollection.",
             "verified_at": "2026-05-30"
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "missing",
+            "issue": "view_rendering:#3628-not-yet-extracted"
           }
         },
         "Auth": {

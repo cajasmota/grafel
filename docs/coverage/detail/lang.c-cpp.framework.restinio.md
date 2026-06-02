@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C/C++](../by-language/c-cpp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | SCOPE.Operation entities from RESTinio router method calls; partial = regex |
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | Handler names extracted from RESTinio router calls; partial = regex |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/restinio_routes.go` | Paths from router->http_get/post/etc and add_handler; partial = regex heuristic |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

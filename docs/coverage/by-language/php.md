@@ -26,21 +26,21 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [API Platform](../detail/lang.php.framework.api-platform.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/11 | |
-| [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Drupal](../detail/lang.php.framework.drupal.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Laravel](../detail/lang.php.framework.laravel.md) | 🟡 3/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/25 | 🟡 9/10 | |
-| [Lighthouse](../detail/lang.php.framework.lighthouse.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/11 | |
-| [Lumen](../detail/lang.php.framework.lumen.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Magento](../detail/lang.php.framework.magento.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Phalcon](../detail/lang.php.framework.phalcon.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Slim](../detail/lang.php.framework.slim.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Symfony](../detail/lang.php.framework.symfony.md) | 🟡 3/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/25 | 🟡 8/10 | |
-| [WordPress](../detail/lang.php.framework.wordpress.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [Yii](../detail/lang.php.framework.yii.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/10 | |
-| [graphql-php](../detail/lang.php.framework.graphql-php.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/11 | |
+| [API Platform](../detail/lang.php.framework.api-platform.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/12 | |
+| [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Drupal](../detail/lang.php.framework.drupal.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Laravel](../detail/lang.php.framework.laravel.md) | 🟡 3/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/25 | 🟡 10/11 | |
+| [Lighthouse](../detail/lang.php.framework.lighthouse.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/12 | |
+| [Lumen](../detail/lang.php.framework.lumen.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Magento](../detail/lang.php.framework.magento.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Phalcon](../detail/lang.php.framework.phalcon.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Slim](../detail/lang.php.framework.slim.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Symfony](../detail/lang.php.framework.symfony.md) | 🟡 3/4 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/25 | 🟡 8/11 | |
+| [WordPress](../detail/lang.php.framework.wordpress.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Yii](../detail/lang.php.framework.yii.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [graphql-php](../detail/lang.php.framework.graphql-php.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/12 | |
 
 
 ## Tools

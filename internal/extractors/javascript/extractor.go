@@ -341,6 +341,15 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		x.emitExceptionFlowEdges(root)
 	}()
 
+	// View-layer topology (epic #3628) — RENDERS edges from Express/Koa
+	// handlers to a shared SCOPE.Template node for `<res>.render('view')`
+	// shapes (dynamic / template-literal names are dropped). Runs after walk
+	// so enclosing handler entities exist.
+	func() {
+		defer func() { _ = recover() }()
+		x.emitTemplateRenderEdges(root)
+	}()
+
 	// Third pass (#713): platform-variant and test-file relationship emission.
 	// Detects React Native platform-specific file naming (.ios.tsx,
 	// .android.tsx, .tablet.tsx, …) and emits PLATFORM_VARIANT_OF edges.

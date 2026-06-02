@@ -49,6 +49,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// Issue #3641 (epic #3625) — config-key consumption edges
 	// (ENV['X'] / ENV.fetch('X')) → shared SCOPE.Config config_key nodes.
 	emitConfigConsumerEdges(root, file.Content, &entities)
+	// View-layer topology (epic #3628) — RENDERS edges from Rails controller
+	// actions to a shared SCOPE.Template node for explicit `render 'path'` /
+	// `render template:/partial:` shapes (symbol / implicit-convention renders
+	// and dynamic names are dropped).
+	emitTemplateRenderEdges(root, file.Content, &entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")

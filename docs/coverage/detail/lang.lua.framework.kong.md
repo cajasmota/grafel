@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [lua](../by-language/lua.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Handler attribution | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/lua/kong.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/lua/kong.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | — `not_applicable` | — | — | — | Bandit has no endpoint/route concept; it is a transport adapter |
 | Handler attribution | 🟢 `partial` | — | — | `internal/engine/rules/elixir/frameworks/absinthe.yaml`<br>`internal/substrate/entry_points_elixir.go` | Bandit delegates to Plug-compatible handlers; Plug.call/2 attribution tracked via entry-point sniffer |
 | Route extraction | — `not_applicable` | — | — | — | Bandit is a low-level HTTP server (replaces Cowboy); routing belongs to Phoenix/Plug layer above it |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | — | — | `internal/custom/elixir/plug.go` | use Plug.Router module extracted; match routes synthesised as SCOPE.Operation/endpoint per verb+path |
 | Handler attribution | 🟢 `partial` | — | — | `internal/custom/elixir/plug.go` | def call(conn, opts) implementation captured as SCOPE.Operation/plug_impl per module |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/elixir/plug.go`<br>`internal/custom/elixir/plug_test.go`<br>`internal/engine/elixir_routes.go`<br>`internal/engine/elixir_routes_test.go` | synthesizePlugRouter emits canonical http_endpoint per Plug.Router get/post/put/patch/delete/options/head verb route (:id->{id}) + forward/2 as ANY mount, attributed to the router module; catch-all 'match _' correctly excluded. plugExtractor additionally emits SCOPE.Operation route + middleware/call entities. Value-asserting tests (TestPlugRouter_Verbs proves GET /health, GET /users/{id}, POST /users, DELETE /users/{id}, ANY /admin; TestPlugRouter_NotPlug guards false positives). |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

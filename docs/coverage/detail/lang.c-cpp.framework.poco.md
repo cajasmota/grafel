@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C/C++](../by-language/c-cpp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | SCOPE.Operation entities from POCO handler registration; partial = regex |
 | Handler attribution | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | Handler class names extracted from addHandler<T> and server.addHandler; partial = regex |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/poco_routes.go` | Paths from addHandler<T>/router.add/server.addHandler; partial = regex heuristic |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

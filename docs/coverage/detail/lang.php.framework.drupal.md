@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [php](../by-language/php.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/php/frameworks/drupal.yaml` | — |
 | Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/php/frameworks/drupal.yaml` | — |
 | Route extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/custom/php/frameworks.go` | Regex-based per-framework route extraction covering HTTP method routes, resource routes, URL rules |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

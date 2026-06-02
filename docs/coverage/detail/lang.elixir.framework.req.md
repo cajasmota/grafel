@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_elixir_tesla.go`<br>`internal/engine/http_endpoint_elixir_tesla_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Req.get!/Req.<verb> literal + interpolated + concat + url: keyword -> outbound http_endpoint_call (#3511) |
 | Handler attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

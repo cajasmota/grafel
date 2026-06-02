@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-05-29` | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | MicroProfile JAX-RS @Path + verb annotations covered by java_annotation_routes.go; partial (no class-level @Path composition with vert.x-style mounts) |
 | Handler attribution | 🟢 `partial` | `2026-05-29` | — | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | JAX-RS method-level handler attribution via SCOPE.Operation entity; same pass as Quarkus/Jakarta EE |
 | Route extraction | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/engine/java_annotation_routes.go`<br>`internal/engine/rules/java/frameworks/microprofile.yaml` | JAX-RS @Path annotation route extraction; class+method composition; MicroProfile flavor same as Quarkus |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

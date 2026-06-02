@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-02` | 3617 | `internal/engine/http_endpoint_hotchocolate.go`<br>`internal/engine/http_endpoint_hotchocolate_test.go` | synthesizeHotChocolate emits http:GRAPHQL:/graphql/<Query|Mutation|Subscription>/<field> per public resolver method — EXACT canonical shape as gqlgen (Go) / Strawberry (Python) / Apollo (JS) / Absinthe so client links (#3667) + cross-repo linker join. Field name = HotChocolate default: leading Get stripped + first letter lower-cased (GetUser->user, GetUsersByTeam->usersByTeam, CreateUser->createUser). Recognises [QueryType]/[MutationType]/[SubscriptionType] markers, [ExtendObjectType(typeof(Query))] extensions, and same-file fluent .AddQueryType<T>() registrations. Value-asserting tests assert the EXACT endpoint ids. |
 | Handler attribution | ✅ `full` | `2026-06-02` | 3617 | `internal/engine/http_endpoint_hotchocolate.go`<br>`internal/engine/http_endpoint_hotchocolate_test.go` | Each endpoint carries source_handler=SCOPE.Operation:<Class>.<Method> (same naming as the C# extractor buildOperation), which ResolveHTTPEndpointHandlers rebinds to the resolver method — HANDLES edge endpoint->method. Value-asserting tests assert source_handler=SCOPE.Operation:Query.GetUser / Mutation.CreateUser / UserQueries.GetUserByEmail. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | 3617 | `internal/engine/http_endpoint_hotchocolate.go`<br>`internal/engine/http_endpoint_hotchocolate_test.go` | Root-type registration recovered from marker attributes, [ExtendObjectType] extensions, or SAME-FILE fluent .AddQueryType<T>(). PARTIAL (honest): a resolver class registered fluently in a DIFFERENT file than its declaration, descriptor.Field() runtime fluent field definitions, and SDL schema-first .graphqls binding are not resolved. |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

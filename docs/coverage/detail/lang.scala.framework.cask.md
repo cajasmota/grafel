@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: Cask @cask.get/@cask.post routes synthesized into SCOPE.Operation/http_route entities with method+path. |
 | Handler attribution | 🟢 `partial` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks extractor: Cask route annotation detected in context of the enclosing object/class — handler method attributed to route. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go`<br>`internal/custom/scala/routing.go` | custom_scala_frameworks extractor: @cask.get/@cask.post annotation routes with path extraction. File-local. |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; Kotlin trailing-lambda route DSL proven by TestKotlinJavalin_Routes_Issue3274 |
 | Handler attribution | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; handler attribution proven by TestKotlinJavalin_Routes_Issue3274 |
 | Route extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go`<br>`internal/custom/java/kotlin_port_test.go` | java extractor language-gated to kotlin; GET/POST/DELETE routes extracted by TestKotlinJavalin_Routes_Issue3274 |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

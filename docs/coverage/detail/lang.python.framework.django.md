@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/django_routes.go`<br>`internal/engine/django_urlconf_nested.go`<br>`internal/engine/rules/python/frameworks/django.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/django_admin_routes.go`<br>`internal/engine/django_routes.go` | — |
 | Route extraction | ✅ `full` | `2026-05-29` | — | `internal/engine/django_routes.go`<br>`internal/engine/django_urlconf_nested.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | ✅ `full` | `2026-06-02` | 3628 | `internal/extractor/template_render.go`<br>`internal/extractors/python/template_render.go`<br>`internal/extractors/python/template_render_test.go` | render(request,'x.html') + TemplateView.template_name -> RENDERS SCOPE.Template; dynamic names dropped (#3628) |
 
 ### Auth
 

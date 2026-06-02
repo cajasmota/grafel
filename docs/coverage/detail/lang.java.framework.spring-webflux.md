@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [java](../by-language/java.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/java/frameworks/spring_webflux.yaml`<br>`internal/engine/spring_routes.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/spring_routes.go` | — |
 | Route extraction | 🟢 `partial` | `2026-05-29` | 3080 | `internal/engine/http_endpoint_synthesis.go` | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

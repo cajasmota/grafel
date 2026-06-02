@@ -26,19 +26,19 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/4 | |
-| [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/17 | |
-| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🔴 0/4 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 5/7 | |
-| [Koin (Kotlin DI)](../detail/lang.kotlin.framework.koin.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/17 | |
-| [Ktor](../detail/lang.kotlin.framework.ktor.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 12/13 | |
-| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/16 | |
-| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/16 | |
-| [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | 🟡 2/4 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/23 | 🔴 0/17 | |
-| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/16 | |
-| [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/17 | |
-| [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/7 | |
-| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/4 | |
-| [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/17 | |
+| [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/5 | |
+| [Dagger / Hilt (Android DI)](../detail/lang.kotlin.framework.dagger-hilt.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/18 | |
+| [Javalin (Kotlin)](../detail/lang.kotlin.framework.javalin.md) | 🔴 0/4 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 5/8 | |
+| [Koin (Kotlin DI)](../detail/lang.kotlin.framework.koin.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 3/18 | |
+| [Ktor](../detail/lang.kotlin.framework.ktor.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 12/14 | |
+| [Micronaut (Kotlin)](../detail/lang.kotlin.framework.micronaut.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/17 | |
+| [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/17 | |
+| [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | 🟡 2/4 | 🔴 0/1 | 🟡 1/4 | 🔴 0/1 | 🟡 2/23 | 🔴 0/18 | |
+| [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/17 | |
+| [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/18 | |
+| [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/8 | |
+| [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/5 | |
+| [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/23 | 🟡 1/18 | |
 
 
 ### Mobile

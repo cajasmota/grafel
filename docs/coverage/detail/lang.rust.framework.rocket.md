@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [rust](../by-language/rust.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rocket_routes.go`<br>`internal/engine/rules/rust/frameworks/rocket.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/rocket_routes.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/extractors_test.go`<br>`internal/custom/rust/helpers.go`<br>`internal/custom/rust/rocket.go` | Extracts #[verb(path, data=..)] macros; normalises <id> to {id}; composes .mount(prefix, routes![]) onto handler paths |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

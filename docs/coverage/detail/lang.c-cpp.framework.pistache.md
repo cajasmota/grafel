@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C/C++](../by-language/c-cpp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/pistache_routes.go` | — |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/pistache_routes.go` | — |
 | Route extraction | ✅ `full` | — | — | `internal/custom/cpp/pistache_routes.go` | Path strings extracted from Routes::Get/Post/etc and router.get; partial = regex heuristic |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -26,18 +26,18 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/7 | |
-| [Apache Pekko HTTP](../detail/lang.scala.framework.pekko-http.md) | 🟡 3/4 | ✅ 1/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/23 | 🟡 6/17 | |
-| [Caliban](../detail/lang.scala.framework.caliban.md) | 🟡 3/4 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 3/23 | 🟡 1/17 | |
-| [Cask](../detail/lang.scala.framework.cask.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/7 | |
-| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/4 | |
-| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/10 | |
-| [Lagom](../detail/lang.scala.framework.lagom.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/10 | |
-| [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/7 | |
-| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/10 | |
-| [http4s](../detail/lang.scala.framework.http4s.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/7 | |
-| [sttp (HTTP client)](../detail/lang.scala.framework.sttp.md) | 🟡 2/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🔴 0/17 | |
-| [tapir (endpoint DSL)](../detail/lang.scala.framework.tapir.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🟢 1/1 | 🟡 2/23 | 🟡 5/17 | |
+| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/8 | |
+| [Apache Pekko HTTP](../detail/lang.scala.framework.pekko-http.md) | 🟡 3/4 | ✅ 1/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/23 | 🟡 6/18 | |
+| [Caliban](../detail/lang.scala.framework.caliban.md) | 🟡 3/4 | 🔴 0/1 | 🟡 2/4 | 🔴 0/1 | 🟡 3/23 | 🟡 1/18 | |
+| [Cask](../detail/lang.scala.framework.cask.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/8 | |
+| [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟡 1/2 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 3/5 | |
+| [Finatra (Twitter Finagle)](../detail/lang.scala.framework.finatra.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/11 | |
+| [Lagom](../detail/lang.scala.framework.lagom.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/11 | |
+| [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/8 | |
+| [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟡 3/4 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/11 | |
+| [http4s](../detail/lang.scala.framework.http4s.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 6/8 | |
+| [sttp (HTTP client)](../detail/lang.scala.framework.sttp.md) | 🟡 2/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🔴 0/18 | |
+| [tapir (endpoint DSL)](../detail/lang.scala.framework.tapir.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🟢 1/1 | 🟡 2/23 | 🟡 5/18 | |
 
 
 ### Meta Framework

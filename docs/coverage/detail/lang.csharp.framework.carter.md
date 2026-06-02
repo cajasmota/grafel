@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C#](../by-language/csharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | carter route endpoint_synthesis via regex extractor; heuristic |
 | Handler attribution | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | carter module/endpoint class declarations detected via regex; heuristic |
 | Route extraction | 🟢 `partial` | `2026-05-30` | 3263 | `internal/custom/csharp/minor_routes.go` | carter route path strings extracted via regex; heuristic |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

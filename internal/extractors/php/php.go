@@ -70,6 +70,10 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// Issue #3641 (epic #3625) — config-key consumption edges
 	// (getenv / $_ENV / Laravel env() / config()) → shared SCOPE.Config nodes.
 	emitConfigConsumerEdges(root, file, &entities)
+	// View-layer topology (epic #3628) — RENDERS edges from Laravel
+	// controller actions to a shared SCOPE.Template node for view('name') /
+	// View::make('name') shapes (dynamic / interpolated names are dropped).
+	emitTemplateRenderEdges(root, file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")

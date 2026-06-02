@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/phoenix_routes.go`<br>`internal/engine/rules/elixir/frameworks/phoenix.yaml` | — |
 | Handler attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/phoenix_routes.go` | — |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/phoenix_routes.go`<br>`internal/engine/phoenix_routes_test.go` | synthesizePhoenix emits canonical http_endpoint per get/post/put/patch/delete/head/options verb + resources CRUD expansion (only:/except: filters) with nested scope-prefix composition and :id->{id} normalisation; controller#action attributed via handler_file hint. Value-asserting engine tests (TestPhoenix_VerbInScope/Resources/NestedScope/ControllerHandlerRef) prove exact (verb,path,controller#action). |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

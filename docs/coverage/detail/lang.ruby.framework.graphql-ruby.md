@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 45
+- **Capability cells:** 46
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | `2026-06-02` | 3621 | `internal/engine/http_endpoint_graphql_ruby.go`<br>`internal/engine/http_endpoint_graphql_ruby_test.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/httproutes/canonicalize.go` | synthesizeGraphQLRuby emits http:GRAPHQL:/graphql/<Query|Mutation|Subscription>/<field> per `field :name` on a root operation type class (QueryType/MutationType/SubscriptionType, subclasses of *BaseObject or GraphQL::Schema::Object) — EXACT canonical shape as gqlgen (Go) / Strawberry (Python) / HotChocolate (C#) / Apollo (JS) / Absinthe so client links + cross-repo linker join. Field name = the Ruby `field :name` snake_case symbol verbatim (graphql-ruby keeps snake_case on the wire). Value-asserting tests assert the EXACT endpoint ids for Query/users, Query/user, Mutation/create_user, Mutation/delete_user, Subscription/user_added. |
 | Handler attribution | ✅ `full` | `2026-06-02` | 3621 | `internal/engine/http_endpoint_graphql_ruby.go`<br>`internal/engine/http_endpoint_graphql_ruby_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Each `field :name` is attributed to its same-name resolver method `def name` on the type class via source_handler=SCOPE.Operation:<field> plus a same-file handler_file hint; the resolver post-pass rebinds it to a HANDLES edge against the extracted Ruby method entity. Value-asserted in the tests. |
 | Route extraction | 🟢 `partial` | `2026-06-02` | 3621 | `internal/engine/http_endpoint_graphql_ruby.go`<br>`internal/engine/http_endpoint_graphql_ruby_test.go`<br>`internal/engine/httproutes/canonicalize.go` | Operation endpoints synthesised from `field :name` declarations on the convention-named root type classes. Honest-partial: keys on the conventional QueryType/MutationType/SubscriptionType class names rather than the schema's query(...)/mutation(...) registration, and resolves the default same-name `def` resolver — does not yet follow `resolver: SomeResolver` / `method:` field overrides or dynamically generated fields. |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [kotlin](../by-language/kotlin.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** JVM Backend
-- **Capability cells:** 50
+- **Capability cells:** 51
 
 ## Capabilities
 
@@ -19,6 +19,12 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint synthesis | ✅ `full` | — | — | `internal/engine/http_endpoint_kotlin_client.go`<br>`internal/engine/http_endpoint_kotlin_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Retrofit interface verb annotations (@GET/@POST/@PUT/@DELETE/@PATCH/@HEAD/@OPTIONS) → one outbound http_endpoint (consumer) per annotated method + FETCHES from the method; Retrofit.Builder().baseUrl() composed; {param} paths normalized. Value-asserted in http_endpoint_kotlin_client_test.go. |
 | Handler attribution | ✅ `full` | — | — | `internal/engine/http_endpoint_kotlin_client.go`<br>`internal/engine/http_endpoint_kotlin_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | FETCHES edge attributes each outbound call to the enclosing Retrofit interface method. Value-asserted in http_endpoint_kotlin_client_test.go. |
 | Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
 
 ### Auth
 

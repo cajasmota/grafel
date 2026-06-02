@@ -176,6 +176,20 @@ const (
 	// names across files/languages into one node. See
 	// internal/extractor/exception_flow.go.
 	EntityKindExceptionType EntityKind = "SCOPE.ExceptionType"
+	// EntityKindTemplate is a synthetic, file-agnostic node representing a
+	// server-side view template by its normalized logical name/path — e.g.
+	// "users/list.html", "dashboard", "welcome". It is the convergence point
+	// for the view-layer capability (epic #3628): a request handler / controller
+	// method renders a template, and two handlers that render the SAME template
+	// resolve to ONE node, so the graph answers "what renders users/list.html?"
+	// (inbound RENDERS) and "what does this handler render?" (outbound RENDERS).
+	// Like SCOPE.ExceptionType it carries a constant synthetic SourceFile
+	// (TemplateSourceFile) so EntityRecord.ComputeID(SourceFile+Kind+Name)
+	// collapses identical template names across files/languages/frameworks
+	// (Flask render_template, Django render/TemplateView, Express res.render,
+	// Rails render, Spring MVC view names, Laravel view()) into one node. See
+	// internal/extractor/template_render.go.
+	EntityKindTemplate EntityKind = "SCOPE.Template"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -245,6 +259,8 @@ func AllEntityKinds() []EntityKind {
 		EntityKindModelEvent,
 		// #3628 error-flow: synthetic exception-type convergence node.
 		EntityKindExceptionType,
+		// #3628 view-layer: synthetic template convergence node.
+		EntityKindTemplate,
 	}
 }
 

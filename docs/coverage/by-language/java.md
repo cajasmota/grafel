@@ -26,22 +26,22 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/8 | |
-| [Apache Struts](../detail/lang.java.framework.struts.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/8 | |
-| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 1/14 | |
-| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 2/17 | |
-| [Google Guice (DI)](../detail/lang.java.framework.guice.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 3/17 | |
-| [Helidon](../detail/lang.java.framework.helidon.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 1/14 | |
-| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 14/17 | |
-| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 4/17 | |
-| [Javalin](../detail/lang.java.framework.javalin.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/8 | |
-| [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 14/17 | |
-| [Netflix DGS](../detail/lang.java.framework.dgs.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🔴 0/17 | |
-| [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 4/17 | |
-| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 4/4 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 24/24 | 🟡 16/19 | |
-| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 13/17 | |
-| [Spring for GraphQL](../detail/lang.java.framework.spring-graphql.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🔴 0/17 | |
-| [Vert.x](../detail/lang.java.framework.vertx.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/8 | |
+| [Akka HTTP (Java DSL)](../detail/lang.java.framework.akka-http.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/9 | |
+| [Apache Struts](../detail/lang.java.framework.struts.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/9 | |
+| [Dropwizard](../detail/lang.java.framework.dropwizard.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 1/15 | |
+| [Eclipse MicroProfile](../detail/lang.java.framework.microprofile.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 2/18 | |
+| [Google Guice (DI)](../detail/lang.java.framework.guice.md) | 🔴 0/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🟡 3/18 | |
+| [Helidon](../detail/lang.java.framework.helidon.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 1/15 | |
+| [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 14/18 | |
+| [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 4/18 | |
+| [Javalin](../detail/lang.java.framework.javalin.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/9 | |
+| [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 14/18 | |
+| [Netflix DGS](../detail/lang.java.framework.dgs.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🔴 0/18 | |
+| [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 4/18 | |
+| [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 4/4 | ✅ 1/1 | ✅ 3/3 | 🔴 0/1 | 🟢 24/24 | 🟡 17/20 | |
+| [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟡 3/4 | 🟢 1/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 13/18 | |
+| [Spring for GraphQL](../detail/lang.java.framework.spring-graphql.md) | 🟡 3/4 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/23 | 🔴 0/18 | |
+| [Vert.x](../detail/lang.java.framework.vertx.md) | 🟡 3/4 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 22/23 | 🟡 3/9 | |
 
 
 ### UI Frontend

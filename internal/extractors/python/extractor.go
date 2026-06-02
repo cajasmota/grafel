@@ -334,6 +334,16 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		emitExceptionFlowEdges(root, file, &entities)
 	}()
 
+	// #3628 view-layer — supplemental pass that links Flask render_template /
+	// Django render / TemplateView.template_name handlers to a shared
+	// SCOPE.Template node via RENDERS (dynamic / f-string names are dropped).
+	// Runs after primary entity emission so the enclosing function/method/class
+	// entities exist to attach edges to.
+	func() {
+		defer func() { _ = recover() }()
+		emitTemplateRenderEdges(root, file, &entities)
+	}()
+
 	// Issue #1884 — supplemental package-module pass (Wave 1).
 	// Emits one Module entity per Python package boundary (__init__.py or
 	// plain .py module) so docgen can seed per-package pages and flow
