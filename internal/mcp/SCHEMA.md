@@ -347,6 +347,18 @@ Previously named `archigraph_describe` (renamed in #668).
 
 Both arrays are omitted entirely when no CALLS edges exist (additive, backward-compatible — consumers reading only `id`/`name`/`kind`/`file`/`line` are unaffected).
 
+When the entity participates in dependency-injection wiring, a `di_edges` array
+surfaces the `INJECTED_INTO` (provider→consumer) and `BINDS`
+(module/token→impl) edges emitted by the per-language DI extractors (#3870).
+Each row is `{ "kind", "direction", "other", "line" }` where `direction` is
+`"outbound"` (the inspected entity is the edge `FromID` — e.g. a provider
+injected into others, or a module/token that binds) or `"inbound"` (the
+inspected entity is the `ToID` — e.g. a controller a provider is injected into,
+or an impl a token binds to), `other` is the entity on the far side, and `line`
+is the source line the extractor recorded (`0` when absent). The section is
+omitted entirely when the entity has no DI edges. Before #3870 these edges were
+in the graph but no read tool projected them — only CALLS was visible.
+
 With `verbose=true`, the response also includes `end_line`, `language`, `repo`,
 `pagerank`, `community_id`, and `properties`.
 
@@ -400,6 +412,14 @@ Previously named `archigraph_related` (renamed in #668).
 ```
 
 Cross-repo overlay entries carry `cross_repo: true` and the link `kind`.
+
+Direct (depth-1) neighbours connected by a dependency-injection edge
+(`INJECTED_INTO` or `BINDS`) additionally carry `di_kind` (the on-graph
+relationship kind) and `di_direction` (`"outbound"` when the queried node is the
+edge `FromID`, `"inbound"` when it is the `ToID`). This lets a consumer tell a
+provider→consumer injection from a plain `CALLS` neighbour — before #3870 the
+connecting edge kind was dropped from neighbour rows entirely. Fields are absent
+on neighbours that are not connected by a DI edge.
 
 ---
 
