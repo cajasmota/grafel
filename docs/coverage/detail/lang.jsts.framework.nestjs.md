@@ -51,7 +51,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | ✅ `full` | `2026-05-29` | 3160 | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue1343_ts_type_extraction_test.go` | — |
+| Enum extraction | ✅ `full` | `2026-06-02` | — | `internal/extractor/enum_valueset.go`<br>`internal/extractors/javascript/enum_valueset.go`<br>`internal/extractors/javascript/extractor.go` | TS enum_declaration -> SCOPE.Schema/enum AND a value-carrying SCOPE.Enum value-set node (emitTSEnumValueSet, kind_hint=ts_enum): string/numeric explicit members capture values (Status: Active=active; Level: Low=1), implicit/numeric-positional enums recorded value-less (honest-partial). String-literal union aliases type Role = 'admin'|'user' -> SCOPE.Enum (kind_hint=ts_literal_union) values admin,user; unions with any non-literal arm (string|Foo) emit no node. |
 | Interface extraction | ✅ `full` | `2026-05-29` | 3160 | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue1343_ts_type_extraction_test.go` | — |
 | Type alias extraction | ✅ `full` | `2026-05-29` | 3160 | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue1343_ts_type_extraction_test.go` | — |
 | Type extraction | ✅ `full` | `2026-05-29` | 3160 | `internal/extractors/javascript/extractor.go`<br>`internal/extractors/javascript/issue1343_ts_type_extraction_test.go` | — |

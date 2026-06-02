@@ -18722,9 +18722,10 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "Go has no first-class enum keyword; the idiom is const(...iota). The Go extractor extracts no const/iota enum constructs, so this capability is not applicable.",
-            "verified_at": "2026-05-29"
+            "status": "partial",
+            "cites": ["internal/extractor/enum_valueset.go","internal/extractors/golang/enum_valueset.go"],
+            "notes": "Go has no enum keyword; the idiom is a named int/string type + a const(...) block typed by it. extractGoEnums emits a value-carrying SCOPE.Enum value-set node per such block (kind_hint=go_iota): members in declaration order, explicit literal members capture their value (Color: Red=red; Level: Low=1), iota members recorded value-less (honest-partial, no fabricated ordinals). Const blocks typed only by a builtin / untyped are skipped.",
+            "verified_at": "2026-06-02"
           },
           "interface_extraction": {
             "status": "full",
@@ -27050,8 +27051,9 @@
         "Type System": {
           "enum_extraction": {
             "status": "full",
-            "cites": ["internal/extractors/java/java.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/extractor/enum_valueset.go","internal/extractors/java/enum_valueset.go","internal/extractors/java/java.go"],
+            "notes": "enum_declaration -\u003e SCOPE.Component/enum AND a value-carrying SCOPE.Enum value-set node (buildJavaEnumValueSet, kind_hint=java_enum): bare constants recorded as members (Status: ACTIVE, INACTIVE), constructor-arg enums capture the first literal argument as the member value (Color: RED=#f00; Planet: MERCURY=1). Non-literal constructor args recorded value-less (honest-partial).",
+            "verified_at": "2026-06-02"
           },
           "interface_extraction": {
             "status": "full",
@@ -34998,9 +35000,9 @@
         "Type System": {
           "enum_extraction": {
             "status": "full",
-            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
-            "issue": "3160",
-            "verified_at": "2026-05-29"
+            "cites": ["internal/extractor/enum_valueset.go","internal/extractors/javascript/enum_valueset.go","internal/extractors/javascript/extractor.go"],
+            "notes": "TS enum_declaration -\u003e SCOPE.Schema/enum AND a value-carrying SCOPE.Enum value-set node (emitTSEnumValueSet, kind_hint=ts_enum): string/numeric explicit members capture values (Status: Active=active; Level: Low=1), implicit/numeric-positional enums recorded value-less (honest-partial). String-literal union aliases type Role = 'admin'|'user' -\u003e SCOPE.Enum (kind_hint=ts_literal_union) values admin,user; unions with any non-literal arm (string|Foo) emit no node.",
+            "verified_at": "2026-06-02"
           },
           "interface_extraction": {
             "status": "full",
@@ -60332,8 +60334,10 @@
         },
         "Type System": {
           "enum_extraction": {
-            "status": "not_applicable",
-            "notes": "Ruby is dynamically typed — no enum keyword (duck typing idiom)"
+            "status": "partial",
+            "cites": ["internal/extractor/enum_valueset.go","internal/extractors/ruby/enum_valueset.go"],
+            "notes": "Ruby is dynamically typed (no enum keyword), but Rails ActiveRecord declares value-sets via the enum DSL. buildRailsEnumValueSet emits a value-carrying SCOPE.Enum node per declaration (kind_hint=rails_enum): enum status: { active: 0, archived: 1 } -\u003e values active=0, archived=1; array form enum priority: [:low, :high] -\u003e members value-less; Rails 7 positional enum :state, {...} form supported. Non-literal/dynamic args skipped (honest-partial).",
+            "verified_at": "2026-06-02"
           },
           "interface_extraction": {
             "status": "not_applicable",

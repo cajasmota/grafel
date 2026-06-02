@@ -127,6 +127,10 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	records = append(records, typeEntities...)
 	structs = sCount
 
+	// Value-carrying SCOPE.Enum value-set nodes for const-group enums typed by
+	// a same-file named type (data-model, epic #3628).
+	records = append(records, extractGoEnums(root, file.Content, file.Path)...)
+
 	// ----------------------------------------------------------------
 	// 3. Import relationships — emitted as standalone SCOPE.Component
 	//    EntityRecord entries (one per import path). Not fanned out to

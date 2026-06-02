@@ -336,6 +336,12 @@ func walk(
 			// them as CONTAINS children with type metadata.
 			subtype = "record"
 		}
+		if node.Type() == "enum_declaration" {
+			// Value-carrying SCOPE.Enum value-set node (data-model #3628).
+			if vs, vok := buildJavaEnumValueSet(node, file); vok {
+				*out = append(*out, vs)
+			}
+		}
 		rec, ok := buildComponent(node, file, subtype, pkgName)
 		if ok {
 			// Issue #1996 — emit EXTENDS / IMPLEMENTS edges so the docgen

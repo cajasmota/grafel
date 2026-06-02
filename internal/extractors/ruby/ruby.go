@@ -97,6 +97,13 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 			}
 		}
 		if body != nil {
+			// Rails ActiveRecord `enum status: {...}` declarations → value-set
+			// SCOPE.Enum nodes (data-model, epic #3628).
+			for i := range body.ChildCount() {
+				if vs, vok := buildRailsEnumValueSet(body.Child(int(i)), file); vok {
+					*out = append(*out, vs)
+				}
+			}
 			before := len(*out)
 			for i := range body.ChildCount() {
 				walk(body.Child(int(i)), file, out)

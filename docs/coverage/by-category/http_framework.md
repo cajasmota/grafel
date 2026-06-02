@@ -48,7 +48,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/5 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 8/12 | |
 | [go](../by-language/go.md) | [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
+| [go](../by-language/go.md) | [Gin](../detail/lang.go.framework.gin.md) | 🟡 3/5 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟡 24/25 | 🟡 7/11 | |
 | [go](../by-language/go.md) | [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 3/5 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 3/5 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [Huma](../detail/lang.go.framework.huma.md) | 🟡 3/5 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
@@ -119,7 +119,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟡 3/5 | 🟢 1/1 | — | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟡 3/5 | 🟢 1/1 | — | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | 🟡 3/5 | 🟢 1/1 | — | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟡 3/5 | ✅ 1/1 | — | ✅ 1/1 | 🟡 23/25 | 🟡 8/12 | |
+| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | 🟡 3/5 | ✅ 1/1 | 🟢 1/1 | ✅ 1/1 | 🟡 23/25 | 🟡 8/12 | |
 | [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟡 3/5 | 🟢 1/1 | — | 🟢 1/1 | 🟡 22/25 | 🟡 7/12 | |
 | [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟡 2/4 | — | 🟢 1/1 | 🟢 1/1 | 🟡 22/25 | 🟡 5/10 | |
 | [ruby](../by-language/ruby.md) | [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟡 3/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🔴 0/12 | |
