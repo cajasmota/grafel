@@ -556,6 +556,13 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// http:GRAPHQL:/graphql/<Root>/<field> synthetics. Gated on "strawberry"
 		// in the file so it is a no-op on all other Python framework files.
 		synthesizeStrawberry(string(content), emitDef)
+		// #3620 — Graphene + Ariadne GraphQL operation synthesis. Maps Python
+		// Graphene root classes (graphene.ObjectType Query/Mutation/Subscription)
+		// and Ariadne binder field decorators to the same
+		// http:GRAPHQL:/graphql/<Root>/<field> shape as Strawberry. Each is gated
+		// on a framework-specific file marker so it no-ops on all other files.
+		synthesizeGraphene(string(content), emitDef)
+		synthesizeAriadne(string(content), emitDef)
 		// Producer side: Flask + FastAPI run FIRST so their synthetics —
 		// which carry a real handler function name as source_handler —
 		// claim each ID before the Django composed-route pass walks the
@@ -3238,6 +3245,307 @@ func synthesizeStrawberry(content string, emit emitDefFn) {
 			handlerRef := rootType + "." + methodName
 			emit("GRAPHQL", canonical, "strawberry-graphql", "SCOPE.Operation", handlerRef, defLine)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Graphene (Python) — #3620 (epic #3607)
+// ---------------------------------------------------------------------------
+//
+// Graphene is a code-first GraphQL library for Python. Root types subclass
+// graphene.ObjectType and declare fields as class attributes; the resolver for
+// a field `users` is the method `resolve_users`:
+//
+//	class Query(graphene.ObjectType):
+//	    users = graphene.List(User)
+//	    me = graphene.Field(User)
+//	    def resolve_users(self, info):
+//	        ...
+//	    def resolve_me(self, info):
+//	        ...
+//
+//	class Mutation(graphene.ObjectType):
+//	    create_user = CreateUser.Field()
+//	    def resolve_create_user(self, info, name):
+//	        ...
+//
+// The schema is wired with `graphene.Schema(query=Query, mutation=Mutation,
+// subscription=Subscription)`. We map each root-type field to the SAME
+// operation-endpoint shape emitted by Strawberry / gqlgen / the JS/TS GraphQL
+// server:
+//
+//	http:GRAPHQL:/graphql/<RootType>/<field>
+//
+// where RootType is Query / Mutation / Subscription and <field> is the snake_case
+// field name (Graphene/Python convention — no name mangling, the attribute name
+// IS the GraphQL field name). Emitting the identical id shape is what lets the
+// GraphQL client-link synthesizer and the cross-repo linker join Python Graphene
+// servers to their consumers.
+//
+// Field discovery: we enumerate `resolve_<field>` methods inside the root-type
+// class body. The resolver method is the authoritative field signal (it carries
+// the def line for handler attribution); a `<field> = graphene.<X>(...)` class
+// attribute without a matching resolver uses Graphene's default resolver and is
+// also emitted (honest-partial — no explicit handler, so source_handler points
+// at the would-be resolver name). The resolver method, when present, is the
+// handler, referenced as `SCOPE.Operation:<ClassName>.resolve_<field>`.
+//
+// Detection is gated on the presence of "graphene" in the file so the
+// synthesizer is a no-op on every other Python file.
+
+// grapheneRootTypeRe matches a class declaration whose base class list contains
+// a graphene.ObjectType (or bare ObjectType) base, for one of the three root
+// type names. The class name must be Query, Mutation, or Subscription.
+//
+// Capture groups:
+//
+//	1 = root type name (Query | Mutation | Subscription)
+var grapheneRootTypeRe = regexp.MustCompile(
+	`(?m)^[ \t]*class\s+(Query|Mutation|Subscription)\s*\(([^)]*)\)\s*:`,
+)
+
+// grapheneResolverRe matches a `def resolve_<field>(self` (optionally async)
+// method inside a root-type class body, capturing the field name (the suffix
+// after `resolve_`).
+//
+// Capture groups:
+//
+//	1 = field name (snake_case GraphQL field)
+var grapheneResolverRe = regexp.MustCompile(
+	`(?m)^[ \t]+(?:async\s+)?def\s+resolve_([A-Za-z_]\w*)\s*\(\s*self`,
+)
+
+// grapheneFieldAttrRe matches a `<field> = graphene.<Type>(...)` class-attribute
+// field declaration inside a root-type class body, capturing the field name.
+// This covers fields that rely on Graphene's default resolver (no explicit
+// resolve_<field> method).
+//
+// Capture groups:
+//
+//	1 = field name
+var grapheneFieldAttrRe = regexp.MustCompile(
+	`(?m)^[ \t]+([A-Za-z_]\w*)\s*=\s*graphene\.`,
+)
+
+func synthesizeGraphene(content string, emit emitDefFn) {
+	// File-signal gate: require a graphene marker so this no-ops on every other
+	// Python file (including Strawberry / Ariadne GraphQL servers).
+	if !strings.Contains(content, "graphene") {
+		return
+	}
+
+	for _, rm := range grapheneRootTypeRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(rm) < 6 {
+			continue
+		}
+		rootType := content[rm[2]:rm[3]] // "Query" | "Mutation" | "Subscription"
+		bases := content[rm[4]:rm[5]]
+		// Require an ObjectType base so we don't fire on unrelated classes that
+		// happen to be named Query/Mutation/Subscription.
+		if !strings.Contains(bases, "ObjectType") {
+			continue
+		}
+
+		classStart := rm[1] // byte offset right after the class header match
+		bodyEnd := grapheneClassBodyEnd(content[classStart:])
+		classBody := content[classStart : classStart+bodyEnd]
+
+		seen := map[string]bool{}
+
+		// Resolver methods are the authoritative, handler-bearing signal. Emit
+		// them first so the attribute pass below can dedup against them.
+		for _, mm := range grapheneResolverRe.FindAllStringSubmatchIndex(classBody, -1) {
+			if len(mm) < 4 {
+				continue
+			}
+			field := classBody[mm[2]:mm[3]]
+			if field == "" || seen[field] {
+				continue
+			}
+			seen[field] = true
+
+			methodOffsetInFile := classStart + mm[2]
+			defLine := lineOfOffset(content, methodOffsetInFile)
+
+			path := "/graphql/" + rootType + "/" + field
+			canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
+			handlerRef := rootType + ".resolve_" + field
+			emit("GRAPHQL", canonical, "graphene", "SCOPE.Operation", handlerRef, defLine)
+		}
+
+		// Class-attribute fields without an explicit resolver use Graphene's
+		// default resolver. Emit them too (honest-partial: source_handler points
+		// at the conventional resolver name even though no def exists).
+		for _, mm := range grapheneFieldAttrRe.FindAllStringSubmatchIndex(classBody, -1) {
+			if len(mm) < 4 {
+				continue
+			}
+			field := classBody[mm[2]:mm[3]]
+			if field == "" || seen[field] {
+				continue
+			}
+			seen[field] = true
+
+			attrOffsetInFile := classStart + mm[2]
+			defLine := lineOfOffset(content, attrOffsetInFile)
+
+			path := "/graphql/" + rootType + "/" + field
+			canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
+			handlerRef := rootType + ".resolve_" + field
+			emit("GRAPHQL", canonical, "graphene", "SCOPE.Operation", handlerRef, defLine)
+		}
+	}
+}
+
+// grapheneClassBodyEnd returns the byte length of the class body that begins at
+// the start of searchIn (the text immediately after a class header match),
+// walking line by line until the first top-level (column-0, non-blank) line.
+func grapheneClassBodyEnd(searchIn string) int {
+	lines := strings.Split(searchIn, "\n")
+	bodyEnd := len(searchIn)
+	for i, line := range lines {
+		if i == 0 {
+			// Tail of the class header line — skip.
+			continue
+		}
+		if len(line) == 0 {
+			continue // blank line — still inside the class
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			bodyEnd = 0
+			for j := 0; j < i; j++ {
+				bodyEnd += len(lines[j]) + 1 // +1 for '\n'
+			}
+			break
+		}
+	}
+	return bodyEnd
+}
+
+// ---------------------------------------------------------------------------
+// Ariadne (Python) — #3620 (epic #3607)
+// ---------------------------------------------------------------------------
+//
+// Ariadne is a schema-first GraphQL library for Python. The SDL is defined as a
+// string and resolvers are bound to fields imperatively via a `QueryType()` /
+// `MutationType()` / `ObjectType("Query")` binder object whose `.field("<name>")`
+// decorator registers the resolver function:
+//
+//	query = QueryType()
+//
+//	@query.field("me")
+//	def resolve_me(_, info):
+//	    ...
+//
+//	@query.field("users")
+//	def resolve_users(_, info):
+//	    ...
+//
+//	mutation = MutationType()
+//
+//	@mutation.field("create_user")
+//	def resolve_create_user(_, info, name):
+//	    ...
+//
+// ObjectType binders can also target an arbitrary type by name
+// (`ObjectType("Query")`); we resolve the binder variable → root type by
+// inspecting its constructor. We map each bound field to the SAME
+// operation-endpoint shape as Strawberry / Graphene / gqlgen:
+//
+//	http:GRAPHQL:/graphql/<RootType>/<field>
+//
+// Handler attribution: the decorated function immediately below the
+// `@<binder>.field("<name>")` decorator is the resolver, referenced as
+// `SCOPE.Operation:<funcName>`.
+//
+// Detection is gated on the presence of "ariadne" OR a QueryType/MutationType/
+// SubscriptionType/ObjectType binder construction so the synthesizer is a no-op
+// on every other Python file.
+
+// ariadneBinderCtorRe matches a binder construction, capturing the variable name
+// and the binder kind so we can resolve `@<var>.field(...)` decorators to a root
+// type. Handles `query = QueryType()` and `query = ObjectType("Query")`.
+//
+// Capture groups:
+//
+//	1 = binder variable name
+//	2 = binder constructor (QueryType | MutationType | SubscriptionType | ObjectType)
+//	3 = ObjectType type-name argument (only set for ObjectType("Query"))
+var ariadneBinderCtorRe = regexp.MustCompile(
+	`(?m)^[ \t]*([A-Za-z_]\w*)\s*=\s*(QueryType|MutationType|SubscriptionType|ObjectType)\s*\(\s*(?:["']([A-Za-z_]\w*)["'])?\s*\)`,
+)
+
+// ariadneFieldDecoratorRe matches a `@<binder>.field("<name>")` decorator
+// immediately followed by a (optionally async) `def <func>(`. It captures the
+// binder variable, the field name, and the resolver function name.
+//
+// Capture groups:
+//
+//	1 = binder variable name
+//	2 = field name
+//	3 = resolver function name
+var ariadneFieldDecoratorRe = regexp.MustCompile(
+	`(?m)^[ \t]*@([A-Za-z_]\w*)\.field\(\s*["']([A-Za-z_]\w*)["']\s*\)\s*\n[ \t]*(?:async\s+)?def\s+([A-Za-z_]\w*)\s*\(`,
+)
+
+// ariadneCtorToRoot maps an Ariadne binder constructor to its GraphQL root type.
+var ariadneCtorToRoot = map[string]string{
+	"QueryType":        "Query",
+	"MutationType":     "Mutation",
+	"SubscriptionType": "Subscription",
+}
+
+func synthesizeAriadne(content string, emit emitDefFn) {
+	// File-signal gate: require an ariadne marker or a binder construction so
+	// this no-ops on every other Python file.
+	if !strings.Contains(content, "ariadne") &&
+		!strings.Contains(content, "QueryType") &&
+		!strings.Contains(content, "MutationType") &&
+		!strings.Contains(content, "SubscriptionType") {
+		return
+	}
+
+	// Resolve each binder variable → root type.
+	binderRoot := map[string]string{}
+	for _, m := range ariadneBinderCtorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		varName := content[m[2]:m[3]]
+		ctor := content[m[4]:m[5]]
+		if root, ok := ariadneCtorToRoot[ctor]; ok {
+			binderRoot[varName] = root
+			continue
+		}
+		// ObjectType("Query") — root type is the string argument.
+		if m[6] >= 0 && m[7] > m[6] {
+			binderRoot[varName] = content[m[6]:m[7]]
+		}
+	}
+
+	seen := map[string]bool{}
+	for _, m := range ariadneFieldDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 8 {
+			continue
+		}
+		binder := content[m[2]:m[3]]
+		field := content[m[4]:m[5]]
+		funcName := content[m[6]:m[7]]
+		root, ok := binderRoot[binder]
+		if !ok || root == "" || field == "" {
+			continue
+		}
+		dedupKey := root + "." + field
+		if seen[dedupKey] {
+			continue
+		}
+		seen[dedupKey] = true
+
+		defLine := lineOfOffset(content, m[0])
+		path := "/graphql/" + root + "/" + field
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, path)
+		// Handler ref points at the decorated resolver function symbol.
+		emit("GRAPHQL", canonical, "ariadne", "SCOPE.Operation", funcName, defLine)
 	}
 }
 

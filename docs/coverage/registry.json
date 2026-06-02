@@ -42581,6 +42581,190 @@
       }
     },
     {
+      "id": "lang.python.framework.ariadne",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "python",
+      "label": "Ariadne GraphQL",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3620",
+            "notes": "schema-first Ariadne: QueryType()/MutationType()/SubscriptionType()/ObjectType(\"Query\") binders + @\u003cbinder\u003e.field(\"\u003cname\u003e\") decorator resolvers -\u003e http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e, identical shape to Strawberry. synthesizeAriadne.",
+            "verified_at": "2026-06-02"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3620",
+            "notes": "decorated resolver function is the handler; source_handler=SCOPE.Operation:\u003cfuncName\u003e rebinds to a HANDLES edge.",
+            "verified_at": "2026-06-02"
+          },
+          "route_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3620",
+            "notes": "Binder var -\u003e root type resolved from QueryType/MutationType/SubscriptionType ctor or ObjectType(\"\u003cType\u003e\") arg; field name is the literal decorator string. Dynamically-named fields and set_field()/schema-directive bindings not resolved (honest-partial).",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.python.framework.bottle",
       "category": "http_framework",
       "subcategory": "http_backend",
@@ -44750,6 +44934,190 @@
             "status": "full",
             "cites": ["internal/custom/python/extractors_test.go","internal/custom/python/flask.go"],
             "verified_at": "2026-05-30"
+          }
+        }
+      }
+    },
+    {
+      "id": "lang.python.framework.graphene",
+      "category": "http_framework",
+      "subcategory": "http_backend",
+      "language": "python",
+      "label": "Graphene GraphQL",
+      "capabilities": {
+        "Routing": {
+          "endpoint_synthesis": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3620",
+            "notes": "graphene.ObjectType Query/Mutation/Subscription root classes; resolve_\u003cfield\u003e methods and graphene.\u003cX\u003e(...) class-attribute fields -\u003e http:GRAPHQL:/graphql/\u003cRoot\u003e/\u003cfield\u003e, identical shape to Strawberry/gqlgen. synthesizeGraphene.",
+            "verified_at": "2026-06-02"
+          },
+          "handler_attribution": {
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3620",
+            "notes": "resolve_\u003cfield\u003e method is the handler; source_handler=SCOPE.Operation:\u003cRoot\u003e.resolve_\u003cfield\u003e rebinds to a HANDLES edge. Default-resolver fields (no method) emitted honest-partial with the conventional resolver name.",
+            "verified_at": "2026-06-02"
+          },
+          "route_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_synthesis.go","internal/engine/http_endpoint_synthesis_graphene_ariadne_3620_test.go","internal/engine/httproutes/canonicalize.go"],
+            "issue": "3620",
+            "notes": "Operation endpoints synthesised from root-class fields; field name is the snake_case attribute (no name mangling). Dynamic/programmatically-named fields not resolved (honest-partial).",
+            "verified_at": "2026-06-02"
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "request_validation": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Data": {
+          "db_effect": {
+            "status": "missing",
+            "issue": "3620"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "3620"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "3620"
           }
         }
       }

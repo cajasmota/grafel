@@ -1,15 +1,15 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 40 (19 active · 21 placeholder) · **Frameworks**: 216 · **ORMs**: 152 · **Tools**: 111 · **Other**: 134
+**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 218 · **ORMs**: 152 · **Tools**: 111 · **Other**: 134
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
 | [JS/TS](by-language/jsts.md) | 30 | 21 | 18 | 2 |
+| [python](by-language/python.md) | 23 | 15 | 17 | 6 |
 | [java](by-language/java.md) | 21 | 10 | 14 | 3 |
-| [python](by-language/python.md) | 21 | 15 | 17 | 6 |
 | [C/C++](by-language/c-cpp.md) | 19 | 16 | 7 | 4 |
 | [go](by-language/go.md) | 18 | 8 | 17 | 0 |
 | [kotlin](by-language/kotlin.md) | 17 | 0 | 7 | 0 |
@@ -47,7 +47,6 @@
 
 | Language |
 |---|
-| [Avro](by-language/avro.md) |
 | [Bicep](by-language/bicep.md) |
 | [Clojure](by-language/clojure.md) |
 | [Crystal](by-language/crystal.md) |
@@ -56,7 +55,6 @@
 | [F#](by-language/fsharp.md) |
 | [Haskell](by-language/haskell.md) |
 | [Idris](by-language/idris.md) |
-| [Jsonschema](by-language/jsonschema.md) |
 | [Lisp](by-language/lisp.md) |
 | [Nim](by-language/nim.md) |
 | [OCaml](by-language/ocaml.md) |
@@ -69,4 +67,4 @@
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 216 frameworks · 111 tools · 152 ORMs · 134 other
+Total: 218 frameworks · 111 tools · 152 ORMs · 134 other
