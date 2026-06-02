@@ -61260,8 +61260,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_ruby.go","internal/substrate/dataflow_ruby_test.go"],
+            "issue": "3947",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872): new Ruby sniffer (internal/substrate/dataflow_ruby.go) mirroring the python/jsts model — intra-method assignment tracking over `def…end` bodies + multi-hop (≤DataFlowMaxHops=3) local same-file method-call propagation, each bound by exact positional index, AND cross-file boundary emission continued by the links pass into resolved same-repo callees (continueDataFlowRuby). Sources: params[:x]/params['x'] (symbol/string keys), params.fetch(:x), Rails strong params params.require(:m).permit(:a,:b) with each permitted attribute as a field (recovered at user_params[:a] reads), request.body. Sinks: ActiveRecord write (Model.create/.update/.save/.new), raw SQL ActiveRecord::Base.connection.execute, response (render json:/plain:/redirect_to/send_*), outbound HTTP (Net::HTTP/Faraday/HTTParty/RestClient/Excon). HONEST-PARTIAL (precision-first): drops reassignment, dynamic keys (params[k]), embedded-arg, splat/keyword-arg call sites, recursion/cycle, the 4th hop, external/unresolved imports; whole-hash mass-assignment of a strong-params var flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). Java/PHP request_sink_dataflow remain follow-up. Grape: params[:x] sources + DB/response/HTTP sinks (shared sniffer).",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -62343,8 +62346,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_ruby.go","internal/substrate/dataflow_ruby_test.go"],
+            "issue": "3947",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872): new Ruby sniffer (internal/substrate/dataflow_ruby.go) mirroring the python/jsts model — intra-method assignment tracking over `def…end` bodies + multi-hop (≤DataFlowMaxHops=3) local same-file method-call propagation, each bound by exact positional index, AND cross-file boundary emission continued by the links pass into resolved same-repo callees (continueDataFlowRuby). Sources: params[:x]/params['x'] (symbol/string keys), params.fetch(:x), Rails strong params params.require(:m).permit(:a,:b) with each permitted attribute as a field (recovered at user_params[:a] reads), request.body. Sinks: ActiveRecord write (Model.create/.update/.save/.new), raw SQL ActiveRecord::Base.connection.execute, response (render json:/plain:/redirect_to/send_*), outbound HTTP (Net::HTTP/Faraday/HTTParty/RestClient/Excon). HONEST-PARTIAL (precision-first): drops reassignment, dynamic keys (params[k]), embedded-arg, splat/keyword-arg call sites, recursion/cycle, the 4th hop, external/unresolved imports; whole-hash mass-assignment of a strong-params var flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). Java/PHP request_sink_dataflow remain follow-up. Rails: params[:x]/strong-params permit + ActiveRecord/render sinks.",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "full",
@@ -62908,8 +62914,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/links/dataflow_pass.go","internal/substrate/dataflow.go","internal/substrate/dataflow_ruby.go","internal/substrate/dataflow_ruby_test.go"],
+            "issue": "3947",
+            "notes": "SCOPED request-input → sink DATA_FLOWS_TO (#3628 area #22, epic #3872): new Ruby sniffer (internal/substrate/dataflow_ruby.go) mirroring the python/jsts model — intra-method assignment tracking over `def…end` bodies + multi-hop (≤DataFlowMaxHops=3) local same-file method-call propagation, each bound by exact positional index, AND cross-file boundary emission continued by the links pass into resolved same-repo callees (continueDataFlowRuby). Sources: params[:x]/params['x'] (symbol/string keys), params.fetch(:x), Rails strong params params.require(:m).permit(:a,:b) with each permitted attribute as a field (recovered at user_params[:a] reads), request.body. Sinks: ActiveRecord write (Model.create/.update/.save/.new), raw SQL ActiveRecord::Base.connection.execute, response (render json:/plain:/redirect_to/send_*), outbound HTTP (Net::HTTP/Faraday/HTTParty/RestClient/Excon). HONEST-PARTIAL (precision-first): drops reassignment, dynamic keys (params[k]), embedded-arg, splat/keyword-arg call sites, recursion/cycle, the 4th hop, external/unresolved imports; whole-hash mass-assignment of a strong-params var flows with field=\"\". DEPLOY-DEFERRED (daemon not rebuilt). Java/PHP request_sink_dataflow remain follow-up. Sinatra: params['x'] sources + render/erb response and DB/HTTP sinks (shared sniffer).",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
