@@ -23687,38 +23687,41 @@
       "category": "orm",
       "subcategory": "orm_mapper",
       "language": "jsts",
-      "label": "neo4j-driver (JS)",
+      "label": "neo4j-driver (JS) / neogma OGM",
       "capabilities": {
         "Models": {
           "model_extraction": {
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "not_applicable",
-            "issue": "3069",
-            "notes": "Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069."
+            "status": "partial",
+            "cites": ["internal/custom/javascript/neogma.go","internal/custom/javascript/neogma_test.go"],
+            "issue": "3610",
+            "notes": "neogma OGM (not just the raw driver): each ModelFactory({ label, schema, relationships }) call is extracted as a SCOPE.Schema/node keyed on its Neo4j `label`. Regex over the balanced config object; partial (schema field types not individually emitted).",
+            "verified_at": "2026-06-02"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "not_applicable",
-            "issue": "3069",
-            "notes": "Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069."
+            "status": "partial",
+            "cites": ["internal/custom/javascript/neogma.go"],
+            "issue": "3610",
+            "notes": "neogma relationships.\u003ckey\u003e entries are extracted as SCOPE.Component/relationship entities carrying relation_type, direction, and target_model/target_node."
           },
           "foreign_key_extraction": {
             "status": "not_applicable",
-            "issue": "3069",
-            "notes": "Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069."
+            "notes": "graph DB — no foreign-key concept"
           },
           "lazy_loading_recognition": {
             "status": "not_applicable",
-            "issue": "3069",
-            "notes": "Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069."
+            "notes": "graph DB — no lazy-loading concept"
           },
           "relationship_extraction": {
-            "status": "not_applicable",
-            "issue": "3069",
-            "notes": "Raw driver binding executes SQL/query strings directly; no ORM model layer, no schema declarations, no associations, no FK definitions, no lazy-loading. N/A per issue #3069."
+            "status": "full",
+            "cites": ["internal/custom/javascript/neogma.go","internal/custom/javascript/neogma_test.go"],
+            "issue": "3610",
+            "notes": "neogma ModelFactory relationships ({ model: Target, name: 'REL_TYPE', direction: 'out'|'in' }) are extracted AND emitted as traversable GRAPH_RELATES graph-schema edges owner-node -\u003e target-node (mirrors the Java SDN template #3663 / JOINS_COLLECTION for graph DBs); the domain graph topology is a navigable subgraph rather than opaque string props. Full for same-file ModelFactory `model:` bindings (value-asserting test TestNeogmaGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-\u003e Movie; direction 'in' -\u003e INCOMING). Cross-file model references are honest-partial (kept as target_model props only). Reverses the #3635 datastore-pass downgrade for this OGM.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
@@ -40420,33 +40423,41 @@
       "category": "orm",
       "subcategory": "orm_mapper",
       "language": "python",
-      "label": "neo4j (Python driver)",
+      "label": "neo4j (Python driver) / neomodel OGM",
       "capabilities": {
         "Models": {
           "model_extraction": {
             "status": "not_applicable"
           },
           "schema_extraction": {
-            "status": "not_applicable",
-            "notes": "NoSQL driver — no relational schema model"
+            "status": "partial",
+            "cites": ["internal/custom/python/neo4j_neomodel.go","internal/custom/python/neo4j_neomodel_test.go"],
+            "issue": "3609",
+            "notes": "neomodel OGM (not just the raw driver): each StructuredNode subclass is extracted as a SCOPE.Schema/node (the graph node label) and each *Property() attribute as a SCOPE.Schema/property. Regex over class bodies; partial (no inheritance/mixin StructuredNode resolution).",
+            "verified_at": "2026-06-02"
           }
         },
         "Relationships": {
           "association_extraction": {
-            "status": "not_applicable",
-            "notes": "raw driver — no ORM relationship model"
+            "status": "partial",
+            "cites": ["internal/custom/python/neo4j_neomodel.go"],
+            "issue": "3609",
+            "notes": "neomodel RelationshipTo/RelationshipFrom attributes are extracted as SCOPE.Component/relationship entities carrying relation_type, direction, and target_node."
           },
           "foreign_key_extraction": {
             "status": "not_applicable",
-            "notes": "raw driver — no ORM relationship model"
+            "notes": "graph DB — no foreign-key concept"
           },
           "lazy_loading_recognition": {
             "status": "not_applicable",
-            "notes": "raw driver — no ORM relationship model"
+            "notes": "graph DB — no lazy-loading concept"
           },
           "relationship_extraction": {
-            "status": "not_applicable",
-            "notes": "raw driver — no ORM relationship model"
+            "status": "full",
+            "cites": ["internal/custom/python/neo4j_neomodel.go","internal/custom/python/neo4j_neomodel_test.go"],
+            "issue": "3609",
+            "notes": "neomodel RelationshipTo/RelationshipFrom('Target','REL_TYPE') fields are extracted AND emitted as traversable GRAPH_RELATES graph-schema edges owner-node -\u003e target-node (mirrors the Java SDN template #3663 / JOINS_COLLECTION for graph DBs); the domain graph topology is a navigable subgraph rather than opaque string props. Full for same-file StructuredNode targets (value-asserting test TestNeomodelGraphRelatesEdge: Person -GRAPH_RELATES(ACTED_IN,OUTGOING)-\u003e Movie; RelationshipFrom -\u003e INCOMING). Cross-file target labels are honest-partial (kept as target_node props only). Reverses the #3635 datastore-pass downgrade for this OGM.",
+            "verified_at": "2026-06-02"
           }
         },
         "Queries": {
