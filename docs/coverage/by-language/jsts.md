@@ -135,7 +135,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | 🟡 8/9 | |
 | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟡 8/11 | |
 | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | 🟡 1/4 | |
-| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 5/8 | |
+| [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 7/10 | |
 | [Objection.js](../detail/lang.jsts.orm.objection.md) | 🟡 8/11 | |
 | [Prisma](../detail/lang.jsts.orm.prisma.md) | 🟡 8/10 | |
 | [Sequelize](../detail/lang.jsts.orm.sequelize.md) | 🟢 11/11 | |

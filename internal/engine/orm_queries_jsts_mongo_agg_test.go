@@ -622,3 +622,36 @@ async function joined() {
 		t.Errorf("correlated join must not carry local/foreign fields: %+v", jg.Properties)
 	}
 }
+
+// #3844: Mongoose model with two $lookup stages → two distinct
+// JOINS_COLLECTION edges with the joined-collection node ids asserted.
+func TestMongoAgg_Mongoose_MultiLookup_3844(t *testing.T) {
+	src := `
+const mongoose = require('mongoose');
+async function withRefs() {
+  return Book.aggregate([
+    { $lookup: { from: 'authors', localField: 'authorId', foreignField: '_id', as: 'author' } },
+    { $lookup: { from: 'publishers', localField: 'publisherId', foreignField: '_id', as: 'publisher' } },
+  ]);
+}
+`
+	_, rels := runMongoAgg(t, src)
+
+	ja := findJoinTo(rels, "Author")
+	if ja == nil {
+		t.Fatalf("expected JOINS_COLLECTION Class:Book -> Class:Author; rels=%+v", rels)
+	}
+	if ja.FromID != "Class:Book" {
+		t.Errorf("author join from = %q, want Class:Book", ja.FromID)
+	}
+	if ja.Properties["as"] != "author" {
+		t.Errorf("author join as = %q, want author", ja.Properties["as"])
+	}
+	jp := findJoinTo(rels, "Publisher")
+	if jp == nil || jp.FromID != "Class:Book" {
+		t.Fatalf("expected JOINS_COLLECTION Class:Book -> Class:Publisher; rels=%+v", rels)
+	}
+	if len(rels) != 2 {
+		t.Fatalf("expected exactly 2 $lookup join edges, got %d: %+v", len(rels), rels)
+	}
+}

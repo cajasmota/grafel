@@ -40144,10 +40144,10 @@
         },
         "Relationships": {
           "association_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mongoose.go"],
-            "issue": "3064",
-            "notes": "reMongoosePopulate captures .populate() traversal calls (navigate-to-ref); the definition-side ref: field in Schema() is not extracted, so reference declarations are missing"
+            "status": "full",
+            "cites": ["internal/custom/javascript/mongoose.go","internal/engine/orm_queries_jsts_mongoose_populate.go","internal/engine/orm_queries_jsts_mongoose_populate_test.go"],
+            "issue": "3844",
+            "notes": "scanJSMongoosePopulateJoins (#3844) now parses the definition-side ref: field in both new Schema({...}) literals and @nestjs/mongoose @Prop({ref:'X'}) decorators, couples it to a static .populate('field') traversal, and emits a JOINS_COLLECTION edge (Class:Model -\u003e Class:ref) matching the $lookup contract; reMongoosePopulate also still captures the populate call as a query entity"
           },
           "foreign_key_extraction": {
             "status": "not_applicable",
@@ -40160,10 +40160,10 @@
             "notes": "Mongoose/MongoDB has no lazy-loading mechanism"
           },
           "relationship_extraction": {
-            "status": "partial",
-            "cites": ["internal/custom/javascript/extractors_coverage_test.go","internal/custom/javascript/mongoose.go"],
-            "issue": "3064",
-            "notes": ".populate() traversals are captured as query entities; schema-level ref: declarations (the definition side of Mongoose associations) are not parsed"
+            "status": "full",
+            "cites": ["internal/custom/javascript/mongoose.go","internal/engine/orm_queries_jsts_mongoose_populate.go","internal/engine/orm_queries_jsts_mongoose_populate_test.go"],
+            "issue": "3844",
+            "notes": "schema-level ref: declarations (the definition side of Mongoose associations) are now parsed from new Schema({...}) literals and @nestjs/mongoose @Prop({ref:'X'}) decorators and, when traversed by a static .populate('field'), emitted as JOINS_COLLECTION reference-join edges (#3844); dynamic ref / dynamic populate stay unresolved (honest-partial boundary)"
           }
         },
         "Queries": {
@@ -40186,6 +40186,22 @@
           "transaction_function_stamping": {
             "status": "missing",
             "issue": "3628-transaction-function-stamping"
+          }
+        }
+      },
+      "framework_specific": {
+        "Aggregation Joins": {
+          "aggregation_join_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/orm_queries_jsts_mongo_agg.go","internal/engine/orm_queries_jsts_mongo_agg_test.go"],
+            "issue": "3844",
+            "notes": "scanJSMongoAggregation parses Model.aggregate([...]) pipelines (inline array, same-scope variable binding, and fluent .build() builder forms), emitting one SCOPE.DataAccess stage node per stage and a JOINS_COLLECTION edge (Class:Model -\u003e Class:from) for every $lookup / $graphLookup with a static from; matches the Python pymongo/motor contract and feeds shared_db_coupling.go (Pass 8.8). Dynamic from is honestly skipped"
+          },
+          "populate_reference_join_extraction": {
+            "status": "full",
+            "cites": ["internal/engine/orm_queries_jsts_mongoose_populate.go","internal/engine/orm_queries_jsts_mongoose_populate_test.go"],
+            "issue": "3844",
+            "notes": "scanJSMongoosePopulateJoins emits a JOINS_COLLECTION edge for Mongoose ref:/@Prop(ref) fields that are traversed by a static .populate('field') — the dominant NestJS-target join idiom — bringing ref/populate to parity with the $lookup join contract"
           }
         }
       }

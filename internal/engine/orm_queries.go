@@ -169,6 +169,12 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 			func(ent types.EntityRecord) { entities = append(entities, ent) },
 			func(rel types.RelationshipRecord) { relationships = append(relationships, rel) },
 		)
+		// Sibling pass: Mongoose / @nestjs/mongoose `ref:` + `.populate()`
+		// reference joins → JOINS_COLLECTION edges, matching the $lookup
+		// contract (#3844). Captures the dominant NestJS-target join idiom.
+		scanJSMongoosePopulateJoins(src, path, lang,
+			func(rel types.RelationshipRecord) { relationships = append(relationships, rel) },
+		)
 	case "go":
 		scanGoORM(src, funcs, emit)
 		scanInfra()
