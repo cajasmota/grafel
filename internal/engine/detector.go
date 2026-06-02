@@ -712,6 +712,13 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	applyPass(applyWebSocketSynthesis)
 	applyPass(applySSESynthesis)
 	applyPass(applyGraphQLSubscriptionSynthesis)
+	// #3682 (epic #3628 area #7): realtime-endpoint synthesis. Emits the
+	// endpoint-shaped, queryable, cross-linkable view of WebSocket / SSE /
+	// SignalR / Phoenix Channels handlers — http_endpoint_definition entities
+	// with verb=WS|SSE + route_path + a HANDLES edge to the handler — so the
+	// `endpoints` / `find` tools surface realtime endpoints alongside REST
+	// routes. Additive on top of the ChannelEvent/Stream passes above.
+	applyPass(applyRealtimeEndpointSynthesis)
 	// #728: Scheduled-job entry-point detection. Emits SCOPE.ScheduledJob
 	// entities + TRIGGERS edges for every major scheduler framework across
 	// Python, Node, Java/Kotlin, Go; plus Kubernetes CronJob YAML and

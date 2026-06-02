@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 216 · **ORMs**: 152 · **Tools**: 111 · **Other**: 126
+**Languages**: 38 (19 active · 19 placeholder) · **Frameworks**: 216 · **ORMs**: 152 · **Tools**: 111 · **Other**: 128
 
 ## Coverage by language
 
@@ -15,7 +15,7 @@
 | [kotlin](by-language/kotlin.md) | 17 | 0 | 7 | 0 |
 | [C#](by-language/csharp.md) | 16 | 7 | 14 | 0 |
 | [php](by-language/php.md) | 15 | 6 | 14 | 0 |
-| [elixir](by-language/elixir.md) | 14 | 5 | 10 | 2 |
+| [elixir](by-language/elixir.md) | 14 | 5 | 10 | 3 |
 | [rust](by-language/rust.md) | 14 | 6 | 15 | 3 |
 | [scala](by-language/scala.md) | 14 | 3 | 6 | 0 |
 | [ruby](by-language/ruby.md) | 8 | 6 | 13 | 1 |
@@ -33,13 +33,13 @@
 |---|---:|---:|---:|---:|
 | [Databases](by-category/databases.md) | 11 | 0 | 7 | 4 |
 | [Platform / k8s](by-category/platform.md) | 26 | 19 | 7 | 0 |
-| [Message Brokers](by-category/message_broker.md) | 20 | 9 | 9 | 2 |
+| [Message Brokers](by-category/message_broker.md) | 21 | 9 | 9 | 3 |
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
 | [Security](by-category/security.md) | 10 | 3 | 0 | 7 |
 | [Observability](by-category/observability.md) | 9 | 1 | 1 | 7 |
 | [Protocols](by-category/protocol.md) | 8 | 3 | 3 | 2 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 100 | 39 | 35 | 26 |
+| **Total** | 101 | 39 | 35 | 27 |
 
 ## Languages with extractor support, no records yet
 
@@ -67,4 +67,4 @@
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 216 frameworks · 111 tools · 152 ORMs · 126 other
+Total: 216 frameworks · 111 tools · 152 ORMs · 128 other
