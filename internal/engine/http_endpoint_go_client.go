@@ -19,6 +19,14 @@
 //     resty.New().R().Get(url), .Post(url), .Put(url), .Patch(url),
 //     .Delete(url), .Head(url), .Options(url)
 //
+//   - req (github.com/imroc/req):
+//     req.Get(url), req.Post(url), req.Put(url), req.Patch(url),
+//     req.Delete(url), req.Head(url), req.Options(url)  (package-level)
+//     req.C().R().Get(url), client.R().Post(url)  (chained — shares the
+//     `.R().<verb>(url)` matcher with resty since the request-object suffix
+//     is identical; the framework label there stays "resty" by construction,
+//     so the req package-level forms below are what give req its own label)
+//
 //   - fasthttp (github.com/valyala/fasthttp):
 //     fasthttp.Get(dst, url), fasthttp.Post(dst, url, ...)
 //     client.Do(req) with req.SetRequestURI(url) (verb inferred from
@@ -120,6 +128,41 @@ var goRestyVerbRe = regexp.MustCompile(
 		`|` +
 		`([A-Za-z_][\w]*)` + // group 4: identifier url
 		`)`,
+)
+
+// ---------------------------------------------------------------------------
+// req (github.com/imroc/req)
+// ---------------------------------------------------------------------------
+
+// goReqPkgVerbRe matches package-level req verbs:
+// `req.Get(url)`, `req.Post(url, ...)`, `req.Put/Patch/Delete/Head/Options(url)`.
+// req's chained request-object form (`req.C().R().Get(url)` /
+// `client.R().Post(url)`) is already covered by goRestyVerbRe, which matches
+// any `.R().<verb>(url)` suffix regardless of receiver. This matcher covers
+// ONLY the package-level shorthand, which is anchored on the `req.` receiver
+// and a verb that is NOT one of the net/http package-level names (those are
+// claimed by goHTTPPkgVerbRe on the `http.` receiver). The leading `\b`
+// boundary plus the explicit `req` receiver keeps this from colliding with
+// fasthttp's `req.SetRequestURI` / `req.Header` (those method names are not
+// in the verb alternation).
+var goReqPkgVerbRe = regexp.MustCompile(
+	`\breq\s*\.\s*(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*(?:` +
+		`"([^"\n\r]+)"` + // group 2: double-quoted literal
+		`|` +
+		"`([^`\n\r]+)`" + // group 3: backtick literal
+		`|` +
+		`([A-Za-z_][\w]*)` + // group 4: bare identifier
+		`)`,
+)
+
+// goReqPkgEnvVerbRe matches `req.<Verb>(os.Getenv("X") + "/path")`.
+//
+// Capture groups:
+//
+//	1 = verb
+//	2 = path suffix
+var goReqPkgEnvVerbRe = regexp.MustCompile(
+	`\breq\s*\.\s*(Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*os\.Getenv\s*\([^)]+\)\s*\+\s*"([^"\n\r]*)"`,
 )
 
 // ---------------------------------------------------------------------------
@@ -361,6 +404,25 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		emit(verb, canonical, "resty", "Function", caller, false)
 	}
 
+	// ----- req package-level: req.Get/Post/Put/Patch/Delete/Head/Options -----
+	for _, m := range goReqPkgVerbRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 10 {
+			continue
+		}
+		verb := strings.ToUpper(content[m[2]:m[3]])
+		raw := goPickURLArg(content, m, 4, syms)
+		if raw == "" {
+			continue
+		}
+		path, ok := normalizeRawClientPath(raw) // #807
+		if !ok {
+			continue
+		}
+		caller := enclosingGoFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, path)
+		emit(verb, canonical, "req", "Function", caller, false)
+	}
+
 	// ----- fasthttp package-level: fasthttp.Get / fasthttp.Post -----
 	for _, m := range goFasthttpPkgVerbRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 10 {
@@ -476,6 +538,22 @@ func synthesizeGoClientWithRuntime(content string, emit goClientEmitFn) {
 		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, suffix)
 		emit(verb, canonical, "resty", "Function", caller, true)
 	}
+
+	// ----- req package-level: req.<Verb>(os.Getenv("X") + "/path") -----
+	for _, m := range goReqPkgEnvVerbRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 6 {
+			continue
+		}
+		verb := strings.ToUpper(content[m[2]:m[3]])
+		suffix := content[m[4]:m[5]]
+		suffix, suffixOK := normalizeRawClientPath(suffix) // #807
+		if !suffixOK {
+			continue
+		}
+		caller := enclosingGoFuncAt(funcs, m[0])
+		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, suffix)
+		emit(verb, canonical, "req", "Function", caller, true)
+	}
 }
 
 // ---------------------------------------------------------------------------
@@ -489,6 +567,13 @@ func goHasAnyHTTPClient(content string) bool {
 		strings.Contains(content, "http.NewRequest") ||
 		strings.Contains(content, "resty.") ||
 		strings.Contains(content, ".R().") ||
+		strings.Contains(content, "req.Get") ||
+		strings.Contains(content, "req.Post") ||
+		strings.Contains(content, "req.Put") ||
+		strings.Contains(content, "req.Patch") ||
+		strings.Contains(content, "req.Delete") ||
+		strings.Contains(content, "req.Head") ||
+		strings.Contains(content, "req.Options") ||
 		strings.Contains(content, "fasthttp.") ||
 		strings.Contains(content, "SetRequestURI") ||
 		strings.Contains(content, "os.Getenv") ||

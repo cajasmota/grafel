@@ -56,10 +56,10 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [go](../by-language/go.md) | [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [go](../by-language/go.md) | [Revel](../detail/lang.go.framework.revel.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [go](../by-language/go.md) | [chi](../detail/lang.go.framework.chi.md) | 🟢 3/3 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
-| [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 5/5 | |
+| [go](../by-language/go.md) | [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [go](../by-language/go.md) | [go-zero](../detail/lang.go.framework.go-zero.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [go](../by-language/go.md) | [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/7 | |
-| [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
+| [go](../by-language/go.md) | [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟢 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [JS/TS](../by-language/jsts.md) | [Express](../detail/lang.jsts.framework.express.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [JS/TS](../by-language/jsts.md) | [Fastify](../detail/lang.jsts.framework.fastify.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/22 | 🟢 7/7 | |
@@ -117,8 +117,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [ruby](../by-language/ruby.md) | [Hanami](../detail/lang.ruby.framework.hanami.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [Padrino](../detail/lang.ruby.framework.padrino.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
 | [ruby](../by-language/ruby.md) | [Roda](../detail/lang.ruby.framework.roda.md) | 🟢 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
-| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟡 22/23 | 🟢 6/6 | |
-| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ✅ 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |
+| [ruby](../by-language/ruby.md) | [Ruby on Rails](../detail/lang.ruby.framework.rails.md) | ✅ 3/3 | ✅ 1/1 | — | ✅ 1/1 | 🟡 22/23 | 🟢 7/7 | |
+| [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | ✅ 3/3 | 🟢 1/1 | — | 🟢 1/1 | 🟡 21/23 | 🟢 7/7 | |
 | [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟢 2/2 | — | 🟢 1/1 | 🟢 1/1 | 🟡 21/23 | 🟢 5/5 | |
 | [ruby](../by-language/ruby.md) | [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/7 | |
 | [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | ✅ 3/3 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/23 | 🟢 6/6 | |

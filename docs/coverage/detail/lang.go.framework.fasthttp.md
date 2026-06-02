@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 38
+- **Capability cells:** 39
 
 ## Capabilities
 
@@ -93,6 +93,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_golang.go` | — |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | — | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern.go`<br>`internal/substrate/template_pattern_golang.go` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_golang.go` | — |
+
+## Framework-specific
+
+### Integration
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Client consumes API | 🟢 `partial` | `2026-06-02` | — | `internal/engine/http_endpoint_go_client.go`<br>`internal/engine/http_endpoint_go_client_test.go`<br>`internal/links/http_pass.go` | Outbound HTTP-client synthesis via synthesizeGoClient also covers fasthttp (fasthttp.Get/Post package-level + client.Do with req.SetRequestURI + req.Header.SetMethod verb inference) alongside net/http, resty, and req=github.com/imroc/req. Emits consumer http_endpoint_call http:<VERB>:<path> + FETCHES edge cross-repo-linked by links/http_pass.go on the byte-identical synthetic id. Tests TestGoClient_FasthttpGet/_FasthttpSetRequestURI + TestGoClient_Req*. Honest-partial: fully-dynamic URLs skipped. |
 
 ## Provenance
 

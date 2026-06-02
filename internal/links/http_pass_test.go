@@ -675,6 +675,82 @@ func TestHTTPPass_StaticPathsUnaffected(t *testing.T) {
 	}
 }
 
+// TestHTTPPass_GoReqClientCrossRepoMatch verifies that a Go consumer synthetic
+// emitted by the github.com/imroc/req package-level extractor
+// (synthesizeGoClientWithRuntime → http_endpoint_call "http:GET:/api/v1/users",
+// framework "req") cross-repo-links to a Go server route exposing the same
+// canonical (verb, path). This is the cross-repo orphan-gap the req extension
+// closes: the consumer is a Go `.go` file, the producer is a Go handler, and
+// they join purely on the byte-identical synthetic ID — no framework-label
+// coupling. Mirrors TestHTTPPass_ProducerConsumerMatch with both sides Go.
+func TestHTTPPass_GoReqClientCrossRepoMatch(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "users-svc",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "ListUsers", "kind": "Function", "source_file": "handlers/users.go"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/users", "kind": "http_endpoint",
+				"source_file": "handlers/users.go",
+				"properties": map[string]any{
+					"verb":         "GET",
+					"path":         "/api/v1/users",
+					"framework":    "gin",
+					"pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "orders-svc",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "listUsers", "kind": "Function", "source_file": "client/users.go"},
+			{
+				"id": "ep2", "name": "http:GET:/api/v1/users", "kind": "http_endpoint",
+				"source_file": "client/users.go",
+				"properties": map[string]any{
+					"verb":          "GET",
+					"path":          "/api/v1/users",
+					"framework":     "req",
+					"pattern_type":  "http_endpoint_client_synthesis",
+					"source_caller": "Function:listUsers",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g-go-req", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g-go-req-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var hit *Link
+	for i, l := range doc.Links {
+		if l.Method == MethodHTTP {
+			hit = &doc.Links[i]
+			break
+		}
+	}
+	if hit == nil {
+		t.Fatalf("expected a cross-repo http link for the Go req client → Go route; got %+v", doc.Links)
+	}
+	if hit.Source != "orders-svc::fn1" {
+		t.Errorf("source: want orders-svc::fn1 (resolved Go req caller), got %s", hit.Source)
+	}
+	if hit.Target != "users-svc::h1" {
+		t.Errorf("target: want users-svc::h1 (resolved Go handler), got %s", hit.Target)
+	}
+	if hit.Identifier == nil || *hit.Identifier != "http:GET:/api/v1/users" {
+		t.Errorf("identifier: want http:GET:/api/v1/users, got %v", hit.Identifier)
+	}
+}
+
 // TestHTTPPass_MixedStaticAndParam verifies mixed paths like /api/v1/users/{pk}
 // match /api/v1/users/{userId} correctly.
 func TestHTTPPass_MixedStaticAndParam(t *testing.T) {

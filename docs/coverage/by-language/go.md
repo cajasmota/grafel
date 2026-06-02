@@ -38,10 +38,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [Revel](../detail/lang.go.framework.revel.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [chi](../detail/lang.go.framework.chi.md) | 🟢 3/3 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
-| [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 5/5 | |
+| [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
 | [go-zero](../detail/lang.go.framework.go-zero.md) | 🟢 3/3 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 | [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟢 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/22 | 🔴 0/7 | |
-| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 6/6 | |
+| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟢 3/3 | — | 🟢 3/3 | 🟢 1/1 | 🟡 21/22 | 🟢 7/7 | |
 
 
 ### Mobile

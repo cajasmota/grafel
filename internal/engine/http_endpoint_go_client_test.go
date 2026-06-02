@@ -285,6 +285,171 @@ func removeRecord() error {
 	requireFetches(t, rels, "http:DELETE:/api/records/42", "go-resty-delete")
 }
 
+// frameworkOf returns the `framework` property of the http_endpoint entity
+// with the given ID, or "" if absent.
+func frameworkOf(res *DetectResult, id string) string {
+	for _, e := range res.Entities {
+		if e.ID == id {
+			return e.Properties["framework"]
+		}
+	}
+	return ""
+}
+
+// TestGoClient_ReqPackageLevel covers github.com/imroc/req package-level
+// verbs req.Get/Post/Put/Patch/Delete with literal URLs, asserting the exact
+// CONSUMES_API synthetic ID, the FETCHES edge, and the `req` framework label.
+func TestGoClient_ReqPackageLevel(t *testing.T) {
+	src := `
+package main
+
+import "github.com/imroc/req/v3"
+
+func listUsers() {
+	resp, _ := req.Get("/api/v1/users")
+	_ = resp
+}
+
+func createUser() {
+	resp, _ := req.Post("/api/v1/users")
+	_ = resp
+}
+
+func replaceUser() {
+	resp, _ := req.Put("/api/v1/users/1")
+	_ = resp
+}
+
+func patchUser() {
+	resp, _ := req.Patch("/api/v1/users/1")
+	_ = resp
+}
+
+func removeUser() {
+	resp, _ := req.Delete("/api/v1/users/1")
+	_ = resp
+}
+`
+	ids, rels := runDetectWithRels(t, "go", "req_client.go", src)
+	want := []string{
+		"http:GET:/api/v1/users",
+		"http:POST:/api/v1/users",
+		"http:PUT:/api/v1/users/1",
+		"http:PATCH:/api/v1/users/1",
+		"http:DELETE:/api/v1/users/1",
+	}
+	requireContains(t, ids, want, "go-req-package-level")
+	requireFetches(t, rels, "http:GET:/api/v1/users", "go-req-package-level")
+	requireFetches(t, rels, "http:POST:/api/v1/users", "go-req-package-level")
+	requireFetches(t, rels, "http:DELETE:/api/v1/users/1", "go-req-package-level")
+
+	// Framework label must be "req" (not "net_http" / "resty").
+	_, res := runDetect(t, "go", "req_client.go", src)
+	if fw := frameworkOf(res, "http:GET:/api/v1/users"); fw != "req" {
+		t.Errorf("go-req-package-level: framework want req, got %q", fw)
+	}
+}
+
+// TestGoClient_ReqAbsoluteURL verifies that an absolute URL passed to a req
+// package-level verb has its scheme+host stripped to a bare path so the
+// synthetic ID matches a server route declared elsewhere (cross-repo).
+func TestGoClient_ReqAbsoluteURL(t *testing.T) {
+	src := `
+package main
+
+import "github.com/imroc/req/v3"
+
+func fetchInventory() {
+	resp, _ := req.Get("https://inventory-svc/api/v1/items")
+	_ = resp
+}
+`
+	ids, rels := runDetectWithRels(t, "go", "req_abs.go", src)
+	requireContains(t, ids, []string{"http:GET:/api/v1/items"}, "go-req-absolute-url")
+	requireFetches(t, rels, "http:GET:/api/v1/items", "go-req-absolute-url")
+}
+
+// TestGoClient_ReqChainedSharedWithResty verifies that req's chained
+// client-builder form (req.C().R().Get(url)) is detected via the shared
+// `.R().<verb>(url)` matcher. The framework label is "resty" by construction
+// (the suffix is identical), which is acceptable — the cross-repo link only
+// keys on the synthetic ID, not the framework label.
+func TestGoClient_ReqChainedSharedWithResty(t *testing.T) {
+	src := `
+package main
+
+import "github.com/imroc/req/v3"
+
+func ping() {
+	client := req.C()
+	resp, _ := client.R().Get("/api/v1/health")
+	_ = resp
+}
+`
+	ids, rels := runDetectWithRels(t, "go", "req_chained.go", src)
+	requireContains(t, ids, []string{"http:GET:/api/v1/health"}, "go-req-chained")
+	requireFetches(t, rels, "http:GET:/api/v1/health", "go-req-chained")
+}
+
+// TestGoClient_ReqEnvConcat covers req.Get(os.Getenv("X") + "/path")
+// → runtime_dynamic=true with the static suffix as path.
+func TestGoClient_ReqEnvConcat(t *testing.T) {
+	src := `
+package main
+
+import (
+	"os"
+
+	"github.com/imroc/req/v3"
+)
+
+func callRemote() {
+	resp, _ := req.Get(os.Getenv("API_URL") + "/api/v1/status")
+	_ = resp
+}
+`
+	ids, rels := runDetectWithRels(t, "go", "req_env.go", src)
+	requireContains(t, ids, []string{"http:GET:/api/v1/status"}, "go-req-env-concat")
+	requireFetches(t, rels, "http:GET:/api/v1/status", "go-req-env-concat")
+
+	_, res := runDetect(t, "go", "req_env.go", src)
+	found := false
+	for _, e := range res.Entities {
+		if e.ID == "http:GET:/api/v1/status" && e.Properties["runtime_dynamic"] == "true" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("go-req-env-concat: expected runtime_dynamic=true on http:GET:/api/v1/status")
+	}
+}
+
+// TestGoClient_ReqDynamicNoLiteralNegative verifies that a fully-dynamic req
+// URL (no static path literal) emits NO synthetic — honest-partial: we never
+// fabricate a path.
+func TestGoClient_ReqDynamicNoLiteralNegative(t *testing.T) {
+	src := `
+package main
+
+import (
+	"fmt"
+
+	"github.com/imroc/req/v3"
+)
+
+func fetchDynamic(id int) {
+	resp, _ := req.Get(fmt.Sprintf("%d", id))
+	_ = resp
+}
+`
+	ids, _ := runDetectWithRels(t, "go", "req_dynamic.go", src)
+	for _, id := range ids {
+		if strings.HasPrefix(id, "http:") {
+			t.Errorf("go-req-dynamic-negative: unexpected synthetic %q from fully-dynamic req URL", id)
+		}
+	}
+}
+
 // TestGoClient_ClientDelete covers client.Delete on a net/http client instance.
 func TestGoClient_ClientDelete(t *testing.T) {
 	src := `

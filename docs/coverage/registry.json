@@ -15607,6 +15607,16 @@
             "verified_at": "2026-05-29"
           }
         }
+      },
+      "framework_specific": {
+        "Integration": {
+          "client_consumes_api": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_go_client.go","internal/engine/http_endpoint_go_client_test.go","internal/links/http_pass.go"],
+            "notes": "Outbound HTTP-client synthesis via synthesizeGoClient also covers fasthttp (fasthttp.Get/Post package-level + client.Do with req.SetRequestURI + req.Header.SetMethod verb inference) alongside net/http, resty, and req=github.com/imroc/req. Emits consumer http_endpoint_call http:\u003cVERB\u003e:\u003cpath\u003e + FETCHES edge cross-repo-linked by links/http_pass.go on the byte-identical synthetic id. Tests TestGoClient_FasthttpGet/_FasthttpSetRequestURI + TestGoClient_Req*. Honest-partial: fully-dynamic URLs skipped.",
+            "verified_at": "2026-06-02"
+          }
+        }
       }
     },
     {
@@ -18144,6 +18154,16 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_golang.go"],
             "verified_at": "2026-05-29"
+          }
+        }
+      },
+      "framework_specific": {
+        "Integration": {
+          "client_consumes_api": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_go_client.go","internal/engine/http_endpoint_go_client_test.go","internal/links/http_pass.go"],
+            "notes": "Outbound HTTP-client synthesis (synthesizeGoClient): per call site emits a consumer http_endpoint_call http:\u003cVERB\u003e:\u003cpath\u003e + FETCHES edge, cross-repo-linked to server routes by links/http_pass.go on the byte-identical synthetic id. Covers net/http (http.Get/Post/Head/PostForm/NewRequest, client.\u003cverb\u003e), resty (.R().\u003cverb\u003e), and req=github.com/imroc/req (package-level req.Get/Post/Put/Patch/Delete/Head/Options + chained .R().\u003cverb\u003e); absolute URLs host-stripped to path; fmt.Sprintf + os.Getenv concat -\u003e runtime_dynamic. Value-asserting tests TestGoClient_ReqPackageLevel/_ReqAbsoluteURL/_ReqChainedSharedWithResty/_ReqEnvConcat/_ReqDynamicNoLiteralNegative + cross-repo TestHTTPPass_GoReqClientCrossRepoMatch. Honest-partial: fully-dynamic URLs skipped (no fabricated path).",
+            "verified_at": "2026-06-02"
           }
         }
       }
@@ -51705,6 +51725,16 @@
             "verified_at": "2026-05-28"
           }
         }
+      },
+      "framework_specific": {
+        "Integration": {
+          "client_consumes_api": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_ruby_client.go","internal/engine/http_endpoint_ruby_client_test.go","internal/links/http_pass.go"],
+            "notes": "Outbound HTTP-client synthesis (synthesizeRubyClient), language-wide (not framework-specific to this record): per call site emits a consumer http_endpoint_call http:\u003cVERB\u003e:\u003cpath\u003e + FETCHES edge, cross-repo-linked to server routes by links/http_pass.go on the byte-identical synthetic id. Covers Net::HTTP (class + instance + start-block forms), Faraday (Faraday.\u003cverb\u003e + conn.\u003cverb\u003e), HTTParty (class + include-mixin form), RestClient (class + Resource.new(url).\u003cverb\u003e); absolute URLs host-stripped to path; ENV['X']+'/path' concat -\u003e runtime_dynamic. Value-asserting tests in http_endpoint_ruby_client_test.go. Honest-partial: fully-dynamic URLs skipped (no fabricated path).",
+            "verified_at": "2026-06-02"
+          }
+        }
       }
     },
     {
@@ -52144,6 +52174,16 @@
             "status": "partial",
             "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_ruby.go"],
             "verified_at": "2026-05-28"
+          }
+        }
+      },
+      "framework_specific": {
+        "Integration": {
+          "client_consumes_api": {
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_ruby_client.go","internal/engine/http_endpoint_ruby_client_test.go","internal/links/http_pass.go"],
+            "notes": "Outbound HTTP-client synthesis (synthesizeRubyClient), language-wide (not framework-specific to this record): per call site emits a consumer http_endpoint_call http:\u003cVERB\u003e:\u003cpath\u003e + FETCHES edge, cross-repo-linked to server routes by links/http_pass.go on the byte-identical synthetic id. Covers Net::HTTP (class + instance + start-block forms), Faraday (Faraday.\u003cverb\u003e + conn.\u003cverb\u003e), HTTParty (class + include-mixin form), RestClient (class + Resource.new(url).\u003cverb\u003e); absolute URLs host-stripped to path; ENV['X']+'/path' concat -\u003e runtime_dynamic. Value-asserting tests in http_endpoint_ruby_client_test.go. Honest-partial: fully-dynamic URLs skipped (no fabricated path).",
+            "verified_at": "2026-06-02"
           }
         }
       }

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [ruby](../by-language/ruby.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 38
+- **Capability cells:** 39
 
 ## Capabilities
 
@@ -93,6 +93,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_ruby.go` | — |
 | Template pattern catalog | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_ruby.go` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-28` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_ruby.go` | — |
+
+## Framework-specific
+
+### Integration
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Client consumes API | 🟢 `partial` | `2026-06-02` | — | `internal/engine/http_endpoint_ruby_client.go`<br>`internal/engine/http_endpoint_ruby_client_test.go`<br>`internal/links/http_pass.go` | Outbound HTTP-client synthesis (synthesizeRubyClient), language-wide (not framework-specific to this record): per call site emits a consumer http_endpoint_call http:<VERB>:<path> + FETCHES edge, cross-repo-linked to server routes by links/http_pass.go on the byte-identical synthetic id. Covers Net::HTTP (class + instance + start-block forms), Faraday (Faraday.<verb> + conn.<verb>), HTTParty (class + include-mixin form), RestClient (class + Resource.new(url).<verb>); absolute URLs host-stripped to path; ENV['X']+'/path' concat -> runtime_dynamic. Value-asserting tests in http_endpoint_ruby_client_test.go. Honest-partial: fully-dynamic URLs skipped (no fabricated path). |
 
 ## Provenance
 

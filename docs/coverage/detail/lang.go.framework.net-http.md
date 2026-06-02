@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [go](../by-language/go.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 38
+- **Capability cells:** 39
 
 ## Capabilities
 
@@ -93,6 +93,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_golang.go` | — |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | — | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern.go`<br>`internal/substrate/template_pattern_golang.go` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_golang.go` | — |
+
+## Framework-specific
+
+### Integration
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Client consumes API | 🟢 `partial` | `2026-06-02` | — | `internal/engine/http_endpoint_go_client.go`<br>`internal/engine/http_endpoint_go_client_test.go`<br>`internal/links/http_pass.go` | Outbound HTTP-client synthesis (synthesizeGoClient): per call site emits a consumer http_endpoint_call http:<VERB>:<path> + FETCHES edge, cross-repo-linked to server routes by links/http_pass.go on the byte-identical synthetic id. Covers net/http (http.Get/Post/Head/PostForm/NewRequest, client.<verb>), resty (.R().<verb>), and req=github.com/imroc/req (package-level req.Get/Post/Put/Patch/Delete/Head/Options + chained .R().<verb>); absolute URLs host-stripped to path; fmt.Sprintf + os.Getenv concat -> runtime_dynamic. Value-asserting tests TestGoClient_ReqPackageLevel/_ReqAbsoluteURL/_ReqChainedSharedWithResty/_ReqEnvConcat/_ReqDynamicNoLiteralNegative + cross-repo TestHTTPPass_GoReqClientCrossRepoMatch. Honest-partial: fully-dynamic URLs skipped (no fabricated path). |
 
 ## Provenance
 
