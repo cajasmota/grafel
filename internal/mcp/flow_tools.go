@@ -201,6 +201,10 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		SourceFile string `json:"file,omitempty"`
 		StartLine  int    `json:"line,omitempty"`
 		HopCount   int    `json:"hop_count"`
+		// ViaInherits marks a caller reached by a reverse-INHERITS hop (#3834):
+		// an inheriting subclass stub that exposes this (base) member's
+		// behaviour, not a direct CALLS-site of it.
+		ViaInherits bool `json:"via_inherits,omitempty"`
 		// isTest is excluded from the wire shape (json:"-") — it is an internal
 		// ranking/accounting signal only. #3648: production callers outrank test
 		// callers so they survive the token-budget cap, and the truncation note
@@ -254,6 +258,19 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 					discoveredVia[e.target] = e.kind
 					next = append(next, e.target)
 				}
+				// #3834 (MRO T4): reverse-INHERITS. When `n` is a DEFINING base
+				// member, the subclasses that inherit it (their bodyless stubs)
+				// are legitimate callers — they expose `n`'s behaviour under
+				// their own class. Surface them so neighbors(in) on a base method
+				// reaches the inheriting subclasses.
+				for _, stub := range mroInboundEdges(r, n) {
+					if _, seen := visited[stub]; seen {
+						continue
+					}
+					visited[stub] = d + 1
+					discoveredVia[stub] = inheritsEdgeKind
+					next = append(next, stub)
+				}
 			}
 			frontier = next
 			if len(frontier) == 0 {
@@ -268,6 +285,10 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			}
 			dk := discoveredVia[id]
 			isFileRefEdge := dk == "REFERENCES" || dk == "IMPORTS"
+			// #3834: a reverse-INHERITS caller is a (bodyless) inheriting stub.
+			// It is a legitimate caller of the base member, so it must survive
+			// the shadow/container noise filter exactly like a file-ref edge.
+			isInheritsEdge := dk == inheritsEdgeKind
 			e := byID[id]
 			if e == nil {
 				// #2015: previously a nil byID lookup silently dropped the
@@ -312,7 +333,7 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 			// REFERENCES or IMPORTS the source is a real referencer — keep it.
 			switch classifyNoise(e) {
 			case noiseShadow:
-				if !isFileRefEdge {
+				if !isFileRefEdge && !isInheritsEdge {
 					continue
 				}
 			case noiseContainer:
@@ -327,6 +348,9 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 				StartLine:  e.StartLine,
 				HopCount:   d,
 				isTest:     isTestFileMCP(e.SourceFile),
+			}
+			if isInheritsEdge {
+				c.ViaInherits = true
 			}
 			if verbose {
 				c.Kind = stripScopePrefix(e.Kind)
@@ -501,6 +525,10 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		SourceFile string `json:"file,omitempty"`
 		StartLine  int    `json:"line,omitempty"`
 		HopCount   int    `json:"hop_count"`
+		// ViaInherits marks a callee reached by hopping through an inherited
+		// member's INHERITS edge (#3834) — i.e. the node is a defining base/
+		// mixin member, not a direct CALLS target of the queried entity.
+		ViaInherits bool `json:"via_inherits,omitempty"`
 		// isTest: internal ranking/accounting signal only (json:"-"). #3648.
 		isTest bool `json:"-"`
 	}
@@ -519,8 +547,18 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		}
 
 		// BFS over outbound-only adjacency.
+		//
+		// #3834 (MRO T4): when the walk reaches an inherited-member STUB (empty
+		// CALLS edges — the body lives on a base/mixin), splice a synthetic
+		// INHERITS hop to the DEFINING member so callees reach the real base
+		// implementation instead of dead-ending at the bodyless node.
+		// mroExternal records synthetic external-contract nodes (DRF mixin) so
+		// they render without a backing indexed entity; mroVia marks the
+		// INHERITS-discovered ids so the wire shape can label the hop.
 		adj := r.getAdjacency()
 		visited := map[string]int{target: 0}
+		mroExternal := map[string]*graph.Entity{}
+		mroVia := map[string]bool{}
 		frontier := []string{target}
 		for d := 0; d < depth; d++ {
 			next := []string{}
@@ -531,6 +569,21 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 					}
 					visited[e.target] = d + 1
 					next = append(next, e.target)
+				}
+				for _, me := range mroOutboundEdges(r, n) {
+					if _, seen := visited[me.Target]; seen {
+						continue
+					}
+					visited[me.Target] = d + 1
+					mroVia[me.Target] = true
+					if me.External && me.Contract != nil {
+						mroExternal[me.Target] = me.Contract
+					}
+					// An external contract is a leaf — no fabricated callees;
+					// continue the walk only from in-repo defining members.
+					if !me.External {
+						next = append(next, me.Target)
+					}
 				}
 			}
 			frontier = next
@@ -546,6 +599,9 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 			}
 			e := byID[id]
 			if e == nil {
+				e = mroExternal[id]
+			}
+			if e == nil {
 				continue
 			}
 			c := callee{
@@ -555,6 +611,9 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 				StartLine:  e.StartLine,
 				HopCount:   d,
 				isTest:     isTestFileMCP(e.SourceFile),
+			}
+			if mroVia[id] {
+				c.ViaInherits = true
 			}
 			if verbose {
 				c.Kind = stripScopePrefix(e.Kind)

@@ -291,11 +291,18 @@ type LoadedRepo struct {
 	byIDOnce     sync.Once
 	pagerankOnce sync.Once
 	bm25Once     sync.Once                // #3377: BM25 built lazily on first search
+	mroInOnce    sync.Once                // #3834: reverse-INHERITS map built lazily
 	adjacency    *adjacency               // in/out neighbor lists (#1656)
 	callsAdj     map[string][]string      // CALLS-only forward adjacency (#1656)
 	stepAdj      map[string][]stepEdge    // STEP_IN_PROCESS forward adjacency (#2417)
 	byID         map[string]*graph.Entity // entity ID -> entity (#1656)
 	topKPageRank []string                 // entity IDs sorted descending by PageRank (#2304)
+	// mroInbound maps a DEFINING member's local id -> the inherited-stub ids
+	// that resolve to it via the MRO walk (#3834). It is the reverse of
+	// mroOutboundEdges, used by neighbors(in) so a base method surfaces the
+	// subclasses that inherit it. In-repo defining members only (external
+	// contract endpoints have no in-repo node to query callers of).
+	mroInbound map[string][]string
 
 	semMtime time.Time
 	mtime    time.Time
@@ -326,12 +333,30 @@ func (lr *LoadedRepo) resetIndexes() {
 	lr.byIDOnce = sync.Once{}
 	lr.pagerankOnce = sync.Once{}
 	lr.bm25Once = sync.Once{}
+	lr.mroInOnce = sync.Once{}
 	lr.BM25 = nil
 	lr.adjacency = nil
 	lr.callsAdj = nil
 	lr.stepAdj = nil
 	lr.byID = nil
 	lr.topKPageRank = nil
+	lr.mroInbound = nil
+}
+
+// getMROInbound returns the reverse-INHERITS map (defining-member id ->
+// inheriting-stub ids), building it lazily on first use (#3834). It scans the
+// repo's member entities once and records, for each that resolves to an in-repo
+// defining member via the MRO walk, the defining member's id. Used by
+// neighbors(in) so a base method surfaces its inheriting subclasses as callers.
+func (lr *LoadedRepo) getMROInbound() map[string][]string {
+	// NOTE: deliberately NOT guarded by idxMu — buildMROInbound calls
+	// mroOutboundEdges -> resolveMember -> extendsBases -> getAdjacency, which
+	// itself takes idxMu (a non-reentrant Mutex). sync.Once.Do is independently
+	// safe for concurrent callers, so the Once alone gives build-at-most-once.
+	lr.mroInOnce.Do(func() {
+		lr.mroInbound = buildMROInbound(lr)
+	})
+	return lr.mroInbound
 }
 
 // getByID returns the entity-ID → *Entity map, building it on first use.

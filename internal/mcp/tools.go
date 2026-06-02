@@ -1915,6 +1915,19 @@ func (s *Server) handleShortestPath(ctx context.Context, req mcpapi.CallToolRequ
 					relIdx: -1,              // synthetic — no backing Relationship (#2305)
 				})
 			}
+			// #3834 (MRO T4): splice the inherited-member INHERITS hop so a
+			// shortest path that arrives at a bodyless inherited stub can reach
+			// the DEFINING base/mixin member (in-repo body, or the external pack
+			// contract leaf) instead of dead-ending. The defining member is a
+			// normal node whose own out-edges expand() picks up on the next pop.
+			for _, me := range mroOutboundEdges(r, local) {
+				out = append(out, edge{
+					target: prefixedID(repo, me.Target),
+					kind:   me.Kind,
+					weight: -math.Log(0.95),
+					relIdx: -1, // synthetic — no backing Relationship (#2305)
+				})
+			}
 		}
 		// cross-repo overlay — use cache-backed linksForSourceRepo (#2224)
 		// to avoid stale results after a ref switch.
@@ -1990,6 +2003,25 @@ func normalizePrefixed(lg *LoadedGroup, s string) string {
 		}
 		if e := r.LabelIndex.Lookup(s); e != nil {
 			return prefixedID(r.Repo, e.ID)
+		}
+	}
+	// #3834 (MRO T4): a synthetic external-contract id ("inherits-ext:<FQN>")
+	// is not a stored entity, so it resolves to no LabelIndex hit above. It is
+	// nonetheless a legitimate trace target — the resolution endpoint for an
+	// inherited member whose body lives in an external library. Bind it to the
+	// repo whose inherited stub projects it (the only repo that can reach it).
+	if isExternalContractID(s) {
+		for _, r := range lg.Repos {
+			if r.Doc == nil {
+				continue
+			}
+			for i := range r.Doc.Entities {
+				for _, me := range mroOutboundEdges(r, r.Doc.Entities[i].ID) {
+					if me.External && me.Target == s {
+						return prefixedID(r.Repo, s)
+					}
+				}
+			}
 		}
 	}
 	return ""

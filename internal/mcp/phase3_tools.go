@@ -249,7 +249,7 @@ type defUseSidecarDoc struct {
 }
 
 func (s *Server) handleDefUse(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	groupName, _, errRes := s.resolveAndGroup(req)
+	groupName, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -259,6 +259,15 @@ func (s *Server) handleDefUse(_ context.Context, req mcpapi.CallToolRequest) (*m
 	}
 	entityFilter := strings.TrimSpace(argString(req, "entity_id", ""))
 	limit := argInt(req, "limit", 50)
+
+	// #3834 (MRO T4): an inherited-member STUB has no body, so it owns NO
+	// def-use chains — a def_use query on it would dead-end empty. Resolve the
+	// stub to its in-repo DEFINING member and ALSO accept that member's id, so
+	// def_use on `ChildService.handle` returns the base method's reaching-def
+	// chains. mroDefiningID carries the resolved defining id (local) so matched
+	// entries can be tagged resolved_via_inherits. External (pack) members have
+	// no in-repo body and thus no def-use chains — honest dead-end, no retarget.
+	mroDefiningID, mroDefiningClass := defUseMRORetarget(lg, entityFilter)
 
 	var doc defUseSidecarDoc
 	path := sidecarPath(groupName, "def-use")
@@ -277,11 +286,15 @@ func (s *Server) handleDefUse(_ context.Context, req mcpapi.CallToolRequest) (*m
 		if len(repoFilter) > 0 && !repoFilter[e.Repo] {
 			continue
 		}
+		matchedViaInherits := false
 		if entityFilter != "" {
 			eid := prefixedID(e.Repo, e.EntityID)
-			if eid != entityFilter && e.EntityID != entityFilter {
+			direct := eid == entityFilter || e.EntityID == entityFilter
+			viaMRO := mroDefiningID != "" && e.EntityID == mroDefiningID
+			if !direct && !viaMRO {
 				continue
 			}
+			matchedViaInherits = viaMRO && !direct
 		}
 		chains := make([]map[string]any, len(e.Chains))
 		for i, c := range e.Chains {
@@ -291,14 +304,26 @@ func (s *Server) handleDefUse(_ context.Context, req mcpapi.CallToolRequest) (*m
 				"use_line": c.UseLine,
 			}
 		}
-		out = append(out, map[string]any{
+		entry := map[string]any{
 			"entity_id":   prefixedID(e.Repo, e.EntityID),
 			"name":        e.Name,
 			"repo":        e.Repo,
 			"source_file": e.SourceFile,
 			"chain_count": len(e.Chains),
 			"chains":      chains,
-		})
+		}
+		if matchedViaInherits {
+			// The chains belong to the base/mixin DEFINING member, surfaced
+			// because the queried entity inherits it (#3834). Mark it so the
+			// consumer knows these are the inherited member's chains, not the
+			// stub's own (the stub has none).
+			entry["resolved_via_inherits"] = true
+			entry["queried_entity_id"] = entityFilter
+			if mroDefiningClass != "" {
+				entry["defining_class"] = mroDefiningClass
+			}
+		}
+		out = append(out, entry)
 	}
 	total := len(out)
 	if limit > 0 && len(out) > limit {
