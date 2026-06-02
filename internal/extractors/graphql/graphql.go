@@ -237,7 +237,7 @@ func extractGraphQL(src, filePath string) []types.EntityRecord {
 				// Emit the field as its own SCOPE.Component entity so the
 				// resolver can attach the structural-ref ToID.
 				fieldStartLine := strings.Count(src[:bodyStart], "\n") + 1 + f.lineOffset
-				entities = append(entities, types.EntityRecord{
+				fieldEnt := types.EntityRecord{
 					Name:       name + "." + f.name,
 					Kind:       "SCOPE.Component",
 					Subtype:    "field",
@@ -246,7 +246,22 @@ func extractGraphQL(src, filePath string) []types.EntityRecord {
 					StartLine:  fieldStartLine,
 					EndLine:    fieldStartLine,
 					Signature:  name + "." + f.name,
-				})
+				}
+				// #4006 — auth_coverage: a recognised field-level auth directive
+				// (@hasRole(role: ADMIN) / @auth / @isAuthenticated / @hasScope)
+				// stamps the auth contract on the field node. Roles/scopes are
+				// comma-joined; a bare @auth carries auth_required with no roles.
+				if f.authReq {
+					fieldEnt.Properties = map[string]string{
+						"auth_required":   "true",
+						"auth_method":     "graphql_directive",
+						"auth_confidence": "0.9",
+					}
+					if f.authRoles != "" {
+						fieldEnt.Properties["auth_roles"] = f.authRoles
+					}
+				}
+				entities = append(entities, fieldEnt)
 			}
 		}
 
@@ -458,6 +473,53 @@ type fieldHit struct {
 	name       string
 	typeExpr   string // the raw GraphQL type expression, e.g. "[Order!]!"
 	lineOffset int    // 0-based line offset within the body
+	authReq    bool   // #4006 — field carries an auth directive (@auth/@hasRole/…)
+	authRoles  string // #4006 — comma-joined roles from @hasRole(role: X)/@hasRoles
+}
+
+// authDirectiveRE matches a field-level GraphQL auth directive and the optional
+// role argument, the most statically-recoverable gqlgen/graph-gophers auth
+// signal (a `@hasRole(role: ADMIN)` SDL directive on a FIELD_DEFINITION).
+//
+//	@auth                          → authReq, no role
+//	@isAuthenticated               → authReq, no role
+//	@hasRole(role: ADMIN)          → authReq, role=ADMIN
+//	@hasRole(role: [ADMIN, USER])  → authReq, role=ADMIN,USER
+//	@hasRole(roles: [ADMIN])       → authReq, role=ADMIN
+//	@hasScope(scope: "read:user")  → authReq, role=read:user
+//
+// The directive must be one of the recognised auth names so a plain
+// `@deprecated` / `@goField` does NOT trigger auth (negative-tested).
+var authDirectiveRE = regexp.MustCompile(
+	`@(auth|isAuthenticated|hasRole|hasAnyRole|hasRoles|requireAuth|hasScope|hasPermission)\b` +
+		`(?:\s*\(\s*(?:role|roles|scope|scopes|permission|permissions)\s*:\s*(\[[^\]]*\]|"[^"]*"|\w+))?`,
+)
+
+// roleTokenRE picks the bare role/scope tokens out of a captured directive
+// argument, tolerating list `[A, B]`, quoted `"read:user"`, or a bare `ADMIN`.
+var roleTokenRE = regexp.MustCompile(`"[^"]*"|[A-Za-z_][\w:.-]*`)
+
+// scanFieldAuth inspects one field line (name : Type @directive…) for a
+// recognised auth directive, returning whether auth is required and the
+// comma-joined role/scope set (empty when the directive carries no argument).
+func scanFieldAuth(line string) (required bool, roles string) {
+	m := authDirectiveRE.FindStringSubmatch(line)
+	if m == nil {
+		return false, ""
+	}
+	required = true
+	arg := strings.TrimSpace(m[2])
+	if arg == "" {
+		return true, ""
+	}
+	var toks []string
+	for _, t := range roleTokenRE.FindAllString(arg, -1) {
+		t = strings.Trim(t, `"`)
+		if t != "" {
+			toks = append(toks, t)
+		}
+	}
+	return true, strings.Join(toks, ",")
 }
 
 // fieldDeclRE re-parses a field line to split the leading name from the type
@@ -490,7 +552,14 @@ func collectFields(body string) []fieldHit {
 		if mm := fieldDeclRE.FindStringSubmatch(body[m[0]:m[1]]); mm != nil {
 			typeExpr = strings.TrimSpace(mm[2])
 		}
-		out = append(out, fieldHit{name: name, typeExpr: typeExpr, lineOffset: offset})
+		// #4006 — capture a field-level auth directive (@hasRole/@auth/…). The
+		// directive tail lives after the type expression on the same line; the
+		// fieldRE span [m[0],m[1]) covers the whole line.
+		authReq, authRoles := scanFieldAuth(body[m[0]:m[1]])
+		out = append(out, fieldHit{
+			name: name, typeExpr: typeExpr, lineOffset: offset,
+			authReq: authReq, authRoles: authRoles,
+		})
 	}
 	return out
 }
