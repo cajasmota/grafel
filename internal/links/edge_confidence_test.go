@@ -190,13 +190,3 @@ func TestEdgeConfidence_WithEdgeConfidenceSetter(t *testing.T) {
 		t.Fatalf("setter must reuse the same key; got %d props: %+v", len(l.Properties), l.Properties)
 	}
 }
-
-// findLink returns the first link matching pred, or nil.
-func findLink(links []Link, pred func(Link) bool) *Link {
-	for i := range links {
-		if pred(links[i]) {
-			return &links[i]
-		}
-	}
-	return nil
-}
