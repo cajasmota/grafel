@@ -210,6 +210,177 @@ end
 	}
 }
 
+// RUBY — Unleash `?`-suffixed predicate: a Rails controller action calling
+// `UNLEASH.is_enabled?("beta")` → feature:beta, SDK subtype "unleash",
+// attributed to the enclosing Ruby method. The Ruby SDK uses the `?`-suffixed
+// predicate form `is_enabled?` which the JS/Python `is_enabled(` matcher misses
+// without the optional `\??`. #4140.
+func TestFeatureFlag_Ruby_Unleash_is_enabled_predicate(t *testing.T) {
+	src := `
+def index
+  if UNLEASH.is_enabled?("beta")
+    render_beta
+  else
+    render_stable
+  end
+end
+`
+	flags, edges := runFlagPass("ruby", "controller.rb", src)
+
+	flag, ok := findFlag(flags, "beta")
+	if !ok {
+		t.Fatalf("expected feature:beta entity, got flags=%v", flags)
+	}
+	if flag.ID != "feature:beta" {
+		t.Errorf("flag ID = %q, want feature:beta", flag.ID)
+	}
+	if flag.Subtype != "unleash" {
+		t.Errorf("flag SDK subtype = %q, want unleash", flag.Subtype)
+	}
+	g, ok := findGate(edges, "beta")
+	if !ok {
+		t.Fatalf("expected GATED_BY for beta, got %v", edges)
+	}
+	if g.From != "Function:index" {
+		t.Errorf("GATED_BY FromID = %q, want Function:index", g.From)
+	}
+	if g.To != "feature:beta" {
+		t.Errorf("GATED_BY ToID = %q, want feature:beta", g.To)
+	}
+	if g.SDK != "unleash" {
+		t.Errorf("GATED_BY sdk = %q, want unleash", g.SDK)
+	}
+}
+
+// RUBY — Flipper subscript form `Flipper[:new_dash].enabled?` → feature:new_dash
+// (symbol normalized, leading `:` stripped), SDK subtype "flipper", attributed
+// to the enclosing Ruby method. #4140.
+func TestFeatureFlag_Ruby_Flipper_subscript(t *testing.T) {
+	src := `
+def dashboard
+  return new_dashboard if Flipper[:new_dash].enabled?
+  legacy_dashboard
+end
+`
+	flags, edges := runFlagPass("ruby", "dash.rb", src)
+	flag, ok := findFlag(flags, "new_dash")
+	if !ok {
+		t.Fatalf("expected feature:new_dash entity (symbol normalized), got %v", flags)
+	}
+	if flag.ID != "feature:new_dash" {
+		t.Errorf("flag ID = %q, want feature:new_dash", flag.ID)
+	}
+	if flag.Subtype != "flipper" {
+		t.Errorf("flag SDK = %q, want flipper", flag.Subtype)
+	}
+	g, ok := findGate(edges, "new_dash")
+	if !ok || g.From != "Function:dashboard" || g.To != "feature:new_dash" {
+		t.Fatalf("edge = %+v ok=%v, want Function:dashboard -> feature:new_dash", g, ok)
+	}
+	if g.SDK != "flipper" {
+		t.Errorf("GATED_BY sdk = %q, want flipper", g.SDK)
+	}
+}
+
+// RUBY — Flipper feature-object form `Flipper.feature(:promo).enabled?` →
+// feature:promo, SDK subtype "flipper". #4140.
+func TestFeatureFlag_Ruby_Flipper_feature_object(t *testing.T) {
+	src := `
+def promo
+  Flipper.feature(:promo).enabled? ? show_promo : nil
+end
+`
+	flags, edges := runFlagPass("ruby", "promo.rb", src)
+	if _, ok := findFlag(flags, "promo"); !ok {
+		t.Fatalf("expected feature:promo entity, got %v", flags)
+	}
+	g, ok := findGate(edges, "promo")
+	if !ok || g.From != "Function:promo" || g.To != "feature:promo" || g.SDK != "flipper" {
+		t.Fatalf("edge = %+v ok=%v, want Function:promo -> feature:promo (flipper)", g, ok)
+	}
+}
+
+// RUBY — Rollout gem `$rollout.active?(:new_checkout, current_user)` →
+// feature:new_checkout (symbol normalized), SDK subtype "rollout", attributed to
+// the enclosing Ruby method. The receiver is the `$rollout` global. #4140.
+func TestFeatureFlag_Ruby_Rollout_active(t *testing.T) {
+	src := `
+def checkout
+  if $rollout.active?(:new_checkout, current_user)
+    new_checkout_flow
+  else
+    legacy_checkout
+  end
+end
+`
+	flags, edges := runFlagPass("ruby", "checkout.rb", src)
+	flag, ok := findFlag(flags, "new_checkout")
+	if !ok {
+		t.Fatalf("expected feature:new_checkout entity, got %v", flags)
+	}
+	if flag.ID != "feature:new_checkout" {
+		t.Errorf("flag ID = %q, want feature:new_checkout", flag.ID)
+	}
+	if flag.Subtype != "rollout" {
+		t.Errorf("flag SDK = %q, want rollout", flag.Subtype)
+	}
+	g, ok := findGate(edges, "new_checkout")
+	if !ok {
+		t.Fatalf("expected GATED_BY for new_checkout, got %v", edges)
+	}
+	if g.From != "Function:checkout" || g.To != "feature:new_checkout" {
+		t.Errorf("edge = %+v, want Function:checkout -> feature:new_checkout", g)
+	}
+	if g.SDK != "rollout" {
+		t.Errorf("GATED_BY sdk = %q, want rollout", g.SDK)
+	}
+}
+
+// RUBY NEGATIVE — a bare `record.enabled?` predicate on a non-flag receiver (an
+// ActiveRecord model) must NOT be attributed: there is no Flipper / Unleash /
+// Rollout SDK token, so the receiver-gated matchers correctly emit nothing.
+func TestFeatureFlag_Ruby_NonFlagPredicate_NoFabrication(t *testing.T) {
+	src := `
+def visible?
+  record.enabled? && record.published?
+end
+`
+	flags, edges := runFlagPass("ruby", "visible.rb", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("bare non-flag .enabled? predicate should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// RUBY NEGATIVE — a generic `.active?(:x)` on a NON-rollout receiver must NOT be
+// attributed: the Rollout matcher requires a `rollout` receiver, so a
+// `widget.active?(:on)` call on an arbitrary object emits nothing.
+func TestFeatureFlag_Ruby_NonRolloutActive_NoFabrication(t *testing.T) {
+	src := `
+def click
+  return unless widget.active?(:on)
+  handle_click
+end
+`
+	flags, edges := runFlagPass("ruby", "click.rb", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("non-rollout .active? should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// RUBY NEGATIVE — a dynamic (non-literal) key on the Rollout matcher must NOT
+// fabricate a flag entity or edge (honest-partial, mirrors the other langs).
+func TestFeatureFlag_Ruby_Rollout_DynamicKey_NoFabrication(t *testing.T) {
+	src := `
+def gate(flag_name, user)
+  $rollout.active?(flag_name, user)
+end
+`
+	flags, edges := runFlagPass("ruby", "gate.rb", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("dynamic Rollout key should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
 // Flagsmith: has_feature("promo-banner").
 func TestFeatureFlag_Flagsmith_has_feature(t *testing.T) {
 	src := `

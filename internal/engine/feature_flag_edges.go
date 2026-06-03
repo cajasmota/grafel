@@ -27,10 +27,14 @@
 //   - FeatureManagement (.NET) : _featureManager.IsEnabledAsync("key") /
 //     IsEnabled("key") / the [FeatureGate("key")] attribute on an MVC
 //     controller/action (Microsoft.FeatureManagement)
-//   - Unleash      : unleash.isEnabled("key") / isFeatureEnabled("key")
+//   - Unleash      : unleash.isEnabled("key") / isFeatureEnabled("key") /
+//     (Ruby) unleash.is_enabled?("key") — the `?`-suffixed predicate form
 //   - OpenFeature  : client.getBooleanValue("key", false) /
 //     getStringValue / getNumberValue / getObjectValue
-//   - Flipper      : Flipper.enabled?(:key) / :key.to_sym (Ruby)
+//   - Flipper      : (Ruby) Flipper.enabled?(:key) / Flipper[:key].enabled? /
+//     Flipper.feature(:key).enabled? — symbol or string key
+//   - Rollout      : (Ruby) $rollout.active?(:key, user) — receiver-gated on
+//     the `rollout` gem instance
 //   - Flagsmith    : flagsmith.has_feature("key") / is_feature_enabled("key")
 //   - FF4j (Java)  : ff4j.check("key")
 //   - Split.io     : client.getTreatment("split-name") /
@@ -82,7 +86,7 @@ const featureFlagPatternType = "feature_flag_gating"
 // flagHit is one detected flag-check call site.
 type flagHit struct {
 	key    string // literal flag key (symbol leading ':' already stripped)
-	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | growthbook | configcat | custom
+	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | rollout | flagsmith | ff4j | split | growthbook | configcat | custom
 	method string // the SDK call/method observed
 	caller string // enclosing-function name ("" → file scope)
 	line   int    // 1-indexed source line
@@ -164,11 +168,17 @@ var flagSDKMatchers = []flagSDKMatcher{
 	},
 
 	// Unleash. isEnabled("flag") / isFeatureEnabled("flag") /
-	// is_enabled("flag"). Also the Python decorator-ish `@app.feature("flag")`
-	// is handled by the generic feature() matcher below.
+	// is_enabled("flag"). The Ruby Unleash SDK exposes the same check as a
+	// `?`-suffixed predicate: `UNLEASH.is_enabled?("flag")` /
+	// `unleash.is_enabled?("flag")`. The optional `\??` before the argument
+	// paren accepts that Ruby predicate form without a separate matcher; the
+	// `is_enabled` / `is_feature_enabled` method names are FF-specific enough
+	// that admitting the trailing `?` does not introduce false positives. Also
+	// the Python decorator-ish `@app.feature("flag")` is handled by the generic
+	// feature() matcher below.
 	{
 		re: regexp.MustCompile(
-			`(?i)\bis(?:_)?(?:feature)?(?:_)?enabled\s*\(\s*` +
+			`(?i)\bis(?:_)?(?:feature)?(?:_)?enabled\??\s*\(\s*` +
 				`(?:"([^"\\]+)"|'([^'\\]+)')`,
 		),
 		sdk:    "unleash",
@@ -197,6 +207,38 @@ var flagSDKMatchers = []flagSDKMatcher{
 		),
 		sdk:    "flipper",
 		method: "Flipper.enabled?",
+	},
+
+	// Flipper (Ruby) feature-object forms. The gem also exposes the check via a
+	// feature object: `Flipper[:flag].enabled?` (subscript) and
+	// `Flipper.feature(:flag).enabled?`. The flag key is captured at the
+	// subscript / feature() argument; the trailing `.enabled?` confirms it is a
+	// gating check (not just a feature lookup). The `Flipper` receiver token
+	// keeps the bare `.enabled?` predicate from false-positiving on unrelated
+	// receivers. Symbol or string key.
+	{
+		re: regexp.MustCompile(
+			`\bFlipper(?:\[\s*|\.feature\s*\(\s*)` +
+				`(?::([A-Za-z_]\w*[?!]?)|"([^"\\]+)"|'([^'\\]+)')` +
+				`\s*[\])]\s*\.enabled\?`,
+		),
+		sdk:    "flipper",
+		method: "Flipper[].enabled?",
+	},
+
+	// Rollout (Ruby `rollout` gem). `$rollout.active?(:flag, user)` /
+	// `rollout.active?("flag", user)`. The generic `.active?` predicate is far
+	// too common to attribute on its own, so a `rollout` receiver is required
+	// (the canonical instance is a `$rollout` global or a `rollout` local),
+	// mirroring the receiver-gated discipline used for FF4j / FeatureManagement.
+	// Symbol or string key.
+	{
+		re: regexp.MustCompile(
+			`(?i)(?:\$rollout|\brollout)\s*\.\s*active\?\s*\(\s*` +
+				`(?::([A-Za-z_]\w*[?!]?)|"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "rollout",
+		method: "rollout.active?",
 	},
 
 	// Flagsmith. has_feature("flag") / is_feature_enabled("flag") /
