@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | 🟢 `partial` | `2026-05-30` | — | `internal/custom/cpp/auth_middleware.go` | — |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | 🔴 `missing` | — | 4115 | — | #4115 (verify-first): C++ rate limiting for this framework is predominantly external/middleware (nginx/envoy/API gateway) or hand-rolled — there is no framework-native, statically-detectable rate-limit primitive (unlike Drogon's drogon::RateLimiter / rate-limit HttpFilter). Honestly left missing rather than fabricating coverage for an externally-enforced concern. |
 
 ### Schema
 

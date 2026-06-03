@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/cpp/auth_middleware.go` | — |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | 4115 | `internal/custom/cpp/rate_limit.go` | #4115: Drogon is the ONE C++ framework with a genuine in-code rate-limit idiom. Stamps the flat contract (rate_limited/rate_limit/rate_limit_scope/rate_limit_source/rate_limit_name/limit/period) for (1) the drogon::RateLimiter::newRateLimiter(capacity, std::chrono::window) token-bucket factory — human rate resolved from a literal capacity + chrono window (chrono::seconds(n) and the 60s/2min user-defined-literal spellings), engine-scope; and (2) a rate-limit HttpFilter subclass + its FILTER_ADD route binding (route-scope) / registerFilter<X> registration (engine-scope), gated on a throttle-named filter so a plain auth/logging filter is not mis-stamped. Partial: regex heuristic, no cross-TU filter resolution, no RateLimiter-instance to route binding. Negatives proven (auth filter, external/nginx delegation). |
 
 ### Schema
 

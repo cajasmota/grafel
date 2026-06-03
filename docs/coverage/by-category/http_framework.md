@@ -15,7 +15,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C/C++](../by-language/c-cpp.md) | [Boost (Boost.Asio + utilities)](../detail/lang.c-cpp.framework.boost.md) | 🔴 0/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/8 | |
 | [C/C++](../by-language/c-cpp.md) | [Boost.Asio](../detail/lang.c-cpp.framework.boost-asio.md) | 🔴 0/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/8 | |
 | [C/C++](../by-language/c-cpp.md) | [Crow](../detail/lang.c-cpp.framework.crow.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/11 | |
-| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/11 | |
+| [C/C++](../by-language/c-cpp.md) | [Drogon](../detail/lang.c-cpp.framework.drogon.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/11 | |
 | [C/C++](../by-language/c-cpp.md) | [Oat++](../detail/lang.c-cpp.framework.oatpp.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/11 | |
 | [C/C++](../by-language/c-cpp.md) | [POCO C++ Libraries](../detail/lang.c-cpp.framework.poco.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/11 | |
 | [C/C++](../by-language/c-cpp.md) | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/11 | |
