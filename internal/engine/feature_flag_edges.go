@@ -38,6 +38,11 @@
 //     Split-specific)
 //   - Unleash-React: useFlag("key") / useFlagsStatus — the @unleash/proxy-client
 //     React hook
+//   - GrowthBook    : gb.isOn("key") / gb.isOff("key") /
+//     gb.getFeatureValue("key", default) (JS/TS-first; receiver-gated on
+//     gb/growthbook)
+//   - ConfigCat     : configCatClient.getValue("key", default) /
+//     getValueAsync / getValueDetails (receiver-gated on configCat*)
 //   - Generic/custom : getFlag("key") / feature_enabled("key") /
 //     featureEnabled("key") / isFeatureEnabled("key") — FF-specific custom
 //     wrappers, distinct enough from arbitrary code to attribute
@@ -77,7 +82,7 @@ const featureFlagPatternType = "feature_flag_gating"
 // flagHit is one detected flag-check call site.
 type flagHit struct {
 	key    string // literal flag key (symbol leading ':' already stripped)
-	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | custom
+	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | growthbook | configcat | custom
 	method string // the SDK call/method observed
 	caller string // enclosing-function name ("" → file scope)
 	line   int    // 1-indexed source line
@@ -248,6 +253,45 @@ var flagSDKMatchers = []flagSDKMatcher{
 		),
 		sdk:    "ff4j",
 		method: "ff4j.check",
+	},
+
+	// GrowthBook (JS/TS-first SDK). gb.isOn("flag") / gb.isOff("flag") /
+	// gb.getFeatureValue("flag", default). isOn/isOff/getFeatureValue are
+	// generic enough that a `gb`/`growthbook` receiver is required (the
+	// canonical GrowthBook instance name returned by `new GrowthBook(...)`),
+	// mirroring the receiver-gated discipline used for FF4j and
+	// FeatureManagement. This keeps the matcher GrowthBook-specific and avoids
+	// false-positiving on arbitrary `.isOn(...)` calls.
+	{
+		re: regexp.MustCompile(
+			`(?i)\bgrowthbook\s*\.\s*(?:isOn|isOff|getFeatureValue)\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "growthbook",
+		method: "growthbook.isOn",
+	},
+	{
+		re: regexp.MustCompile(
+			`(?i)\bgb\s*\.\s*(?:isOn|isOff|getFeatureValue)\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "growthbook",
+		method: "gb.isOn",
+	},
+
+	// ConfigCat (JS/TS + multi-lang SDK). configCatClient.getValue("flag",
+	// default, user) / getValueAsync("flag", default) / getValueDetails.
+	// `getValue` is generic on its own, so a ConfigCat-flavoured receiver
+	// (`configCat`/`configCatClient`) is required — same receiver-gated
+	// discipline as FF4j/FeatureManagement/GrowthBook — so an arbitrary
+	// `.getValue("...")` is not misattributed.
+	{
+		re: regexp.MustCompile(
+			`(?i)\bconfigCat\w*\s*\.\s*getValue(?:Async|Details)?\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "configcat",
+		method: "configCat.getValue",
 	},
 
 	// Generic / custom feature-flag wrappers. getFlag("key") /

@@ -1031,3 +1031,141 @@ public class Widget
 		t.Errorf("non-FeatureManager IsEnabled property should yield no output, got flags=%v edges=%v", flags, edges)
 	}
 }
+
+// GrowthBook (JS/TS): gb.isOn("dark-mode") in renderNav() →
+// renderNav GATED_BY feature:dark-mode, SDK subtype "growthbook".
+func TestFeatureFlag_GrowthBook_isOn(t *testing.T) {
+	src := `
+function renderNav() {
+  if (gb.isOn("dark-mode")) {
+    return darkNav();
+  }
+  return lightNav();
+}
+`
+	flags, edges := runFlagPass("typescript", "nav.ts", src)
+	flag, ok := findFlag(flags, "dark-mode")
+	if !ok {
+		t.Fatalf("expected feature:dark-mode entity, got %v", flags)
+	}
+	if flag.ID != "feature:dark-mode" {
+		t.Errorf("flag ID = %q, want feature:dark-mode", flag.ID)
+	}
+	if flag.Subtype != "growthbook" {
+		t.Errorf("flag SDK = %q, want growthbook", flag.Subtype)
+	}
+	g, ok := findGate(edges, "dark-mode")
+	if !ok {
+		t.Fatalf("expected GATED_BY for dark-mode, got %v", edges)
+	}
+	if g.From != "Function:renderNav" || g.To != "feature:dark-mode" {
+		t.Errorf("edge = %+v, want From=Function:renderNav To=feature:dark-mode", g)
+	}
+	if g.SDK != "growthbook" {
+		t.Errorf("edge sdk = %q, want growthbook", g.SDK)
+	}
+}
+
+// GrowthBook isOff + getFeatureValue method variants both attribute and
+// converge on the growthbook subtype.
+func TestFeatureFlag_GrowthBook_isOff_and_getFeatureValue(t *testing.T) {
+	src := `
+function banner() {
+  if (growthbook.isOff("promo")) {
+    return null;
+  }
+  const price = gb.getFeatureValue("price-banner", 0);
+  return render(price);
+}
+`
+	flags, edges := runFlagPass("typescript", "banner.ts", src)
+	if f, ok := findFlag(flags, "promo"); !ok || f.Subtype != "growthbook" {
+		t.Fatalf("expected feature:promo growthbook entity, got %v", flags)
+	}
+	if f, ok := findFlag(flags, "price-banner"); !ok || f.Subtype != "growthbook" {
+		t.Fatalf("expected feature:price-banner growthbook entity, got %v", flags)
+	}
+	g1, ok := findGate(edges, "promo")
+	if !ok || g1.From != "Function:banner" || g1.To != "feature:promo" {
+		t.Errorf("promo edge = %+v ok=%v, want Function:banner -> feature:promo", g1, ok)
+	}
+	g2, ok := findGate(edges, "price-banner")
+	if !ok || g2.From != "Function:banner" || g2.To != "feature:price-banner" {
+		t.Errorf("price-banner edge = %+v ok=%v, want Function:banner -> feature:price-banner", g2, ok)
+	}
+}
+
+// GrowthBook dynamic key (gb.isOn(flagName)) — honest-partial: no entity,
+// no edge. A bare .isOn(...) on a non-gb receiver is likewise not a flag.
+func TestFeatureFlag_GrowthBook_DynamicAndBareReceiver_NoFabrication(t *testing.T) {
+	src := `
+function f(flagName, button) {
+  const a = gb.isOn(flagName);     // dynamic key — skipped
+  const b = button.isOn("blink");  // not a GrowthBook receiver — skipped
+}
+`
+	flags, edges := runFlagPass("typescript", "f.ts", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("dynamic key + non-gb receiver should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// ConfigCat (JS/TS): configCatClient.getValueAsync("isMyFeatureEnabled",
+// false) → feature:isMyFeatureEnabled, SDK subtype "configcat".
+func TestFeatureFlag_ConfigCat_getValueAsync(t *testing.T) {
+	src := `
+async function gate() {
+  const on = await configCatClient.getValueAsync("isMyFeatureEnabled", false);
+  if (on) {
+    return newPath();
+  }
+}
+`
+	flags, edges := runFlagPass("typescript", "gate.ts", src)
+	flag, ok := findFlag(flags, "isMyFeatureEnabled")
+	if !ok {
+		t.Fatalf("expected feature:isMyFeatureEnabled entity, got %v", flags)
+	}
+	if flag.ID != "feature:isMyFeatureEnabled" {
+		t.Errorf("flag ID = %q, want feature:isMyFeatureEnabled", flag.ID)
+	}
+	if flag.Subtype != "configcat" {
+		t.Errorf("flag SDK = %q, want configcat", flag.Subtype)
+	}
+	g, ok := findGate(edges, "isMyFeatureEnabled")
+	if !ok {
+		t.Fatalf("expected GATED_BY for isMyFeatureEnabled, got %v", edges)
+	}
+	if g.From != "Function:gate" || g.To != "feature:isMyFeatureEnabled" {
+		t.Errorf("edge = %+v, want From=Function:gate To=feature:isMyFeatureEnabled", g)
+	}
+	if g.SDK != "configcat" {
+		t.Errorf("edge sdk = %q, want configcat", g.SDK)
+	}
+}
+
+// ConfigCat synchronous getValue with a configCat-flavoured receiver also
+// attributes; a generic .getValue("x") on an unrelated receiver does not.
+func TestFeatureFlag_ConfigCat_getValue_ReceiverGated(t *testing.T) {
+	src := `
+function pick(user) {
+  const v = configCat.getValue("checkout-redesign", false, user); // matched
+  const w = formData.getValue("email");                           // not a flag
+  return v;
+}
+`
+	flags, edges := runFlagPass("typescript", "pick.ts", src)
+	if f, ok := findFlag(flags, "checkout-redesign"); !ok || f.Subtype != "configcat" {
+		t.Fatalf("expected feature:checkout-redesign configcat entity, got %v", flags)
+	}
+	if _, ok := findFlag(flags, "email"); ok {
+		t.Errorf("formData.getValue(\"email\") must not be a flag, got flags=%v", flags)
+	}
+	g, ok := findGate(edges, "checkout-redesign")
+	if !ok || g.From != "Function:pick" || g.To != "feature:checkout-redesign" {
+		t.Errorf("edge = %+v ok=%v, want Function:pick -> feature:checkout-redesign", g, ok)
+	}
+	if len(flags) != 1 || len(edges) != 1 {
+		t.Errorf("expected exactly one flag/edge, got flags=%v edges=%v", flags, edges)
+	}
+}

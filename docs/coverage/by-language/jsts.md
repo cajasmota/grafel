@@ -26,68 +26,68 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 6/11 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 9/12 | |
-| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 10/12 | |
-| [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 4/24 | 🟡 2/13 | |
-| [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/13 | |
-| [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 4/24 | 🟡 2/13 | |
+| [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 6/11 | |
+| [Express](../detail/lang.jsts.framework.express.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 9/12 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Koa](../detail/lang.jsts.framework.koa.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 9/12 | |
+| [Marble.js](../detail/lang.jsts.framework.marblejs.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [NestJS](../detail/lang.jsts.framework.nestjs.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟢 24/24 | 🟡 10/12 | |
+| [Polka](../detail/lang.jsts.framework.polka.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Pothos (GraphQL)](../detail/lang.jsts.framework.pothos.md) | 🟡 2/5 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 5/24 | 🟡 2/13 | |
+| [Restify](../detail/lang.jsts.framework.restify.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Sails](../detail/lang.jsts.framework.sails.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 8/13 | |
+| [TypeGraphQL (GraphQL)](../detail/lang.jsts.framework.type-graphql.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 5/24 | 🟡 2/13 | |
 
 
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 17/17 | |
-| [GraphQL Client (Apollo Client / urql / Relay / graphql-request)](../detail/lang.jsts.framework.graphql-client.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🟡 1/8 | |
-| [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 21/21 | |
-| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 17/17 | |
-| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 19/19 | |
+| [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 17/17 | |
+| [GraphQL Client (Apollo Client / urql / Relay / graphql-request)](../detail/lang.jsts.framework.graphql-client.md) | 🔴 0/3 | 🔴 0/1 | 🟡 2/24 | 🟡 1/8 | |
+| [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 21/21 | |
+| [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 17/17 | |
+| [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 19/19 | |
 
 
 ### Meta Framework
 
 | Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 7/7 | |
-| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 8/8 | |
+| [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 7/7 | |
+| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
 | [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 11/11 | |
-| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 8/8 | |
-| [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 8/8 | |
-| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 8/8 | |
+| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
+| [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
+| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | 🟡 22/23 | ✅ 14/14 | |
-| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | 🟡 22/23 | ✅ 10/10 | |
-| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | 🟡 22/23 | ✅ 10/10 | |
-| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | 🟡 22/23 | ✅ 20/20 | |
+| [Expo](../detail/lang.jsts.framework.expo.md) | ✅ 3/3 | ✅ 1/1 | 🟢 23/23 | ✅ 14/14 | |
+| [Ionic](../detail/lang.jsts.framework.ionic.md) | ✅ 3/3 | ✅ 1/1 | 🟢 23/23 | ✅ 10/10 | |
+| [NativeScript](../detail/lang.jsts.framework.nativescript.md) | ✅ 3/3 | ✅ 1/1 | 🟢 23/23 | ✅ 10/10 | |
+| [React Native](../detail/lang.jsts.framework.react-native.md) | ✅ 3/3 | ✅ 1/1 | 🟢 23/23 | ✅ 20/20 | |
 
 
 ### Desktop
 
 | Name | Substrate | Other capabilities | Notes |
 |---|---|---|---|
-| [Electron](../detail/lang.jsts.framework.electron.md) | 🟡 12/13 | ✅ 3/3 | |
+| [Electron](../detail/lang.jsts.framework.electron.md) | 🟢 13/13 | ✅ 3/3 | |
 
 
 ### RPC Framework
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/25 | 🟡 6/17 | |
-| [tRPC](../detail/lang.jsts.framework.trpc.md) | — | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟢 7/7 | |
+| [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 24/25 | 🟡 6/17 | |
+| [tRPC](../detail/lang.jsts.framework.trpc.md) | — | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟢 7/7 | |
 
 
 ### AI Integration

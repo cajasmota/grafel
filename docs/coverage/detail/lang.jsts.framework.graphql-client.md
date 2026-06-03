@@ -65,7 +65,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Def use chain extraction | 🔴 `missing` | — | 3642 | — | — |
 | Env fallback recognition | 🔴 `missing` | — | 3642 | — | — |
 | Error flow | 🔴 `missing` | — | 3642 | — | — |
-| Feature flag gating | 🔴 `missing` | — | 3642 | — | — |
+| Feature flag gating | 🟢 `partial` | `2026-06-03` | 3706 | `internal/engine/feature_flag_edges.go`<br>`internal/engine/feature_flag_edges_test.go`<br>`internal/engine/orm_queries.go` | flag-check call sites -> feature:<key> + GATED_BY (framework-agnostic JS/TS engine pass, fires regardless of framework). Verified to attribute to the enclosing function: LaunchDarkly ldClient.variation/boolVariation/stringVariation, Unleash unleash.isEnabled, OpenFeature client.getBooleanValue, Unleash-React useFlag, Split.io getTreatment, Flagsmith hasFeature, plus GrowthBook gb.isOn/isOff/getFeatureValue and ConfigCat configCatClient.getValue/getValueAsync (receiver-gated). Honest-partial: dynamic keys + non-flag receivers (button.isOn, formData.getValue) emit nothing. |
 | Fs effect | 🔴 `missing` | — | 3642 | — | — |
 | HTTP effect | ✅ `full` | `2026-06-03` | 3642 | `internal/engine/http_endpoint_graphql_client.go`<br>`internal/engine/http_endpoint_graphql_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Client GraphQL operations surface as http_endpoint_call (consumer) entities with the synthetic GRAPHQL verb on canonical path /graphql/<RootType>/<field>, matching the server producer so the cross-repo HTTP linker forms client->server links + FETCHES from the enclosing component. See data_fetching for the per-idiom detail. |
 | Import resolution quality | 🔴 `missing` | — | 3642 | — | — |
