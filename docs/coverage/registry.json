@@ -43161,8 +43161,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -43381,8 +43383,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -43516,8 +43520,10 @@
             "cites": ["internal/substrate/kotlin.go"]
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -43604,8 +43610,10 @@
             "cites": ["internal/substrate/kotlin.go"]
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -43841,8 +43849,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -44121,8 +44131,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -44388,8 +44400,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -44671,8 +44685,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -44977,8 +44993,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -45196,8 +45214,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -45471,8 +45491,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -45731,8 +45753,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -46026,8 +46050,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -46353,8 +46379,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -46680,8 +46708,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -46962,8 +46992,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -47278,8 +47310,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/kotlin/exception_flow.go","internal/extractors/kotlin/exception_flow_test.go"],
+            "notes": "throw X() -\u003e THROWS; try/catch (e: X) -\u003e CATCHES; @ExceptionHandler(X::class) (@ControllerAdvice) + Ktor StatusPages exception\u003cX\u003e -\u003e CATCHES; converges on shared exception node (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",

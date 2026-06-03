@@ -74,6 +74,18 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		emitReferences(root, file, &entities)
 	}()
 
+	// Error-flow topology (epic #3628) — THROWS / CATCHES edges from functions
+	// to a shared SCOPE.ExceptionType node for `throw X(...)`, typed
+	// `catch (e: X)`, Spring `@ExceptionHandler(X::class)`
+	// (@ControllerAdvice/@RestControllerAdvice), and Ktor StatusPages
+	// `exception<X> { ... }`. Cross-language consistent with the Java / Python
+	// flagships (same Kind + edge model). Recover-wrapped so a malformed CST
+	// never aborts primary output.
+	func() {
+		defer func() { _ = recover() }()
+		emitExceptionFlowEdges(root, file, &entities)
+	}()
+
 	// Track B (analog of #642/#650/#670 for Kotlin) — IMPORTS ToID rewrite.
 	// Rewrites IMPORTS edges whose dotted path's longest matching prefix
 	// is a known external JVM/Kotlin package to an
