@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | 🟢 `partial` | — | — | `internal/custom/csharp/middleware_extra.go`<br>`internal/custom/csharp/middleware_extra_test.go` | NancyFX DefaultNancyBootstrapper subclass, RequestStartup/ApplicationStartup overrides, and this.Before += / this.After += module pipeline hook registrations detected. |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/4089) | — | #4089: native rate-limit stamping not implemented for this framework. This framework runs its own request pipeline (not ASP.NET Core endpoint routing), so the .NET built-in RateLimiter (RequireRateLimiting/[EnableRateLimiting]) does not apply; its native throttling idiom is future work. AspNetCoreRateLimit can still front it at the host level but the limits are config-driven (honest-partial). |
 
 ### Schema
 

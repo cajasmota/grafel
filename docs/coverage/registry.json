@@ -8796,9 +8796,10 @@
             "verified_at": "2026-05-28"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/csharp/rate_limit_endpoint.go","internal/custom/csharp/rate_limit_endpoint_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4089",
+            "notes": "#4089: .NET RateLimiter binding `.MapGet(...).RequireRateLimiting(\"p\")` (minimal API) and `[EnableRateLimiting(\"p\")]` (controller/action) stamp rate_limited/rate_limit_scope=route/rate_limit_name=p on a SCOPE.Pattern/rate_limit marker. When policy `p` is defined in-file via AddFixedWindow/SlidingWindow/TokenBucket/ConcurrencyLimiter, rate_limit_source resolves the limiter kind and rate=\"\u003cPermitLimit|TokenLimit\u003e/\u003cTimeSpan window\u003es\" (PermitLimit=100,Window=FromMinutes(1) -\u003e \"100/60s\"); a concurrency limiter resolves the kind but has no window (rate honest-partial). AspNetCoreRateLimit app.UseIp/ClientRateLimiting() stamps an engine-scope marker (limits live in appsettings -\u003e rate omitted). Negatives: [DisableRateLimiting] suppresses an adjacent binding; AllowAnonymous/plain endpoints are not stamped. Partial: a cross-file policy is rate_limited with rate + limiter-kind omitted (honest-partial)."
           }
         },
         "Schema": {
@@ -9088,9 +9089,10 @@
             "notes": "app.UseMiddleware\u003cT\u003e typed registrations, inline app.Use() lambda middleware, IMiddleware class + InvokeAsync detection, [ServiceFilter]/[TypeFilter]/IActionFilter-based MVC filter coverage."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/csharp/rate_limit_endpoint.go","internal/custom/csharp/rate_limit_endpoint_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4089",
+            "notes": "#4089: .NET RateLimiter binding `.MapGet(...).RequireRateLimiting(\"p\")` (minimal API) and `[EnableRateLimiting(\"p\")]` (controller/action) stamp rate_limited/rate_limit_scope=route/rate_limit_name=p on a SCOPE.Pattern/rate_limit marker. When policy `p` is defined in-file via AddFixedWindow/SlidingWindow/TokenBucket/ConcurrencyLimiter, rate_limit_source resolves the limiter kind and rate=\"\u003cPermitLimit|TokenLimit\u003e/\u003cTimeSpan window\u003es\" (PermitLimit=100,Window=FromMinutes(1) -\u003e \"100/60s\"); a concurrency limiter resolves the kind but has no window (rate honest-partial). AspNetCoreRateLimit app.UseIp/ClientRateLimiting() stamps an engine-scope marker (limits live in appsettings -\u003e rate omitted). Negatives: [DisableRateLimiting] suppresses an adjacent binding; AllowAnonymous/plain endpoints are not stamped. Partial: a cross-file policy is rate_limited with rate + limiter-kind omitted (honest-partial)."
           }
         },
         "Schema": {
@@ -10011,9 +10013,10 @@
             "notes": "Carter app.MapCarter()/AddCarter() pipeline wiring detected; ICarterModule.AddRoutes already covers route registration. Middleware wiring is the AddCarter/MapCarter registration surface."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/csharp/rate_limit_endpoint.go","internal/custom/csharp/rate_limit_endpoint_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4089",
+            "notes": "#4089: .NET RateLimiter binding `.MapGet(...).RequireRateLimiting(\"p\")` (minimal API) and `[EnableRateLimiting(\"p\")]` (controller/action) stamp rate_limited/rate_limit_scope=route/rate_limit_name=p on a SCOPE.Pattern/rate_limit marker. When policy `p` is defined in-file via AddFixedWindow/SlidingWindow/TokenBucket/ConcurrencyLimiter, rate_limit_source resolves the limiter kind and rate=\"\u003cPermitLimit|TokenLimit\u003e/\u003cTimeSpan window\u003es\" (PermitLimit=100,Window=FromMinutes(1) -\u003e \"100/60s\"); a concurrency limiter resolves the kind but has no window (rate honest-partial). AspNetCoreRateLimit app.UseIp/ClientRateLimiting() stamps an engine-scope marker (limits live in appsettings -\u003e rate omitted). Negatives: [DisableRateLimiting] suppresses an adjacent binding; AllowAnonymous/plain endpoints are not stamped. Partial: a cross-file policy is rate_limited with rate + limiter-kind omitted (honest-partial)."
           }
         },
         "Schema": {
@@ -10311,9 +10314,10 @@
             "notes": "FastEndpoints AddFastEndpoints()/UseFastEndpoints() pipeline wiring and IGlobalPreProcessor/IGlobalPostProcessor/IPreProcessor/IPostProcessor class declarations detected."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/csharp/rate_limit_endpoint.go","internal/custom/csharp/rate_limit_endpoint_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4089",
+            "notes": "#4089: .NET RateLimiter binding `.MapGet(...).RequireRateLimiting(\"p\")` (minimal API) and `[EnableRateLimiting(\"p\")]` (controller/action) stamp rate_limited/rate_limit_scope=route/rate_limit_name=p on a SCOPE.Pattern/rate_limit marker. When policy `p` is defined in-file via AddFixedWindow/SlidingWindow/TokenBucket/ConcurrencyLimiter, rate_limit_source resolves the limiter kind and rate=\"\u003cPermitLimit|TokenLimit\u003e/\u003cTimeSpan window\u003es\" (PermitLimit=100,Window=FromMinutes(1) -\u003e \"100/60s\"); a concurrency limiter resolves the kind but has no window (rate honest-partial). AspNetCoreRateLimit app.UseIp/ClientRateLimiting() stamps an engine-scope marker (limits live in appsettings -\u003e rate omitted). Negatives: [DisableRateLimiting] suppresses an adjacent binding; AllowAnonymous/plain endpoints are not stamped. Partial: a cross-file policy is rate_limited with rate + limiter-kind omitted (honest-partial)."
           }
         },
         "Schema": {
@@ -10912,9 +10916,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/csharp/rate_limit_endpoint.go","internal/custom/csharp/rate_limit_endpoint_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4089",
+            "notes": "#4089: .NET RateLimiter binding `.MapGet(...).RequireRateLimiting(\"p\")` (minimal API) and `[EnableRateLimiting(\"p\")]` (controller/action) stamp rate_limited/rate_limit_scope=route/rate_limit_name=p on a SCOPE.Pattern/rate_limit marker. When policy `p` is defined in-file via AddFixedWindow/SlidingWindow/TokenBucket/ConcurrencyLimiter, rate_limit_source resolves the limiter kind and rate=\"\u003cPermitLimit|TokenLimit\u003e/\u003cTimeSpan window\u003es\" (PermitLimit=100,Window=FromMinutes(1) -\u003e \"100/60s\"); a concurrency limiter resolves the kind but has no window (rate honest-partial). AspNetCoreRateLimit app.UseIp/ClientRateLimiting() stamps an engine-scope marker (limits live in appsettings -\u003e rate omitted). Negatives: [DisableRateLimiting] suppresses an adjacent binding; AllowAnonymous/plain endpoints are not stamped. Partial: a cross-file policy is rate_limited with rate + limiter-kind omitted (honest-partial)."
           }
         },
         "Schema": {
@@ -11174,8 +11179,8 @@
           },
           "rate_limit_stamping": {
             "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "issue": "https://github.com/cajasmota/archigraph/issues/4089",
+            "notes": "#4089: native rate-limit stamping not implemented for this framework. This framework runs its own request pipeline (not ASP.NET Core endpoint routing), so the .NET built-in RateLimiter (RequireRateLimiting/[EnableRateLimiting]) does not apply; its native throttling idiom is future work. AspNetCoreRateLimit can still front it at the host level but the limits are config-driven (honest-partial)."
           }
         },
         "Schema": {
@@ -11678,8 +11683,8 @@
           },
           "rate_limit_stamping": {
             "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "issue": "https://github.com/cajasmota/archigraph/issues/4089",
+            "notes": "#4089: native rate-limit stamping not implemented for this framework. This framework runs its own request pipeline (not ASP.NET Core endpoint routing), so the .NET built-in RateLimiter (RequireRateLimiting/[EnableRateLimiting]) does not apply; its native throttling idiom is future work. AspNetCoreRateLimit can still front it at the host level but the limits are config-driven (honest-partial)."
           }
         },
         "Schema": {

@@ -23,7 +23,7 @@ one is a separate detail page.
 
 | Record | Language | Kind | Status |
 |--------|----------|------|--------|
-| [`lang.csharp.framework.hotchocolate`](./lang.csharp.framework.hotchocolate.md) | C# | framework | 5 full, 3 partial, 41 missing |
+| [`lang.csharp.framework.hotchocolate`](./lang.csharp.framework.hotchocolate.md) | C# | framework | 5 full, 4 partial, 40 missing |
 | [`lang.dart.framework.graphql-flutter`](./lang.dart.framework.graphql-flutter.md) | dart | framework | 1 full, 36 missing |
 | [`lang.elixir.framework.absinthe`](./lang.elixir.framework.absinthe.md) | elixir | framework | 7 full, 31 partial, 11 missing |
 | [`lang.go.framework.gqlgen`](./lang.go.framework.gqlgen.md) | go | framework | 4 full, 8 partial, 37 missing |
