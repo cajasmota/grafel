@@ -195,7 +195,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C#](../by-language/csharp.md) | [Blazor Server](../detail/lang.csharp.framework.blazor-server.md) | ✅ 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor Server / WebAssembly](../detail/lang.csharp.framework.blazor.md) | ✅ 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 8/8 | |
 | [C#](../by-language/csharp.md) | [Blazor WebAssembly](../detail/lang.csharp.framework.blazor-wasm.md) | ✅ 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 8/8 | |
-| [dart](../by-language/dart.md) | [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🟡 4/8 | |
+| [dart](../by-language/dart.md) | [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🟢 1/1 | 🟡 9/24 | 🟡 5/8 | |
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🔴 0/1 | 🟡 21/22 | 🔴 0/3 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🔴 0/1 | 🟡 21/22 | 🔴 0/3 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 17/17 | |

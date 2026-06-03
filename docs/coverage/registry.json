@@ -12682,8 +12682,9 @@
             "notes": "StatelessWidget/StatefulWidget class declarations -\u003e SCOPE.UIComponent (widget_type stateless/stateful). Regex/heuristic but catches the canonical Flutter widget idiom; value-asserting tests (TestFlutterStatelessWidget/StatefulWidget)."
           },
           "context_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/custom/dart/extractors_test.go","internal/custom/dart/flutter.go","internal/custom/dart/flutter_edges_resolve_test.go"],
+            "notes": "DI / state-binding (Provider, Riverpod, BLoC) emits USES edges from the enclosing widget. flutter.go steps 10-13: context.read|watch|select\u003cT\u003e, BlocBuilder\u003cT,S\u003e, BlocProvider.of\u003cT\u003e/Provider.of\u003cT\u003e/RepositoryProvider.of\u003cT\u003e, and Riverpod ref.watch|read|listen(xProvider). Host attributed via brace-span tracking; edges resolve to hex IDs via ReferencesEmbedded. Value-asserting + resolver tests: ProfileScreen USES ProfileBloc (context.read), CartWidget USES CartModel (Provider.of), CounterView USES counterProvider (ref.watch). This is the DI home cell for the ui_frontend subcategory."
           }
         },
         "Data Flow": {
@@ -12737,8 +12738,10 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/loader.go","internal/engine/rules/dart/test_patterns.yaml"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "flutter_test / integration_test / Dart test-package classification via rules/dart/test_patterns.yaml (testWidgets/WidgetTester/pumpWidget/find.byType + group/test/expect), embedded and loaded by engine/loader.go (go:embed all:rules). PARTIAL: classifies test files/frameworks but no testmap framework detector exists for Flutter yet, so no graph TESTS edges are synthesised from testWidgets() to the widget under test (cf. lang.kotlin.*/php pest+phpunit which have testmap detectors -\u003e full). Deepening (a flutter_test detector in internal/extractors/cross/testmap) is the path to full."
           }
         },
         "Substrate": {
@@ -12755,16 +12758,20 @@
             "issue": "backfill:dictionary-completeness"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_dart.go","internal/substrate/effect_sinks_t3_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "sqflite db.query/rawQuery (db_read) and db.insert/update/delete/execute (db_write), plus drift generated methods, recognised by the framework-blind Dart effect sniffer (gated on .dart via LanguageForPath). Value-asserted: TestSniffEffectsDart_PrimitiveCoverage maps fetchUsers-\u003edb_read, saveUser-\u003edb_write. PARTIAL: regex heuristic on canonical primitives, not a full ORM corpus."
           },
           "dead_code_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/dart_flutter_substrate_credit_4034_test.go","internal/substrate/def_use_dart.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "var/final/const/late and typed local declarations -\u003e defs; bare identifier reads -\u003e uses, both attributed to the nearest enclosing Dart function/method header. Value-asserted: TestFlutterSubstrate_DefUseChainExtraction (final name=userId; final greeting=name; -\u003e name/greeting defs + name use, attributed to loadUser). PARTIAL: regex heuristic, function-local scope."
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -12779,8 +12786,10 @@
             "issue": "feature_flag_gating:#3706-not-yet-extracted"
           },
           "fs_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_dart.go","internal/substrate/effect_sinks_t3_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "dart:io File(...).readAsString/openRead (fs_read) and writeAsString/openWrite/create (fs_write) recognised by the Dart effect sniffer. Value-asserted: TestSniffEffectsDart_PrimitiveCoverage maps loadConfig-\u003efs_read, writeLog-\u003efs_write. PARTIAL: regex heuristic on canonical primitives."
           },
           "http_effect": {
             "status": "full",
@@ -12796,8 +12805,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "mutation_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/effect_sinks_dart.go","internal/substrate/effect_sinks_t3_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "this.field = ... assignments inside a method body recognised as mutation effects by the Dart effect sniffer. Value-asserted: TestSniffEffectsDart_PrimitiveCoverage maps saveUser-\u003emutation. PARTIAL: regex heuristic."
           },
           "pure_function_tagging": {
             "status": "missing",
@@ -12816,24 +12827,32 @@
             "issue": "backfill:dictionary-completeness"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/dart_flutter_substrate_credit_4034_test.go","internal/substrate/taint_sites_dart.go","internal/substrate/taint_sites_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Parameterised sqflite (db.query(..., whereArgs: [...]) / substitutionValues) recognised as a sanitizer by the Dart taint sniffer. Value-asserted: TestTaintSniffer_Dart_RawQueryIsSink (db.query(whereArgs:) -\u003e sanitizer). PARTIAL: regex heuristic."
           },
           "schema_drift_detection": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "taint_sink_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/dart_flutter_substrate_credit_4034_test.go","internal/substrate/taint_sites_dart.go","internal/substrate/taint_sites_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "sqflite db.rawQuery/rawInsert/rawUpdate/rawDelete with non-literal args (SQL injection), Process.run/start (command injection), File.write* with non-literal path (path traversal) flagged as sinks by the Dart taint sniffer. Value-asserted: TestTaintSniffer_Dart_RawQueryIsSink (db.rawQuery(concat) -\u003e SQL sink). PARTIAL: regex heuristic."
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/dart_flutter_substrate_credit_4034_test.go","internal/substrate/taint_sites_dart.go","internal/substrate/taint_sites_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "dart:io HttpRequest.uri.queryParameters/requestedUri/read and shelf Request inputs flagged as taint sources by the Dart taint sniffer. Value-asserted: TestFlutterSubstrate_TaintSourceDetection (request.uri.queryParameters -\u003e source). PARTIAL: regex heuristic, server-side Dart idioms."
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/substrate/dart_flutter_substrate_credit_4034_test.go","internal/substrate/template_pattern_dart.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "i18n (AppLocalizations.of(context).x / tr / Intl.message / easy_localization), log_format (print/debugPrint/Logger), and SQL literals (sqflite/drift raw queries) catalogued by the Dart template-pattern sniffer. Value-asserted: TestFlutterSubstrate_TemplatePatternCatalog (debugPrint-\u003elog_format, AppLocalizations.translate-\u003ei18n, SELECT...-\u003esql). PARTIAL: regex heuristic, conservative i18n package set."
           },
           "vulnerability_finding": {
             "status": "missing",
