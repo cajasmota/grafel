@@ -246,6 +246,13 @@ func extractResourceBlock(n *sitter.Node, src []byte, path, lang string, start, 
 		}
 		// Issue #3527 — dynamic "x" {} nested blocks as child entities.
 		out = append(out, extractDynamicBlocks(body, src, path, lang, selfRef)...)
+		// Epic #4194 — stamp curated scalar config attributes (instance_type,
+		// runtime, memory_size, timeout, count, ...) onto the resource entity's
+		// Properties. Reference-valued attributes are skipped here (they remain
+		// CALLS/DEPENDS_ON edges mined above).
+		ep := &EntityProps{Properties: out[0].Properties}
+		stampResourceScalarProperties(ep, body, src)
+		out[0].Properties = ep.Properties
 	}
 
 	return out, true

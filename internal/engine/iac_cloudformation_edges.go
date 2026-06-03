@@ -515,6 +515,15 @@ func applyCloudFormationEdges(args DetectorPassArgs) DetectorPassResult {
 		if strings.HasPrefix(r.typ, "AWS::Serverless::") {
 			props["iac_tool"] = "sam"
 		}
+		// Epic #4194 — stamp curated scalar config properties (InstanceType,
+		// Runtime, MemorySize, Timeout, DBInstanceClass, ...) from the resource
+		// body. Intrinsic-function values (Ref/GetAtt/Sub/...) are skipped (they
+		// remain reference edges mined below).
+		for k, v := range cfnExtractScalarProperties(r.body) {
+			if _, exists := props[k]; !exists {
+				props[k] = v
+			}
+		}
 		emitEntity(eid, kind, "cfn_resource", r.logicalID, r.line, props)
 		knownIDs[r.logicalID] = eid
 	}
