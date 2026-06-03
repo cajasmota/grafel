@@ -132,6 +132,7 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_subgraph`](#archigraph_subgraph) | Nodes+edges (format=raw) or Markdown summary (format=markdown) within N hops. |
 | [`archigraph_find_paths`](#archigraph_find_paths) | Shortest path between two entities. |
 | [`archigraph_endpoints`](#archigraph_endpoints) | HTTP endpoint surface (action: definitions\|calls\|stats). |
+| `archigraph_endpoint_posture` | Per-endpoint/function posture: error_flow (throws/catches → ExceptionType), rate_limit, deprecation/version, feature_gates (GATED_BY → FeatureFlag), and HTTP/gRPC/tRPC auth. `entity_id` for one entity; omit for a repo-wide scan (facet/path_contains/method filters). |
 | [`archigraph_effective_contract`](#archigraph_effective_contract) | Per-verb effective contract of a ViewSet/controller (kind, status, error_statuses, serializer, pagination, permissions). |
 | `archigraph_neighbors` | Graph neighbors of `entity_id` (`direction=in\|out\|both`, default `both`). **Unifies `find_callers` + `find_callees` (#1753).** |
 | [`archigraph_find_callers`](#archigraph_find_callers) | **Deprecated alias** of `archigraph_neighbors(direction=in)`. Removed next release. |
