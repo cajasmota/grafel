@@ -52,7 +52,10 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Containers & Orchestration](by-category/platform.md#containers--orchestration) | 5 | Dockerfile, Helm charts, Kubernetes manifests, Kustomize, … |
 | [Config Files](by-category/platform.md#config-files) | 7 | .env, .ini, .properties, .toml, … |
 | [Workflow / DAG & State Machines](by-category/platform.md#workflow--dag--state-machines) | 7 | Apache Airflow, Argo Workflows, Celery canvas, Python transitions, … |
-| [App Topology & Integration](by-category/platform.md#app-topology--integration) | 13 | API-gateway route topology, AWS CDK, AWS CloudFormation, Frontend route, … |
+| [App Topology & Integration](by-category/platform.md#app-topology--integration) | 10 | API-gateway route topology, AWS CDK, AWS CloudFormation, Helm charts, … |
+| [External Service Integration](by-category/platform.md#external-service-integration) | 1 | Third-party SDK service dependencies |
+| [Localization / i18n](by-category/platform.md#localization--i18n) | 1 | i18n translation-key usage |
+| [Frontend Routing](by-category/platform.md#frontend-routing) | 1 | Frontend route |
 
 ## Languages with extractor support, no records yet
 

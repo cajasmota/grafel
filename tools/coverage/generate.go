@@ -304,6 +304,37 @@ type frameworkSpecificView struct {
 	CapList []capEntry
 }
 
+// presentationLaneRemap routes a few recently-added platform node-type
+// dimension records out of the broad app_topology lane and onto their own
+// single-purpose subcategory lanes (B6, #3875). The registry keeps these
+// records under subcategory=app_topology (a valid, stable slug whose cells
+// validate against the platform category-level allow-list); the remap is
+// applied only when materialising the render view, so it relocates which
+// lane/page the record appears on WITHOUT touching any registry status or
+// the on-disk subcategory field. Each target lane declares only the one
+// capability column the record carries, eliminating the sparse
+// external_service_dependency / translation_key_usage empty-column leak
+// that previously spanned every resource-graph row of app_topology.
+//
+// Keyed by registry record ID so the mapping is explicit and auditable;
+// adding a future dimension is a one-line entry plus a dictionary lane.
+var presentationLaneRemap = map[string]string{
+	"analysis.integration.third-party-sdk": "integration_external",
+	"analysis.localization.i18n-keys":      "localization",
+	"frontend.routing.spa-route-component": "frontend_routing",
+}
+
+// presentationSubcategory returns the subcategory slug the record should
+// render under. It honours presentationLaneRemap for the B6 node-type
+// dimensions and otherwise returns the registry subcategory unchanged.
+// Deterministic and pure — gen stays idempotent.
+func presentationSubcategory(rec Record) string {
+	if to, ok := presentationLaneRemap[rec.ID]; ok {
+		return to
+	}
+	return rec.Subcategory
+}
+
 // recordToView materialises a Record with sorted capability entries so
 // templates iterate deterministically.
 func recordToView(rec Record) recordView {
@@ -318,7 +349,7 @@ func recordToView(rec Record) recordView {
 	view := recordView{
 		ID:                rec.ID,
 		Category:          rec.Category,
-		Subcategory:       rec.Subcategory,
+		Subcategory:       presentationSubcategory(rec),
 		Language:          rec.Language,
 		Label:             rec.Label,
 		Bucket:            bucketOf(rec.Category),
