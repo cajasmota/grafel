@@ -1289,7 +1289,16 @@ func splitCategoryRowsBySubcategory(category string, rows []categoryRow) ([]cate
 				return groupCell(recsForSub[r].GroupDigestByName, g)
 			})
 		} else {
-			sec.CapabilityKeys = subcategoryRenderKeys(category, s)
+			// Don't-strand guard (parity with the flat table at #3874 and
+			// the dictionary's "don't fabricate an empty column" intent):
+			// a capability column the subcategory declares but that is "—"
+			// for every record in this lane is dropped. Presentation-only —
+			// registry statuses are untouched. Without this, a newly-added
+			// capability (e.g. iac_output_export_extraction) that only some
+			// records in the lane carry would still render an always-empty
+			// column for the rest.
+			sec.CapabilityKeys = nonStrandedCapKeys(
+				subcategoryRenderKeys(category, s), recsForSub)
 		}
 		subs = append(subs, sec)
 	}

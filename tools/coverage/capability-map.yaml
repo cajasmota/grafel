@@ -17878,6 +17878,105 @@ records:
           issues_implemented: ["3491"]
           verified_at: "2026-05-31"
 
+  infra.iac.cloudformation:
+    capabilities:
+      iac_output_export_extraction:
+        status: full
+        symbols:
+          - file: internal/engine/iac_cloudformation_edges.go
+            functions: [cfnCollectExportNames]
+        tests:
+          - file: internal/engine/iac_cloudformation_edges_test.go
+        issues_implemented: ["4195"]
+        verified_at: "2026-06-04"
+      iac_cross_stack_reference:
+        status: full
+        symbols:
+          - file: internal/engine/iac_cloudformation_edges.go
+            functions: [cfnCollectImports]
+        tests:
+          - file: internal/engine/iac_cloudformation_edges_test.go
+        issues_implemented: ["4196"]
+        verified_at: "2026-06-04"
+
+  infra.iac.terraform:
+    capabilities:
+      iac_output_export_extraction:
+        status: full
+        symbols:
+          - file: internal/extractors/hcl/extractor.go
+            functions: [extractOutputBlock]
+        tests:
+          - file: internal/extractors/hcl/extractor_test.go
+        issues_implemented: ["4195"]
+        verified_at: "2026-06-04"
+      iac_cross_stack_reference:
+        status: full
+        symbols:
+          - file: internal/extractors/hcl/terraform_deep.go
+            functions: [extractRemoteStateDeps, remoteStateName]
+        tests:
+          - file: internal/extractors/hcl/terraform_deep_test.go
+        issues_implemented: ["4196"]
+        verified_at: "2026-06-04"
+
+  infra.iac.opentofu:
+    capabilities:
+      iac_output_export_extraction:
+        status: full
+        symbols:
+          - file: internal/extractors/hcl/extractor.go
+            functions: [extractOutputBlock]
+        tests:
+          - file: internal/extractors/hcl/extractor_test.go
+        issues_implemented: ["4195"]
+        verified_at: "2026-06-04"
+      iac_cross_stack_reference:
+        status: full
+        symbols:
+          - file: internal/extractors/hcl/terraform_deep.go
+            functions: [extractRemoteStateDeps, remoteStateName]
+        tests:
+          - file: internal/extractors/hcl/terraform_deep_test.go
+        issues_implemented: ["4196"]
+        verified_at: "2026-06-04"
+
+  infra.iac.bicep:
+    capabilities:
+      iac_output_export_extraction:
+        status: full
+        symbols:
+          - file: internal/extractors/bicep/extractor.go
+            functions: [extractOutputs]
+        tests:
+          - file: internal/extractors/bicep/extractor_test.go
+        issues_implemented: ["4195"]
+        verified_at: "2026-06-04"
+
+  infra.iac.cdk:
+    capabilities:
+      iac_output_export_extraction:
+        status: partial
+        symbols:
+          - file: internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml
+          - file: internal/engine/rules/python/frameworks/aws_cdk.yaml
+        tests:
+          - file: internal/engine/detector_test.go
+        issues_implemented: ["4195"]
+        verified_at: "2026-06-04"
+
+  infra.iac.pulumi:
+    capabilities:
+      iac_cross_stack_reference:
+        status: partial
+        symbols:
+          - file: internal/engine/pulumi_edges.go
+            functions: [pulumiCrossStackNodeID]
+        tests:
+          - file: internal/engine/pulumi_edges_test.go
+        issues_implemented: ["4196"]
+        verified_at: "2026-06-04"
+
   infra.iac.serverless-framework:
     capabilities:
       dependency_attribution:

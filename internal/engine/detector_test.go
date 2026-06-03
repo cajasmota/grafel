@@ -842,3 +842,49 @@ func TestDetect_CSharpRE2Patterns_Compile(t *testing.T) {
 		})
 	}
 }
+
+// TestDetect_CDKCfnOutput_OutputExportExtraction drives the real embedded
+// rules/javascript_typescript/frameworks/aws_cdk.yaml against a CfnOutput
+// statement and asserts the published-output entity is extracted. This is the
+// value-asserting test backing the iac_output_export_extraction (#4195)
+// capability credit for AWS CDK: a `new cdk.CfnOutput(this, 'ApiUrl', …)` must
+// surface as a Config entity named by its OutputId literal ('ApiUrl').
+func TestDetect_CDKCfnOutput_OutputExportExtraction(t *testing.T) {
+	rules, err := LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules failed: %v", err)
+	}
+	det := New(rules)
+	src := `import * as cdk from 'aws-cdk-lib';
+
+export class ApiStack extends cdk.Stack {
+  constructor(scope: cdk.App, id: string) {
+    super(scope, id);
+    new cdk.CfnOutput(this, 'ApiUrl', { value: 'https://example.com' });
+  }
+}
+`
+	result, err := det.Detect(context.Background(), extractor.FileInput{
+		Path:     "lib/api-stack.ts",
+		Content:  []byte(src),
+		Language: "typescript",
+	})
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+
+	// The aws_cdk.yaml CfnOutput entity rule (name_group=1) must surface the
+	// OutputId literal 'ApiUrl' as an entity. (The downstream CDK normaliser
+	// settles its Kind to SCOPE.InfraResource — what matters for #4195 is that
+	// the published-output identifier is extracted as a first-class entity and
+	// is not dropped.)
+	var found bool
+	for _, e := range result.Entities {
+		if e.Name == "ApiUrl" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected CfnOutput entity named 'ApiUrl' (the OutputId literal), got %+v", result.Entities)
+	}
+}

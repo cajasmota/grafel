@@ -66,7 +66,7 @@ categories:
   databases:
     capabilities: [resource_extraction, dependency_attribution]
   platform:
-    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage]
+    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage, iac_output_export_extraction, iac_cross_stack_reference]
     subcategory_order: [iac_provisioning, container_orchestration, config_files, workflow_dag, app_topology, integration_external, localization, frontend_routing]
   security:
     capabilities: [auth_policy, secret_detection, sql_injection, cors_policy]
@@ -705,6 +705,20 @@ subcategories:
     capabilities:
       - resource_extraction
       - dependency_attribution
+      # iac_output_export_extraction (#4195): extraction of a stack/template's
+      # published OUTPUTS / EXPORTS as first-class entities — the named values a
+      # stack exposes for consumption by other stacks or callers. Backed by
+      # CloudFormation `Outputs.<O>.Export.Name` producer nodes (cfn-export:*),
+      # AWS CDK `CfnOutput(...)` config entities, Terraform/OpenTofu `output`
+      # blocks (SCOPE.Schema/output), and Bicep `output` declarations.
+      - iac_output_export_extraction
+      # iac_cross_stack_reference (#4196): extraction of cross-stack / remote
+      # references — a consuming stack reaching into another stack's published
+      # state — as DEPENDS_ON edges or cross-stack join nodes. Backed by
+      # Terraform/OpenTofu `data.terraform_remote_state.*` (cross_stack=true),
+      # CloudFormation `!ImportValue` / `Fn::ImportValue` (collapsing onto the
+      # shared cfn-export:* node), and Pulumi `StackReference` (pulumi-stack:*).
+      - iac_cross_stack_reference
     groups: []
 
   container_orchestration:
