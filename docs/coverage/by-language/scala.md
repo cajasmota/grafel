@@ -51,7 +51,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [ScalaPB / zio-grpc / fs2-grpc](../detail/lang.scala.framework.scalapb-grpc.md) | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 15/24 | 🟢 7/7 | |
+| [ScalaPB / zio-grpc / fs2-grpc](../detail/lang.scala.framework.scalapb-grpc.md) | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 15/24 | 🟢 7/7 | |
 
 
 ## Tools

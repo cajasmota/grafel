@@ -97,6 +97,46 @@ var (
 	reScalaGRPCStub = regexp.MustCompile(
 		`\b([A-Za-z_]\w*(?:Fs2Grpc|Grpc))\s*\.\s*(stub|blockingStub|asyncStub|bindService|bindServiceResource|client)\b`,
 	)
+
+	// reScalaGRPCInterceptorClass matches the head of a class/object declaring a
+	// grpc-java ServerInterceptor (used by scalapb-grpc & fs2-grpc, which both ride
+	// the underlying grpc-java io.grpc.ServerInterceptor). Capture group 1 = the
+	// interceptor class/object name. Both `extends ServerInterceptor` and
+	// `extends io.grpc.ServerInterceptor` are tolerated.
+	reScalaGRPCInterceptorClass = regexp.MustCompile(
+		`\b(?:class|object)\s+([A-Za-z_]\w*)\b[^\n{]*\bextends\b[^\n{]*\b(?:io\.grpc\.)?ServerInterceptor\b`,
+	)
+
+	// reScalaGRPCZioInterceptor matches a zio-grpc auth point: either a class/object
+	// extending ZServerInterceptor, or a `transformContextZIO`/`transformContext`
+	// combinator (the zio-grpc context transform where auth rejection lives).
+	// Capture group 1 (class arm) = the interceptor name; the transform arm has no
+	// capture and is matched separately.
+	reScalaGRPCZioInterceptorClass = regexp.MustCompile(
+		`\b(?:class|object)\s+([A-Za-z_]\w*)\b[^\n{]*\bextends\b[^\n{]*\bZServerInterceptor\b`,
+	)
+	reScalaGRPCZioTransform = regexp.MustCompile(
+		`\btransformContextZIO\b|\btransformContext\b`,
+	)
+
+	// reScalaGRPCWired matches the wiring of an interceptor onto a service /
+	// ServerBuilder. Capture group 1 = the referenced interceptor symbol when the
+	// arg is `new X` / a bare identifier.
+	//   ServerInterceptors.intercept(svc, new AuthInterceptor)
+	//   ServerInterceptors.interceptForward(svc, authInterceptor)
+	//   builder.intercept(new AuthInterceptor)
+	//   .addService(ServerInterceptors.intercept(svc, AuthInterceptor))
+	reScalaGRPCWiredIntercept = regexp.MustCompile(
+		`\b(?:ServerInterceptors\s*\.\s*intercept(?:Forward)?|\.\s*intercept)\s*\(`,
+	)
+
+	// reScalaGRPCAuthReject matches a gRPC auth rejection inside an interceptor /
+	// context-transform body. grpc-java spells it Status.UNAUTHENTICATED /
+	// PERMISSION_DENIED; zio-grpc spells it Status.unauthenticated /
+	// permissionDenied or io.grpc.Status.UNAUTHENTICATED.
+	reScalaGRPCAuthReject = regexp.MustCompile(
+		`\bUNAUTHENTICATED\b|\bPERMISSION_DENIED\b|\bunauthenticated\b|\bpermissionDenied\b|\bUnauthenticated\b`,
+	)
 )
 
 func (e *scalaGRPCExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -137,6 +177,11 @@ func (e *scalaGRPCExtractor) Extract(ctx context.Context, file extractor.FileInp
 		seen[key] = true
 		entities = append(entities, ent)
 	}
+
+	// File-level gRPC auth verdict: an auth-enforcing interceptor wired onto the
+	// server/service guards every RPC method of the services in this file. The
+	// interceptor→service binding is file-local (mirrors the rest of the synthesis).
+	authInfo := scalaGRPCResolveAuth(src)
 
 	// 1. Service traits → one RPC endpoint per def method + grpc_service entity.
 	for _, m := range reScalaGRPCServiceTrait.FindAllStringSubmatchIndex(src, -1) {
@@ -188,6 +233,9 @@ func (e *scalaGRPCExtractor) Extract(ctx context.Context, file extractor.FileInp
 			if respType != "" {
 				setProps(&ent, "response_message", respType)
 			}
+			if authInfo.required {
+				scalaGRPCStampAuth(&ent, authInfo)
+			}
 			add(ent)
 
 			scalaGRPCAddDTO(add, reqType, "request", file, lineOf(src, methodOff))
@@ -208,6 +256,9 @@ func (e *scalaGRPCExtractor) Extract(ctx context.Context, file extractor.FileInp
 			"provenance", "INFERRED_FROM_SCALA_GRPC_SERVICE",
 			"grpc_service", svcName, "service_trait", service,
 			"rpc_protocol", "grpc")
+		if authInfo.required {
+			scalaGRPCStampAuth(&svcEnt, authInfo)
+		}
 		add(svcEnt)
 	}
 
@@ -226,6 +277,97 @@ func (e *scalaGRPCExtractor) Extract(ctx context.Context, file extractor.FileInp
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
 	return entities, nil
+}
+
+// scalaGRPCAuthInfo is the resolved file-level gRPC auth verdict for a Scala
+// gRPC source file. Scala gRPC auth lives in interceptors that are wired to a
+// ServerBuilder / service rather than per-method annotations, so the binding is
+// file-local — same scope as the rest of the Scala gRPC synthesis.
+type scalaGRPCAuthInfo struct {
+	required   bool
+	symbol     string // the recognised interceptor symbol (MCP signal-1)
+	method     string // auth_method, always grpc_interceptor here
+	confidence string
+}
+
+// scalaGRPCResolveAuth decides whether the gRPC services in this file are guarded
+// by an auth-enforcing interceptor. Two stacks are recognised:
+//
+//   - grpc-java ServerInterceptor (scalapb-grpc / fs2-grpc ride the underlying
+//     io.grpc.ServerInterceptor): a class/object `extends ServerInterceptor`
+//     whose body rejects with `Status.UNAUTHENTICATED` / `PERMISSION_DENIED`,
+//     AND is actually WIRED via `ServerInterceptors.intercept(...)` /
+//     `.intercept(...)`. Presence-without-wiring does NOT credit.
+//
+//   - zio-grpc: a `ZServerInterceptor` class OR a `transformContextZIO` /
+//     `transformContext` combinator whose surrounding window rejects with
+//     `Status.unauthenticated` / `permissionDenied`. The transform IS the wiring
+//     (it is applied onto the service), so no separate `.intercept` is required.
+//
+// A non-auth interceptor (logging/tracing — no UNAUTHENTICATED/PERMISSION_DENIED
+// reject) and a present-but-unwired grpc-java interceptor both return required=false.
+func scalaGRPCResolveAuth(src string) scalaGRPCAuthInfo {
+	wired := reScalaGRPCWiredIntercept.MatchString(src)
+
+	// 1. grpc-java ServerInterceptor arm (scalapb-grpc / fs2-grpc).
+	for _, m := range reScalaGRPCInterceptorClass.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		bodyStart, bodyEnd := scalaGRPCBlockBody(src, m[1]-1)
+		if bodyStart < 0 {
+			continue
+		}
+		body := src[bodyStart:bodyEnd]
+		if !reScalaGRPCAuthReject.MatchString(body) {
+			continue // logging/tracing interceptor — no auth reject.
+		}
+		// Require the interceptor to be wired into a server/service. Without a
+		// wiring site an auth interceptor class is dead and credits nothing.
+		if !wired {
+			continue
+		}
+		return scalaGRPCAuthInfo{required: true, symbol: name, method: "grpc_interceptor", confidence: "high"}
+	}
+
+	// 2. zio-grpc ZServerInterceptor class arm.
+	for _, m := range reScalaGRPCZioInterceptorClass.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		bodyStart, bodyEnd := scalaGRPCBlockBody(src, m[1]-1)
+		if bodyStart < 0 {
+			continue
+		}
+		body := src[bodyStart:bodyEnd]
+		if !reScalaGRPCAuthReject.MatchString(body) {
+			continue
+		}
+		return scalaGRPCAuthInfo{required: true, symbol: name, method: "grpc_interceptor", confidence: "high"}
+	}
+
+	// 3. zio-grpc transformContextZIO arm: the context transform IS the wiring.
+	// Require an auth reject inside the window following the transform combinator.
+	for _, m := range reScalaGRPCZioTransform.FindAllStringIndex(src, -1) {
+		end := m[1] + 400
+		if end > len(src) {
+			end = len(src)
+		}
+		window := src[m[0]:end]
+		if reScalaGRPCAuthReject.MatchString(window) {
+			return scalaGRPCAuthInfo{required: true, symbol: "transformContextZIO", method: "grpc_interceptor", confidence: "high"}
+		}
+	}
+
+	return scalaGRPCAuthInfo{}
+}
+
+// scalaGRPCStampAuth writes the auth property contract onto a gRPC endpoint /
+// service entity. Mirrors the cross-language auth key set (auth_required +
+// auth_method + auth_middleware MCP signal-1 + auth_confidence) so
+// archigraph_auth_coverage fires on the gRPC methods guarded by the interceptor.
+func scalaGRPCStampAuth(e *types.EntityRecord, info scalaGRPCAuthInfo) {
+	setProps(e,
+		"auth_required", "true",
+		"auth_method", info.method,
+		"auth_middleware", info.symbol, // MCP signal-1 key
+		"auth_confidence", info.confidence)
 }
 
 // scalaGRPCAddDTO emits a SCOPE.Schema DTO reference for a gRPC message type.
