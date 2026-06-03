@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | ✅ `full` | `2026-06-01` | — | `internal/custom/java/jaxrs_filters.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | — |
+| Middleware coverage | ✅ `full` | `2026-06-03` | — | `internal/custom/java/jaxrs_filters.go`<br>`internal/engine/http_endpoint_java_middleware.go`<br>`internal/engine/http_endpoint_java_middleware_test.go`<br>`internal/engine/http_endpoint_java_middleware_xframework.go`<br>`internal/extractors/custom_java_patterns_smoke_test.go` | #3859: in addition to the parallel-node jaxrs_filters extractor, a JAX-RS '@Provider class X implements ContainerRequestFilter/ContainerResponseFilter' is now also bound as a GLOBAL outermost filter on the cross-stack ENDPOINT contract (middleware_chain/middleware_count/middleware_names/middleware_scope=filter) via indexJaxrsProviderFilters + applyJavaMiddlewareCoverage, so JAX-RS middleware is queryable uniformly with the other stacks. Value-asserted TestMiddleware_JaxRsProviderFilter (AuthRequestFilter bound, auth_kind=auth). Honest-partial: a @NameBinding-restricted filter is NOT globally bound (TestMiddleware_JaxRsNameBindingSkipped). |
 | Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing

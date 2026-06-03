@@ -201,3 +201,199 @@ class Cfg {
 		t.Errorf("filter with no urlPatterns bound a chain (len=%d count=%q), want none", len(chain), count)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #3859 — cross-framework JVM middleware (WebFlux WebFilter / JAX-RS provider
+// filter / Javalin before-after)
+// ---------------------------------------------------------------------------
+
+// TestMiddleware_WebFluxWebFilter asserts a Spring-WebFlux `implements WebFilter`
+// class is bound as a global filter to every reactive route in the file, scope
+// "filter". Negative: a class that does NOT implement WebFilter is not bound.
+func TestMiddleware_WebFluxWebFilter(t *testing.T) {
+	src := `package com.x;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.server.WebFilter;
+import org.springframework.stereotype.Component;
+import reactor.core.publisher.Mono;
+
+@RestController
+class ApiController {
+  @GetMapping("/items")
+  public Mono<Object> items() { return null; }
+}
+
+@Component
+class LoggingWebFilter implements WebFilter {
+  public Mono<Void> filter(ServerWebExchange ex, WebFilterChain chain) { return chain.filter(ex); }
+}
+
+// A plain helper class that is NOT a WebFilter — must not be bound.
+class NotAFilter {
+  public void doThing() {}
+}
+`
+	chain, count, names, scope := springEndpointMW(t, "src/main/java/com/x/ApiController.java", src, "ANY /items")
+	if len(chain) != 1 {
+		t.Fatalf("/items chain len=%d, want 1 (names=%q count=%q)", len(chain), names, count)
+	}
+	if chain[0].Name != "LoggingWebFilter" {
+		t.Errorf("chain[0].Name=%q, want LoggingWebFilter", chain[0].Name)
+	}
+	if chain[0].Scope != javaMWScopeFilter {
+		t.Errorf("chain[0].Scope=%q, want filter", chain[0].Scope)
+	}
+	if scope != "filter" {
+		t.Errorf("scope=%q, want filter", scope)
+	}
+	if names != "LoggingWebFilter" {
+		t.Errorf("names=%q, want LoggingWebFilter (NotAFilter must not appear)", names)
+	}
+}
+
+// TestMiddleware_JaxRsProviderFilter asserts a JAX-RS `@Provider class …
+// implements ContainerRequestFilter` is bound as a global filter to every
+// resource method in the file, with auth_kind tagged on an auth filter.
+// Negative: a `@NameBinding`-restricted filter is NOT globally bound
+// (honest-partial — selective activation).
+func TestMiddleware_JaxRsProviderFilter(t *testing.T) {
+	src := `package com.x;
+import javax.ws.rs.*;
+import javax.ws.rs.container.ContainerRequestFilter;
+import javax.ws.rs.ext.Provider;
+
+@Path("/things")
+class ThingResource {
+  @GET
+  @Path("/{id}")
+  public Object get(@PathParam("id") String id) { return null; }
+}
+
+@Provider
+class AuthRequestFilter implements ContainerRequestFilter {
+  public void filter(ContainerRequestContext ctx) {}
+}
+`
+	chain, count, names, scope := springEndpointMW(t, "src/main/java/com/x/ThingResource.java", src, "GET /things/{id}")
+	if len(chain) != 1 {
+		t.Fatalf("/things/{id} chain len=%d, want 1 (names=%q count=%q)", len(chain), names, count)
+	}
+	if chain[0].Name != "AuthRequestFilter" {
+		t.Errorf("chain[0].Name=%q, want AuthRequestFilter", chain[0].Name)
+	}
+	if chain[0].Scope != javaMWScopeFilter {
+		t.Errorf("chain[0].Scope=%q, want filter", chain[0].Scope)
+	}
+	if chain[0].AuthKind != "auth" {
+		t.Errorf("AuthRequestFilter auth_kind=%q, want auth", chain[0].AuthKind)
+	}
+	if scope != "filter" {
+		t.Errorf("scope=%q, want filter", scope)
+	}
+}
+
+// TestMiddleware_JaxRsNameBindingSkipped asserts a JAX-RS filter restricted by a
+// @NameBinding meta-annotation is NOT globally bound (honest-partial).
+func TestMiddleware_JaxRsNameBindingSkipped(t *testing.T) {
+	src := `package com.x;
+import javax.ws.rs.*;
+import javax.ws.rs.container.ContainerRequestFilter;
+import javax.ws.rs.ext.Provider;
+
+@Path("/things")
+class ThingResource {
+  @GET
+  public Object list() { return null; }
+}
+
+@Provider
+@Secured
+@NameBinding
+class SecuredFilter implements ContainerRequestFilter {
+  public void filter(ContainerRequestContext ctx) {}
+}
+`
+	chain, count, _, _ := springEndpointMW(t, "src/main/java/com/x/ThingResource.java", src, "GET /things")
+	if len(chain) != 0 || (count != "" && count != "0") {
+		t.Errorf("@NameBinding filter bound globally (len=%d count=%q), want none — selective activation honest-partial",
+			len(chain), count)
+	}
+}
+
+// TestMiddleware_JavalinBeforeAfter asserts Javalin `before("/api/*", …)` binds
+// to the matching route and a bare `after(…)` binds to every route. Negative: a
+// `before("/admin/*", …)` does NOT bind a non-/admin route.
+func TestMiddleware_JavalinBeforeAfter(t *testing.T) {
+	src := `package com.x;
+import io.javalin.Javalin;
+
+class App {
+  public static void main(String[] args) {
+    Javalin app = Javalin.create();
+    app.before("/api/*", ctx -> { });
+    app.before("/admin/*", ctx -> { });
+    app.get("/api/ping", ctx -> ctx.result("pong"));
+    app.after(ctx -> { });
+  }
+}
+`
+	chain, count, names, scope := springEndpointMW(t, "src/main/java/com/x/App.java", src, "GET /api/ping")
+	if len(chain) != 2 {
+		t.Fatalf("/api/ping chain len=%d, want 2 (names=%q count=%q)", len(chain), names, count)
+	}
+	// before("/api/*") matched (glob hits /api/ping); after (no path) is global.
+	// before("/admin/*") must NOT appear (negative).
+	gotNames := map[string]bool{}
+	for _, e := range chain {
+		gotNames[e.Name] = true
+		if e.Scope != javaMWScopeFilter {
+			t.Errorf("entry %q scope=%q, want filter", e.Name, e.Scope)
+		}
+	}
+	if !gotNames["javalin:before(/api/*)"] {
+		t.Errorf("missing javalin:before(/api/*) (names=%q)", names)
+	}
+	if !gotNames["javalin:after"] {
+		t.Errorf("missing global javalin:after (names=%q)", names)
+	}
+	if gotNames["javalin:before(/admin/*)"] {
+		t.Errorf("javalin:before(/admin/*) wrongly bound to /api/ping (names=%q)", names)
+	}
+	if scope != "filter" {
+		t.Errorf("scope=%q, want filter", scope)
+	}
+}
+
+// TestMiddleware_WebFluxRateLimitParity asserts a Spring-WebFlux annotated
+// handler (`@GetMapping Mono<User>`) carrying `@RateLimiter(name="api")` gets the
+// same rate-limit posture as a Spring-MVC handler — WebFlux/MVC parity.
+func TestMiddleware_WebFluxRateLimitParity(t *testing.T) {
+	src := `package com.x;
+import org.springframework.web.bind.annotation.*;
+import io.github.resilience4j.ratelimiter.annotation.RateLimiter;
+import reactor.core.publisher.Mono;
+
+@RestController
+@RequestMapping("/api")
+class ReactiveController {
+  @RateLimiter(name="api")
+  @GetMapping("/users/{id}")
+  public Mono<User> get(@PathVariable String id) { return null; }
+}
+`
+	eps := authProps(t, "java", "src/main/java/com/x/ReactiveController.java", src)
+	e, ok := eps["GET /api/users/{id}"]
+	if !ok {
+		t.Fatalf("reactive endpoint not synthesised (got: %v)", keysOf(eps))
+	}
+	if e.Properties["rate_limited"] != "true" {
+		t.Errorf("reactive @RateLimiter: rate_limited=%q, want true (props: %v)", e.Properties["rate_limited"], e.Properties)
+	}
+	if e.Properties["rate_limit_source"] != "@RateLimiter" {
+		t.Errorf("rate_limit_source=%q, want @RateLimiter", e.Properties["rate_limit_source"])
+	}
+	// Honest-partial: config-driven limit → rate omitted.
+	if e.Properties["rate_limit"] != "" {
+		t.Errorf("rate_limit=%q, want omitted (config-driven)", e.Properties["rate_limit"])
+	}
+}

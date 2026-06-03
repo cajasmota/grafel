@@ -93,7 +93,14 @@ func applyJavaMiddlewareCoverage(content, path string, entities []types.EntityRe
 
 	interceptors := indexSpringInterceptors(content)
 	filters := indexSpringFilters(content)
-	if len(interceptors) == 0 && len(filters) == 0 {
+	// #3859 — cross-framework JVM middleware: Spring-WebFlux WebFilter classes
+	// and JAX-RS @Provider ContainerRequest/ResponseFilter classes are GLOBAL
+	// filters (apply to every route in the file); Javalin before()/after()
+	// handlers bind per path-glob. These compose with the Spring chain.
+	globalFilters := append(indexJavaWebFilters(content), indexJaxrsProviderFilters(content)...)
+	javalinFilters := indexJavalinFilters(content)
+	if len(interceptors) == 0 && len(filters) == 0 &&
+		len(globalFilters) == 0 && len(javalinFilters) == 0 {
 		return
 	}
 
@@ -117,6 +124,10 @@ func applyJavaMiddlewareCoverage(content, path string, entities []types.EntityRe
 				chain = append(chain, f.entry)
 			}
 		}
+		// Cross-framework global / path-glob filters (#3859): WebFilter +
+		// JAX-RS provider filters (global) and Javalin before/after (per-glob).
+		// They occupy the outermost `filter` scope alongside Servlet filters.
+		chain = append(chain, crossFrameworkJavaMiddleware(globalFilters, javalinFilters, routePath)...)
 		// interceptor — bound when an addPathPattern matches and no
 		// excludePathPattern matches.
 		for _, it := range interceptors {

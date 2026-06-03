@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/javalin_routes.go` | — |
+| Middleware coverage | ✅ `full` | `2026-06-03` | 3859 | `internal/engine/http_endpoint_java_middleware.go`<br>`internal/engine/http_endpoint_java_middleware_test.go`<br>`internal/engine/http_endpoint_java_middleware_xframework.go`<br>`internal/engine/http_endpoint_middleware_chain.go` | #3859: Javalin app.before("/glob", h)/after(h)/beforeMatched handlers bound to endpoints via indexJavalinFilters — a path-glob before("/api/*") binds the routes matching the glob (javalinGlobMatches) and a bare before/after binds every route in the file; stamped on the cross-stack endpoint contract (middleware_chain/middleware_count/middleware_names/middleware_scope=filter) by applyJavaMiddlewareCoverage. File-signal gated on javalin/Javalin. Value-asserted TestMiddleware_JavalinBeforeAfter (before(/api/*)+after bound to /api/ping; before(/admin/*) NOT bound — negative). |
 | Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing

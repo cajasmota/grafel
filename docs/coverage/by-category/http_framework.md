@@ -152,12 +152,12 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Helidon](../detail/lang.java.framework.helidon.md) | 🟢 6/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 5/16 | |
 | [java](../by-language/java.md) | [JAX-RS / Jakarta REST](../detail/lang.java.framework.jaxrs.md) | 🟢 6/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟡 14/19 | |
 | [java](../by-language/java.md) | [Jakarta EE (Servlet / EE Platform)](../detail/lang.java.framework.jakarta-ee.md) | 🟢 6/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 7/19 | |
-| [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | 🟡 5/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 5/12 | |
+| [java](../by-language/java.md) | [Javalin](../detail/lang.java.framework.javalin.md) | 🟡 5/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 6/12 | |
 | [java](../by-language/java.md) | [Micronaut](../detail/lang.java.framework.micronaut.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 14/19 | |
 | [java](../by-language/java.md) | [Netflix DGS](../detail/lang.java.framework.dgs.md) | 🟡 3/6 | 🟢 1/1 | 🔴 0/4 | ✅ 1/1 | 🟡 3/24 | 🟡 5/19 | |
 | [java](../by-language/java.md) | [Quarkus](../detail/lang.java.framework.quarkus.md) | 🟢 6/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 8/19 | |
 | [java](../by-language/java.md) | [Spring Boot / Spring MVC](../detail/lang.java.framework.spring-boot.md) | 🟢 6/6 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 25/25 | 🟡 18/21 | |
-| [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 6/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟡 14/19 | |
+| [java](../by-language/java.md) | [Spring WebFlux (reactive)](../detail/lang.java.framework.spring-webflux.md) | 🟢 6/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟡 15/19 | |
 | [java](../by-language/java.md) | [Spring for GraphQL](../detail/lang.java.framework.spring-graphql.md) | 🟡 3/6 | 🟢 1/1 | 🔴 0/4 | ✅ 1/1 | 🟡 3/24 | 🟡 5/19 | |
 | [java](../by-language/java.md) | [Vert.x](../detail/lang.java.framework.vertx.md) | 🟡 5/6 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟡 5/12 | |
 | [kotlin](../by-language/kotlin.md) | [Arrow (functional Kotlin)](../detail/lang.kotlin.framework.arrow.md) | 🟡 1/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/6 | |

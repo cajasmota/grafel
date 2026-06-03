@@ -26066,9 +26066,11 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/javalin_routes.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_java_middleware.go","internal/engine/http_endpoint_java_middleware_test.go","internal/engine/http_endpoint_java_middleware_xframework.go","internal/engine/http_endpoint_middleware_chain.go"],
+            "issue": "3859",
+            "notes": "#3859: Javalin app.before(\"/glob\", h)/after(h)/beforeMatched handlers bound to endpoints via indexJavalinFilters — a path-glob before(\"/api/*\") binds the routes matching the glob (javalinGlobMatches) and a bare before/after binds every route in the file; stamped on the cross-stack endpoint contract (middleware_chain/middleware_count/middleware_names/middleware_scope=filter) by applyJavaMiddlewareCoverage. File-signal gated on javalin/Javalin. Value-asserted TestMiddleware_JavalinBeforeAfter (before(/api/*)+after bound to /api/ping; before(/admin/*) NOT bound — negative).",
+            "verified_at": "2026-06-03"
           },
           "rate_limit_stamping": {
             "status": "missing",
@@ -26407,8 +26409,9 @@
         "Middleware": {
           "middleware_coverage": {
             "status": "full",
-            "cites": ["internal/custom/java/jaxrs_filters.go","internal/extractors/custom_java_patterns_smoke_test.go"],
-            "verified_at": "2026-06-01"
+            "cites": ["internal/custom/java/jaxrs_filters.go","internal/engine/http_endpoint_java_middleware.go","internal/engine/http_endpoint_java_middleware_test.go","internal/engine/http_endpoint_java_middleware_xframework.go","internal/extractors/custom_java_patterns_smoke_test.go"],
+            "notes": "#3859: in addition to the parallel-node jaxrs_filters extractor, a JAX-RS '@Provider class X implements ContainerRequestFilter/ContainerResponseFilter' is now also bound as a GLOBAL outermost filter on the cross-stack ENDPOINT contract (middleware_chain/middleware_count/middleware_names/middleware_scope=filter) via indexJaxrsProviderFilters + applyJavaMiddlewareCoverage, so JAX-RS middleware is queryable uniformly with the other stacks. Value-asserted TestMiddleware_JaxRsProviderFilter (AuthRequestFilter bound, auth_kind=auth). Honest-partial: a @NameBinding-restricted filter is NOT globally bound (TestMiddleware_JaxRsNameBindingSkipped).",
+            "verified_at": "2026-06-03"
           },
           "rate_limit_stamping": {
             "status": "missing",
@@ -28757,17 +28760,17 @@
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "cites": ["internal/custom/java/spring_webflux_routes.go","testdata/fixtures/sources/java/spring_webflux/RouterConfig.java"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "WebFilter implementations detected via 'implements WebFilter' class declaration; Middleware entities emitted with middleware_type=web_filter and filter_class. Multiple WebFilter classes in one file each produce a distinct entity.",
-            "verified_at": "2026-05-29"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_java_middleware.go","internal/engine/http_endpoint_java_middleware_test.go","internal/engine/http_endpoint_java_middleware_xframework.go","internal/engine/http_endpoint_middleware_chain.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3859",
+            "notes": "#3859: a Spring-WebFlux 'class X implements WebFilter' is bound as a GLOBAL outermost filter to every reactive endpoint in the file via indexJavaWebFilters, stamped on the cross-stack endpoint contract (middleware_chain/middleware_count/middleware_names/middleware_scope=filter) by applyJavaMiddlewareCoverage — same contract as the Spring-MVC Servlet-filter/interceptor pass and the Go(#3777)/JS-TS(#2853) passes. Value-asserted TestMiddleware_WebFluxWebFilter (LoggingWebFilter bound, scope=filter; a non-WebFilter class NOT bound). Honest-partial: a filter whose activation cannot be statically attributed to same-file routes is not bound.",
+            "verified_at": "2026-06-03"
           },
           "rate_limit_stamping": {
             "status": "partial",
-            "cites": ["internal/engine/http_endpoint_java_ratelimit.go","internal/engine/http_endpoint_java_ratelimit_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "notes": "Resilience4j @RateLimiter(name=...) / bucket4j @RateLimiting(capacity=N) method annotations (matched by mapping path) and Spring Cloud Gateway RequestRateLimiter filters (matched by Path= predicate, replenishRate→rate) stamp rate_limited/rate_limit/rate_limit_scope(route|gateway)/rate_limit_source on the endpoint op. Bare Resilience4j @RateLimiter rate lives in config → honest-partial (rate omitted). Negative: a non-throttle annotation does not stamp.",
-            "verified_at": "2026-06-02"
+            "cites": ["internal/engine/http_endpoint_java_middleware_test.go","internal/engine/http_endpoint_java_ratelimit.go","internal/engine/http_endpoint_java_ratelimit_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "Resilience4j @RateLimiter(name=...) / bucket4j @RateLimiting(capacity=N) method annotations (matched by mapping path) and Spring Cloud Gateway RequestRateLimiter filters (matched by Path= predicate, replenishRate→rate) stamp rate_limited/rate_limit/rate_limit_scope(route|gateway)/rate_limit_source on the endpoint op. #3859: confirmed MVC-parity on Spring-WebFlux annotated handlers — a @RateLimiter on a @GetMapping Mono\u003cUser\u003e handler stamps identically (value-asserted TestMiddleware_WebFluxRateLimitParity). Status stays partial: a bare Resilience4j @RateLimiter rate lives in config → rate omitted (honest-partial). Negative: a non-throttle annotation does not stamp.",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
