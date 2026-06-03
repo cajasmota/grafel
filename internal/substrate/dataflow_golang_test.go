@@ -268,3 +268,225 @@ func TestGoExpandParams_TypeOnlyUnnamed(t *testing.T) {
 		}
 	}
 }
+
+// ====================================================================
+// wave4-go-request-sink-dataflow (#3872): per-framework VERIFY-FIRST
+// tests proving the LIVE go sniffer recognises each flipped framework's
+// REAL request-input idiom. Each asserts an EXACT source field + sink;
+// a paired negative proves non-vacuousness (the flow only fires for the
+// matched idiom — a divergent receiver/method yields NO flow).
+// ====================================================================
+
+// --- FIBER: handler is func(c *fiber.Ctx) error. Fiber's key-getter
+// request reads c.Query("k") / c.FormValue("k") share the `c`-receiver
+// + getter-name idiom the sniffer recognises (same shape as gin/echo).
+// (c.BodyParser(&dto) does NOT match dfGoBindRe — honest-partial boundary.)
+
+func TestGoDataFlow_FiberQueryToDBCreate(t *testing.T) {
+	src := `package h
+func ListItems(c *fiber.Ctx) error {
+	name := c.Query("name")
+	db.Create(&Item{Title: name})
+	return nil
+}`
+	flows := sniffDataFlowGo(src)
+	f := findGoFlow(flows, "db.Create")
+	if f == nil {
+		t.Fatalf("expected a db.Create flow from fiber c.Query, got %+v", flows)
+	}
+	if f.SinkKind != DataFlowSinkDBWrite {
+		t.Errorf("sink kind = %q, want db_write", f.SinkKind)
+	}
+	if f.Function != "ListItems" {
+		t.Errorf("origin = %q, want ListItems", f.Function)
+	}
+	if f.SourceField != "name" {
+		t.Errorf("source field = %q, want name (from c.Query(\"name\"))", f.SourceField)
+	}
+}
+
+func TestGoDataFlow_FiberFormValueToResponse(t *testing.T) {
+	src := `package h
+func Echo(c *fiber.Ctx) error {
+	v := c.FormValue("msg")
+	return c.JSON(v)
+}`
+	flows := sniffDataFlowGo(src)
+	f := findGoFlow(flows, "c.JSON")
+	if f == nil {
+		t.Fatalf("expected a c.JSON response flow from fiber c.FormValue, got %+v", flows)
+	}
+	if f.SinkKind != DataFlowSinkResponse {
+		t.Errorf("sink kind = %q, want response", f.SinkKind)
+	}
+	if f.SourceField != "msg" {
+		t.Errorf("source field = %q, want msg (from c.FormValue(\"msg\"))", f.SourceField)
+	}
+}
+
+// NON-VACUOUSNESS for fiber: fiber's c.BodyParser(&dto) is NOT a recognised
+// bind source (unlike gin c.ShouldBindJSON / echo c.Bind). With ONLY a
+// BodyParser read and no key-getter, NO flow is produced — proving the
+// flip is carried solely by the matched c.Query/c.FormValue idiom.
+func TestGoDataFlow_FiberBodyParserNotASource(t *testing.T) {
+	src := `package h
+func Signup(c *fiber.Ctx) error {
+	var dto UserDTO
+	c.BodyParser(&dto)
+	db.Save(&User{Email: dto.Email})
+	return nil
+}`
+	flows := sniffDataFlowGo(src)
+	if f := findGoFlow(flows, "db.Save"); f != nil {
+		t.Errorf("expected NO flow (c.BodyParser is not a recognised bind source), got %+v", *f)
+	}
+}
+
+// --- BUFFALO: handler is func(c buffalo.Context) error. Buffalo's bind
+// idiom is c.Bind(&dto) — matched by dfGoBindRe (the bare `Bind` arm,
+// same as echo). The bound root's later member access lifts the field.
+
+func TestGoDataFlow_BuffaloBindToDBSave(t *testing.T) {
+	src := `package h
+func CreateOrder(c buffalo.Context) error {
+	var req OrderReq
+	c.Bind(&req)
+	db.Save(&Order{Sku: req.Sku})
+	return nil
+}`
+	flows := sniffDataFlowGo(src)
+	f := findGoFlow(flows, "db.Save")
+	if f == nil {
+		t.Fatalf("expected a db.Save flow from buffalo c.Bind, got %+v", flows)
+	}
+	if f.SinkKind != DataFlowSinkDBWrite {
+		t.Errorf("sink kind = %q, want db_write", f.SinkKind)
+	}
+	if f.Function != "CreateOrder" {
+		t.Errorf("origin = %q, want CreateOrder", f.Function)
+	}
+	if f.SourceField != "Sku" {
+		t.Errorf("source field = %q, want Sku (lifted from req.Sku via c.Bind root)", f.SourceField)
+	}
+}
+
+// NON-VACUOUSNESS for buffalo: if the bind root is NOT populated by a
+// recognised bind call (here a plain var, no c.Bind), the member access
+// req.Sku is untainted and NO flow is produced.
+func TestGoDataFlow_BuffaloNoBindNoFlow(t *testing.T) {
+	src := `package h
+func CreateOrder(c buffalo.Context) error {
+	var req OrderReq
+	db.Save(&Order{Sku: req.Sku})
+	return nil
+}`
+	flows := sniffDataFlowGo(src)
+	if f := findGoFlow(flows, "db.Save"); f != nil {
+		t.Errorf("expected NO flow without a c.Bind source, got %+v", *f)
+	}
+}
+
+// --- GORILLA-MUX: handlers are stdlib func(w, r *http.Request). gorilla
+// is a router over net/http; request reads are the stdlib forms
+// json.NewDecoder(r.Body).Decode(&dto) / r.URL.Query().Get / r.FormValue,
+// all recognised by the net/http arms of the sniffer.
+
+func TestGoDataFlow_GorillaDecodeBodyToDBCreate(t *testing.T) {
+	src := `package h
+func CreateUser(w http.ResponseWriter, r *http.Request) {
+	var dto UserDTO
+	json.NewDecoder(r.Body).Decode(&dto)
+	db.Create(&User{Email: dto.Email})
+}`
+	flows := sniffDataFlowGo(src)
+	f := findGoFlow(flows, "db.Create")
+	if f == nil {
+		t.Fatalf("expected a db.Create flow from gorilla stdlib Decode, got %+v", flows)
+	}
+	if f.SinkKind != DataFlowSinkDBWrite {
+		t.Errorf("sink kind = %q, want db_write", f.SinkKind)
+	}
+	if f.Function != "CreateUser" {
+		t.Errorf("origin = %q, want CreateUser", f.Function)
+	}
+	if f.SourceField != "Email" {
+		t.Errorf("source field = %q, want Email (lifted from dto.Email)", f.SourceField)
+	}
+}
+
+func TestGoDataFlow_GorillaQueryGetToResponse(t *testing.T) {
+	src := `package h
+func Search(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	w.Write([]byte(q))
+}`
+	flows := sniffDataFlowGo(src)
+	f := findGoFlow(flows, "w.Write")
+	if f == nil {
+		t.Fatalf("expected a w.Write response flow from gorilla r.URL.Query().Get, got %+v", flows)
+	}
+	if f.SinkKind != DataFlowSinkResponse {
+		t.Errorf("sink kind = %q, want response", f.SinkKind)
+	}
+	if f.SourceField != "q" {
+		t.Errorf("source field = %q, want q (from r.URL.Query().Get(\"q\"))", f.SourceField)
+	}
+}
+
+// --- HONEST-MISSING GUARDS: prove the DIVERGENT idioms of the
+// not-flipped frameworks genuinely produce NO flow, justifying their
+// honest-missing verdict. These pin the boundary so a future sniffer
+// extension that adds them will flip a RED test → forcing a registry update.
+
+// fasthttp: receiver `ctx *fasthttp.RequestCtx`, ctx.QueryArgs().Peek("k").
+func TestGoDataFlow_FasthttpCtxIdiomNotRecognised(t *testing.T) {
+	src := `package h
+func listUsers(ctx *fasthttp.RequestCtx) {
+	q := ctx.QueryArgs().Peek("q")
+	db.Create(&Item{Name: string(q)})
+}`
+	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
+		t.Errorf("fasthttp ctx.QueryArgs idiom should NOT be recognised, got %+v", *f)
+	}
+}
+
+// hertz: request receiver named `ctx *app.RequestContext` (the `c` param is
+// stdlib context.Context); ctx.Query / ctx.BindAndValidate are divergent.
+func TestGoDataFlow_HertzCtxIdiomNotRecognised(t *testing.T) {
+	src := `package h
+func createUser(c context.Context, ctx *app.RequestContext) {
+	q := ctx.Query("q")
+	db.Create(&Item{Name: q})
+}`
+	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
+		t.Errorf("hertz ctx.Query idiom should NOT be recognised, got %+v", *f)
+	}
+}
+
+// go-zero: r *http.Request receiver but bind via httpx.Parse(r,&req) — not a
+// recognised bind helper (only .Decode(&x) matches), so honest-missing.
+func TestGoDataFlow_GoZeroHttpxParseNotRecognised(t *testing.T) {
+	src := `package h
+func createUserHandler(w http.ResponseWriter, r *http.Request) {
+	var req CreateReq
+	httpx.Parse(r, &req)
+	db.Create(&User{Email: req.Email})
+}`
+	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
+		t.Errorf("go-zero httpx.Parse bind should NOT be recognised, got %+v", *f)
+	}
+}
+
+// revel: controller method func (c App) X(); params via c.Params.Get("k")
+// (Params is a struct field, .Get a method) — does NOT match c.Param(.
+func TestGoDataFlow_RevelParamsGetNotRecognised(t *testing.T) {
+	src := `package h
+func (c App) Show() revel.Result {
+	id := c.Params.Get("id")
+	db.Create(&Item{Ref: id})
+	return c.Render()
+}`
+	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
+		t.Errorf("revel c.Params.Get idiom should NOT be recognised, got %+v", *f)
+	}
+}
