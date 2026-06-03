@@ -33,7 +33,10 @@ func collectLrMatches(content string) []lrMatch {
 	emit := func(method, canonicalPath, framework, handlerKind, handlerName string) {
 		out = append(out, lrMatch{method, canonicalPath, framework, handlerKind, handlerName})
 	}
-	synthesizeLaravel(content, emit)
+	emitResource := func(method, canonicalPath, framework, handlerKind, handlerName, handlerFile, action string) {
+		emit(method, canonicalPath, framework, handlerKind, handlerName)
+	}
+	synthesizeLaravel(content, emit, emitResource)
 	return out
 }
 
@@ -42,7 +45,10 @@ func collectLrIDs(content string) []string {
 	emit := func(method, canonicalPath, framework, _, _ string) {
 		ids = append(ids, "http:"+method+":"+canonicalPath)
 	}
-	synthesizeLaravel(content, emit)
+	emitResource := func(method, canonicalPath, framework, _, _, _, _ string) {
+		ids = append(ids, "http:"+method+":"+canonicalPath)
+	}
+	synthesizeLaravel(content, emit, emitResource)
 	sort.Strings(ids)
 	return ids
 }

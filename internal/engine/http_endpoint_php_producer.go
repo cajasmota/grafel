@@ -460,7 +460,13 @@ func lrResourceControllerFromMatch(src string, m []int) string {
 // synthesizeLaravel scans a PHP source file for Laravel route registrations
 // and calls emit for each (verb, canonical-path, framework, handlerKind, handlerName)
 // tuple discovered. It is the producer-side counterpart to synthesizePHPClient.
-func synthesizeLaravel(content string, emit emitFn) {
+// emitResourceFn is the closure the resourceful-route synthesizers use to emit a
+// framework-synthesized route AND stamp its provenance + per-verb effective
+// contract (T10 #3842). action is the framework's canonical action name
+// (index/store/show/update/destroy/...) the routes catalog keys the contract on.
+type emitResourceFn func(method, canonicalPath, framework, refKind, refName, handlerFile, action string)
+
+func synthesizeLaravel(content string, emit emitFn, emitResource emitResourceFn) {
 	if !phpHasAnyLaravelRoute(content) {
 		return
 	}
@@ -561,7 +567,7 @@ func synthesizeLaravel(content string, emit emitFn) {
 			if ctrl != "" {
 				hKind, hName = "SCOPE.Operation", ctrl+"@"+r.action
 			}
-			emit(r.method, canonical, "laravel_resource", hKind, hName)
+			emitResource(r.method, canonical, "laravel_resource", hKind, hName, "", r.action)
 		}
 	}
 
@@ -582,7 +588,7 @@ func synthesizeLaravel(content string, emit emitFn) {
 			if ctrl != "" {
 				hKind, hName = "SCOPE.Operation", ctrl+"@"+r.action
 			}
-			emit(r.method, canonical, "laravel_api_resource", hKind, hName)
+			emitResource(r.method, canonical, "laravel_api_resource", hKind, hName, "", r.action)
 		}
 	}
 }

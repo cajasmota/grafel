@@ -49523,8 +49523,11 @@
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_php_producer.go","internal/engine/route_synth_provenance_3842_test.go","internal/frameworks/routes/contracts.go","internal/frameworks/routes/contracts_test.go"],
+            "issue": "3818",
+            "notes": "#3842 (T10): Route::resource/apiResource synthesized routes now carry provenance=framework_synthesized + per-verb effective contract from frameworks/routes - store-\u003e201, destroy-\u003e204 No Content, index/show/update-\u003e200, with documented error_statuses (404/422). Stamped via emitResource on the canonical http:\u003cVERB\u003e:\u003cpath\u003e synthetic. Value-asserting test TestRouteSynth_Laravel_Resource_Provenance / _ApiResource asserts exact verb+action+status. Honest-partial remainder: EXPLICIT verb routes (Route::get/post...) are not body-parsed for a controller-declared response()-\u003ejson(...,code) status; only the resourceful-macro family is contracted.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_synthesis": {
             "status": "full",
@@ -62700,8 +62703,11 @@
             "verified_at": "2026-06-02"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_ruby_producer.go","internal/engine/route_synth_provenance_3842_test.go","internal/frameworks/routes/contracts.go","internal/frameworks/routes/contracts_test.go"],
+            "issue": "3818",
+            "notes": "#3842 (T10): resources/resource synthesized routes now carry provenance=framework_synthesized + per-verb effective contract from frameworks/routes - create-\u003e201, destroy-\u003e204 No Content, index/show/update-\u003e200, with documented error_statuses (404/422). Stamped via emitResource on the canonical http:\u003cVERB\u003e:\u003cpath\u003e synthetic. Value-asserting test TestRouteSynth_Rails_Resources_Provenance asserts exact verb+action+status. Honest-partial remainder: EXPLICIT verb routes (get/post to:'c#a') are not body-parsed for a controller render status: code; only the resourceful-macro family is contracted.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_synthesis": {
             "status": "full",
