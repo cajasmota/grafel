@@ -564,6 +564,51 @@ data class Customer(
 	}
 }
 
+// TestKotlinHibernate_SchemaTableName_Parity3872 is the value-asserting parity
+// test for schema_extraction on lang.kotlin.orm.hibernate and
+// lang.kotlin.orm.spring-data. It drives the real ExtractHibernate dispatch on
+// Kotlin source for BOTH the "hibernate" and "spring_data_jpa" frameworks and
+// asserts the EXACT table_name property emitted from @Table(name=...) on a
+// Kotlin data class — proving the schema layer dispatches live for Kotlin and
+// is not a generic SCOPE.Schema presence check.
+func TestKotlinHibernate_SchemaTableName_Parity3872(t *testing.T) {
+	source := `
+import jakarta.persistence.Entity
+import jakarta.persistence.Table
+
+@Entity
+@Table(name = "orders")
+data class Order(
+    val id: Long = 0,
+    val total: Double = 0.0
+)
+`
+	for _, fw := range []string{"hibernate", "spring_data_jpa"} {
+		r := ExtractHibernate(PatternContext{
+			Source:    source,
+			Language:  "kotlin",
+			Framework: fw,
+			FilePath:  "Order.kt",
+		})
+		var got string
+		var foundSchema bool
+		for _, e := range r.Entities {
+			if e.Kind == "SCOPE.Schema" && e.Name == "Order" {
+				foundSchema = true
+				if tn, ok := e.Properties["table_name"].(string); ok {
+					got = tn
+				}
+			}
+		}
+		if !foundSchema {
+			t.Fatalf("[parity#3872 %s] no SCOPE.Schema entity named Order emitted for Kotlin", fw)
+		}
+		if got != "orders" {
+			t.Errorf("[parity#3872 %s] table_name = %q, want %q", fw, got, "orders")
+		}
+	}
+}
+
 // TestKotlinHibernate_Associations_Issue3274 verifies @OneToMany / @ManyToOne
 // produce DEPENDS_ON relationships.
 func TestKotlinHibernate_Associations_Issue3274(t *testing.T) {
