@@ -12802,8 +12802,10 @@
             "notes": "sqflite db.query/rawQuery (db_read) and db.insert/update/delete/execute (db_write), plus drift generated methods, recognised by the framework-blind Dart effect sniffer (gated on .dart via LanguageForPath). Value-asserted: TestSniffEffectsDart_PrimitiveCoverage maps fetchUsers-\u003edb_read, saveUser-\u003edb_write. PARTIAL: regex heuristic on canonical primitives, not a full ORM corpus."
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_dart.go"],
+            "issue": "4035",
+            "notes": "reachability.go BFS seeds from the Dart entry-point sniffer (entry_points_dart.go: top-level main, runApp, dart_frog onRequest, shelf Request handlers, Isolate.spawn) so Flutter/server entities reached only via those roots stop being over-reported as dead. Value-asserted: TestDartEntryPoints_MainAndRunApp/DartFrogHandler/IsolateSpawn. PARTIAL: full Dart module/pubspec resolution not modelled."
           },
           "def_use_chain_extraction": {
             "status": "partial",
@@ -12849,20 +12851,28 @@
             "notes": "this.field = ... assignments inside a method body recognised as mutation effects by the Dart effect sniffer. Value-asserted: TestSniffEffectsDart_PrimitiveCoverage maps saveUser-\u003emutation. PARTIAL: regex heuristic."
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go","internal/substrate/entry_points_dart.go"],
+            "issue": "4035",
+            "notes": "pure_function_pass.go is language-agnostic and tags effect-free functions as pure over the reachable set; the Dart entry-point sniffer (entry_points_dart.go, #4035) now seeds that reachable set so non-entry effect-free Dart functions are eligible. PARTIAL: regex heuristic; async/Future purity not fully modelled."
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_dart.go"],
+            "issue": "4035",
+            "notes": "reachability.go BFS seeds from the new Dart entry-point sniffer (entry_points_dart.go): top-level main (cli_main), runApp / dart_frog onRequest / shelf Request handlers / Isolate.spawn (framework_lifecycle), and test/testWidgets/group (test_entry). Value-asserted: TestDartEntryPoints_* (main+runApp, onRequest, Isolate.spawn(heavyTask)) + negatives (nested class main, plain fn). PARTIAL: full Dart module-boundary traversal requires pubspec integration."
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_dart.go"],
+            "issue": "4035",
+            "notes": "payload_shapes_dart.go (#4035) lifts consumer request shapes from Dio/http post/put/patch call bodies: inline map literals (data: {'name': n, 'email': e}) and \u003cvar\u003e.toJson() of a same-file @JsonSerializable/@freezed DTO. Value-asserted: TestDartPayload_DioPostBody_RequestShape ({name,email}, VerbHint POST) + ToJsonBody + negative GetNoBody. PARTIAL: consumer-side only (Dart is the client), same-file DTO resolution, single-line call bodies."
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_dart.go"],
+            "issue": "4035",
+            "notes": "payload_shapes_dart.go (#4035) lifts consumer response shapes from X.fromJson(...) where X is a same-file @JsonSerializable/@freezed DTO; field names+types+nullability come from the class's final fields. Value-asserted: TestDartPayload_JsonSerializableDTO_ResponseShape (User -\u003e {id:int, name:String, email:String? optional}) + negative PlainClassNoDTO. PARTIAL: same-file DTO resolution; cross-file/generated *.g.dart shapes not resolved."
           },
           "sanitizer_recognition": {
             "status": "partial",

@@ -16,7 +16,7 @@ func TestPayloadShapeSnifferRegistry_T1AndT2AndT3(t *testing.T) {
 	// T3 (#2777): astro, clojure, crystal, fsharp, nim, solidity, svelte, swift, vue.
 	// GraphQL SDL (#3076): graphql.
 	want := []string{
-		"astro", "c-cpp", "clojure", "crystal", "csharp", "elixir",
+		"astro", "c-cpp", "clojure", "crystal", "csharp", "dart", "elixir",
 		"fsharp", "go", "graphql", "java", "jsts", "kotlin", "nim", "php", "python",
 		"ruby", "rust", "scala", "solidity", "svelte", "swift", "vue",
 	}
