@@ -71169,8 +71169,10 @@
             "verified_at": "2026-05-30"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/rate_limit.go"],
+            "notes": "#4105 greenfield: custom_scala_rate_limit stamps the flat contract (rate_limited/rate_limit/rate_limit_scope/rate_limit_source/limit/period) on akka/pekko-http Streams `.throttle(elements, per, ...)` stages (positional AND named-arg forms). amount + FiniteDuration window resolved to a human rate (100/1s) when literal; scope=route (the throttle guards a streamed response inside a route — a precise verb+path join is heuristic, so no route fabricated); source=akka_throttle. Honest-partial (rate omitted) when amount/per is config/expression-driven. Value-asserting tests pin the exact amount/per; negatives (plain route, non-throttle middleware). File-local marker (SCOPE.Pattern/rate_limit).",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
@@ -72779,8 +72781,10 @@
             "verified_at": "2026-05-30"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/rate_limit.go"],
+            "notes": "#4105 greenfield: custom_scala_rate_limit stamps the flat contract (rate_limited/rate_limit/rate_limit_scope/rate_limit_source/limit/period) on the http4s Throttle middleware — Throttle(amount, per)(app), Throttle.httpApp[F](amount, per)(app), Throttle.httpRoutes(amount, per)(routes) from org.http4s.server.middleware. amount (Int) + per (FiniteDuration literal: 1.minute/10.seconds/100.millis) resolved to a human rate (100/60s; sub-second windows rendered as 200/100ms) when literal; scope=app (Throttle wraps the whole HttpApp/HttpRoutes — app-wide, not a named route, so none fabricated); source=http4s_throttle. Gated on an http4s file signal. Honest-partial (rate omitted) when amount/per is config/expression-driven. Value-asserting tests pin the exact amount/per; negatives (plain route, CORS/GZip non-throttle middleware, non-http4s Throttle). File-local marker (SCOPE.Pattern/rate_limit).",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
@@ -73434,8 +73438,10 @@
             "verified_at": "2026-05-30"
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/scala/rate_limit.go"],
+            "notes": "#4105 greenfield: custom_scala_rate_limit stamps the flat contract (rate_limited/rate_limit/rate_limit_scope/rate_limit_source/limit/period) on pekko-http Streams `.throttle(elements, per, ...)` stages (positional AND named-arg). amount + FiniteDuration window resolved to a human rate (5/120s) when literal; scope=route (throttle guards a streamed response inside a route — precise verb+path join is heuristic, so none fabricated); source=pekko_throttle (org.apache.pekko.* disambiguates from akka). Honest-partial (rate omitted) when amount/per is config/expression-driven. Value-asserting tests pin the exact amount/per; negatives. File-local marker (SCOPE.Pattern/rate_limit).",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
