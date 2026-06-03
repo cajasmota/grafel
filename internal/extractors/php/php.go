@@ -78,6 +78,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// functions / methods to a shared SCOPE.TranslationKey node for Laravel
 	// `__('k')` / `trans('k')` shapes (dynamic / interpolated keys dropped).
 	emitTranslationKeyEdges(root, file, &entities)
+	// Error-flow topology (epic #3628) — THROWS / CATCHES edges from
+	// operations to a shared SCOPE.ExceptionType node for `throw new X()` and
+	// typed `catch (X $e)` (incl. PHP 8 union multi-catch). Dynamic / re-throw
+	// shapes are dropped (precision-first).
+	emitExceptionFlowEdges(root, file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")

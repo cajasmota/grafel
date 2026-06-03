@@ -49800,8 +49800,10 @@
             "verified_at": "2026-06-03"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -50067,8 +50069,10 @@
             "verified_at": "2026-06-03"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -50353,8 +50357,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -50638,8 +50644,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -50923,8 +50931,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -51194,8 +51204,10 @@
             "verified_at": "2026-06-03"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -51482,8 +51494,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -51781,8 +51795,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -52056,8 +52072,10 @@
             "verified_at": "2026-06-03"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -52344,8 +52362,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -52631,8 +52651,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -52916,8 +52938,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -53203,8 +53227,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -53498,8 +53524,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -53786,8 +53814,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -54071,8 +54101,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/php/exception_flow.go","internal/extractors/php/exception_flow_test.go"],
+            "notes": "throw new X / throw new \\Ns\\X -\u003e THROWS; catch (X $e) incl PHP8 union A|B -\u003e CATCHES; broad \\Throwable/\\Exception recorded (typed); re-throw $e / dynamic dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",

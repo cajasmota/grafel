@@ -33,8 +33,8 @@ one is a separate detail page.
 | [`lang.jsts.framework.type-graphql`](./lang.jsts.framework.type-graphql.md) | JS/TS | framework | 4 full, 5 partial, 40 missing |
 | [`lang.kotlin.framework.graphql-kotlin`](./lang.kotlin.framework.graphql-kotlin.md) | kotlin | framework | 5 full, 50 missing |
 | [`msg.graphql-subscriptions`](./msg.graphql-subscriptions.md) | multi |  | 3 full |
-| [`lang.php.framework.api-platform-graphql`](./lang.php.framework.api-platform-graphql.md) | php | framework | 10 full, 16 partial, 23 missing |
-| [`lang.php.framework.graphql-php`](./lang.php.framework.graphql-php.md) | php | framework | 10 full, 16 partial, 23 missing |
+| [`lang.php.framework.api-platform-graphql`](./lang.php.framework.api-platform-graphql.md) | php | framework | 11 full, 16 partial, 22 missing |
+| [`lang.php.framework.graphql-php`](./lang.php.framework.graphql-php.md) | php | framework | 11 full, 16 partial, 22 missing |
 | [`lang.python.framework.graphene`](./lang.python.framework.graphene.md) | python | framework | 15 full, 24 partial, 10 missing |
 | [`lang.python.framework.strawberry-graphql`](./lang.python.framework.strawberry-graphql.md) | python | framework | 16 full, 23 partial, 10 missing |
 | [`lang.ruby.framework.graphql-ruby`](./lang.ruby.framework.graphql-ruby.md) | ruby | framework | 3 full, 11 partial, 35 missing |
