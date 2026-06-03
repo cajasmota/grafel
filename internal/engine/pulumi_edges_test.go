@@ -192,6 +192,33 @@ export class VpcStack extends pulumi.ComponentResource {
 	}
 }
 
+// TestPulumiPy_ComponentResource_StackAppTopology is a value-asserting test
+// backing the iac_stack_app_topology (#4200) capability credit for Pulumi
+// (Python). A `class X(pulumi.ComponentResource)` subclass is the module/
+// component composition boundary; applyPulumiEdgesPython Pass 3 emits it as a
+// component-scoped topology entity (resource_scope=component, construct_type=
+// pulumi.ComponentResource). Credit is partial: the boundary entity is emitted
+// but no ComponentResource→child containment edge is produced.
+func TestPulumiPy_ComponentResource_StackAppTopology(t *testing.T) {
+	src := `import pulumi
+
+class NetworkComponent(pulumi.ComponentResource):
+    def __init__(self, name):
+        super().__init__("pkg:NetworkComponent", name)
+`
+	ents, _ := runPulumiDetect(t, "python", "__main__.py", src)
+	c := pulumiResourceByName(ents, "NetworkComponent")
+	if c == nil {
+		t.Fatalf("expected component-composition entity NetworkComponent, got %+v", ents)
+	}
+	if c.props["resource_scope"] != "component" {
+		t.Errorf("NetworkComponent resource_scope = %q, want component (the module/component boundary node)", c.props["resource_scope"])
+	}
+	if c.props["construct_type"] != "pulumi.ComponentResource" {
+		t.Errorf("NetworkComponent construct_type = %q, want pulumi.ComponentResource", c.props["construct_type"])
+	}
+}
+
 // TestPulumiPy_MarqueeFixture is the Python value-asserting test: a Bucket
 // "data" plus a lambda referencing `data.arn` → both resources + DEPENDS_ON.
 func TestPulumiPy_MarqueeFixture(t *testing.T) {

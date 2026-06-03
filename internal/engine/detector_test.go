@@ -888,3 +888,67 @@ export class ApiStack extends cdk.Stack {
 		t.Errorf("expected CfnOutput entity named 'ApiUrl' (the OutputId literal), got %+v", result.Entities)
 	}
 }
+
+// TestDetect_CDKStackApp_StackTopologyExtraction drives the real embedded
+// rules/javascript_typescript/frameworks/aws_cdk.yaml against an App-instantiates-
+// Stack program and asserts the stack/app composition topology. This is the
+// value-asserting test backing the iac_stack_app_topology (#4200) capability
+// credit for AWS CDK. It asserts BOTH halves of the composition:
+//   - the topology ENTITY: `class ApiStack extends cdk.Stack` surfaces as a
+//     Component entity named 'ApiStack' (source_patterns Stack rule), and
+//   - the CONTAINMENT relationship: `new ApiStack(app, 'ApiStack')` surfaces as
+//     a CALLS edge app→stack (relationship_rules, source_group=2 app /
+//     target_group=1 stack) — the App-contains-Stack composition.
+func TestDetect_CDKStackApp_StackTopologyExtraction(t *testing.T) {
+	rules, err := LoadAllRules()
+	if err != nil {
+		t.Fatalf("LoadAllRules failed: %v", err)
+	}
+	det := New(rules)
+	src := `import * as cdk from 'aws-cdk-lib';
+
+export class ApiStack extends cdk.Stack {
+  constructor(scope: cdk.App, id: string) {
+    super(scope, id);
+  }
+}
+
+const app = new cdk.App();
+new ApiStack(app, 'ApiStack');
+`
+	result, err := det.Detect(context.Background(), extractor.FileInput{
+		Path:     "bin/app.ts",
+		Content:  []byte(src),
+		Language: "typescript",
+	})
+	if err != nil {
+		t.Fatalf("Detect failed: %v", err)
+	}
+
+	// (1) Topology entity: the Stack class is extracted as a Component entity
+	// named by the class identifier (aws_cdk.yaml Stack rule, name_group=1).
+	var foundStack bool
+	for _, e := range result.Entities {
+		if e.Name == "ApiStack" {
+			foundStack = true
+		}
+	}
+	if !foundStack {
+		t.Errorf("expected Stack-class topology entity named 'ApiStack', got %+v", result.Entities)
+	}
+
+	// (2) Containment relationship: `new ApiStack(app, …)` emits an app→stack
+	// CALLS edge (FromID=Config:app, ToID=Component:ApiStack) — the
+	// App-contains-Stack composition edge from the aws_cdk.yaml relationship_rule.
+	var foundContainment bool
+	for _, rel := range result.Relationships {
+		if rel.Kind == "CALLS" &&
+			rel.FromID == "Config:app" &&
+			rel.ToID == "Component:ApiStack" {
+			foundContainment = true
+		}
+	}
+	if !foundContainment {
+		t.Errorf("expected app→stack CALLS containment edge Config:app→Component:ApiStack, got %+v", result.Relationships)
+	}
+}

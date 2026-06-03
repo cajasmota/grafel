@@ -66,7 +66,7 @@ categories:
   databases:
     capabilities: [resource_extraction, dependency_attribution]
   platform:
-    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage, iac_output_export_extraction, iac_cross_stack_reference, iac_iam_grant_attribution, iac_event_source_wiring, iac_environment_region_account]
+    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage, iac_output_export_extraction, iac_cross_stack_reference, iac_iam_grant_attribution, iac_event_source_wiring, iac_environment_region_account, iac_stack_app_topology]
     subcategory_order: [iac_provisioning, container_orchestration, config_files, workflow_dag, app_topology, integration_external, localization, frontend_routing]
   security:
     capabilities: [auth_policy, secret_detection, sql_injection, cors_policy]
@@ -765,6 +765,44 @@ subcategories:
       # remaining extractors emit no region/account/runtime property at all —
       # honest N/A.
       - iac_environment_region_account
+      # iac_stack_app_topology (#4200): extraction of the stack / app / module
+      # COMPOSITION hierarchy — which stacks/modules a deployment is composed of
+      # (the topology entity: a Stack / App / Construct / module / nested-stack /
+      # component node) and the parent/child or app→stack / stack→child / file→
+      # module CONTAINMENT relationship between them. This is the STRUCTURAL
+      # topology (what-contains-what), distinct from iac_cross_stack_reference
+      # (one stack consuming another's published state) and from ordinary
+      # resource dependency edges. Backed by:
+      #   - AWS CDK: the rules YAML emits Stack / Construct / Stage / NestedStack
+      #     classes as Component entities and `new cdk.App()` as a Config entity
+      #     (aws_cdk.yaml source_patterns, javascript_typescript:39-58 / python:
+      #     36-55) and the `new MyStack(app,'Id')` idiom as a CALLS containment
+      #     edge app→stack (relationship_rules, javascript_typescript:61-67 /
+      #     python:57-64) — the App-contains-Stack composition, both TS/JS and Py.
+      #   - Terraform / OpenTofu: each `module "<name>"` block is emitted as a
+      #     SCOPE.Component / subtype=module composition entity (extractModuleBlock,
+      #     hcl/extractor.go:297-319) plus a file→module IMPORTS containment edge
+      #     carrying import_kind=module + source_module (hcl/relationships.go:
+      #     148-168) — the module-composition topology.
+      #   - Bicep: each `module <name> '<path>.bicep'` declaration is emitted as a
+      #     SCOPE.Component / subtype=module composition entity plus an IMPORTS
+      #     containment edge to the referenced child .bicep module
+      #     (extractModules, bicep/extractor.go:210-262) — module composition.
+      #   - CloudFormation (partial): an `AWS::CloudFormation::Stack` resource is
+      #     emitted as an entity plus an IMPORTS containment edge (nested_stack=
+      #     true) to its child TemplateURL (iac_cloudformation_edges.go:559-565) —
+      #     parent→child NESTED-stack containment only (no module-composition node
+      #     for ordinary resources), so partial.
+      #   - Pulumi (partial): each `class X extends/( pulumi.ComponentResource )`
+      #     subclass is emitted as a component-scoped topology entity (resource_
+      #     scope=component, the module boundary node) (applyPulumiEdges Pass 3,
+      #     pulumi_edges.go:358-364 TS / 458-464 Py) — the composition entity is
+      #     queryable, but no explicit ComponentResource→child containment edge is
+      #     emitted, so partial.
+      # Serverless Framework and Ansible emit no stack/app/module composition
+      # hierarchy (a single `service` deployment unit / generic task entities with
+      # no containment topology) — honest N/A.
+      - iac_stack_app_topology
     groups: []
 
   container_orchestration:

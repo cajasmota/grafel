@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** IaC / Provisioning
-- **Capability cells:** 7
+- **Capability cells:** 8
 
 ## Capabilities
 
@@ -18,6 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Iac event source wiring | — `not_applicable` | — | — | — | Ansible playbooks model event-driven invocation via task modules, not a function-event-source binding; the yaml extractor emits generic task/resource entities with no event-source→function trigger edge or trigger-type attribution. Honest-missing. |
 | Iac iam grant attribution | — `not_applicable` | — | — | — | Ansible playbooks model IAM via task modules (e.g. iam_policy), not a grant-call idiom; the yaml extractor emits generic task/resource entities with no grantee→target grant edge or grant-method attribution. Honest-missing. |
 | Iac output export extraction | — `not_applicable` | — | — | — | Ansible playbooks have no stack-output/export construct (register / set_fact are runtime task vars, not published stack outputs); the yaml extractor emits no output/export entity. Honest-missing. |
+| Iac stack app topology | — `not_applicable` | — | — | — | Ansible composition is role/include based (roles/, include_tasks, import_playbook), but the ansible yaml rules emit generic task/play entities with no stack/app/module composition entity and no role→task or playbook→role containment relationship modelling the structural topology. Honest-missing. |
 | Resource extraction | 🟢 `partial` | `2026-05-28` | — | `internal/extractors/yaml/extractor.go` | — |
 
 ## Provenance

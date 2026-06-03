@@ -17898,6 +17898,15 @@ records:
           - file: internal/engine/iac_cloudformation_edges_test.go
         issues_implemented: ["4196"]
         verified_at: "2026-06-04"
+      iac_stack_app_topology:
+        status: partial
+        symbols:
+          - file: internal/engine/iac_cloudformation_edges.go
+            functions: [applyCloudFormationEdges]
+        tests:
+          - file: internal/engine/iac_cloudformation_edges_test.go
+        issues_implemented: ["4200"]
+        verified_at: "2026-06-04"
 
   infra.iac.terraform:
     capabilities:
@@ -17918,6 +17927,17 @@ records:
         tests:
           - file: internal/extractors/hcl/terraform_deep_test.go
         issues_implemented: ["4196"]
+        verified_at: "2026-06-04"
+      iac_stack_app_topology:
+        status: full
+        symbols:
+          - file: internal/extractors/hcl/extractor.go
+            functions: [extractModuleBlock]
+          - file: internal/extractors/hcl/relationships.go
+            functions: [emitFileLevelRelationships]
+        tests:
+          - file: internal/extractors/hcl/extractor_test.go
+        issues_implemented: ["4200"]
         verified_at: "2026-06-04"
 
   infra.iac.opentofu:
@@ -17940,6 +17960,17 @@ records:
           - file: internal/extractors/hcl/terraform_deep_test.go
         issues_implemented: ["4196"]
         verified_at: "2026-06-04"
+      iac_stack_app_topology:
+        status: full
+        symbols:
+          - file: internal/extractors/hcl/extractor.go
+            functions: [extractModuleBlock]
+          - file: internal/extractors/hcl/relationships.go
+            functions: [emitFileLevelRelationships]
+        tests:
+          - file: internal/extractors/hcl/extractor_test.go
+        issues_implemented: ["4200"]
+        verified_at: "2026-06-04"
 
   infra.iac.bicep:
     capabilities:
@@ -17951,6 +17982,15 @@ records:
         tests:
           - file: internal/extractors/bicep/extractor_test.go
         issues_implemented: ["4195"]
+        verified_at: "2026-06-04"
+      iac_stack_app_topology:
+        status: full
+        symbols:
+          - file: internal/extractors/bicep/extractor.go
+            functions: [extractModules]
+        tests:
+          - file: internal/extractors/bicep/extractor_test.go
+        issues_implemented: ["4200"]
         verified_at: "2026-06-04"
 
   infra.iac.cdk:
@@ -17982,9 +18022,27 @@ records:
           - file: internal/engine/detector_test.go
         issues_implemented: ["4195"]
         verified_at: "2026-06-04"
+      iac_stack_app_topology:
+        status: full
+        symbols:
+          - file: internal/engine/rules/javascript_typescript/frameworks/aws_cdk.yaml
+          - file: internal/engine/rules/python/frameworks/aws_cdk.yaml
+        tests:
+          - file: internal/engine/detector_test.go
+        issues_implemented: ["4200"]
+        verified_at: "2026-06-04"
 
   infra.iac.pulumi:
     capabilities:
+      iac_stack_app_topology:
+        status: partial
+        symbols:
+          - file: internal/engine/pulumi_edges.go
+            functions: [applyPulumiEdges, applyPulumiEdgesPython]
+        tests:
+          - file: internal/engine/pulumi_edges_test.go
+        issues_implemented: ["4200"]
+        verified_at: "2026-06-04"
       iac_cross_stack_reference:
         status: partial
         symbols:

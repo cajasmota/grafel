@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** IaC / Provisioning
-- **Capability cells:** 7
+- **Capability cells:** 8
 
 ## Capabilities
 
@@ -18,6 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Iac event source wiring | — `not_applicable` | — | — | — | Pulumi declares event sources programmatically (aws.lambda.EventSourceMapping, aws.cloudwatch.EventRule) as ordinary resources; pulumi_edges.go emits no dedicated event-source→function trigger edge or trigger-type attribution. Honest-missing. |
 | Iac iam grant attribution | — `not_applicable` | — | — | — | Pulumi IAM is modelled via RolePolicyAttachment / Policy resource constructors and output-ref dependency edges (pulumi_edges_go_net.go:82-85); the extractor emits no grantee→target edge carrying a grant=<method> property — IAM relations are indistinguishable from any other inter-resource dependency. Honest-missing. |
 | Iac output export extraction | — `not_applicable` | — | — | — | The Pulumi extractor emits no stack-output/export node: `producer.Id`/`.Arn` 'output refs' are inter-resource dependency edges into another resource's args (pulumi_edges_go_net.go:82-85), not extraction of a stack's published outputs/exports as entities. Honest-missing. |
+| Iac stack app topology | 🟢 `partial` | `2026-06-04` | [link](https://github.com/cajasmota/archigraph/issues/4200) | `internal/engine/pulumi_edges.go` | Component/module composition entity is extracted: each `class X extends pulumi.ComponentResource` (TS) / `class X(pulumi.ComponentResource)` (Py) subclass is emitted as a component-scoped topology entity (resource_scope=component / resource_category=component — the module boundary node) via applyPulumiEdges Pass 3 (pulumiTSComponentRe → emitResource(name,"pulumi.ComponentResource","component",…), pulumi_edges.go:117-119,358-364) and applyPulumiEdgesPython Pass 3 (pulumiPyComponentRe, :154-155,458-464). Partial: the ComponentResource composition boundary node is emitted and queryable, but no explicit ComponentResource→child-resource containment edge is emitted (child resources are flat resource nodes). |
 | Resource extraction | 🟢 `partial` | `2026-05-31` | [link](https://github.com/cajasmota/archigraph/issues/3528) | `internal/engine/pulumi_edges.go`<br>`internal/engine/pulumi_edges_go_net.go`<br>`internal/engine/rules/javascript_typescript/frameworks/pulumi.yaml`<br>`internal/engine/rules/python/frameworks/pulumi.yaml` | Pulumi-TS + Pulumi-Python (applyPulumiEdges / applyPulumiEdgesPython) and Pulumi-Go + Pulumi-C# (applyPulumiEdgesGoNet, #3550): SCOPE.InfraResource per resource constructor named by its logical-name string literal (construct_type + uniform resource_category from the shared types.IaCResourceCategory classifier; Go factory pkg.NewType maps to pkg.Type via New-strip). ComponentResource subclasses recorded as component-scoped nodes for TS/Py. Program-scope idioms via rules/{javascript_typescript,python}/frameworks/pulumi.yaml. Pulumi-Java pending. Was over-stamped via the dormant rules/pulumi/_manifest.yaml. |
 
 ## Provenance

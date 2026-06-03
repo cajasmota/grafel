@@ -146,6 +146,39 @@ module network './modules/network.bicep' = {
 	}
 }
 
+// TestBicep_ModuleStackAppTopology is the value-asserting test backing the
+// iac_stack_app_topology (#4200) capability credit for Bicep. It drives the
+// REAL bicep extractor over a `module` declaration and asserts BOTH halves of
+// the module-composition topology: the composition ENTITY (a SCOPE.Component /
+// subtype=module node carrying the child module path) and the CONTAINMENT
+// relationship (an IMPORTS edge from the file to the referenced child .bicep
+// module), distinct from any resource DEPENDS_ON edge.
+func TestBicep_ModuleStackAppTopology(t *testing.T) {
+	const src = `
+module appModule './modules/app.bicep' = {
+  name: 'app'
+}
+`
+	recs := extractBicep(t, src, "infra/main.bicep")
+
+	// (1) Composition entity: SCOPE.Component / subtype=module named appModule.
+	mod := findByName(recs, "appModule")
+	if mod == nil {
+		t.Fatalf("expected module composition entity 'appModule', got %+v", recs)
+	}
+	if mod.Kind != "SCOPE.Component" || mod.Subtype != "module" {
+		t.Errorf("expected Kind=SCOPE.Component / Subtype=module, got %q/%q", mod.Kind, mod.Subtype)
+	}
+	if mod.QualifiedName != "./modules/app.bicep" {
+		t.Errorf("expected QualifiedName=./modules/app.bicep, got %q", mod.QualifiedName)
+	}
+
+	// (2) Containment relationship: an IMPORTS edge to the child .bicep module.
+	if !hasEdgeTo(mod, "IMPORTS", "./modules/app.bicep") {
+		t.Errorf("expected IMPORTS containment edge to child module ./modules/app.bicep, got %+v", mod.Relationships)
+	}
+}
+
 // TestBicep_ExplicitDependsOn covers the dependsOn: [x] array form.
 func TestBicep_ExplicitDependsOn(t *testing.T) {
 	const src = `

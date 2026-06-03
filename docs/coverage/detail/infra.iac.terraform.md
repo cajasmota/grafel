@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** IaC / Provisioning
-- **Capability cells:** 7
+- **Capability cells:** 8
 
 ## Capabilities
 
@@ -18,6 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Iac event source wiring | — `not_applicable` | — | — | — | Terraform (shared hcl extractor) declares event sources via aws_lambda_event_source_mapping / aws_cloudwatch_event_rule resources and interpolation/depends_on references, emitting generic DEPENDS_ON edges with no dedicated event-source→function trigger edge or trigger-type attribution. HCL has no event-source-binding idiom, so a trigger is indistinguishable from any other resource dependency. Honest-missing. |
 | Iac iam grant attribution | — `not_applicable` | — | — | — | Terraform models IAM declaratively via aws_iam_role_policy / aws_iam_*_policy_attachment / aws_iam_policy_document resources and interpolation / depends_on references, emitting generic DEPENDS_ON edges with no grant=<method> attribution. HCL has no grant-call idiom, so an IAM grant is indistinguishable from any other resource dependency. Honest-missing. |
 | Iac output export extraction | ✅ `full` | `2026-06-04` | — | `internal/extractors/hcl` | `output "name" {}` blocks are extracted by extractOutputBlock (extractor.go:175-176,371-391) as SCOPE.Schema entities with Subtype=output, named by the output identifier — the values a Terraform module/root publishes for consumption. |
+| Iac stack app topology | ✅ `full` | `2026-06-04` | [link](https://github.com/cajasmota/archigraph/issues/4200) | `internal/extractors/hcl/extractor.go`<br>`internal/extractors/hcl/relationships.go` | Module-composition topology is extracted: each `module "<name>"` block is emitted as a SCOPE.Component / subtype=module composition entity named `module.<name>` carrying the module `source` in QualifiedName/Metadata (extractModuleBlock, hcl/extractor.go:297-319), and emitFileLevelRelationships emits a file→module IMPORTS containment edge carrying import_kind=module + source_module=<source> (hcl/relationships.go:148-168). Full for the HCL `module` composition idiom. |
 | Resource extraction | ✅ `full` | `2026-05-31` | — | `internal/extractors/hcl` | #3527: dynamic "x" {} nested blocks now emitted as SCOPE.Component/dynamic_block child entities (previously dropped by the top-level-only walker); terraform{} settings captured as a SCOPE.Component/terraform_settings entity (required_providers+backend+required_version) instead of being dropped; lifecycle/provisioner meta-blocks recorded in resource Metadata.meta_blocks. |
 
 ## Provenance

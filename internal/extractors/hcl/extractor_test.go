@@ -398,6 +398,56 @@ func TestModuleWithoutSource(t *testing.T) {
 	}
 }
 
+// TestExtractModule_StackAppTopology is the value-asserting test backing the
+// iac_stack_app_topology (#4200) capability credit for Terraform/OpenTofu. It
+// drives the REAL hcl extractor over a `module` block and asserts BOTH halves
+// of the module-composition topology:
+//   - the composition ENTITY: a SCOPE.Component / subtype=module node named
+//     `module.<name>` carrying the module source (extractModuleBlock), and
+//   - the CONTAINMENT relationship: a file→module IMPORTS edge tagged
+//     import_kind=module + source_module=<source> (emitFileLevelRelationships).
+func TestExtractModule_StackAppTopology(t *testing.T) {
+	src := `
+module "network" {
+  source = "./modules/network"
+}
+`
+	records, err := extractHCL(src, "main.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// (1) Composition entity: SCOPE.Component / module named module.network.
+	mod := findBySubtypeAndName(records, "module", "network")
+	if mod == nil {
+		t.Fatalf("expected module composition entity 'network', got %+v", records)
+	}
+	if mod.Kind != "SCOPE.Component" {
+		t.Errorf("expected Kind=SCOPE.Component for the module-composition node, got %s", mod.Kind)
+	}
+	if mod.Name != "module.network" {
+		t.Errorf("expected Name=module.network, got %s", mod.Name)
+	}
+
+	// (2) Containment relationship: a file→module IMPORTS edge to the source,
+	// tagged import_kind=module + source_module=./modules/network.
+	var foundImport bool
+	for _, r := range records {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "IMPORTS" &&
+				rel.FromID == "main.tf" &&
+				rel.ToID == "./modules/network" &&
+				rel.Properties["import_kind"] == "module" &&
+				rel.Properties["source_module"] == "./modules/network" {
+				foundImport = true
+			}
+		}
+	}
+	if !foundImport {
+		t.Errorf("expected file→module IMPORTS containment edge main.tf→./modules/network (import_kind=module), got %+v", records)
+	}
+}
+
 // ----------------------------------------------------------------
 // provider block
 // ----------------------------------------------------------------

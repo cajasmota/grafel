@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** IaC / Provisioning
-- **Capability cells:** 7
+- **Capability cells:** 8
 
 ## Capabilities
 
@@ -18,6 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Iac event source wiring | — `not_applicable` | — | — | — | Bicep declares event sources (eventGrid subscriptions, serviceBus, storage queues) as ordinary resources; the extractor emits DEPENDS_ON edges from symbolic-name references with no dedicated event-source→function trigger edge or trigger-type attribution distinguishing a trigger from any other resource dependency. Honest-missing. |
 | Iac iam grant attribution | — `not_applicable` | — | — | — | Bicep models IAM via roleAssignments resources, not a grant-call idiom; the extractor emits DEPENDS_ON edges from symbolic-name references with no grant=<method> attribution distinguishing an IAM grant from any other resource dependency. Honest-missing. |
 | Iac output export extraction | ✅ `full` | `2026-06-04` | — | `internal/extractors/bicep/extractor.go` | Bicep `output <name> <type> = ...` declarations are extracted as SCOPE.Schema/output entities by reOutput + extractOutputs (extractor.go:77-78,121), named by the output identifier — the values a Bicep module/template publishes to its caller. |
+| Iac stack app topology | ✅ `full` | `2026-06-04` | [link](https://github.com/cajasmota/archigraph/issues/4200) | `internal/extractors/bicep/extractor.go` | Module-composition topology is extracted: each `module <name> '<path>.bicep' = {…}` declaration is emitted as a SCOPE.Component / subtype=module composition entity (reModule → extractModules, bicep/extractor.go:71-72,210-262) carrying source=<path>, and an IMPORTS containment edge from the file to the referenced child `scope:component:file:bicep:<path>.bicep` module node (bicep/extractor.go:255-260). Full for the Bicep `module` composition idiom. |
 | Resource extraction | ✅ `full` | `2026-05-31` | — | `internal/extractors/bicep/extractor.go`<br>`internal/extractors/bicep/kinds.go` | Regex/line-based .bicep extractor (no tree-sitter grammar vendored): SCOPE.InfraResource per 'resource' decl named by symbolic name, Kind-stable with uniform resource_category from the shared types.IaCResourceCategory classifier (#3549; bicepResourceCoarseScope now delegates to it, resource_scope kept as an alias); azure_rp_type + api_version + deployed_name on Metadata. SCOPE.Component/module per 'module' decl, SCOPE.Schema for param/var/output. Handles 'existing' resources and [for ...] loops. |
 
 ## Provenance

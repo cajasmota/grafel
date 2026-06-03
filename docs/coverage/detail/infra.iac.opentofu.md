@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** IaC / Provisioning
-- **Capability cells:** 7
+- **Capability cells:** 8
 
 ## Capabilities
 
@@ -18,6 +18,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Iac event source wiring | — `not_applicable` | — | — | — | OpenTofu (shared hcl extractor) declares event sources via aws_lambda_event_source_mapping / aws_cloudwatch_event_rule resources and interpolation/depends_on references, emitting generic DEPENDS_ON edges with no dedicated event-source→function trigger edge or trigger-type attribution. HCL has no event-source-binding idiom. Honest-missing. |
 | Iac iam grant attribution | — `not_applicable` | — | — | — | Full parity with Terraform (shared hcl extractor): IAM is modelled declaratively via aws_iam_role_policy / aws_iam_*_policy_attachment resources and depends_on / interpolation references, emitting generic DEPENDS_ON edges with no grant=<method> attribution. No grant-call idiom exists in HCL. Honest-missing. |
 | Iac output export extraction | ✅ `full` | `2026-06-04` | — | `internal/extractors/hcl` | Full parity with Terraform: `output "name" {}` blocks in .tofu files flow through the same extractOutputBlock (extractor.go:371-391) as .tf because the classifier routes .tofu to the shared "terraform" language token, emitting SCOPE.Schema/output entities identically. |
+| Iac stack app topology | ✅ `full` | `2026-06-04` | [link](https://github.com/cajasmota/archigraph/issues/4200) | `internal/extractors/hcl/extractor.go`<br>`internal/extractors/hcl/relationships.go` | Full parity with Terraform (shared hcl extractor): each `module "<name>"` block in .tofu files is emitted as a SCOPE.Component / subtype=module composition entity (extractModuleBlock, hcl/extractor.go:297-319) plus a file→module IMPORTS containment edge (import_kind=module, hcl/relationships.go:148-168). Full for the HCL `module` composition idiom. |
 | Resource extraction | ✅ `full` | `2026-05-31` | — | `internal/extractors/hcl` | OpenTofu (#3553) is the Apache-licensed Terraform fork with byte-for-byte identical HCL; the classifier routes .tofu / .tofu.json to the shared "terraform" language token, so .tofu files flow through the same hcl/terraform tree-sitter extractor as .tf with zero extra code. Full resource_extraction parity: resource/data/module/provider/variable/output/locals blocks, dynamic-block child entities, terraform{} settings, and the uniform resource_category classifier (#3549) all apply unchanged. Cited at the extractor package; classifier routing in internal/classifier/classifier.go. |
 
 ## Provenance

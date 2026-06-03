@@ -328,3 +328,41 @@ Resources:
 		t.Errorf("missing IMPORTS nested-stack edge; rels=%+v", rels)
 	}
 }
+
+// TestCFN_NestedStack_StackAppTopology is the value-asserting test backing the
+// iac_stack_app_topology (#4200) capability credit (partial) for CloudFormation.
+// It asserts BOTH halves of the nested-stack composition topology:
+//   - the topology ENTITY: the `AWS::CloudFormation::Stack` resource surfaces as
+//     an entity (Name cfn:<path>#ChildStack), and
+//   - the parent→child CONTAINMENT relationship: an IMPORTS edge from the parent
+//     stack resource to the child template carrying nested_stack=true (which is
+//     what distinguishes a nested-stack containment from a generic dependency).
+func TestCFN_NestedStack_StackAppTopology(t *testing.T) {
+	src := `AWSTemplateFormatVersion: "2010-09-09"
+Resources:
+  ChildStack:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: https://s3.amazonaws.com/bucket/child.yaml
+`
+	ents, rels := cfnRun("yaml", "infra/parent.yaml", src)
+
+	// (1) Nested-stack topology entity.
+	if cfnFindEntityByLogical(ents, "ChildStack") == nil {
+		t.Fatalf("expected AWS::CloudFormation::Stack topology entity ChildStack, got %+v", ents)
+	}
+
+	// (2) Parent→child containment edge tagged nested_stack=true.
+	var foundContainment bool
+	for _, r := range rels {
+		if r.Kind == "IMPORTS" &&
+			strings.HasSuffix(r.FromID, "#ChildStack") &&
+			strings.Contains(r.ToID, "child.yaml") &&
+			r.Properties["nested_stack"] == "true" {
+			foundContainment = true
+		}
+	}
+	if !foundContainment {
+		t.Errorf("expected nested-stack IMPORTS containment edge (nested_stack=true) parent→child, got %+v", rels)
+	}
+}
