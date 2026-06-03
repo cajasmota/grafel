@@ -147,6 +147,181 @@ app.get('/dyn', (req, res) => {
 }
 
 // ---------------------------------------------------------------------------
+// Sibling JS/TS HTTP backends (fastify / koa / hono / restify / hapi / polka /
+// adonis). Each exercises the framework's CANONICAL status idiom that the
+// Express-only regexes miss, asserting the exact resolved code set + the
+// evidence source label.
+// ---------------------------------------------------------------------------
+
+func TestResponseCodes_Fastify_ReplyCode(t *testing.T) {
+	src := `
+const fastify = require('fastify')();
+
+fastify.post('/items', async (req, reply) => {
+    if (!req.body) {
+        return reply.code(400).send({ error: 'empty' });
+    }
+    return reply.code(201).send({ ok: true });
+});
+`
+	eps := deprecProps(t, "javascript", "routes/items.js", src)
+	e := mustEndpoint(t, eps, "POST /items")
+	if got := e.Properties["response_codes"]; got != "201,400" {
+		t.Fatalf("response_codes=%q want 201,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+	if got := e.Properties["response_codes_source"]; got != "reply.code()" {
+		t.Fatalf("response_codes_source=%q want reply.code()", got)
+	}
+}
+
+func TestResponseCodes_Koa_CtxStatusAssign(t *testing.T) {
+	src := `
+const Router = require('@koa/router');
+const router = new Router();
+
+router.get('/ping', async (ctx) => {
+    ctx.status = 200;
+    ctx.body = { ok: true };
+});
+`
+	eps := deprecProps(t, "javascript", "routes/ping.js", src)
+	e := mustEndpoint(t, eps, "GET /ping")
+	if got := e.Properties["response_codes"]; got != "200" {
+		t.Fatalf("response_codes=%q want 200 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "200" {
+		t.Fatalf("success_code=%q want 200", got)
+	}
+	if got := e.Properties["response_codes_source"]; got != "ctx.status" {
+		t.Fatalf("response_codes_source=%q want ctx.status", got)
+	}
+}
+
+func TestResponseCodes_Hono_BodyStatusArg(t *testing.T) {
+	src := `
+const app = new Hono();
+
+app.post('/create', (c) => {
+    return c.json({ ok: true }, 201);
+});
+`
+	eps := deprecProps(t, "javascript", "routes/create.js", src)
+	e := mustEndpoint(t, eps, "POST /create")
+	if got := e.Properties["response_codes"]; got != "201" {
+		t.Fatalf("response_codes=%q want 201 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["response_codes_source"]; got != "c.json(x,NNN)" {
+		t.Fatalf("response_codes_source=%q want c.json(x,NNN)", got)
+	}
+}
+
+func TestResponseCodes_Restify_SendCode(t *testing.T) {
+	src := `
+const restify = require('restify');
+const server = restify.createServer();
+
+server.post('/new', (req, res, next) => {
+    res.send(201, { ok: true });
+    return next();
+});
+`
+	eps := deprecProps(t, "javascript", "routes/new.js", src)
+	e := mustEndpoint(t, eps, "POST /new")
+	if got := e.Properties["response_codes"]; got != "201" {
+		t.Fatalf("response_codes=%q want 201 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["response_codes_source"]; got != "res.send(NNN)" {
+		t.Fatalf("response_codes_source=%q want res.send(NNN)", got)
+	}
+}
+
+func TestResponseCodes_Hapi_ResponseCode(t *testing.T) {
+	src := `
+server.route({
+    method: 'POST',
+    path: '/widgets',
+    handler: (request, h) => {
+        return h.response({ ok: true }).code(201);
+    }
+});
+`
+	eps := deprecProps(t, "javascript", "routes/widgets.js", src)
+	e := mustEndpoint(t, eps, "POST /widgets")
+	if got := e.Properties["response_codes"]; got != "201" {
+		t.Fatalf("response_codes=%q want 201 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+}
+
+func TestResponseCodes_Polka_WriteHead(t *testing.T) {
+	src := `
+const polka = require('polka');
+const app = polka();
+
+app.get('/health', (req, res) => {
+    res.writeHead(204);
+    res.end();
+});
+`
+	eps := deprecProps(t, "javascript", "routes/health.js", src)
+	e := mustEndpoint(t, eps, "GET /health")
+	if got := e.Properties["response_codes"]; got != "204" {
+		t.Fatalf("response_codes=%q want 204 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["response_codes_source"]; got != "res.writeHead()" {
+		t.Fatalf("response_codes_source=%q want res.writeHead()", got)
+	}
+}
+
+func TestResponseCodes_Adonis_StatusHelpers(t *testing.T) {
+	// Adonis named status helpers map to fixed codes: badRequest→400, created→201.
+	src := `
+const Route = use('Route');
+
+Route.post('/posts', async ({ request, response }) => {
+    if (!request.body) {
+        return response.badRequest({ error: 'empty' });
+    }
+    return response.created({ id: 1 });
+});
+`
+	eps := deprecProps(t, "javascript", "routes/posts.js", src)
+	e := mustEndpoint(t, eps, "POST /posts")
+	if got := e.Properties["response_codes"]; got != "201,400" {
+		t.Fatalf("response_codes=%q want 201,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+}
+
+func TestResponseCodes_Sibling_DynamicStatusSkipped(t *testing.T) {
+	// A fastify reply.code(dynamicVar) must NOT fabricate a code; the literal 200
+	// alongside it still records. Mirrors the Express dynamic-skip guarantee.
+	src := `
+const fastify = require('fastify')();
+
+fastify.get('/dyn', async (req, reply) => {
+    const code = computeCode();
+    if (req.query.ok) {
+        return reply.code(200).send({});
+    }
+    return reply.code(code).send({});
+});
+`
+	eps := deprecProps(t, "javascript", "routes/dyn.js", src)
+	e := mustEndpoint(t, eps, "GET /dyn")
+	if got := e.Properties["response_codes"]; got != "200" {
+		t.Fatalf("response_codes=%q want 200 (dynamic var skipped) (props: %v)", got, e.Properties)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Spring (Java)
 // ---------------------------------------------------------------------------
 

@@ -40,6 +40,10 @@
 //     exception → code mapping); default success 200.
 //   - Express / Nest (JS/TS): `res.status(201)`; `res.sendStatus(204)`;
 //     `@HttpCode(201)`; `throw new NotFoundException()` (Nest exc → code).
+//   - Sibling JS/TS backends: fastify `reply.code(201)`; hapi
+//     `h.response(x).code(201)`; koa `ctx.status = 201`; hono `c.json(x, 201)` /
+//     `c.status(201)`; restify `res.send(201, body)`; polka `res.writeHead(204)`;
+//     sails/adonis status helpers `res.created()` / `res.notFound()` (→ code).
 //   - Spring (Java/Kotlin): `@ResponseStatus(HttpStatus.CREATED)`;
 //     `ResponseEntity.status(404)` / `.ok()` (200) / `.notFound()` (404) /
 //     `.created(...)` (201); `throw new ResponseStatusException(NOT_FOUND)`.
@@ -571,6 +575,68 @@ var nestExceptionCodes = map[string]int{
 	"GatewayTimeoutException":       504,
 }
 
+// --- Sibling JS/TS HTTP backends (fastify / hono / koa / hapi / restify /
+//     polka / adonis / sails) -------------------------------------------------
+//
+// These frameworks do not share Express's `res.status(NNN)` everywhere; each has
+// a canonical status idiom that the Express-only regexes above miss. The cases
+// below are literal-only — a status passed through a variable stays honest-partial
+// exactly as for Express/Nest (no fabrication).
+
+// jsReplyCodeRe matches the fastify canonical idiom `reply.code(201)` (and the
+// `.code(NNN)` chained on a hapi response: `h.response(x).code(201)`). The
+// receiver name is not constrained so `reply.code`, `res.code`, `response.code`
+// and a chained `.code(` all match; only a 3-digit literal argument resolves.
+var jsReplyCodeRe = regexp.MustCompile(`\.\s*code\s*\(\s*(\d{3})\s*\)`)
+
+// jsWriteHeadRe matches the Node/polka idiom `res.writeHead(204)` (the first
+// argument is the status; an optional 2nd headers arg is ignored).
+var jsWriteHeadRe = regexp.MustCompile(`\.\s*writeHead\s*\(\s*(\d{3})\b`)
+
+// jsCtxStatusAssignRe matches the koa idiom `ctx.status = 201` (Express's
+// `.statusCode = NNN` is already covered by jsStatusCodeAssignRe; koa exposes the
+// status as `.status` rather than `.statusCode`).
+var jsCtxStatusAssignRe = regexp.MustCompile(`\.\s*status\s*=\s*(\d{3})\b`)
+
+// jsCtxStatusGetterRe matches the hono body-returning idiom where the status is
+// the 2nd positional argument: `c.json(x, 201)`, `c.text('ok', 404)`,
+// `c.body(buf, 204)`, `c.html(s, 200)`. A leading numeric (status-only) form
+// `c.status(201)` is already covered by jsResStatusRe.
+var jsHonoBodyStatusRe = regexp.MustCompile(`\.\s*(?:json|text|body|html)\s*\(\s*[^,()]*?,\s*(\d{3})\s*[),]`)
+
+// jsRestifySendCodeRe matches restify's `res.send(201, body)` / `res.send(204)`
+// where the FIRST argument is a 3-digit status literal (restify overloads send:
+// `res.send(body)` has no status — only a leading numeric resolves).
+var jsRestifySendCodeRe = regexp.MustCompile(`\.\s*send\s*\(\s*(\d{3})\s*[),]`)
+
+// jsResponseHelperRe matches the named status-helper methods exposed by sails
+// (`res.ok()`, `res.created()`, `res.notFound()`, `res.badRequest()`,
+// `res.forbidden()`, `res.serverError()`) and adonis (`response.created()`,
+// `response.noContent()`, `response.notFound()`, …). The method name maps to a
+// fixed code via jsResponseHelperCodes.
+var jsResponseHelperRe = regexp.MustCompile(`\.\s*(ok|created|accepted|noContent|notFound|badRequest|unauthorized|forbidden|conflict|unprocessableEntity|tooManyRequests|serverError|internalServerError|notImplemented|badGateway|serviceUnavailable|gatewayTimeout)\s*\(`)
+
+// jsResponseHelperCodes maps a sails/adonis status helper to its HTTP code.
+var jsResponseHelperCodes = map[string]int{
+	"ok":                  200,
+	"created":             201,
+	"accepted":            202,
+	"noContent":           204,
+	"badRequest":          400,
+	"unauthorized":        401,
+	"forbidden":           403,
+	"notFound":            404,
+	"conflict":            409,
+	"unprocessableEntity": 422,
+	"tooManyRequests":     429,
+	"serverError":         500,
+	"internalServerError": 500,
+	"notImplemented":      501,
+	"badGateway":          502,
+	"serviceUnavailable":  503,
+	"gatewayTimeout":      504,
+}
+
 func jsResponseCodes(region, body string) responseCodesVerdict {
 	var v responseCodesVerdict
 
@@ -612,6 +678,36 @@ func jsResponseCodes(region, body string) responseCodesVerdict {
 			v.add(c)
 			if v.source == "" {
 				v.source = "Nest exception"
+			}
+		}
+	}
+
+	// Sibling-framework literal status idioms in the body. Each block resolves a
+	// 3-digit literal only; dynamic statuses stay honest-partial. The source label
+	// records the FIRST sibling idiom that fired (Express idioms above win when
+	// present, preserving the flagship evidence string).
+	jsSiblingLiteral := func(re *regexp.Regexp, source string) {
+		for _, m := range re.FindAllStringSubmatch(body, -1) {
+			if c, err := strconv.Atoi(m[1]); err == nil {
+				v.add(c)
+				if v.source == "" {
+					v.source = source
+				}
+			}
+		}
+	}
+	jsSiblingLiteral(jsReplyCodeRe, "reply.code()")     // fastify / hapi .code()
+	jsSiblingLiteral(jsWriteHeadRe, "res.writeHead()")  // polka / node
+	jsSiblingLiteral(jsCtxStatusAssignRe, "ctx.status") // koa
+	jsSiblingLiteral(jsHonoBodyStatusRe, "c.json(x,NNN)")
+	jsSiblingLiteral(jsRestifySendCodeRe, "res.send(NNN)") // restify
+
+	// sails / adonis named status helpers → fixed code.
+	for _, m := range jsResponseHelperRe.FindAllStringSubmatch(body, -1) {
+		if c, ok := jsResponseHelperCodes[m[1]]; ok {
+			v.add(c)
+			if v.source == "" {
+				v.source = "res." + m[1] + "()"
 			}
 		}
 	}
