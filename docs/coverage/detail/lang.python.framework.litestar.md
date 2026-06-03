@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | 🟢 `partial` | `2026-05-29` | 3054 | `internal/custom/python/http_middleware.go` | — |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | 4122 | `internal/engine/http_endpoint_python_ratelimit.go`<br>`internal/engine/http_endpoint_python_ratelimit_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | slowapi/flask-limiter @<limiter>.limit("N/window") and django-ratelimit @ratelimit(key=,rate=) decorators on the synthesized endpoint are bound by handler def name (class methods by class-qualified key, no bare-method bleed) and the literal rate is resolved, via the cross-framework applyPythonRateLimit pass (parity with JS/TS #2853, Java #4082). Partial: framework-native limiter middleware (e.g. sanic-limiter / litestar RateLimitConfig) beyond the decorator idiom is future work. Value-asserting + negative tests. |
 
 ### Schema
 

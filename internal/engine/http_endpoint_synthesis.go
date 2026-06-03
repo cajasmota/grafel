@@ -681,6 +681,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// cross-stack contract as the Go (#3777) and JS/TS (#2853) passes. Auth
 		// middleware is annotated IN the chain (auth_kind), never double-modeled.
 		applyPythonMiddlewareCoverage(string(content), path, entities, pyMWBefore)
+		// #3628 rate-limit child — attribute decorator/throttle limiters to the
+		// SPECIFIC synthesized endpoint and resolve the numeric rate. Brings the
+		// YAML-synthesized sibling frameworks (Starlette / Sanic / Litestar /
+		// Quart / aiohttp / Bottle / CherryPy / Falcon / Hug / Tornado / Pyramid)
+		// and DRF view-level throttles to parity with the Flask/FastAPI custom
+		// extractors, stamping the same flat contract as the JS/TS, Java and PHP
+		// passes. No-op when no limiter decorator / throttle attribute is present.
+		applyPythonRateLimit(string(content), path, entities, pyMWBefore)
 	case "javascript", "typescript":
 		// Capture the producer-side entity count before the JS/TS backend
 		// synthesizers run so #2852 can resolve auth_coverage over exactly the
