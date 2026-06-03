@@ -25,7 +25,7 @@ one is a separate detail page.
 |--------|----------|------|--------|
 | [`lang.c-cpp.framework.grpc`](./lang.c-cpp.framework.grpc.md) | C/C++ | framework | 6 partial, 22 missing, 2 n/a |
 | [`lang.csharp.framework.grpc-net`](./lang.csharp.framework.grpc-net.md) | C# | framework | 4 full, 22 partial, 2 missing, 2 n/a |
-| [`lang.elixir.framework.grpc`](./lang.elixir.framework.grpc.md) | elixir | framework | 6 partial, 22 missing, 2 n/a |
+| [`lang.elixir.framework.grpc`](./lang.elixir.framework.grpc.md) | elixir | framework | 14 partial, 14 missing, 2 n/a |
 | [`lang.rust.framework.tonic`](./lang.rust.framework.tonic.md) | rust | framework | 9 full, 4 partial, 35 missing, 1 n/a |
 | [`lang.scala.framework.scalapb-grpc`](./lang.scala.framework.scalapb-grpc.md) | scala | framework | 2 full, 17 partial, 9 missing, 2 n/a |
 

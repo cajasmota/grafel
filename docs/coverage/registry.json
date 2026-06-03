@@ -14296,12 +14296,15 @@
             "verified_at": "2026-05-30"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "full",
@@ -14332,20 +14335,25 @@
             "issue": "backfill:dictionary-completeness"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "request_shape_extraction": {
             "status": "missing",
@@ -14372,12 +14380,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "missing",
@@ -14448,16 +14459,20 @@
             "issue": "backfill:dictionary-completeness"
           },
           "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -14487,20 +14502,25 @@
             "verified_at": "2026-05-31"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "request_shape_extraction": {
             "status": "partial",
@@ -14517,8 +14537,9 @@
             "verified_at": "2026-05-31"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "schema_drift_detection": {
             "status": "missing",
@@ -14533,8 +14554,10 @@
             "issue": "backfill:dictionary-completeness"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "missing",
@@ -14672,12 +14695,6 @@
             "issue": "backfill:dictionary-completeness"
           }
         },
-        "Data": {
-          "db_effect": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
-          }
-        },
         "Substrate": {
           "confidence_overlay": {
             "status": "missing",
@@ -14691,13 +14708,21 @@
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
+          "db_effect": {
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/substrate/effect_sinks_elixir.go"],
+            "verified_at": "2026-06-03"
+          },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -14724,36 +14749,46 @@
             "issue": "backfill:dictionary-completeness"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-06-03"
           },
           "request_sink_dataflow": {
             "status": "missing",
             "issue": "3740"
           },
           "response_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-06-03"
           },
           "sanitizer_recognition": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "schema_drift_detection": {
             "status": "missing",
@@ -14764,12 +14799,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "missing",
@@ -16271,12 +16309,15 @@
             "verified_at": "2026-05-30"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -16305,20 +16346,25 @@
             "issue": "backfill:dictionary-completeness"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "request_shape_extraction": {
             "status": "missing",
@@ -16345,12 +16391,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "missing",
@@ -16513,12 +16562,15 @@
             "verified_at": "2026-05-30"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use.go","internal/substrate/def_use_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir def-use sniffer registered; intra-procedural def-use chains over .ex/.exs"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -16547,24 +16599,31 @@
             "issue": "backfill:dictionary-completeness"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Language-agnostic Tarjan SCC over IMPORTS edges; Elixir use/alias/import edges flow through extractor"
           },
           "mutation_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/effect_propagation.go","internal/links/pure_function_pass.go","internal/substrate/effect_sinks_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "request_shape_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/payload_drift.go","internal/mcp/payload_drift_tool.go","internal/substrate/payload_shapes.go","internal/substrate/payload_shapes_elixir.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/2771",
+            "verified_at": "2026-06-03"
           },
           "request_sink_dataflow": {
             "status": "missing",
@@ -16587,12 +16646,15 @@
             "issue": "backfill:dictionary-completeness"
           },
           "taint_source_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/taint_flow.go","internal/substrate/taint_sites_elixir.go"],
+            "verified_at": "2026-06-03"
           },
           "template_pattern_catalog": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/template_pattern_pass.go","internal/substrate/template_pattern.go","internal/substrate/template_pattern_elixir.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Elixir template-pattern sniffer registered: i18n (gettext/dgettext), log_format (Logger.*), SQL literals via Ecto.Adapters.SQL"
           },
           "vulnerability_finding": {
             "status": "missing",
