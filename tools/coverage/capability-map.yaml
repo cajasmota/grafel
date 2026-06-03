@@ -2440,6 +2440,59 @@ records:
           issues_implemented: ["2906"]
           verified_at: "2026-05-28"
 
+  lang.go.framework.grpc:
+    capabilities:
+      Auth:
+        auth_coverage:
+          # gRPC-Go interceptor auth (#4041, epic #3872). Detects an
+          # auth-enforcing UnaryServerInterceptor/StreamServerInterceptor wired
+          # into grpc.NewServer (incl. ChainUnary/StreamInterceptor) — a func
+          # that reads metadata.FromIncomingContext AND rejects with
+          # codes.Unauthenticated/PermissionDenied — plus the go-grpc-middleware
+          # grpc_auth.UnaryServerInterceptor helper. Stamps auth_required +
+          # auth_method=grpc_interceptor + auth_middleware + auth_policy on the
+          # GrpcService and its same-file GrpcMethod handlers.
+          status: full
+          symbols:
+            - file: internal/engine/grpc_go_auth.go
+              functions: [resolveGoGRPCInterceptorAuth, goAuthInterceptorNames, serverOptionsEnforceAuth, grpcGoAuthProps]
+            - file: internal/engine/grpc_edges.go
+              functions: [synthesizeGoGRPC]
+          tests:
+            - file: internal/engine/grpc_go_auth_test.go
+          issues_implemented: ["4041"]
+          verified_at: "2026-06-03"
+      Schema:
+        procedure_extraction:
+          status: partial
+          symbols:
+            - file: internal/engine/grpc_edges.go
+              functions: [synthesizeGoGRPC]
+          tests:
+            - file: internal/engine/grpc_edges_test.go
+          issues_implemented: ["725"]
+          verified_at: "2026-06-03"
+      Transport:
+        transport_binding:
+          status: partial
+          symbols:
+            - file: internal/engine/grpc_edges.go
+              functions: [synthesizeGoGRPC]
+          tests:
+            - file: internal/engine/grpc_edges_test.go
+          issues_implemented: ["725"]
+          verified_at: "2026-06-03"
+      Codegen:
+        client_codegen:
+          status: partial
+          symbols:
+            - file: internal/engine/grpc_edges.go
+              functions: [synthesizeGoGRPC]
+          tests:
+            - file: internal/engine/grpc_edges_test.go
+          issues_implemented: ["725"]
+          verified_at: "2026-06-03"
+
   lang.jsts.framework.trpc:
     capabilities:
       Transport:

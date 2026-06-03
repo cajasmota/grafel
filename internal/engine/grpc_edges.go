@@ -551,6 +551,12 @@ func synthesizeGoGRPC(
 	hasGateway := goGatewayRe.MatchString(src)
 	hasReflection := goReflectionRe.MatchString(src)
 
+	// gRPC-Go interceptor auth (#4041). When a server constructed in this file
+	// wires an auth-enforcing interceptor, the services it registers — and
+	// their handler methods declared in this same file — inherit auth_required.
+	// Same-file, signal-based; see grpc_go_auth.go for the resolution + limits.
+	auth := resolveGoGRPCInterceptorAuth(src)
+
 	// ---- Server side ----
 	// implType → serviceName registry.
 	serverRegistry := map[string]string{} // impl type → service name
@@ -568,6 +574,11 @@ func synthesizeGoGRPC(
 		}
 		if hasReflection {
 			props["reflection"] = "true"
+		}
+		if auth.enforced {
+			for k, v := range grpcGoAuthProps(auth.symbol) {
+				props[k] = v
+			}
 		}
 		emitService(serviceName, "grpc_go_server", props)
 	}
@@ -603,9 +614,15 @@ func synthesizeGoGRPC(
 			} else if hasRecv {
 				streaming = "client_streaming"
 			}
-			emitMethod(serviceName, methodName, "grpc_go_server", map[string]string{
+			methodProps := map[string]string{
 				"streaming": streaming,
-			})
+			}
+			if auth.enforced {
+				for k, v := range grpcGoAuthProps(auth.symbol) {
+					methodProps[k] = v
+				}
+			}
+			emitMethod(serviceName, methodName, "grpc_go_server", methodProps)
 			handlerQualified := implType + "." + methodName
 			emitImplementsEdge(handlerQualified, serviceName, methodName, streaming, "grpc_go_server")
 		}

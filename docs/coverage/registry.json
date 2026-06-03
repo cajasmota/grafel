@@ -21626,6 +21626,268 @@
       }
     },
     {
+      "id": "lang.go.framework.grpc",
+      "category": "http_framework",
+      "subcategory": "rpc_framework",
+      "language": "go",
+      "label": "gRPC-Go (google.golang.org/grpc)",
+      "capabilities": {
+        "Schema": {
+          "federation_extraction": {
+            "status": "not_applicable",
+            "notes": "Apollo GraphQL Federation directives (@key/@external/@requires/@provides/extend type) do not exist in this RPC framework; not applicable."
+          },
+          "procedure_extraction": {
+            "status": "partial",
+            "cites": ["internal/engine/grpc_edges.go","internal/engine/grpc_edges_test.go"],
+            "issue": "4041",
+            "notes": "Each receiver-method on a registered impl type -\u003e SCOPE.GrpcMethod (grpc:\u003cService\u003e/\u003cMethod\u003e) + GRPC_IMPLEMENTS edge, with streaming variant (unary/server/client/bidi) inferred from stream.Send/Recv. Same-file methods only; boilerplate stubs skipped.",
+            "verified_at": "2026-06-03"
+          },
+          "schema_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "type_graph_extraction": {
+            "status": "not_applicable",
+            "notes": "GraphQL schema type-\u003etype graph is a GraphQL-SDL concept; gRPC/protobuf message schemas are modelled separately (protocol.protobuf) and have no GraphQL object-type relationship graph."
+          }
+        },
+        "Codegen": {
+          "client_codegen": {
+            "status": "partial",
+            "cites": ["internal/engine/grpc_edges.go","internal/engine/grpc_edges_test.go"],
+            "issue": "4041",
+            "notes": "pb.NewXxxClient(conn) client-stub site + stub.Method(ctx, req) call -\u003e SCOPE.GrpcMethod + GRPC_HANDLES edge.",
+            "verified_at": "2026-06-03"
+          }
+        },
+        "Transport": {
+          "transport_binding": {
+            "status": "partial",
+            "cites": ["internal/engine/grpc_edges.go","internal/engine/grpc_edges_test.go"],
+            "issue": "4041",
+            "notes": "RPC service synthesis from Go pb.RegisterXxxServer(srv, \u0026Impl{}) call sites -\u003e SCOPE.GrpcService (grpc_go_server); regex, no AST. synthesizeGoGRPC in grpc_edges.go (#725).",
+            "verified_at": "2026-06-03"
+          }
+        },
+        "Routing": {
+          "endpoint_deprecation_versioning": {
+            "status": "not_applicable",
+            "notes": "HTTP endpoint deprecation/versioning (Sunset/Deprecation headers, /v1 route segments) is an HTTP-API concept; gRPC versions via proto package + service evolution, not HTTP route versioning."
+          },
+          "endpoint_pagination_posture": {
+            "status": "not_applicable",
+            "notes": "HTTP limit/offset/page/cursor pagination posture is an HTTP-endpoint concept; gRPC paginates via in-message fields / server-streaming, not HTTP query params."
+          },
+          "endpoint_response_codes": {
+            "status": "not_applicable",
+            "notes": "HTTP status-code sets do not apply to gRPC, which signals outcome via grpc.Status/codes on the trailer, not HTTP 2xx/4xx codes."
+          },
+          "endpoint_synthesis": {
+            "status": "not_applicable",
+            "notes": "HTTP http_endpoint synthesis (path+verb producer endpoints) does not apply to gRPC; service registration is captured as transport_binding. gRPC method addressing is package.Service/Method, not an HTTP path+verb."
+          },
+          "handler_attribution": {
+            "status": "not_applicable",
+            "notes": "No HTTP handler-\u003eroute attribution for gRPC. RPC-method-\u003eservice binding is modelled by procedure_extraction + GRPC_IMPLEMENTS, not by an HTTP route table."
+          },
+          "route_extraction": {
+            "status": "not_applicable",
+            "notes": "gRPC has no HTTP route paths; the HTTP route extractor emits 0 entities on a gRPC service impl. RPC method addressing is package.Service/Method, surfaced via procedure_extraction + transport_binding."
+          }
+        },
+        "View": {
+          "view_rendering": {
+            "status": "not_applicable",
+            "notes": "gRPC services render no server-side views/templates; responses are protobuf messages, not rendered views."
+          }
+        },
+        "Auth": {
+          "auth_coverage": {
+            "status": "full",
+            "cites": ["internal/engine/grpc_edges.go","internal/engine/grpc_go_auth.go","internal/engine/grpc_go_auth_test.go"],
+            "notes": "gRPC-Go interceptor auth (#4041, epic #3872). resolveGoGRPCInterceptorAuth detects an auth-enforcing UnaryServerInterceptor/StreamServerInterceptor wired into grpc.NewServer (grpc.UnaryInterceptor / ChainUnaryInterceptor / StreamInterceptor / ChainStreamInterceptor) — an interceptor func that BOTH reads metadata.FromIncomingContext AND rejects with codes.Unauthenticated/PermissionDenied — plus the go-grpc-middleware grpc_auth.UnaryServerInterceptor/StreamServerInterceptor helper. Stamps auth_required=true + auth_method=grpc_interceptor + auth_middleware (MCP signal-1) + auth_policy on the SCOPE.GrpcService and the same-file SCOPE.GrpcMethod handlers. Negatives: logging/tracing interceptor (no metadata-reject) and no-interceptor server leave methods UNSTAMPED. HONEST PARTIAL boundary: handler methods declared in a separate file from the RegisterXxxServer call are not stamped (same same-file boundary as the rest of Go gRPC synthesis).",
+            "verified_at": "2026-06-03"
+          }
+        },
+        "Validation": {
+          "dto_extraction": {
+            "status": "not_applicable",
+            "notes": "gRPC request/response payloads are protobuf messages (surfaced under protocol.protobuf schema_extraction); MVC DTO inference does not model them. HTTP MVC DTO extractor yields 0 entities on a gRPC service."
+          },
+          "request_validation": {
+            "status": "not_applicable",
+            "notes": "gRPC has no MVC request-validation pipeline; message-field constraints live in proto. HTTP MVC validation extractor yields 0 entities here."
+          }
+        },
+        "Middleware": {
+          "middleware_coverage": {
+            "status": "not_applicable",
+            "notes": "gRPC-Go has no HTTP middleware pipeline; cross-cutting concerns are server INTERCEPTORS (auth interceptors credited under auth_coverage). The HTTP route-middleware extractor yields 0 entities on a gRPC server."
+          },
+          "rate_limit_stamping": {
+            "status": "not_applicable",
+            "notes": "Rate-limit stamping keys off HTTP route-middleware / decorators; gRPC-Go rate limiting is an interceptor, not an HTTP route rate-limiter. HTTP rate-limit extractor yields 0 entities here."
+          }
+        },
+        "Type System": {
+          "enum_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "interface_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "type_alias_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "type_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          }
+        },
+        "DI": {
+          "di_binding_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "di_injection_point": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "di_scope_resolution": {
+            "status": "missing",
+            "issue": "4041"
+          }
+        },
+        "Testing": {
+          "tests_linkage": {
+            "status": "missing",
+            "issue": "4041"
+          }
+        },
+        "Observability": {
+          "log_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "metric_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "trace_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          }
+        },
+        "Substrate": {
+          "confidence_overlay": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "config_consumption": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "constant_propagation": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "db_effect": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "dead_code_detection": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "def_use_chain_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "env_fallback_recognition": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "error_flow": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "feature_flag_gating": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "fs_effect": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "http_effect": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "import_resolution_quality": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "module_cycle_detection": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "mutation_effect": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "pure_function_tagging": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "reachability_analysis": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "request_shape_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "request_sink_dataflow": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "response_shape_extraction": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "sanitizer_recognition": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "schema_drift_detection": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "taint_sink_detection": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "taint_source_detection": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "template_pattern_catalog": {
+            "status": "missing",
+            "issue": "4041"
+          },
+          "vulnerability_finding": {
+            "status": "missing",
+            "issue": "4041"
+          }
+        }
+      }
+    },
+    {
       "id": "lang.go.framework.hertz",
       "category": "http_framework",
       "subcategory": "http_backend",

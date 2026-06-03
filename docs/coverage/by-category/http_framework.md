@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 227 records · **C/C++**: 19 · **C#**: 16 · **dart**: 2 · **elixir**: 14 · **go**: 20 · **java**: 22 · **JS/TS**: 32 · **kotlin**: 17 · **lua**: 4 · **php**: 16 · **python**: 23 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 5
+**Total**: 228 records · **C/C++**: 19 · **C#**: 16 · **dart**: 2 · **elixir**: 14 · **go**: 21 · **java**: 22 · **JS/TS**: 32 · **kotlin**: 17 · **lua**: 4 · **php**: 16 · **python**: 23 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -265,6 +265,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | — | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 7/24 | 🟡 7/10 | |
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | — | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟢 10/10 | |
 | [elixir](../by-language/elixir.md) | [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | — | 🔴 0/1 | 🟢 4/4 | ✅ 1/1 | 🟡 11/24 | 🟡 6/10 | |
+| [go](../by-language/go.md) | [gRPC-Go (google.golang.org/grpc)](../detail/lang.go.framework.grpc.md) | — | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/25 | 🟡 3/10 | |
 | [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/25 | 🟡 6/17 | |
 | [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | — | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟢 7/7 | |
 | [scala](../by-language/scala.md) | [ScalaPB / zio-grpc / fs2-grpc](../detail/lang.scala.framework.scalapb-grpc.md) | — | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 15/24 | 🟢 7/7 | |
