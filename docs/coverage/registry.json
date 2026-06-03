@@ -45326,29 +45326,32 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "java extractor language-gated to kotlin; @Transactional (JTA/Spring) on Kotlin proven by TestKotlinTransactional_Quarkus_Issue3274 (JTA path covers micronaut too)",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: native LIVE Kotlin @Transactional extractor (custom_kotlin_spring_transactions) now resolves the owning framework from the import set (io.micronaut.* -> micronaut) instead of hard-coding spring-boot, so the shared jakarta JTA @Transactional is credited to micronaut. The prior cite (custom/java/transactional.go) never fired on .kt — custom_java_patterns hard-skips non-java files — so micronaut got zero credit. method+class boundaries named by enclosing class, framework=micronaut. OrderService.place/audit/export boundaries + framework=micronaut asserted by TestKotlinMnTx_FrameworkAttribution_4016; un-annotated untracked() yields none. Honest-partial: regex/file-local, cross-file boundary propagation not resolved.",
+            "verified_at": "2026-06-03"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: each Micronaut jakarta @Transactional fun is stamped transactional=true on the named SCOPE.Pattern boundary; non-readOnly bodies with a JPA write call (save/persist/delete/insert/update/flush) also carry db_write=true (TestKotlinMnTx_PropagationAndRollback_4016: place -> db_write). Honest-partial: file-local lexical stamping, no transitive propagation into callees.",
+            "verified_at": "2026-06-03"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "java extractor language-gated to kotlin; propagation capture via transactional.go txFrameworks[\"micronaut\"]",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: JTA TxType.<MODE> propagation captured on the LIVE Kotlin path; @Transactional(TxType.REQUIRES_NEW) -> propagation=REQUIRES_NEW on audit asserted by TestKotlinMnTx_PropagationAndRollback_4016, and a method with no explicit propagation gets NO fabricated default. Honest-partial: regex/file-local.",
+            "verified_at": "2026-06-03"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "java extractor language-gated to kotlin; rollbackFor rules parsed by transactional.go txFrameworks[\"micronaut\"]",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: JTA rollbackOn=[X::class]/dontRollbackOn=[Y::class] (Kotlin ::class list form, JTA spelling) captured on the LIVE Kotlin path; @Transactional(rollbackOn = [IOException::class]) -> rollback_for=IOException on export asserted by TestKotlinMnTx_PropagationAndRollback_4016. Honest-partial: regex/file-local.",
+            "verified_at": "2026-06-03"
           }
         },
         "AOP": {
@@ -45653,29 +45656,32 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "java extractor language-gated to kotlin; Jakarta @Transactional on Kotlin quarkus class proven by TestKotlinTransactional_Quarkus_Issue3274",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: native LIVE Kotlin @Transactional extractor (custom_kotlin_spring_transactions) resolves framework from the import set (io.quarkus.* -> quarkus) so the shared jakarta JTA @Transactional is credited to quarkus, AND credits the Quarkus reactive code boundary Panache.withTransaction { } / Panache.withSession { } (import-gated on a Quarkus/Panache import). The prior cite (custom/java/transactional.go) never fired on .kt — custom_java_patterns hard-skips non-java files. OrderService.create/risky method boundaries (framework=quarkus) asserted by TestKotlinQkTx_FrameworkAttribution_4016; the Panache.withTransaction code boundary (transaction_boundary=code, tx_api=panache_withTransaction) by TestKotlinQkTx_PanacheBoundary_4016; un-annotated untracked() yields none; a non-Quarkus Panache symbol is NOT claimed (TestKotlinQkTx_PanacheGatedOnQuarkus_4016). Honest-partial: regex/file-local, cross-file propagation not resolved.",
+            "verified_at": "2026-06-03"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: each Quarkus jakarta @Transactional fun is stamped transactional=true; non-readOnly write bodies carry db_write=true. The Panache.withTransaction lambda is stamped db_write=true when its body writes (repo.persist) while the read-scope Panache.withSession never does (TestKotlinQkTx_PanacheBoundary_4016). Honest-partial: file-local lexical stamping, no transitive propagation.",
+            "verified_at": "2026-06-03"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "java extractor language-gated to kotlin; txFrameworks[\"quarkus\"]=true in transactional.go",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: JTA TxType.<MODE> propagation captured on the LIVE Kotlin path for Quarkus jakarta @Transactional; a method with no explicit propagation gets NO fabricated default. Honest-partial: regex/file-local; Panache reactive boundaries carry no propagation attribute (none in the API).",
+            "verified_at": "2026-06-03"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "java extractor language-gated to kotlin; txFrameworks[\"quarkus\"]=true in transactional.go",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/micronaut_quarkus_transactions_test.go"],
+            "issue": "4016",
+            "notes": "#4016: JTA rollbackOn=[X::class]/dontRollbackOn=[Y::class] (Kotlin ::class list form, JTA spelling) captured on the LIVE Kotlin path; @Transactional(rollbackOn = [IOException::class]) -> rollback_for=IOException on risky asserted by TestKotlinQkTx_FrameworkAttribution_4016. Honest-partial: regex/file-local.",
+            "verified_at": "2026-06-03"
           }
         },
         "AOP": {
