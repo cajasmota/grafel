@@ -46,10 +46,18 @@ var (
 	rePoemHandlerAttr = regexp.MustCompile(
 		`#\[handler\][\s\S]*?(?:async\s+)?fn\s+(\w+)\s*\(`,
 	)
-	// Route::new().at("/path", get(handler))
-	// also: .at("/path", post(handler))
+	// Route::new().at("/path", get(handler)) — captures the path plus the full
+	// method-router argument (one or more verb(handler) calls chained with
+	// `.verb(handler)`), e.g. `.at("/users", get(list).post(create))`. The verb
+	// chain is re-scanned with rePoemVerb so each verb yields its own endpoint
+	// (flagship axum parity for chained method routers). The verb-argument body
+	// excludes parens/semicolons so the match cannot run past the method router.
 	rePoemAt = regexp.MustCompile(
-		`\.at\s*\(\s*"([^"]+)"\s*,\s*(get|post|put|delete|patch|head|options)\s*\(\s*(\w+)\s*\)`,
+		`\.at\s*\(\s*"([^"]+)"\s*,\s*((?:get|post|put|delete|patch|head|options)\s*\(\s*\w+\s*\)(?:\s*\.\s*(?:get|post|put|delete|patch|head|options)\s*\(\s*\w+\s*\))*)`,
+	)
+	// Individual verb(handler) calls inside a poem method-router argument.
+	rePoemVerb = regexp.MustCompile(
+		`(get|post|put|delete|patch|head|options)\s*\(\s*(\w+)\s*\)`,
 	)
 	// Route::new().nest("/prefix", sub)  -> SCOPE.Component
 	rePoemNest = regexp.MustCompile(
@@ -89,16 +97,20 @@ func (e *poemExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		entities = append(entities, ent)
 	}
 
-	// 1. .at("/path", get(handler)) -> endpoint + handler attribution
+	// 1. .at("/path", get(handler).post(handler2)) -> endpoint + handler
+	// attribution. Each verb in the method-router chain becomes its own endpoint.
 	for _, m := range rePoemAt.FindAllStringSubmatchIndex(src, -1) {
 		path := rustNormalizePath(src[m[2]:m[3]])
-		method := strings.ToUpper(src[m[4]:m[5]])
-		handler := src[m[6]:m[7]]
-		name := method + " " + path
-		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "poem", "provenance", "INFERRED_FROM_POEM_ROUTE",
-			"http_method", method, "route_pattern", path, "handler_name", handler)
-		add(ent)
+		methodRouter := src[m[4]:m[5]]
+		for _, vm := range rePoemVerb.FindAllStringSubmatch(methodRouter, -1) {
+			method := strings.ToUpper(vm[1])
+			handler := vm[2]
+			name := method + " " + path
+			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "poem", "provenance", "INFERRED_FROM_POEM_ROUTE",
+				"http_method", method, "route_pattern", path, "handler_name", handler)
+			add(ent)
+		}
 	}
 
 	// 2. #[handler] fn name — bare handler declarations -> SCOPE.Function
@@ -157,11 +169,22 @@ var (
 	reWarpServe = regexp.MustCompile(
 		`warp::serve\s*\(`,
 	)
-	// let route_name = warp::path!(...).and(warp::get()).and_then(handler)
-	// Composite pattern: capture method + path macro + handler on same chain
+	// Composite warp filter chain ending in a handler. Captures the whole chain
+	// (from the first `warp::path` to the `.and_then(handler)`/`.map(handler)`
+	// terminal) as one blob, then method / path / handler are recovered
+	// independently with the helper regexes below. This makes the endpoint
+	// synthesis order-independent: the method filter may appear before or after
+	// the path filter, and the path may use either the `path!(...)` macro or the
+	// function form `warp::path("seg")`.
 	reWarpChain = regexp.MustCompile(
-		`warp::path!\s*\(([^)]+)\)[^;]*?warp::(get|post|put|delete|patch|head|options)\s*\(\s*\)[^;]*?\.(?:and_then|map)\s*\(\s*(\w+)\s*\)`,
+		`warp::(?:path|get|post|put|delete|patch|head|options)[!]?\s*\([^;]*?\.(?:and_then|map)\s*\(\s*(\w+)\s*\)`,
 	)
+	// Path macro `warp::path!("a" / b / "c")` — captures the macro argument list.
+	reWarpPathMacroIn = regexp.MustCompile(`warp::path!\s*\(([^)]*)\)`)
+	// Path function form `warp::path("seg")` — single string literal segment.
+	reWarpPathFn = regexp.MustCompile(`warp::path\s*\(\s*"([^"]+)"\s*\)`)
+	// Method filter `warp::get()` inside a chain.
+	reWarpChainMethod = regexp.MustCompile(`warp::(get|post|put|delete|patch|head|options)\s*\(\s*\)`)
 )
 
 func normWarpPath(raw string) string {
@@ -215,12 +238,34 @@ func (e *warpExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		entities = append(entities, ent)
 	}
 
-	// 1. Full chain: path!(...)  + method + handler  -> endpoint
+	// 1. Full filter chain ending in .and_then/.map(handler) -> endpoint.
+	// Method/path are recovered from the chain blob independently so the
+	// synthesis is order-independent and accepts both warp::path! macro and
+	// warp::path("seg") function forms. A chain without a resolvable method
+	// defaults to GET (warp's path filters match any method until constrained;
+	// when no warp::verb() is present the route is method-agnostic and GET is
+	// the conventional read default — kept explicit via http_method).
 	for _, m := range reWarpChain.FindAllStringSubmatchIndex(src, -1) {
-		rawPath := src[m[2]:m[3]]
-		method := strings.ToUpper(src[m[4]:m[5]])
-		handler := src[m[6]:m[7]]
-		path := normWarpPath(rawPath)
+		blob := src[m[0]:m[1]]
+		handler := src[m[2]:m[3]]
+
+		method := "GET"
+		if mm := reWarpChainMethod.FindStringSubmatch(blob); mm != nil {
+			method = strings.ToUpper(mm[1])
+		}
+
+		// Path: prefer the macro form (multi-segment / typed params), else the
+		// function form (single string segment).
+		path := ""
+		if pm := reWarpPathMacroIn.FindStringSubmatch(blob); pm != nil {
+			path = normWarpPath(pm[1])
+		} else if pf := reWarpPathFn.FindStringSubmatch(blob); pf != nil {
+			path = "/" + strings.Trim(pf[1], "/")
+		}
+		if path == "" {
+			continue
+		}
+
 		name := method + " " + path
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "warp", "provenance", "INFERRED_FROM_WARP_CHAIN",
@@ -273,10 +318,17 @@ type tideExtractor struct{}
 func (e *tideExtractor) Language() string { return "custom_rust_tide" }
 
 var (
-	// app.at("/path").get(handler)
-	// app.at("/path").post(handler)
+	// app.at("/path").get(handler)         (single verb)
+	// app.at("/path").get(a).post(b)       (chained verbs on the same route)
+	// Captures the path plus the trailing `.verb(handler)` chain; the chain is
+	// re-scanned with reTideVerb so each verb yields its own endpoint (flagship
+	// parity for chained method routers).
 	reTideAt = regexp.MustCompile(
-		`\.at\s*\(\s*"([^"]+)"\s*\)\s*\.(get|post|put|delete|patch|head|options)\s*\(\s*(\w+)\s*\)`,
+		`\.at\s*\(\s*"([^"]+)"\s*\)\s*((?:\.(?:get|post|put|delete|patch|head|options)\s*\(\s*\w+\s*\))+)`,
+	)
+	// Individual `.verb(handler)` calls in a tide route chain.
+	reTideVerb = regexp.MustCompile(
+		`\.(get|post|put|delete|patch|head|options)\s*\(\s*(\w+)\s*\)`,
 	)
 	// tide::new() / Server::new(...) -> SCOPE.Service
 	reTideNew = regexp.MustCompile(
@@ -316,16 +368,19 @@ func (e *tideExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		entities = append(entities, ent)
 	}
 
-	// 1. .at("/path").get(handler) -> endpoint
+	// 1. .at("/path").get(a).post(b) -> one endpoint per verb in the chain.
 	for _, m := range reTideAt.FindAllStringSubmatchIndex(src, -1) {
 		path := rustNormalizePath(src[m[2]:m[3]])
-		method := strings.ToUpper(src[m[4]:m[5]])
-		handler := src[m[6]:m[7]]
-		name := method + " " + path
-		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "tide", "provenance", "INFERRED_FROM_TIDE_ROUTE",
-			"http_method", method, "route_pattern", path, "handler_name", handler)
-		add(ent)
+		verbChain := src[m[4]:m[5]]
+		for _, vm := range reTideVerb.FindAllStringSubmatch(verbChain, -1) {
+			method := strings.ToUpper(vm[1])
+			handler := vm[2]
+			name := method + " " + path
+			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "tide", "provenance", "INFERRED_FROM_TIDE_ROUTE",
+				"http_method", method, "route_pattern", path, "handler_name", handler)
+			add(ent)
+		}
 	}
 
 	// 2. tide::new() / Server::with_state() -> SCOPE.Service
@@ -360,6 +415,17 @@ var (
 	// route.post("/path").to(handler)
 	reGothamRoute = regexp.MustCompile(
 		`route\.(get|post|put|delete|patch|head|options)\s*\(\s*"([^"]+)"\s*\)\s*\.to\s*\(\s*(\w+)\s*\)`,
+	)
+	// route.associate("/path", |assoc| { assoc.get().to(h); assoc.post().to(h2); })
+	// The path lives on associate(...) and each verb is an `assoc.verb().to(h)`
+	// inside the closure body. We capture the path and the closure body, then
+	// re-scan the body with reGothamAssocVerb for verb+handler pairs.
+	reGothamAssociate = regexp.MustCompile(
+		`\.associate\s*\(\s*"([^"]+)"\s*,\s*\|[^|]*\|\s*\{([^}]*)\}`,
+	)
+	// assoc.get().to(handler) inside an associate closure.
+	reGothamAssocVerb = regexp.MustCompile(
+		`\.(get|post|put|delete|patch|head|options)\s*\(\s*\)\s*\.to\s*\(\s*(\w+)\s*\)`,
 	)
 	// build_simple_router(|route| { ... }) -> SCOPE.Component
 	reGothamRouter = regexp.MustCompile(
@@ -413,6 +479,22 @@ func (e *gothamExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		setProps(&ent, "framework", "gotham", "provenance", "INFERRED_FROM_GOTHAM_ROUTE",
 			"http_method", method, "route_pattern", path, "handler_name", handler)
 		add(ent)
+	}
+
+	// 1b. route.associate("/path", |assoc| { assoc.get().to(h); ... }) -> endpoint
+	// per verb in the closure body.
+	for _, m := range reGothamAssociate.FindAllStringSubmatchIndex(src, -1) {
+		path := rustNormalizePath(src[m[2]:m[3]])
+		body := src[m[4]:m[5]]
+		for _, vm := range reGothamAssocVerb.FindAllStringSubmatch(body, -1) {
+			method := strings.ToUpper(vm[1])
+			handler := vm[2]
+			name := method + " " + path
+			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "gotham", "provenance", "INFERRED_FROM_GOTHAM_ASSOCIATE",
+				"http_method", method, "route_pattern", path, "handler_name", handler)
+			add(ent)
+		}
 	}
 
 	// 2. build_simple_router -> SCOPE.Component
@@ -539,10 +621,18 @@ type salvoExtractor struct{}
 func (e *salvoExtractor) Language() string { return "custom_rust_salvo" }
 
 var (
-	// Router::new().path("/p").get(handler)
-	// Router::with_path("/p").post(handler)
+	// Salvo route chains. A router fragment carries its path via either
+	// `.path("p")` or `Router::with_path("p")`, then one or more `.verb(handler)`
+	// calls (possibly chained: `.get(a).post(b)`). We capture the path from
+	// whichever form supplied it (group 1 = .path, group 2 = with_path) plus the
+	// trailing verb chain, then re-scan the chain with reSalvoVerb so every verb
+	// yields its own endpoint with the path preserved (flagship parity).
 	reSalvoPath = regexp.MustCompile(
-		`(?:Router::new\(\)|Router::with_path\s*\([^)]*\)|router)\s*(?:\.path\s*\(\s*"([^"]+)"\s*\))?\s*\.(get|post|put|delete|patch|head|options)\s*\(\s*(\w+)\s*\)`,
+		`(?:Router::with_path\s*\(\s*"([^"]+)"\s*\)|Router::new\(\)|router)\s*(?:\.path\s*\(\s*"([^"]+)"\s*\))?\s*((?:\.(?:get|post|put|delete|patch|head|options)\s*\(\s*\w+\s*\)\s*)+)`,
+	)
+	// Individual `.verb(handler)` calls in a salvo route chain.
+	reSalvoVerb = regexp.MustCompile(
+		`\.(get|post|put|delete|patch|head|options)\s*\(\s*(\w+)\s*\)`,
 	)
 	// .path("/segment") standalone -> SCOPE.Component
 	reSalvoPathOnly = regexp.MustCompile(
@@ -586,25 +676,40 @@ func (e *salvoExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		entities = append(entities, ent)
 	}
 
-	// 1. .get(handler) / .post(handler) on a router with optional .path(...)
+	// 1. Router(.with_path|.path).verb(a).verb(b) -> one endpoint per verb.
 	for _, m := range reSalvoPath.FindAllStringSubmatchIndex(src, -1) {
-		path := ""
+		// group 1 = Router::with_path("..") path; group 2 = .path("..") segment.
+		// When both are present compose them (with_path is the prefix).
+		var withPath, dotPath string
 		if m[2] >= 0 {
-			path = rustNormalizePath(src[m[2]:m[3]])
+			withPath = rustNormalizePath(src[m[2]:m[3]])
 		}
-		method := strings.ToUpper(src[m[4]:m[5]])
-		handler := src[m[6]:m[7]]
-		name := method
-		if path != "" {
-			name = method + " " + path
+		if m[4] >= 0 {
+			dotPath = rustNormalizePath(src[m[4]:m[5]])
 		}
-		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "salvo", "provenance", "INFERRED_FROM_SALVO_ROUTE",
-			"http_method", method, "handler_name", handler)
-		if path != "" {
-			setProps(&ent, "route_pattern", path)
+		path := rustJoinPaths(withPath, dotPath)
+		// salvo with_path("users") / .path("users") segments are written without a
+		// leading slash as often as with one; canonicalise to a rooted path so the
+		// same logical route compares equal to the flagship `/users` form.
+		if path != "" && !strings.HasPrefix(path, "/") {
+			path = "/" + path
 		}
-		add(ent)
+		verbChain := src[m[6]:m[7]]
+		for _, vm := range reSalvoVerb.FindAllStringSubmatch(verbChain, -1) {
+			method := strings.ToUpper(vm[1])
+			handler := vm[2]
+			name := method
+			if path != "" {
+				name = method + " " + path
+			}
+			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "salvo", "provenance", "INFERRED_FROM_SALVO_ROUTE",
+				"http_method", method, "handler_name", handler)
+			if path != "" {
+				setProps(&ent, "route_pattern", path)
+			}
+			add(ent)
+		}
 	}
 
 	// 2. .path("/segment") -> SCOPE.Component

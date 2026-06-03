@@ -65441,14 +65441,16 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: both gotham routing forms synthesised — route.verb(\"/p\").to(h) AND the builder form route.associate(\"/p\", |assoc| { assoc.get().to(a); assoc.post().to(b); }) where the path lives on associate() and each verb inside the closure becomes its own endpoint. Value-asserting test TestGothamAssociateEndpoints asserts GET/POST /users -\u003e list_users/create_user.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: handler attributed per verb in both the route.verb().to(h) and associate-closure forms. Asserted by TestGothamAssociateEndpoints.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
             "status": "full",
@@ -66033,14 +66035,16 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: Route::new().at(\"/p\", get(a).post(b)) chained method routers — each verb in the method-router argument now synthesises its own endpoint with the path preserved and normalised, at flagship-axum depth. Value-asserting test TestPoemChainedVerbs asserts GET/POST /users -\u003e list_users/create_user.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: every verb in a poem chained method router is attributed to its own handler (handler_name prop), not just the first. Asserted by TestPoemChainedVerbs.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
             "status": "full",
@@ -66622,14 +66626,16 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: salvo chained method routers Router::new().path(\"/p\").get(a).post(b) — each verb now synthesises its own endpoint with the path preserved across lines; Router::with_path(\"p\") now carries its path onto the endpoint (rooted to /p) instead of dropping it. Value-asserting tests TestSalvoChainedVerbs + TestSalvoWithPathEndpoint.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: every verb in a salvo chained router is attributed to its own handler. Asserted by TestSalvoChainedVerbs + TestSalvoWithPathEndpoint.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
             "status": "full",
@@ -67068,14 +67074,16 @@
             "issue": "3818"
           },
           "endpoint_synthesis": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: tide chained routes app.at(\"/p\").get(a).post(b) — each verb on the same .at() now synthesises its own endpoint (previously only the first verb fired). Value-asserting test TestTideChainedVerbs asserts GET/POST /users -\u003e list_users/create_user.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
-            "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "status": "full",
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: every verb in a tide chained route is attributed to its own handler. Asserted by TestTideChainedVerbs.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
             "status": "full",
@@ -68156,13 +68164,15 @@
           },
           "endpoint_synthesis": {
             "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: synthesis is now order-independent (the warp::verb() filter may precede or follow the path filter) and accepts both the warp::path!(...) macro and the warp::path(\"seg\") function form. Value-asserting tests TestWarpFunctionPath + TestWarpMethodFirstOrder + TestWarpPostMethod. Stays PARTIAL: warp routes are composed with .or() into filter trees and a path-less filter chain has no statically-resolvable method (a GET default is applied) — these cases are not fully attributable without data-flow over the combinator graph.",
+            "verified_at": "2026-06-03"
           },
           "handler_attribution": {
             "status": "partial",
-            "cites": ["internal/custom/rust/minor_fw_routing.go"],
-            "verified_at": "2026-05-30"
+            "cites": ["internal/custom/rust/minor_fw_routing.go","internal/custom/rust/minor_fw_routing_test.go"],
+            "notes": "#3982: handler recovered from the .and_then/.map(handler) terminal regardless of filter order. Stays PARTIAL alongside endpoint_synthesis: handlers reached only via an intermediate filter variable (let f = path.and(get); f.and_then(h)) need cross-binding resolution not yet modelled.",
+            "verified_at": "2026-06-03"
           },
           "route_extraction": {
             "status": "full",

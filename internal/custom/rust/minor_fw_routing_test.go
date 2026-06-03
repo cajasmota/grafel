@@ -396,3 +396,171 @@ func TestSalvoParamNormalised(t *testing.T) {
 		t.Error("expected path:/{id} component (salvo <id> normalised)")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #3982 — Tier-B chained-verb / order-independent endpoint synthesis deepening.
+// Each test asserts the SPECIFIC verb+path+handler on the SPECIFIC sibling
+// construct (flagship axum parity for chained method routers), not len>0.
+// ---------------------------------------------------------------------------
+
+// poem .at("/users", get(a).post(b)) — chained verbs each become an endpoint
+// with the same path, attributed to their own handler (#3982).
+func TestPoemChainedVerbs(t *testing.T) {
+	src := `let app = Route::new().at("/users", get(list_users).post(create_user));`
+	ents := extract(t, "custom_rust_poem", fi("routes.rs", "rust", src))
+	get, ok := findEntity(ents, "SCOPE.Operation", "GET /users")
+	if !ok {
+		t.Fatal("expected GET /users endpoint")
+	}
+	assertProp(t, get, "handler_name", "list_users")
+	post, ok := findEntity(ents, "SCOPE.Operation", "POST /users")
+	if !ok {
+		t.Fatal("expected POST /users endpoint (chained .post)")
+	}
+	assertProp(t, post, "handler_name", "create_user")
+}
+
+// tide .at("/users").get(a).post(b) — chained verbs on the same route each
+// become an endpoint attributed to their own handler (#3982).
+func TestTideChainedVerbs(t *testing.T) {
+	src := `app.at("/users").get(list_users).post(create_user);`
+	ents := extract(t, "custom_rust_tide", fi("main.rs", "rust", src))
+	get, ok := findEntity(ents, "SCOPE.Operation", "GET /users")
+	if !ok {
+		t.Fatal("expected GET /users endpoint")
+	}
+	assertProp(t, get, "handler_name", "list_users")
+	post, ok := findEntity(ents, "SCOPE.Operation", "POST /users")
+	if !ok {
+		t.Fatal("expected POST /users endpoint (chained .post)")
+	}
+	assertProp(t, post, "handler_name", "create_user")
+}
+
+// salvo .path("/users").get(a).post(b) — chained verbs across lines each
+// become an endpoint with the path preserved (#3982).
+func TestSalvoChainedVerbs(t *testing.T) {
+	src := `
+let router = Router::new()
+    .path("/users")
+    .get(list_users)
+    .post(create_user);
+`
+	ents := extract(t, "custom_rust_salvo", fi("router.rs", "rust", src))
+	get, ok := findEntity(ents, "SCOPE.Operation", "GET /users")
+	if !ok {
+		t.Fatal("expected GET /users endpoint")
+	}
+	assertProp(t, get, "handler_name", "list_users")
+	post, ok := findEntity(ents, "SCOPE.Operation", "POST /users")
+	if !ok {
+		t.Fatal("expected POST /users endpoint (chained .post)")
+	}
+	assertProp(t, post, "handler_name", "create_user")
+}
+
+// salvo Router::with_path("users").get(h) — path carried by with_path is now
+// preserved on the endpoint and rooted to /users (#3982).
+func TestSalvoWithPathEndpoint(t *testing.T) {
+	src := `let r = Router::with_path("users").get(list_users);`
+	ents := extract(t, "custom_rust_salvo", fi("router.rs", "rust", src))
+	get, ok := findEntity(ents, "SCOPE.Operation", "GET /users")
+	if !ok {
+		t.Fatal("expected GET /users endpoint from with_path")
+	}
+	assertProp(t, get, "route_pattern", "/users")
+	assertProp(t, get, "handler_name", "list_users")
+}
+
+// warp::path("seg") function form (not the path! macro) is synthesised into an
+// endpoint (#3982).
+func TestWarpFunctionPath(t *testing.T) {
+	src := `
+let users = warp::path("users")
+    .and(warp::get())
+    .and_then(list_users);
+`
+	ents := extract(t, "custom_rust_warp", fi("routes.rs", "rust", src))
+	get, ok := findEntity(ents, "SCOPE.Operation", "GET /users")
+	if !ok {
+		t.Fatal("expected GET /users endpoint from warp::path(\"users\")")
+	}
+	assertProp(t, get, "handler_name", "list_users")
+}
+
+// warp method-before-path ordering: warp::get().and(warp::path!("users")) —
+// the method filter precedes the path filter; synthesis is order-independent
+// (#3982).
+func TestWarpMethodFirstOrder(t *testing.T) {
+	src := `
+let r = warp::get()
+    .and(warp::path!("users"))
+    .and_then(list_users);
+`
+	ents := extract(t, "custom_rust_warp", fi("routes.rs", "rust", src))
+	get, ok := findEntity(ents, "SCOPE.Operation", "GET /users")
+	if !ok {
+		t.Fatal("expected GET /users endpoint (method-first)")
+	}
+	assertProp(t, get, "handler_name", "list_users")
+}
+
+// warp POST method recovered from the chain regardless of filter order (#3982).
+func TestWarpPostMethod(t *testing.T) {
+	src := `
+let create = warp::path!("users")
+    .and(warp::post())
+    .and_then(create_user);
+`
+	ents := extract(t, "custom_rust_warp", fi("routes.rs", "rust", src))
+	post, ok := findEntity(ents, "SCOPE.Operation", "POST /users")
+	if !ok {
+		t.Fatal("expected POST /users endpoint")
+	}
+	assertProp(t, post, "handler_name", "create_user")
+}
+
+// gotham route.associate("/path", |assoc| { assoc.get().to(h); assoc.post().to(h2); })
+// — builder form: path on associate, verbs inside the closure (#3982).
+func TestGothamAssociateEndpoints(t *testing.T) {
+	src := `
+route.associate("/users", |assoc| {
+    assoc.get().to(list_users);
+    assoc.post().to(create_user);
+});
+`
+	ents := extract(t, "custom_rust_gotham", fi("router.rs", "rust", src))
+	get, ok := findEntity(ents, "SCOPE.Operation", "GET /users")
+	if !ok {
+		t.Fatal("expected GET /users endpoint (associate)")
+	}
+	assertProp(t, get, "handler_name", "list_users")
+	post, ok := findEntity(ents, "SCOPE.Operation", "POST /users")
+	if !ok {
+		t.Fatal("expected POST /users endpoint (associate)")
+	}
+	assertProp(t, post, "handler_name", "create_user")
+}
+
+// Negative: a warp method filter with no path filter must NOT synthesise an
+// endpoint (no spurious GET / from a bare warp::get() chain) (#3982).
+func TestWarpNoPathNoEndpoint(t *testing.T) {
+	src := `let f = warp::get().and_then(handler);`
+	ents := extract(t, "custom_rust_warp", fi("routes.rs", "rust", src))
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Operation" {
+			t.Errorf("did not expect an endpoint from a path-less warp chain, got %q", e.Name)
+		}
+	}
+}
+
+// Negative: gotham associate with an empty closure body yields no endpoints.
+func TestGothamAssociateEmpty(t *testing.T) {
+	src := `route.associate("/users", |assoc| { });`
+	ents := extract(t, "custom_rust_gotham", fi("router.rs", "rust", src))
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Operation" {
+			t.Errorf("did not expect an endpoint from an empty associate closure, got %q", e.Name)
+		}
+	}
+}
