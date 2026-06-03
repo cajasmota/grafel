@@ -63389,8 +63389,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -63661,8 +63663,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -63934,8 +63938,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -64211,8 +64217,10 @@
             "issue": "3621"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -64490,8 +64498,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -64769,8 +64779,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -65057,8 +65069,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "full",
@@ -65349,8 +65363,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",
@@ -65630,8 +65646,10 @@
             "verified_at": "2026-05-27"
           },
           "error_flow": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/extractor/exception_flow.go","internal/extractors/ruby/exception_flow.go","internal/extractors/ruby/exception_flow_test.go"],
+            "notes": "raise X / raise Mod::X -\u003e THROWS; rescue A, B =\u003e e / method-level rescue / Rails rescue_from A, B, with: -\u003e CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628)",
+            "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
             "status": "missing",

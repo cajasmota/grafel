@@ -101,7 +101,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | 3621 | — | — |
 | Def use chain extraction | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_ruby.go` | Per-LANGUAGE Ruby def-use sniffer fires on graphql-ruby resolver .rb bodies (def_use_pass.go dispatches by file language, framework-agnostic). Probed: record def->use chain inside a field resolver (#3948). |
 | Env fallback recognition | 🔴 `missing` | — | 3621 | — | — |
-| Error flow | 🔴 `missing` | — | 3628 | — | — |
+| Error flow | ✅ `full` | `2026-06-03` | — | `internal/extractor/exception_flow.go`<br>`internal/extractors/ruby/exception_flow.go`<br>`internal/extractors/ruby/exception_flow_test.go` | raise X / raise Mod::X -> THROWS; rescue A, B => e / method-level rescue / Rails rescue_from A, B, with: -> CATCHES; bare rescue catch-all + string raise + bare re-raise dropped (#3628) |
 | Feature flag gating | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Fs effect | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | fs_read/fs_write effect (File.read/.write) fires on graphql-ruby resolver file I/O. Per-language Ruby sniffer (#3948). |
 | HTTP effect | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | http_out effect (Net::HTTP/HTTParty/Faraday) fires when a graphql-ruby resolver calls an HTTP client. Per-language Ruby sniffer (#3948). |

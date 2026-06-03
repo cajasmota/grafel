@@ -59,6 +59,13 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// relative `t('.k')` shapes (dynamic keys + ambiguous bare `t('plain')`
 	// dropped).
 	emitTranslationKeyEdges(root, file.Content, &entities)
+	// Error-flow topology (epic #3628) — THROWS / CATCHES edges from methods to a
+	// shared SCOPE.ExceptionType node for typed `raise NotFoundError`,
+	// `rescue NotFoundError => e` (incl. method-level + multi-class rescue), and
+	// Rails `rescue_from RecordNotFound, with: :handler`. Bare rescue catch-all,
+	// string raise, and bare re-raise are dropped (precision-first). Mirrors the
+	// flagship convergence-node shape (internal/extractor/exception_flow.go).
+	emitExceptionFlowEdges(root, file.Content, &entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")

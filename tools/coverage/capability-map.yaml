@@ -7585,6 +7585,18 @@ records:
           issues_implemented: ["3628"]
           verified_at: "2026-06-02"
       Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
         feature_flag_gating:
           status: full
           symbols:
@@ -16975,6 +16987,19 @@ records:
 
   lang.ruby.framework.grape:
     capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Middleware:
         middleware_coverage:
           status: partial
@@ -16988,6 +17013,19 @@ records:
 
   lang.ruby.framework.sinatra:
     capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Routing:
         route_extraction:
           status: full
@@ -17113,6 +17151,19 @@ records:
 
   lang.ruby.framework.padrino:
     capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Middleware:
         middleware_coverage:
           status: partial
@@ -17126,6 +17177,19 @@ records:
 
   lang.ruby.framework.hanami:
     capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Middleware:
         middleware_coverage:
           status: partial
@@ -17139,6 +17203,19 @@ records:
 
   lang.ruby.framework.roda:
     capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Middleware:
         middleware_coverage:
           status: partial
@@ -17152,6 +17229,19 @@ records:
 
   lang.ruby.framework.cuba:
     capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Routing:
         endpoint_synthesis:
           status: partial
@@ -17184,6 +17274,19 @@ records:
 
   lang.ruby.framework.dry-rb:
     capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Type System:
         type_extraction:
           status: partial
@@ -17194,6 +17297,22 @@ records:
             - file: internal/custom/ruby/dry_types_test.go
           issues_implemented: ["3282"]
           verified_at: "2026-05-30"
+
+  lang.ruby.framework.graphql-ruby:
+    capabilities:
+      Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/ruby/exception_flow.go
+              functions: [emitExceptionFlowEdges, rubyRaiseType, rubyRescueTypes, rubyRescueFromTypes]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/ruby/exception_flow_test.go
+              functions: [TestErrorFlow_RaiseAndRescueConverge, TestErrorFlow_MultiClassRescue, TestErrorFlow_MethodLevelRescue, TestErrorFlow_RescueFrom, TestErrorFlow_ScopedConstantNormalizes, TestErrorFlow_Negatives, TestErrorFlow_BareReraiseAddsNoType, TestLiveFireRb]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
 
   # ---------------------------------------------------------------------------
   # Ruby ORM lazy loading + migration cells (Part of #3282)
