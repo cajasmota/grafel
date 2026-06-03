@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/elastic4s.yaml` | — |
+| Model extraction | 🟢 `partial` | `2026-06-03` | 3625 | `internal/custom/scala/orm_extractors.go`<br>`internal/custom/scala/orm_extractors_test.go` | Cite corrected (#3637): custom_scala_elastic4s (elastic4sExtractor) emits SCOPE.Schema document models from case class defs, HitReader[T]/HitWriter[T] mappings, and createIndex/indexInto index defs (value-asserting TestElastic4sHitReader / TestElastic4sIndexValues). Partial: field-level document mapping not parsed. |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
 | Schema extraction | ✅ `full` | — | — | `internal/custom/scala/orm_extractors.go` | elastic4sIndexRe captures createIndex/indexInto index defs; elastic4sHitReaderRe captures HitReader[T]/HitWriter[T] document type mappings; elastic4sCaseClassRe captures document case classes |
 
@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/scala/orms/elastic4s.yaml` | — |
+| Query attribution | 🟢 `partial` | `2026-06-03` | 3625 | `internal/custom/scala/orm_extractors.go`<br>`internal/custom/scala/orm_extractors_test.go` | Cite corrected (#3637): elastic4sSearchRe captures search("index") calls and emits SCOPE.Operation/query carrying the target index_name (value-asserting TestElastic4sSearch / TestElastic4sSearchAndHitValues). Partial: index-level attribution only — query-body / DSL clause structure not parsed. |
 
 ### Migrations
 

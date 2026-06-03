@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/java/orms/neo4j.yaml` | — |
+| Model extraction | 🟢 `partial` | `2026-06-03` | 3098 | `internal/custom/java/neo4j.go`<br>`internal/custom/java/neo4j_test.go` | Cite corrected (#3637): custom_java_neo4j (neo4j.go) emits one SCOPE.Schema/node per Spring Data Neo4j @Node and Neo4j OGM @NodeEntity class (value-asserting TestNeo4jNodeEntityExtracted / TestNeo4jOGMNodeEntityExtracted). Partial: regex, same-file @Property/@Id only — full document-shape mapping not parsed. |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
 | Schema extraction | 🟢 `partial` | — | 3098 | `internal/custom/java/neo4j.go` | No Neo4j Java ORM extractor; @Node annotation for node entity extraction not implemented. |
 

@@ -96,7 +96,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟡 3/6 | |
+| [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟡 2/6 | |
 | [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟡 7/10 | |
 | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | 🟡 7/10 | |
 | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | 🟡 7/10 | |

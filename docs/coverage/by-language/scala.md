@@ -73,5 +73,5 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟡 3/6 | |
 | [Quill](../detail/lang.scala.orm.quill.md) | 🟡 5/8 | |
 | [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | 🟡 6/9 | |
-| [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | 🟡 3/6 | |
+| [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | 🟡 2/6 | |
 | [Slick](../detail/lang.scala.orm.slick.md) | 🟡 7/10 | |

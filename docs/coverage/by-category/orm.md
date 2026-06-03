@@ -59,7 +59,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 4/7 | |
 | [go](../by-language/go.md) | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟡 6/8 | |
 | [go](../by-language/go.md) | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟡 6/9 | |
-| [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟡 3/6 | |
+| [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟡 2/6 | |
 | [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟡 7/10 | |
 | [java](../by-language/java.md) | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | 🟡 7/10 | |
 | [java](../by-language/java.md) | [Hibernate ORM](../detail/lang.java.orm.hibernate.md) | 🟡 7/10 | |
@@ -165,5 +165,5 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [scala](../by-language/scala.md) | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟡 3/6 | |
 | [scala](../by-language/scala.md) | [Quill](../detail/lang.scala.orm.quill.md) | 🟡 5/8 | |
 | [scala](../by-language/scala.md) | [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | 🟡 6/9 | |
-| [scala](../by-language/scala.md) | [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | 🟡 3/6 | |
+| [scala](../by-language/scala.md) | [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | 🟡 2/6 | |
 | [scala](../by-language/scala.md) | [Slick](../detail/lang.scala.orm.slick.md) | 🟡 7/10 | |

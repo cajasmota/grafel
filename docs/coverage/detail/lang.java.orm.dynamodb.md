@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-05-29` | 3099 | `internal/engine/rules/java/orms/dynamodb_java.yaml` | YAML rule covers DynamoDbEnhancedClient scan/query operations; query_attribution fully covered by existing rule. |
+| Query attribution | 🔴 `missing` | `2026-06-03` | [link](https://github.com/cajasmota/archigraph/issues/3645) | — | Overstated cite corrected (#3637): dynamodb_java.yaml is detection-only (empty source_patterns/relationship_rules; the custom_extractors Python block never runs in Go) and dynamodb_java.go extracts only @DynamoDbBean model + @DynamoDbPartitionKey/SortKey/Attribute key schema — NO scan/query call-site attribution and no QUERIES edge. No native query-topology extractor exists; honest status is missing. |
 
 ### Migrations
 

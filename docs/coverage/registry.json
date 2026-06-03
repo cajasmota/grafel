@@ -30898,11 +30898,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "full",
-            "cites": ["internal/engine/rules/java/orms/dynamodb_java.yaml"],
-            "issue": "3099",
-            "notes": "YAML rule covers DynamoDbEnhancedClient scan/query operations; query_attribution fully covered by existing rule.",
-            "verified_at": "2026-05-29"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "Overstated cite corrected (#3637): dynamodb_java.yaml is detection-only (empty source_patterns/relationship_rules; the custom_extractors Python block never runs in Go) and dynamodb_java.go extracts only @DynamoDbBean model + @DynamoDbPartitionKey/SortKey/Attribute key schema — NO scan/query call-site attribution and no QUERIES edge. No native query-topology extractor exists; honest status is missing.",
+            "verified_at": "2026-06-03"
           }
         },
         "Migrations": {
@@ -31415,8 +31414,10 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/java/orms/neo4j.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/java/neo4j.go","internal/custom/java/neo4j_test.go"],
+            "issue": "3098",
+            "notes": "Cite corrected (#3637): custom_java_neo4j (neo4j.go) emits one SCOPE.Schema/node per Spring Data Neo4j @Node and Neo4j OGM @NodeEntity class (value-asserting TestNeo4jNodeEntityExtracted / TestNeo4jOGMNodeEntityExtracted). Partial: regex, same-file @Property/@Id only — full document-shape mapping not parsed.",
+            "verified_at": "2026-06-03"
           },
           "model_lifecycle_extraction": {
             "status": "missing",
@@ -41851,8 +41852,10 @@
         "Models": {
           "model_extraction": {
             "status": "full",
-            "cites": ["internal/engine/rules/javascript_typescript/orms/mongoose.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/javascript/extractors_test.go","internal/custom/javascript/mongoose.go"],
+            "issue": "3064",
+            "notes": "Cite corrected (#3637): custom_js_mongoose (mongoose.go) emits a SCOPE.Schema/model entity per mongoose.model(\"Name\", schema) call plus the new Schema({...}) definition; matches the already-cited sibling schema_extraction cell.",
+            "verified_at": "2026-06-03"
           },
           "model_lifecycle_extraction": {
             "status": "missing",
@@ -60987,8 +60990,10 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/beanie.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/python/orm_schema.go","internal/custom/python/orm_schema_test.go"],
+            "issue": "3072",
+            "notes": "Cite corrected (#3637): python_beanie_schema (BeanieSchemaExtractor) emits a SCOPE.Schema document-model entity per Beanie Document subclass plus annotated field entities (value-asserting TestBeanieSchema_DocumentEmitted / TestBeanieSchema_FieldsEmitted). Partial: Pydantic-typed field depth limited.",
+            "verified_at": "2026-06-03"
           },
           "model_lifecycle_extraction": {
             "status": "missing",
@@ -61146,8 +61151,10 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/python/orms/mongoengine.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/python/orm_schema.go","internal/custom/python/orm_schema_test.go"],
+            "issue": "3072",
+            "notes": "Cite corrected (#3637): python_mongoengine_schema (MongoEngineSchemaExtractor) emits a SCOPE.Schema document-model entity per MongoEngine Document subclass plus StringField/IntField/etc field entities (value-asserting TestMongoEngineSchema_DocumentEmitted / TestMongoEngineSchema_FieldsEmitted). Partial: field-type depth limited.",
+            "verified_at": "2026-06-03"
           },
           "model_lifecycle_extraction": {
             "status": "missing",
@@ -74515,8 +74522,10 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/scala/orms/elastic4s.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/scala/orm_extractors.go","internal/custom/scala/orm_extractors_test.go"],
+            "issue": "3625",
+            "notes": "Cite corrected (#3637): custom_scala_elastic4s (elastic4sExtractor) emits SCOPE.Schema document models from case class defs, HitReader[T]/HitWriter[T] mappings, and createIndex/indexInto index defs (value-asserting TestElastic4sHitReader / TestElastic4sIndexValues). Partial: field-level document mapping not parsed.",
+            "verified_at": "2026-06-03"
           },
           "model_lifecycle_extraction": {
             "status": "missing",
@@ -74553,8 +74562,10 @@
         "Queries": {
           "query_attribution": {
             "status": "partial",
-            "cites": ["internal/engine/rules/scala/orms/elastic4s.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/scala/orm_extractors.go","internal/custom/scala/orm_extractors_test.go"],
+            "issue": "3625",
+            "notes": "Cite corrected (#3637): elastic4sSearchRe captures search(\"index\") calls and emits SCOPE.Operation/query carrying the target index_name (value-asserting TestElastic4sSearch / TestElastic4sSearchAndHitValues). Partial: index-level attribution only — query-body / DSL clause structure not parsed.",
+            "verified_at": "2026-06-03"
           }
         },
         "Migrations": {
@@ -74727,8 +74738,10 @@
         "Models": {
           "model_extraction": {
             "status": "partial",
-            "cites": ["internal/engine/rules/scala/orms/scanamo.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/custom/scala/orm_extractors.go","internal/custom/scala/orm_extractors_test.go"],
+            "issue": "3625",
+            "notes": "Cite corrected (#3637): custom_scala_scanamo (scanamoExtractor) emits SCOPE.Schema for Table[T](\"name\") DynamoDB table defs, item case classes, and DynamoFormat[T] derivations (value-asserting TestScanamoTableDef / TestScanamoTableValues). Partial: field-level item schema not parsed.",
+            "verified_at": "2026-06-03"
           },
           "model_lifecycle_extraction": {
             "status": "missing",
@@ -74764,9 +74777,10 @@
         },
         "Queries": {
           "query_attribution": {
-            "status": "partial",
-            "cites": ["internal/engine/rules/scala/orms/scanamo.yaml"],
-            "verified_at": "2026-05-28"
+            "status": "missing",
+            "issue": "https://github.com/cajasmota/archigraph/issues/3645",
+            "notes": "Overstated cite corrected (#3637): scanamo.yaml is detection-only (empty source_patterns/relationship_rules; dead custom_extractors Python block) and custom_scala_scanamo emits only table-def / item-model SCOPE.Schema entities — NO query/scan call-site SCOPE.Operation entity and no QUERIES edge. No native query-topology extractor exists; honest status is missing.",
+            "verified_at": "2026-06-03"
           }
         },
         "Migrations": {

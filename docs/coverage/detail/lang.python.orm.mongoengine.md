@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/mongoengine.yaml` | — |
+| Model extraction | 🟢 `partial` | `2026-06-03` | 3072 | `internal/custom/python/orm_schema.go`<br>`internal/custom/python/orm_schema_test.go` | Cite corrected (#3637): python_mongoengine_schema (MongoEngineSchemaExtractor) emits a SCOPE.Schema document-model entity per MongoEngine Document subclass plus StringField/IntField/etc field entities (value-asserting TestMongoEngineSchema_DocumentEmitted / TestMongoEngineSchema_FieldsEmitted). Partial: field-type depth limited. |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
 | Schema extraction | 🟢 `partial` | `2026-05-29` | 3072 | `internal/custom/python/orm_schema.go` | MongoEngine Document field definitions (StringField, IntField etc.) are not extracted at the ORM schema level; the MongoDB custom extractor handles aggregations/change streams but not model field schema. |
 

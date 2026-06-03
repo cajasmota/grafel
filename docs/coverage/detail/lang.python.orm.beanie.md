@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/python/orms/beanie.yaml` | — |
+| Model extraction | 🟢 `partial` | `2026-06-03` | 3072 | `internal/custom/python/orm_schema.go`<br>`internal/custom/python/orm_schema_test.go` | Cite corrected (#3637): python_beanie_schema (BeanieSchemaExtractor) emits a SCOPE.Schema document-model entity per Beanie Document subclass plus annotated field entities (value-asserting TestBeanieSchema_DocumentEmitted / TestBeanieSchema_FieldsEmitted). Partial: Pydantic-typed field depth limited. |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
 | Schema extraction | 🟢 `partial` | `2026-05-29` | 3072 | `internal/custom/python/orm_schema.go` | Beanie Document field definitions (via Pydantic annotations) are not extracted at the ORM level; the schema_detector.go detects Pydantic usage generally but does not emit per-field ORM schema entities. |
 

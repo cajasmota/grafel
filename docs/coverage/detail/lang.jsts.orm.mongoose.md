@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/orms/mongoose.yaml` | — |
+| Model extraction | ✅ `full` | `2026-06-03` | 3064 | `internal/custom/javascript/extractors_test.go`<br>`internal/custom/javascript/mongoose.go` | Cite corrected (#3637): custom_js_mongoose (mongoose.go) emits a SCOPE.Schema/model entity per mongoose.model("Name", schema) call plus the new Schema({...}) definition; matches the already-cited sibling schema_extraction cell. |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
 | Schema extraction | ✅ `full` | — | 3064 | `internal/custom/javascript/extractors_test.go`<br>`internal/custom/javascript/mongoose.go` | — |
 
