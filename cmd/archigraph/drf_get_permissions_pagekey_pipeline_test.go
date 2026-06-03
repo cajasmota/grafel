@@ -29,6 +29,7 @@ import (
 // JurisdictionViewSet whose get_permissions() resolves
 //   - get_inspection_types → PERMISSION_PAGES["JURISDICTIONS"]
 //   - email                → PERMISSION_PAGES["EMAIL_TEMPLATES"]
+//
 // via the assign-then-return-comprehension idiom.
 //
 // # The assertions
