@@ -8,6 +8,20 @@
 //	render_template('users/list.html', ...)   → RENDERS users/list.html   (Flask)
 //	render(request, 'home.html', ...)          → RENDERS home.html          (Django)
 //	class X(TemplateView): template_name = 'd.html'  → RENDERS d.html       (Django CBV)
+//	class X(APIView): renderer_classes = [BrowsableAPIRenderer]             (DRF browsable API)
+//	                                          → RENDERS drf/BrowsableAPIRenderer
+//
+// The DRF (Django REST Framework) browsable/HTML render path is a class-scope
+// `renderer_classes = [...]` list naming HTML-producing renderers
+// (BrowsableAPIRenderer / TemplateHTMLRenderer / StaticHTMLRenderer). Each such
+// renderer becomes a RENDERS edge from the view class to a synthetic
+// `drf/<RendererName>` template-convergence node, so the graph answers "which
+// views expose the browsable API?" (inbound RENDERS on drf/BrowsableAPIRenderer)
+// and "what HTML render path does this view have?" (outbound RENDERS). The
+// DRF `TemplateHTMLRenderer` + `template_name = 'x.html'` case is ALREADY
+// covered by the framework-agnostic class-scope template_name detector above —
+// it needs no DRF-specific code. JSON-only renderer lists (JSONRenderer only)
+// emit nothing: there is no HTML/browsable render path to record.
 //
 // Intentionally DROPPED (would mislead view-layer analysis):
 //
@@ -72,6 +86,14 @@ func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entiti
 				if tpl := pyTemplateNameAttr(body, src); tpl != "" {
 					edges = append(edges, extractor.TemplateEdge{
 						Name: tpl, FromName: childCls, Pattern: "template_name",
+					})
+				}
+				// DRF browsable / HTML render path: renderer_classes = [...]
+				// naming HTML-producing renderers. Each becomes a RENDERS edge to
+				// a synthetic drf/<RendererName> convergence node.
+				for _, rdr := range pyDRFHTMLRenderers(body, src) {
+					edges = append(edges, extractor.TemplateEdge{
+						Name: "drf/" + rdr, FromName: childCls, Pattern: "drf_renderer_classes",
 					})
 				}
 				for i := 0; i < int(body.ChildCount()); i++ {
@@ -223,4 +245,80 @@ func pyTemplateNameAttr(body *sitter.Node, src []byte) string {
 		}
 	}
 	return ""
+}
+
+// drfHTMLRenderers is the set of DRF built-in renderer classes that produce an
+// HTML / browsable presentation (an actual view-layer render path), as opposed
+// to data renderers (JSONRenderer, etc.) which have no template/HTML output.
+// Matching is by trailing class name only, so both the bare import name and a
+// dotted `renderers.BrowsableAPIRenderer` reference are recognized.
+var drfHTMLRenderers = map[string]bool{
+	"BrowsableAPIRenderer": true, // the DRF browsable API HTML page
+	"TemplateHTMLRenderer": true, // renders an HTML template (template_name)
+	"StaticHTMLRenderer":   true, // renders a pre-rendered HTML string
+	"AdminRenderer":        true, // the DRF admin-style HTML interface
+	"HTMLFormRenderer":     true, // renders a serializer as an HTML form
+}
+
+// pyDRFHTMLRenderers scans a class body for a `renderer_classes = [...]` (or
+// tuple) assignment — the Django REST Framework declaration of which renderers a
+// view supports — and returns, in source order, the distinct HTML-producing
+// renderer class names present (BrowsableAPIRenderer, TemplateHTMLRenderer, …).
+//
+// Honest-partial / precision-first:
+//   - Only a class-scope `renderer_classes` literal list/tuple is read. A
+//     dynamically built or settings-derived list yields nothing.
+//   - Only elements that are an identifier or attribute (e.g. `JSONRenderer` or
+//     `renderers.BrowsableAPIRenderer`) whose TRAILING name is a known DRF HTML
+//     renderer count. JSON / data-only renderers and unknown names are skipped,
+//     so a JSON-only view emits no HTML render path.
+func pyDRFHTMLRenderers(body *sitter.Node, src []byte) []string {
+	var out []string
+	seen := map[string]bool{}
+	for i := 0; i < int(body.NamedChildCount()); i++ {
+		stmt := body.NamedChild(i)
+		if stmt == nil {
+			continue
+		}
+		var assign *sitter.Node
+		if stmt.Type() == "expression_statement" && stmt.NamedChildCount() > 0 {
+			assign = stmt.NamedChild(0)
+		} else if stmt.Type() == "assignment" {
+			assign = stmt
+		}
+		if assign == nil || assign.Type() != "assignment" {
+			continue
+		}
+		left := assign.ChildByFieldName("left")
+		right := assign.ChildByFieldName("right")
+		if left == nil || right == nil {
+			continue
+		}
+		if left.Type() != "identifier" || nodeText(left, src) != "renderer_classes" {
+			continue
+		}
+		if right.Type() != "list" && right.Type() != "tuple" {
+			continue // dynamic / settings-derived → drop
+		}
+		for j := 0; j < int(right.NamedChildCount()); j++ {
+			el := right.NamedChild(j)
+			if el == nil {
+				continue
+			}
+			name := ""
+			switch el.Type() {
+			case "identifier":
+				name = nodeText(el, src)
+			case "attribute":
+				if a := el.ChildByFieldName("attribute"); a != nil {
+					name = nodeText(a, src)
+				}
+			}
+			if name != "" && drfHTMLRenderers[name] && !seen[name] {
+				seen[name] = true
+				out = append(out, name)
+			}
+		}
+	}
+	return out
 }

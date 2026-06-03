@@ -26,7 +26,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+| View rendering | ✅ `full` | `2026-06-03` | 3914 | `internal/extractor/template_render.go`<br>`internal/extractors/python/template_render.go`<br>`internal/extractors/python/template_render_test.go` | DRF render paths: renderer_classes=[BrowsableAPIRenderer|TemplateHTMLRenderer|StaticHTMLRenderer|AdminRenderer|HTMLFormRenderer] -> RENDERS scope.template drf/<Renderer>; TemplateHTMLRenderer.template_name='x.html' -> RENDERS x.html (framework-agnostic detector); JSON-only renderer lists + dynamic/settings-derived renderer_classes emit nothing (#3914 over #3628) |
 
 ### Auth
 

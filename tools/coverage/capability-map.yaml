@@ -654,6 +654,19 @@ records:
 
   lang.python.framework.django-drf:
     capabilities:
+      View:
+        view_rendering:
+          status: full
+          symbols:
+            - file: internal/extractors/python/template_render.go
+              functions: [emitTemplateRenderEdges, pyTemplateNameAttr, pyDRFHTMLRenderers]
+            - file: internal/extractor/template_render.go
+              functions: [EmitTemplateEdges, TemplateEntity, TemplateTargetID, NormalizeTemplateName]
+          tests:
+            - file: internal/extractors/python/template_render_test.go
+              functions: [TestPyTemplate_DRFRendererClasses, TestPyTemplate_DRFTemplateHTMLRenderer, TestPyTemplate_DRFJSONOnlyNoRender, TestPyTemplate_DRFDynamicRenderersDropped]
+          issues_implemented: ["3914"]
+          verified_at: "2026-06-03"
       Type System:
         interface_extraction:
           status: partial

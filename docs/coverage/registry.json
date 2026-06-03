@@ -55613,8 +55613,11 @@
         },
         "View": {
           "view_rendering": {
-            "status": "missing",
-            "issue": "view_rendering:#3628-not-yet-extracted"
+            "status": "full",
+            "cites": ["internal/extractor/template_render.go","internal/extractors/python/template_render.go","internal/extractors/python/template_render_test.go"],
+            "issue": "3914",
+            "notes": "DRF render paths: renderer_classes=[BrowsableAPIRenderer|TemplateHTMLRenderer|StaticHTMLRenderer|AdminRenderer|HTMLFormRenderer] -\u003e RENDERS scope.template drf/\u003cRenderer\u003e; TemplateHTMLRenderer.template_name='x.html' -\u003e RENDERS x.html (framework-agnostic detector); JSON-only renderer lists + dynamic/settings-derived renderer_classes emit nothing (#3914 over #3628)",
+            "verified_at": "2026-06-03"
           }
         },
         "Auth": {
