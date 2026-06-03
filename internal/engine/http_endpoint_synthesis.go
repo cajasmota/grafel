@@ -776,6 +776,16 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// input_schema_lib / has_input_schema on the procedure synthetics this
 		// file just emitted. Keyed on the shared dotted `path` property.
 		applyTRPCSchemaBinding(string(content), entities, trpcTransportBefore)
+		// #4041 — tRPC middleware / protectedProcedure auth. The #2852 JS/TS
+		// resolver below is HTTP-route/decorator-keyed and cannot see tRPC's
+		// transport-agnostic middleware-in-a-builder auth. This pass re-walks
+		// the routers and stamps auth_required/auth_method=trpc_middleware/
+		// auth_middleware on each procedure built from an auth-enforcing
+		// middleware or a protectedProcedure builder, keyed on the shared
+		// dotted `path` — same append-only mechanism as the schema binding.
+		// Runs BEFORE applyJSTSAuthPolicy so it owns the tRPC synthetics; the
+		// JS/TS resolver leaves them at method="unknown" (no route/guard key).
+		applyTRPCAuthBinding(string(content), entities, trpcTransportBefore)
 		// #2852 — resolve auth_coverage over the producer-side endpoints emitted
 		// above. Detects passport/express-jwt/session middleware, Nest
 		// @UseGuards (class + method), Hapi route auth, AdonisJS .middleware('auth')

@@ -360,6 +360,14 @@ func applyJSTSAuthPolicy(content, path string, entities []types.EntityRecord, be
 		if e.Properties == nil {
 			continue
 		}
+		// #4041 — tRPC procedures already had their auth resolved by
+		// applyTRPCAuthBinding (transport-agnostic middleware-in-a-builder).
+		// This route/decorator-keyed resolver cannot improve on that and would
+		// otherwise overwrite auth_method=trpc_middleware with the no-signal
+		// "unknown" fall-through. Leave tRPC synthetics untouched.
+		if e.Properties["framework"] == "trpc" {
+			continue
+		}
 		framework := e.Properties["framework"]
 		verb := strings.ToUpper(e.Properties["verb"])
 		canonical := e.Properties["path"]
