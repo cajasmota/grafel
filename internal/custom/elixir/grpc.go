@@ -105,6 +105,11 @@ func (e *grpcExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 
 	src := string(file.Content)
 
+	// Per-file gRPC auth verdict: does this file define AND wire an auth-
+	// enforcing GRPC.Server.Interceptor that guards the services? Same-file,
+	// signal-based, append-property-only (mirrors the gRPC-Go/-C++ slices).
+	auth := resolveGRPCElixirAuth(src)
+
 	var entities []types.EntityRecord
 	seen := make(map[string]bool)
 	add := func(ent types.EntityRecord) {
@@ -134,6 +139,7 @@ func (e *grpcExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 			"grpc_role", "server",
 			"service_name", svc,
 			"module", module)
+		grpcElixirStampAuth(&ent, auth)
 		add(ent)
 	}
 
@@ -164,6 +170,7 @@ func (e *grpcExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 				"request_message", grpcStripStream(reqType),
 				"response_message", grpcStripStream(respType),
 				"streaming", grpcStreamingMode(reqType, respType))
+			grpcElixirStampAuth(&mEnt, auth)
 			add(mEnt)
 		}
 	}
