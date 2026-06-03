@@ -153,6 +153,45 @@ func TestSubstrate_JSTS_Pothos_TaintFires(t *testing.T) {
 	}
 }
 
+// pothosSanitizerSrc is a Pothos module whose helper cleanses input before use:
+// a DOMPurify.sanitize XSS sanitizer and a parameterised db.query(sql, [params])
+// SQL sanitizer, both inside the `persistUser` helper wired into a builder
+// mutation field.
+const pothosSanitizerSrc = `
+import { builder } from './builder';
+import DOMPurify from 'dompurify';
+
+async function persistUser(name) {
+  const clean = DOMPurify.sanitize(name);
+  const rows = await db.query('SELECT * FROM users WHERE name = ?', [clean]);
+  return clean;
+}
+
+builder.mutationField('createUser', (t) =>
+  t.field({
+    type: 'User',
+    args: { name: t.arg.string({ required: true }) },
+    resolve: (root, args) => persistUser(args.name),
+  }),
+);
+`
+
+// TestSubstrate_JSTS_Pothos_SanitizerFires proves sanitizer_recognition for
+// Pothos: the framework-blind jsts sanitizer detectors fire — DOMPurify.sanitize
+// as an XSS sanitizer and the parameterised db.query(sql, [params]) as a SQL
+// sanitizer — and BOTH attribute to the persistUser helper. Mirrors the #3903
+// taint-sink credit (security-relevant primitives detected per-LANGUAGE
+// regardless of framework).
+func TestSubstrate_JSTS_Pothos_SanitizerFires(t *testing.T) {
+	ms := sniffTaintJSTS(pothosSanitizerSrc)
+	if !hasTaintJstsInFn(ms, TaintKindSanitizer, TaintCategoryXSS, "persistUser") {
+		t.Errorf("sanitizer: expected an XSS sanitizer (DOMPurify.sanitize) attributed to persistUser, got %+v", ms)
+	}
+	if !hasTaintJstsInFn(ms, TaintKindSanitizer, TaintCategorySQL, "persistUser") {
+		t.Errorf("sanitizer: expected a SQL sanitizer (parameterised db.query) attributed to persistUser, got %+v", ms)
+	}
+}
+
 // --- TypeGraphQL ------------------------------------------------------------
 
 func TestSubstrate_JSTS_TypeGraphQL_DefUseAttributes(t *testing.T) {
@@ -179,6 +218,53 @@ func TestSubstrate_JSTS_TypeGraphQL_TaintFires(t *testing.T) {
 	if countTaint(ms, TaintKindSink, TaintCategorySQL) == 0 {
 		t.Errorf("taint: expected a SQL-injection sink (raw query concat), got %+v", ms)
 	}
+}
+
+// typeGraphQLSanitizerSrc is a TypeGraphQL module whose service helper cleanses
+// input before use: a validator.escape XSS sanitizer and a parameterised
+// db.query(sql, [params]) SQL sanitizer, both inside the persistAccount helper
+// called from an @Resolver method.
+const typeGraphQLSanitizerSrc = `
+import { Resolver, Mutation, Arg } from 'type-graphql';
+import validator from 'validator';
+
+async function persistAccount(email) {
+  const safe = validator.escape(email);
+  const rows = await db.query('SELECT * FROM accounts WHERE email = ?', [safe]);
+  return safe;
+}
+
+@Resolver()
+export class UserResolver {
+  @Mutation(() => User)
+  async createUser(@Arg('email') email: string) {
+    return persistAccount(email);
+  }
+}
+`
+
+// TestSubstrate_JSTS_TypeGraphQL_SanitizerFires proves sanitizer_recognition for
+// TypeGraphQL: validator.escape (XSS) and the parameterised db.query(sql,
+// [params]) (SQL) sanitizers fire and attribute to persistAccount.
+func TestSubstrate_JSTS_TypeGraphQL_SanitizerFires(t *testing.T) {
+	ms := sniffTaintJSTS(typeGraphQLSanitizerSrc)
+	if !hasTaintJstsInFn(ms, TaintKindSanitizer, TaintCategoryXSS, "persistAccount") {
+		t.Errorf("sanitizer: expected an XSS sanitizer (validator.escape) attributed to persistAccount, got %+v", ms)
+	}
+	if !hasTaintJstsInFn(ms, TaintKindSanitizer, TaintCategorySQL, "persistAccount") {
+		t.Errorf("sanitizer: expected a SQL sanitizer (parameterised db.query) attributed to persistAccount, got %+v", ms)
+	}
+}
+
+// hasTaintJstsInFn reports whether a TaintMatch of kind+category attributed to
+// fn is present.
+func hasTaintJstsInFn(ms []TaintMatch, kind TaintKind, cat TaintCategory, fn string) bool {
+	for _, m := range ms {
+		if m.Kind == kind && m.Category == cat && m.Function == fn {
+			return true
+		}
+	}
+	return false
 }
 
 // --- Negative: request_sink_dataflow does NOT fire (honest non-credit) -------

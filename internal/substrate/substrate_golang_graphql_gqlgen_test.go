@@ -130,6 +130,57 @@ func TestSubstrate_Go_Gqlgen_TaintSinkFires(t *testing.T) {
 	}
 }
 
+// gqlgenSanitizerSrc is a gqlgen generated-resolver module that cleanses its
+// input before use: an html.EscapeString XSS sanitizer and a parameterised
+// db.Query (placeholder + trailing arg) SQL sanitizer, both inside the
+// `func (r *mutationResolver) CreateTodo(…)` resolver method.
+const gqlgenSanitizerSrc = `
+package graph
+
+import (
+	"context"
+	"html"
+)
+
+// CreateTodo is the resolver for the createTodo field.
+func (r *mutationResolver) CreateTodo(ctx context.Context, input NewTodo) (*Todo, error) {
+	text := input.Text
+	safe := html.EscapeString(text)
+	db := r.DB
+	rows, _ := db.Query("SELECT * FROM todos WHERE text = ?", safe)
+	_ = rows
+	return &Todo{Text: safe}, nil
+}
+`
+
+// TestSubstrate_Go_Gqlgen_SanitizerFires proves sanitizer_recognition for
+// gqlgen: the framework-blind Go sanitizer detectors fire on the generated
+// resolver body — html.EscapeString is recognised as an XSS sanitizer and the
+// parameterised db.Query(sql, ?args) as a SQL sanitizer — and BOTH attribute to
+// the resolver method CreateTodo (so taint_flow.go can cleanse paths through
+// it). This mirrors the #3918 taint-sink credit: the security-relevant
+// sanitizer primitives are detected per-LANGUAGE regardless of framework.
+func TestSubstrate_Go_Gqlgen_SanitizerFires(t *testing.T) {
+	ms := sniffTaintGo(gqlgenSanitizerSrc)
+	if !hasTaintGoInFn(ms, TaintKindSanitizer, TaintCategoryXSS, "CreateTodo") {
+		t.Errorf("sanitizer: expected an XSS sanitizer (html.EscapeString) attributed to CreateTodo, got %+v", ms)
+	}
+	if !hasTaintGoInFn(ms, TaintKindSanitizer, TaintCategorySQL, "CreateTodo") {
+		t.Errorf("sanitizer: expected a SQL sanitizer (parameterised db.Query) attributed to CreateTodo, got %+v", ms)
+	}
+}
+
+// hasTaintGoInFn reports whether a TaintMatch of kind+category attributed to fn
+// is present.
+func hasTaintGoInFn(ms []TaintMatch, kind TaintKind, cat TaintCategory, fn string) bool {
+	for _, m := range ms {
+		if m.Kind == kind && m.Category == cat && m.Function == fn {
+			return true
+		}
+	}
+	return false
+}
+
 // --- gqlgen negative probes (honest non-credit) -----------------------------
 
 // TestSubstrate_Go_Gqlgen_TaintSourceDoesNotFire documents WHY
