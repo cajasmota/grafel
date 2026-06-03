@@ -19,8 +19,11 @@
 //	                      blocks (same mechanism as Phase 0 markup_script.go).
 //	svelte              — partial: same JSTS delegation.
 //	vue                 — partial: same JSTS delegation.
-//	dart                — not_applicable: jsonDecode returns Map<String,dynamic>;
-//	                      field names not statically visible at call site.
+//	dart                — partial (#4035): json_serializable / freezed DTOs
+//	                      (@JsonSerializable / @freezed + factory X.fromJson)
+//	                      are statically inspectable; Dio/http call bodies
+//	                      give consumer request shapes. Sniffer lives in
+//	                      payload_shapes_dart.go (no longer not_applicable).
 //	groovy              — not_applicable: Grails JsonBuilder / render are
 //	                      not statically inspectable without AST.
 //	lua                 — not_applicable: Lapis/OpenResty body is a string;
