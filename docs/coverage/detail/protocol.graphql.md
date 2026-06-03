@@ -25,13 +25,8 @@ one is a separate detail page.
 |--------|----------|------|--------|
 | [`lang.csharp.framework.hotchocolate`](./lang.csharp.framework.hotchocolate.md) | C# | framework | 4 full, 3 partial, 42 missing |
 | [`lang.elixir.framework.absinthe`](./lang.elixir.framework.absinthe.md) | elixir | framework | 6 full, 30 partial, 13 missing |
-<<<<<<< HEAD
 | [`lang.go.framework.gqlgen`](./lang.go.framework.gqlgen.md) | go | framework | 4 full, 7 partial, 38 missing |
-| [`lang.java.framework.spring-graphql`](./lang.java.framework.spring-graphql.md) | java | framework | 4 full, 5 partial, 46 missing |
-=======
-| [`lang.go.framework.gqlgen`](./lang.go.framework.gqlgen.md) | go | framework | 4 full, 6 partial, 39 missing |
 | [`lang.java.framework.spring-graphql`](./lang.java.framework.spring-graphql.md) | java | framework | 8 full, 5 partial, 42 missing |
->>>>>>> pr/java-spring-transactions
 | [`lang.jsts.framework.graphql-resolvers`](./lang.jsts.framework.graphql-resolvers.md) | JS/TS | framework | 10 full, 19 partial, 1 missing, 1 n/a |
 | [`lang.jsts.framework.type-graphql`](./lang.jsts.framework.type-graphql.md) | JS/TS | framework | 4 full, 5 partial, 40 missing |
 | [`lang.kotlin.framework.graphql-kotlin`](./lang.kotlin.framework.graphql-kotlin.md) | kotlin | framework | 4 full, 51 missing |
