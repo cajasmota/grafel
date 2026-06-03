@@ -38,6 +38,11 @@
 //     Split-specific)
 //   - Unleash-React: useFlag("key") / useFlagsStatus — the @unleash/proxy-client
 //     React hook
+//   - Laravel Pennant (PHP) : Feature::active("key") / Feature::inactive("key") /
+//     Feature::for($u)->active("key") (facade), plus the global feature("key")
+//     helper
+//   - Flagception (Symfony/PHP) : $featureManager->isActive("key") —
+//     receiver-gated on a flag/feature receiver token
 //   - Generic/custom : getFlag("key") / feature_enabled("key") /
 //     featureEnabled("key") / isFeatureEnabled("key") — FF-specific custom
 //     wrappers, distinct enough from arbitrary code to attribute
@@ -77,7 +82,7 @@ const featureFlagPatternType = "feature_flag_gating"
 // flagHit is one detected flag-check call site.
 type flagHit struct {
 	key    string // literal flag key (symbol leading ':' already stripped)
-	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | custom
+	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | flagsmith | ff4j | split | laravel-pennant | flagception | custom
 	method string // the SDK call/method observed
 	caller string // enclosing-function name ("" → file scope)
 	line   int    // 1-indexed source line
@@ -248,6 +253,58 @@ var flagSDKMatchers = []flagSDKMatcher{
 		),
 		sdk:    "ff4j",
 		method: "ff4j.check",
+	},
+
+	// Laravel Pennant (PHP). The Pennant facade exposes
+	// `Feature::active('flag')` / `Feature::inactive('flag')`, plus the scoped
+	// form `Feature::for($user)->active('flag')`. The check is receiver-gated on
+	// the capital-`Feature` facade reached via `::`, which is Pennant-specific,
+	// so a generic `->active(...)` on an arbitrary model (e.g.
+	// `$model->active('x')`) is NOT matched — only calls flowing from the
+	// `Feature` facade are. The optional `for(...)->` scope segment lets the
+	// per-scope idiom resolve to the same flag node. Case-SENSITIVE: the
+	// `Feature` class name is conventionally capitalised, and lower-casing it
+	// would collide with the bare `feature('key')` helper matcher below.
+	{
+		re: regexp.MustCompile(
+			`\bFeature::(?:for\s*\([^)]*\)\s*->\s*)?(?:active|inactive)\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "laravel-pennant",
+		method: "Feature::active",
+	},
+
+	// Laravel `feature('flag')` helper (PHP). Pennant ships a global
+	// `feature()` helper that is the function-call twin of the `Feature`
+	// facade. Case-SENSITIVE lowercase `feature(` so it matches the helper
+	// without colliding with the capitalised `Feature::` facade above or the
+	// `feature_enabled`/`featureEnabled` generic wrappers below (those carry a
+	// trailing `_enabled`/`Enabled` token, so `feature\s*\(` cannot match
+	// them). The `\b` before `feature` keeps `hasFeature(`/`getFeature(`
+	// (no word boundary mid-identifier) from matching.
+	{
+		re: regexp.MustCompile(
+			`\bfeature\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "laravel-pennant",
+		method: "feature",
+	},
+
+	// Symfony Flagception (PHP). The Flagception FeatureManager exposes
+	// `$manager->isActive('flag')`. `isActive` is generic on its own, so the
+	// receiver is gated to a token containing `flag` or `feature`
+	// (case-insensitive) — e.g. `$this->flagception`, `$featureManager`,
+	// `$features` — which captures the Flagception idiom while rejecting an
+	// arbitrary `$model->isActive('x')`. The receiver may arrive via `->` (an
+	// object property/var) or `::` (a static facade).
+	{
+		re: regexp.MustCompile(
+			`(?i)\$?\w*(?:flag|feature)\w*\s*(?:->|::)\s*isActive\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "flagception",
+		method: "isActive",
 	},
 
 	// Generic / custom feature-flag wrappers. getFlag("key") /

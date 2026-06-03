@@ -51989,8 +51989,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY edge (framework-agnostic engine pass, fires for every PHP file). Laravel Pennant idioms verified \u0026 attributed to the enclosing controller action/method: Feature::active(\"key\") / Feature::inactive(\"key\") / Feature::for($user)-\u003eactive(\"key\") facade + global feature(\"key\") helper. Cross-language SDKs also fire for PHP $var-\u003emethod idioms: Unleash $u-\u003eisEnabled(\"key\"), OpenFeature $c-\u003egetBooleanValue(\"key\",false), LaunchDarkly $c-\u003evariation(\"key\",...). Honest-partial: dynamic keys (Feature::active($k)) + non-Pennant $model-\u003eactive(\"x\") emit nothing (receiver-gated on the Feature facade).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -52556,8 +52559,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic PHP engine pass). Laravel Pennant idioms (Lumen shares the Laravel facade/helper) attribute to the enclosing method: Feature::active/inactive(\"key\"), Feature::for($u)-\u003eactive(\"key\"), feature(\"key\") helper; cross-language Unleash/OpenFeature/LaunchDarkly $var idioms also fire. Honest-partial: dynamic keys + non-Pennant -\u003eactive() miss (receiver-gated).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -53421,8 +53427,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic PHP engine pass, fires regardless of framework). Slim hosts no first-party flag facade, but the cross-language SDK matchers fire for $var idioms: Unleash $u-\u003eisEnabled(\"key\"), OpenFeature $c-\u003egetBooleanValue(\"key\",false), LaunchDarkly $c-\u003evariation(\"key\",...), plus the Laravel feature(\"key\")/Pennant + Flagception matchers should a Slim app pull them in. Honest-partial: dynamic keys + non-flag receivers miss.",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -53721,8 +53730,11 @@
             "verified_at": "2026-06-03"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "full",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "3706",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic PHP engine pass). Symfony Flagception idiom verified \u0026 attributed to the enclosing method: $manager-\u003eisActive(\"key\") (receiver-gated on a flag/feature token, e.g. $this-\u003eflagception / $featureManager). Cross-language Unleash $u-\u003eisEnabled, OpenFeature $c-\u003egetBooleanValue, LaunchDarkly $c-\u003evariation $var idioms also fire. Honest-partial: dynamic keys + non-Flagception $model-\u003eisActive(\"x\") emit nothing.",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",

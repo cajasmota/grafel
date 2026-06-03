@@ -1031,3 +1031,298 @@ public class Widget
 		t.Errorf("non-FeatureManager IsEnabled property should yield no output, got flags=%v edges=%v", flags, edges)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// PHP (#4143) — Laravel Pennant facade/helper + Symfony Flagception, plus the
+// cross-language SDKs (LaunchDarkly/Unleash/OpenFeature) verified to already
+// fire for PHP `->`/`::` + `$var` idioms. Mirrors the go #3919 / ruby #4140
+// node/edge shape: `feature:<key>` node, `GATED_BY` edge from the enclosing
+// PHP function.
+// ---------------------------------------------------------------------------
+
+// Laravel Pennant: Feature::active('new-checkout') in a controller action →
+// checkout GATED_BY feature:new-checkout, SDK subtype "laravel-pennant".
+func TestFeatureFlag_PHP_Pennant_FeatureActive(t *testing.T) {
+	src := `<?php
+class CheckoutController
+{
+    public function checkout($cart)
+    {
+        if (Feature::active('new-checkout')) {
+            return $this->newCheckout($cart);
+        }
+        return $this->legacyCheckout($cart);
+    }
+}
+`
+	flags, edges := runFlagPass("php", "CheckoutController.php", src)
+
+	flag, ok := findFlag(flags, "new-checkout")
+	if !ok {
+		t.Fatalf("expected feature:new-checkout entity, got flags=%v", flags)
+	}
+	if flag.ID != "feature:new-checkout" {
+		t.Errorf("flag ID = %q, want feature:new-checkout", flag.ID)
+	}
+	if flag.Subtype != "laravel-pennant" {
+		t.Errorf("flag SDK subtype = %q, want laravel-pennant", flag.Subtype)
+	}
+
+	g, ok := findGate(edges, "new-checkout")
+	if !ok {
+		t.Fatalf("expected GATED_BY edge for new-checkout, got %v", edges)
+	}
+	if g.From != "Function:checkout" {
+		t.Errorf("GATED_BY FromID = %q, want Function:checkout", g.From)
+	}
+	if g.To != "feature:new-checkout" {
+		t.Errorf("GATED_BY ToID = %q, want feature:new-checkout", g.To)
+	}
+	if g.SDK != "laravel-pennant" {
+		t.Errorf("GATED_BY sdk = %q, want laravel-pennant", g.SDK)
+	}
+}
+
+// Laravel Pennant scoped form: Feature::for($user)->active('beta-ui') →
+// feature:beta-ui, SDK subtype "laravel-pennant", attributed to the enclosing
+// PHP method.
+func TestFeatureFlag_PHP_Pennant_FeatureForScoped(t *testing.T) {
+	src := `<?php
+class Dashboard
+{
+    public function show($user)
+    {
+        if (Feature::for($user)->active('beta-ui')) {
+            return $this->betaDashboard();
+        }
+        return $this->classicDashboard();
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Dashboard.php", src)
+	flag, ok := findFlag(flags, "beta-ui")
+	if !ok {
+		t.Fatalf("expected feature:beta-ui entity, got flags=%v", flags)
+	}
+	if flag.Subtype != "laravel-pennant" {
+		t.Errorf("flag SDK subtype = %q, want laravel-pennant", flag.Subtype)
+	}
+	g, ok := findGate(edges, "beta-ui")
+	if !ok {
+		t.Fatalf("expected GATED_BY for beta-ui, got %v", edges)
+	}
+	if g.From != "Function:show" || g.To != "feature:beta-ui" {
+		t.Errorf("edge = %+v, want From=Function:show To=feature:beta-ui", g)
+	}
+}
+
+// Laravel `feature('dark-mode')` helper → feature:dark-mode, SDK subtype
+// "laravel-pennant", attributed to the enclosing PHP function.
+func TestFeatureFlag_PHP_Laravel_FeatureHelper(t *testing.T) {
+	src := `<?php
+class Theme
+{
+    public function render($user)
+    {
+        if (feature('dark-mode')) {
+            return $this->dark();
+        }
+        return $this->light();
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Theme.php", src)
+	flag, ok := findFlag(flags, "dark-mode")
+	if !ok {
+		t.Fatalf("expected feature:dark-mode entity, got flags=%v", flags)
+	}
+	if flag.Subtype != "laravel-pennant" {
+		t.Errorf("flag SDK subtype = %q, want laravel-pennant", flag.Subtype)
+	}
+	g, ok := findGate(edges, "dark-mode")
+	if !ok {
+		t.Fatalf("expected GATED_BY for dark-mode, got %v", edges)
+	}
+	if g.From != "Function:render" || g.To != "feature:dark-mode" {
+		t.Errorf("edge = %+v, want From=Function:render To=feature:dark-mode", g)
+	}
+}
+
+// Symfony Flagception: $this->flagception->isActive('promo') → feature:promo,
+// SDK subtype "flagception". The receiver token contains `flagception`, so the
+// receiver gate fires.
+func TestFeatureFlag_PHP_Flagception_isActive(t *testing.T) {
+	src := `<?php
+class PromoService
+{
+    public function run()
+    {
+        if ($this->flagception->isActive('promo')) {
+            return $this->showPromo();
+        }
+        return null;
+    }
+}
+`
+	flags, edges := runFlagPass("php", "PromoService.php", src)
+	flag, ok := findFlag(flags, "promo")
+	if !ok {
+		t.Fatalf("expected feature:promo entity, got flags=%v", flags)
+	}
+	if flag.Subtype != "flagception" {
+		t.Errorf("flag SDK subtype = %q, want flagception", flag.Subtype)
+	}
+	g, ok := findGate(edges, "promo")
+	if !ok {
+		t.Fatalf("expected GATED_BY for promo, got %v", edges)
+	}
+	if g.From != "Function:run" || g.To != "feature:promo" {
+		t.Errorf("edge = %+v, want From=Function:run To=feature:promo", g)
+	}
+}
+
+// PHP CREDIT — the cross-language Unleash matcher already fires for the
+// Unleash-php `$unleash->isEnabled('beta')` idiom. SDK subtype "unleash".
+func TestFeatureFlag_PHP_Unleash_isEnabled_Credited(t *testing.T) {
+	src := `<?php
+class Gate
+{
+    public function run()
+    {
+        if ($unleash->isEnabled('beta')) {
+            return 1;
+        }
+        return 0;
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Gate.php", src)
+	flag, ok := findFlag(flags, "beta")
+	if !ok {
+		t.Fatalf("expected feature:beta entity, got flags=%v", flags)
+	}
+	if flag.Subtype != "unleash" {
+		t.Errorf("flag SDK subtype = %q, want unleash", flag.Subtype)
+	}
+	g, ok := findGate(edges, "beta")
+	if !ok || g.From != "Function:run" || g.To != "feature:beta" {
+		t.Errorf("edge = %+v ok=%v, want From=Function:run To=feature:beta", g, ok)
+	}
+}
+
+// PHP CREDIT — the cross-language OpenFeature matcher already fires for
+// `$client->getBooleanValue('new-ui', false)`. SDK subtype "openfeature".
+func TestFeatureFlag_PHP_OpenFeature_getBooleanValue_Credited(t *testing.T) {
+	src := `<?php
+class Gate
+{
+    public function run()
+    {
+        $v = $client->getBooleanValue('new-ui', false);
+        return $v;
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Gate.php", src)
+	flag, ok := findFlag(flags, "new-ui")
+	if !ok {
+		t.Fatalf("expected feature:new-ui entity, got flags=%v", flags)
+	}
+	if flag.Subtype != "openfeature" {
+		t.Errorf("flag SDK subtype = %q, want openfeature", flag.Subtype)
+	}
+	if g, ok := findGate(edges, "new-ui"); !ok || g.From != "Function:run" {
+		t.Errorf("edge = %+v ok=%v, want From=Function:run", g, ok)
+	}
+}
+
+// PHP CREDIT — the LaunchDarkly variation family fires for
+// `$client->variation('ld-flag', $context, false)`. SDK subtype "launchdarkly".
+func TestFeatureFlag_PHP_LaunchDarkly_variation_Credited(t *testing.T) {
+	src := `<?php
+class Gate
+{
+    public function run($context)
+    {
+        $v = $client->variation('ld-flag', $context, false);
+        return $v;
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Gate.php", src)
+	flag, ok := findFlag(flags, "ld-flag")
+	if !ok {
+		t.Fatalf("expected feature:ld-flag entity, got flags=%v", flags)
+	}
+	if flag.Subtype != "launchdarkly" {
+		t.Errorf("flag SDK subtype = %q, want launchdarkly", flag.Subtype)
+	}
+	if g, ok := findGate(edges, "ld-flag"); !ok || g.From != "Function:run" {
+		t.Errorf("edge = %+v ok=%v, want From=Function:run", g, ok)
+	}
+}
+
+// PHP NEGATIVE (receiver gate) — `$model->active('x')` is an ordinary
+// Eloquent-style `active()` call on a NON-Pennant receiver, so the Pennant
+// matcher (gated on the `Feature::` facade) does NOT fire. No output.
+func TestFeatureFlag_PHP_NonPennantActive_NoFabrication(t *testing.T) {
+	src := `<?php
+class Repo
+{
+    public function run($model)
+    {
+        if ($model->active('x')) {
+            return 1;
+        }
+        return 0;
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Repo.php", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("non-Pennant ->active() should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// PHP NEGATIVE (receiver gate) — `$model->isActive('x')` on a receiver with no
+// flag/feature token is NOT attributed to Flagception. No output.
+func TestFeatureFlag_PHP_NonFlagceptionIsActive_NoFabrication(t *testing.T) {
+	src := `<?php
+class Repo
+{
+    public function run($model)
+    {
+        if ($model->isActive('x')) {
+            return 1;
+        }
+        return 0;
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Repo.php", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("non-Flagception isActive should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// PHP NEGATIVE (honest-partial) — a dynamic Pennant key
+// `Feature::active($flagName)` is a non-literal argument, so no flag entity is
+// fabricated and no edge is emitted.
+func TestFeatureFlag_PHP_Pennant_DynamicKey_NoFabrication(t *testing.T) {
+	src := `<?php
+class Gate
+{
+    public function run($flagName)
+    {
+        if (Feature::active($flagName)) {
+            return 1;
+        }
+        return 0;
+    }
+}
+`
+	flags, edges := runFlagPass("php", "Gate.php", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("dynamic Pennant key should yield no output, got flags=%v edges=%v", flags, edges)
+	}
+}
