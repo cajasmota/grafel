@@ -204,6 +204,17 @@ func resolveEndpointDeprecation(lang, content string, e *types.EntityRecord) dep
 		if v, ok := pythonDeprecationVerdict(region, content, handlerStart); ok {
 			return v
 		}
+	case "go":
+		// Go endpoints emit with StartLine=0 and a group prefix that is not
+		// composed into the canonical path, so neither the decorator-region nor
+		// the path-anchored fallback above locates the handler func. Resolve the
+		// handler func by NAME from the endpoint's `source_handler` ref instead,
+		// then read the `// Deprecated:` godoc above it and scan its OWN body for
+		// a Sunset/Deprecation header (no cross-handler leak). #4094.
+		if v, ok := goDeprecationVerdict(content, e); ok {
+			return v
+		}
+		return deprecationVerdict{}
 	default:
 		// Generic cross-language fallback: a leading-comment DEPRECATED marker
 		// is recognisable in every language's decorator/comment region.
@@ -438,6 +449,100 @@ func pythonHandlerBody(content string, handlerStart int) string {
 		end = len(content)
 	}
 	return content[handlerStart:end]
+}
+
+// ---- Go ---------------------------------------------------------------------
+
+// goDeprecatedGodocRe matches Go's idiomatic deprecation marker — a
+// `// Deprecated:` line in the doc comment block, with its optional trailing
+// message (the convention recognised by `go vet`/`staticcheck`/pkg.go.dev).
+var goDeprecatedGodocRe = regexp.MustCompile(`(?i)//\s*Deprecated:\s*([^\n]{0,200})`)
+
+// goDeprecationVerdict resolves the deprecation state for a Go endpoint by
+// locating its handler FUNC in the source (by the `source_handler` ref) rather
+// than by the route registration line. It credits deprecated=true when:
+//
+//   - the handler func carries a `// Deprecated:` godoc comment immediately
+//     above its `func` declaration (the Go-idiomatic marker), or
+//   - the handler func body sets a `Sunset` / `Deprecation` response header
+//     (RFC 8594) — scoped to THIS func's body so it never leaks to a sibling.
+//
+// Honest-partial: an endpoint whose handler cannot be located, or whose handler
+// carries neither marker, yields no verdict (deprecated is left absent).
+func goDeprecationVerdict(content string, e *types.EntityRecord) (deprecationVerdict, bool) {
+	handler := goHandlerName(e)
+	if handler == "" {
+		return deprecationVerdict{}, false
+	}
+	re := goFuncOpenRe(handler)
+	loc := re.FindStringIndex(content)
+	if loc == nil {
+		return deprecationVerdict{}, false
+	}
+	// `// Deprecated:` godoc: the contiguous comment block immediately above the
+	// func declaration line.
+	doc := goDocCommentRegion(content, loc[0])
+	if m := goDeprecatedGodocRe.FindStringSubmatch(doc); m != nil {
+		v := deprecationVerdict{deprecated: true, source: "// Deprecated: godoc"}
+		v.since, v.replacement = parseDeprecationMessage(strings.TrimSpace(m[1]))
+		return v, true
+	}
+	// Response-header signal, scoped to THIS handler's own body.
+	body := findGoHandlerBody(content, handler)
+	if body != "" {
+		if m := deprecationHeaderRe.FindStringSubmatch(body); m != nil {
+			return deprecationVerdict{
+				deprecated: true,
+				source:     titleHeaderName(m[1]) + " response header",
+			}, true
+		}
+	}
+	return deprecationVerdict{}, false
+}
+
+// goHandlerName returns the bare handler function name recorded on a Go endpoint
+// (`source_handler="Controller:<name>"`), or "" when unavailable. A qualified
+// ref (`h.Create`) is reduced to its last component, matching the bare/last
+// spelling the Go synthesizers record.
+func goHandlerName(e *types.EntityRecord) string {
+	ref := e.Properties["source_handler"]
+	if ref == "" {
+		return ""
+	}
+	if i := strings.LastIndex(ref, ":"); i >= 0 {
+		ref = ref[i+1:]
+	}
+	if i := strings.LastIndex(ref, "."); i >= 0 {
+		ref = ref[i+1:]
+	}
+	return strings.TrimSpace(ref)
+}
+
+// goDocCommentRegion returns the contiguous run of `//` doc-comment lines (and
+// blank-prefixed continuation comment lines) immediately preceding the func
+// declaration that starts at byte offset funcOff. This is exactly where a Go
+// `// Deprecated:` marker lives.
+func goDocCommentRegion(content string, funcOff int) string {
+	if funcOff <= 0 || funcOff > len(content) {
+		return ""
+	}
+	lines := strings.Split(content[:funcOff], "\n")
+	// The last element is the (partial) func line itself; walk upward over the
+	// preceding comment lines.
+	end := len(lines) - 1
+	top := end
+	for top > 0 {
+		prev := strings.TrimSpace(lines[top-1])
+		if strings.HasPrefix(prev, "//") {
+			top--
+			continue
+		}
+		break
+	}
+	if top >= end {
+		return ""
+	}
+	return strings.Join(lines[top:end], "\n")
 }
 
 // ---- Cross-language: response-header signal --------------------------------

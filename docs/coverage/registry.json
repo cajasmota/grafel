@@ -18893,8 +18893,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#4094: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on Go endpoints. The handler func is resolved by source_handler ref (goDeprecationVerdict): a // Deprecated: godoc comment above the func -\u003e deprecated=true (source=\"// Deprecated: godoc\", since/replacement parsed from the message); a Sunset/Deprecation response header set in THAT func body -\u003e deprecated=true (scoped, no cross-handler leak). api_version is path-derived from a /vN or /api/vN segment in the route literal. Honest-partial: a Group(\"/api/vN\") prefix is not composed into the path, so group-prefix-only versioning is not yet resolved. Value-asserted TestDeprecation_GoGodocOnGinHandler (since=v2.4, repl=/api/v3/users, api_version=2), TestDeprecation_GoSunsetHeaderScopedToHandler (no leak), TestDeprecation_GoNetHTTPGodoc (api_version=1); negatives TestDeprecation_GoNoMarkersNoStamp + TestDeprecation_GoNonHandlerGodocDoesNotLeak.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "full",
@@ -19190,8 +19192,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#4094: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on Go endpoints. The handler func is resolved by source_handler ref (goDeprecationVerdict): a // Deprecated: godoc comment above the func -\u003e deprecated=true (source=\"// Deprecated: godoc\", since/replacement parsed from the message); a Sunset/Deprecation response header set in THAT func body -\u003e deprecated=true (scoped, no cross-handler leak). api_version is path-derived from a /vN or /api/vN segment in the route literal. Honest-partial: a Group(\"/api/vN\") prefix is not composed into the path, so group-prefix-only versioning is not yet resolved. Value-asserted TestDeprecation_GoGodocOnGinHandler (since=v2.4, repl=/api/v3/users, api_version=2), TestDeprecation_GoSunsetHeaderScopedToHandler (no leak), TestDeprecation_GoNetHTTPGodoc (api_version=1); negatives TestDeprecation_GoNoMarkersNoStamp + TestDeprecation_GoNonHandlerGodocDoesNotLeak.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "full",
@@ -19778,8 +19782,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#4094: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on Go endpoints. The handler func is resolved by source_handler ref (goDeprecationVerdict): a // Deprecated: godoc comment above the func -\u003e deprecated=true (source=\"// Deprecated: godoc\", since/replacement parsed from the message); a Sunset/Deprecation response header set in THAT func body -\u003e deprecated=true (scoped, no cross-handler leak). api_version is path-derived from a /vN or /api/vN segment in the route literal. Honest-partial: a Group(\"/api/vN\") prefix is not composed into the path, so group-prefix-only versioning is not yet resolved. Value-asserted TestDeprecation_GoGodocOnGinHandler (since=v2.4, repl=/api/v3/users, api_version=2), TestDeprecation_GoSunsetHeaderScopedToHandler (no leak), TestDeprecation_GoNetHTTPGodoc (api_version=1); negatives TestDeprecation_GoNoMarkersNoStamp + TestDeprecation_GoNonHandlerGodocDoesNotLeak.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "full",
@@ -20415,8 +20421,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#4094: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on Go endpoints. The handler func is resolved by source_handler ref (goDeprecationVerdict): a // Deprecated: godoc comment above the func -\u003e deprecated=true (source=\"// Deprecated: godoc\", since/replacement parsed from the message); a Sunset/Deprecation response header set in THAT func body -\u003e deprecated=true (scoped, no cross-handler leak). api_version is path-derived from a /vN or /api/vN segment in the route literal. Honest-partial: a Group(\"/api/vN\") prefix is not composed into the path, so group-prefix-only versioning is not yet resolved. Value-asserted TestDeprecation_GoGodocOnGinHandler (since=v2.4, repl=/api/v3/users, api_version=2), TestDeprecation_GoSunsetHeaderScopedToHandler (no leak), TestDeprecation_GoNetHTTPGodoc (api_version=1); negatives TestDeprecation_GoNoMarkersNoStamp + TestDeprecation_GoNonHandlerGodocDoesNotLeak.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "full",
@@ -21214,8 +21222,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#4094: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on Go endpoints. The handler func is resolved by source_handler ref (goDeprecationVerdict): a // Deprecated: godoc comment above the func -\u003e deprecated=true (source=\"// Deprecated: godoc\", since/replacement parsed from the message); a Sunset/Deprecation response header set in THAT func body -\u003e deprecated=true (scoped, no cross-handler leak). api_version is path-derived from a /vN or /api/vN segment in the route literal. Honest-partial: a Group(\"/api/vN\") prefix is not composed into the path, so group-prefix-only versioning is not yet resolved. Value-asserted TestDeprecation_GoGodocOnGinHandler (since=v2.4, repl=/api/v3/users, api_version=2), TestDeprecation_GoSunsetHeaderScopedToHandler (no leak), TestDeprecation_GoNetHTTPGodoc (api_version=1); negatives TestDeprecation_GoNoMarkersNoStamp + TestDeprecation_GoNonHandlerGodocDoesNotLeak.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "full",
@@ -22330,8 +22340,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#4094: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on Go endpoints. The handler func is resolved by source_handler ref (goDeprecationVerdict): a // Deprecated: godoc comment above the func -\u003e deprecated=true (source=\"// Deprecated: godoc\", since/replacement parsed from the message); a Sunset/Deprecation response header set in THAT func body -\u003e deprecated=true (scoped, no cross-handler leak). api_version is path-derived from a /vN or /api/vN segment in the route literal. Honest-partial: a Group(\"/api/vN\") prefix is not composed into the path, so group-prefix-only versioning is not yet resolved. Value-asserted TestDeprecation_GoGodocOnGinHandler (since=v2.4, repl=/api/v3/users, api_version=2), TestDeprecation_GoSunsetHeaderScopedToHandler (no leak), TestDeprecation_GoNetHTTPGodoc (api_version=1); negatives TestDeprecation_GoNoMarkersNoStamp + TestDeprecation_GoNonHandlerGodocDoesNotLeak.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "missing",
@@ -23183,8 +23195,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#4094: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on Go endpoints. The handler func is resolved by source_handler ref (goDeprecationVerdict): a // Deprecated: godoc comment above the func -\u003e deprecated=true (source=\"// Deprecated: godoc\", since/replacement parsed from the message); a Sunset/Deprecation response header set in THAT func body -\u003e deprecated=true (scoped, no cross-handler leak). api_version is path-derived from a /vN or /api/vN segment in the route literal. Honest-partial: a Group(\"/api/vN\") prefix is not composed into the path, so group-prefix-only versioning is not yet resolved. Value-asserted TestDeprecation_GoGodocOnGinHandler (since=v2.4, repl=/api/v3/users, api_version=2), TestDeprecation_GoSunsetHeaderScopedToHandler (no leak), TestDeprecation_GoNetHTTPGodoc (api_version=1); negatives TestDeprecation_GoNoMarkersNoStamp + TestDeprecation_GoNonHandlerGodocDoesNotLeak.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "full",

@@ -275,6 +275,192 @@ app.get('/billing', (req, res) => {
 }
 
 // ---------------------------------------------------------------------------
+// deprecation — Go (#4094): // Deprecated: godoc + scoped Sunset header
+// ---------------------------------------------------------------------------
+
+func TestDeprecation_GoGodocOnGinHandler(t *testing.T) {
+	// Gin route whose handler func carries a `// Deprecated:` godoc comment.
+	// The marker lives above the FUNC (not the registration), and the endpoint
+	// emits with StartLine=0 — so this exercises the source_handler-anchored
+	// Go resolver, not the path/decorator fallback.
+	src := `package handlers
+
+import "github.com/gin-gonic/gin"
+
+func RegisterRoutes(r *gin.Engine) {
+	r.GET("/api/v2/users", listUsers)
+	r.GET("/api/v2/posts", listPosts)
+}
+
+// Deprecated: use /api/v3/users instead, since v2.4
+func listUsers(c *gin.Context) {
+	c.JSON(200, nil)
+}
+
+func listPosts(c *gin.Context) {
+	c.JSON(200, nil)
+}
+`
+	eps := deprecProps(t, "go", "internal/handlers/users.go", src)
+	dep := mustEndpoint(t, eps, "GET /api/v2/users")
+	if dep.Properties["deprecated"] != "true" {
+		t.Fatalf("GET /api/v2/users deprecated=%q, want true (props: %v)", dep.Properties["deprecated"], dep.Properties)
+	}
+	if got := dep.Properties["deprecation_source"]; got != "// Deprecated: godoc" {
+		t.Errorf("deprecation_source=%q, want // Deprecated: godoc", got)
+	}
+	if got := dep.Properties["deprecated_since"]; got != "v2.4" {
+		t.Errorf("deprecated_since=%q, want v2.4", got)
+	}
+	if got := dep.Properties["deprecated_replacement"]; got != "/api/v3/users" {
+		t.Errorf("deprecated_replacement=%q, want /api/v3/users", got)
+	}
+	// Path-derived api_version (in the route literal).
+	if got := dep.Properties["api_version"]; got != "2" {
+		t.Errorf("api_version=%q, want 2", got)
+	}
+	// Negative: the sibling handler carries no marker → no deprecation.
+	live := mustEndpoint(t, eps, "GET /api/v2/posts")
+	if _, ok := live.Properties["deprecated"]; ok {
+		t.Fatalf("GET /api/v2/posts deprecated fabricated, want absent (props: %v)", live.Properties)
+	}
+}
+
+// A Sunset response header set inside ONE Go handler must credit only that
+// endpoint — it must not leak to a sibling route registered next to it.
+func TestDeprecation_GoSunsetHeaderScopedToHandler(t *testing.T) {
+	src := `package handlers
+
+import "github.com/labstack/echo/v4"
+
+func Register(e *echo.Echo) {
+	e.GET("/billing", billing)
+	e.GET("/invoices", invoices)
+}
+
+func billing(c echo.Context) error {
+	c.Response().Header().Set("Sunset", "Sat, 31 Dec 2025 23:59:59 GMT")
+	return c.JSON(200, nil)
+}
+
+func invoices(c echo.Context) error {
+	return c.JSON(200, nil)
+}
+`
+	eps := deprecProps(t, "go", "internal/handlers/billing.go", src)
+	dep := mustEndpoint(t, eps, "GET /billing")
+	if dep.Properties["deprecated"] != "true" {
+		t.Fatalf("GET /billing deprecated=%q, want true (props: %v)", dep.Properties["deprecated"], dep.Properties)
+	}
+	if got := dep.Properties["deprecation_source"]; got != "Sunset response header" {
+		t.Errorf("deprecation_source=%q, want Sunset response header", got)
+	}
+	// The header is in billing's body, NOT invoices' — no leak.
+	live := mustEndpoint(t, eps, "GET /invoices")
+	if _, ok := live.Properties["deprecated"]; ok {
+		t.Fatalf("GET /invoices deprecated leaked from sibling Sunset, want absent (props: %v)", live.Properties)
+	}
+}
+
+// net/http stdlib (Go 1.22 method-prefix) handler with a // Deprecated: godoc.
+func TestDeprecation_GoNetHTTPGodoc(t *testing.T) {
+	src := `package main
+
+import "net/http"
+
+func main() {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /v1/orders", listOrders)
+	mux.HandleFunc("GET /v1/customers", listCustomers)
+}
+
+// Deprecated: superseded by the v2 orders service.
+func listOrders(w http.ResponseWriter, r *http.Request) {}
+
+func listCustomers(w http.ResponseWriter, r *http.Request) {}
+`
+	eps := deprecProps(t, "go", "cmd/server/main.go", src)
+	dep := mustEndpoint(t, eps, "GET /v1/orders")
+	if dep.Properties["deprecated"] != "true" {
+		t.Fatalf("GET /v1/orders deprecated=%q, want true (props: %v)", dep.Properties["deprecated"], dep.Properties)
+	}
+	if got := dep.Properties["api_version"]; got != "1" {
+		t.Errorf("api_version=%q, want 1", got)
+	}
+	live := mustEndpoint(t, eps, "GET /v1/customers")
+	if _, ok := live.Properties["deprecated"]; ok {
+		t.Fatalf("GET /v1/customers deprecated fabricated, want absent")
+	}
+}
+
+// Negative: a non-deprecated, versionless Go route carries neither property.
+func TestDeprecation_GoNoMarkersNoStamp(t *testing.T) {
+	src := `package handlers
+
+import "github.com/gin-gonic/gin"
+
+func Register(r *gin.Engine) {
+	r.GET("/health", health)
+}
+
+func health(c *gin.Context) {
+	c.JSON(200, gin.H{"ok": true})
+}
+`
+	eps := deprecProps(t, "go", "internal/handlers/health.go", src)
+	e := mustEndpoint(t, eps, "GET /health")
+	if _, ok := e.Properties["deprecated"]; ok {
+		t.Fatalf("GET /health deprecated fabricated, want absent (props: %v)", e.Properties)
+	}
+	if _, ok := e.Properties["api_version"]; ok {
+		t.Fatalf("GET /health api_version fabricated for versionless route, want absent")
+	}
+}
+
+// Negative: a `// Deprecated:` godoc on a NON-handler func must not leak onto an
+// unrelated endpoint whose own handler carries no marker.
+func TestDeprecation_GoNonHandlerGodocDoesNotLeak(t *testing.T) {
+	src := `package handlers
+
+import "github.com/gin-gonic/gin"
+
+func Register(r *gin.Engine) {
+	r.GET("/api/v1/orders", listOrders)
+}
+
+// Deprecated: internal helper, do not use.
+func legacyHelper() string { return "x" }
+
+func listOrders(c *gin.Context) {
+	c.JSON(200, nil)
+}
+`
+	eps := deprecProps(t, "go", "internal/handlers/orders.go", src)
+	e := mustEndpoint(t, eps, "GET /api/v1/orders")
+	if _, ok := e.Properties["deprecated"]; ok {
+		t.Fatalf("non-handler // Deprecated: leaked onto GET /api/v1/orders (props: %v)", e.Properties)
+	}
+}
+
+func TestGoHandlerName(t *testing.T) {
+	cases := []struct {
+		ref  string
+		want string
+	}{
+		{"Controller:listUsers", "listUsers"},
+		{"Controller:h.Create", "Create"},
+		{"listUsers", "listUsers"},
+		{"", ""},
+	}
+	for _, c := range cases {
+		e := &types.EntityRecord{Properties: map[string]string{"source_handler": c.ref}}
+		if got := goHandlerName(e); got != c.want {
+			t.Errorf("goHandlerName(%q)=%q, want %q", c.ref, got, c.want)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // unit-level: helpers
 // ---------------------------------------------------------------------------
 
