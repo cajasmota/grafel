@@ -12,13 +12,13 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | Language | Name | Dependency attribution | Iac cross stack reference | Iac environment region account | Iac event source wiring | Iac iam grant attribution | Iac output export extraction | Iac resource property extraction | Iac stack app topology | Resource extraction | Status | Notes |
 |---|---|---|---|---|---|---|---|---|---|---|---|---|
 | [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.iac.cdk.md) | 🟢 | — | — | ✅ | ✅ | 🟢 | — | ✅ | 🟢 | 🟢 | |
-| [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.iac.cloudformation.md) | ✅ | ✅ | — | — | — | ✅ | — | 🟢 | ✅ | 🟢 | |
+| [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.iac.cloudformation.md) | ✅ | ✅ | — | — | — | ✅ | 🟢 | 🟢 | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [Ansible (playbooks)](../detail/infra.iac.ansible.md) | 🟢 | — | — | — | — | — | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Azure Bicep](../detail/infra.iac.bicep.md) | ✅ | — | — | — | — | ✅ | 🟢 | ✅ | ✅ | 🟢 | |
-| [multi](../by-language/multi.md) | [OpenTofu (HCL)](../detail/infra.iac.opentofu.md) | ✅ | ✅ | — | — | — | ✅ | — | ✅ | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [OpenTofu (HCL)](../detail/infra.iac.opentofu.md) | ✅ | ✅ | — | — | — | ✅ | 🟢 | ✅ | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | 🟢 | — | — | — | — | — | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | ✅ | — | ✅ | ✅ | — | — | 🟢 | — | ✅ | 🟢 | |
-| [multi](../by-language/multi.md) | [Terraform (HCL)](../detail/infra.iac.terraform.md) | ✅ | ✅ | — | — | — | ✅ | — | ✅ | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [Terraform (HCL)](../detail/infra.iac.terraform.md) | ✅ | ✅ | — | — | — | ✅ | 🟢 | ✅ | ✅ | 🟢 | |
 
 ## Containers & Orchestration
 

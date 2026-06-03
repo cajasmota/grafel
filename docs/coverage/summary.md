@@ -33,14 +33,14 @@
 | Category | Records | Full | Partial | Missing |
 |---|---:|---:|---:|---:|
 | [Databases](by-category/databases.md) | 12 | 0 | 12 | 0 |
-| [Platform / k8s](by-category/platform.md) | 34 | 16 | 18 | 0 |
+| [Platform / k8s](by-category/platform.md) | 34 | 14 | 20 | 0 |
 | [Message Brokers](by-category/message_broker.md) | 21 | 9 | 10 | 2 |
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
 | [Security](by-category/security.md) | 11 | 4 | 0 | 7 |
 | [Observability](by-category/observability.md) | 13 | 1 | 5 | 7 |
 | [Protocols](by-category/protocol.md) | 12 | 5 | 4 | 3 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 119 | 39 | 57 | 23 |
+| **Total** | 119 | 37 | 59 | 23 |
 
 ### Platform subcategories
 
