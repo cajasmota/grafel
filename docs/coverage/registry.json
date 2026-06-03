@@ -16290,9 +16290,10 @@
             "notes": "phoenixExtractor parses pipeline :name do...end blocks into ordered plug chains (plug_chain, plug_order per step) and binds scopes to pipelines via pipe_through [:a,:b]; module + function plugs captured. Tests assert exact :browser chain order + protect_from_forgery index + pipe_through 'api -\u003e auth' binding."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "full",
+            "cites": ["internal/custom/elixir/rate_limit.go","internal/custom/elixir/rate_limit_test.go"],
+            "notes": "#4099 (elixir greenfield): Hammer 'Hammer.check_rate(id, scale_ms, limit)' (+ check_rate_inc, trailing-arg limit) called inside a controller 'def \u003caction\u003e(conn, _) do' stamps the flat contract on that action op (rate_limited/rate_limit/rate_limit_scope=route/rate_limit_source=hammer), resolving scale_ms-\u003eseconds + limit to '\u003cN\u003e/\u003csecs\u003es' and the static bucket prefix as rate_limit_name; ExRated 'ExRated.check_rate' identical (source=exrated). Non-literal scale/limit -\u003e honest no-fabrication (regex matches integer literals only). Value-asserted (TestHammerStampsAction: create=5/60s limit5 period60 name=login, new NOT stamped; ExRated 100/60s; inc-form 100/3600s). Module-level check_rate honestly skipped. Live .ex firing confirmed via CustomExtractorsFor(elixir)+MergeWithCustom replacing the bare phoenix action op.",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {
@@ -16800,9 +16801,10 @@
             "notes": "plugExtractor captures the ordered Plug.Builder/Plug.Router plug chain with plug_order per step (plug :name and plug Module). Test asserts Plug.Logger order 0 within builder chain."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "https://github.com/cajasmota/archigraph/issues/3778",
-            "notes": "endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work."
+            "status": "partial",
+            "cites": ["internal/custom/elixir/rate_limit.go","internal/custom/elixir/rate_limit_test.go"],
+            "notes": "#4099 (elixir greenfield): PlugAttack 'throttle(name, limit: N, period: ms)' in a 'use PlugAttack' module emits a SCOPE.Pattern/rate_limit marker (rate_limited/rate_limit_source=plug_attack/rate_limit_name/limit/period, rate_limit_scope=request) resolving period ms-\u003es to '\u003cN\u003e/\u003csecs\u003es'. allow()/block() rules are NOT throttles (excluded); throttle() outside a use PlugAttack module not matched. Hammer/ExRated check_rate inside a plug call/2 also stamped via the shared check_rate pass. Value-asserted (TestPlugAttackThrottleMarker: login=5/60s; negatives for allow/block + non-PlugAttack module). Partial: PlugAttack binds a conn discriminator, not a named route, so the route binding is heuristic (honest-partial scope=request).",
+            "verified_at": "2026-06-03"
           }
         },
         "Schema": {

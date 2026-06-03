@@ -40,8 +40,8 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [elixir](../by-language/elixir.md) | [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/6 | ✅ 1/1 | 🔴 0/4 | ✅ 1/1 | 🟡 12/25 | 🟡 3/11 | |
 | [elixir](../by-language/elixir.md) | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 1/6 | |
 | [elixir](../by-language/elixir.md) | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 5/10 | |
-| [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 7/11 | |
+| [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 7/11 | |
 | [elixir](../by-language/elixir.md) | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 10/24 | 🟡 3/12 | |
 | [elixir](../by-language/elixir.md) | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 11/24 | 🟡 4/12 | |
 | [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |

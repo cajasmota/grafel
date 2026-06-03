@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | — | — | `internal/custom/elixir/plug.go` | plugExtractor captures the ordered Plug.Builder/Plug.Router plug chain with plug_order per step (plug :name and plug Module). Test asserts Plug.Logger order 0 within builder chain. |
-| Rate limit stamping | 🔴 `missing` | — | [link](https://github.com/cajasmota/archigraph/issues/3778) | — | endpoint rate-limit / throttle stamping not yet implemented for this framework; the #3628 child shipped express-rate-limit (JS/TS) + slowapi/django-ratelimit/flask-limiter/DRF (Python). express-slow-down-compatible / framework-native limiters for this framework are future work. |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | — | `internal/custom/elixir/rate_limit.go`<br>`internal/custom/elixir/rate_limit_test.go` | #4099 (elixir greenfield): PlugAttack 'throttle(name, limit: N, period: ms)' in a 'use PlugAttack' module emits a SCOPE.Pattern/rate_limit marker (rate_limited/rate_limit_source=plug_attack/rate_limit_name/limit/period, rate_limit_scope=request) resolving period ms->s to '<N>/<secs>s'. allow()/block() rules are NOT throttles (excluded); throttle() outside a use PlugAttack module not matched. Hammer/ExRated check_rate inside a plug call/2 also stamped via the shared check_rate pass. Value-asserted (TestPlugAttackThrottleMarker: login=5/60s; negatives for allow/block + non-PlugAttack module). Partial: PlugAttack binds a conn discriminator, not a named route, so the route binding is heuristic (honest-partial scope=request). |
 
 ### Schema
 

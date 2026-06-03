@@ -34,8 +34,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/6 | ✅ 1/1 | 🔴 0/4 | ✅ 1/1 | 🟡 12/25 | 🟡 3/11 | |
 | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 1/6 | |
 | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 5/10 | |
-| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 7/11 | |
+| [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 7/11 | |
 | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 10/24 | 🟡 3/12 | |
 | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 11/24 | 🟡 4/12 | |
 
