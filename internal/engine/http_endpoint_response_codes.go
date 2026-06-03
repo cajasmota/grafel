@@ -624,8 +624,9 @@ func jsResponseCodes(region, body string) responseCodesVerdict {
 // ---------------------------------------------------------------------------
 //
 // The status idioms differ by framework but all resolve to a literal int or a
-// well-known package constant suffix (http.StatusXxx / fiber.StatusXxx). The
-// constant suffix → code mapping is shared with response_shape_go.go's
+// well-known package constant suffix (http.StatusXxx / fiber.StatusXxx /
+// consts.StatusXxx / fasthttp.StatusXxx — the latter two mirror the stdlib code
+// values). The constant suffix → code mapping is shared with response_shape_go.go's
 // goHTTPStatusFromName, extended here with the full set of codes endpoints
 // commonly return.
 //
@@ -638,6 +639,11 @@ func jsResponseCodes(region, body string) responseCodesVerdict {
 //     http.Error(w, msg, http.StatusBadRequest) (2nd/3rd arg is the code).
 //   - fiber:       c.Status(fiber.StatusOK).JSON(x); c.SendStatus(204);
 //     fiber.NewError(fiber.StatusNotFound, ...).
+//   - buffalo:     c.Render(http.StatusCreated, r.JSON(x)) — the stdlib
+//     constant via Render (already resolved by the Render verb + http.Status*).
+//   - hertz:       c.JSON(consts.StatusCreated, x) / c.JSON(201, x);
+//     c.SetStatusCode(consts.StatusNoContent) (#3818).
+//   - fasthttp:    ctx.SetStatusCode(fasthttp.StatusCreated) (#3818).
 //
 // HONEST-PARTIAL: a status expressed through a variable (`c.JSON(code, x)`,
 // `w.WriteHeader(myStatus)`) is not a literal and is skipped — we still record
@@ -647,9 +653,15 @@ func jsResponseCodes(region, body string) responseCodesVerdict {
 // goStatusCallRe matches the call shapes whose FIRST argument is the HTTP
 // status: c.JSON / c.IndentedJSON / c.PureJSON / c.XML / c.Status / c.String /
 // c.Data / c.AbortWithStatus / c.AbortWithStatusJSON / c.SendStatus /
-// w.WriteHeader / ctx.NoContent / echo.NewHTTPError / fiber.NewError.
+// w.WriteHeader / ctx.NoContent / echo.NewHTTPError / fiber.NewError /
+// c.SetStatusCode (Hertz / fasthttp).
+//
+// The status constant may be a net/http (http.Status*), fiber (fiber.Status*),
+// CloudWeGo/Hertz (consts.Status*) or fasthttp (fasthttp.Status*) suffix — all
+// four families mirror the stdlib code values, so a single suffix→code table
+// resolves them (#3818).
 var goStatusFirstArgRe = regexp.MustCompile(
-	`\b\w+\s*\.\s*(?:JSON|IndentedJSON|PureJSON|SecureJSON|AsciiJSON|XML|YAML|ProtoBuf|Status|String|Data|HTML|Render|AbortWithStatus|AbortWithStatusJSON|SendStatus|WriteHeader|NoContent|NewHTTPError|NewError)\s*\(\s*(\d{3}|http\.Status[A-Z][A-Za-z]+|fiber\.Status[A-Z][A-Za-z]+|echo\.[A-Z][A-Za-z]+)`,
+	`\b\w+\s*\.\s*(?:JSON|IndentedJSON|PureJSON|SecureJSON|AsciiJSON|XML|YAML|ProtoBuf|Status|String|Data|HTML|Render|AbortWithStatus|AbortWithStatusJSON|SendStatus|SetStatusCode|WriteHeader|NoContent|NewHTTPError|NewError)\s*\(\s*(\d{3}|(?:http|fiber|consts|fasthttp)\.Status[A-Z][A-Za-z]+|echo\.[A-Z][A-Za-z]+)`,
 )
 
 // goHTTPErrorRe matches `http.Error(w, msg, http.StatusBadRequest)` /
@@ -659,9 +671,10 @@ var goHTTPErrorRe = regexp.MustCompile(
 )
 
 // goStatusTokenRe parses a single resolved status token into either a numeric
-// literal (group 1) or a constant suffix (group 2), accepting the http.Status*
-// and fiber.Status* constant families (which share the stdlib code values).
-var goStatusTokenRe = regexp.MustCompile(`^(?:(\d{3})|(?:http|fiber)\.Status([A-Z][A-Za-z]+))$`)
+// literal (group 1) or a constant suffix (group 2), accepting the http.Status*,
+// fiber.Status*, consts.Status* (Hertz/CloudWeGo) and fasthttp.Status*
+// constant families (all four share the stdlib code values).
+var goStatusTokenRe = regexp.MustCompile(`^(?:(\d{3})|(?:http|fiber|consts|fasthttp)\.Status([A-Z][A-Za-z]+))$`)
 
 // goResponseCodes resolves the literal status-code set returned by a Go
 // handler. The handler body is located via the endpoint's source_handler
@@ -700,8 +713,9 @@ func goResponseCodes(content string, e *types.EntityRecord) responseCodesVerdict
 }
 
 // goResolveStatusToken resolves a status token (a 3-digit literal or an
-// http.Status*/fiber.Status* constant) to its numeric code. An `echo.X`
-// constant is a non-status echo symbol and is rejected (returns false).
+// http.Status*/fiber.Status*/consts.Status*/fasthttp.Status* constant) to its
+// numeric code. An `echo.X` constant is a non-status echo symbol and is
+// rejected (returns false).
 func goResolveStatusToken(tok string) (int, bool) {
 	tok = strings.TrimSpace(tok)
 	m := goStatusTokenRe.FindStringSubmatch(tok)
@@ -720,9 +734,10 @@ func goResolveStatusToken(tok string) (int, bool) {
 	return 0, false
 }
 
-// goStatusConstCode maps the net/http (and fiber, which mirrors it) status
-// constant suffix to its numeric code. Superset of response_shape_go.go's
-// goHTTPStatusFromName, covering the codes endpoints commonly return.
+// goStatusConstCode maps the net/http (and fiber / Hertz-consts / fasthttp,
+// which all mirror it) status constant suffix to its numeric code. Superset of
+// response_shape_go.go's goHTTPStatusFromName, covering the codes endpoints
+// commonly return.
 func goStatusConstCode(name string) int {
 	if c, ok := goStatusConstCodes[name]; ok {
 		return c

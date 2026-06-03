@@ -404,6 +404,172 @@ func reg() {
 }
 
 // ---------------------------------------------------------------------------
+// Go HTTP-framework siblings: buffalo / hertz / fasthttp (#3818)
+//
+// The goResponseCodes idiom set (status-first-arg call verbs + the stdlib code
+// table) already covers these frameworks once the constant family / verb is in
+// scope — route synthesis sets source_handler the same way for every Go
+// framework, so the handler body is reachable identically. These are
+// value-asserting parity tests for the trailing siblings the coverage parity
+// probe flagged as MISSING against the flagship gin/echo/chi cohort.
+// ---------------------------------------------------------------------------
+
+// buffalo renders with the stdlib http.Status* constant via c.Render — already
+// matched by the Render verb + http.Status* family (CREDIT, no new idiom). The
+// happy path is 201, the validation branch 400.
+func TestResponseCodes_Go_Buffalo_RenderStatus(t *testing.T) {
+	src := `
+package actions
+
+import (
+	"net/http"
+
+	"github.com/gobuffalo/buffalo"
+	"github.com/gobuffalo/buffalo/render"
+)
+
+var r = render.New(render.Options{})
+
+func UsersCreate(c buffalo.Context) error {
+	if c.Param("bad") != "" {
+		return c.Render(http.StatusBadRequest, r.JSON(map[string]string{"e": "bad"}))
+	}
+	return c.Render(http.StatusCreated, r.JSON(map[string]int{"id": 1}))
+}
+
+func setup(app *buffalo.App) {
+	app.POST("/users", UsersCreate)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "POST /users")
+	if got := e.Properties["response_codes"]; got != "201,400" {
+		t.Fatalf("response_codes=%q want 201,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+	if got := e.Properties["response_codes_source"]; got != "status call" {
+		t.Fatalf("response_codes_source=%q want 'status call'", got)
+	}
+}
+
+// hertz (CloudWeGo) returns via c.JSON(consts.StatusXxx, x) and
+// c.SetStatusCode(consts.StatusXxx). The consts.Status* family mirrors the
+// net/http code values; resolving it is the #3818 build for hertz. Mix a numeric
+// literal in too (also valid hertz) to assert both paths land in the set.
+func TestResponseCodes_Go_Hertz_ConstsStatus(t *testing.T) {
+	src := `
+package main
+
+import (
+	"context"
+
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
+	"github.com/cloudwego/hertz/pkg/protocol/consts"
+)
+
+func CreateUser(ctx context.Context, c *app.RequestContext) {
+	if bad(c) {
+		c.JSON(400, map[string]string{"e": "bad"})
+		return
+	}
+	c.SetStatusCode(consts.StatusNoContent)
+	c.JSON(consts.StatusCreated, map[string]int{"id": 1})
+}
+
+func main() {
+	h := server.Default()
+	h.POST("/users", CreateUser)
+	h.Spin()
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "POST /users")
+	if got := e.Properties["response_codes"]; got != "201,204,400" {
+		t.Fatalf("response_codes=%q want 201,204,400 (props: %v)", got, e.Properties)
+	}
+	// Two distinct 2xx codes (201 + 204) ⇒ success_code is ambiguous, omitted.
+	if got := e.Properties["success_code"]; got != "" {
+		t.Fatalf("success_code=%q want absent (two 2xx codes ⇒ ambiguous)", got)
+	}
+	if got := e.Properties["response_codes_source"]; got != "status call" {
+		t.Fatalf("response_codes_source=%q want 'status call'", got)
+	}
+}
+
+// fasthttp sets the status with ctx.SetStatusCode(fasthttp.StatusXxx). The
+// fasthttp.Status* family also mirrors net/http; this is the #3818 build for
+// fasthttp (the SetStatusCode verb + fasthttp.Status* family).
+func TestResponseCodes_Go_Fasthttp_SetStatusCode(t *testing.T) {
+	src := `
+package main
+
+import (
+	"github.com/fasthttp/router"
+	"github.com/valyala/fasthttp"
+)
+
+func CreateUser(ctx *fasthttp.RequestCtx) {
+	if !valid(ctx) {
+		ctx.SetStatusCode(fasthttp.StatusUnprocessableEntity)
+		return
+	}
+	ctx.SetStatusCode(fasthttp.StatusCreated)
+}
+
+func main() {
+	r := router.New()
+	r.POST("/users", CreateUser)
+	fasthttp.ListenAndServe(":8080", r.Handler)
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "POST /users")
+	if got := e.Properties["response_codes"]; got != "201,422" {
+		t.Fatalf("response_codes=%q want 201,422 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+}
+
+// Negative: a hertz handler whose status is a dynamic variable
+// (c.SetStatusCode(code)) yields NO literal — response_codes stays absent, the
+// framework default 200 is not fabricated. Asserts the consts.Status* addition
+// did not loosen the honest-partial boundary.
+func TestResponseCodes_Go_Hertz_DynamicStatusAbsent(t *testing.T) {
+	src := `
+package main
+
+import (
+	"context"
+
+	"github.com/cloudwego/hertz/pkg/app"
+	"github.com/cloudwego/hertz/pkg/app/server"
+)
+
+func Status(ctx context.Context, c *app.RequestContext) {
+	code := pick()
+	c.SetStatusCode(code)
+	c.JSON(code, map[string]bool{"ok": true})
+}
+
+func main() {
+	h := server.Default()
+	h.GET("/status", Status)
+	h.Spin()
+}
+`
+	eps := deprecProps(t, "go", "main.go", src)
+	e := mustEndpoint(t, eps, "GET /status")
+	if got := e.Properties["response_codes"]; got != "" {
+		t.Fatalf("response_codes=%q want absent (dynamic status var, no literal)", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Async siblings: sanic / starlette / quart / litestar (#3913)
 // ---------------------------------------------------------------------------
 
