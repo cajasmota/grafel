@@ -26,8 +26,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/9 | |
-| [Apache Pekko HTTP](../detail/lang.scala.framework.pekko-http.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 7/19 | |
+| [Akka HTTP / Pekko HTTP](../detail/lang.scala.framework.akka-http.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/9 | |
+| [Apache Pekko HTTP](../detail/lang.scala.framework.pekko-http.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 8/19 | |
 | [Caliban](../detail/lang.scala.framework.caliban.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 5/19 | |
 | [Cask](../detail/lang.scala.framework.cask.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/9 | |
 | [Cats Effect (concurrency runtime)](../detail/lang.scala.framework.cats-effect.md) | 🟡 1/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/6 | |
@@ -35,7 +35,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Lagom](../detail/lang.scala.framework.lagom.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 9/12 | |
 | [Scalatra](../detail/lang.scala.framework.scalatra.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/9 | |
 | [ZIO HTTP / ZIO](../detail/lang.scala.framework.zio-http.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 9/12 | |
-| [http4s](../detail/lang.scala.framework.http4s.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/9 | |
+| [http4s](../detail/lang.scala.framework.http4s.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/9 | |
 | [sttp (HTTP client)](../detail/lang.scala.framework.sttp.md) | 🟡 2/6 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 4/19 | |
 | [tapir (endpoint DSL)](../detail/lang.scala.framework.tapir.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 16/24 | 🟡 6/19 | |
 

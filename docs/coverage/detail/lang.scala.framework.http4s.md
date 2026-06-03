@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks deep extractor: http4s named middleware CORS/GZip/Logger/Timeout/AutoSlash/CSRF/HSTS + composition order mw1(mw2(routes)) recorded as outer>inner(target). Value-asserting tests. File-local. |
-| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | — | `internal/custom/scala/rate_limit.go` | #4105 greenfield: custom_scala_rate_limit stamps the flat contract (rate_limited/rate_limit/rate_limit_scope/rate_limit_source/limit/period) on the http4s Throttle middleware — Throttle(amount, per)(app), Throttle.httpApp[F](amount, per)(app), Throttle.httpRoutes(amount, per)(routes) from org.http4s.server.middleware. amount (Int) + per (FiniteDuration literal: 1.minute/10.seconds/100.millis) resolved to a human rate (100/60s; sub-second windows rendered as 200/100ms) when literal; scope=app (Throttle wraps the whole HttpApp/HttpRoutes — app-wide, not a named route, so none fabricated); source=http4s_throttle. Gated on an http4s file signal. Honest-partial (rate omitted) when amount/per is config/expression-driven. Value-asserting tests pin the exact amount/per; negatives (plain route, CORS/GZip non-throttle middleware, non-http4s Throttle). File-local marker (SCOPE.Pattern/rate_limit). |
 
 ### Testing
 

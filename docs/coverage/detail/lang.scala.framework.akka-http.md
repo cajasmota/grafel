@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks deep extractor: akka-http handleRejections/handleExceptions with named handler, cors(), and transform directives (mapRequest/mapResponse/encodeResponse/decodeRequest/logRequestResult/...) stamped by middleware_name. Value-asserting tests. File-local. |
-| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | — | `internal/custom/scala/rate_limit.go` | #4105 greenfield: custom_scala_rate_limit stamps the flat contract (rate_limited/rate_limit/rate_limit_scope/rate_limit_source/limit/period) on akka/pekko-http Streams `.throttle(elements, per, ...)` stages (positional AND named-arg forms). amount + FiniteDuration window resolved to a human rate (100/1s) when literal; scope=route (the throttle guards a streamed response inside a route — a precise verb+path join is heuristic, so no route fabricated); source=akka_throttle. Honest-partial (rate omitted) when amount/per is config/expression-driven. Value-asserting tests pin the exact amount/per; negatives (plain route, non-throttle middleware). File-local marker (SCOPE.Pattern/rate_limit). |
 
 ### Testing
 

@@ -46,7 +46,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Middleware coverage | ✅ `full` | `2026-05-30` | — | `internal/custom/scala/frameworks.go` | custom_scala_frameworks deep extractor: pekko-http shares the akka-http middleware branch — handleRejections/handleExceptions(+named handler), cors(), transform directives (mapRequest/mapResponse/encodeResponse/...). pekko-http-cors recognised. File-local. |
-| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Rate limit stamping | 🟢 `partial` | `2026-06-03` | — | `internal/custom/scala/rate_limit.go` | #4105 greenfield: custom_scala_rate_limit stamps the flat contract (rate_limited/rate_limit/rate_limit_scope/rate_limit_source/limit/period) on pekko-http Streams `.throttle(elements, per, ...)` stages (positional AND named-arg). amount + FiniteDuration window resolved to a human rate (5/120s) when literal; scope=route (throttle guards a streamed response inside a route — precise verb+path join is heuristic, so none fabricated); source=pekko_throttle (org.apache.pekko.* disambiguates from akka). Honest-partial (rate omitted) when amount/per is config/expression-driven. Value-asserting tests pin the exact amount/per; negatives. File-local marker (SCOPE.Pattern/rate_limit). |
 
 ### Testing
 
