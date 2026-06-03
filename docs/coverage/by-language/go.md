@@ -81,7 +81,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [AWS SDK DynamoDB (Go)](../detail/lang.go.driver.dynamodb.md) | 🟡 3/6 | |
-| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟡 8/11 | |
+| [Bun (uptrace)](../detail/lang.go.orm.bun.md) | 🟡 9/11 | |
 | [GORM](../detail/lang.go.orm.gorm.md) | 🟡 10/11 | |
 | [ent (Facebook)](../detail/lang.go.orm.ent.md) | 🟡 8/11 | |
 | [gen (gentleman / GORM gen)](../detail/lang.go.orm.gen.md) | 🟡 3/6 | |
@@ -93,7 +93,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [mattn/go-sqlite3](../detail/lang.go.driver.sqlite.md) | 🟡 4/7 | |
 | [mongo-go-driver](../detail/lang.go.driver.mongodb.md) | 🟡 3/6 | |
 | [neo4j-go-driver](../detail/lang.go.driver.neo4j.md) | 🟡 3/6 | |
-| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟡 4/7 | |
+| [pgx (PostgreSQL driver)](../detail/lang.go.orm.pgx.md) | 🟡 5/7 | |
 | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 4/7 | |
 | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟡 6/8 | |
 | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟡 6/9 | |

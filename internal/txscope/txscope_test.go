@@ -259,6 +259,59 @@ func TestDetectGo_BeginTxWithIsolation(t *testing.T) {
 	}
 }
 
+// TestDetectGo_PgxBun locks the honest-partial transaction-boundary that the
+// generic DetectGo stamper achieves for pgx and bun via the shared
+// database/sql-compatible Begin/BeginTx surface (#4063). The framework-idiomatic
+// forms (pgx conn.Begin(ctx), bun db.RunInTx) deliberately do NOT fire — these
+// negatives gate any future 'full' claim for either driver.
+func TestDetectGo_PgxBun(t *testing.T) {
+	// pgx positive: pool.BeginTx(ctx, pgx.TxOptions{}) — database/sql-compat
+	// BeginTx surface stamps a tx boundary on the enclosing fn.
+	pgxBeginTx := `func transfer(ctx context.Context, pool *pgxpool.Pool) error {
+    tx, err := pool.BeginTx(ctx, pgx.TxOptions{})
+    if err != nil { return err }
+    defer tx.Rollback(ctx)
+    return tx.Commit(ctx)
+  }`
+	if s := DetectGo(pgxBeginTx); !s.Transactional || s.Source != "go_sql_begin_tx" {
+		t.Fatalf("pgx pool.BeginTx(ctx, pgx.TxOptions{}) should stamp go_sql_begin_tx boundary, got %+v", s)
+	}
+
+	// bun positive: db.Begin() — empty-parens Begin stamps a tx boundary.
+	bunBegin := `func save(ctx context.Context, db *bun.DB) error {
+    tx, err := db.Begin()
+    if err != nil { return err }
+    defer tx.Rollback()
+    return tx.Commit()
+  }`
+	if s := DetectGo(bunBegin); !s.Transactional || s.Source != "go_sql_begin" {
+		t.Fatalf("bun db.Begin() should stamp go_sql_begin boundary, got %+v", s)
+	}
+
+	// pgx NEGATIVE: conn.Begin(ctx) — non-empty parens, the pgx-idiomatic form;
+	// goBeginRE requires Begin() so this must stay uncredited (honest-partial).
+	pgxConnBegin := `func work(ctx context.Context, conn *pgx.Conn) error {
+    tx, err := conn.Begin(ctx)
+    if err != nil { return err }
+    return tx.Commit(ctx)
+  }`
+	if s := DetectGo(pgxConnBegin); s.Transactional {
+		t.Fatalf("pgx conn.Begin(ctx) (non-empty parens) must NOT stamp — honest-partial boundary, got %+v", s)
+	}
+
+	// bun NEGATIVE: db.RunInTx(ctx, ...) — the bun-idiomatic closure form is not
+	// recognised by any DetectGo regex; must stay uncredited (honest-partial).
+	bunRunInTx := `func save(ctx context.Context, db *bun.DB) error {
+    return db.RunInTx(ctx, nil, func(ctx context.Context, tx bun.Tx) error {
+      _, err := tx.NewInsert().Model(&u).Exec(ctx)
+      return err
+    })
+  }`
+	if s := DetectGo(bunRunInTx); s.Transactional {
+		t.Fatalf("bun db.RunInTx(...) must NOT stamp — honest-partial boundary, got %+v", s)
+	}
+}
+
 func TestDetectGo_GormTransaction(t *testing.T) {
 	src := `func run(db *gorm.DB) error {
     return db.Transaction(func(tx *gorm.DB) error {

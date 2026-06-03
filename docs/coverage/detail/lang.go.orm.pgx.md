@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
+| Transaction function stamping | 🟢 `partial` | `2026-06-03` | 4063 | `internal/extractors/golang/extractor.go`<br>`internal/txscope/txscope.go`<br>`internal/txscope/txscope_test.go` | #4063: the generic txscope.DetectGo stamper fires on pgx's database/sql-compatible surface — pool.BeginTx(ctx, pgx.TxOptions{}) stamps transactional=true (tx_source=go_sql_begin_tx) on the enclosing fn. Partial, not full: the pgx-idiomatic conn.Begin(ctx) (non-empty parens) does NOT fire (goBeginRE requires Begin()); no transitive propagation. Tested by TestDetectGo_PgxBun. |
 
 ## Related extraction records
 

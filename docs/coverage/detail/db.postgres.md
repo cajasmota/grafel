@@ -25,7 +25,7 @@ one is a separate detail page.
 | [`lang.c-cpp.driver.libpqxx`](./lang.c-cpp.driver.libpqxx.md) | C/C++ | driver | 3 full, 3 missing, 5 n/a |
 | [`lang.csharp.driver.npgsql`](./lang.csharp.driver.npgsql.md) | C# | driver | 4 missing, 7 n/a |
 | [`lang.elixir.driver.postgrex`](./lang.elixir.driver.postgrex.md) | elixir | driver | 4 missing, 7 n/a |
-| [`lang.go.orm.pgx`](./lang.go.orm.pgx.md) | go | orm | 1 full, 3 partial, 3 missing, 4 n/a |
+| [`lang.go.orm.pgx`](./lang.go.orm.pgx.md) | go | orm | 1 full, 4 partial, 2 missing, 4 n/a |
 | [`lang.jsts.driver.postgres`](./lang.jsts.driver.postgres.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.php.driver.postgres`](./lang.php.driver.postgres.md) | php | driver | 1 partial, 4 missing, 6 n/a |
 | [`lang.python.driver.postgres`](./lang.python.driver.postgres.md) | python | driver | 1 full, 1 partial, 3 missing, 6 n/a |

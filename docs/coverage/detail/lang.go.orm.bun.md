@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
+| Transaction function stamping | 🟢 `partial` | `2026-06-03` | 4063 | `internal/extractors/golang/extractor.go`<br>`internal/txscope/txscope.go`<br>`internal/txscope/txscope_test.go` | #4063: the generic txscope.DetectGo stamper fires on bun's database/sql-compatible surface — db.Begin() stamps transactional=true (tx_source=go_sql_begin) on the enclosing fn. Partial, not full: the bun-idiomatic db.RunInTx(ctx, ...) closure form does NOT fire; no transitive propagation. Tested by TestDetectGo_PgxBun. |
 
 ## Provenance
 

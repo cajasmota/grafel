@@ -23668,8 +23668,11 @@
         },
         "Transactions": {
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go","internal/txscope/txscope.go","internal/txscope/txscope_test.go"],
+            "issue": "4063",
+            "notes": "#4063: the generic txscope.DetectGo stamper fires on bun's database/sql-compatible surface — db.Begin() stamps transactional=true (tx_source=go_sql_begin) on the enclosing fn. Partial, not full: the bun-idiomatic db.RunInTx(ctx, ...) closure form does NOT fire; no transitive propagation. Tested by TestDetectGo_PgxBun.",
+            "verified_at": "2026-06-03"
           }
         }
       }
@@ -24024,8 +24027,11 @@
         },
         "Transactions": {
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "partial",
+            "cites": ["internal/extractors/golang/extractor.go","internal/txscope/txscope.go","internal/txscope/txscope_test.go"],
+            "issue": "4063",
+            "notes": "#4063: the generic txscope.DetectGo stamper fires on pgx's database/sql-compatible surface — pool.BeginTx(ctx, pgx.TxOptions{}) stamps transactional=true (tx_source=go_sql_begin_tx) on the enclosing fn. Partial, not full: the pgx-idiomatic conn.Begin(ctx) (non-empty parens) does NOT fire (goBeginRE requires Begin()); no transitive propagation. Tested by TestDetectGo_PgxBun.",
+            "verified_at": "2026-06-03"
           }
         }
       }
