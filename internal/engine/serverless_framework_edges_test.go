@@ -236,6 +236,45 @@ functions:
 	}
 }
 
+// TestServerlessFramework_EnvironmentRegionAccount_Cell pins the
+// iac_environment_region_account capability (#4201). It drives the REAL
+// Serverless Framework extractor on a manifest whose `provider:` block declares
+// a runtime and a region, and asserts the EXACT environment-targeting properties
+// stamped on the emitted lambda function entity: provider=aws-lambda,
+// runtime=python3.12 and region=eu-west-1. These are the deployment-target
+// values the cell claims — each exact property value is pinned, never len>0.
+func TestServerlessFramework_EnvironmentRegionAccount_Cell(t *testing.T) {
+	src := `service: payments
+provider:
+  name: aws
+  runtime: python3.12
+  region: eu-west-1
+functions:
+  charge:
+    handler: src/charge.handler
+    events:
+      - http: GET /charge
+`
+	ents, _ := runSLSFrameworkDetect(t, "serverless.yml", src)
+
+	fn := slsEntityByKindName(ents, serverlessFunctionKind, lambdaFunctionID("charge"))
+	if fn == nil {
+		t.Fatalf("expected serverless function entity for 'charge'; ents=%v", ents)
+	}
+	// region: the exact provider-block region is stamped on the function.
+	if fn.Properties["region"] != "eu-west-1" {
+		t.Errorf("region = %q, want eu-west-1", fn.Properties["region"])
+	}
+	// runtime: the exact provider-block runtime is stamped on the function.
+	if fn.Properties["runtime"] != "python3.12" {
+		t.Errorf("runtime = %q, want python3.12", fn.Properties["runtime"])
+	}
+	// provider: the deployment provider is stamped as aws-lambda.
+	if fn.Properties["provider"] != "aws-lambda" {
+		t.Errorf("provider = %q, want aws-lambda", fn.Properties["provider"])
+	}
+}
+
 // TestServerlessFramework_ResolveYMLName verifies the resolveServerlessYMLName
 // stub is wired: after a manifest is parsed, the handler symbol resolves to the
 // logical function name.

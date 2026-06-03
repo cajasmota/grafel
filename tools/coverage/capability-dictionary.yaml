@@ -66,7 +66,7 @@ categories:
   databases:
     capabilities: [resource_extraction, dependency_attribution]
   platform:
-    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage, iac_output_export_extraction, iac_cross_stack_reference, iac_iam_grant_attribution, iac_event_source_wiring]
+    capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage, iac_output_export_extraction, iac_cross_stack_reference, iac_iam_grant_attribution, iac_event_source_wiring, iac_environment_region_account]
     subcategory_order: [iac_provisioning, container_orchestration, config_files, workflow_dag, app_topology, integration_external, localization, frontend_routing]
   security:
     capabilities: [auth_policy, secret_detection, sql_injection, cors_policy]
@@ -748,6 +748,23 @@ subcategories:
       # dependency/resource edges and no dedicated event-source-wiring edge or
       # trigger-type attribution — honest N/A.
       - iac_event_source_wiring
+      # iac_environment_region_account (#4201): extraction of deployment
+      # environment targeting — the cloud region / account / provider / stage /
+      # runtime a resource or stack is deployed into — stamped as properties on
+      # the emitted IaC entity (not merely a free-floating attribute). Backed by
+      # the Serverless Framework, whose parser reads the `provider:` block's
+      # runtime/region (parseProviderBlock, serverless_framework_parse.go:128-152)
+      # and whose edge pass stamps provider=aws-lambda, runtime=<rt> and
+      # region=<region> onto each lambda function entity's Properties
+      # (serverless_framework_edges.go:144-158). Other IaC tools (Terraform/
+      # OpenTofu, CloudFormation, CDK, Pulumi, Bicep, Ansible) do not stamp a
+      # deployment region/account/runtime value as an environment-targeting
+      # property: the hcl extractor records only the provider *name* label
+      # (extractor.go:402-416) and the backend *type* (terraform_deep.go:367-372),
+      # never the provider's region attribute or an account/runtime value, and the
+      # remaining extractors emit no region/account/runtime property at all —
+      # honest N/A.
+      - iac_environment_region_account
     groups: []
 
   container_orchestration:

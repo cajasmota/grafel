@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** IaC / Provisioning
-- **Capability cells:** 6
+- **Capability cells:** 7
 
 ## Capabilities
 
@@ -14,6 +14,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Dependency attribution | ✅ `full` | `2026-05-31` | — | `internal/extractors/hcl` | Full dependency_attribution parity with Terraform via the shared hcl extractor: depends_on->DEPENDS_ON edges, for_each/count USES iteration-source edges, module I/O data-flow edges, and data.terraform_remote_state cross-stack DEPENDS_ON all fire for .tofu identically to .tf because entities carry Language="terraform". Same downstream IaC engine passes apply (iac_sns_edges, event_bus_edges, dynamic_patterns_terraform are gated on lang=="terraform"). |
 | Iac cross stack reference | ✅ `full` | `2026-06-04` | — | `internal/extractors/hcl` | Full parity with Terraform: `data.terraform_remote_state.*.outputs.*` in .tofu files emits the same cross-stack DEPENDS_ON edge (cross_stack=true) via extractRemoteStateDeps (terraform_deep.go:221-260), since entities carry Language="terraform". |
+| Iac environment region account | — `not_applicable` | — | — | — | OpenTofu (shared hcl extractor) sets region inside the `provider` block (e.g. region = "us-east-1") and account/state via `backend`; extractProviderBlock records only the provider *name* label (extractor.go:402-416) — it never reads the region attribute — and terraform_deep.go captures only the backend *type* label (terraform_deep.go:367-372), so no region/account/runtime value is stamped as an environment-targeting property. Honest-missing. |
 | Iac event source wiring | — `not_applicable` | — | — | — | OpenTofu (shared hcl extractor) declares event sources via aws_lambda_event_source_mapping / aws_cloudwatch_event_rule resources and interpolation/depends_on references, emitting generic DEPENDS_ON edges with no dedicated event-source→function trigger edge or trigger-type attribution. HCL has no event-source-binding idiom. Honest-missing. |
 | Iac iam grant attribution | — `not_applicable` | — | — | — | Full parity with Terraform (shared hcl extractor): IAM is modelled declaratively via aws_iam_role_policy / aws_iam_*_policy_attachment resources and depends_on / interpolation references, emitting generic DEPENDS_ON edges with no grant=<method> attribution. No grant-call idiom exists in HCL. Honest-missing. |
 | Iac output export extraction | ✅ `full` | `2026-06-04` | — | `internal/extractors/hcl` | Full parity with Terraform: `output "name" {}` blocks in .tofu files flow through the same extractOutputBlock (extractor.go:371-391) as .tf because the classifier routes .tofu to the shared "terraform" language token, emitting SCOPE.Schema/output entities identically. |

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [multi](../by-language/multi.md)
 - **Category:** [platform](../by-category/platform.md)
 - **Subcategory:** IaC / Provisioning
-- **Capability cells:** 6
+- **Capability cells:** 7
 
 ## Capabilities
 
@@ -14,6 +14,7 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Dependency attribution | 🟢 `partial` | `2026-05-31` | [link](https://github.com/cajasmota/archigraph/issues/3528) | `internal/engine/pulumi_edges.go`<br>`internal/engine/pulumi_edges_go_net.go` | Pulumi-TS + Pulumi-Python (applyPulumiEdges / applyPulumiEdgesPython) and Pulumi-Go + Pulumi-C# (applyPulumiEdgesGoNet, #3550): DEPENDS_ON from output references (TS other.arn/.id; Go/C# .Arn/.Id/.ID() passed into a resource's args), explicit dependsOn/depends_on (TS/Py) and DependsOn lists (Go pulumi.DependsOn([]pulumi.Resource{...}) / C# CustomResourceOptions.DependsOn). StackReference cross-stack nodes for TS/Py (collapsed onto pulumi-stack:<ref>). Mirrors the hcl extractor's DEPENDS_ON edge kind. Pulumi-Java pending; Go/C# StackReference + ComponentResource deferred. Was citing the dormant rules/pulumi/_manifest.yaml (never fired: loader keys rules by top-level dir, no file is tagged 'pulumi'). |
 | Iac cross stack reference | 🟢 `partial` | — | [link](https://github.com/cajasmota/archigraph/issues/3528) | `internal/engine/pulumi_edges.go` | `new pulumi.StackReference("org/project/stack")` is matched by pulumiTSStackRefRe (pulumi_edges.go:122-125) and pulumiPyStackRefRe (:158-160) and emits a DEPENDS_ON to a `pulumi-stack:<ref>` cross-stack node (pulumiCrossStackNodeID, :93-96) — the cross-stack join. Partial: Pulumi-TS + Pulumi-Python only; Go/C# StackReference deferred (per resource_extraction notes). |
+| Iac environment region account | — `not_applicable` | — | — | — | Pulumi sets region/account via provider config (aws:region) in Pulumi.<stack>.yaml / explicit provider constructors and runtime in the function resource args; pulumi_edges.go extracts resource constructors and output-ref dependency edges but does not parse stack config or runtime and stamps no region/account/provider/runtime environment-targeting property. Honest-missing. |
 | Iac event source wiring | — `not_applicable` | — | — | — | Pulumi declares event sources programmatically (aws.lambda.EventSourceMapping, aws.cloudwatch.EventRule) as ordinary resources; pulumi_edges.go emits no dedicated event-source→function trigger edge or trigger-type attribution. Honest-missing. |
 | Iac iam grant attribution | — `not_applicable` | — | — | — | Pulumi IAM is modelled via RolePolicyAttachment / Policy resource constructors and output-ref dependency edges (pulumi_edges_go_net.go:82-85); the extractor emits no grantee→target edge carrying a grant=<method> property — IAM relations are indistinguishable from any other inter-resource dependency. Honest-missing. |
 | Iac output export extraction | — `not_applicable` | — | — | — | The Pulumi extractor emits no stack-output/export node: `producer.Id`/`.Arn` 'output refs' are inter-resource dependency edges into another resource's args (pulumi_edges_go_net.go:82-85), not extraction of a stack's published outputs/exports as entities. Honest-missing. |

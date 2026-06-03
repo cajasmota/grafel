@@ -18019,6 +18019,17 @@ records:
           - file: internal/engine/serverless_framework_edges_test.go
         issues_implemented: ["4198"]
         verified_at: "2026-06-04"
+      iac_environment_region_account:
+        status: full
+        symbols:
+          - file: internal/engine/serverless_framework_edges.go
+            functions: [applyServerlessFrameworkEdges]
+          - file: internal/engine/serverless_framework_parse.go
+            functions: [parseServerlessYML, parseProviderBlock]
+        tests:
+          - file: internal/engine/serverless_framework_edges_test.go
+        issues_implemented: ["4201"]
+        verified_at: "2026-06-04"
       resource_extraction:
         status: full
         symbols:
