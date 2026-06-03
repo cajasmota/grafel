@@ -66,7 +66,7 @@ categories:
     capabilities: [resource_extraction, dependency_attribution]
   platform:
     capabilities: [resource_extraction, dependency_attribution, file_parsing, env_resolution, shared_data_coupling, external_service_dependency, translation_key_usage]
-    subcategory_order: [iac_provisioning, container_orchestration, config_files, workflow_dag, app_topology]
+    subcategory_order: [iac_provisioning, container_orchestration, config_files, workflow_dag, app_topology, integration_external, localization, frontend_routing]
   security:
     capabilities: [auth_policy, secret_detection, sql_injection, cors_policy]
   protocol:
@@ -738,6 +738,38 @@ subcategories:
       - resource_extraction
       - dependency_attribution
       - shared_data_coupling
+    groups: []
+
+  # B6 (#3875): the recently-added node-type dimensions previously shared
+  # the broad app_topology lane, where each filled exactly one column and
+  # left the rest of the lane's resource-graph rows blank in that column
+  # (the sparse external_service_dependency / translation_key_usage
+  # empty-column problem from #3861's acceptance). They are split here into
+  # their own dense, single-purpose lanes — each declaring only the
+  # capability column its records actually carry — so the dimension is
+  # reported on the right page with appropriate columns and no empty
+  # cross-column leak. Records are routed here by presentationSubcategory
+  # in generate.go (presentation-only — registry subcategory/status fields
+  # are unchanged; cells still validate against the platform category-level
+  # capability allow-list).
+  integration_external:
+    display: "External Service Integration"
+    parent_category: platform
+    capabilities:
       - external_service_dependency
+    groups: []
+
+  localization:
+    display: "Localization / i18n"
+    parent_category: platform
+    capabilities:
       - translation_key_usage
+    groups: []
+
+  frontend_routing:
+    display: "Frontend Routing"
+    parent_category: platform
+    capabilities:
+      - resource_extraction
+      - dependency_attribution
     groups: []

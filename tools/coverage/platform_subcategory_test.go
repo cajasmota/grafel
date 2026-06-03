@@ -43,6 +43,7 @@ func platformReg() *Registry {
 			rec("analysis.architecture.shared-db-coupling", "app_topology", map[string]string{"shared_data_coupling": "full"}),
 			rec("analysis.integration.third-party-sdk", "app_topology", map[string]string{"external_service_dependency": "partial"}),
 			rec("analysis.localization.i18n-keys", "app_topology", map[string]string{"translation_key_usage": "partial"}),
+			rec("frontend.routing.spa-route-component", "app_topology", map[string]string{"resource_extraction": "partial", "dependency_attribution": "partial"}),
 		},
 	}
 }
@@ -69,6 +70,8 @@ func labelFor(id string) string {
 		return "Third-party SDK service dependencies"
 	case "analysis.localization.i18n-keys":
 		return "i18n translation-key usage"
+	case "frontend.routing.spa-route-component":
+		return "Frontend route → component graph"
 	}
 	return id
 }
@@ -139,6 +142,73 @@ func TestPlatformByCategoryRendersSubcategoryLanes(t *testing.T) {
 
 	// No structurally-always-empty column: every column header in every
 	// lane table must be backed by at least one non-"—" cell.
+	assertNoAlwaysEmptyColumn(t, page)
+}
+
+// TestB6NodeTypeDimensionsOnOwnLanes asserts the B6 (#3875) fix: the
+// recently-added platform node-type dimension records (external-service
+// integration, i18n localization, frontend routing) are reported on their
+// OWN single-purpose subcategory lane with the right column — not crammed
+// into the broad App Topology lane where each filled exactly one column
+// and left every resource-graph row blank in that column. Verifies:
+//   - each dimension renders under its dedicated lane heading,
+//   - each dimension's value cell survives the move (no fabricated/dropped
+//     coverage — presentation-only),
+//   - App Topology no longer declares the migrated dimension columns
+//     (the sparse external_service / translation_key empty-column leak is
+//     gone), and
+//   - no dimension is double-reported (it left App Topology entirely).
+func TestB6NodeTypeDimensionsOnOwnLanes(t *testing.T) {
+	root := t.TempDir()
+	if err := generate(platformReg(), root); err != nil {
+		t.Fatalf("generate: %v", err)
+	}
+	page := readFile(t, filepath.Join(root, "docs/coverage/by-category/platform.md"))
+
+	cases := []struct {
+		lane   string
+		recID  string
+		col    string
+		glyph  string // expected non-empty cell glyph for the migrated value
+		appCol bool   // whether the column must be ABSENT from App Topology now
+	}{
+		{"## External Service Integration", "analysis.integration.third-party-sdk", "External service dependency", "🟢", true},
+		{"## Localization / i18n", "analysis.localization.i18n-keys", "Translation key usage", "🟢", true},
+		{"## Frontend Routing", "frontend.routing.spa-route-component", "Resource extraction", "🟢", false},
+	}
+
+	appTopo := sectionBody(page, "## App Topology & Integration")
+	appHeader := firstTableHeader(appTopo)
+
+	for _, c := range cases {
+		if !strings.Contains(page, c.lane) {
+			t.Errorf("platform.md missing dedicated lane %q\n%s", c.lane, page)
+			continue
+		}
+		body := sectionBody(page, c.lane)
+		if !strings.Contains(body, c.recID) {
+			t.Errorf("lane %q should contain record %s\n%s", c.lane, c.recID, body)
+		}
+		header := firstTableHeader(body)
+		if !strings.Contains(header, c.col) {
+			t.Errorf("lane %q header missing its own column %q: %s", c.lane, c.col, header)
+		}
+		if !strings.Contains(body, c.glyph) {
+			t.Errorf("lane %q lost the migrated %q value cell (expected %q): %s", c.lane, c.col, c.glyph, body)
+		}
+		// No double-reporting: the dimension record left App Topology.
+		if strings.Contains(appTopo, c.recID) {
+			t.Errorf("record %s is double-reported — still present in App Topology lane", c.recID)
+		}
+		// The migrated dimension columns are gone from App Topology (the
+		// sparse empty-column leak the B6 ticket removes).
+		if c.appCol && strings.Contains(appHeader, c.col) {
+			t.Errorf("App Topology header still declares migrated column %q (sparse leak): %s", c.col, appHeader)
+		}
+	}
+
+	// The full page must carry no structurally-always-empty column after
+	// the split.
 	assertNoAlwaysEmptyColumn(t, page)
 }
 

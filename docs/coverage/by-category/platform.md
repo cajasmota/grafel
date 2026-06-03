@@ -56,18 +56,33 @@ Back to [summary](../summary.md). Bucket: **Other**.
 
 ## App Topology & Integration
 
-| Language | Name | Dependency attribution | External service dependency | Resource extraction | Shared data coupling | Translation key usage | Status | Notes |
-|---|---|---|---|---|---|---|---|---|
-| [multi](../by-language/multi.md) | [API-gateway route topology (application frameworks)](../detail/infra.gateway.api-routing.md) | ✅ | — | 🟢 | — | — | 🟢 | |
-| [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.resource.aws-cdk.md) | — | — | 🟢 | — | — | 🟢 | |
-| [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.resource.cloudformation.md) | ✅ | — | ✅ | — | — | ✅ | |
-| [multi](../by-language/multi.md) | [Frontend route → component graph (SPA client routing)](../detail/frontend.routing.spa-route-component.md) | 🟢 | — | 🟢 | — | — | 🟢 | |
-| [multi](../by-language/multi.md) | [Helm charts](../detail/infra.resource.helm.md) | — | — | ✅ | — | — | ✅ | |
-| [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.resource.kubernetes.md) | — | — | ✅ | — | — | ✅ | |
-| [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | — | — | 🟢 | — | — | 🟢 | |
-| [multi](../by-language/multi.md) | [Reverse-proxy / gateway request topology](../detail/infra.deployment.request-topology.md) | ✅ | — | 🟢 | — | — | 🟢 | |
-| [multi](../by-language/multi.md) | [Shared-database cross-service coupling (SHARES_DATA)](../detail/analysis.architecture.shared-db-coupling.md) | — | — | — | ✅ | — | ✅ | |
-| [multi](../by-language/multi.md) | [Structural coupling metrics (Ca/Ce/instability)](../detail/analysis.architecture.structural-coupling.md) | ✅ | — | — | — | — | ✅ | |
-| [multi](../by-language/multi.md) | [Terraform / OpenTofu / Vault / Nomad / Packer / Waypoint](../detail/infra.resource.terraform.md) | ✅ | — | ✅ | — | — | ✅ | |
-| [multi](../by-language/multi.md) | [Third-party SDK service dependencies (DEPENDS_ON_SERVICE)](../detail/analysis.integration.third-party-sdk.md) | — | 🟢 | — | — | — | 🟢 | |
-| [multi](../by-language/multi.md) | [i18n translation-key usage (USES_TRANSLATION)](../detail/analysis.localization.i18n-keys.md) | — | — | — | — | 🟢 | 🟢 | |
+| Language | Name | Dependency attribution | Resource extraction | Shared data coupling | Status | Notes |
+|---|---|---|---|---|---|---|
+| [multi](../by-language/multi.md) | [API-gateway route topology (application frameworks)](../detail/infra.gateway.api-routing.md) | ✅ | 🟢 | — | 🟢 | |
+| [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.resource.aws-cdk.md) | — | 🟢 | — | 🟢 | |
+| [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.resource.cloudformation.md) | ✅ | ✅ | — | ✅ | |
+| [multi](../by-language/multi.md) | [Helm charts](../detail/infra.resource.helm.md) | — | ✅ | — | ✅ | |
+| [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.resource.kubernetes.md) | — | ✅ | — | ✅ | |
+| [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | — | 🟢 | — | 🟢 | |
+| [multi](../by-language/multi.md) | [Reverse-proxy / gateway request topology](../detail/infra.deployment.request-topology.md) | ✅ | 🟢 | — | 🟢 | |
+| [multi](../by-language/multi.md) | [Shared-database cross-service coupling (SHARES_DATA)](../detail/analysis.architecture.shared-db-coupling.md) | — | — | ✅ | ✅ | |
+| [multi](../by-language/multi.md) | [Structural coupling metrics (Ca/Ce/instability)](../detail/analysis.architecture.structural-coupling.md) | ✅ | — | — | ✅ | |
+| [multi](../by-language/multi.md) | [Terraform / OpenTofu / Vault / Nomad / Packer / Waypoint](../detail/infra.resource.terraform.md) | ✅ | ✅ | — | ✅ | |
+
+## External Service Integration
+
+| Language | Name | External service dependency | Status | Notes |
+|---|---|---|---|---|
+| [multi](../by-language/multi.md) | [Third-party SDK service dependencies (DEPENDS_ON_SERVICE)](../detail/analysis.integration.third-party-sdk.md) | 🟢 | 🟢 | |
+
+## Localization / i18n
+
+| Language | Name | Translation key usage | Status | Notes |
+|---|---|---|---|---|
+| [multi](../by-language/multi.md) | [i18n translation-key usage (USES_TRANSLATION)](../detail/analysis.localization.i18n-keys.md) | 🟢 | 🟢 | |
+
+## Frontend Routing
+
+| Language | Name | Dependency attribution | Resource extraction | Status | Notes |
+|---|---|---|---|---|---|
+| [multi](../by-language/multi.md) | [Frontend route → component graph (SPA client routing)](../detail/frontend.routing.spa-route-component.md) | 🟢 | 🟢 | 🟢 | |
