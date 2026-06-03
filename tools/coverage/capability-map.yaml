@@ -13396,6 +13396,18 @@ records:
           issues_implemented: ["3628"]
           verified_at: "2026-06-02"
       Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/kotlin/exception_flow.go
+              functions: [emitExceptionFlowEdges, kotlinThrowType, kotlinCatchType, kotlinExceptionHandlerTypes, kotlinKtorStatusPagesType]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/kotlin/exception_flow_test.go
+              functions: [TestKotlinExceptionFlow_ThrowAndCatchConverge, TestKotlinExceptionFlow_TypedCatch, TestKotlinExceptionFlow_SpringExceptionHandler, TestKotlinExceptionFlow_KtorStatusPages, TestKotlinExceptionFlow_NegativeBareRethrow, TestKotlinExceptionFlow_LiveFixture]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
         constant_propagation:
           status: full
           symbols:
