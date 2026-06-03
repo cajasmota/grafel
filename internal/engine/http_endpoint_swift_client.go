@@ -93,6 +93,15 @@ type swiftClientEmitFn func(method, canonicalPath, framework, refKind, refName s
 // from applyHTTPEndpointSynthesis. Emits one outbound http_endpoint_call per
 // URLSession / Alamofire call site + a FETCHES edge from the enclosing func.
 func synthesizeSwiftClientWithRuntime(content string, emit swiftClientEmitFn) {
+	// GraphQL client operations (Apollo-iOS `apollo.fetch/perform/subscribe`)
+	// emit honest-partial operation references keyed to the server endpoint shape
+	// http:GRAPHQL:/graphql/<Root>/<OpName> (#4036). Run BEFORE the REST
+	// early-exit guard below, since a pure-Apollo Swift file may contain none of
+	// the URLSession / Alamofire markers.
+	if strings.Contains(content, "apollo") || strings.Contains(content, "Apollo") {
+		synthesizeSwiftGraphQLClient(content, indexSwiftFuncs(content), emit)
+	}
+
 	if !strings.Contains(content, "URL(string:") && !strings.Contains(content, "URL(string :") &&
 		!strings.Contains(content, ".request(") && !strings.Contains(content, "URLSession") &&
 		!strings.Contains(content, "AF.") {

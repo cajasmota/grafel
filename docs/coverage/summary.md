@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 225 · **ORMs**: 156 · **Tools**: 111 · **Other**: 161
+**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 227 · **ORMs**: 156 · **Tools**: 111 · **Other**: 161
 
 ## Coverage by language
 
@@ -19,9 +19,9 @@
 | [rust](by-language/rust.md) | 14 | 6 | 15 | 3 |
 | [scala](by-language/scala.md) | 14 | 3 | 6 | 0 |
 | [ruby](by-language/ruby.md) | 9 | 6 | 14 | 7 |
+| [swift](by-language/swift.md) | 5 | 1 | 0 | 0 |
 | [lua](by-language/lua.md) | 4 | 0 | 0 | 0 |
-| [swift](by-language/swift.md) | 4 | 1 | 0 | 0 |
-| [dart](by-language/dart.md) | 1 | 1 | 0 | 0 |
+| [dart](by-language/dart.md) | 2 | 1 | 0 | 0 |
 | [assembly](by-language/assembly.md) | 0 | 0 | 0 | 4 |
 | [COBOL](by-language/cobol.md) | 0 | 0 | 0 | 4 |
 | [groovy](by-language/groovy.md) | 0 | 1 | 0 | 0 |
@@ -83,4 +83,4 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 225 frameworks · 111 tools · 156 ORMs · 161 other
+Total: 227 frameworks · 111 tools · 156 ORMs · 161 other

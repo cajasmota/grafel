@@ -94,6 +94,15 @@ type dartClientEmitFn func(method, canonicalPath, framework, refKind, refName st
 // from applyHTTPEndpointSynthesis. Emits one outbound http_endpoint_call per
 // Dio / http verb call site + a FETCHES edge from the enclosing function.
 func synthesizeDartClientWithRuntime(content string, emit dartClientEmitFn) {
+	// GraphQL client operations (graphql_flutter / graphql `gql(...)` documents)
+	// emit operation-level http_endpoint_call entities keyed to the server
+	// endpoint shape http:GRAPHQL:/graphql/<Root>/<field> (#4036). Run BEFORE the
+	// REST early-exit guard below, since a pure-GraphQL Flutter file may contain
+	// none of the Dio / package:http markers.
+	if strings.Contains(content, "gql(") {
+		synthesizeDartGraphQLClient(content, indexDartFuncs(content), emit)
+	}
+
 	if !strings.Contains(content, "dio") && !strings.Contains(content, "Dio") &&
 		!strings.Contains(content, "http.") && !strings.Contains(content, "Uri.parse") &&
 		!strings.Contains(content, ".get(") && !strings.Contains(content, ".post(") {

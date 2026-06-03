@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # dart
 
-**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
+**Frameworks**: 2 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -27,6 +27,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
 | [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🟢 1/1 | 🟡 9/24 | 🟡 5/8 | |
+
+
+### Mobile
+
+| Name | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [graphql_flutter (GraphQL client)](../detail/lang.dart.framework.graphql-flutter.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
 
 
 ## Tools

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # swift
 
-**Frameworks**: 4 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
+**Frameworks**: 5 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
 
 Back to [summary](../summary.md).
 
@@ -41,6 +41,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
 | [Alamofire (HTTP client)](../detail/lang.swift.framework.alamofire.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
+| [Apollo-iOS (GraphQL client)](../detail/lang.swift.framework.apollo-ios.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
 | [URLSession (HTTP client)](../detail/lang.swift.framework.urlsession.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
 
 

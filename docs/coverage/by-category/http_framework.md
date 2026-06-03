@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 225 records · **C/C++**: 19 · **C#**: 16 · **dart**: 1 · **elixir**: 14 · **go**: 20 · **java**: 22 · **JS/TS**: 32 · **kotlin**: 17 · **lua**: 4 · **php**: 16 · **python**: 23 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 4
+**Total**: 227 records · **C/C++**: 19 · **C#**: 16 · **dart**: 2 · **elixir**: 14 · **go**: 20 · **java**: 22 · **JS/TS**: 32 · **kotlin**: 17 · **lua**: 4 · **php**: 16 · **python**: 23 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -226,6 +226,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 |---|---|---|---|---|---|---|
 | [C#](../by-language/csharp.md) | [.NET MAUI](../detail/lang.csharp.framework.net-maui.md) | 🟢 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 9/9 | |
 | [C#](../by-language/csharp.md) | [Xamarin](../detail/lang.csharp.framework.xamarin.md) | 🟢 2/2 | 🟢 1/1 | 🟡 22/24 | 🟢 9/9 | |
+| [dart](../by-language/dart.md) | [graphql_flutter (GraphQL client)](../detail/lang.dart.framework.graphql-flutter.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
 | [go](../by-language/go.md) | [gomobile (mobile bindings)](../detail/lang.go.framework.gomobile.md) | 🟢 2/2 | 🟢 1/1 | 🟡 20/21 | 🟢 4/4 | |
 | [java](../by-language/java.md) | [Android Jetpack (Compose / ViewModel / Room / Navigation / Hilt)](../detail/lang.java.framework.android-jetpack.md) | 🟢 2/2 | 🔴 0/1 | 🟡 20/21 | 🟡 7/8 | |
 | [java](../by-language/java.md) | [Android SDK (Activity/Fragment routing)](../detail/lang.java.framework.android-sdk.md) | 🟢 2/2 | 🔴 0/1 | 🟡 20/21 | 🟡 7/8 | |
@@ -236,6 +237,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [kotlin](../by-language/kotlin.md) | [Jetpack Compose (Android UI)](../detail/lang.kotlin.framework.compose.md) | ✅ 3/3 | ✅ 1/1 | 🟡 18/21 | 🟢 9/9 | |
 | [kotlin](../by-language/kotlin.md) | [Kotlin Multiplatform (KMP / KMM)](../detail/lang.kotlin.framework.kmp.md) | ✅ 3/3 | ✅ 1/1 | 🟡 21/24 | 🟢 8/8 | |
 | [swift](../by-language/swift.md) | [Alamofire (HTTP client)](../detail/lang.swift.framework.alamofire.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
+| [swift](../by-language/swift.md) | [Apollo-iOS (GraphQL client)](../detail/lang.swift.framework.apollo-ios.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
 | [swift](../by-language/swift.md) | [URLSession (HTTP client)](../detail/lang.swift.framework.urlsession.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
 
 
