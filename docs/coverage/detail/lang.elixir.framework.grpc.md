@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** RPC Framework
-- **Capability cells:** 30
+- **Capability cells:** 54
 
 ## Capabilities
 
@@ -32,6 +32,74 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Transport binding | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/elixir/grpc.go`<br>`internal/custom/elixir/grpc_test.go` | use GRPC.Server / GRPC.Service / GRPC.Stub modules emitted as SCOPE.GrpcService with grpc_role server|definition|client; service name resolved from name:/service: option. |
 
+### Routing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint pagination posture | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint response codes | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint synthesis | 🔴 `missing` | — | 3963 | — | — |
+| Handler attribution | 🔴 `missing` | — | 3963 | — | — |
+| Route extraction | 🔴 `missing` | — | 3963 | — | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | 3963 | — | — |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🔴 `missing` | — | 3963 | — | — |
+
+### Validation
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DTO extraction | 🔴 `missing` | — | 3963 | — | — |
+| Request validation | 🔴 `missing` | — | 3963 | — | — |
+
+### Middleware
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Middleware coverage | 🔴 `missing` | — | 3963 | — | — |
+| Rate limit stamping | 🔴 `missing` | — | 3963 | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Enum extraction | 🔴 `missing` | — | 3963 | — | — |
+| Interface extraction | 🔴 `missing` | — | 3963 | — | — |
+| Type alias extraction | 🔴 `missing` | — | 3963 | — | — |
+| Type extraction | 🔴 `missing` | — | 3963 | — | — |
+
+### DI
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DI binding extraction | 🔴 `missing` | — | 3963 | — | — |
+| DI injection point | 🔴 `missing` | — | 3963 | — | — |
+| DI scope resolution | 🔴 `missing` | — | 3963 | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Tests linkage | 🔴 `missing` | — | 3963 | — | — |
+
+### Observability
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Log extraction | 🔴 `missing` | — | 3963 | — | — |
+| Metric extraction | 🔴 `missing` | — | 3963 | — | — |
+| Trace extraction | 🔴 `missing` | — | 3963 | — | — |
+
 ### Substrate
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
@@ -53,6 +121,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/effect_propagation.go`<br>`internal/links/pure_function_pass.go`<br>`internal/substrate/effect_sinks_elixir.go` | Elixir effect sniffer registered; functions with no elixir effect matches tagged pure=true; immutable semantics make Elixir especially suitable |
 | Reachability analysis | 🟢 `partial` | `2026-06-03` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_elixir.go` | — |
 | Request shape extraction | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/elixir/grpc.go`<br>`internal/custom/elixir/grpc_test.go` | rpc request message type recorded as request_message on each SCOPE.GrpcMethod. |
+| Request sink dataflow | 🔴 `missing` | — | 3963 | — | — |
 | Response shape extraction | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/elixir/grpc.go`<br>`internal/custom/elixir/grpc_test.go` | rpc response message type recorded as response_message on each SCOPE.GrpcMethod. |
 | Sanitizer recognition | 🟢 `partial` | `2026-06-03` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_elixir.go` | — |
 | Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

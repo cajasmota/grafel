@@ -470,6 +470,17 @@ subcategories:
   rpc_framework:
     display: "RPC Framework"
     parent_category: http_framework
+    # The HTTP-server universal-core lanes (Routing/View/Auth/Validation/
+    # Middleware/Type System/DI/Testing/Observability + request_sink_dataflow)
+    # were mirrored from http_backend so cross-subcategory parity with the
+    # flagship HTTP backends is MEASURABLE — an RPC framework's record now
+    # carries an explicit cell (status, incl. not_applicable) for every lane
+    # the HTTP backends declare, rather than omitting the column entirely.
+    # Genuinely HTTP-server-shaped lanes (routes/views/MVC-DTOs/middleware-
+    # pipeline) are not_applicable for an RPC transport; cross-cutting lanes
+    # that DO fire on a .cs/.ex/.scala/.ts RPC service (auth attrs, DI graph,
+    # CST type extraction, OTel/log sniffers, test-attr linkage) are credited
+    # honestly per-language. Issue #3963 / epic #3872.
     capabilities:
       - procedure_extraction
       - schema_extraction
@@ -477,6 +488,29 @@ subcategories:
       - type_graph_extraction
       - client_codegen
       - transport_binding
+      - endpoint_synthesis
+      - handler_attribution
+      - route_extraction
+      - endpoint_deprecation_versioning
+      - endpoint_pagination_posture
+      - endpoint_response_codes
+      - view_rendering
+      - auth_coverage
+      - request_validation
+      - dto_extraction
+      - middleware_coverage
+      - rate_limit_stamping
+      - interface_extraction
+      - type_alias_extraction
+      - enum_extraction
+      - type_extraction
+      - di_binding_extraction
+      - di_injection_point
+      - di_scope_resolution
+      - tests_linkage
+      - trace_extraction
+      - log_extraction
+      - metric_extraction
       - constant_propagation
       - env_fallback_recognition
       - config_consumption
@@ -500,6 +534,7 @@ subcategories:
       - pure_function_tagging
       - module_cycle_detection
       - def_use_chain_extraction
+      - request_sink_dataflow
       - template_pattern_catalog
     groups:
       - name: Schema
@@ -508,8 +543,26 @@ subcategories:
         keys: [client_codegen]
       - name: Transport
         keys: [transport_binding]
+      - name: Routing
+        keys: [endpoint_synthesis, handler_attribution, route_extraction, endpoint_deprecation_versioning, endpoint_pagination_posture, endpoint_response_codes]
+      - name: View
+        keys: [view_rendering]
+      - name: Auth
+        keys: [auth_coverage]
+      - name: Validation
+        keys: [request_validation, dto_extraction]
+      - name: Middleware
+        keys: [middleware_coverage, rate_limit_stamping]
+      - name: Type System
+        keys: [interface_extraction, type_alias_extraction, enum_extraction, type_extraction]
+      - name: DI
+        keys: [di_binding_extraction, di_injection_point, di_scope_resolution]
+      - name: Testing
+        keys: [tests_linkage]
+      - name: Observability
+        keys: [trace_extraction, log_extraction, metric_extraction]
       - name: Substrate
-        keys: [constant_propagation, env_fallback_recognition, config_consumption, error_flow, feature_flag_gating, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, template_pattern_catalog]
+        keys: [constant_propagation, env_fallback_recognition, config_consumption, error_flow, feature_flag_gating, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, request_sink_dataflow, template_pattern_catalog]
 
   static_site:
     display: "Static Site"
