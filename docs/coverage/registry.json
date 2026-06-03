@@ -3685,8 +3685,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/substrate/dataflow_c_cpp.go","internal/substrate/dataflow_c_cpp_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4049",
+            "notes": "Connected request-\u003esink DATA_FLOWS_TO sniffer (dataflow_c_cpp.go, #4049): seeds taint at framework request reads (req.body/url_params.get/getParameter/getQueryParameter) and links to db-write (libpqxx exec/mongocxx insert), command-exec (system/popen/exec*), response (write/set_body/callback/res.body=) and outbound (cpr/curl) sinks, with cross-file + multi-hop (\u003c=3) propagation. Scoped def-use (precision over recall), not a full taint engine -\u003e partial.",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -3966,8 +3969,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/substrate/dataflow_c_cpp.go","internal/substrate/dataflow_c_cpp_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4049",
+            "notes": "Connected request-\u003esink DATA_FLOWS_TO sniffer (dataflow_c_cpp.go, #4049): seeds taint at framework request reads (req.body/url_params.get/getParameter/getQueryParameter) and links to db-write (libpqxx exec/mongocxx insert), command-exec (system/popen/exec*), response (write/set_body/callback/res.body=) and outbound (cpr/curl) sinks, with cross-file + multi-hop (\u003c=3) propagation. Scoped def-use (precision over recall), not a full taint engine -\u003e partial.",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -4247,8 +4253,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/substrate/dataflow_c_cpp.go","internal/substrate/dataflow_c_cpp_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4049",
+            "notes": "Connected request-\u003esink DATA_FLOWS_TO sniffer (dataflow_c_cpp.go, #4049): seeds taint at framework request reads (req.body/url_params.get/getParameter/getQueryParameter) and links to db-write (libpqxx exec/mongocxx insert), command-exec (system/popen/exec*), response (write/set_body/callback/res.body=) and outbound (cpr/curl) sinks, with cross-file + multi-hop (\u003c=3) propagation. Scoped def-use (precision over recall), not a full taint engine -\u003e partial.",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -5743,8 +5752,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/substrate/dataflow_c_cpp.go","internal/substrate/dataflow_c_cpp_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4049",
+            "notes": "Connected request-\u003esink DATA_FLOWS_TO sniffer (dataflow_c_cpp.go, #4049): seeds taint at framework request reads (req.body/url_params.get/getParameter/getQueryParameter) and links to db-write (libpqxx exec/mongocxx insert), command-exec (system/popen/exec*), response (write/set_body/callback/res.body=) and outbound (cpr/curl) sinks, with cross-file + multi-hop (\u003c=3) propagation. Scoped def-use (precision over recall), not a full taint engine -\u003e partial.",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -6024,8 +6036,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/substrate/dataflow_c_cpp.go","internal/substrate/dataflow_c_cpp_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4049",
+            "notes": "Connected request-\u003esink DATA_FLOWS_TO sniffer (dataflow_c_cpp.go, #4049): seeds taint at framework request reads (req.body/url_params.get/getParameter/getQueryParameter) and links to db-write (libpqxx exec/mongocxx insert), command-exec (system/popen/exec*), response (write/set_body/callback/res.body=) and outbound (cpr/curl) sinks, with cross-file + multi-hop (\u003c=3) propagation. Scoped def-use (precision over recall), not a full taint engine -\u003e partial.",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -6305,8 +6320,11 @@
             "verified_at": "2026-05-28"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3740"
+            "status": "partial",
+            "cites": ["internal/substrate/dataflow_c_cpp.go","internal/substrate/dataflow_c_cpp_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/4049",
+            "notes": "Connected request-\u003esink DATA_FLOWS_TO sniffer (dataflow_c_cpp.go, #4049): seeds taint at framework request reads (req.body/url_params.get/getParameter/getQueryParameter) and links to db-write (libpqxx exec/mongocxx insert), command-exec (system/popen/exec*), response (write/set_body/callback/res.body=) and outbound (cpr/curl) sinks, with cross-file + multi-hop (\u003c=3) propagation. Scoped def-use (precision over recall), not a full taint engine -\u003e partial.",
+            "verified_at": "2026-06-03"
           },
           "response_shape_extraction": {
             "status": "partial",
