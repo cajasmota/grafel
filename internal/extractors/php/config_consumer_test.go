@@ -112,3 +112,44 @@ function read(string $name): void {
 		t.Errorf("dynamic key must be skipped; got %v", keys)
 	}
 }
+
+// Parity flip (epic #3872): the config-read pass is framework-agnostic — it
+// walks every PHP file regardless of framework. An API Platform GraphQL
+// resolver reads configuration with the same getenv/$_ENV/env()/config()
+// shapes, so config_consumption dispatches live for the api-platform-graphql
+// sibling exactly as it does for api-platform. Asserts the EXACT config key +
+// DEPENDS_ON_CONFIG edge from the resolver method (never len>0).
+func TestPHPConfigConsumer_APIPlatformGraphQLResolver(t *testing.T) {
+	src := `<?php
+namespace App\Resolver;
+
+use ApiPlatform\GraphQl\Resolver\QueryItemResolverInterface;
+
+final class BookResolver implements QueryItemResolverInterface
+{
+    public function __invoke(?object $item, array $context): object
+    {
+        $endpoint = getenv('GRAPHQL_ENDPOINT');
+        $rate = $_ENV['GRAPHQL_RATE_LIMIT'];
+        $secret = env('API_PLATFORM_SECRET');
+        $cache = config('api_platform.graphql.cache');
+        return $item;
+    }
+}
+`
+	recs := extractPHPRecords(t, src)
+	keys := phpConfigKeysFrom(recs, "BookResolver.__invoke")
+	for _, want := range []string{
+		"GRAPHQL_ENDPOINT",           // getenv
+		"GRAPHQL_RATE_LIMIT",         // $_ENV superglobal
+		"API_PLATFORM_SECRET",        // Laravel env()
+		"api_platform.graphql.cache", // Laravel config()
+	} {
+		if !keys[want] {
+			t.Errorf("expected DEPENDS_ON_CONFIG(BookResolver.__invoke → %s); got %v", want, keys)
+		}
+		if !phpHasConfigKeyEntity(recs, want) {
+			t.Errorf("expected SCOPE.Config/config_key entity for %s", want)
+		}
+	}
+}

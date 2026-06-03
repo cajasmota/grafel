@@ -133,6 +133,89 @@ class Book {}
 	}
 }
 
+// TestAPIPlatform_PerOperationSecurity asserts a per-operation `security:`
+// expression stamps the EXACT auth properties on that REST endpoint and that an
+// operation WITHOUT security is left unsecured (auth parity with the
+// api-platform-graphql sibling; epic #3872).
+func TestAPIPlatform_PerOperationSecurity(t *testing.T) {
+	src := `<?php
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\Delete;
+
+#[ApiResource(operations: [
+    new Get(),
+    new Delete(security: "is_granted('ROLE_ADMIN')"),
+])]
+class Book {}
+`
+	ents := extractRecords(t, "custom_php_api_platform", fi("Book.php", "php", src))
+	del := findRecord(ents, "SCOPE.Operation", "DELETE /books/{id}")
+	if del == nil {
+		t.Fatal("expected DELETE /books/{id} endpoint")
+	}
+	if got := prop(t, del, "auth_required"); got != "true" {
+		t.Errorf("auth_required = %q, want true", got)
+	}
+	if got := prop(t, del, "auth_roles"); got != "ROLE_ADMIN" {
+		t.Errorf("auth_roles = %q, want ROLE_ADMIN", got)
+	}
+	if got := prop(t, del, "auth_method"); got != "expression" {
+		t.Errorf("auth_method = %q, want expression", got)
+	}
+	if got := prop(t, del, "auth_expression"); got != "is_granted('ROLE_ADMIN')" {
+		t.Errorf("auth_expression = %q, want is_granted('ROLE_ADMIN')", got)
+	}
+	// The Get() op has no security: → must NOT be auth_required (negative).
+	get := findRecord(ents, "SCOPE.Operation", "GET /books/{id}")
+	if get == nil {
+		t.Fatal("expected GET /books/{id} endpoint")
+	}
+	if got := get.Properties["auth_required"]; got != "" {
+		t.Errorf("unsecured GET leaked auth_required = %q", got)
+	}
+}
+
+// TestAPIPlatform_ResourceWideSecurity asserts a resource-wide `security:` on
+// #[ApiResource(...)] guards every generated default-CRUD endpoint, and that a
+// per-operation security overrides the resource-wide expression.
+func TestAPIPlatform_ResourceWideSecurity(t *testing.T) {
+	src := `<?php
+use ApiPlatform\Metadata\ApiResource;
+use ApiPlatform\Metadata\Get;
+use ApiPlatform\Metadata\Delete;
+
+#[ApiResource(
+    security: "is_granted('ROLE_USER')",
+    operations: [
+        new Get(),
+        new Delete(security: "is_granted('ROLE_ADMIN', object)"),
+    ]
+)]
+class Book {}
+`
+	ents := extractRecords(t, "custom_php_api_platform", fi("Book.php", "php", src))
+	// Get inherits the resource-wide ROLE_USER expression.
+	get := findRecord(ents, "SCOPE.Operation", "GET /books/{id}")
+	if get == nil {
+		t.Fatal("expected GET /books/{id} endpoint")
+	}
+	if got := prop(t, get, "auth_required"); got != "true" {
+		t.Errorf("inherited auth_required = %q, want true", got)
+	}
+	if got := prop(t, get, "auth_roles"); got != "ROLE_USER" {
+		t.Errorf("inherited auth_roles = %q, want ROLE_USER", got)
+	}
+	// Delete's per-operation security overrides the resource-wide one.
+	del := findRecord(ents, "SCOPE.Operation", "DELETE /books/{id}")
+	if del == nil {
+		t.Fatal("expected DELETE /books/{id} endpoint")
+	}
+	if got := prop(t, del, "auth_roles"); got != "ROLE_ADMIN" {
+		t.Errorf("per-op override auth_roles = %q, want ROLE_ADMIN", got)
+	}
+}
+
 // TestAPIPlatform_NoMatch verifies the extractor is a no-op on plain PHP.
 func TestAPIPlatform_NoMatch(t *testing.T) {
 	src := `<?php class Plain { public function go() { return 1; } }`

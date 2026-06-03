@@ -81,16 +81,20 @@ func (e *apiPlatformExtractor) Language() string { return "custom_php_api_platfo
 var (
 	// `#[ApiResource(...)]` — the resource attribute. Group 1 is the full
 	// argument body (may be empty for a bare `#[ApiResource]`).
-	reAPResource = regexp.MustCompile(`#\[ApiResource\b\s*(?:\((?P<body>(?:[^()]|\([^()]*\))*)\))?\s*\]`)
+	// The body sub-pattern tolerates up to TWO levels of nested parentheses so a
+	// security expression call — `new Delete(security: "is_granted('ROLE')")` —
+	// inside an `operations: [...]` list inside `#[ApiResource(...)]` still
+	// matches (the inner is_granted(...) is the second level). #3872.
+	reAPResource = regexp.MustCompile(`#\[ApiResource\b\s*(?:\((?P<body>(?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\))?\s*\]`)
 	// `class Foo` — the class the attribute decorates. Group 1 is the class name.
 	reAPClass = regexp.MustCompile(`(?m)^\s*(?:final\s+|abstract\s+)*class\s+([A-Za-z_]\w*)`)
 	// A standalone per-class operation attribute: #[Get], #[GetCollection],
 	// #[Post(...)], #[Put], #[Patch], #[Delete]. Group 1 is the operation name,
 	// group 2 the optional argument body.
-	reAPOpAttr = regexp.MustCompile(`#\[(Get|GetCollection|Post|Put|Patch|Delete)\b\s*(?:\((?P<body>(?:[^()]|\([^()]*\))*)\))?\s*\]`)
+	reAPOpAttr = regexp.MustCompile(`#\[(Get|GetCollection|Post|Put|Patch|Delete)\b\s*(?:\((?P<body>(?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\))?\s*\]`)
 	// `new Get()` / `new GetCollection(...)` — operation constructors inside an
 	// `operations: [ ... ]` list. Group 1 is the operation name, group 2 body.
-	reAPOpNew = regexp.MustCompile(`new\s+(Get|GetCollection|Post|Put|Patch|Delete)\s*\((?P<body>(?:[^()]|\([^()]*\))*)\)`)
+	reAPOpNew = regexp.MustCompile(`new\s+(Get|GetCollection|Post|Put|Patch|Delete)\s*\((?P<body>(?:[^()]|\((?:[^()]|\([^()]*\))*\))*)\)`)
 	// `uriTemplate: '/path'` inside an operation body. Group 1 is the path.
 	reAPUriTemplate = regexp.MustCompile(`uriTemplate\s*:\s*['"]([^'"]+)['"]`)
 	// `#[ApiFilter(SearchFilter::class, ...)]` — a query filter. Group 1 is the
@@ -100,6 +104,14 @@ var (
 	// marker, valid on #[ApiResource] (resource-wide) and on a single operation
 	// (new Get(deprecationReason: '...')). Group 1 is the message (epic #3628).
 	reAPDeprecationReason = regexp.MustCompile(`(?i)deprecationReason\s*:\s*['"]([^'"]{0,200})['"]`)
+	// `security: "is_granted('ROLE_ADMIN')"` — the Symfony security expression on
+	// #[ApiResource] (resource-wide) or on a single REST operation. Mirrors the
+	// api-platform-graphql sibling's auth parse (apiplatform_graphql.go, #3872).
+	// Group 1 is the raw double-quoted expression.
+	reAPSecurity = regexp.MustCompile(`\bsecurity\s*:\s*"((?:[^"\\]|\\.)*)"`)
+	// `is_granted('ROLE_ADMIN')` inside a security expression. Group 1 is the
+	// granted attribute (typically a ROLE_* string, any literal captured).
+	reAPIsGranted = regexp.MustCompile(`is_granted\s*\(\s*['"]([^'"]+)['"]`)
 )
 
 // apOperation describes one generated REST operation: its HTTP method and
@@ -259,6 +271,7 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 			op  apOperation
 			uri string
 			dep string // per-operation deprecationReason message, "" when none
+			sec string // per-operation security expression, "" when none
 		}
 		addOp := func(name, body string) {
 			meta, ok := apOperationMeta(name)
@@ -273,11 +286,16 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 			if dm := reAPDeprecationReason.FindStringSubmatch(body); dm != nil {
 				dep = dm[1]
 			}
+			sec := ""
+			if sm := reAPSecurity.FindStringSubmatch(body); sm != nil {
+				sec = sm[1]
+			}
 			explicit = append(explicit, struct {
 				op  apOperation
 				uri string
 				dep string
-			}{meta, uri, dep})
+				sec string
+			}{meta, uri, dep, sec})
 		}
 		// operations: [ new Get(), new GetCollection() ] inside the resource body.
 		if strings.Contains(resBody, "operations") {
@@ -302,7 +320,14 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 		if dm := reAPDeprecationReason.FindStringSubmatch(apStripOperationsList(resBody)); dm != nil {
 			resDep = dm[1]
 		}
-		emit := func(opName, method, path string, collection bool, depReason string) {
+		// Resource-wide `security:` on #[ApiResource(...)] guards every generated
+		// operation (a per-operation security overrides it). Strip the
+		// operations:[...] sub-list so a per-op security isn't read as resource-wide.
+		resSec := ""
+		if sm := reAPSecurity.FindStringSubmatch(apStripOperationsList(resBody)); sm != nil {
+			resSec = sm[1]
+		}
+		emit := func(opName, method, path string, collection bool, depReason, secExpr string) {
 			name := method + " " + path
 			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, line)
 			setProps(&ent, "framework", "api-platform",
@@ -320,6 +345,22 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 				since, repl := parseDeprecationMessage(depReason)
 				stampDeprecation(&ent, "deprecationReason", since, repl)
 			}
+			// Auth (#3872): a `security:` expression makes the REST operation
+			// auth-protected; is_granted('ROLE_*') clauses become auth_roles.
+			// Mirrors the api-platform-graphql sibling's auth property shape.
+			if secExpr != "" {
+				setProps(&ent, "auth_required", "true",
+					"auth_method", "expression",
+					"auth_confidence", "high",
+					"auth_expression", secExpr)
+				var roles []string
+				for _, gm := range reAPIsGranted.FindAllStringSubmatch(secExpr, -1) {
+					roles = append(roles, gm[1])
+				}
+				if len(roles) > 0 {
+					setProps(&ent, "auth_roles", strings.Join(roles, ","))
+				}
+			}
 			add(ent)
 		}
 
@@ -331,7 +372,7 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 				if !op.collection {
 					path = basePath + "/{id}"
 				}
-				emit(op.name, op.method, path, op.collection, resDep)
+				emit(op.name, op.method, path, op.collection, resDep, resSec)
 			}
 		} else {
 			for _, x := range ops {
@@ -347,7 +388,12 @@ func (e *apiPlatformExtractor) Extract(ctx context.Context, file extractor.FileI
 				if dep == "" {
 					dep = resDep
 				}
-				emit(x.op.name, x.op.method, path, x.op.collection, dep)
+				// Per-operation security wins; otherwise inherit the resource-wide one.
+				sec := x.sec
+				if sec == "" {
+					sec = resSec
+				}
+				emit(x.op.name, x.op.method, path, x.op.collection, dep, sec)
 			}
 		}
 
