@@ -33,7 +33,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/24 | 🟡 3/8 | |
+| [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | ✅ 1/1 | 🟡 18/24 | 🟡 3/8 | |
 
 
 ### Mobile

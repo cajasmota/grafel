@@ -202,7 +202,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 21/21 | |
 | [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 17/17 | |
 | [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 19/19 | |
-| [swift](../by-language/swift.md) | [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/24 | 🟡 3/8 | |
+| [swift](../by-language/swift.md) | [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🔴 0/3 | ✅ 1/1 | 🟡 18/24 | 🟡 3/8 | |
 
 
 ## Meta Framework
