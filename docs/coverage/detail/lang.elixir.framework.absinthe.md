@@ -52,7 +52,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type graph extraction | 🔴 `missing` | — | 3804 | — | GraphQL object-type→type graph applies (this is a GraphQL server) but is not yet implemented for this framework/language; SDL servers are covered by internal/extractors/graphql/type_graph.go (#3805) and the TS/Python code-first set (TypeGraphQL/Nexus/Pothos/Strawberry/graphene) by the code-first type-graph extractors. This lane is the remaining backfill for other-language GraphQL frameworks. |
+| Type graph extraction | 🟢 `partial` | — | 3804 | `internal/custom/elixir/absinthe_typegraph.go`<br>`internal/custom/elixir/absinthe_typegraph_test.go` | #4028: absintheTypeGraphExtractor builds the Absinthe code-first object-type→type graph — each `object :name` (plus interface/union as valid targets) emits a SCOPE.Schema/type node, and each object-typed `field :f, <type>` emits a GRAPH_RELATES edge with the cross-language cardinality contract (field_name/list/nullable/item_nullable/cardinality/self_ref/graphql_field). Parses non_null(:t)/list_of(:t)/list_of(non_null(:t))/non_null(list_of(:t)) wrappers; self-ref handled. Value-asserted (TestAbsintheTypeGraph_*: user.orders->order to_many list, user.account->account to_one, user.manager->user self_ref; scalar/enum/input_object fields emit NO edge). Partial (not full): same-file heuristic only — cross-file multi-module schemas split via `import_types` are not chased, and input_object/enum relations are excluded from the output object graph by design. |
 
 ### Type System
 
