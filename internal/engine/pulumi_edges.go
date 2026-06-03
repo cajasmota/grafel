@@ -254,6 +254,35 @@ func applyPulumiEdges(args DetectorPassArgs) DetectorPassResult {
 		})
 	}
 
+	// stampScalarProps stamps curated literal scalar config props (epic #4194)
+	// from a resource's args body onto its already-emitted InfraResource entity,
+	// by logical name. It mutates the local `entities` slice in place. No-op when
+	// the resource has no entity yet or no curated scalar props.
+	stampScalarProps := func(logicalName, argsBody string) {
+		if logicalName == "" || argsBody == "" {
+			return
+		}
+		scalars := iacCodeExtractScalarProperties(argsBody)
+		if len(scalars) == 0 {
+			return
+		}
+		for i := range entities {
+			if entities[i].Kind != pulumiResourceKind || entities[i].Name != logicalName ||
+				entities[i].SourceFile != path {
+				continue
+			}
+			if entities[i].Properties == nil {
+				entities[i].Properties = map[string]string{}
+			}
+			for k, v := range scalars {
+				if _, exists := entities[i].Properties[k]; !exists {
+					entities[i].Properties[k] = v
+				}
+			}
+			return
+		}
+	}
+
 	emitDependsOn := func(fromName, toName, reason, detail string) {
 		if fromName == "" || toName == "" || fromName == toName {
 			return
@@ -313,7 +342,7 @@ func applyPulumiEdges(args DetectorPassArgs) DetectorPassResult {
 	}
 
 	if pulumiIsPython(lang) {
-		applyPulumiEdgesPython(src, emitResource, emitDependsOn, emitCrossStack, varToName, resourceNames)
+		applyPulumiEdgesPython(src, emitResource, emitDependsOn, emitCrossStack, stampScalarProps, varToName, resourceNames)
 		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
@@ -378,6 +407,8 @@ func applyPulumiEdges(args DetectorPassArgs) DetectorPassResult {
 		if !resourceNames[consumerName] || argsBody == "" {
 			continue
 		}
+		// epic #4194: stamp curated literal scalar config props onto the entity.
+		stampScalarProps(consumerName, argsBody)
 		applyPulumiArgEdges(consumerName, argsBody, varToName, emitDependsOn)
 	}
 
@@ -421,6 +452,7 @@ func applyPulumiEdgesPython(
 	emitResource func(logicalName, resourceType, scopeOverride string, offset int),
 	emitDependsOn func(fromName, toName, reason, detail string),
 	emitCrossStack func(ref string, offset int),
+	stampScalarProps func(logicalName, argsBody string),
 	varToName map[string]string,
 	resourceNames map[string]bool,
 ) {
@@ -477,6 +509,8 @@ func applyPulumiEdgesPython(
 		if !resourceNames[consumerName] || argsBody == "" {
 			continue
 		}
+		// epic #4194: stamp curated literal scalar config props onto the entity.
+		stampScalarProps(consumerName, argsBody)
 		applyPulumiArgEdges(consumerName, argsBody, varToName, emitDependsOn)
 	}
 }

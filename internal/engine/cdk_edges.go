@@ -294,6 +294,37 @@ func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 		})
 	}
 
+	// stampScalarProps stamps curated literal scalar config props (epic #4194)
+	// from a construct's props body onto its already-emitted InfraResource
+	// entity, by LogicalId. It mutates the local `entities` slice in place.
+	// No-op when the construct has no entity yet or no curated scalar props.
+	stampScalarProps := func(logicalID, propsBody string) {
+		if logicalID == "" || propsBody == "" {
+			return
+		}
+		scalars := iacCodeExtractScalarProperties(propsBody)
+		if len(scalars) == 0 {
+			return
+		}
+		for i := range entities {
+			if entities[i].Kind != cdkResourceKind || entities[i].Name != logicalID ||
+				entities[i].SourceFile != path {
+				continue
+			}
+			if entities[i].Properties == nil {
+				entities[i].Properties = map[string]string{}
+			}
+			for k, v := range scalars {
+				// Never clobber the structural props emitResource set; only add
+				// curated config keys (which never collide with those).
+				if _, exists := entities[i].Properties[k]; !exists {
+					entities[i].Properties[k] = v
+				}
+			}
+			return
+		}
+	}
+
 	// emitDependsOn records `fromLogical --DEPENDS_ON--> toLogical`, the same
 	// edge kind the hcl extractor emits for Terraform `depends_on`.
 	emitDependsOn := func(fromLogical, toLogical, reason, detail string) {
@@ -324,7 +355,7 @@ func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 	}
 
 	if cdkIsPython(lang) {
-		applyCDKEdgesPython(src, path, lang, emitResource, emitDependsOn, varToLogical, logicalIDs)
+		applyCDKEdgesPython(src, path, lang, emitResource, emitDependsOn, stampScalarProps, varToLogical, logicalIDs)
 		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
@@ -397,6 +428,8 @@ func applyCDKEdges(args DetectorPassArgs) DetectorPassResult {
 		if !logicalIDs[enclosingLogical] || propsBody == "" {
 			continue
 		}
+		// epic #4194: stamp curated literal scalar config props onto the entity.
+		stampScalarProps(enclosingLogical, propsBody)
 		for _, rm := range cdkPropsRefRe.FindAllStringSubmatch(propsBody, -1) {
 			ref := rm[1]
 			if ref == "" {
@@ -427,6 +460,7 @@ func applyCDKEdgesPython(
 	src, path, lang string,
 	emitResource func(logicalID, constructType string, offset int),
 	emitDependsOn func(fromLogical, toLogical, reason, detail string),
+	stampScalarProps func(logicalID, propsBody string),
 	varToLogical map[string]string,
 	logicalIDs map[string]bool,
 ) {
@@ -486,6 +520,8 @@ func applyCDKEdgesPython(
 		if !logicalIDs[enclosingLogical] || argsBody == "" {
 			continue
 		}
+		// epic #4194: stamp curated literal scalar config props onto the entity.
+		stampScalarProps(enclosingLogical, argsBody)
 		for _, rm := range cdkPyKwargRefRe.FindAllStringSubmatch(argsBody, -1) {
 			ref := rm[1]
 			passedLogical, ok := varToLogical[ref]
