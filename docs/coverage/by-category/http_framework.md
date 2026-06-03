@@ -106,11 +106,11 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Flask](../detail/lang.python.framework.flask.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 10/13 | |
 | [python](../by-language/python.md) | [Graphene GraphQL](../detail/lang.python.framework.graphene.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
 | [python](../by-language/python.md) | [Hug](../detail/lang.python.framework.hug.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [python](../by-language/python.md) | [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 9/12 | |
 | [python](../by-language/python.md) | [Pyramid](../detail/lang.python.framework.pyramid.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [python](../by-language/python.md) | [Quart](../detail/lang.python.framework.quart.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [python](../by-language/python.md) | [Robyn](../detail/lang.python.framework.robyn.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [python](../by-language/python.md) | [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [python](../by-language/python.md) | [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/12 | |
 | [python](../by-language/python.md) | [Starlette](../detail/lang.python.framework.starlette.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [python](../by-language/python.md) | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
 | [python](../by-language/python.md) | [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |

@@ -79,6 +79,26 @@ var (
 
 	// rePyInjectDecorator detects an `@inject` decorator preceding a def.
 	rePyInjectDecorator = regexp.MustCompile(`(?m)^[ \t]*@inject\b`)
+
+	// reLitestarDepsKw locates a `dependencies = {` / `dependencies={` keyword
+	// (litestar declares DI providers in a dict keyed by the handler param name).
+	// The match index marks the position just past the `{` so the dict body can
+	// be balanced-scanned.
+	reLitestarDepsKw = regexp.MustCompile(`\bdependencies[ \t]*=[ \t]*\{`)
+
+	// reLitestarProvideItem matches one dict item `"key": Provide(<callable>)`
+	// inside a litestar `dependencies={...}` mapping. Group 1 = dependency key
+	// (the handler param name / BINDS token), group 2 = the provider callable
+	// passed as Provide()'s first positional argument (best-effort, may be empty
+	// for a dynamic/kwarg-only Provide which is then skipped).
+	reLitestarProvideItem = regexp.MustCompile(
+		`["']([A-Za-z_]\w*)["']\s*:\s*(?:litestar\.di\.|di\.)?Provide[ \t]*\(\s*([A-Za-z_][\w.]*)?`)
+
+	// reSanicDependency matches sanic's native DI registration
+	// `app.ext.dependency(<impl>)` / `app.ext.add_dependency("name", <impl>)`.
+	// Group 1 = the implementation/instance identifier (first positional).
+	reSanicDependency = regexp.MustCompile(
+		`\.ext\.(?:add_)?dependency[ \t]*\(\s*(?:["'][A-Za-z_]\w*["']\s*,\s*)?([A-Za-z_][\w.]*)`)
 )
 
 func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -217,8 +237,220 @@ func (e *PyDIExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 		}
 	}
 
+	// ---- litestar native DI: dependencies={"k": Provide(cb)} --------------
+	// BINDS(key -> provider callable) for each dict item; the dependency key is
+	// the token that a handler param resolves by name. Then INJECTED_INTO for any
+	// handler param whose name matches a declared key (litestar resolves DI by
+	// parameter name == dependency key).
+	depKeyToProvider := map[string]string{}
+	for _, ds := range pyLitestarDepsDicts(src) {
+		body := src[ds.start:ds.end]
+		lineBase := lineOf(src, ds.start)
+		for _, m := range reLitestarProvideItem.FindAllStringSubmatchIndex(body, -1) {
+			key := body[m[2]:m[3]]
+			provider := ""
+			if m[4] >= 0 && !pyIdentIsCalled(body, m[5]) {
+				provider = pyLeafIdent(body[m[4]:m[5]])
+			}
+			if provider == "" {
+				// Dynamic/kwarg-only/called Provide(make_dep()) — no resolvable
+				// static callable; skip (honest-partial, never fabricate).
+				continue
+			}
+			line := lineBase + strings.Count(body[:m[0]], "\n")
+			depKeyToProvider[key] = provider
+			addEdge("di_provider", line,
+				map[string]string{
+					"framework": "litestar",
+					"token":     key,
+					"impl":      provider,
+					"via":       "litestar_provide",
+				},
+				types.RelationshipRecord{
+					FromID: key,
+					ToID:   provider,
+					Kind:   string(types.RelationshipKindBinds),
+					Properties: map[string]string{
+						"framework": "litestar",
+						"token":     key,
+						"via":       "litestar_provide",
+					},
+				})
+		}
+	}
+	// INJECTED_INTO: a handler param named like a declared dependency key →
+	// INJECTED_INTO(provider -> handler). Only fires when the key was actually
+	// bound via Provide() above, so the param-name match reflects a real binding.
+	if len(depKeyToProvider) > 0 {
+		for _, fn := range pyFunctions(src) {
+			sig := pyBalancedParen(src, fn.parenOpen)
+			if sig == "" {
+				continue
+			}
+			for _, p := range pySplitParams(sig) {
+				name := pyParamName(p)
+				if name == "" || name == "self" || name == "cls" {
+					continue
+				}
+				provider, ok := depKeyToProvider[name]
+				if !ok {
+					continue
+				}
+				addEdge("di_consumer", fn.line,
+					map[string]string{
+						"framework": "litestar",
+						"di_role":   "provide",
+						"consumer":  fn.name,
+						"provider":  provider,
+						"token":     name,
+						"via":       "litestar_provide",
+					},
+					types.RelationshipRecord{
+						FromID: provider,
+						ToID:   fn.name,
+						Kind:   string(types.RelationshipKindInjectedInto),
+						Properties: map[string]string{
+							"framework": "litestar",
+							"provider":  provider,
+							"consumer":  fn.name,
+							"token":     name,
+							"via":       "litestar_provide",
+						},
+					})
+			}
+		}
+	}
+
+	// ---- sanic native DI: app.ext.dependency(impl) -----------------------
+	// Sanic registers a DI instance/type via app.ext.dependency(...); the
+	// instance is then injected into handlers by type annotation. We can resolve
+	// the registration (BINDS impl -> impl, i.e. the registered provider), but
+	// not the per-handler annotation→type match reliably file-locally, so the
+	// injection point stays honest-missing for sanic.
+	for _, m := range reSanicDependency.FindAllStringSubmatchIndex(src, -1) {
+		if pyIdentIsCalled(src, m[3]) {
+			// dependency(SessionFactory()) — the registered impl is the result of
+			// a call expression, not a static type; skip (honest-partial).
+			continue
+		}
+		impl := pyLeafIdent(src[m[2]:m[3]])
+		if impl == "" {
+			continue
+		}
+		line := lineOf(src, m[0])
+		addEdge("di_provider", line,
+			map[string]string{
+				"framework": "sanic",
+				"token":     impl,
+				"impl":      impl,
+				"via":       "sanic_ext_dependency",
+			},
+			types.RelationshipRecord{
+				FromID: impl,
+				ToID:   impl,
+				Kind:   string(types.RelationshipKindBinds),
+				Properties: map[string]string{
+					"framework": "sanic",
+					"token":     impl,
+					"via":       "sanic_ext_dependency",
+				},
+			})
+	}
+
 	span.SetAttributes(attribute.Int("di_edge_count", edgeCount))
 	return out, nil
+}
+
+// pyLitestarDepsSpan describes the byte span of a litestar `dependencies={...}`
+// dict body (between the braces).
+type pyLitestarDepsSpan struct {
+	start int
+	end   int
+}
+
+// pyLitestarDepsDicts returns the body span of each `dependencies={...}` mapping
+// in the source, balanced-scanning the braces so nested brackets are respected.
+func pyLitestarDepsDicts(src string) []pyLitestarDepsSpan {
+	var out []pyLitestarDepsSpan
+	for _, loc := range reLitestarDepsKw.FindAllStringIndex(src, -1) {
+		// loc[1]-1 is the '{'.
+		open := loc[1] - 1
+		inner := pyBalancedBrace(src, open)
+		if inner < 0 {
+			continue
+		}
+		out = append(out, pyLitestarDepsSpan{start: open + 1, end: inner})
+	}
+	return out
+}
+
+// pyBalancedBrace returns the byte offset of the matching '}' for the '{' at
+// index open (the returned offset points AT the closing brace). Returns -1 on
+// imbalance. Brackets/parens nested inside are balanced too.
+func pyBalancedBrace(src string, open int) int {
+	if open < 0 || open >= len(src) || src[open] != '{' {
+		return -1
+	}
+	depth := 0
+	for i := open; i < len(src); i++ {
+		switch src[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// pyIdentIsCalled reports whether the identifier ending at byte offset `end`
+// (exclusive) is immediately followed by a `(`, i.e. it is a call expression
+// like `make_dep()` rather than a bare callable reference. Leading whitespace
+// between the identifier and the paren is tolerated.
+func pyIdentIsCalled(src string, end int) bool {
+	for i := end; i < len(src); i++ {
+		switch src[i] {
+		case ' ', '\t':
+			continue
+		case '(':
+			return true
+		default:
+			return false
+		}
+	}
+	return false
+}
+
+// pyParamName returns the parameter name from a single parameter declaration,
+// stripping any `:type`, `=default`, and leading `*`/`**`. Returns "" for an
+// empty/positional-only marker (`*`, `/`).
+func pyParamName(param string) string {
+	p := strings.TrimSpace(param)
+	for strings.HasPrefix(p, "*") {
+		p = strings.TrimSpace(p[1:])
+	}
+	if p == "" || p == "/" {
+		return ""
+	}
+	if i := strings.IndexAny(p, ":=)"); i >= 0 {
+		p = p[:i]
+	}
+	p = strings.TrimSpace(p)
+	if p == "" {
+		return ""
+	}
+	if c := p[0]; !(c == '_' || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+		return ""
+	}
+	for _, c := range p {
+		if !(c == '_' || (c >= '0' && c <= '9') || (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z')) {
+			return ""
+		}
+	}
+	return p
 }
 
 // pyFuncInfo locates a `def` head: its name, source line, and the byte offset

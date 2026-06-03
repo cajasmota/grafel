@@ -36,11 +36,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Flask](../detail/lang.python.framework.flask.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 10/13 | |
 | [Graphene GraphQL](../detail/lang.python.framework.graphene.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
 | [Hug](../detail/lang.python.framework.hug.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Litestar](../detail/lang.python.framework.litestar.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 9/12 | |
 | [Pyramid](../detail/lang.python.framework.pyramid.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [Quart](../detail/lang.python.framework.quart.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [Robyn](../detail/lang.python.framework.robyn.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Sanic](../detail/lang.python.framework.sanic.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/12 | |
 | [Starlette](../detail/lang.python.framework.starlette.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/24 | 🟡 8/13 | |
 | [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |

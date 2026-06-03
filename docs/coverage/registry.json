@@ -57076,12 +57076,18 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/python/di_graph.go","internal/custom/python/di_graph_test.go"],
+            "issue": "3912",
+            "notes": "litestar native DI: each dependencies={\"key\": Provide(callable)} dict item (on Litestar/Controller/Router/handler) emits BINDS(key-\u003ecallable), token=the dependency key the handler param resolves by. Value-asserted TestPyDI_LitestarProvideBindsAndInject (db-\u003eget_db); negatives TestPyDI_LitestarDynamicProvideNoEdge (Provide(make_provider()) call-expr skipped), TestPyDI_LitestarPlainParamNoEdge. PARTIAL: cross-file provider resolution + dynamic/kwarg-only Provide skipped (honest); which scope (app/router/controller) governs a key not resolved.",
+            "verified_at": "2026-06-03"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/python/di_graph.go","internal/custom/python/di_graph_test.go"],
+            "issue": "3912",
+            "notes": "litestar resolves DI by handler-parameter name == dependency key; a handler param matching a Provide()-bound key emits INJECTED_INTO(provider-\u003ehandler). Value-asserted TestPyDI_LitestarProvideBindsAndInject (get_db-\u003elist_items). Negatives TestPyDI_LitestarAppLevelBindsOnly (no matching param -\u003e BINDS only, no fabricated injection), TestPyDI_LitestarPlainParamNoEdge. PARTIAL: param-name match is file-local; per-scope governance (app vs controller vs handler dependencies=) not resolved.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
             "status": "missing",
@@ -58505,12 +58511,16 @@
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/python/di_graph.go","internal/custom/python/di_graph_test.go"],
+            "issue": "3912",
+            "notes": "sanic native DI: app.ext.dependency(Impl) / app.ext.add_dependency(\"name\", Impl) registers a DI provider, emitting BINDS(Impl-\u003eImpl) (the registered type IS the token, resolved at handler time by annotation). Value-asserted TestPyDI_SanicExtDependencyBinds (Database-\u003eDatabase); negative same test: dependency(SessionFactory()) call-expr skipped. PARTIAL: instance/call-expression registrations skipped (honest); container scope not modeled.",
+            "verified_at": "2026-06-03"
           },
           "di_injection_point": {
             "status": "missing",
-            "issue": "3628"
+            "issue": "3912",
+            "notes": "sanic injects DI by handler parameter TYPE annotation matching a registered app.ext.dependency type; binding is credited (di_binding_extraction) but the per-handler annotation-\u003eregistered-type match is not yet resolved file-locally, so no INJECTED_INTO edge is fabricated. Honest-missing pending an annotation-\u003etype resolver."
           },
           "di_scope_resolution": {
             "status": "missing",

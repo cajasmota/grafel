@@ -67,8 +67,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | 3628 | — | — |
-| DI injection point | 🔴 `missing` | — | 3628 | — | — |
+| DI binding extraction | 🟢 `partial` | `2026-06-03` | 3912 | `internal/custom/python/di_graph.go`<br>`internal/custom/python/di_graph_test.go` | litestar native DI: each dependencies={"key": Provide(callable)} dict item (on Litestar/Controller/Router/handler) emits BINDS(key->callable), token=the dependency key the handler param resolves by. Value-asserted TestPyDI_LitestarProvideBindsAndInject (db->get_db); negatives TestPyDI_LitestarDynamicProvideNoEdge (Provide(make_provider()) call-expr skipped), TestPyDI_LitestarPlainParamNoEdge. PARTIAL: cross-file provider resolution + dynamic/kwarg-only Provide skipped (honest); which scope (app/router/controller) governs a key not resolved. |
+| DI injection point | 🟢 `partial` | `2026-06-03` | 3912 | `internal/custom/python/di_graph.go`<br>`internal/custom/python/di_graph_test.go` | litestar resolves DI by handler-parameter name == dependency key; a handler param matching a Provide()-bound key emits INJECTED_INTO(provider->handler). Value-asserted TestPyDI_LitestarProvideBindsAndInject (get_db->list_items). Negatives TestPyDI_LitestarAppLevelBindsOnly (no matching param -> BINDS only, no fabricated injection), TestPyDI_LitestarPlainParamNoEdge. PARTIAL: param-name match is file-local; per-scope governance (app vs controller vs handler dependencies=) not resolved. |
 | DI scope resolution | 🔴 `missing` | — | 3628 | — | — |
 
 ### Testing

@@ -67,8 +67,8 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | 3628 | — | — |
-| DI injection point | 🔴 `missing` | — | 3628 | — | — |
+| DI binding extraction | 🟢 `partial` | `2026-06-03` | 3912 | `internal/custom/python/di_graph.go`<br>`internal/custom/python/di_graph_test.go` | sanic native DI: app.ext.dependency(Impl) / app.ext.add_dependency("name", Impl) registers a DI provider, emitting BINDS(Impl->Impl) (the registered type IS the token, resolved at handler time by annotation). Value-asserted TestPyDI_SanicExtDependencyBinds (Database->Database); negative same test: dependency(SessionFactory()) call-expr skipped. PARTIAL: instance/call-expression registrations skipped (honest); container scope not modeled. |
+| DI injection point | 🔴 `missing` | — | 3912 | — | sanic injects DI by handler parameter TYPE annotation matching a registered app.ext.dependency type; binding is credited (di_binding_extraction) but the per-handler annotation->registered-type match is not yet resolved file-locally, so no INJECTED_INTO edge is fabricated. Honest-missing pending an annotation->type resolver. |
 | DI scope resolution | 🔴 `missing` | — | 3628 | — | — |
 
 ### Testing
