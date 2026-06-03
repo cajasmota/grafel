@@ -310,6 +310,192 @@ func TestKotlinObservability_KotlinLoggingNameAndLambda(t *testing.T) {
 	}
 }
 
+// --- Micronaut (Kotlin) observability probes (issue #4015) ---
+//
+// Micronaut observability uses Micrometer (@Timed/@Counted, meterRegistry),
+// Micronaut Tracing (@NewSpan/@ContinueSpan over OTel/Brave), and SLF4J
+// (LoggerFactory.getLogger). These are detected language-level by
+// custom_kotlin_observability — the same extractor that covers ktor/http4k —
+// so a Micronaut .kt file flows through it unchanged. These probes assert the
+// SPECIFIC named metric/span/logger fires for Micronaut idioms.
+const obsMicronautSrc = `
+package com.example.micronaut
+
+import io.micronaut.http.annotation.Controller
+import io.micronaut.http.annotation.Get
+import io.micronaut.tracing.annotation.NewSpan
+import io.micrometer.core.annotation.Timed
+import io.micrometer.core.annotation.Counted
+import io.micrometer.core.instrument.MeterRegistry
+import org.slf4j.LoggerFactory
+
+@Controller("/orders")
+class OrderController(private val meterRegistry: MeterRegistry) {
+
+    private val log = LoggerFactory.getLogger(OrderController::class.java)
+
+    @Get
+    @Timed("orders.count")
+    fun list(): List<String> {
+        log.info("listing orders")
+        meterRegistry.counter("orders.listed")
+        return emptyList()
+    }
+
+    @Counted("orders.created")
+    fun create(name: String) {}
+
+    @NewSpan("load")
+    fun load(id: Long) {}
+}
+`
+
+func TestKotlinObservability_Micronaut_Issue4015(t *testing.T) {
+	ents := extract(t, "custom_kotlin_observability", fi("OrderController.kt", "kotlin", obsMicronautSrc))
+	if len(ents) == 0 {
+		t.Fatal("[obs][micronaut] expected entities, got none")
+	}
+
+	// metric: @Timed("orders.count") — literal metric name asserted.
+	if e := findMetricByName(ents, "orders.count"); e == nil {
+		t.Error("[obs][micronaut] expected @Timed metric_name=orders.count")
+	} else if src := e.Props["metric_name_source"]; src != "literal" {
+		t.Errorf("[obs][micronaut] @Timed(\"orders.count\") should be literal, got %q", src)
+	}
+	// metric: @Counted("orders.created").
+	if e := findMetricByName(ents, "orders.created"); e == nil {
+		t.Error("[obs][micronaut] expected @Counted metric_name=orders.created")
+	} else if src := e.Props["metric_name_source"]; src != "literal" {
+		t.Errorf("[obs][micronaut] @Counted(\"orders.created\") should be literal, got %q", src)
+	}
+	// metric: meterRegistry.counter("orders.listed") — literal registry meter name.
+	if e := findMetricByName(ents, "orders.listed"); e == nil {
+		t.Error("[obs][micronaut] expected meterRegistry.counter metric_name=orders.listed")
+	}
+	// trace: @NewSpan("load") — literal span name asserted (Micronaut Tracing).
+	if e := findSpanByName(ents, "load"); e == nil {
+		t.Error("[obs][micronaut] expected @NewSpan span_name=load")
+	} else if src := e.Props["span_name_source"]; src != "literal" {
+		t.Errorf("[obs][micronaut] @NewSpan(\"load\") should be literal, got %q", src)
+	}
+	// log: SLF4J LoggerFactory.getLogger + log.info — partial signal present.
+	gotLogger := false
+	gotLogStmt := false
+	for _, e := range ents {
+		if e.Subtype == "logger" {
+			gotLogger = true
+		}
+		if e.Subtype == "log_statement" {
+			gotLogStmt = true
+		}
+	}
+	if !gotLogger {
+		t.Error("[obs][micronaut] expected SLF4J logger entity")
+	}
+	if !gotLogStmt {
+		t.Error("[obs][micronaut] expected log.info statement entity")
+	}
+}
+
+// --- Quarkus (Kotlin) observability probes (issue #4015) ---
+//
+// Quarkus observability uses Micrometer/MicroProfile Metrics (@Timed/@Counted),
+// OpenTelemetry (@WithSpan), and JBoss/SLF4J logging. Detected language-level
+// by custom_kotlin_observability.
+const obsQuarkusSrc = `
+package com.example.quarkus
+
+import jakarta.ws.rs.GET
+import jakarta.ws.rs.Path
+import io.opentelemetry.instrumentation.annotations.WithSpan
+import org.eclipse.microprofile.metrics.annotation.Timed
+import org.eclipse.microprofile.metrics.annotation.Counted
+import org.slf4j.LoggerFactory
+
+@Path("/checkout")
+class CheckoutResource {
+
+    private val log = LoggerFactory.getLogger(CheckoutResource::class.java)
+
+    @GET
+    @WithSpan
+    fun handle() {
+        log.info("handling checkout")
+    }
+
+    @Counted("checkout.attempts")
+    fun attempt() {}
+
+    @Timed("checkout.duration")
+    fun finalize(id: Long) {}
+}
+`
+
+func TestKotlinObservability_Quarkus_Issue4015(t *testing.T) {
+	ents := extract(t, "custom_kotlin_observability", fi("CheckoutResource.kt", "kotlin", obsQuarkusSrc))
+	if len(ents) == 0 {
+		t.Fatal("[obs][quarkus] expected entities, got none")
+	}
+
+	// trace: @WithSpan (no literal) — span name defaults to fun name `handle`.
+	if e := findSpanByName(ents, "handle"); e == nil {
+		t.Error("[obs][quarkus] expected @WithSpan span_name=handle (defaulted to fun)")
+	} else if src := e.Props["span_name_source"]; src != "defaulted_to_decl" {
+		t.Errorf("[obs][quarkus] bare @WithSpan should be defaulted_to_decl, got %q", src)
+	}
+	// metric: @Counted("checkout.attempts").
+	if e := findMetricByName(ents, "checkout.attempts"); e == nil {
+		t.Error("[obs][quarkus] expected @Counted metric_name=checkout.attempts")
+	} else if src := e.Props["metric_name_source"]; src != "literal" {
+		t.Errorf("[obs][quarkus] @Counted(\"checkout.attempts\") should be literal, got %q", src)
+	}
+	// metric: @Timed("checkout.duration").
+	if e := findMetricByName(ents, "checkout.duration"); e == nil {
+		t.Error("[obs][quarkus] expected @Timed metric_name=checkout.duration")
+	} else if src := e.Props["metric_name_source"]; src != "literal" {
+		t.Errorf("[obs][quarkus] @Timed(\"checkout.duration\") should be literal, got %q", src)
+	}
+	// log: SLF4J logger + log.info partial.
+	gotLogger := false
+	gotLogStmt := false
+	for _, e := range ents {
+		if e.Subtype == "logger" {
+			gotLogger = true
+		}
+		if e.Subtype == "log_statement" {
+			gotLogStmt = true
+		}
+	}
+	if !gotLogger {
+		t.Error("[obs][quarkus] expected SLF4J logger entity")
+	}
+	if !gotLogStmt {
+		t.Error("[obs][quarkus] expected log.info statement entity")
+	}
+}
+
+// Negative: a plain Micronaut/Quarkus-shaped controller with NO observability
+// APIs must yield no obs entities (framework presence alone is not a signal).
+const obsMicronautNoObsSrc = `
+package com.example.micronaut
+
+import io.micronaut.http.annotation.Controller
+import io.micronaut.http.annotation.Get
+
+@Controller("/ping")
+class PingController {
+    @Get
+    fun ping(): String = "pong"
+}
+`
+
+func TestKotlinObservability_MicronautNoObs_Issue4015(t *testing.T) {
+	ents := extract(t, "custom_kotlin_observability", fi("PingController.kt", "kotlin", obsMicronautNoObsSrc))
+	if len(ents) != 0 {
+		t.Errorf("[obs][micronaut] plain controller with no obs APIs should yield 0 entities, got %d", len(ents))
+	}
+}
+
 func findMetricByName(ents []entitySummary, metricName string) *entitySummary {
 	for i := range ents {
 		if ents[i].Subtype == "metric" && ents[i].Props["metric_name"] == metricName {

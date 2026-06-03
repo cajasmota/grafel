@@ -1,20 +1,23 @@
-// Package kotlin — observability extractor for Kotlin frameworks not covered by
-// the Java observability pass (internal/custom/java/observability.go).
+// Package kotlin — observability extractor for Kotlin source.
 //
-// The Java pass already handles: spring-boot, spring_webflux, quarkus,
-// micronaut, javalin, vertx, dropwizard, helidon, akka_http, struts, etc.
-// This file adds coverage for Kotlin-idiomatic frameworks that are gated out
-// of the Java pass:
+// The Java observability pass (internal/custom/java/observability.go) accepts
+// Kotlin sources in principle, but is only dispatched under custom_java_patterns
+// which hard-skips any non-java file (patterns_dispatch.go: language != "java").
+// So for Kotlin, ALL HTTP-framework observability flows through THIS extractor.
 //
-// Covered cells (ktor / http4k / arrow / coroutines):
+// Covered cells (ktor / http4k / arrow / coroutines / micronaut / quarkus):
 //   - Observability/log_extraction    → partial (see honest limit below)
 //   - Observability/metric_extraction → full    (literal meter names captured)
 //   - Observability/trace_extraction  → full    (literal span names captured)
 //
-// Detection is shared across all four frameworks because SLF4J, Micrometer,
+// Detection is shared across ALL Kotlin frameworks because SLF4J, Micrometer,
 // and OpenTelemetry are language-level (not framework-level) in Kotlin. Any
 // Kotlin file that uses these APIs is covered, regardless of which HTTP
-// framework it belongs to.
+// framework it belongs to:
+//   - Micronaut: Micrometer @Timed/@Counted + meterRegistry.counter(...),
+//     Micronaut Tracing @NewSpan/@ContinueSpan, SLF4J LoggerFactory.getLogger.
+//   - Quarkus: Micrometer / MicroProfile Metrics @Timed/@Counted,
+//     OpenTelemetry @WithSpan, SLF4J/JBoss logging.
 //
 // Name capture (the deepened part — CORE issue #3438):
 //

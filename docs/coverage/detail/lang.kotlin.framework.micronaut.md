@@ -92,9 +92,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; SLF4J/@Slf4j on Kotlin proven by TestKotlinObservability_Slf4j_Issue3274 (obsFrameworks["micronaut"]=true) |
-| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; Micrometer @Timed on Kotlin proven by TestKotlinObservability_Micrometer_Issue3274 (obsFrameworks["micronaut"]=true) |
-| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel on Kotlin proven by TestKotlinObservability_OTel_Issue3274 |
+| Log extraction | 🟢 `partial` | `2026-06-03` | — | `internal/custom/kotlin/observability.go`<br>`internal/custom/kotlin/observability_test.go` | #4015: custom_kotlin_observability fires on Micronaut .kt (Java pass is dead for kotlin — patterns_dispatch skips non-java). SLF4J LoggerFactory.getLogger + log.info partial; TestKotlinObservability_Micronaut_Issue4015. Partial: regex file-local, no cross-file logger correlation, interpolated messages. |
+| Metric extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/kotlin/observability.go`<br>`internal/custom/kotlin/observability_test.go` | #4015: Micronaut Micrometer literal names asserted — @Timed("orders.count"), @Counted("orders.created"), meterRegistry.counter("orders.listed"); TestKotlinObservability_Micronaut_Issue4015. metric_name_source=literal. |
+| Trace extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/kotlin/observability.go`<br>`internal/custom/kotlin/observability_test.go` | #4015: Micronaut Tracing @NewSpan("load") literal span name asserted; TestKotlinObservability_Micronaut_Issue4015. span_name_source=literal. |
 
 ### Data
 

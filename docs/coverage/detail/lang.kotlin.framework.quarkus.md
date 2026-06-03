@@ -92,9 +92,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; obsFrameworks["quarkus"]=true; SLF4J/@Slf4j proven by TestKotlinObservability_Slf4j_Issue3274 |
-| Metric extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @Timed Micrometer proven by TestKotlinObservability_Micrometer_Issue3274 |
-| Trace extraction | 🔴 `missing` | `2026-05-30` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/kotlin_port_test.go`<br>`internal/custom/java/observability.go` | java extractor language-gated to kotlin; @WithSpan OTel proven by TestKotlinObservability_OTel_Issue3274 |
+| Log extraction | 🟢 `partial` | `2026-06-03` | — | `internal/custom/kotlin/observability.go`<br>`internal/custom/kotlin/observability_test.go` | #4015: custom_kotlin_observability fires on Quarkus .kt (Java pass is dead for kotlin — patterns_dispatch skips non-java). SLF4J LoggerFactory.getLogger + log.info partial; TestKotlinObservability_Quarkus_Issue4015. Partial: regex file-local, no cross-file logger correlation, interpolated messages. |
+| Metric extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/kotlin/observability.go`<br>`internal/custom/kotlin/observability_test.go` | #4015: Quarkus Micrometer/MicroProfile literal names asserted — @Counted("checkout.attempts"), @Timed("checkout.duration"); TestKotlinObservability_Quarkus_Issue4015. metric_name_source=literal. |
+| Trace extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/kotlin/observability.go`<br>`internal/custom/kotlin/observability_test.go` | #4015: Quarkus OpenTelemetry @WithSpan span name asserted (defaults to fun name when no literal arg); TestKotlinObservability_Quarkus_Issue4015. |
 
 ### Data
 
