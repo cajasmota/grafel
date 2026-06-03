@@ -28,6 +28,7 @@
 //     C#     : .Index("products")
 //     PHP    : ['index' => 'products']
 //     Python : es.search(index='products')
+//     Ruby   : client.search(index: 'products')
 //   - Cassandra (CQL FROM/INTO/UPDATE table — reuses extractSQLTable)
 //     any lang: session.execute("SELECT ... FROM events")
 //
@@ -412,6 +413,19 @@ func mentionsRubyCassandra(src string) bool {
 	return strings.Contains(src, "cassandra") || strings.Contains(src, "Cassandra.cluster")
 }
 
+// mentionsRubyElastic reports whether the file references the elasticsearch-ruby
+// client (the `elasticsearch` gem / `Elasticsearch::Client`) or the OpenSearch
+// fork (`opensearch-ruby` / `OpenSearch::Client`), which share the identical
+// `client.search(index: 'x', ...)` call shape. The import gate keeps the broad
+// `index:` literal surface (esIndexKeyRe) from firing on unrelated Ruby hashes.
+func mentionsRubyElastic(src string) bool {
+	return strings.Contains(src, "Elasticsearch::Client") ||
+		strings.Contains(src, "elasticsearch") ||
+		strings.Contains(src, "Elasticsearch") ||
+		strings.Contains(src, "OpenSearch::Client") ||
+		strings.Contains(src, "opensearch")
+}
+
 func scanRubyDrivers(src string, funcs []funcSpan, emit emitORMQueryFn) {
 	if mentionsRubyMongo(src) {
 		for _, m := range rubyMongoCollRe.FindAllStringSubmatchIndex(src, -1) {
@@ -434,6 +448,15 @@ func scanRubyDrivers(src string, funcs []funcSpan, emit emitORMQueryFn) {
 	}
 	if mentionsRubyCassandra(src) {
 		emitCQLTargets(src, funcs, emit, rubyCqlRe)
+	}
+	// Elasticsearch (elasticsearch-ruby / opensearch-ruby): the dominant Ruby
+	// ES idiom is `client.search(index: 'users', body: {...})`, whose index
+	// literal is captured by the shared esIndexKeyRe and attributed to the
+	// resource by the language-agnostic emitElasticTargets — exactly as the
+	// C#/PHP/Python driver passes do (#3645). Dynamic index names (a variable)
+	// are honest-skipped because esIndexKeyRe only captures quoted literals.
+	if mentionsRubyElastic(src) {
+		emitElasticTargets(src, funcs, emit)
 	}
 }
 

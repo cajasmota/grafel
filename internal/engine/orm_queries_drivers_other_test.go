@@ -336,3 +336,58 @@ end
 		t.Errorf("expected orm=dynamodb, got %q", e.ORM)
 	}
 }
+
+func TestDriver_RubyElasticIndex(t *testing.T) {
+	src := `require 'elasticsearch'
+class LogSearch
+  def search
+    client = Elasticsearch::Client.new
+    client.search(index: 'logs', body: { query: { match_all: {} } })
+  end
+end
+`
+	edges := detectORM(t, "ruby", "log_search.rb", src)
+	e := assertEdgeExists(t, edges, "Function:search", "Class:Log", "find")
+	if e.ORM != "elastic" {
+		t.Errorf("expected orm=elastic, got %q", e.ORM)
+	}
+}
+
+// Dynamic-index negative: an index name bound to a variable is not a static
+// literal, so esIndexKeyRe must not capture it — no hallucinated edge.
+func TestDriver_RubyElasticDynamicIndexSkipped(t *testing.T) {
+	src := `require 'elasticsearch'
+class LogSearch
+  def search(idx)
+    client = Elasticsearch::Client.new
+    client.search(index: idx, body: {})
+  end
+end
+`
+	edges := detectORM(t, "ruby", "log_search.rb", src)
+	for _, e := range edges {
+		if e.ORM == "elastic" {
+			t.Errorf("expected no elastic edge for dynamic index, got %+v", e)
+		}
+	}
+}
+
+// Neo4j Ruby: the language-agnostic datastore-infra pass (scanDatastoreInfraDrivers,
+// run for Ruby in applyORMQueries) attributes `session.run("MATCH (n:Label) ...")`
+// Cypher to the node label. This asserts the Ruby neo4j-ruby-driver call shape
+// genuinely fires the cross-language Cypher emitter — the basis for crediting
+// lang.ruby.driver.neo4j query_attribution.
+func TestDriver_RubyNeo4jCypher(t *testing.T) {
+	src := `require 'neo4j/driver'
+class UserGraph
+  def find_users
+    session.run("MATCH (u:User) RETURN u")
+  end
+end
+`
+	edges := detectORM(t, "ruby", "user_graph.rb", src)
+	e := assertEdgeExists(t, edges, "Function:find_users", "Class:User", "find")
+	if e.ORM != "neo4j" {
+		t.Errorf("expected orm=neo4j, got %q", e.ORM)
+	}
+}
