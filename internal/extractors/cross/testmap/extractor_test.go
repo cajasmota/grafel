@@ -3723,3 +3723,117 @@ end`
 		t.Errorf("assert_raise must be stop-worded")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Elixir trailing-framework Testing.tests_linkage credit (#4027, epic #3872,
+// from Elixir audit #3885).
+//
+// The deep ExUnit TESTS linkage is framework-AGNOSTIC: it keys on the `.exs`
+// test file + `use ExUnit.Case` import hint and resolves `test "…" do` leaves
+// to their production call targets regardless of which Elixir framework the
+// system-under-test uses. The flagship Elixir frameworks (oban/phoenix/plug/
+// absinthe/…) already carry Testing.tests_linkage at `full`; these tests prove
+// the SAME linkage fires on the trailing frameworks guardian/finch/tesla/req,
+// justifying the registry re-stamp to the flagship `full` sibling status.
+//
+// Each is value-asserting: it proves a SPECIFIC test->target TESTS edge to the
+// framework's real call idiom (Guardian.decode_and_verify, Finch.request,
+// Tesla.post, Req.post), and that the ExUnit `assert` macro is stop-worded.
+// ---------------------------------------------------------------------------
+
+// TestElixir_Guardian_TestsLinkage — an ExUnit test for a Guardian token
+// pipeline links to Guardian.decode_and_verify.
+func TestElixir_Guardian_TestsLinkage(t *testing.T) {
+	src := `defmodule MyApp.Auth.PipelineTest do
+  use ExUnit.Case
+
+  test "verifies a signed token" do
+    assert {:ok, _claims} = Guardian.decode_and_verify(token)
+  end
+end`
+	recs := runExtract(t, "test/my_app/auth/pipeline_test.exs", "elixir", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected elixir entities for guardian ExUnit test")
+	}
+	if recs[0].Properties["test_framework"] != "exunit" {
+		t.Errorf("framework=%q, want exunit", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_verifies_a_signed_token", "Guardian.decode_and_verify") {
+		t.Fatalf("expected TESTS edge to Guardian.decode_and_verify; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_verifies_a_signed_token", "assert") {
+		t.Errorf("assert macro must be stop-worded, not a tested target")
+	}
+}
+
+// TestElixir_Finch_TestsLinkage — an ExUnit test for a Finch HTTP client links
+// to Finch.request.
+func TestElixir_Finch_TestsLinkage(t *testing.T) {
+	src := `defmodule MyApp.HttpClientTest do
+  use ExUnit.Case
+
+  test "issues the request" do
+    assert {:ok, _resp} = Finch.request(req, MyApp.Finch)
+  end
+end`
+	recs := runExtract(t, "test/my_app/http_client_test.exs", "elixir", src)
+	if recs[0].Properties["test_framework"] != "exunit" {
+		t.Errorf("framework=%q, want exunit", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_issues_the_request", "Finch.request") {
+		t.Fatalf("expected TESTS edge to Finch.request; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_issues_the_request", "assert") {
+		t.Errorf("assert macro must be stop-worded, not a tested target")
+	}
+}
+
+// TestElixir_Tesla_TestsLinkage — an ExUnit test for a Tesla API client links
+// to the client wrapper under test (MyApp.ApiClient.create_order). NOTE the
+// bare HTTP verb method `Tesla.post` is deliberately stop-worded by the
+// resolver (HTTP verbs are test-dispatch helpers, not production targets), so
+// the linkage flows through the framework's own wrapper call — the honest,
+// real-idiom target for a Tesla client test.
+func TestElixir_Tesla_TestsLinkage(t *testing.T) {
+	src := `defmodule MyApp.ApiClientTest do
+  use ExUnit.Case
+
+  test "creates an order via the client" do
+    assert {:ok, _env} = MyApp.ApiClient.create_order(client, %{name: "x"})
+  end
+end`
+	recs := runExtract(t, "test/my_app/api_client_test.exs", "elixir", src)
+	if recs[0].Properties["test_framework"] != "exunit" {
+		t.Errorf("framework=%q, want exunit", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_creates_an_order_via_the_client", "MyApp.ApiClient.create_order") {
+		t.Fatalf("expected TESTS edge to MyApp.ApiClient.create_order; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_creates_an_order_via_the_client", "assert") {
+		t.Errorf("assert macro must be stop-worded, not a tested target")
+	}
+}
+
+// TestElixir_Req_TestsLinkage — an ExUnit test for a Req HTTP client links to
+// the client wrapper under test (MyApp.ReqClient.post_event). As with Tesla,
+// the bare `Req.post` HTTP verb is stop-worded; the linkage flows through the
+// framework's own wrapper function — the honest, real-idiom target.
+func TestElixir_Req_TestsLinkage(t *testing.T) {
+	src := `defmodule MyApp.ReqClientTest do
+  use ExUnit.Case
+
+  test "posts an event via the client" do
+    assert {:ok, _resp} = MyApp.ReqClient.post_event(payload)
+  end
+end`
+	recs := runExtract(t, "test/my_app/req_client_test.exs", "elixir", src)
+	if recs[0].Properties["test_framework"] != "exunit" {
+		t.Errorf("framework=%q, want exunit", recs[0].Properties["test_framework"])
+	}
+	if !hasEdgeAny(recs, "it_posts_an_event_via_the_client", "MyApp.ReqClient.post_event") {
+		t.Fatalf("expected TESTS edge to MyApp.ReqClient.post_event; recs=%+v", recs)
+	}
+	if hasEdgeAny(recs, "it_posts_an_event_via_the_client", "assert") {
+		t.Errorf("assert macro must be stop-worded, not a tested target")
+	}
+}

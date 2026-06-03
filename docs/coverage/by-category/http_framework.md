@@ -36,14 +36,14 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [elixir](../by-language/elixir.md) | [Ash Framework](../detail/lang.elixir.framework.ash.md) | 🟡 3/6 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
 | [elixir](../by-language/elixir.md) | [Bandit](../detail/lang.elixir.framework.bandit.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 3/8 | |
 | [elixir](../by-language/elixir.md) | [Cowboy](../detail/lang.elixir.framework.cowboy.md) | 🟡 3/6 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 4/9 | |
-| [elixir](../by-language/elixir.md) | [Finch](../detail/lang.elixir.framework.finch.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 10/24 | 🔴 0/12 | |
-| [elixir](../by-language/elixir.md) | [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 11/25 | 🔴 0/11 | |
+| [elixir](../by-language/elixir.md) | [Finch](../detail/lang.elixir.framework.finch.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 10/24 | 🟡 3/12 | |
+| [elixir](../by-language/elixir.md) | [Guardian](../detail/lang.elixir.framework.guardian.md) | 🔴 0/6 | ✅ 1/1 | 🔴 0/4 | ✅ 1/1 | 🟡 11/25 | 🟡 3/11 | |
 | [elixir](../by-language/elixir.md) | [Nerves (embedded)](../detail/lang.elixir.framework.nerves.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 1/6 | |
 | [elixir](../by-language/elixir.md) | [Oban (job queue)](../detail/lang.elixir.framework.oban.md) | 🟡 1/4 | — | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 5/10 | |
 | [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
 | [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 3/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/11 | |
-| [elixir](../by-language/elixir.md) | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 9/24 | 🔴 0/12 | |
-| [elixir](../by-language/elixir.md) | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 10/24 | 🟡 1/12 | |
+| [elixir](../by-language/elixir.md) | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 9/24 | 🟡 3/12 | |
+| [elixir](../by-language/elixir.md) | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 10/24 | 🟡 4/12 | |
 | [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
 | [go](../by-language/go.md) | [Echo](../detail/lang.go.framework.echo.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |

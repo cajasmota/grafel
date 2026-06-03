@@ -181,6 +181,159 @@ end
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Elixir trailing-framework Observability credit (#4027, epic #3872, from
+// Elixir audit #3885).
+//
+// custom_elixir_observability is framework-AGNOSTIC: it fires on ANY .ex
+// dispatched as language "elixir" with no framework gate, capturing Logger.*
+// (log), :telemetry.execute / Telemetry.Metrics (metric) and :telemetry.span
+// (trace). The flagship Elixir frameworks carry Observability.{log,metric,
+// trace}_extraction at `partial`; these tests prove the SAME artifacts fire on
+// the trailing frameworks guardian/finch/tesla/req — justifying the registry
+// re-stamp to the flagship `partial` sibling status.
+//
+// Each is value-asserting: it proves a SPECIFIC named artifact on each
+// framework's real idiom (a Logger.info message, a dotted :telemetry.execute
+// metric name, and a dotted :telemetry.span trace name). The cells stay
+// PARTIAL for the same reason as the flagships (handler-attach / reporter /
+// exporter binding spans multiple files and is not resolved here).
+// ---------------------------------------------------------------------------
+
+func assertLog(t *testing.T, ents []entitySummary, level, message string) {
+	t.Helper()
+	e := findEntity(ents, "SCOPE.Pattern", "Logger."+level)
+	if e == nil {
+		t.Fatalf("expected Logger.%s log_statement", level)
+	}
+	if e.Subtype != "log_statement" {
+		t.Errorf("expected subtype log_statement, got %q", e.Subtype)
+	}
+	if got := e.Props["message"]; got != message {
+		t.Errorf("expected message %q, got %q", message, got)
+	}
+	if got := e.Props["signal"]; got != "log" {
+		t.Errorf("expected signal log, got %q", got)
+	}
+}
+
+func assertMetric(t *testing.T, ents []entitySummary, event string) {
+	t.Helper()
+	e := findEntity(ents, "SCOPE.Pattern", event)
+	if e == nil {
+		t.Fatalf("expected metric %s", event)
+	}
+	if e.Subtype != "metric" {
+		t.Errorf("expected subtype metric, got %q", e.Subtype)
+	}
+	if got := e.Props["telemetry_event"]; got != event {
+		t.Errorf("expected telemetry_event %s, got %q", event, got)
+	}
+	if got := e.Props["signal"]; got != "metric" {
+		t.Errorf("expected signal metric, got %q", got)
+	}
+}
+
+func assertTrace(t *testing.T, ents []entitySummary, event string) {
+	t.Helper()
+	e := findEntity(ents, "SCOPE.Pattern", event)
+	if e == nil {
+		t.Fatalf("expected trace_span %s", event)
+	}
+	if e.Subtype != "trace_span" {
+		t.Errorf("expected subtype trace_span, got %q", e.Subtype)
+	}
+	if got := e.Props["span_name"]; got != event {
+		t.Errorf("expected span_name %s, got %q", event, got)
+	}
+	if got := e.Props["signal"]; got != "trace" {
+		t.Errorf("expected signal trace, got %q", got)
+	}
+}
+
+// TestObservability_Guardian_Trailing — a Guardian auth pipeline that logs a
+// verification result, emits a :telemetry.execute auth metric and a
+// :telemetry.span around verification.
+func TestObservability_Guardian_Trailing(t *testing.T) {
+	src := `defmodule MyApp.Auth.Pipeline do
+  use Guardian.Plug.Pipeline, otp_app: :my_app
+  require Logger
+
+  def authenticate(token) do
+    Logger.info("guardian authenticated user")
+    :telemetry.execute([:my_app, :guardian, :verify], %{count: 1}, %{})
+    :telemetry.span([:my_app, :guardian, :pipeline], %{}, fn ->
+      {Guardian.decode_and_verify(token), %{}}
+    end)
+  end
+end`
+	ents := extract(t, "custom_elixir_observability", fi("pipeline.ex", "elixir", src))
+	assertLog(t, ents, "info", "guardian authenticated user")
+	assertMetric(t, ents, "my_app.guardian.verify")
+	assertTrace(t, ents, "my_app.guardian.pipeline")
+}
+
+// TestObservability_Finch_Trailing — a Finch HTTP client that logs the fetch,
+// emits a request metric and wraps the call in a :telemetry.span.
+func TestObservability_Finch_Trailing(t *testing.T) {
+	src := `defmodule MyApp.HttpClient do
+  require Logger
+
+  def fetch_user(id) do
+    Logger.info("finch fetched user")
+    :telemetry.execute([:my_app, :finch, :request, :stop], %{duration: 1}, %{})
+    :telemetry.span([:my_app, :finch, :request], %{}, fn ->
+      {Finch.request(req, MyApp.Finch), %{}}
+    end)
+  end
+end`
+	ents := extract(t, "custom_elixir_observability", fi("http_client.ex", "elixir", src))
+	assertLog(t, ents, "info", "finch fetched user")
+	assertMetric(t, ents, "my_app.finch.request.stop")
+	assertTrace(t, ents, "my_app.finch.request")
+}
+
+// TestObservability_Tesla_Trailing — a Tesla API client that logs the call,
+// emits a request metric and wraps the post in a :telemetry.span.
+func TestObservability_Tesla_Trailing(t *testing.T) {
+	src := `defmodule MyApp.ApiClient do
+  use Tesla
+  require Logger
+
+  def create_order(client, payload) do
+    Logger.info("tesla creating order")
+    :telemetry.execute([:my_app, :tesla, :call, :stop], %{duration: 2}, %{})
+    :telemetry.span([:my_app, :tesla, :call], %{}, fn ->
+      {Tesla.post(client, "/orders", payload), %{}}
+    end)
+  end
+end`
+	ents := extract(t, "custom_elixir_observability", fi("api_client.ex", "elixir", src))
+	assertLog(t, ents, "info", "tesla creating order")
+	assertMetric(t, ents, "my_app.tesla.call.stop")
+	assertTrace(t, ents, "my_app.tesla.call")
+}
+
+// TestObservability_Req_Trailing — a Req HTTP client that logs the post, emits
+// a request metric and wraps the post in a :telemetry.span.
+func TestObservability_Req_Trailing(t *testing.T) {
+	src := `defmodule MyApp.ReqClient do
+  require Logger
+
+  def post_event(payload) do
+    Logger.info("req posting event")
+    :telemetry.execute([:my_app, :req, :post, :stop], %{duration: 3}, %{})
+    :telemetry.span([:my_app, :req, :post], %{}, fn ->
+      {Req.post(base, json: payload), %{}}
+    end)
+  end
+end`
+	ents := extract(t, "custom_elixir_observability", fi("req_client.ex", "elixir", src))
+	assertLog(t, ents, "info", "req posting event")
+	assertMetric(t, ents, "my_app.req.post.stop")
+	assertTrace(t, ents, "my_app.req.post")
+}
+
 func TestObservabilityNoMatch(t *testing.T) {
 	src := `defmodule MyApp.Plain do
   def add(a, b), do: a + b

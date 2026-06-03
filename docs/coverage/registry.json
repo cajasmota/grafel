@@ -14641,22 +14641,33 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage (framework-agnostic; keys on .exs + use ExUnit.Case): ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/...). Value-asserting test in extractor_test.go (TestElixir_Finch_TestsLinkage) asserts the finch-idiom ExUnit test-\u003etarget edge to Finch.request. Sibling of the flagship full status (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.debug/info/warning/error(...) statements captured by framework-agnostic observabilityExtractor (fires on any .ex) as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. Value-asserting test (TestObservability_Finch_Trailing) asserts the finch-idiom Logger.info artifact. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Finch_Trailing) proves the exact finch-idiom :telemetry.execute event name. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Finch_Trailing) proves the exact finch-idiom :telemetry.span name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file). Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Data": {
@@ -15176,22 +15187,33 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage (framework-agnostic; keys on .exs + use ExUnit.Case): ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/...). Value-asserting test in extractor_test.go (TestElixir_Guardian_TestsLinkage) asserts the guardian-idiom ExUnit test-\u003etarget edge to Guardian.decode_and_verify. Sibling of the flagship full status (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.debug/info/warning/error(...) statements captured by framework-agnostic observabilityExtractor (fires on any .ex) as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. Value-asserting test (TestObservability_Guardian_Trailing) asserts the guardian-idiom Logger.info artifact. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Guardian_Trailing) proves the exact guardian-idiom :telemetry.execute event name. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Guardian_Trailing) proves the exact guardian-idiom :telemetry.span name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file). Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Substrate": {
@@ -16767,22 +16789,33 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage (framework-agnostic; keys on .exs + use ExUnit.Case): ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/...). Value-asserting test in extractor_test.go (TestElixir_Req_TestsLinkage) asserts the req-idiom ExUnit test-\u003etarget edge to MyApp.ReqClient.post_event. Sibling of the flagship full status (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.debug/info/warning/error(...) statements captured by framework-agnostic observabilityExtractor (fires on any .ex) as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. Value-asserting test (TestObservability_Req_Trailing) asserts the req-idiom Logger.info artifact. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Req_Trailing) proves the exact req-idiom :telemetry.execute event name. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Req_Trailing) proves the exact req-idiom :telemetry.span name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file). Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Data": {
@@ -17021,22 +17054,33 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "Deep testmap Elixir TESTS linkage (framework-agnostic; keys on .exs + use ExUnit.Case): ExUnit (test \"...\" do leaves, describe groups via balanced do/end body walk) + StreamData (property \"...\" do) with subject-from-module-name + body call resolution (Foo.bar(...) promoted high); Elixir assertion stopwords (assert/refute/assert_raise/...). Value-asserting test in extractor_test.go (TestElixir_Tesla_TestsLinkage) asserts the tesla-idiom ExUnit test-\u003etarget edge to MyApp.ApiClient.create_order. Sibling of the flagship full status (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "Logger.debug/info/warning/error(...) statements captured by framework-agnostic observabilityExtractor (fires on any .ex) as SCOPE.Pattern/log_statement with log_level + leading string-literal message; Logger.metadata(...) captured. Value-asserting test (TestObservability_Tesla_Trailing) asserts the tesla-idiom Logger.info artifact. PARTIAL: logger require/import and message binding not correlated cross-file; interpolated/concatenated message tails not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.execute([:a,:b],...) event names and Telemetry.Metrics counter/summary/last_value/distribution/sum(\"name\") captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/metric (metric_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Tesla_Trailing) proves the exact tesla-idiom :telemetry.execute event name. PARTIAL: metric/event name -\u003e :telemetry.attach handler -\u003e reporter/exporter wiring spans multiple files and is not resolved. Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "issue": "https://github.com/cajasmota/archigraph/issues/3474",
+            "notes": ":telemetry.span([:a,:b],...) event-prefix captured by framework-agnostic observabilityExtractor as SCOPE.Pattern/trace_span (span_name + telemetry_event) when literal at call site. Value-asserting test (TestObservability_Tesla_Trailing) proves the exact tesla-idiom :telemetry.span name. PARTIAL: idiomatic Elixir has no static OTel span/exporter binding; spans are bridged from :telemetry events by a handler attached at runtime (cross-file). Sibling of flagship partial (#4027).",
+            "verified_at": "2026-06-03"
           }
         },
         "Data": {
