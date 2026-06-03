@@ -353,6 +353,66 @@ func TestRustObs_WrongLang(t *testing.T) {
 	}
 }
 
+// TestRustObs_FrameworkAttribution_Utoipa is the VALUE-ASSERTING probe for the
+// parity-grind-rust fix. utoipa is an OpenAPI-documentation layer: handler
+// modules annotated with #[utoipa::path]/#[derive(ToSchema)] emit the same
+// framework-agnostic observability signals (tracing span / metric / log macro)
+// recognised by rustObsSignals. Before the utoipa import marker was added, a
+// utoipa-only handler module's observability entities were emitted with
+// framework="" and so were NOT credited to the per-framework metric/trace/log
+// cells. This probe drives a utoipa-only file through the live scanner and
+// asserts (a) the EXACT metric/span/log entity is emitted and (b) each carries
+// framework="utoipa" — the property the per-framework coverage cells depend on.
+func TestRustObs_FrameworkAttribution_Utoipa(t *testing.T) {
+	src := `
+use utoipa::OpenApi;
+use utoipa::ToSchema;
+use tracing::{info, info_span};
+
+#[utoipa::path(get, path = "/users/{id}", responses((status = 200, body = User)))]
+async fn get_user(id: i32) -> User {
+    let _s = info_span!("utoipa_get_user");
+    metrics::counter!("utoipa_requests_total", 1);
+    tracing::info!("serving documented endpoint");
+    User::default()
+}
+`
+	ents := extract(t, "custom_rust_observability", fi("utoipa_handler.rs", "rust", src))
+	if len(ents) == 0 {
+		t.Fatal("expected observability entities from utoipa handler module, got none")
+	}
+
+	// (a) the exact span / metric / log entities must be present.
+	wantNames := []string{
+		"obs:tracing:tracing_level_span:info:utoipa_get_user",        // trace_extraction
+		"obs:metrics:metrics_macro:counter:utoipa_requests_total",    // metric_extraction
+		"obs:logging:tracing_macro:info:serving documented endpoint", // log_extraction
+	}
+	for _, n := range wantNames {
+		if !containsEntity(ents, "SCOPE.Pattern", n) {
+			t.Errorf("expected observability entity %q", n)
+		}
+	}
+
+	// (b) the captured concrete names are asserted by value (never len>0).
+	if got := obsNameOf(ents, "obs:metrics:metrics_macro:counter:utoipa_requests_total"); got != "utoipa_requests_total" {
+		t.Errorf("metric observability_name = %q, want %q", got, "utoipa_requests_total")
+	}
+	if got := obsNameOf(ents, "obs:tracing:tracing_level_span:info:utoipa_get_user"); got != "utoipa_get_user" {
+		t.Errorf("span observability_name = %q, want %q", got, "utoipa_get_user")
+	}
+
+	// (c) every emitted entity is attributed to the utoipa per-framework cell.
+	for _, e := range ents {
+		if e.Kind != "SCOPE.Pattern" {
+			continue
+		}
+		if got := e.Props["framework"]; got != "utoipa" {
+			t.Errorf("entity %q: framework = %q, want %q", e.Name, got, "utoipa")
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Auth — JWT signals
 // ---------------------------------------------------------------------------

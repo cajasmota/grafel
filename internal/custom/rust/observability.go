@@ -98,6 +98,14 @@ var rustObsFrameworkMarkers = []struct {
 	// unchanged — these markers only affect attribution.
 	{"tonic", regexp.MustCompile(`\buse\s+tonic\b|tonic::`)},
 	{"async-graphql", regexp.MustCompile(`\buse\s+async_graphql\b|async_graphql::`)},
+	// Issue (parity-grind-rust) — utoipa is an OpenAPI-documentation layer that
+	// annotates handlers with #[utoipa::path]/#[derive(ToSchema)]. Such handler
+	// modules emit the same framework-agnostic observability signals (tracing
+	// spans / metrics / #[instrument]). The marker is appended LAST so that a
+	// file importing both a server framework (axum/actix/…) and utoipa is still
+	// attributed to the actual HTTP framework; the utoipa marker only catches
+	// utoipa-only handler/doc modules that would otherwise be framework="".
+	{"utoipa", regexp.MustCompile(`\buse\s+utoipa\b|utoipa::`)},
 }
 
 func detectRustObsFramework(src string) string {
