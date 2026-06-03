@@ -23,11 +23,11 @@ one is a separate detail page.
 
 | Record | Language | Kind | Status |
 |--------|----------|------|--------|
-| [`lang.c-cpp.framework.grpc`](./lang.c-cpp.framework.grpc.md) | C/C++ | framework | 6 partial, 46 missing, 2 n/a |
+| [`lang.c-cpp.framework.grpc`](./lang.c-cpp.framework.grpc.md) | C/C++ | framework | 7 full, 7 partial, 26 missing, 14 n/a |
 | [`lang.csharp.framework.grpc-net`](./lang.csharp.framework.grpc-net.md) | C# | framework | 11 full, 26 partial, 2 missing, 15 n/a |
-| [`lang.elixir.framework.grpc`](./lang.elixir.framework.grpc.md) | elixir | framework | 14 partial, 38 missing, 2 n/a |
+| [`lang.elixir.framework.grpc`](./lang.elixir.framework.grpc.md) | elixir | framework | 2 full, 20 partial, 18 missing, 14 n/a |
 | [`lang.rust.framework.tonic`](./lang.rust.framework.tonic.md) | rust | framework | 9 full, 4 partial, 35 missing, 1 n/a |
-| [`lang.scala.framework.scalapb-grpc`](./lang.scala.framework.scalapb-grpc.md) | scala | framework | 2 full, 17 partial, 33 missing, 2 n/a |
+| [`lang.scala.framework.scalapb-grpc`](./lang.scala.framework.scalapb-grpc.md) | scala | framework | 9 full, 18 partial, 10 missing, 17 n/a |
 
 ## Provenance
 

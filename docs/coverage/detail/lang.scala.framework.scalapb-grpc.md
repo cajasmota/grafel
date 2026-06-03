@@ -36,69 +36,69 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint deprecation versioning | 🔴 `missing` | — | 3963 | — | — |
-| Endpoint pagination posture | 🔴 `missing` | — | 3963 | — | — |
-| Endpoint response codes | 🔴 `missing` | — | 3963 | — | — |
-| Endpoint synthesis | 🔴 `missing` | — | 3963 | — | — |
-| Handler attribution | 🔴 `missing` | — | 3963 | — | — |
-| Route extraction | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint deprecation versioning | — `not_applicable` | — | — | — | HTTP endpoint deprecation/versioning (Sunset/Deprecation headers, /v1 route segments) is an HTTP-API concept; gRPC versions via proto package + service evolution, not HTTP route versioning. |
+| Endpoint pagination posture | — `not_applicable` | — | — | — | HTTP limit/offset/page/cursor pagination posture is an HTTP-endpoint concept; gRPC paginates via in-message fields / server-streaming, not HTTP query params. |
+| Endpoint response codes | — `not_applicable` | — | — | — | HTTP status-code sets do not apply to gRPC, which signals outcome via io.grpc.Status on the trailer, not HTTP 2xx/4xx codes. |
+| Endpoint synthesis | — `not_applicable` | — | — | — | HTTP http_endpoint synthesis (path+verb producer endpoints) does not apply to gRPC; service registration is captured as transport_binding. gRPC method addressing is package.Service/Method, not an HTTP path+verb. |
+| Handler attribution | — `not_applicable` | — | — | — | No HTTP handler->route attribution for gRPC. RPC-method->service binding is modelled by procedure_extraction (rpc/service) + the service-impl in schema_extraction, not by an HTTP route table. |
+| Route extraction | — `not_applicable` | — | — | — | gRPC has no HTTP route paths; the HTTP route extractor emits 0 entities on a gRPC service impl. RPC method addressing is package.Service/Method, surfaced via procedure_extraction + transport_binding. |
 
 ### View
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| View rendering | 🔴 `missing` | — | 3963 | — | — |
+| View rendering | — `not_applicable` | — | — | — | gRPC services render no server-side views/templates; responses are protobuf messages (tRPC returns plain typed values), not rendered views. |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | 3963 | — | — |
+| Auth coverage | 🔴 `missing` | — | 4038:auth-rpc-gap | — | The scala auth_coverage sniffer is HTTP-route/endpoint-keyed (it scans synthesized HTTP endpoints / router pipelines / framework guards), not framework-agnostic like csharp's [Authorize] attribute. VERIFIED: it emits 0 auth entities on a gRPC service idiom (XxxGrpc service trait / protobuf case classes / io.grpc.Status / StreamObserver). gRPC auth (call-credentials / metadata interceptors) is a real, untriaged gap — honest missing, not n/a. |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🔴 `missing` | — | 3963 | — | — |
-| Request validation | 🔴 `missing` | — | 3963 | — | — |
+| DTO extraction | — `not_applicable` | — | — | — | gRPC request/response payloads are protobuf messages (tRPC: zod-typed inputs), surfaced under schema_extraction; MVC DTO inference does not model them. HTTP MVC DTO extractor yields 0 entities on a gRPC service. |
+| Request validation | — `not_applicable` | — | — | — | gRPC has no MVC request-validation pipeline; message-field constraints live in proto (tRPC validates via the zod input schema, surfaced as schema, not an MVC validator). HTTP MVC validation extractor yields 0 entities here. |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | 3963 | — | — |
-| Rate limit stamping | 🔴 `missing` | — | 3963 | — | — |
+| Middleware coverage | — `not_applicable` | — | — | — | gRPC cross-cutting concerns use interceptors (tRPC: middleware links), not the HTTP framework's Use*/plug/filter request-pipeline. The HTTP middleware extractor yields 0 entities on a gRPC service; interceptor cataloguing is potential future work. |
+| Rate limit stamping | — `not_applicable` | — | — | — | HTTP endpoint rate-limit/throttle stamping is an HTTP-middleware concept; gRPC throttling is done via interceptors/server options, not HTTP rate limiters. |
 
 ### Type System
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | 3963 | — | — |
-| Interface extraction | 🔴 `missing` | — | 3963 | — | — |
-| Type alias extraction | 🔴 `missing` | — | 3963 | — | — |
-| Type extraction | 🔴 `missing` | — | 3963 | — | — |
+| Enum extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | language-level type-system sniffer is framework-agnostic; fires on enums in gRPC service/contract code. VERIFIED on the gRPC idiom. |
+| Interface extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | framework-agnostic; fires on the gRPC service impl/contract interface. VERIFIED on the gRPC idiom. |
+| Type alias extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | framework-agnostic; fires on type aliases in gRPC code. VERIFIED on the gRPC idiom. |
+| Type extraction | ✅ `full` | `2026-06-03` | — | `internal/custom/scala/type_system.go` | framework-agnostic; fires on every gRPC service-impl class / payload struct / case class. VERIFIED on the gRPC idiom. |
 
 ### DI
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DI binding extraction | 🔴 `missing` | — | 3963 | — | — |
-| DI injection point | 🔴 `missing` | — | 3963 | — | — |
-| DI scope resolution | 🔴 `missing` | — | 3963 | — | — |
+| DI binding extraction | — `not_applicable` | — | — | — | matches the scala HTTP flagship (http4s): scala backends compose via explicit constructors/`Resource`/cats-effect wiring, not a runtime DI container; nothing for the DI sniffer to bind on a scalapb gRPC impl. |
+| DI injection point | — `not_applicable` | — | — | — | matches the scala HTTP flagship (http4s): scala backends compose via explicit constructors/`Resource`/cats-effect wiring, not a runtime DI container; nothing for the DI sniffer to bind on a scalapb gRPC impl. |
+| DI scope resolution | — `not_applicable` | — | — | — | matches the scala HTTP flagship (http4s): scala backends compose via explicit constructors/`Resource`/cats-effect wiring, not a runtime DI container; nothing for the DI sniffer to bind on a scalapb gRPC impl. |
 
 ### Testing
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🔴 `missing` | — | 3963 | — | — |
+| Tests linkage | ✅ `full` | `2026-06-03` | — | `internal/extractors/cross/testmap/frameworks.go` | test-framework sniffer keys on the standard test macros, not the framework-under-test; links gRPC service/router tests like any other test. VERIFIED a named test case is extracted from a gRPC test idiom. |
 
 ### Observability
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Log extraction | 🔴 `missing` | — | 3963 | — | — |
-| Metric extraction | 🔴 `missing` | — | 3963 | — | — |
-| Trace extraction | 🔴 `missing` | — | 3963 | — | — |
+| Log extraction | 🟢 `partial` | — | — | `internal/custom/scala/frameworks.go` | logging sniffer is library/call-keyed (framework-agnostic); fires on a gRPC service that logs. VERIFIED on the gRPC idiom. PARTIAL: heuristic. |
+| Metric extraction | ✅ `full` | — | — | `internal/custom/scala/frameworks.go` | metric sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument metrics. VERIFIED on the gRPC idiom. |
+| Trace extraction | ✅ `full` | — | — | `internal/custom/scala/frameworks.go` | trace sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument traces. |
 
 ### Substrate
 
@@ -121,7 +121,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🟢 `partial` | `2026-06-03` | — | `internal/links/pure_function_pass.go` | Language-agnostic pure-function pass tags Scala functions with no effect properties; framework-agnostic (esp. apt for effectful/functional Scala idioms). |
 | Reachability analysis | 🟢 `partial` | `2026-06-03` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_scala.go` | Language-agnostic reachability pass seeded from Scala entry points (entry_points_scala.go); framework-agnostic. |
 | Request shape extraction | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/scala/grpc.go`<br>`internal/custom/scala/grpc_test.go` | Request message type NAME recovered from the RPC param type; field shapes live in ScalaPB-generated message companions (not statically present). Value-asserted (HelloRequest). |
-| Request sink dataflow | 🔴 `missing` | — | 3963 | — | — |
+| Request sink dataflow | — `not_applicable` | — | — | — | The request->sink dataflow sniffer roots taint at HTTP MVC binders / request accessors. gRPC methods take a strongly-typed protobuf request (tRPC: a zod-typed input) + call context, with no HTTP MVC request-root to seed; not applicable to this transport. |
 | Response shape extraction | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/scala/grpc.go`<br>`internal/custom/scala/grpc_test.go` | Response message type NAME recovered as the last effect type-argument (Future/ZIO/F[_]); generated message field shapes not statically resolvable. Value-asserted (HelloReply). |
 | Sanitizer recognition | 🟢 `partial` | `2026-06-03` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | Scala taint sniffer (taint_sites_scala.go) recognises parameterised-SQL/HTML-escape/Form-mapping sanitizers; framework-agnostic. |
 | Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

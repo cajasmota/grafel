@@ -4343,78 +4343,87 @@
         },
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint deprecation/versioning (Sunset/Deprecation headers, /v1 route segments) is an HTTP-API concept; gRPC versions via proto package + service evolution, not HTTP route versioning."
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP limit/offset/page/cursor pagination posture is an HTTP-endpoint concept; gRPC paginates via in-message fields / server-streaming, not HTTP query params."
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP status-code sets do not apply to gRPC, which signals outcome via grpc::StatusCode on the trailer, not HTTP 2xx/4xx codes."
           },
           "endpoint_synthesis": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP http_endpoint synthesis (path+verb producer endpoints) does not apply to gRPC; service registration is captured as transport_binding. gRPC method addressing is package.Service/Method, not an HTTP path+verb."
           },
           "handler_attribution": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "No HTTP handler-\u003eroute attribution for gRPC. RPC-method-\u003eservice binding is modelled by procedure_extraction (rpc/service) + the service-impl in schema_extraction, not by an HTTP route table."
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC has no HTTP route paths; the HTTP route extractor emits 0 entities on a gRPC service impl. RPC method addressing is package.Service/Method, surfaced via procedure_extraction + transport_binding."
           }
         },
         "View": {
           "view_rendering": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC services render no server-side views/templates; responses are protobuf messages (tRPC returns plain typed values), not rendered views."
           }
         },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
-            "issue": "3963"
+            "issue": "4038:auth-rpc-gap",
+            "notes": "The c-cpp auth_coverage sniffer is HTTP-route/endpoint-keyed (it scans synthesized HTTP endpoints / router pipelines / framework guards), not framework-agnostic like csharp's [Authorize] attribute. VERIFIED: it emits 0 auth entities on a gRPC service idiom (grpc::ServerContext / protobuf messages / grpc::StatusCode / RegisterService). gRPC auth (call-credentials / metadata interceptors) is a real, untriaged gap — honest missing, not n/a."
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC request/response payloads are protobuf messages (tRPC: zod-typed inputs), surfaced under schema_extraction; MVC DTO inference does not model them. HTTP MVC DTO extractor yields 0 entities on a gRPC service."
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC has no MVC request-validation pipeline; message-field constraints live in proto (tRPC validates via the zod input schema, surfaced as schema, not an MVC validator). HTTP MVC validation extractor yields 0 entities here."
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC cross-cutting concerns use interceptors (tRPC: middleware links), not the HTTP framework's Use*/plug/filter request-pipeline. The HTTP middleware extractor yields 0 entities on a gRPC service; interceptor cataloguing is potential future work."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint rate-limit/throttle stamping is an HTTP-middleware concept; gRPC throttling is done via interceptors/server options, not HTTP rate limiters."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "language-level type-system sniffer is framework-agnostic; fires on enums in gRPC service/contract code. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "framework-agnostic; fires on the gRPC service impl/contract interface. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "framework-agnostic; fires on type aliases in gRPC code. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/cpp/extractor.go"],
+            "notes": "framework-agnostic; fires on every gRPC service-impl class / payload struct / case class. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "DI": {
@@ -4433,22 +4442,27 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks_cpp.go","internal/extractors/cross/testmap/resolver.go"],
+            "notes": "test-framework sniffer keys on the standard test macros, not the framework-under-test; links gRPC service/router tests like any other test. VERIFIED a named test case is extracted from a gRPC test idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
+            "notes": "logging sniffer is library/call-keyed (framework-agnostic); fires on a gRPC service that logs. VERIFIED on the gRPC idiom. PARTIAL: heuristic."
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
+            "notes": "metric sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument metrics. VERIFIED on the gRPC idiom."
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/cpp/observability.go","internal/substrate/template_pattern_c_cpp.go"],
+            "notes": "trace sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument traces."
           }
         },
         "Substrate": {
@@ -4524,8 +4538,8 @@
             "verified_at": "2026-05-30"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "The request-\u003esink dataflow sniffer roots taint at HTTP MVC binders / request accessors. gRPC methods take a strongly-typed protobuf request (tRPC: a zod-typed input) + call context, with no HTTP MVC request-root to seed; not applicable to this transport."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -14812,78 +14826,87 @@
         },
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint deprecation/versioning (Sunset/Deprecation headers, /v1 route segments) is an HTTP-API concept; gRPC versions via proto package + service evolution, not HTTP route versioning."
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP limit/offset/page/cursor pagination posture is an HTTP-endpoint concept; gRPC paginates via in-message fields / server-streaming, not HTTP query params."
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP status-code sets do not apply to gRPC, which signals outcome via GRPC.RPCError on the trailer, not HTTP 2xx/4xx codes."
           },
           "endpoint_synthesis": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP http_endpoint synthesis (path+verb producer endpoints) does not apply to gRPC; service registration is captured as transport_binding. gRPC method addressing is package.Service/Method, not an HTTP path+verb."
           },
           "handler_attribution": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "No HTTP handler-\u003eroute attribution for gRPC. RPC-method-\u003eservice binding is modelled by procedure_extraction (rpc/service) + the service-impl in schema_extraction, not by an HTTP route table."
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC has no HTTP route paths; the HTTP route extractor emits 0 entities on a gRPC service impl. RPC method addressing is package.Service/Method, surfaced via procedure_extraction + transport_binding."
           }
         },
         "View": {
           "view_rendering": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC services render no server-side views/templates; responses are protobuf messages (tRPC returns plain typed values), not rendered views."
           }
         },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
-            "issue": "3963"
+            "issue": "4038:auth-rpc-gap",
+            "notes": "The elixir auth_coverage sniffer is HTTP-route/endpoint-keyed (it scans synthesized HTTP endpoints / router pipelines / framework guards), not framework-agnostic like csharp's [Authorize] attribute. VERIFIED: it emits 0 auth entities on a gRPC service idiom (GRPC.Server callbacks / protobuf structs / GRPC.RPCError / GRPC.Server.Stream). gRPC auth (call-credentials / metadata interceptors) is a real, untriaged gap — honest missing, not n/a."
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC request/response payloads are protobuf messages (tRPC: zod-typed inputs), surfaced under schema_extraction; MVC DTO inference does not model them. HTTP MVC DTO extractor yields 0 entities on a gRPC service."
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC has no MVC request-validation pipeline; message-field constraints live in proto (tRPC validates via the zod input schema, surfaced as schema, not an MVC validator). HTTP MVC validation extractor yields 0 entities here."
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC cross-cutting concerns use interceptors (tRPC: middleware links), not the HTTP framework's Use*/plug/filter request-pipeline. The HTTP middleware extractor yields 0 entities on a gRPC service; interceptor cataloguing is potential future work."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint rate-limit/throttle stamping is an HTTP-middleware concept; gRPC throttling is done via interceptors/server options, not HTTP rate limiters."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "notes": "language-level type-system sniffer is framework-agnostic; fires on enums in gRPC service/contract code. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "notes": "framework-agnostic; fires on the gRPC service impl/contract interface. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "notes": "framework-agnostic; fires on type aliases in gRPC code. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/elixir/typespec.go"],
+            "notes": "framework-agnostic; fires on every gRPC service-impl class / payload struct / case class. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "DI": {
@@ -14902,22 +14925,27 @@
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "test-framework sniffer keys on the standard test macros, not the framework-under-test; links gRPC service/router tests like any other test. VERIFIED a named test case is extracted from a gRPC test idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "notes": "logging sniffer is library/call-keyed (framework-agnostic); fires on a gRPC service that logs. VERIFIED on the gRPC idiom. PARTIAL: heuristic."
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "notes": "metric sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument metrics. VERIFIED on the gRPC idiom. PARTIAL: heuristic."
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/elixir/observability.go","internal/custom/elixir/observability_test.go"],
+            "notes": "trace sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument traces. PARTIAL: heuristic."
           }
         },
         "Substrate": {
@@ -15005,8 +15033,8 @@
             "verified_at": "2026-05-31"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "The request-\u003esink dataflow sniffer roots taint at HTTP MVC binders / request accessors. gRPC methods take a strongly-typed protobuf request (tRPC: a zod-typed input) + call context, with no HTTP MVC request-root to seed; not applicable to this transport."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -40322,112 +40350,126 @@
         },
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint deprecation/versioning (Sunset/Deprecation headers, /v1 route segments) is an HTTP-API concept; tRPC versions via proto package + service evolution, not HTTP route versioning."
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP limit/offset/page/cursor pagination posture is an HTTP-endpoint concept; tRPC paginates via in-message fields / server-streaming, not HTTP query params."
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP status-code sets do not apply to tRPC, which signals outcome via zod-typed input on the trailer, not HTTP 2xx/4xx codes."
           },
           "endpoint_synthesis": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP http_endpoint synthesis (path+verb producer endpoints) does not apply to tRPC; service registration is captured as transport_binding. tRPC method addressing is package.Service/Method, not an HTTP path+verb."
           },
           "handler_attribution": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "No HTTP handler-\u003eroute attribution for tRPC. RPC-method-\u003eservice binding is modelled by procedure_extraction (rpc/service) + the service-impl in schema_extraction, not by an HTTP route table."
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC has no HTTP route paths; the HTTP route extractor emits 0 entities on a tRPC service impl. RPC method addressing is package.Service/Method, surfaced via procedure_extraction + transport_binding."
           }
         },
         "View": {
           "view_rendering": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC services render no server-side views/templates; responses are protobuf messages (tRPC returns plain typed values), not rendered views."
           }
         },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
-            "issue": "3963"
+            "issue": "4038:auth-rpc-gap",
+            "notes": "The jsts auth_coverage sniffer is HTTP-route/endpoint-keyed (it scans synthesized HTTP endpoints / router pipelines / framework guards), not framework-agnostic like csharp's [Authorize] attribute. VERIFIED: it emits 0 auth entities on a tRPC service idiom (t.router/t.procedure / zod-typed input / TRPCError / links, not HTTP routes). tRPC auth (call-credentials / metadata interceptors) is a real, untriaged gap — honest missing, not n/a."
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC request/response payloads are protobuf messages (tRPC: zod-typed inputs), surfaced under schema_extraction; MVC DTO inference does not model them. HTTP MVC DTO extractor yields 0 entities on a tRPC service."
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC has no MVC request-validation pipeline; message-field constraints live in proto (tRPC validates via the zod input schema, surfaced as schema, not an MVC validator). HTTP MVC validation extractor yields 0 entities here."
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC cross-cutting concerns use interceptors (tRPC: middleware links), not the HTTP framework's Use*/plug/filter request-pipeline. The HTTP middleware extractor yields 0 entities on a tRPC service; interceptor cataloguing is potential future work."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint rate-limit/throttle stamping is an HTTP-middleware concept; tRPC throttling is done via interceptors/server options, not HTTP rate limiters."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "notes": "language-level type-system sniffer is framework-agnostic; fires on enums in tRPC service/contract code. VERIFIED on the tRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "notes": "framework-agnostic; fires on the tRPC service impl/contract interface. VERIFIED on the tRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "notes": "framework-agnostic; fires on type aliases in tRPC code. VERIFIED on the tRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/extractor.go","internal/extractors/javascript/issue1343_ts_type_extraction_test.go"],
+            "notes": "framework-agnostic; fires on every tRPC service-impl class / payload struct / case class. VERIFIED on the tRPC idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC has no DI container; procedures are plain functions/closures. The NestJS DI sniffer (@Injectable/@Module) yields 0 entities on a tRPC router. No DI mechanism to surface."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC has no DI container; procedures are plain functions/closures. The NestJS DI sniffer (@Injectable/@Module) yields 0 entities on a tRPC router. No DI mechanism to surface."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "tRPC has no DI container; procedures are plain functions/closures. The NestJS DI sniffer (@Injectable/@Module) yields 0 entities on a tRPC router. No DI mechanism to surface."
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/javascript/tests.go","internal/extractors/javascript/tests_test.go"],
+            "notes": "test-framework sniffer keys on the standard test macros, not the framework-under-test; links tRPC service/router tests like any other test. VERIFIED a named test case is extracted from a tRPC test idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "notes": "logging sniffer is library/call-keyed (framework-agnostic); fires on a tRPC service that logs. VERIFIED on the tRPC idiom. PARTIAL: heuristic."
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "notes": "metric sniffer is library-keyed (framework-agnostic); fires for tRPC services that instrument metrics. VERIFIED on the tRPC idiom. PARTIAL: heuristic."
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/patterns/observability_jsts_extractor.go","internal/patterns/observability_jsts_extractor_test.go"],
+            "notes": "trace sniffer is library-keyed (framework-agnostic); fires for tRPC services that instrument traces. PARTIAL: heuristic."
           }
         },
         "Substrate": {
@@ -40534,8 +40576,8 @@
             "verified_at": "2026-05-29"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "The request-\u003esink dataflow sniffer roots taint at HTTP MVC binders / request accessors. tRPC methods take a strongly-typed protobuf request (tRPC: a zod-typed input) + call context, with no HTTP MVC request-root to seed; not applicable to this transport."
           },
           "response_shape_extraction": {
             "status": "partial",
@@ -72390,112 +72432,126 @@
         },
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint deprecation/versioning (Sunset/Deprecation headers, /v1 route segments) is an HTTP-API concept; gRPC versions via proto package + service evolution, not HTTP route versioning."
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP limit/offset/page/cursor pagination posture is an HTTP-endpoint concept; gRPC paginates via in-message fields / server-streaming, not HTTP query params."
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP status-code sets do not apply to gRPC, which signals outcome via io.grpc.Status on the trailer, not HTTP 2xx/4xx codes."
           },
           "endpoint_synthesis": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP http_endpoint synthesis (path+verb producer endpoints) does not apply to gRPC; service registration is captured as transport_binding. gRPC method addressing is package.Service/Method, not an HTTP path+verb."
           },
           "handler_attribution": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "No HTTP handler-\u003eroute attribution for gRPC. RPC-method-\u003eservice binding is modelled by procedure_extraction (rpc/service) + the service-impl in schema_extraction, not by an HTTP route table."
           },
           "route_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC has no HTTP route paths; the HTTP route extractor emits 0 entities on a gRPC service impl. RPC method addressing is package.Service/Method, surfaced via procedure_extraction + transport_binding."
           }
         },
         "View": {
           "view_rendering": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC services render no server-side views/templates; responses are protobuf messages (tRPC returns plain typed values), not rendered views."
           }
         },
         "Auth": {
           "auth_coverage": {
             "status": "missing",
-            "issue": "3963"
+            "issue": "4038:auth-rpc-gap",
+            "notes": "The scala auth_coverage sniffer is HTTP-route/endpoint-keyed (it scans synthesized HTTP endpoints / router pipelines / framework guards), not framework-agnostic like csharp's [Authorize] attribute. VERIFIED: it emits 0 auth entities on a gRPC service idiom (XxxGrpc service trait / protobuf case classes / io.grpc.Status / StreamObserver). gRPC auth (call-credentials / metadata interceptors) is a real, untriaged gap — honest missing, not n/a."
           }
         },
         "Validation": {
           "dto_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC request/response payloads are protobuf messages (tRPC: zod-typed inputs), surfaced under schema_extraction; MVC DTO inference does not model them. HTTP MVC DTO extractor yields 0 entities on a gRPC service."
           },
           "request_validation": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC has no MVC request-validation pipeline; message-field constraints live in proto (tRPC validates via the zod input schema, surfaced as schema, not an MVC validator). HTTP MVC validation extractor yields 0 entities here."
           }
         },
         "Middleware": {
           "middleware_coverage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "gRPC cross-cutting concerns use interceptors (tRPC: middleware links), not the HTTP framework's Use*/plug/filter request-pipeline. The HTTP middleware extractor yields 0 entities on a gRPC service; interceptor cataloguing is potential future work."
           },
           "rate_limit_stamping": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "HTTP endpoint rate-limit/throttle stamping is an HTTP-middleware concept; gRPC throttling is done via interceptors/server options, not HTTP rate limiters."
           }
         },
         "Type System": {
           "enum_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "notes": "language-level type-system sniffer is framework-agnostic; fires on enums in gRPC service/contract code. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "interface_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "notes": "framework-agnostic; fires on the gRPC service impl/contract interface. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_alias_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "notes": "framework-agnostic; fires on type aliases in gRPC code. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           },
           "type_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/scala/type_system.go"],
+            "notes": "framework-agnostic; fires on every gRPC service-impl class / payload struct / case class. VERIFIED on the gRPC idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "DI": {
           "di_binding_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "matches the scala HTTP flagship (http4s): scala backends compose via explicit constructors/`Resource`/cats-effect wiring, not a runtime DI container; nothing for the DI sniffer to bind on a scalapb gRPC impl."
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "matches the scala HTTP flagship (http4s): scala backends compose via explicit constructors/`Resource`/cats-effect wiring, not a runtime DI container; nothing for the DI sniffer to bind on a scalapb gRPC impl."
           },
           "di_scope_resolution": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "matches the scala HTTP flagship (http4s): scala backends compose via explicit constructors/`Resource`/cats-effect wiring, not a runtime DI container; nothing for the DI sniffer to bind on a scalapb gRPC impl."
           }
         },
         "Testing": {
           "tests_linkage": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/extractors/cross/testmap/frameworks.go"],
+            "notes": "test-framework sniffer keys on the standard test macros, not the framework-under-test; links gRPC service/router tests like any other test. VERIFIED a named test case is extracted from a gRPC test idiom.",
+            "verified_at": "2026-06-03"
           }
         },
         "Observability": {
           "log_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "partial",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "logging sniffer is library/call-keyed (framework-agnostic); fires on a gRPC service that logs. VERIFIED on the gRPC idiom. PARTIAL: heuristic."
           },
           "metric_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "metric sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument metrics. VERIFIED on the gRPC idiom."
           },
           "trace_extraction": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "full",
+            "cites": ["internal/custom/scala/frameworks.go"],
+            "notes": "trace sniffer is library-keyed (framework-agnostic); fires for gRPC services that instrument traces."
           }
         },
         "Substrate": {
@@ -72589,8 +72645,8 @@
             "verified_at": "2026-05-31"
           },
           "request_sink_dataflow": {
-            "status": "missing",
-            "issue": "3963"
+            "status": "not_applicable",
+            "notes": "The request-\u003esink dataflow sniffer roots taint at HTTP MVC binders / request accessors. gRPC methods take a strongly-typed protobuf request (tRPC: a zod-typed input) + call context, with no HTTP MVC request-root to seed; not applicable to this transport."
           },
           "response_shape_extraction": {
             "status": "partial",
