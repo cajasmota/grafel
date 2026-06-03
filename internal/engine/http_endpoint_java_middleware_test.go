@@ -389,8 +389,10 @@ class ReactiveController {
 	if e.Properties["rate_limited"] != "true" {
 		t.Errorf("reactive @RateLimiter: rate_limited=%q, want true (props: %v)", e.Properties["rate_limited"], e.Properties)
 	}
-	if e.Properties["rate_limit_source"] != "@RateLimiter" {
-		t.Errorf("rate_limit_source=%q, want @RateLimiter", e.Properties["rate_limit_source"])
+	// The limiter name from `name="api"` is folded into the evidence (enriched
+	// over the original #4023 bare `@RateLimiter`; WebFlux parity preserved).
+	if e.Properties["rate_limit_source"] != "@RateLimiter(api)" {
+		t.Errorf("rate_limit_source=%q, want @RateLimiter(api)", e.Properties["rate_limit_source"])
 	}
 	// Honest-partial: config-driven limit → rate omitted.
 	if e.Properties["rate_limit"] != "" {

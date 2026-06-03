@@ -18,13 +18,24 @@
 // Recognised Java surfaces:
 //
 //	Resilience4j  — `@RateLimiter(name="api")` on a `@GetMapping`/`@PostMapping`/
-//	                `@RequestMapping`/`@Path`-mapped method → rate_limited=true.
-//	                The numeric limit lives in `resilience4j.ratelimiter.*`
-//	                config, so the rate is honest-partial (omitted) unless an
-//	                inline `limitForPeriod`/`limitRefreshPeriod` is present.
-//	bucket4j      — `@RateLimiting(...)` / `@RateLimit(...)` method annotations
+//	                `@RequestMapping`/`@Path`-mapped method (Spring MVC AND
+//	                WebFlux) → rate_limited=true. The numeric limit lives in
+//	                `resilience4j.ratelimiter.*` config, so the rate is
+//	                honest-partial (omitted) unless an inline
+//	                `limitForPeriod`/`limitRefreshPeriod` is present. When the
+//	                annotation carries a `name="x"` the limiter name is folded
+//	                into rate_limit_source as evidence (`@RateLimiter(x)`).
+//	bucket4j      — two surfaces:
+//	                (1) `@RateLimiting(...)` / `@RateLimit(...)` /
+//	                `@Bucket4jRateLimit(...)` method annotations
 //	                (bucket4j-spring-boot-starter); a literal `capacity`/`rate`
 //	                attribute resolves the rate, else honest-partial.
+//	                (2) the imperative `if (!bucket.tryConsume(n)) … 429` guard
+//	                inside an MVC/WebFlux handler body (a 429 / TOO_MANY_REQUESTS
+//	                response signal must be in scope to confirm it is an HTTP
+//	                throttle, not an unrelated bucket call) — rate_limited=true,
+//	                source=`<bucket>.tryConsume` (rate honest-partial: the
+//	                bucket's bandwidth is built elsewhere).
 //	Spring Cloud  — a `RequestRateLimiter` GatewayFilter with `replenishRate` /
 //	  Gateway       `burstCapacity` args, matched to the route's `Path=` predicate
 //	                → rate="<replenishRate>/s" at gateway scope.
@@ -72,10 +83,31 @@ func (r javaRateLimit) stamp(props map[string]string) {
 }
 
 // javaRateLimitAnnoRe captures a Resilience4j `@RateLimiter(name="x")` or a
-// bucket4j `@RateLimiting(...)`/`@RateLimit(...)` method annotation. Group 1 =
-// the annotation simple name, group 2 = its argument body (may be empty).
+// bucket4j `@RateLimiting(...)`/`@RateLimit(...)`/`@Bucket4jRateLimit(...)`
+// method annotation. Group 1 = the annotation simple name, group 2 = its
+// argument body (may be empty). The optional `Bucket4j` / `Resilience4j` prefix
+// keeps `@Bucket4jRateLimit` from being mis-split at the `RateLimit` boundary
+// while still capturing the full annotation name as evidence.
 var javaRateLimitAnnoRe = regexp.MustCompile(
-	`@(RateLimiter|RateLimiting|RateLimit)\s*(?:\(([^)]*)\))?`)
+	`@((?:Bucket4j|Resilience4j)?(?:RateLimiter|RateLimiting|RateLimit))\s*(?:\(([^)]*)\))?`)
+
+// javaRateLimitNameRe pulls a `name = "x"` limiter name out of an annotation
+// body (Resilience4j / bucket4j both use `name`). Group 1 = the limiter name.
+var javaRateLimitNameRe = regexp.MustCompile(`\bname\s*=\s*"([^"]+)"`)
+
+// javaTryConsumeRe matches a bucket4j imperative throttle guard inside a handler
+// body: `bucket.tryConsume(1)` / `rateLimiter.tryConsume(n)` /
+// `bucket.tryConsumeAndReturnRemaining(1)`. Group 1 = the bucket receiver
+// identifier (used as evidence). This is the non-annotation bucket4j surface.
+var javaTryConsumeRe = regexp.MustCompile(
+	`\b([A-Za-z_][A-Za-z0-9_]*)\s*\.\s*tryConsume(?:AndReturnRemaining)?\s*\(`)
+
+// javaTryConsume429Re recognises the throttled-response signal that confirms a
+// `tryConsume` is an HTTP rate-limit guard (not an unrelated bucket call in a
+// helper): a 429 literal or the TOO_MANY_REQUESTS status near the guard. This
+// keeps the imperative surface honest — a bare `return bucket.tryConsume(1)`
+// helper with no 429 does NOT stamp a route.
+var javaTryConsume429Re = regexp.MustCompile(`\b429\b|TOO_MANY_REQUESTS`)
 
 // javaMethodMappingRe captures a Spring/JAX-RS route-mapping annotation with its
 // path literal. Group 1 = the mapping annotation, group 2 = the path. A
@@ -134,6 +166,45 @@ func indexJavaRateLimitMethods(content string) []javaRateLimitedMethod {
 		rl.scope = "route"
 		out = append(out, javaRateLimitedMethod{path: path, rl: rl, start: m[0]})
 	}
+	// Imperative bucket4j guard: `if (!bucket.tryConsume(1)) … 429`. Pair each
+	// tryConsume call with the route mapping that immediately PRECEDES it (the
+	// guard lives in the handler body, after the @GetMapping head). Honest:
+	// rate omitted (the bucket's bandwidth is configured elsewhere). The guard
+	// must also have a 429 / TOO_MANY_REQUESTS response signal in scope so an
+	// unrelated bucket call in a non-handler helper does NOT stamp a route.
+	mappingIdx := javaMethodMappingRe.FindAllStringSubmatchIndex(content, -1)
+	for _, tc := range javaTryConsumeRe.FindAllStringSubmatchIndex(content, -1) {
+		recv := content[tc[2]:tc[3]]
+		// Confirm the throttled-response signal within the guard's own block (a
+		// short window around the call) — the canonical
+		// `if (!bucket.tryConsume(n)) return 429` shape.
+		gStart := tc[0] - 80
+		if gStart < 0 {
+			gStart = 0
+		}
+		gEnd := tc[1] + 160
+		if gEnd > len(content) {
+			gEnd = len(content)
+		}
+		if !javaTryConsume429Re.MatchString(content[gStart:gEnd]) {
+			continue
+		}
+		// Find the nearest mapping annotation before this tryConsume call, within
+		// one method head (~800 chars) so an unrelated earlier route doesn't bind.
+		path := ""
+		bestStart := -1
+		for _, mi := range mappingIdx {
+			if mi[0] < tc[0] && mi[0] > bestStart && tc[0]-mi[0] < 800 {
+				bestStart = mi[0]
+				path = content[mi[4]:mi[5]]
+			}
+		}
+		if bestStart < 0 {
+			continue
+		}
+		rl := javaRateLimit{found: true, scope: "route", source: recv + ".tryConsume"}
+		out = append(out, javaRateLimitedMethod{path: path, rl: rl, start: bestStart})
+	}
 	return out
 }
 
@@ -144,6 +215,12 @@ func resolveJavaRateLimitAnno(anno, body string) javaRateLimit {
 	rl := javaRateLimit{found: true, source: "@" + anno}
 	if body == "" {
 		return rl
+	}
+	// Fold the limiter name into the evidence so the SPECIFIC limiter is
+	// asserted (`@RateLimiter(orders)`), not just the bare annotation. The name
+	// keys the resilience4j.ratelimiter.<name> / bucket4j config block.
+	if nm := javaRateLimitNameRe.FindStringSubmatch(body); nm != nil {
+		rl.source = "@" + anno + "(" + nm[1] + ")"
 	}
 	if cm := javaBucket4jCapacityRe.FindStringSubmatch(body); cm != nil {
 		n := cm[1]

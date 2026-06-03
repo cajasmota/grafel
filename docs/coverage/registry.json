@@ -29601,10 +29601,10 @@
             "verified_at": "2026-06-02"
           },
           "rate_limit_stamping": {
-            "status": "partial",
-            "cites": ["internal/engine/http_endpoint_java_ratelimit.go","internal/engine/http_endpoint_java_ratelimit_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "notes": "Resilience4j @RateLimiter(name=...) / bucket4j @RateLimiting(capacity=N) method annotations (matched by mapping path) and Spring Cloud Gateway RequestRateLimiter filters (matched by Path= predicate, replenishRate→rate) stamp rate_limited/rate_limit/rate_limit_scope(route|gateway)/rate_limit_source on the endpoint op. Bare Resilience4j @RateLimiter rate lives in config → honest-partial (rate omitted). Negative: a non-throttle annotation does not stamp.",
-            "verified_at": "2026-06-02"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_java_ratelimit.go","internal/engine/http_endpoint_java_ratelimit_test.go"],
+            "notes": "Spring rate-limit idioms covered with value-asserting tests: Resilience4j @RateLimiter on MVC + WebFlux handlers (limiter name folded into rate_limit_source as @RateLimiter(\u003cname\u003e); rate honest-partial when limitForPeriod is config-driven); bucket4j @RateLimiting/@RateLimit/@Bucket4jRateLimit annotations (literal capacity resolves rate, name captured); the imperative if(!bucket.tryConsume(n)) ...429 guard (rate_limit_source=\u003cbucket\u003e.tryConsume, gated on a 429/TOO_MANY_REQUESTS signal); and Spring Cloud Gateway RequestRateLimiter matched by Path= predicate (replenishRate -\u003e N/s, gateway scope). Negatives asserted (@Validated, unmapped helper). #3628.",
+            "verified_at": "2026-06-03"
           }
         },
         "Testing": {
@@ -30260,9 +30260,9 @@
             "verified_at": "2026-06-03"
           },
           "rate_limit_stamping": {
-            "status": "partial",
-            "cites": ["internal/engine/http_endpoint_java_middleware_test.go","internal/engine/http_endpoint_java_ratelimit.go","internal/engine/http_endpoint_java_ratelimit_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "notes": "Resilience4j @RateLimiter(name=...) / bucket4j @RateLimiting(capacity=N) method annotations (matched by mapping path) and Spring Cloud Gateway RequestRateLimiter filters (matched by Path= predicate, replenishRate→rate) stamp rate_limited/rate_limit/rate_limit_scope(route|gateway)/rate_limit_source on the endpoint op. #3859: confirmed MVC-parity on Spring-WebFlux annotated handlers — a @RateLimiter on a @GetMapping Mono\u003cUser\u003e handler stamps identically (value-asserted TestMiddleware_WebFluxRateLimitParity). Status stays partial: a bare Resilience4j @RateLimiter rate lives in config → rate omitted (honest-partial). Negative: a non-throttle annotation does not stamp.",
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_java_middleware_test.go","internal/engine/http_endpoint_java_ratelimit.go","internal/engine/http_endpoint_java_ratelimit_test.go"],
+            "notes": "WebFlux rate-limit parity (#4023) deepened and verified: Resilience4j @RateLimiter on a reactive @GetMapping Mono\u003cT\u003e handler stamps rate_limited=true scope=route with the limiter name folded into rate_limit_source (@RateLimiter(\u003cname\u003e)); rate honest-partial (config-driven). The imperative bucket4j tryConsume guard and Spring Cloud Gateway RequestRateLimiter (a WebFlux-stack component) apply on the same shape-agnostic pass. TestJavaRateLimit_WebFluxResilience4jUnregressed + TestMiddleware_WebFluxRateLimitParity guard it. #3628.",
             "verified_at": "2026-06-03"
           }
         },
