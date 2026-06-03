@@ -4469,12 +4469,17 @@
             "issue": "backfill:dictionary-completeness"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp entry-point sniffer roots reachability/dead-code on the generated service-method library_export; #4047",
+            "verified_at": "2026-06-03"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_c_cpp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp def-use sniffer fires on .cc handler bodies (named def-\u003euse, e.g. SayHello name/greeting); #4047"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -4501,20 +4506,27 @@
             "issue": "backfill:dictionary-completeness"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-agnostic Tarjan SCC over IMPORTS; c-cpp #include edges flow through extractor; #4047"
           },
           "mutation_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp effect sniffer registered; handler methods with no effect match tagged pure=true; #4047"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp entry-point sniffer roots reachability on the generated service-method library_export; #4047",
+            "verified_at": "2026-06-03"
           },
           "request_shape_extraction": {
             "status": "partial",
@@ -6497,12 +6509,17 @@
             "issue": "backfill:dictionary-completeness"
           },
           "dead_code_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/mcp/dead_code.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp entry-point sniffer roots reachability/dead-code on the generated service-method library_export; #4047",
+            "verified_at": "2026-06-03"
           },
           "def_use_chain_extraction": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/def_use_pass.go","internal/substrate/def_use_c_cpp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp def-use sniffer fires on .cc handler bodies (named def-\u003euse, e.g. SayHello name/greeting); #4047"
           },
           "env_fallback_recognition": {
             "status": "missing",
@@ -6529,20 +6546,27 @@
             "issue": "backfill:dictionary-completeness"
           },
           "module_cycle_detection": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/module_cycle_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "language-agnostic Tarjan SCC over IMPORTS; c-cpp #include edges flow through extractor; #4047"
           },
           "mutation_effect": {
             "status": "missing",
             "issue": "backfill:dictionary-completeness"
           },
           "pure_function_tagging": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/pure_function_pass.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp effect sniffer registered; handler methods with no effect match tagged pure=true; #4047"
           },
           "reachability_analysis": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/links/reachability.go","internal/substrate/entry_points.go","internal/substrate/entry_points_c_cpp.go"],
+            "issue": "backfill:dictionary-completeness",
+            "notes": "c-cpp entry-point sniffer roots reachability on the generated service-method library_export; #4047",
+            "verified_at": "2026-06-03"
           },
           "request_shape_extraction": {
             "status": "partial",

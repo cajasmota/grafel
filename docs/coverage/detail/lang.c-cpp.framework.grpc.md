@@ -108,18 +108,18 @@ Auto-generated. Back to [summary](../summary.md).
 | Config consumption | 🔴 `missing` | — | 3641 | — | — |
 | Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | DB effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | 🟢 `partial` | `2026-06-03` | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_c_cpp.go` | c-cpp entry-point sniffer roots reachability/dead-code on the generated service-method library_export; #4047 |
+| Def use chain extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_c_cpp.go` | c-cpp def-use sniffer fires on .cc handler bodies (named def->use, e.g. SayHello name/greeting); #4047 |
 | Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Error flow | 🔴 `missing` | — | 3628 | — | — |
 | Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | HTTP effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/module_cycle_pass.go` | language-agnostic Tarjan SCC over IMPORTS; c-cpp #include edges flow through extractor; #4047 |
 | Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/pure_function_pass.go` | c-cpp effect sniffer registered; handler methods with no effect match tagged pure=true; #4047 |
+| Reachability analysis | 🟢 `partial` | `2026-06-03` | backfill:dictionary-completeness | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_c_cpp.go` | c-cpp entry-point sniffer roots reachability on the generated service-method library_export; #4047 |
 | Request shape extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/grpc.go`<br>`internal/custom/cpp/grpc_protobuf_test.go` | request message type name from RPC method args; field shapes are protoc-generated |
 | Request sink dataflow | 🔴 `missing` | — | 3963 | — | — |
 | Response shape extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/grpc.go`<br>`internal/custom/cpp/grpc_protobuf_test.go` | response message type name from RPC method args; field shapes are protoc-generated |
