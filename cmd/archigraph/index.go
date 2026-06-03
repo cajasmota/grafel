@@ -121,6 +121,22 @@ type Indexer struct {
 	incremental         bool
 	incrementalStateDir string // directory that holds file-index.json
 
+	// incrementalCarryForwardEntities holds the previous-graph entities sourced
+	// from UNCHANGED files during an incremental reindex. buildDocument seeds the
+	// resolver index with their (name, kind) → stable-ID identity so that
+	// bare-name edge endpoints emitted by the freshly re-extracted changed files
+	// — most importantly the NestJS/Angular constructor-DI INJECTED_INTO edge,
+	// whose FromID is the provider *name* ("FooService") attached to the consumer
+	// (controller) record — resolve to the provider's stable entity ID even when
+	// the provider file is out of the changed-file extraction scope. Without this
+	// the edge's FromID stays a bare name, never matches survivingIDs in
+	// mergeIncrementalPrevDoc, and the controller's inbound DI edge is silently
+	// dropped from the persisted graph (deploy-9 REFUTED item-2). The IDs are
+	// stable across runs (EntityID = hash(repo,kind,name,sourceFile)), so an
+	// edge rewritten to a carried-forward entity's ID points at a node that
+	// mergeIncrementalPrevDoc re-adds to the merged document. Nil on full runs.
+	incrementalCarryForwardEntities []types.EntityRecord
+
 	// exportFB is a deprecated no-op field retained for back-compat with
 	// existing callers that pass WithExportFB(true). graph.fb is now
 	// always written; setting exportFB has no additional effect.
@@ -792,6 +808,33 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 				for _, f := range changed {
 					incrementalChange[filepath.ToSlash(f)] = true
 				}
+				// Seed buildDocument's resolver index with the prev-graph
+				// entities from UNCHANGED files so cross-file bare-name edge
+				// endpoints emitted by the re-extracted changed files (e.g. the
+				// constructor-DI INJECTED_INTO provider name on a controller)
+				// resolve to their stable provider IDs even though the provider
+				// file is out of this run's extraction scope. Only real,
+				// source-bearing entities are carried (ext:* synthetics are
+				// regenerated downstream and have no stable provider identity).
+				cf := make([]types.EntityRecord, 0, len(prev.Entities))
+				for ei := range prev.Entities {
+					pe := &prev.Entities[ei]
+					if pe.SourceFile == "" {
+						continue
+					}
+					if incrementalChange[filepath.ToSlash(pe.SourceFile)] {
+						continue
+					}
+					cf = append(cf, types.EntityRecord{
+						ID:         pe.ID,
+						Name:       pe.Name,
+						Kind:       pe.Kind,
+						Subtype:    pe.Subtype,
+						SourceFile: pe.SourceFile,
+						Properties: pe.Properties,
+					})
+				}
+				i.incrementalCarryForwardEntities = cf
 			}
 		}
 	}
@@ -3831,7 +3874,24 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			importStats.ReferencesRewritten, importStats.ReferencesConsidered)
 	}
 
-	idx := resolve.BuildIndex(merged)
+	// Incremental resolver-scope augmentation (deploy-9 REFUTED item-2):
+	// seed the resolver index with the carried-forward (unchanged-file) prev
+	// entities so cross-file bare-name edge endpoints emitted by the
+	// re-extracted changed files — notably the constructor-DI INJECTED_INTO
+	// provider name attached to a controller — resolve to their stable
+	// provider IDs. The carry-forward entities are used for index lookups
+	// ONLY; they are NOT appended to `merged` (mergeIncrementalPrevDoc
+	// re-adds the unchanged-file entities to the persisted document, so
+	// adding them here too would double-emit). IDs are stable across runs,
+	// so an edge rewritten to a carried-forward entity's ID resolves to a
+	// node that survives into the final graph.
+	indexEntities := merged
+	if len(i.incrementalCarryForwardEntities) > 0 {
+		indexEntities = make([]types.EntityRecord, 0, len(merged)+len(i.incrementalCarryForwardEntities))
+		indexEntities = append(indexEntities, merged...)
+		indexEntities = append(indexEntities, i.incrementalCarryForwardEntities...)
+	}
+	idx := resolve.BuildIndex(indexEntities)
 	// #2049 — Django string-FK late-binding: rewrite scope:component:ref:python:*
 	// stubs on REFERENCES edges with django_rel set, using app-label-aware
 	// byPackageComponent lookup. Runs after BuildIndex (needs the component
