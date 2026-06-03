@@ -166,6 +166,11 @@ var intentionalGaps = []intentionalGap{
 	{"archigraph_payload_drift", "endpoint", "#2770 token ceiling pattern — optional endpoint substring filter"},
 	{"archigraph_payload_drift", "repo", "#2770 token ceiling pattern — optional repo substring filter"},
 	{"archigraph_payload_drift", "limit", "#2770 token ceiling pattern — optional result limit"},
+
+	// archigraph_endpoint_posture: scan-mode pagination undeclared for token
+	// budget (#1639 pattern). entity_id/facet/path_contains/method ARE declared.
+	{"archigraph_endpoint_posture", "limit", "#1639 token ceiling pattern — scan-mode result limit"},
+	{"archigraph_endpoint_posture", "offset", "#1639 token ceiling pattern — scan-mode pagination offset"},
 }
 
 // handlerToTool and dispatchTree have been REMOVED.

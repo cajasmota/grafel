@@ -586,6 +586,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_dead_code",
 		// #2764 Phase 1A effect classification surface
 		"archigraph_effects",
+		// deploy-9 caps surfacing — per-endpoint/function posture.
+		"archigraph_endpoint_posture",
 		// #2770 Phase 2A payload-shape drift findings.
 		"archigraph_payload_drift",
 		// #2772 Phase 2B taint-flow security findings surface
@@ -687,8 +689,10 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_feedback_event (#3204 agent-experience feedback, internal test harness).
 	// +1 archigraph_data_flows (#3867 request-input→sink DATA_FLOWS_TO projection).
 	// +1 archigraph_effective_contract (#3836 per-verb ViewSet effective contract).
-	if got := len(allRegisteredTools); got != 56 {
-		t.Errorf("expected 56 registered tools, got %d — update this count if tools are added/removed (added archigraph_effective_contract #3836)", got)
+	// +1 archigraph_endpoint_posture (deploy-9 caps surfacing: error_flow/
+	// rate_limit/deprecation/feature_flag/grpc-auth posture).
+	if got := len(allRegisteredTools); got != 57 {
+		t.Errorf("expected 57 registered tools, got %d — update this count if tools are added/removed (added archigraph_endpoint_posture deploy-9 caps surfacing)", got)
 	}
 }
 
@@ -3191,6 +3195,9 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_dead_code": {"group": "g"},
 		// #2764 Phase 1A effect classification — entity_id required.
 		"archigraph_effects": {"group": "g", "entity_id": "DashboardScreen"},
+		// deploy-9 caps surfacing — posture facets. entity_id optional (omitted
+		// here exercises the repo-wide scan path).
+		"archigraph_endpoint_posture": {"group": "g"},
 		// #2770 Phase 2A payload-shape drift — no required args.
 		"archigraph_payload_drift": {"group": "g"},
 		// #2772 Phase 2B taint-flow — no required args.
@@ -3245,8 +3252,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 56 {
-		t.Errorf("expected 56 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_effective_contract #3836)", len(tools))
+	if len(tools) != 57 {
+		t.Errorf("expected 57 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_endpoint_posture deploy-9 caps surfacing)", len(tools))
 	}
 
 	for _, st := range tools {

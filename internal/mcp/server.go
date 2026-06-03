@@ -385,7 +385,7 @@ func (s *Server) fullToolList() ([]MCPToolEntry, error) {
 
 // registerTools registers every tool handler on the MCP server.
 // Source of truth: AddTool calls below — keep internal/mcp/SCHEMA.md in sync.
-// Tool count: 45 (#1281: 9→4 bundles; #1293: desc trim; #1312: +quality_cycles; #1314: +auth_coverage;
+// Tool count: 57 (#1281: 9→4 bundles; #1293: desc trim; #1312: +quality_cycles; #1314: +auth_coverage;
 //
 //	#1322: +secrets; #1323: +test_coverage; #1333: desc ≤80 chars;
 //	refactor/mcp-real-3k: ≤3k handshake; #2424: +cross_links; #2426: +save_finding,+list_findings;
@@ -514,6 +514,24 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_effects", s.handleEffects))
+
+	// deploy-9 caps surfacing — per-endpoint/function "posture" assembled from
+	// existing #3628 nodes/edges/props that were populated but undiscoverable
+	// via MCP: error_flow (THROWS/CATCHES → ExceptionType), feature_flag gates
+	// (GATED_BY → FeatureFlag), rate_limit, deprecation/version, and HTTP/gRPC/
+	// tRPC auth properties. entity_id → one entity's posture; omit entity_id for
+	// a repo-wide scan of every endpoint/callable carrying a non-empty facet
+	// (optional facet/path_contains/method narrowing). Read-only, cross-language.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_endpoint_posture",
+		mcpapi.WithDescription("Endpoint posture: throws/catches+rate_limit+deprecation+feature_gates+auth."),
+		mcpapi.WithString("entity_id"),
+		mcpapi.WithString("facet"),
+		mcpapi.WithString("path_contains"),
+		mcpapi.WithString("method"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_endpoint_posture", s.handleEndpointPosture))
 
 	// #2770 — Phase 2A payload-shape drift findings. Optional args
 	// (read off the request map, undeclared per #1639 token-ceiling
