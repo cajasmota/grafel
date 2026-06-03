@@ -58,12 +58,22 @@ func sniffDataFlowGo(content string) []DataFlow { return sniffDataFlowGoEx(conte
 //	g3: chi    chi.URLParam(r, "k")
 //	g4: http   r.FormValue("k") / req.FormValue("k")
 //	g5: http   r.URL.Query().Get("k") / req.URL.Query().Get("k")
+//	g6: fasthttp ctx.QueryArgs().Peek("k") / ctx.PostArgs().Peek("k")
+//	g7: fasthttp ctx.FormValue("k")
+//	g8: iris   ctx.URLParam("k") / ctx.PostValue("k") / ctx.FormValue("k")
+//	g9: beego  c.GetString("k") / c.Ctx.Input.Param("k")
+//	g10: revel c.Params.Get("k")
 var dfGoSourceFieldRe = regexp.MustCompile(
 	`\bc\s*\.\s*(?:Query|PostForm|Param)\s*\(\s*"([^"]+)"` +
 		`|\bc\s*\.\s*(?:QueryParam|FormValue|Param)\s*\(\s*"([^"]+)"` +
 		`|\bchi\s*\.\s*URLParam\s*\(\s*[A-Za-z_]\w*\s*,\s*"([^"]+)"` +
 		`|\b(?:r|req)\s*\.\s*FormValue\s*\(\s*"([^"]+)"` +
-		`|\b(?:r|req)\s*\.\s*URL\s*\.\s*Query\s*\(\s*\)\s*\.\s*Get\s*\(\s*"([^"]+)"`,
+		`|\b(?:r|req)\s*\.\s*URL\s*\.\s*Query\s*\(\s*\)\s*\.\s*Get\s*\(\s*"([^"]+)"` +
+		`|\bctx\s*\.\s*(?:QueryArgs|PostArgs)\s*\(\s*\)\s*\.\s*Peek\s*\(\s*"([^"]+)"` +
+		`|\bctx\s*\.\s*FormValue\s*\(\s*"([^"]+)"` +
+		`|\bctx\s*\.\s*(?:URLParam|PostValue)\s*\(\s*"([^"]+)"` +
+		`|\bc\s*\.\s*(?:GetString|Ctx\s*\.\s*Input\s*\.\s*Param)\s*\(\s*"([^"]+)"` +
+		`|\bc\s*\.\s*Params\s*\.\s*Get\s*\(\s*"([^"]+)"`,
 )
 
 // dfGoSourceAnyRe matches a key-getter source receiver WITHOUT requiring a
@@ -71,10 +81,14 @@ var dfGoSourceFieldRe = regexp.MustCompile(
 // dynamic key still produces a tainted value with an unknown field — the
 // flow is real, only the field is dropped, mirroring py/jsts whole-object.)
 var dfGoSourceAnyRe = regexp.MustCompile(
-	`\bc\s*\.\s*(?:Query|PostForm|Param|QueryParam|FormValue)\s*\(` +
+	`\bc\s*\.\s*(?:Query|PostForm|Param|QueryParam|FormValue|GetString)\s*\(` +
+		`|\bc\s*\.\s*Ctx\s*\.\s*Input\s*\.\s*Param\s*\(` +
+		`|\bc\s*\.\s*Params\s*\.\s*Get\s*\(` +
 		`|\bchi\s*\.\s*URLParam\s*\(` +
 		`|\b(?:r|req)\s*\.\s*FormValue\s*\(` +
-		`|\b(?:r|req)\s*\.\s*URL\s*\.\s*Query\s*\(\s*\)\s*\.\s*Get\s*\(`,
+		`|\b(?:r|req)\s*\.\s*URL\s*\.\s*Query\s*\(\s*\)\s*\.\s*Get\s*\(` +
+		`|\bctx\s*\.\s*(?:QueryArgs|PostArgs)\s*\(\s*\)\s*\.\s*Peek\s*\(` +
+		`|\bctx\s*\.\s*(?:FormValue|URLParam|PostValue)\s*\(`,
 )
 
 // dfGoBindRe matches a BIND source: a call that populates the struct pointed
@@ -82,9 +96,17 @@ var dfGoSourceAnyRe = regexp.MustCompile(
 // root identifier (`dto` for `c.ShouldBindJSON(&dto)`). The field is
 // recovered later from a static member access off that root (`dto.Email`).
 // Covers gin ShouldBind*/Bind*, echo Bind, and stdlib json Decode(&dto).
+// Extended idiom arms:
+//   - hertz : c.BindAndValidate(&x) / c.Bind(&x) (Bind already covered above)
+//   - iris  : ctx.ReadJSON(&x) / ctx.ReadForm(&x) / ctx.ReadQuery(&x)
+//   - revel : c.Params.Bind(&x, "k")
+//   - go-zero: httpx.Parse(r, &req) — the bound root is the SECOND arg
 var dfGoBindRe = regexp.MustCompile(
-	`\bc\s*\.\s*(?:ShouldBind(?:JSON|Query|XML|YAML|Header|Uri)?|Bind(?:JSON|Query|XML|YAML|Header|Uri)?)\s*\(\s*&\s*([A-Za-z_]\w*)\b` +
-		`|\.\s*Decode\s*\(\s*&\s*([A-Za-z_]\w*)\b`,
+	`\bc\s*\.\s*(?:ShouldBind(?:JSON|Query|XML|YAML|Header|Uri)?|Bind(?:JSON|Query|XML|YAML|Header|Uri|AndValidate)?)\s*\(\s*&\s*([A-Za-z_]\w*)\b` +
+		`|\.\s*Decode\s*\(\s*&\s*([A-Za-z_]\w*)\b` +
+		`|\bctx\s*\.\s*(?:ReadJSON|ReadForm|ReadQuery|ReadXML|ReadYAML)\s*\(\s*&\s*([A-Za-z_]\w*)\b` +
+		`|\bc\s*\.\s*Params\s*\.\s*Bind\s*\(\s*&\s*([A-Za-z_]\w*)\b` +
+		`|\bhttpx\s*\.\s*Parse\s*\(\s*[A-Za-z_]\w*\s*,\s*&\s*([A-Za-z_]\w*)\b`,
 )
 
 // dfGoDBWriteRe matches an ORM / database/sql write call. Group 1 = callee.

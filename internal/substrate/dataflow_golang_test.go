@@ -433,60 +433,237 @@ func Search(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// --- HONEST-MISSING GUARDS: prove the DIVERGENT idioms of the
-// not-flipped frameworks genuinely produce NO flow, justifying their
-// honest-missing verdict. These pin the boundary so a future sniffer
-// extension that adds them will flip a RED test → forcing a registry update.
+// ====================================================================
+// extend-go-dataflow-sniffer-idioms (#3872): the Wave-4 honest-missing
+// guards below were converted to POSITIVE value-asserting tests once the
+// sniffer grew dedicated idiom arms for each framework's divergent
+// request-input shape. Each asserts the EXACT SourceField + sink that now
+// fires; paired negatives keep genuinely-unrecognised sub-idioms pinned.
+// ====================================================================
 
-// fasthttp: receiver `ctx *fasthttp.RequestCtx`, ctx.QueryArgs().Peek("k").
-func TestGoDataFlow_FasthttpCtxIdiomNotRecognised(t *testing.T) {
+// --- FASTHTTP: receiver `ctx *fasthttp.RequestCtx`. New arms recognise
+// ctx.QueryArgs().Peek("k") / ctx.PostArgs().Peek("k") and ctx.FormValue("k").
+func TestGoDataFlow_FasthttpQueryArgsToDBCreate(t *testing.T) {
 	src := `package h
 func listUsers(ctx *fasthttp.RequestCtx) {
 	q := ctx.QueryArgs().Peek("q")
 	db.Create(&Item{Name: string(q)})
 }`
-	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
-		t.Errorf("fasthttp ctx.QueryArgs idiom should NOT be recognised, got %+v", *f)
+	f := findGoFlow(sniffDataFlowGo(src), "db.Create")
+	if f == nil {
+		t.Fatalf("expected db.Create flow from fasthttp ctx.QueryArgs().Peek, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SinkKind != DataFlowSinkDBWrite {
+		t.Errorf("sink kind = %q, want db_write", f.SinkKind)
+	}
+	if f.Function != "listUsers" {
+		t.Errorf("origin = %q, want listUsers", f.Function)
+	}
+	if f.SourceField != "q" {
+		t.Errorf("source field = %q, want q (from ctx.QueryArgs().Peek(\"q\"))", f.SourceField)
 	}
 }
 
-// hertz: request receiver named `ctx *app.RequestContext` (the `c` param is
-// stdlib context.Context); ctx.Query / ctx.BindAndValidate are divergent.
-func TestGoDataFlow_HertzCtxIdiomNotRecognised(t *testing.T) {
+func TestGoDataFlow_FasthttpFormValueToDBSave(t *testing.T) {
+	src := `package h
+func save(ctx *fasthttp.RequestCtx) {
+	v := ctx.FormValue("msg")
+	db.Save(&Note{Body: v})
+}`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Save")
+	if f == nil {
+		t.Fatalf("expected db.Save flow from fasthttp ctx.FormValue, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SourceField != "msg" {
+		t.Errorf("source field = %q, want msg (from ctx.FormValue(\"msg\"))", f.SourceField)
+	}
+}
+
+// --- HERTZ: receiver `c *app.RequestContext`. c.Query / c.PostForm already
+// share the gin-shaped `c`-getter arm; the NEW arm adds the hertz bind
+// idiom c.BindAndValidate(&req), whose bound root lifts its member field.
+func TestGoDataFlow_HertzBindAndValidateToDBCreate(t *testing.T) {
+	src := `package h
+func createUser(c *app.RequestContext) {
+	var req CreateReq
+	c.BindAndValidate(&req)
+	db.Create(&User{Email: req.Email})
+}`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Create")
+	if f == nil {
+		t.Fatalf("expected db.Create flow from hertz c.BindAndValidate, got %+v", sniffDataFlowGo(src))
+	}
+	if f.Function != "createUser" {
+		t.Errorf("origin = %q, want createUser", f.Function)
+	}
+	if f.SourceField != "Email" {
+		t.Errorf("source field = %q, want Email (lifted from req.Email via c.BindAndValidate root)", f.SourceField)
+	}
+}
+
+// NON-VACUOUSNESS for hertz: the request receiver may be named `ctx` in some
+// handlers, but `ctx.Query` is NOT a recognised arm (only fasthttp/iris ctx
+// methods are). A divergent ctx.Query read yields NO flow.
+func TestGoDataFlow_HertzCtxQueryNotRecognised(t *testing.T) {
 	src := `package h
 func createUser(c context.Context, ctx *app.RequestContext) {
 	q := ctx.Query("q")
 	db.Create(&Item{Name: q})
 }`
 	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
-		t.Errorf("hertz ctx.Query idiom should NOT be recognised, got %+v", *f)
+		t.Errorf("hertz ctx.Query (divergent receiver) should NOT be recognised, got %+v", *f)
 	}
 }
 
-// go-zero: r *http.Request receiver but bind via httpx.Parse(r,&req) — not a
-// recognised bind helper (only .Decode(&x) matches), so honest-missing.
-func TestGoDataFlow_GoZeroHttpxParseNotRecognised(t *testing.T) {
+// --- IRIS: receiver `ctx iris.Context`. New arms recognise
+// ctx.URLParam("k") / ctx.PostValue("k") (key getters) and the bind helper
+// ctx.ReadJSON(&dto) / ctx.ReadForm(&dto).
+func TestGoDataFlow_IrisURLParamToDBCreate(t *testing.T) {
 	src := `package h
-func createUserHandler(w http.ResponseWriter, r *http.Request) {
-	var req CreateReq
-	httpx.Parse(r, &req)
-	db.Create(&User{Email: req.Email})
+func show(ctx iris.Context) {
+	id := ctx.URLParam("id")
+	db.Create(&Item{Ref: id})
 }`
-	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
-		t.Errorf("go-zero httpx.Parse bind should NOT be recognised, got %+v", *f)
+	f := findGoFlow(sniffDataFlowGo(src), "db.Create")
+	if f == nil {
+		t.Fatalf("expected db.Create flow from iris ctx.URLParam, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SourceField != "id" {
+		t.Errorf("source field = %q, want id (from ctx.URLParam(\"id\"))", f.SourceField)
 	}
 }
 
-// revel: controller method func (c App) X(); params via c.Params.Get("k")
-// (Params is a struct field, .Get a method) — does NOT match c.Param(.
-func TestGoDataFlow_RevelParamsGetNotRecognised(t *testing.T) {
+func TestGoDataFlow_IrisReadJSONToDBSave(t *testing.T) {
+	src := `package h
+func create(ctx iris.Context) {
+	var dto UserDTO
+	ctx.ReadJSON(&dto)
+	db.Save(&User{Email: dto.Email})
+}`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Save")
+	if f == nil {
+		t.Fatalf("expected db.Save flow from iris ctx.ReadJSON, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SourceField != "Email" {
+		t.Errorf("source field = %q, want Email (lifted from dto.Email via ctx.ReadJSON root)", f.SourceField)
+	}
+}
+
+// --- BEEGO: controller method receiver `c`. New arms recognise
+// c.GetString("k") and c.Ctx.Input.Param("k").
+func TestGoDataFlow_BeegoGetStringToDBCreate(t *testing.T) {
+	src := `package h
+func (c *Ctrl) Post() {
+	name := c.GetString("name")
+	db.Create(&Item{Title: name})
+}`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Create")
+	if f == nil {
+		t.Fatalf("expected db.Create flow from beego c.GetString, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SourceField != "name" {
+		t.Errorf("source field = %q, want name (from c.GetString(\"name\"))", f.SourceField)
+	}
+}
+
+func TestGoDataFlow_BeegoCtxInputParamToDBCreate(t *testing.T) {
+	src := `package h
+func (c *Ctrl) Get() {
+	id := c.Ctx.Input.Param("id")
+	db.Create(&Item{Ref: id})
+}`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Create")
+	if f == nil {
+		t.Fatalf("expected db.Create flow from beego c.Ctx.Input.Param, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SourceField != "id" {
+		t.Errorf("source field = %q, want id (from c.Ctx.Input.Param(\"id\"))", f.SourceField)
+	}
+}
+
+// --- REVEL: controller method `func (c App) X()`. New arms recognise the
+// key getter c.Params.Get("k") and the bind helper c.Params.Bind(&x, "k").
+func TestGoDataFlow_RevelParamsGetToDBCreate(t *testing.T) {
 	src := `package h
 func (c App) Show() revel.Result {
 	id := c.Params.Get("id")
 	db.Create(&Item{Ref: id})
 	return c.Render()
 }`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Create")
+	if f == nil {
+		t.Fatalf("expected db.Create flow from revel c.Params.Get, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SourceField != "id" {
+		t.Errorf("source field = %q, want id (from c.Params.Get(\"id\"))", f.SourceField)
+	}
+}
+
+func TestGoDataFlow_RevelParamsBindToDBSave(t *testing.T) {
+	src := `package h
+func (c App) Save() revel.Result {
+	var m Model
+	c.Params.Bind(&m, "model")
+	db.Save(&Row{Name: m.Name})
+	return c.Render()
+}`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Save")
+	if f == nil {
+		t.Fatalf("expected db.Save flow from revel c.Params.Bind, got %+v", sniffDataFlowGo(src))
+	}
+	if f.SourceField != "Name" {
+		t.Errorf("source field = %q, want Name (lifted from m.Name via c.Params.Bind root)", f.SourceField)
+	}
+}
+
+// --- GO-ZERO: stdlib `r *http.Request` receiver, bind via the go-zero
+// helper httpx.Parse(r, &req) where the bound root is the SECOND arg.
+func TestGoDataFlow_GoZeroHttpxParseToDBCreate(t *testing.T) {
+	src := `package h
+func createUserHandler(w http.ResponseWriter, r *http.Request) {
+	var req CreateReq
+	httpx.Parse(r, &req)
+	db.Create(&User{Email: req.Email})
+}`
+	f := findGoFlow(sniffDataFlowGo(src), "db.Create")
+	if f == nil {
+		t.Fatalf("expected db.Create flow from go-zero httpx.Parse, got %+v", sniffDataFlowGo(src))
+	}
+	if f.Function != "createUserHandler" {
+		t.Errorf("origin = %q, want createUserHandler", f.Function)
+	}
+	if f.SourceField != "Email" {
+		t.Errorf("source field = %q, want Email (lifted from req.Email via httpx.Parse root)", f.SourceField)
+	}
+}
+
+// --- HONEST-DEFER GUARDS: huma & kratos request-input idioms are NOT
+// regex-recognisable in this sniffer's architecture and remain missing.
+//   - huma: the request shape is a DECLARATIVE Input struct passed to a
+//     registered operation handler; there is no in-body request-read call
+//     to seed a source from. A regex sniffer cannot resolve the struct→field
+//     binding without type/registration analysis. Pinned as NO flow.
+//   - kratos: handlers are PROTOC-GENERATED (ctx http.Context + generated
+//     binding); validation is protoc-gen-validate. No in-body request-read
+//     idiom exists in hand-written code to seed from. Pinned as NO flow.
+func TestGoDataFlow_HumaDeclarativeInputNotRecognised(t *testing.T) {
+	src := `package h
+func ListBooks(ctx context.Context, input *ListInput) (*ListOutput, error) {
+	db.Create(&Item{Name: input.Query})
+	return nil, nil
+}`
 	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
-		t.Errorf("revel c.Params.Get idiom should NOT be recognised, got %+v", *f)
+		t.Errorf("huma declarative Input is honest-deferred, expected NO flow, got %+v", *f)
+	}
+}
+
+func TestGoDataFlow_KratosGeneratedHandlerNotRecognised(t *testing.T) {
+	src := `package h
+func (s *Service) CreateUser(ctx context.Context, req *pb.CreateUserRequest) (*pb.User, error) {
+	db.Create(&User{Email: req.Email})
+	return nil, nil
+}`
+	if f := findGoFlow(sniffDataFlowGo(src), "db.Create"); f != nil {
+		t.Errorf("kratos generated handler is honest-deferred, expected NO flow, got %+v", *f)
 	}
 }
