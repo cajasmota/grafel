@@ -227,6 +227,14 @@ func resolveEndpointDeprecation(lang, content string, e *types.EntityRecord) dep
 			return v
 		}
 		return deprecationVerdict{}
+	case "ruby":
+		// Ruby (Sinatra) marks a deprecated verb block with a YARD `# @deprecated`
+		// tag or a `# Deprecated:` doc comment immediately above the `get '/x' do`
+		// line (the handler-decorator region). Rails controller-action comments
+		// live in a separate file and are honest-partial (#3628 Ruby port).
+		if v, ok := rubyDeprecationVerdict(region); ok {
+			return v
+		}
 	case "csharp":
 		// ASP.NET Core marks a deprecated action/controller with the standard
 		// [Obsolete("…")] attribute, the ApiExplorer [Deprecated] attribute, or

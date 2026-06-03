@@ -63851,7 +63851,8 @@
         "Routing": {
           "endpoint_deprecation_versioning": {
             "status": "missing",
-            "issue": "3628"
+            "issue": "3628",
+            "notes": "#3628 Ruby port (out of reach today): Grape's idioms — `version 'v2'` and `desc 'x', deprecated: true` — are extracted as SCOPE.Operation `endpoint` entities by the custom Grape extractor (internal/custom/ruby/grape_deep.go), NOT as the synthesised http_endpoint_definition producers the language-agnostic deprecation/api_version passes stamp. Crediting them requires promoting Grape to the synthesised http_endpoint_definition shape first (a separate route-synthesis feature), after which the existing rubyDeprecationVerdict + path-derived api_version would apply."
           },
           "endpoint_pagination_posture": {
             "status": "missing",
@@ -64966,8 +64967,11 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_ruby.go","internal/engine/http_endpoint_deprecation_ruby_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "issue": "3628",
+            "notes": "#3628 Ruby port: path-derived api_version is FULL for Rails — `namespace :api do; namespace :v1 do` and `scope '/api/v2'` compose a /api/vN canonical path, read by the language-agnostic applyEndpointAPIVersion (value-asserted TestAPIVersion_RailsNamespaceVersion api_version=2, TestAPIVersion_RailsScopeVersion api_version=3). Deprecation is honest-PARTIAL: a Rails endpoint is synthesised from config/routes.rb, but its `# @deprecated` action comment lives in a SEPARATE app/controllers/\u003cname\u003e_controller.rb file the per-file enrichment pass never sees during routes.rb synthesis, so a controller-action comment is NOT credited (never fabricated) — proven by TestDeprecation_RailsControllerCommentIsPartial (deprecated absent, api_version=1 still pinned). Crediting it needs a cross-file controller lookup not yet wired.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "missing",
@@ -65550,8 +65554,10 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_deprecation.go","internal/engine/http_endpoint_deprecation_ruby.go","internal/engine/http_endpoint_deprecation_ruby_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3628 Ruby port: deprecated/deprecation_source(+deprecated_since/deprecated_replacement)+path-derived api_version on synthesised Sinatra endpoints. rubyDeprecationVerdict reads the handler-decorator comment region above the `get '/x' do` block (StartLine-anchored): a YARD `# @deprecated \u003cmsg\u003e` tag -\u003e deprecated=true (source=\"# @deprecated\", since/replacement parsed from the message); a `# Deprecated: \u003cmsg\u003e` doc comment -\u003e deprecated=true (source=\"# Deprecated:\"). A Sunset/Deprecation response header in the block body -\u003e deprecated=true (cross-language RFC-8594 path, source=\"Sunset response header\"). api_version is path-derived from a /vN or /api/vN segment in the literal verb-block path. Value-asserted TestDeprecation_RubySinatraYardDeprecated (repl=/api/v2/users, api_version=1), TestDeprecation_RubySinceAndReplacement (since=2.0, repl=/reports/v2), TestDeprecation_RubyDeprecatedColonComment, TestDeprecation_RubySunsetResponseHeader; negatives TestDeprecation_RubyVersionlessNonDeprecated + the non-deprecated sibling in TestDeprecation_RubySinatraYardDeprecated.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "missing",

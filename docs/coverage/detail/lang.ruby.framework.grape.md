@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | #3628 Ruby port (out of reach today): Grape's idioms — `version 'v2'` and `desc 'x', deprecated: true` — are extracted as SCOPE.Operation `endpoint` entities by the custom Grape extractor (internal/custom/ruby/grape_deep.go), NOT as the synthesised http_endpoint_definition producers the language-agnostic deprecation/api_version passes stamp. Crediting them requires promoting Grape to the synthesised http_endpoint_definition shape first (a separate route-synthesis feature), after which the existing rubyDeprecationVerdict + path-derived api_version would apply. |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
 | Endpoint synthesis | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/ruby/frameworks/grape.yaml` | — |
