@@ -53,6 +53,12 @@
 //     — receiver-gated on the `FunWithFlags` module; atom key normalized
 //   - Flippant      : (Elixir) Flippant.enabled?("key", actor) — receiver-gated
 //     on the `Flippant` module; string or (normalized) atom key
+//   - Laravel Pennant: (PHP) Feature::active("key") / Feature::inactive("key") /
+//     Feature::for($u)->active("key") (facade) + the global feature("key")
+//     helper — receiver-gated on the capital `Feature::` facade (the helper is
+//     case-sensitive lowercase to avoid collision)
+//   - Flagception   : (PHP/Symfony) $featureManager->isActive("key") —
+//     receiver-gated on a flag/feature receiver token
 //   - Generic/custom : getFlag("key") / feature_enabled("key") /
 //     featureEnabled("key") / isFeatureEnabled("key") — FF-specific custom
 //     wrappers, distinct enough from arbitrary code to attribute
@@ -92,7 +98,7 @@ const featureFlagPatternType = "feature_flag_gating"
 // flagHit is one detected flag-check call site.
 type flagHit struct {
 	key    string // literal flag key (symbol leading ':' already stripped)
-	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | rollout | flagsmith | ff4j | split | growthbook | configcat | funwithflags | flippant | custom
+	sdk    string // detecting SDK: launchdarkly | featuremanagement | unleash | unleash-react | openfeature | flipper | rollout | flagsmith | ff4j | split | growthbook | configcat | funwithflags | flippant | laravel-pennant | flagception | custom
 	method string // the SDK call/method observed
 	caller string // enclosing-function name ("" → file scope)
 	line   int    // 1-indexed source line
@@ -389,6 +395,64 @@ var flagSDKMatchers = []flagSDKMatcher{
 		),
 		sdk:    "unleash",
 		method: "Unleash.enabled?",
+	},
+
+	// Laravel Pennant facade (PHP). `Feature::active('new-checkout')` /
+	// `Feature::inactive('old-ui')` — the Pennant `Feature` facade exposes the
+	// gating check as `active`/`inactive` static-style calls via `::`. The
+	// scoped form `Feature::for($user)->active('beta-ui')` resolves a scope
+	// first, then calls `active`/`inactive`; the `Feature::for(...)->` prefix is
+	// matched optionally so both the bare facade call and the scoped call attach
+	// to the same matcher. Receiver-gated on the capital-`Feature` facade token
+	// reached via `::` — case-SENSITIVE so an ordinary `$model->active('x')` (no
+	// `Feature::` receiver) cannot false-positive. The Pennant `active`/`inactive`
+	// method pair is the gating predicate; `value()`/`for()` lookups are not
+	// matched (no gating decision). Literal key only (a dynamic
+	// `Feature::active($flagName)` yields no hit).
+	{
+		re: regexp.MustCompile(
+			`\bFeature::(?:for\s*\([^)]*\)\s*->\s*)?(?:active|inactive)\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "laravel-pennant",
+		method: "Feature::active",
+	},
+
+	// Laravel Pennant global helper (PHP). `feature('dark-mode')` — the
+	// framework-provided `feature()` helper resolves the Pennant manager and
+	// checks the flag in one bare call. Case-SENSITIVE lowercase `feature(` so it
+	// cannot collide with the capital-`Feature::` facade above nor with the
+	// generic `feature_enabled`/`featureEnabled` wrappers (which require an
+	// `_?enabled` suffix the bare helper does not have). A receiver-qualified
+	// `->feature(...)` / `::feature(...)` is excluded via the leading `\b` plus a
+	// negative check on a preceding member-access operator, so an unrelated
+	// `$repo->feature('x')` lookup is not misattributed. Literal key only.
+	{
+		re: regexp.MustCompile(
+			`(?:^|[^>:\w$])feature\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "laravel-pennant",
+		method: "feature",
+	},
+
+	// Symfony Flagception (PHP). `$featureManager->isActive('promo')` — the
+	// Flagception manager exposes the gating check as `isActive('key')`. The bare
+	// `isActive` method name is too generic to attribute on its own (any model
+	// could expose `isActive`), so a flag/feature-flavoured receiver token is
+	// required: the receiver variable name must contain `flag` or `feature`
+	// (e.g. `$featureManager`, `$flagManager`, `$this->flagception` via a
+	// `flag`-named member). Same receiver-gated discipline used for
+	// FF4j/Rollout/GrowthBook. Case-insensitive on the receiver token so
+	// `featureManager`/`FeatureManager`/`flagception` all qualify. Literal key
+	// only.
+	{
+		re: regexp.MustCompile(
+			`(?i)\$?\w*(?:flag|feature)\w*\s*->\s*isActive\s*\(\s*` +
+				`(?:"([^"\\]+)"|'([^'\\]+)')`,
+		),
+		sdk:    "flagception",
+		method: "isActive",
 	},
 
 	// Generic / custom feature-flag wrappers. getFlag("key") /
