@@ -63,9 +63,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### RPC Framework
 
-| Name | Substrate | Other capabilities | Notes |
-|---|---|---|---|
-| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | 🟡 22/24 | 🟢 4/4 | |
+| Name | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|
+| [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟢 10/10 | |
 
 
 ## Tools

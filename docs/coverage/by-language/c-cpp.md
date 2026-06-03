@@ -59,10 +59,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### RPC Framework
 
-| Name | Substrate | Other capabilities | Notes |
-|---|---|---|---|
-| [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🟡 2/24 | 🟡 3/4 | |
-| [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | 🟡 2/24 | 🟢 4/4 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 2/25 | 🟡 3/15 | |
+| [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 2/25 | 🟡 4/15 | |
 
 
 ## Tools

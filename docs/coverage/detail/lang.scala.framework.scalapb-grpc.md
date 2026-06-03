@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [scala](../by-language/scala.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** RPC Framework
-- **Capability cells:** 30
+- **Capability cells:** 54
 
 ## Capabilities
 
@@ -32,6 +32,74 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Transport binding | ✅ `full` | `2026-05-31` | — | `internal/custom/scala/grpc.go`<br>`internal/custom/scala/grpc_test.go` | custom_scala_grpc: RPC endpoint synthesis /<Service>/<rpc> from the service-trait method set; service trait emitted as SCOPE.Service grpc_service. Value-asserting tests pin the path + grpc_service. Regex, file-local; no .proto/AST. |
 
+### Routing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint pagination posture | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint response codes | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint synthesis | 🔴 `missing` | — | 3963 | — | — |
+| Handler attribution | 🔴 `missing` | — | 3963 | — | — |
+| Route extraction | 🔴 `missing` | — | 3963 | — | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | 3963 | — | — |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🔴 `missing` | — | 3963 | — | — |
+
+### Validation
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DTO extraction | 🔴 `missing` | — | 3963 | — | — |
+| Request validation | 🔴 `missing` | — | 3963 | — | — |
+
+### Middleware
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Middleware coverage | 🔴 `missing` | — | 3963 | — | — |
+| Rate limit stamping | 🔴 `missing` | — | 3963 | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Enum extraction | 🔴 `missing` | — | 3963 | — | — |
+| Interface extraction | 🔴 `missing` | — | 3963 | — | — |
+| Type alias extraction | 🔴 `missing` | — | 3963 | — | — |
+| Type extraction | 🔴 `missing` | — | 3963 | — | — |
+
+### DI
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DI binding extraction | 🔴 `missing` | — | 3963 | — | — |
+| DI injection point | 🔴 `missing` | — | 3963 | — | — |
+| DI scope resolution | 🔴 `missing` | — | 3963 | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Tests linkage | 🔴 `missing` | — | 3963 | — | — |
+
+### Observability
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Log extraction | 🔴 `missing` | — | 3963 | — | — |
+| Metric extraction | 🔴 `missing` | — | 3963 | — | — |
+| Trace extraction | 🔴 `missing` | — | 3963 | — | — |
+
 ### Substrate
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
@@ -53,6 +121,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🟢 `partial` | `2026-06-03` | — | `internal/links/pure_function_pass.go` | Language-agnostic pure-function pass tags Scala functions with no effect properties; framework-agnostic (esp. apt for effectful/functional Scala idioms). |
 | Reachability analysis | 🟢 `partial` | `2026-06-03` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_scala.go` | Language-agnostic reachability pass seeded from Scala entry points (entry_points_scala.go); framework-agnostic. |
 | Request shape extraction | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/scala/grpc.go`<br>`internal/custom/scala/grpc_test.go` | Request message type NAME recovered from the RPC param type; field shapes live in ScalaPB-generated message companions (not statically present). Value-asserted (HelloRequest). |
+| Request sink dataflow | 🔴 `missing` | — | 3963 | — | — |
 | Response shape extraction | 🟢 `partial` | `2026-05-31` | backfill:dictionary-completeness | `internal/custom/scala/grpc.go`<br>`internal/custom/scala/grpc_test.go` | Response message type NAME recovered as the last effect type-argument (Future/ZIO/F[_]); generated message field shapes not statically resolvable. Value-asserted (HelloReply). |
 | Sanitizer recognition | 🟢 `partial` | `2026-06-03` | — | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_scala.go` | Scala taint sniffer (taint_sites_scala.go) recognises parameterised-SQL/HTML-escape/Form-mapping sanitizers; framework-agnostic. |
 | Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

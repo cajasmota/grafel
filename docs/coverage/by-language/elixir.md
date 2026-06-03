@@ -49,9 +49,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### RPC Framework
 
-| Name | Substrate | Other capabilities | Notes |
-|---|---|---|---|
-| [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | 🟡 3/24 | 🟡 3/4 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 3/25 | 🟡 3/15 | |
 
 
 ## Tools

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [C/C++](../by-language/c-cpp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** RPC Framework
-- **Capability cells:** 30
+- **Capability cells:** 54
 
 ## Capabilities
 
@@ -32,6 +32,74 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Transport binding | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/grpc_protobuf_test.go`<br>`internal/custom/cpp/protobuf.go` | .proto service+rpc -> SCOPE.Service + RPC SCOPE.Operation endpoints with streaming kind |
 
+### Routing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint pagination posture | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint response codes | 🔴 `missing` | — | 3963 | — | — |
+| Endpoint synthesis | 🔴 `missing` | — | 3963 | — | — |
+| Handler attribution | 🔴 `missing` | — | 3963 | — | — |
+| Route extraction | 🔴 `missing` | — | 3963 | — | — |
+
+### View
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | 3963 | — | — |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🔴 `missing` | — | 3963 | — | — |
+
+### Validation
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DTO extraction | 🔴 `missing` | — | 3963 | — | — |
+| Request validation | 🔴 `missing` | — | 3963 | — | — |
+
+### Middleware
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Middleware coverage | 🔴 `missing` | — | 3963 | — | — |
+| Rate limit stamping | 🔴 `missing` | — | 3963 | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Enum extraction | 🔴 `missing` | — | 3963 | — | — |
+| Interface extraction | 🔴 `missing` | — | 3963 | — | — |
+| Type alias extraction | 🔴 `missing` | — | 3963 | — | — |
+| Type extraction | 🔴 `missing` | — | 3963 | — | — |
+
+### DI
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DI binding extraction | 🔴 `missing` | — | 3963 | — | — |
+| DI injection point | 🔴 `missing` | — | 3963 | — | — |
+| DI scope resolution | 🔴 `missing` | — | 3963 | — | — |
+
+### Testing
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Tests linkage | 🔴 `missing` | — | 3963 | — | — |
+
+### Observability
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Log extraction | 🔴 `missing` | — | 3963 | — | — |
+| Metric extraction | 🔴 `missing` | — | 3963 | — | — |
+| Trace extraction | 🔴 `missing` | — | 3963 | — | — |
+
 ### Substrate
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
@@ -53,6 +121,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Request shape extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/grpc_protobuf_test.go`<br>`internal/custom/cpp/protobuf.go` | rpc request message names from .proto service rpc decls |
+| Request sink dataflow | 🔴 `missing` | — | 3963 | — | — |
 | Response shape extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/cpp/grpc_protobuf_test.go`<br>`internal/custom/cpp/protobuf.go` | rpc response message names from .proto service rpc decls |
 | Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
