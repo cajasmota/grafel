@@ -50278,8 +50278,10 @@
             "issue": "3628"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Constructor type-hint autowiring via the framework-agnostic php-di path: a class __construct(SomeInterface $p, ...) emits INJECTED_INTO(SomeInterface-\u003eClassName) per class-typed param, fired by di_graph.go's phpClasses() loop on any .php file (not gated to a framework). Value-asserted on this framework's idiom (TestPhpDI_Slim/Laminas/Lumen/Magento_ConstructorInjection in di_graph_test.go) and the shared TestPhpDI_ConstructorInjection; negative TestPhpDI_ScalarParamNoEdge (string/int/array hints =\u003e no edge). PARTIAL: constructor injection only -- method/property/contextual injection not linked; impl resolves cross-file via resolver. Credit-only #4058 (epic #3872, audit #3881); DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
             "status": "missing",
@@ -51107,8 +51109,10 @@
             "issue": "3628"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Constructor type-hint autowiring via the framework-agnostic php-di path: a class __construct(SomeInterface $p, ...) emits INJECTED_INTO(SomeInterface-\u003eClassName) per class-typed param, fired by di_graph.go's phpClasses() loop on any .php file (not gated to a framework). Value-asserted on this framework's idiom (TestPhpDI_Slim/Laminas/Lumen/Magento_ConstructorInjection in di_graph_test.go) and the shared TestPhpDI_ConstructorInjection; negative TestPhpDI_ScalarParamNoEdge (string/int/array hints =\u003e no edge). PARTIAL: constructor injection only -- method/property/contextual injection not linked; impl resolves cross-file via resolver. Credit-only #4058 (epic #3872, audit #3881); DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
             "status": "missing",
@@ -51392,8 +51396,10 @@
             "issue": "3628"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Constructor type-hint autowiring via the framework-agnostic php-di path: a class __construct(SomeInterface $p, ...) emits INJECTED_INTO(SomeInterface-\u003eClassName) per class-typed param, fired by di_graph.go's phpClasses() loop on any .php file (not gated to a framework). Value-asserted on this framework's idiom (TestPhpDI_Slim/Laminas/Lumen/Magento_ConstructorInjection in di_graph_test.go) and the shared TestPhpDI_ConstructorInjection; negative TestPhpDI_ScalarParamNoEdge (string/int/array hints =\u003e no edge). PARTIAL: constructor injection only -- method/property/contextual injection not linked; impl resolves cross-file via resolver. Credit-only #4058 (epic #3872, audit #3881); DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
             "status": "missing",
@@ -51962,8 +51968,10 @@
             "issue": "3628"
           },
           "di_injection_point": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "partial",
+            "cites": ["internal/custom/php/di_graph.go","internal/custom/php/di_graph_test.go"],
+            "notes": "Constructor type-hint autowiring via the framework-agnostic php-di path: a class __construct(SomeInterface $p, ...) emits INJECTED_INTO(SomeInterface-\u003eClassName) per class-typed param, fired by di_graph.go's phpClasses() loop on any .php file (not gated to a framework). Value-asserted on this framework's idiom (TestPhpDI_Slim/Laminas/Lumen/Magento_ConstructorInjection in di_graph_test.go) and the shared TestPhpDI_ConstructorInjection; negative TestPhpDI_ScalarParamNoEdge (string/int/array hints =\u003e no edge). PARTIAL: constructor injection only -- method/property/contextual injection not linked; impl resolves cross-file via resolver. Credit-only #4058 (epic #3872, audit #3881); DEPLOY-DEFERRED.",
+            "verified_at": "2026-06-03"
           },
           "di_scope_resolution": {
             "status": "missing",

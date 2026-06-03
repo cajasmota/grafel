@@ -105,3 +105,81 @@ func TestPhpDI_SymfonyServicesYAML(t *testing.T) {
 		t.Fatalf("expected BINDS(TransportInterface -> SmtpTransport); got %+v", rels)
 	}
 }
+
+// Slim (PHP-DI / PSR-11): an action class autowired via constructor type-hint.
+// The framework-agnostic php-di path must emit INJECTED_INTO for the Slim idiom.
+func TestPhpDI_Slim_ConstructorInjection(t *testing.T) {
+	src := `<?php
+namespace App\Action;
+
+final class ListUsersAction {
+    public function __construct(
+        private UserRepository $users,
+        LoggerInterface $logger
+    ) {}
+
+    public function __invoke($request, $response) { return $response; }
+}`
+	rels := phpDIEdges(t, "src/Action/ListUsersAction.php", src)
+	if !phpHasEdge(rels, "UserRepository", "ListUsersAction", string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(UserRepository -> ListUsersAction); got %+v", rels)
+	}
+	if !phpHasEdge(rels, "LoggerInterface", "ListUsersAction", string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(LoggerInterface -> ListUsersAction); got %+v", rels)
+	}
+}
+
+// Laminas / Mezzio (laminas-servicemanager): handlers receive collaborators via
+// constructor, produced by a factory. The constructor type-hint is the idiom.
+func TestPhpDI_Laminas_ConstructorInjection(t *testing.T) {
+	src := `<?php
+namespace App\Handler;
+
+class HomePageHandler implements RequestHandlerInterface {
+    public function __construct(private TemplateRendererInterface $renderer) {}
+
+    public function handle(ServerRequestInterface $request): ResponseInterface {}
+}`
+	rels := phpDIEdges(t, "src/Handler/HomePageHandler.php", src)
+	if !phpHasEdge(rels, "TemplateRendererInterface", "HomePageHandler", string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(TemplateRendererInterface -> HomePageHandler); got %+v", rels)
+	}
+}
+
+// Lumen (= Laravel container): controllers autowire collaborators via constructor.
+func TestPhpDI_Lumen_ConstructorInjection(t *testing.T) {
+	src := `<?php
+namespace App\Http\Controllers;
+
+class UserController extends Controller {
+    public function __construct(private UserService $service, AuthManager $auth) {}
+}`
+	rels := phpDIEdges(t, "app/Http/Controllers/UserController.php", src)
+	if !phpHasEdge(rels, "UserService", "UserController", string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(UserService -> UserController); got %+v", rels)
+	}
+	if !phpHasEdge(rels, "AuthManager", "UserController", string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(AuthManager -> UserController); got %+v", rels)
+	}
+}
+
+// Magento (ObjectManager constructor DI): every class declares its dependencies
+// as constructor type-hints; the ObjectManager autowires them.
+func TestPhpDI_Magento_ConstructorInjection(t *testing.T) {
+	src := `<?php
+namespace Vendor\Module\Model;
+
+class Product {
+    public function __construct(
+        ProductRepositoryInterface $productRepository,
+        private StoreManagerInterface $storeManager
+    ) {}
+}`
+	rels := phpDIEdges(t, "Model/Product.php", src)
+	if !phpHasEdge(rels, "ProductRepositoryInterface", "Product", string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(ProductRepositoryInterface -> Product); got %+v", rels)
+	}
+	if !phpHasEdge(rels, "StoreManagerInterface", "Product", string(types.RelationshipKindInjectedInto)) {
+		t.Fatalf("expected INJECTED_INTO(StoreManagerInterface -> Product); got %+v", rels)
+	}
+}

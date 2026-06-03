@@ -68,7 +68,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | DI binding extraction | 🔴 `missing` | — | 3628 | — | — |
-| DI injection point | 🔴 `missing` | — | 3628 | — | — |
+| DI injection point | 🟢 `partial` | `2026-06-03` | — | `internal/custom/php/di_graph.go`<br>`internal/custom/php/di_graph_test.go` | Constructor type-hint autowiring via the framework-agnostic php-di path: a class __construct(SomeInterface $p, ...) emits INJECTED_INTO(SomeInterface->ClassName) per class-typed param, fired by di_graph.go's phpClasses() loop on any .php file (not gated to a framework). Value-asserted on this framework's idiom (TestPhpDI_Slim/Laminas/Lumen/Magento_ConstructorInjection in di_graph_test.go) and the shared TestPhpDI_ConstructorInjection; negative TestPhpDI_ScalarParamNoEdge (string/int/array hints => no edge). PARTIAL: constructor injection only -- method/property/contextual injection not linked; impl resolves cross-file via resolver. Credit-only #4058 (epic #3872, audit #3881); DEPLOY-DEFERRED. |
 | DI scope resolution | 🔴 `missing` | — | 3628 | — | — |
 
 ### Testing

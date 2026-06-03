@@ -31,13 +31,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [Drupal](../detail/lang.php.framework.drupal.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
 | [Laravel](../detail/lang.php.framework.laravel.md) | 🟡 4/6 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 23/25 | 🟡 10/11 | |
 | [Lighthouse](../detail/lang.php.framework.lighthouse.md) | 🟡 3/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 3/24 | 🟡 1/13 | |
-| [Lumen](../detail/lang.php.framework.lumen.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Magento](../detail/lang.php.framework.magento.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Lumen](../detail/lang.php.framework.lumen.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
+| [Magento](../detail/lang.php.framework.magento.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
 | [Phalcon](../detail/lang.php.framework.phalcon.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Slim](../detail/lang.php.framework.slim.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Slim](../detail/lang.php.framework.slim.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
 | [Symfony](../detail/lang.php.framework.symfony.md) | 🟡 3/6 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 23/25 | 🟡 8/11 | |
 | [WordPress](../detail/lang.php.framework.wordpress.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [Yii](../detail/lang.php.framework.yii.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
