@@ -28,7 +28,7 @@ one is a separate detail page.
 | [`lang.elixir.framework.grpc`](./lang.elixir.framework.grpc.md) | elixir | framework | 3 full, 21 partial, 16 missing, 14 n/a |
 | [`lang.go.framework.grpc`](./lang.go.framework.grpc.md) | go | framework | 1 full, 3 partial, 37 missing, 13 n/a |
 | [`lang.java.framework.grpc`](./lang.java.framework.grpc.md) | java | framework | 1 full, 3 partial, 37 missing, 13 n/a |
-| [`lang.rust.framework.tonic`](./lang.rust.framework.tonic.md) | rust | framework | 9 full, 4 partial, 35 missing, 1 n/a |
+| [`lang.rust.framework.tonic`](./lang.rust.framework.tonic.md) | rust | framework | 10 full, 4 partial, 34 missing, 1 n/a |
 | [`lang.scala.framework.scalapb-grpc`](./lang.scala.framework.scalapb-grpc.md) | scala | framework | 10 full, 19 partial, 8 missing, 17 n/a |
 
 ## Provenance

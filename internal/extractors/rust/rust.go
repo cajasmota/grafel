@@ -54,6 +54,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
 	walk(file.Tree.RootNode(), file, &entities)
+	// Epic #3628 — error-flow topology: typed THROWS / CATCHES edges to the
+	// shared SCOPE.ExceptionType convergence node. Runs after walk so the
+	// host SCOPE.Operation entities (including impl-qualified method names)
+	// already exist for FromName attachment.
+	emitExceptionFlowEdges(file.Tree.RootNode(), file.Content, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "rust")
 	extractor.TagEntitiesLanguage(entities, "rust")

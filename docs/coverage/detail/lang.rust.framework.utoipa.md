@@ -101,7 +101,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Error flow | 🔴 `missing` | — | 3628 | — | — |
+| Error flow | ✅ `full` | `2026-06-03` | 3628 | `internal/extractor/exception_flow.go`<br>`internal/extractors/rust/exception_flow.go`<br>`internal/extractors/rust/exception_flow_test.go` | Err(Type::ctor())/Err(Type::Variant)/Err(Type(..)) + bail!/ensure!(Type::X) + .ok_or(Type::X)/.ok_or_else(||Type::X) -> THROWS (enum variant normalized to leading-segment ENUM type); match Err(Type)/if let Err(Type)/.map_err(|e: Type|) -> CATCHES; bare ? propagation, Box<dyn Error>, string panic!, Err(var)/Err(make()) re-raise dropped (honest-partial, #3628) |
 | Feature flag gating | 🔴 `missing` | — | feature_flag_gating:#3706-not-yet-extracted | — | — |
 | Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | HTTP effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |

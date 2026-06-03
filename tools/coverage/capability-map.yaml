@@ -8078,6 +8078,18 @@ records:
   lang.rust.framework.axum:
     capabilities:
       Substrate:
+        error_flow:
+          status: full
+          symbols:
+            - file: internal/extractors/rust/exception_flow.go
+              functions: [emitExceptionFlowEdges, rustThrowFromCall, rustThrowFromOkOr, rustThrowFromMacro, rustCatchFromMapErr, rustCatchFromErrPattern, leadingScopedSegment]
+            - file: internal/extractor/exception_flow.go
+              functions: [EmitExceptionEdges, ExceptionTypeEntity, ExceptionTypeTargetID, NormalizeExceptionType]
+          tests:
+            - file: internal/extractors/rust/exception_flow_test.go
+              functions: [TestRustExceptionFlow_ThrowsTyped, TestRustExceptionFlow_ThrowsMacroAndOkOr, TestRustExceptionFlow_CatchesTyped, TestRustExceptionFlow_ConvergenceCrossFunction, TestRustExceptionFlow_ImplMethodHost, TestRustExceptionFlow_Negatives]
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
         constant_propagation:
           status: full
           symbols:
