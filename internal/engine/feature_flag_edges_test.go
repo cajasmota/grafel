@@ -230,6 +230,109 @@ def banner(self):
 	}
 }
 
+// Unleash (Python snake_case): unleash_client.is_enabled("beta-dashboard")
+// inside a handler → feature:beta-dashboard, SDK subtype "unleash", attributed
+// to the enclosing Python function. Mirrors the JS isEnabled test for the
+// Python SDK idiom (the canonical `is_enabled` snake_case call). #4044/#3706.
+func TestFeatureFlag_Unleash_Python_is_enabled(t *testing.T) {
+	src := `
+def feature_view(request):
+    if unleash_client.is_enabled("beta-dashboard"):
+        return beta_response(request)
+    return stable_response(request)
+`
+	flags, edges := runFlagPass("python", "views.py", src)
+
+	flag, ok := findFlag(flags, "beta-dashboard")
+	if !ok {
+		t.Fatalf("expected feature:beta-dashboard entity, got %v", flags)
+	}
+	if flag.ID != "feature:beta-dashboard" {
+		t.Errorf("flag ID = %q, want feature:beta-dashboard", flag.ID)
+	}
+	if flag.Subtype != "unleash" {
+		t.Errorf("flag SDK = %q, want unleash", flag.Subtype)
+	}
+	g, ok := findGate(edges, "beta-dashboard")
+	if !ok {
+		t.Fatalf("expected GATED_BY for beta-dashboard, got %v", edges)
+	}
+	if g.From != "Function:feature_view" {
+		t.Errorf("FromID = %q, want Function:feature_view", g.From)
+	}
+	if g.To != "feature:beta-dashboard" {
+		t.Errorf("ToID = %q, want feature:beta-dashboard", g.To)
+	}
+	if g.SDK != "unleash" {
+		t.Errorf("GATED_BY sdk = %q, want unleash", g.SDK)
+	}
+}
+
+// OpenFeature (Python snake_case): client.get_boolean_value("new-checkout",
+// False) inside an async handler → feature:new-checkout, SDK subtype
+// "openfeature", attributed to the enclosing Python function. Mirrors the TS
+// getBooleanValue test for the Python snake_case SDK idiom. #4044/#3706.
+func TestFeatureFlag_OpenFeature_Python_get_boolean_value(t *testing.T) {
+	src := `
+async def checkout(request):
+    enabled = await client.get_boolean_value("new-checkout", False)
+    return new_checkout(request) if enabled else legacy_checkout(request)
+`
+	flags, edges := runFlagPass("python", "checkout_of.py", src)
+
+	flag, ok := findFlag(flags, "new-checkout")
+	if !ok {
+		t.Fatalf("expected feature:new-checkout entity, got %v", flags)
+	}
+	if flag.Subtype != "openfeature" {
+		t.Errorf("flag SDK = %q, want openfeature", flag.Subtype)
+	}
+	g, ok := findGate(edges, "new-checkout")
+	if !ok {
+		t.Fatalf("expected GATED_BY for new-checkout, got %v", edges)
+	}
+	if g.From != "Function:checkout" || g.To != "feature:new-checkout" {
+		t.Errorf("edge = %+v, want Function:checkout -> feature:new-checkout", g)
+	}
+	if g.SDK != "openfeature" {
+		t.Errorf("GATED_BY sdk = %q, want openfeature", g.SDK)
+	}
+}
+
+// HONEST-PARTIAL (Python): OpenFeature's keyword-argument call form
+// `get_boolean_value(flag_key="dark", default_value=False)` does NOT expose the
+// key as the FIRST positional literal, so the positional-literal matcher does
+// not fire and NO flag is fabricated. This documents the Python kwarg gap that
+// keeps the framework cells honest-partial rather than full.
+func TestFeatureFlag_OpenFeature_Python_kwarg_NotMatched(t *testing.T) {
+	src := `
+def handler(request):
+    return client.get_boolean_value(flag_key="dark", default_value=False)
+`
+	flags, edges := runFlagPass("python", "of_kwarg.py", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("kwarg-form OpenFeature key should not be attributed (honest-partial), got flags=%v edges=%v", flags, edges)
+	}
+}
+
+// HONEST-PARTIAL (Python): plain environment-variable gating
+// `os.environ.get("FEATURE_NEW_UI")` is NOT a recognised flag-SDK call, so it
+// is deliberately not attributed — env reads are config consumption
+// (DEPENDS_ON_CONFIG territory), not SDK-managed feature flags. Documents the
+// env-gating gap behind the honest-partial framework cells.
+func TestFeatureFlag_Python_EnvGating_NotMatched(t *testing.T) {
+	src := `
+def view(request):
+    if os.environ.get("FEATURE_NEW_UI"):
+        return new_ui(request)
+    return old_ui(request)
+`
+	flags, edges := runFlagPass("python", "env_gate.py", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Errorf("env-var gating is not an SDK flag check, expected no output, got flags=%v edges=%v", flags, edges)
+	}
+}
+
 // Split.io: client.getTreatment("exp-pricing") → feature:exp-pricing,
 // attributed to the enclosing function, SDK subtype "split".
 func TestFeatureFlag_Split_getTreatment(t *testing.T) {

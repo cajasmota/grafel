@@ -55450,8 +55450,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -55761,8 +55764,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -56079,8 +56085,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -56290,8 +56299,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -56610,8 +56622,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -56923,8 +56938,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -57487,8 +57505,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -57793,8 +57814,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -58114,8 +58138,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -58428,8 +58455,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -58750,8 +58780,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "backfill:dictionary-completeness"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -59060,8 +59093,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -59408,8 +59444,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -59712,8 +59751,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -60019,8 +60061,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -60322,8 +60367,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -60531,8 +60579,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -60843,8 +60894,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -61147,8 +61201,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -61455,8 +61512,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",
@@ -61758,8 +61818,11 @@
             "verified_at": "2026-06-02"
           },
           "feature_flag_gating": {
-            "status": "missing",
-            "issue": "feature_flag_gating:#3706-not-yet-extracted"
+            "status": "partial",
+            "cites": ["internal/engine/feature_flag_edges.go","internal/engine/feature_flag_edges_test.go","internal/engine/orm_queries.go"],
+            "issue": "4106",
+            "notes": "flag-check call sites -\u003e feature:\u003ckey\u003e + GATED_BY (framework-agnostic engine pass, fires regardless of router/task decorator). Honest-partial on Python: LaunchDarkly variation/bool_variation, Unleash is_enabled, OpenFeature get_boolean_value, Flagsmith has_feature, Split getTreatment, custom getFlag/feature_enabled fire \u0026 attribute to the enclosing handler/task/resolver. Miss: OpenFeature kwarg form get_boolean_value(flag_key=...) and plain env-var gating os.environ.get('FEATURE_X') (config consumption, not SDK flag).",
+            "verified_at": "2026-06-03"
           },
           "fs_effect": {
             "status": "partial",

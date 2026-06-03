@@ -35,8 +35,8 @@ one is a separate detail page.
 | [`msg.graphql-subscriptions`](./msg.graphql-subscriptions.md) | multi |  | 3 full |
 | [`lang.php.framework.api-platform-graphql`](./lang.php.framework.api-platform-graphql.md) | php | framework | 11 full, 16 partial, 22 missing |
 | [`lang.php.framework.graphql-php`](./lang.php.framework.graphql-php.md) | php | framework | 11 full, 16 partial, 22 missing |
-| [`lang.python.framework.graphene`](./lang.python.framework.graphene.md) | python | framework | 15 full, 24 partial, 10 missing |
-| [`lang.python.framework.strawberry-graphql`](./lang.python.framework.strawberry-graphql.md) | python | framework | 16 full, 23 partial, 10 missing |
+| [`lang.python.framework.graphene`](./lang.python.framework.graphene.md) | python | framework | 15 full, 25 partial, 9 missing |
+| [`lang.python.framework.strawberry-graphql`](./lang.python.framework.strawberry-graphql.md) | python | framework | 16 full, 24 partial, 9 missing |
 | [`lang.ruby.framework.graphql-ruby`](./lang.ruby.framework.graphql-ruby.md) | ruby | framework | 4 full, 11 partial, 34 missing |
 | [`lang.rust.framework.async-graphql`](./lang.rust.framework.async-graphql.md) | rust | framework | 11 full, 3 partial, 35 missing |
 
