@@ -1084,7 +1084,7 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	//     endpoint's handler in the source file (JS/TS JSDoc @deprecated, Spring
 	//     @Deprecated, DRF deprecated=True, Python @deprecated / docstring, a
 	//     Sunset/Deprecation response header, or a `// DEPRECATED` comment).
-	applyEndpointAPIVersion(entities, path, deprecationBefore)
+	applyEndpointAPIVersion(lang, string(content), entities, path, deprecationBefore)
 	applyEndpointDeprecation(lang, string(content), path, entities, deprecationBefore)
 
 	// #3628 (epic) — endpoint pagination-posture stamping. Mutates Properties on

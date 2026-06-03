@@ -11634,6 +11634,35 @@ records:
             - file: internal/custom/csharp/extractors_test.go
           issues_implemented: ["3261"]
           verified_at: "2026-05-30"
+        endpoint_deprecation_versioning:
+          # #3628 (epic) — stamps api_version + deprecated / deprecated_since /
+          # deprecated_replacement / deprecation_source onto the
+          # http_endpoint_definition op (synthesizeASPNetCore producer). C#/.NET
+          # signals: [Obsolete("…")] (message yields replacement / since), the
+          # ApiExplorer [Deprecated] attribute, an action-region
+          # [ApiVersion(..., Deprecated = true)] flag, plus the cross-language
+          # Sunset/Deprecation response-header write. api_version is path-derived
+          # (/api/vN) with an [ApiVersion("2.0")] attribute fallback (major only).
+          status: full
+          symbols:
+            - file: internal/engine/http_endpoint_deprecation_csharp.go
+              functions:
+                - csharpDeprecationVerdict
+                - csharpAPIVersionFromAttribute
+                - csParseAPIVersion
+                - csSoleFileAPIVersion
+            - file: internal/engine/http_endpoint_deprecation.go
+              functions:
+                - applyEndpointAPIVersion
+                - applyEndpointDeprecation
+          tests:
+            - file: internal/engine/http_endpoint_deprecation_csharp_test.go
+              functions:
+                - TestDeprecation_CSharpObsoleteAttribute
+                - TestAPIVersion_CSharpApiVersionAttribute
+                - TestDeprecation_CSharpApiVersionDeprecatedFlag
+          issues_implemented: ["3628"]
+          verified_at: "2026-06-03"
       Auth:
         auth_coverage:
           # [Authorize] (plain/roles/policy/positional/scheme), [AllowAnonymous],

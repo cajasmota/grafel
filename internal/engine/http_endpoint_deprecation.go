@@ -68,10 +68,11 @@ const (
 // from the endpoint's own canonical `path` property. Honest-partial: a path
 // with no explicit version segment (or an out-of-range number) is left
 // untouched — no api_version property is added.
-func applyEndpointAPIVersion(entities []types.EntityRecord, path string, before int) {
+func applyEndpointAPIVersion(lang, content string, entities []types.EntityRecord, path string, before int) {
 	if before < 0 || before >= len(entities) {
 		return
 	}
+	normLang := normaliseDeprecationLang(lang)
 	for i := before; i < len(entities); i++ {
 		e := &entities[i]
 		if e.Kind != httpEndpointDefinitionKind || e.SourceFile != path {
@@ -86,6 +87,17 @@ func applyEndpointAPIVersion(entities []types.EntityRecord, path string, before 
 		}
 		if v, ok := apiVersionFromPath(routePath); ok {
 			e.Properties["api_version"] = strconv.Itoa(v)
+			continue
+		}
+		// Honest-partial fallback: when the route path carries no explicit
+		// version segment, a language-specific declarative version attribute can
+		// still pin the version. ASP.NET Core's [ApiVersion("2.0")] (Asp.Versioning)
+		// on the controller/action sets the version even though the conventional
+		// route is `api/[controller]` with no /vN segment (#3628 C# port).
+		if normLang == "csharp" && content != "" {
+			if v, ok := csharpAPIVersionFromAttribute(content, e); ok {
+				e.Properties["api_version"] = strconv.Itoa(v)
+			}
 		}
 	}
 }
@@ -215,6 +227,13 @@ func resolveEndpointDeprecation(lang, content string, e *types.EntityRecord) dep
 			return v
 		}
 		return deprecationVerdict{}
+	case "csharp":
+		// ASP.NET Core marks a deprecated action/controller with the standard
+		// [Obsolete("…")] attribute, the ApiExplorer [Deprecated] attribute, or
+		// an [ApiVersion(..., Deprecated = true)] flag (#3628 C# port).
+		if v, ok := csharpDeprecationVerdict(region); ok {
+			return v
+		}
 	default:
 		// Generic cross-language fallback: a leading-comment DEPRECATED marker
 		// is recognisable in every language's decorator/comment region.
