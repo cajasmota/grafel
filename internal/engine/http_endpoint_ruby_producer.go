@@ -148,12 +148,12 @@ type emitFileFn func(method, canonicalPath, framework, refKind, refName, handler
 //
 // `routesPath` is the path of the routes.rb file. It's used to derive the
 // project root so handler files can be located at `app/controllers/<name>_controller.rb`.
-func synthesizeRailsRoutes(content, routesPath string, emit emitFileFn) {
+func synthesizeRailsRoutes(content, routesPath string, emit emitFileFn, emitResource emitResourceFn) {
 	if !railsRoutesGateRe.MatchString(content) {
 		return
 	}
 	rootDir := deriveRailsRoot(routesPath)
-	walkRailsBlocks(content, "", "", rootDir, emit)
+	walkRailsBlocks(content, "", "", rootDir, emit, emitResource)
 }
 
 // synthesizeSinatra scans a Ruby file for Sinatra verb-block registrations
@@ -189,7 +189,7 @@ func synthesizeSinatra(content, path string, emit emitFileFn) {
 // composed prefixes from enclosing blocks: namespace :api contributes both
 // "/api" and "Api::" (module prefix maps to controller subdirectory and
 // class name in Rails' default conventions).
-func walkRailsBlocks(content, pathPrefix, modulePrefix, rootDir string, emit emitFileFn) {
+func walkRailsBlocks(content, pathPrefix, modulePrefix, rootDir string, emit emitFileFn, emitResource emitResourceFn) {
 	// Process verb routes at this scope level first. We match across the
 	// whole content (no scope-aware filtering) because the dominant
 	// convention is to declare verb routes at the same depth as resources
@@ -203,13 +203,13 @@ func walkRailsBlocks(content, pathPrefix, modulePrefix, rootDir string, emit emi
 		// recursive call with the correct prefix).
 		flat := stripRailsNestedBlocks(content)
 		emitRailsVerbRoutes(flat, "", "", rootDir, emit)
-		emitRailsResources(flat, "", "", rootDir, emit)
+		emitRailsResources(flat, "", "", rootDir, emit, emitResource)
 	} else {
 		// At a nested level we receive only the body of the enclosing
 		// block (already stripped of its own nested children). Match
 		// every verb route + resources in this body.
 		emitRailsVerbRoutes(content, pathPrefix, modulePrefix, rootDir, emit)
-		emitRailsResources(content, pathPrefix, modulePrefix, rootDir, emit)
+		emitRailsResources(content, pathPrefix, modulePrefix, rootDir, emit, emitResource)
 	}
 	// Recurse into nested namespace / scope blocks.
 	for _, blk := range findRailsBlocks(content) {
@@ -237,9 +237,9 @@ func walkRailsBlocks(content, pathPrefix, modulePrefix, rootDir string, emit emi
 		// emitted at the wrong prefix.
 		body := stripRailsNestedBlocks(blk.body)
 		emitRailsVerbRoutes(body, childPath, childModule, rootDir, emit)
-		emitRailsResources(body, childPath, childModule, rootDir, emit)
+		emitRailsResources(body, childPath, childModule, rootDir, emit, emitResource)
 		// Recurse for grand-children.
-		walkRailsBlocks(blk.body, childPath, childModule, rootDir, emit)
+		walkRailsBlocks(blk.body, childPath, childModule, rootDir, emit, emitResource)
 	}
 }
 
@@ -447,7 +447,7 @@ func emitRailsVerbRoutes(content, pathPrefix, modulePrefix, rootDir string, emit
 
 // emitRailsResources expands `resources :name` and `resource :name` macros
 // into the 7 (or 6) canonical CRUD routes.
-func emitRailsResources(content, pathPrefix, modulePrefix, rootDir string, emit emitFileFn) {
+func emitRailsResources(content, pathPrefix, modulePrefix, rootDir string, emit emitFileFn, emitResource emitResourceFn) {
 	for _, m := range railsResourcesRe.FindAllStringSubmatch(content, -1) {
 		if len(m) < 2 {
 			continue
@@ -458,7 +458,9 @@ func emitRailsResources(content, pathPrefix, modulePrefix, rootDir string, emit 
 			raw := base + r.suffix
 			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
 			handlerKind, handlerName, handlerFile := resolveRailsAction(name, r.action, modulePrefix, rootDir)
-			emit(r.method, canonical, "rails_resources", handlerKind, handlerName, handlerFile, 0)
+			// T10 #3842 — stamp framework_synthesized provenance + per-action
+			// effective contract (create→201, destroy→204, ...) via emitResource.
+			emitResource(r.method, canonical, "rails_resources", handlerKind, handlerName, handlerFile, r.action)
 		}
 	}
 	for _, m := range railsResourceSingularRe.FindAllStringSubmatch(content, -1) {
@@ -481,7 +483,7 @@ func emitRailsResources(content, pathPrefix, modulePrefix, rootDir string, emit 
 			raw := base + r.suffix
 			canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
 			handlerKind, handlerName, handlerFile := resolveRailsAction(name, r.action, modulePrefix, rootDir)
-			emit(r.method, canonical, "rails_resource", handlerKind, handlerName, handlerFile, 0)
+			emitResource(r.method, canonical, "rails_resource", handlerKind, handlerName, handlerFile, r.action)
 		}
 	}
 }

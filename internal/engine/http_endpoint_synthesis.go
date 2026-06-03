@@ -45,6 +45,7 @@ import (
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
+	"github.com/cajasmota/archigraph/internal/frameworks/routes"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -435,6 +436,37 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		if defLine > 0 {
 			last.StartLine = defLine
 		}
+	}
+
+	// emitResource wraps emit for the convention-over-configuration RESOURCEFUL
+	// route synthesizers (Rails `resources`, Laravel `Route::resource`/
+	// `apiResource`, Spring Data REST `@RepositoryRestResource`, NestJS `@Crud()`)
+	// — T10 #3842. After the canonical http_endpoint synthetic is appended, it
+	// stamps the route PROVENANCE (`framework_synthesized`) + per-verb EFFECTIVE
+	// CONTRACT (effective_kind / effective_action / effective_status /
+	// effective_error_statuses / defining_class) from the shared
+	// frameworks/routes catalog, keyed on the (framework, action) pair the
+	// synthesizer already knows. This fans the DRF effective-contract shape
+	// (#3835) across the convention frameworks: a consumer can now tell a
+	// framework-generated route from a hand-written one and read its default
+	// status (create→201, destroy→204, ...) without re-deriving it. handlerFile
+	// is stamped like emitFile so the resolver can path-target the handler.
+	// HONEST-PARTIAL: an action with no curated contract still gets the
+	// provenance tag but no fabricated status (routes.Stamp guarantees this).
+	emitResource := func(method, canonicalPath, framework, refKind, refName, handlerFile, action string) {
+		before := len(entities)
+		emit(method, canonicalPath, framework, refKind, refName)
+		if len(entities) == before {
+			return
+		}
+		last := &entities[len(entities)-1]
+		if last.Properties == nil {
+			last.Properties = map[string]string{}
+		}
+		if handlerFile != "" {
+			last.Properties["handler_file"] = handlerFile
+		}
+		routes.Stamp(last.Properties, framework, action)
 	}
 
 	// makeRuntimeEmit wraps the consumer-side emit with a FETCHES edge
@@ -839,7 +871,7 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// "users#index" handler ref + enclosing namespace stack and stamps it as
 		// `handler_file`; the resolver post-pass (#2680 rebind) consumes that hint
 		// for path-targeted same-file lookup.
-		synthesizeRailsRoutes(string(content), path, emitFile)
+		synthesizeRailsRoutes(string(content), path, emitFile, emitResource)
 		// Sinatra blocks are inline — same-file by construction. emitFile stamps
 		// StartLine on the synthetic so the audit2678 attribution lands on the
 		// verb block's line in app.rb.
@@ -901,7 +933,7 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeRustClientWithRuntime(string(content), emitClientRuntime)
 	case "php":
 		// Producer side (#1419): Laravel Route::verb/resource/apiResource.
-		synthesizeLaravel(string(content), emit)
+		synthesizeLaravel(string(content), emit, emitResource)
 		// Consumer side (#721 wave 2c): Guzzle, Symfony HttpClient, cURL, file_get_contents,
 		// WordPress HTTP API, Laravel Http facade.
 		synthesizePHPClientWithRuntime(string(content), emitClientRuntime)

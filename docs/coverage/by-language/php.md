@@ -32,7 +32,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [CodeIgniter](../detail/lang.php.framework.codeigniter.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [Drupal](../detail/lang.php.framework.drupal.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [Laminas (formerly Zend)](../detail/lang.php.framework.laminas.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Laravel](../detail/lang.php.framework.laravel.md) | 🟡 3/6 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 23/25 | 🟡 10/11 | |
+| [Laravel](../detail/lang.php.framework.laravel.md) | 🟡 4/6 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 23/25 | 🟡 10/11 | |
 | [Lighthouse](../detail/lang.php.framework.lighthouse.md) | 🟡 3/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 3/24 | 🟡 1/13 | |
 | [Lumen](../detail/lang.php.framework.lumen.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [Magento](../detail/lang.php.framework.magento.md) | 🟡 3/6 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
