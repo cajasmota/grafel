@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 228 records · **C/C++**: 19 · **C#**: 16 · **dart**: 2 · **elixir**: 14 · **go**: 20 · **java**: 23 · **JS/TS**: 32 · **kotlin**: 17 · **lua**: 4 · **php**: 16 · **python**: 23 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 5
+**Total**: 230 records · **C/C++**: 19 · **C#**: 16 · **dart**: 2 · **elixir**: 14 · **go**: 21 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 17 · **lua**: 4 · **php**: 16 · **python**: 23 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -199,6 +199,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [java](../by-language/java.md) | [Google Web Toolkit (GWT)](../detail/lang.java.framework.gwt.md) | 🟢 2/2 | 🔴 0/1 | 🟡 21/22 | 🔴 0/3 | |
 | [java](../by-language/java.md) | [Vaadin (UI-as-server)](../detail/lang.java.framework.vaadin.md) | 🟢 2/2 | 🔴 0/1 | 🟡 21/22 | 🔴 0/3 | |
 | [JS/TS](../by-language/jsts.md) | [Angular](../detail/lang.jsts.framework.angular.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 17/17 | |
+| [JS/TS](../by-language/jsts.md) | [GraphQL Client (Apollo Client / urql / Relay / graphql-request)](../detail/lang.jsts.framework.graphql-client.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🟡 1/8 | |
 | [JS/TS](../by-language/jsts.md) | [React](../detail/lang.jsts.framework.react.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | ✅ 21/21 | |
 | [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 17/17 | |
 | [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 19/19 | |
@@ -262,13 +263,14 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | Language | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|---|
 | [C/C++](../by-language/c-cpp.md) | [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 7/25 | 🟡 3/15 | |
-| [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | — | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 7/24 | 🟡 7/10 | |
+| [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | — | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 7/24 | 🟡 7/10 | |
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | — | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟡 22/24 | 🟢 10/10 | |
-| [elixir](../by-language/elixir.md) | [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | — | 🔴 0/1 | 🟢 4/4 | ✅ 1/1 | 🟡 11/24 | 🟡 6/10 | |
+| [elixir](../by-language/elixir.md) | [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | — | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 11/24 | 🟡 6/10 | |
+| [go](../by-language/go.md) | [gRPC-Go (google.golang.org/grpc)](../detail/lang.go.framework.grpc.md) | — | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/25 | 🟡 3/10 | |
 | [java](../by-language/java.md) | [gRPC-Java (grpc-java / grpc-spring-boot-starter)](../detail/lang.java.framework.grpc.md) | — | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/25 | 🟡 3/10 | |
 | [JS/TS](../by-language/jsts.md) | [GraphQL Resolvers (Apollo Server / GraphQL Yoga / etc.)](../detail/lang.jsts.framework.graphql-resolvers.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/25 | 🟡 6/17 | |
 | [JS/TS](../by-language/jsts.md) | [tRPC](../detail/lang.jsts.framework.trpc.md) | — | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟢 7/7 | |
-| [scala](../by-language/scala.md) | [ScalaPB / zio-grpc / fs2-grpc](../detail/lang.scala.framework.scalapb-grpc.md) | — | 🔴 0/1 | ✅ 4/4 | ✅ 1/1 | 🟡 15/24 | 🟢 7/7 | |
+| [scala](../by-language/scala.md) | [ScalaPB / zio-grpc / fs2-grpc](../detail/lang.scala.framework.scalapb-grpc.md) | — | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 15/24 | 🟢 7/7 | |
 
 
 ## AI Integration
