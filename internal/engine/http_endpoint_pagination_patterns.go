@@ -11,6 +11,17 @@ var (
 	// identifier. We only later keep the ones that are pagination-shaped.
 	pyParamDeclRe = regexp.MustCompile(`(?m)[\(,]\s*([A-Za-z_][A-Za-z0-9_]*)\s*[:=,\)]`)
 
+	// pyRequestQueryGetRe matches a query-param read whose key is a STRING
+	// LITERAL on the request object used by the ASGI/WSGI micro-frameworks:
+	//
+	//   sanic / quart / flask: request.args.get("limit") / request.args["limit"]
+	//   starlette / litestar:  request.query_params.get("offset") /
+	//                          request.query_params["cursor"]
+	//
+	// Group 1 is the param name. HONEST-PARTIAL: a dynamically-named read
+	// (`request.args.get(key)`) has no string literal and does not match.
+	pyRequestQueryGetRe = regexp.MustCompile(`\.\s*(?:args|query_params|GET)\s*(?:\.\s*get\s*\(|\[)\s*["']([A-Za-z_][A-Za-z0-9_]*)["']`)
+
 	// djangoPaginatorRe matches `Paginator(<qs>, <n>)` — the canonical Django
 	// core paginator constructor.
 	djangoPaginatorRe = regexp.MustCompile(`\bPaginator\s*\(`)

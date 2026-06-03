@@ -434,7 +434,30 @@ func pythonPaginationVerdict(region, body string) (paginationVerdict, bool) {
 	if v, ok := classifyParamShape(present, "query params"); ok {
 		return v, true
 	}
+	// ASGI/WSGI micro-frameworks (sanic / starlette / quart / litestar / flask)
+	// read query params from the request object inside the handler body —
+	// `request.args.get("limit")` / `request.query_params.get("offset")` /
+	// `request.args["cursor"]` — rather than from typed signature params. Collect
+	// those literal-named reads and run the same honest classifier.
+	bodyParams := pythonRequestQueryParams(body)
+	if v, ok := classifyParamShape(bodyParams, "request.query"); ok {
+		return v, true
+	}
 	return paginationVerdict{}, false
+}
+
+// pythonRequestQueryParams collects pagination-shaped names read from the
+// request object via `request.args.get("name")` / `request.args["name"]` /
+// `request.query_params.get("name")` in the handler body.
+func pythonRequestQueryParams(body string) map[string]bool {
+	present := map[string]bool{}
+	for _, m := range pyRequestQueryGetRe.FindAllStringSubmatch(body, -1) {
+		name := strings.ToLower(m[1])
+		if isPaginationParam(name) {
+			present[name] = true
+		}
+	}
+	return present
 }
 
 // pythonSignatureParams extracts the parameter identifiers from a (possibly

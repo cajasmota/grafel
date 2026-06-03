@@ -1843,6 +1843,15 @@ var starletteRouteRe = regexp.MustCompile(
 // extractor uses.
 var starletteEndpointKwargRe = regexp.MustCompile(`endpoint\s*=\s*([A-Za-z_][\w.]*)`)
 
+// starlettePositionalEndpointRe captures the SECOND positional argument of a
+// Route(...) call — the handler — in the very common
+// `Route("/path", handler, methods=[...])` form (no `endpoint=` kwarg). The
+// tail it scans begins at the comma after the path literal, so the first
+// `name` / `mod.name` token that is NOT a `kwarg=` assignment is the handler.
+// Anchored to the start of the tail (optionally after whitespace) so a name
+// appearing later inside `methods=[...]` cannot be mistaken for the handler.
+var starlettePositionalEndpointRe = regexp.MustCompile(`^\s*,\s*([A-Za-z_][\w.]*)\s*(?:,|$)`)
+
 // starletteMethodsKwargRe captures the methods=[...] list. Both list and
 // tuple literals are accepted, matching the Flask methods extractor.
 var starletteMethodsKwargRe = regexp.MustCompile(`methods\s*=\s*[\[\(]([^\]\)]+)[\]\)]`)
@@ -1881,10 +1890,14 @@ func synthesizeStarlette(content string, emit emitDefFn) {
 		handler := ""
 		if em := starletteEndpointKwargRe.FindStringSubmatchIndex(tail); len(em) >= 4 {
 			handler = tail[em[2]:em[3]]
-			// Keep only the final dotted segment as the entity name.
-			if i := strings.LastIndexByte(handler, '.'); i >= 0 {
-				handler = handler[i+1:]
-			}
+		} else if pm := starlettePositionalEndpointRe.FindStringSubmatch(tail); len(pm) >= 2 {
+			// `Route("/path", handler, methods=[...])` — handler is the second
+			// positional argument (no `endpoint=` kwarg).
+			handler = pm[1]
+		}
+		// Keep only the final dotted segment as the entity name.
+		if i := strings.LastIndexByte(handler, '.'); i >= 0 {
+			handler = handler[i+1:]
 		}
 
 		methods := parseStarletteMethods(tail)

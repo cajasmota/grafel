@@ -170,7 +170,11 @@ func resolveEndpointResponseCodes(lang, content string, e *types.EntityRecord) r
 	var v responseCodesVerdict
 	switch lang {
 	case "python":
-		v.merge(pythonResponseCodes(region, body))
+		// Trim the (large) body window at the next sibling handler so status
+		// literals from a decorator/handler BELOW this one do not bleed into this
+		// endpoint's set — e.g. two adjacent litestar `@get(status_code=200)` /
+		// `@post(status_code=201)` handlers must not pool their codes.
+		v.merge(pythonResponseCodes(region, trimPythonHandlerBody(body)))
 	case "java":
 		// For Spring the route annotation (@PostMapping) is the anchor; a sibling
 		// `@ResponseStatus` annotation and the handler signature sit on the lines
@@ -202,6 +206,28 @@ func resolveEndpointResponseCodes(lang, content string, e *types.EntityRecord) r
 	return v
 }
 
+// pyNextHandlerBoundaryRe matches the start of the NEXT Python handler that
+// could follow the current one inside the large body window: a route decorator
+// (`@app.get(` / `@get(` / `@router.post(` …) or a (possibly async) `def`. It is
+// used to clip the body so codes from a sibling handler below do not bleed in.
+// The leading newline anchor ensures we only cut at a real line start, never
+// mid-expression, and the body's OWN leading `def`/decorator (which precedes the
+// window start) is not in scope because the window begins at the handler line.
+var pyNextHandlerBoundaryRe = regexp.MustCompile(`(?m)^[ \t]*(?:@[\w.]*\.?(?:get|post|put|patch|delete|head|options|route|websocket)\b|(?:async\s+)?def\s)`)
+
+// trimPythonHandlerBody clips a Python handler body window at the next sibling
+// handler boundary (a route decorator or a def for the following handler), so
+// status literals declared on a later handler in the same file are not pooled
+// into this endpoint's response_codes. The FIRST boundary match is the current
+// handler's own `def` line (the window starts there); we cut at the SECOND.
+func trimPythonHandlerBody(body string) string {
+	locs := pyNextHandlerBoundaryRe.FindAllStringIndex(body, 2)
+	if len(locs) >= 2 {
+		return body[:locs[1][0]]
+	}
+	return body
+}
+
 // handlerBodyWindowLarge returns a larger bounded window of the handler body
 // than handlerBodyWindow (deprecation uses 1000) — a handler can raise / return
 // several status codes spread across its body. 2500 bytes covers a typical
@@ -228,6 +254,57 @@ var pyDecoratorStatusRe = regexp.MustCompile(`status_code\s*=\s*(\d{3})`)
 // pyHTTPStatusConstRe matches a Django/DRF `status.HTTP_201_CREATED` reference,
 // capturing the numeric code embedded in the constant name.
 var pyHTTPStatusConstRe = regexp.MustCompile(`status\.HTTP_(\d{3})_[A-Z0-9_]+`)
+
+// pyReturnTupleStatusLineRe matches a `return ...` STATEMENT line (whole line
+// captured in group 1) so we can resolve a top-level tuple-status element with
+// paren-balance checking in code — a regex alone cannot tell `return data, 201`
+// (a real tuple status) apart from `return foo(a, 201)` (an int argument inside
+// a call).
+var pyReturnTupleStatusLineRe = regexp.MustCompile(`(?m)^[ \t]*return\b([^\n]*)$`)
+
+// pyTrailingStatusRe matches a 3-digit status that is the FINAL or headers-prefix
+// element of a return tuple: `, 201` or `, 201,` at the END of (the relevant
+// part of) the statement. Group 1 is the code.
+var pyTrailingStatusRe = regexp.MustCompile(`,\s*(\d{3})\s*(?:,[^,]*)?$`)
+
+// pyReturnTupleStatus resolves the Flask / Quart tuple-return status idiom
+// `return <body>, 201` (optionally `return <body>, 201, <headers>`). It only
+// accepts a status int that sits at the TOP LEVEL of the return tuple — i.e.
+// after a comma at paren-depth zero — so an int argument inside a call
+// (`return foo(a, 200)`) is NOT mistaken for a status code. HONEST-PARTIAL:
+// `return body, status_var` (a non-literal) does not match.
+func pyReturnTupleStatus(body string) []int {
+	var out []int
+	for _, m := range pyReturnTupleStatusLineRe.FindAllStringSubmatch(body, -1) {
+		expr := m[1]
+		tm := pyTrailingStatusRe.FindStringSubmatchIndex(expr)
+		if tm == nil {
+			continue
+		}
+		// The comma that introduces the status must be at paren depth 0.
+		if parenDepthAt(expr, tm[0]) != 0 {
+			continue
+		}
+		if c, err := strconv.Atoi(expr[tm[2]:tm[3]]); err == nil {
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
+// parenDepthAt returns the net (), [], {} nesting depth at byte offset off in s.
+func parenDepthAt(s string, off int) int {
+	depth := 0
+	for i := 0; i < off && i < len(s); i++ {
+		switch s[i] {
+		case '(', '[', '{':
+			depth++
+		case ')', ']', '}':
+			depth--
+		}
+	}
+	return depth
+}
 
 // Note: a `status=403` / `status_code=403` literal kwarg is matched by the
 // package-level pyStatusKwargRe (response_shape_python.go), reused below. A
@@ -265,6 +342,14 @@ func pythonResponseCodes(region, body string) responseCodesVerdict {
 			if v.source == "" {
 				v.source = "status= literal"
 			}
+		}
+	}
+
+	// Flask / Quart tuple-return status: `return body, 201`.
+	for _, c := range pyReturnTupleStatus(body) {
+		v.add(c)
+		if v.source == "" {
+			v.source = "return tuple status"
 		}
 	}
 

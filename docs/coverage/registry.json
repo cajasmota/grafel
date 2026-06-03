@@ -56972,15 +56972,16 @@
             "issue": "3628"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
-            "verified_at": "2026-06-02"
+            "notes": "#3913: applyEndpointPagination stamps paginated/pagination_style/pagination_params from typed signature params (page/page_size/limit/offset/cursor) plus literal-named request.query_params reads in the handler body and the cross-language parameters fallback. Honest-partial: a lone limit and dynamically-named reads are not stamped.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_response_codes_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3913: applyEndpointResponseCodes resolves litestar @get/@post(status_code=NNN) decorator codes plus JSONResponse/Response(status_code=NNN) body literals; honest-partial on dynamic status vars.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_synthesis": {
             "status": "full",
@@ -57579,15 +57580,16 @@
             "issue": "3628"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
-            "verified_at": "2026-06-02"
+            "notes": "#3913: applyEndpointPagination stamps paginated/pagination_style/pagination_params from literal-named request query reads in the handler body (request.args.get('limit')/request.query_params.get('offset')/request.args['cursor']) plus the cross-language parameters fallback. Honest-partial: a lone limit (no offset/page/cursor companion) and dynamically-named reads are not stamped.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_response_codes_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3913: applyEndpointResponseCodes resolves quart JSONResponse(status_code=NNN) and the Flask-shaped tuple-return idiom 'return body, NNN[, headers]' (paren-balance guarded so call-arg ints are not mis-read); honest-partial on dynamic status vars.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_synthesis": {
             "status": "full",
@@ -58401,15 +58403,16 @@
             "issue": "3628"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
-            "verified_at": "2026-06-02"
+            "notes": "#3913: applyEndpointPagination stamps paginated/pagination_style/pagination_params from literal-named request query reads in the handler body (request.args.get('limit')/request.query_params.get('offset')/request.args['cursor']) plus the cross-language parameters fallback. Honest-partial: a lone limit (no offset/page/cursor companion) and dynamically-named reads are not stamped.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_response_codes_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3913: applyEndpointResponseCodes resolves sanic json(...,status=NNN)/HTTPResponse(status=NNN) body literals (route decorator sits above the handler); honest-partial on dynamic status vars.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_synthesis": {
             "status": "full",
@@ -58704,15 +58707,16 @@
             "issue": "3628"
           },
           "endpoint_pagination_posture": {
-            "status": "missing",
+            "status": "full",
             "cites": ["internal/engine/http_endpoint_pagination.go","internal/engine/http_endpoint_pagination_patterns.go","internal/engine/http_endpoint_pagination_test.go","internal/engine/http_endpoint_synthesis.go"],
-            "issue": "3628",
-            "notes": "#3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework.",
-            "verified_at": "2026-06-02"
+            "notes": "#3913: applyEndpointPagination stamps paginated/pagination_style/pagination_params from literal-named request query reads in the handler body (request.args.get('limit')/request.query_params.get('offset')/request.args['cursor']) plus the cross-language parameters fallback. Honest-partial: a lone limit (no offset/page/cursor companion) and dynamically-named reads are not stamped.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_response_codes": {
-            "status": "missing",
-            "issue": "3818"
+            "status": "full",
+            "cites": ["internal/engine/http_endpoint_response_codes.go","internal/engine/http_endpoint_response_codes_test.go","internal/engine/http_endpoint_synthesis.go"],
+            "notes": "#3913: applyEndpointResponseCodes resolves starlette JSONResponse/Response(status_code=NNN) body literals; the positional and endpoint= Route handler is now resolved (synthesizeStarlette) so the handler body is in scope; honest-partial on dynamic status vars.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_synthesis": {
             "status": "full",

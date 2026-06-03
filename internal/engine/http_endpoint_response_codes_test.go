@@ -402,3 +402,176 @@ func reg() {
 		t.Fatalf("response_codes=%q want absent (dynamic status var, no literal)", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Async siblings: sanic / starlette / quart / litestar (#3913)
+// ---------------------------------------------------------------------------
+
+// Sanic: `return json(..., status=NNN)` literals in the handler body, with the
+// route decorator sitting directly above the handler (Flask-shaped).
+func TestResponseCodes_Sanic_JsonStatusLiterals(t *testing.T) {
+	src := `
+from sanic import Sanic, json
+app = Sanic("x")
+
+@app.get("/items")
+async def list_items(request):
+    if request.args.get("bad"):
+        return json({"err": "bad"}, status=400)
+    return json({"items": []}, status=200)
+`
+	eps := deprecProps(t, "python", "app/api.py", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if got := e.Properties["response_codes"]; got != "200,400" {
+		t.Fatalf("response_codes=%q want 200,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "200" {
+		t.Fatalf("success_code=%q want 200", got)
+	}
+}
+
+// Starlette: the handler is a SEPARATE function referenced positionally in
+// `Route("/path", handler, methods=[...])`. The synthesiser must resolve the
+// positional handler so its body (with JSONResponse status_code= literals) is
+// in scope — the route-line fallback would miss them entirely.
+func TestResponseCodes_Starlette_PositionalRouteHandler(t *testing.T) {
+	src := `
+from starlette.applications import Starlette
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
+async def create(request):
+    data = await request.json()
+    if not data:
+        return JSONResponse({"err": "bad"}, status_code=400)
+    return JSONResponse(data, status_code=201)
+
+app = Starlette(routes=[Route("/items", create, methods=["POST"])])
+`
+	eps := deprecProps(t, "python", "app/main.py", src)
+	e := mustEndpoint(t, eps, "POST /items")
+	if got := e.Properties["response_codes"]; got != "201,400" {
+		t.Fatalf("response_codes=%q want 201,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+}
+
+// Starlette: the `endpoint=` kwarg form must also resolve the handler.
+func TestResponseCodes_Starlette_EndpointKwarg(t *testing.T) {
+	src := `
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
+async def show(request):
+    return JSONResponse({"ok": True}, status_code=200)
+
+routes = [Route("/items/{id}", endpoint=show, methods=["GET"])]
+`
+	eps := deprecProps(t, "python", "app/r.py", src)
+	e := mustEndpoint(t, eps, "GET /items/{id}")
+	if got := e.Properties["response_codes"]; got != "200" {
+		t.Fatalf("response_codes=%q want 200 (props: %v)", got, e.Properties)
+	}
+}
+
+// Quart: the Flask-shaped tuple-return status idiom `return jsonify(...), 201`.
+func TestResponseCodes_Quart_TupleReturnStatus(t *testing.T) {
+	src := `
+from quart import Quart, jsonify, request
+app = Quart(__name__)
+
+@app.route("/things", methods=["POST"])
+async def make_thing():
+    if not await request.get_json():
+        return jsonify({"err": "bad"}), 400
+    return jsonify({"ok": True}), 201
+`
+	eps := deprecProps(t, "python", "app/q.py", src)
+	e := mustEndpoint(t, eps, "POST /things")
+	if got := e.Properties["response_codes"]; got != "201,400" {
+		t.Fatalf("response_codes=%q want 201,400 (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["success_code"]; got != "201" {
+		t.Fatalf("success_code=%q want 201", got)
+	}
+}
+
+// Litestar: the `@get(status_code=200)` / `@post(status_code=201)` decorator.
+func TestResponseCodes_Litestar_DecoratorStatus(t *testing.T) {
+	src := `
+from litestar import get, post
+
+@get("/health", status_code=200)
+async def health() -> dict:
+    return {"ok": True}
+
+@post("/users", status_code=201)
+async def create_user(data: dict) -> dict:
+    return data
+`
+	eps := deprecProps(t, "python", "app/ls.py", src)
+	h := mustEndpoint(t, eps, "GET /health")
+	if got := h.Properties["response_codes"]; got != "200" {
+		t.Fatalf("health response_codes=%q want 200", got)
+	}
+	c := mustEndpoint(t, eps, "POST /users")
+	if got := c.Properties["response_codes"]; got != "201" {
+		t.Fatalf("create response_codes=%q want 201", got)
+	}
+}
+
+// Negative (honest-partial): a sanic handler whose status is a dynamic variable
+// (`status=code`) resolves to NO literal → response_codes absent.
+func TestResponseCodes_Sanic_DynamicStatusAbsent(t *testing.T) {
+	src := `
+from sanic import Sanic, json
+app = Sanic("x")
+
+@app.get("/dyn")
+async def dyn(request):
+    code = compute()
+    return json({"x": 1}, status=code)
+`
+	eps := deprecProps(t, "python", "app/dyn.py", src)
+	e := mustEndpoint(t, eps, "GET /dyn")
+	if got := e.Properties["response_codes"]; got != "" {
+		t.Fatalf("response_codes=%q want absent (dynamic status var)", got)
+	}
+}
+
+// Negative: `return foo(a, 200)` is an int ARGUMENT inside a call, not a tuple
+// status — it must NOT be read as a response code (#3913 paren-balance guard).
+func TestResponseCodes_Quart_IntArgNotTupleStatus(t *testing.T) {
+	src := `
+from quart import Quart
+app = Quart(__name__)
+
+@app.route("/calc", methods=["GET"])
+async def calc():
+    return compute(value, 200)
+`
+	eps := deprecProps(t, "python", "app/c.py", src)
+	e := mustEndpoint(t, eps, "GET /calc")
+	if got := e.Properties["response_codes"]; got != "" {
+		t.Fatalf("response_codes=%q want absent (200 is a call arg, not a tuple status)", got)
+	}
+}
+
+// Quart tuple status with trailing headers: `return body, 201, {...}`.
+func TestResponseCodes_Quart_TupleStatusWithHeaders(t *testing.T) {
+	src := `
+from quart import Quart, jsonify
+app = Quart(__name__)
+
+@app.route("/h", methods=["POST"])
+async def h():
+    return jsonify({"ok": True}), 201, {"X-Trace": "1"}
+`
+	eps := deprecProps(t, "python", "app/h.py", src)
+	e := mustEndpoint(t, eps, "POST /h")
+	if got := e.Properties["response_codes"]; got != "201" {
+		t.Fatalf("response_codes=%q want 201 (tuple status w/ headers)", got)
+	}
+}

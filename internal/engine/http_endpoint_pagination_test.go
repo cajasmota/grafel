@@ -453,3 +453,128 @@ func reg() {
 		t.Fatalf("paginated=%q want absent (no pagination params)", got)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Async siblings: sanic / starlette / quart / litestar (#3913)
+// ---------------------------------------------------------------------------
+//
+// These frameworks read query params from the REQUEST OBJECT inside the handler
+// body (`request.args.get("limit")` / `request.query_params.get("offset")`)
+// rather than from typed FastAPI signature params, so the body must be scanned.
+
+// Sanic: limit+offset read via request.args.get → offset style.
+func TestPagination_Sanic_ArgsGetLimitOffset(t *testing.T) {
+	src := `
+from sanic import Sanic, json
+app = Sanic("x")
+
+@app.get("/items")
+async def list_items(request):
+    limit = request.args.get("limit")
+    offset = request.args.get("offset")
+    return json({"items": []})
+`
+	eps := deprecProps(t, "python", "app/api.py", src)
+	e := mustEndpoint(t, eps, "GET /items")
+	if got := e.Properties["paginated"]; got != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_style"]; got != "offset" {
+		t.Fatalf("pagination_style=%q want offset", got)
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+// Starlette: request.query_params.get reads in a positionally-routed handler →
+// the positional handler must be resolved AND its body scanned.
+func TestPagination_Starlette_QueryParamsGet(t *testing.T) {
+	src := `
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
+async def search(request):
+    limit = request.query_params.get("limit")
+    offset = request.query_params.get("offset")
+    return JSONResponse({"items": []})
+
+routes = [Route("/search", search, methods=["GET"])]
+`
+	eps := deprecProps(t, "python", "app/main.py", src)
+	e := mustEndpoint(t, eps, "GET /search")
+	if got := e.Properties["paginated"]; got != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_style"]; got != "offset" {
+		t.Fatalf("pagination_style=%q want offset", got)
+	}
+	if got := e.Properties["pagination_params"]; got != "limit,offset" {
+		t.Fatalf("pagination_params=%q want limit,offset", got)
+	}
+}
+
+// Quart: a cursor token read via request.args["cursor"] (bracket form) →
+// cursor style (a cursor token is unambiguous on its own).
+func TestPagination_Quart_CursorBracketRead(t *testing.T) {
+	src := `
+from quart import Quart, jsonify, request
+app = Quart(__name__)
+
+@app.route("/feed", methods=["GET"])
+async def feed():
+    cursor = request.args["cursor"]
+    return jsonify({"items": []})
+`
+	eps := deprecProps(t, "python", "app/q.py", src)
+	e := mustEndpoint(t, eps, "GET /feed")
+	if got := e.Properties["paginated"]; got != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_style"]; got != "cursor" {
+		t.Fatalf("pagination_style=%q want cursor", got)
+	}
+	if got := e.Properties["pagination_params"]; got != "cursor" {
+		t.Fatalf("pagination_params=%q want cursor", got)
+	}
+}
+
+// Litestar: typed `page` + `page_size` signature params (FastAPI-shaped) →
+// page style (already covered by the signature scanner; asserted for the
+// sibling to lock the credit).
+func TestPagination_Litestar_PageParams(t *testing.T) {
+	src := `
+from litestar import get
+
+@get("/users")
+async def list_users(page: int = 1, page_size: int = 20) -> list:
+    return []
+`
+	eps := deprecProps(t, "python", "app/ls.py", src)
+	e := mustEndpoint(t, eps, "GET /users")
+	if got := e.Properties["paginated"]; got != "true" {
+		t.Fatalf("paginated=%q want true (props: %v)", got, e.Properties)
+	}
+	if got := e.Properties["pagination_style"]; got != "page" {
+		t.Fatalf("pagination_style=%q want page", got)
+	}
+}
+
+// Negative (honest-partial): a sanic handler reading only a lone `limit`
+// (no offset/page/cursor companion) is ambiguous → NOT stamped.
+func TestPagination_Sanic_LoneLimitNotPaginated(t *testing.T) {
+	src := `
+from sanic import Sanic, json
+app = Sanic("x")
+
+@app.get("/cap")
+async def cap(request):
+    limit = request.args.get("limit")
+    return json({"items": []})
+`
+	eps := deprecProps(t, "python", "app/cap.py", src)
+	e := mustEndpoint(t, eps, "GET /cap")
+	if got := e.Properties["paginated"]; got != "" {
+		t.Fatalf("paginated=%q want absent (lone limit is ambiguous)", got)
+	}
+}
