@@ -45304,29 +45304,32 @@
         },
         "Transactions": {
           "transaction_boundary_extraction": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "@Transactional on Kotlin fun/class; method/class boundary names asserted by TestKotlinTransactional_Attributes_3435 (getOrders, processPayment, reconcile)",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/spring_transactions_test.go"],
+            "issue": "4014",
+            "notes": "#4014: native LIVE Kotlin Spring @Transactional extractor (custom_kotlin_spring_transactions). The prior cite (custom/java/transactional.go) never fired on .kt — the custom_java_patterns adapter hard-skips non-java files — so spring-boot got zero credit; this fixes it on the custom_kotlin_* dispatch path. method+class boundaries named by enclosing class, framework=spring-boot, gated on a Spring/Jakarta @Transactional import. transfer/audit/reconcile/lookup boundary names asserted by TestKotlinSpringTx_Boundaries_4014; un-annotated plain() yields none. Honest-partial: regex/file-local, cross-file boundary propagation not resolved.",
+            "verified_at": "2026-06-03"
           },
           "transaction_function_stamping": {
-            "status": "missing",
-            "issue": "3628-transaction-function-stamping"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/spring_transactions_test.go"],
+            "issue": "4014",
+            "notes": "#4014: each @Transactional fun is stamped transactional=true on the named SCOPE.Pattern boundary; non-readOnly bodies with a JPA/Spring-Data write call (save/persist/delete/insert/update/flush) also carry db_write=true, while readOnly=true methods never do (TestKotlinSpringTx_ReadOnlyAndDbWrite_4014: lookup readOnly read → no db_write; transfer/audit → db_write). Honest-partial: file-local lexical stamping, no transitive propagation into callees.",
+            "verified_at": "2026-06-03"
           },
           "transaction_propagation": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "propagation=Propagation.REQUIRES_NEW captured + asserted by TestKotlinTransactional_Attributes_3435; readOnly=true also asserted",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/spring_transactions_test.go"],
+            "issue": "4014",
+            "notes": "#4014: propagation=Propagation.\u003cMODE\u003e (and Jakarta TxType.\u003cMODE\u003e) captured on the LIVE Kotlin path; audit propagation=REQUIRES_NEW asserted by TestKotlinSpringTx_Propagation_4014, and a method with no explicit propagation gets NO fabricated default (the ktor extractor previously hardcoded REQUIRED for every @Transactional). Honest-partial: regex/file-local.",
+            "verified_at": "2026-06-03"
           },
           "transaction_rollback_rules": {
-            "status": "missing",
-            "cites": ["internal/custom/java/kotlin_port_test.go","internal/custom/java/transactional.go"],
-            "issue": "https://github.com/cajasmota/archigraph/issues/3586",
-            "notes": "Kotlin rollbackFor=[X::class]/noRollbackFor + isolation captured (txClassRefRE now accepts ::class); rollback_for=PaymentException, no_rollback_for=WarnException, isolation=SERIALIZABLE asserted by TestKotlinTransactional_Attributes_3435",
-            "verified_at": "2026-05-30"
+            "status": "partial",
+            "cites": ["internal/custom/kotlin/spring_transactions.go","internal/custom/kotlin/spring_transactions_test.go"],
+            "issue": "4014",
+            "notes": "#4014: rollbackFor=[X::class]/noRollbackFor=[Y::class] (Kotlin ::class list form) + isolation=Isolation.\u003cLEVEL\u003e + readOnly captured on the LIVE Kotlin path; rollback_for=IOException, no_rollback_for=WarnException, isolation=SERIALIZABLE asserted by TestKotlinSpringTx_RollbackRules_4014. Honest-partial: regex/file-local.",
+            "verified_at": "2026-06-03"
           }
         },
         "AOP": {
