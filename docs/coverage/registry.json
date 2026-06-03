@@ -46095,8 +46095,11 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/endpoint_deprecation.go","internal/custom/kotlin/endpoint_deprecation_test.go"],
+            "issue": "4136",
+            "notes": "#4136 (epic #3628): greenfield Kotlin port. Ktor producer endpoints are SCOPE.Operation custom-extractor entities (ktor_routes.go), so the flagship engine pass (http_endpoint_deprecation.go) cannot reach them; this custom extractor stamps the IDENTICAL flat contract at the source. A Ktor verb handler get/post/...(\"/path\"){} carrying @Deprecated(\"use /api/v2/x\", ReplaceWith(\"/v2/x\")) or a KDoc @deprecated tag in the region above the call -\u003e deprecated=true + deprecated_replacement (+ deprecated_since from 'since X') + deprecation_source=@Deprecated|KDoc @deprecated; a call.response.header(\"Sunset\"/\"Deprecation\", ...) in the handler lambda -\u003e deprecation_source=\u003cHeader\u003e response header. api_version is path-derived from an explicit /api/v{N} or /v{N} segment, composing enclosing route(\"/prefix\") prefixes. Value-asserted in endpoint_deprecation_test.go. Honest-partial: a versionless non-deprecated route is not stamped (left to ktor_routes.go); /apiv2something is not a version segment; a config-/variable-driven marker is not resolved.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "missing",
@@ -47338,8 +47341,11 @@
       "capabilities": {
         "Routing": {
           "endpoint_deprecation_versioning": {
-            "status": "missing",
-            "issue": "3628"
+            "status": "full",
+            "cites": ["internal/custom/kotlin/endpoint_deprecation.go","internal/custom/kotlin/endpoint_deprecation_test.go"],
+            "issue": "4136",
+            "notes": "#4136 (epic #3628): greenfield Kotlin port. Spring-Boot-Kotlin producer endpoints are SCOPE.Operation custom-extractor entities (routing.go), so the flagship engine pass cannot reach them; this custom extractor stamps the IDENTICAL flat contract at the source. A @\u003cVerb\u003eMapping handler in a @RestController/@Controller carrying @Deprecated(\"use /api/v2/x\", ReplaceWith(...)) or a KDoc @deprecated above the mapping -\u003e deprecated=true + deprecated_replacement (+ deprecated_since) + deprecation_source=@Deprecated|KDoc @deprecated; a response.setHeader(\"Sunset\"/\"Deprecation\", ...) in the fun body -\u003e deprecation_source=\u003cHeader\u003e response header. api_version is path-derived from the composed class @RequestMapping + method path (/api/v{N} or /v{N} segment). Endpoint Name matches routing.go so the stamp merges onto the plain route op. Value-asserted in endpoint_deprecation_test.go (Spring annotated/Deprecation-header + versionless-negative). Honest-partial: a versionless non-deprecated handler is not stamped; a config-/variable-driven marker is not resolved.",
+            "verified_at": "2026-06-03"
           },
           "endpoint_pagination_posture": {
             "status": "full",
