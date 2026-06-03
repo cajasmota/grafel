@@ -1,0 +1,8 @@
+INSPECTIONS = "inspections"
+INSPECTIONS_HISTORY = "inspections_history"
+INSPECTIONS_GROUP = "inspection_groups"
+ME_PAGES = "me_pages"
+ME_PAGE_VERSIONS = "me_page_versions"
+ME_REPORT_INSPECTIONS_GROUP = "me_report_inspections_group"
+NOTIFICATIONS = "notifications"
+PERMITS = "permits"
