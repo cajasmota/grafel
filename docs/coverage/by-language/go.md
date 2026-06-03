@@ -26,23 +26,23 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Echo](../detail/lang.go.framework.echo.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
-| [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Buffalo](../detail/lang.go.framework.buffalo.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Echo](../detail/lang.go.framework.echo.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 24/24 | 🟡 8/12 | |
+| [Fiber](../detail/lang.go.framework.fiber.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [Gin](../detail/lang.go.framework.gin.md) | 🟡 5/6 | ✅ 1/1 | 🟢 4/4 | 🟢 1/1 | 🟢 25/25 | 🟡 7/11 | |
-| [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Huma](../detail/lang.go.framework.huma.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Iris](../detail/lang.go.framework.iris.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
-| [Revel](../detail/lang.go.framework.revel.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/11 | |
-| [chi](../detail/lang.go.framework.chi.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
-| [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟡 3/6 | — | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 6/11 | |
-| [go-zero](../detail/lang.go.framework.go-zero.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 22/24 | 🟡 7/12 | |
+| [Gorilla Mux](../detail/lang.go.framework.gorilla-mux.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Hertz (CloudWeGo)](../detail/lang.go.framework.hertz.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Huma](../detail/lang.go.framework.huma.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Iris](../detail/lang.go.framework.iris.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Kratos (Bilibili)](../detail/lang.go.framework.kratos.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [Revel](../detail/lang.go.framework.revel.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 6/11 | |
+| [chi](../detail/lang.go.framework.chi.md) | 🟡 5/6 | ✅ 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [fasthttp](../detail/lang.go.framework.fasthttp.md) | 🟡 3/6 | — | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 6/11 | |
+| [go-zero](../detail/lang.go.framework.go-zero.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [google/wire (DI)](../detail/lang.go.framework.wire.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 2/11 | |
-| [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟡 3/6 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 5/24 | 🟡 2/13 | |
-| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 5/6 | — | 🟢 3/3 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [gqlgen (GraphQL)](../detail/lang.go.framework.gqlgen.md) | 🟡 3/6 | 🟢 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 6/24 | 🟡 2/13 | |
+| [net/http (stdlib)](../detail/lang.go.framework.net-http.md) | 🟡 5/6 | — | 🟢 3/3 | 🟢 1/1 | 🟢 24/24 | 🟡 7/12 | |
 | [uber/fx (DI)](../detail/lang.go.framework.fx.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/24 | 🟡 2/11 | |
 
 
