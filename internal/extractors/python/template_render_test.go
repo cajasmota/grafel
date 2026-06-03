@@ -79,6 +79,112 @@ class AboutView(TemplateView):
 	}
 }
 
+// DRF browsable-API render path: renderer_classes naming the browsable / HTML
+// renderer emits a RENDERS edge to a drf/<Renderer> convergence node, while a
+// JSON-only renderer in the same list contributes NO render path.
+func TestPyTemplate_DRFRendererClasses(t *testing.T) {
+	src := `from rest_framework.viewsets import ViewSet
+from rest_framework.renderers import JSONRenderer, BrowsableAPIRenderer
+
+class FooViewSet(ViewSet):
+    renderer_classes = [JSONRenderer, BrowsableAPIRenderer]
+`
+	recs := extractPy(t, src, "views.py")
+	if !tplEdge(recs, "FooViewSet", "drf/BrowsableAPIRenderer") {
+		t.Error("missing RENDERS(FooViewSet -> drf/BrowsableAPIRenderer)")
+	}
+	// JSONRenderer is a data renderer, not an HTML/browsable render path.
+	if tplEdge(recs, "FooViewSet", "drf/JSONRenderer") {
+		t.Error("JSONRenderer must NOT yield an HTML render path")
+	}
+	if tplNode(recs, "drf/BrowsableAPIRenderer") != 1 {
+		t.Error("expected one drf/BrowsableAPIRenderer convergence node")
+	}
+	if tplNode(recs, "drf/JSONRenderer") != 0 {
+		t.Error("JSONRenderer must not create a render node")
+	}
+}
+
+// DRF TemplateHTMLRenderer + template_name: BOTH the concrete template (via the
+// framework-agnostic template_name detector) AND the renderer render-path node
+// are recorded, and a dotted `renderers.BrowsableAPIRenderer` reference matches.
+func TestPyTemplate_DRFTemplateHTMLRenderer(t *testing.T) {
+	src := `from rest_framework.views import APIView
+from rest_framework import renderers
+
+class UserDetail(APIView):
+    renderer_classes = [renderers.TemplateHTMLRenderer]
+    template_name = "user_detail.html"
+
+    def get(self, request, pk):
+        return Response({"x": 1})
+`
+	recs := extractPy(t, src, "views.py")
+	if !tplEdge(recs, "UserDetail", "user_detail.html") {
+		t.Error("missing RENDERS(UserDetail -> user_detail.html)")
+	}
+	if !tplEdge(recs, "UserDetail", "drf/TemplateHTMLRenderer") {
+		t.Error("missing RENDERS(UserDetail -> drf/TemplateHTMLRenderer) for dotted ref")
+	}
+}
+
+// Negative: a DRF view that renders JSON only has NO HTML/browsable render path.
+func TestPyTemplate_DRFJSONOnlyNoRender(t *testing.T) {
+	src := `from rest_framework.viewsets import ModelViewSet
+from rest_framework.renderers import JSONRenderer
+
+class WidgetViewSet(ModelViewSet):
+    renderer_classes = [JSONRenderer]
+`
+	recs := extractPy(t, src, "views.py")
+	for i := range recs {
+		if recs[i].Kind == string(types.EntityKindTemplate) {
+			t.Fatalf("JSON-only DRF view must not create any render node, got %q", recs[i].Name)
+		}
+		for _, r := range recs[i].Relationships {
+			if r.Kind == "RENDERS" {
+				t.Fatalf("JSON-only DRF view must not yield a RENDERS edge")
+			}
+		}
+	}
+}
+
+// Negative: a plain non-DRF class with no renderer_classes / template_name is
+// never claimed as a render path.
+func TestPyTemplate_NonDRFClassNoRender(t *testing.T) {
+	src := `class PlainService:
+    def compute(self):
+        return 42
+`
+	recs := extractPy(t, src, "service.py")
+	for i := range recs {
+		for _, r := range recs[i].Relationships {
+			if r.Kind == "RENDERS" {
+				t.Fatalf("plain non-view class must not yield a RENDERS edge")
+			}
+		}
+	}
+}
+
+// Negative: a dynamically built renderer_classes (not a list/tuple literal)
+// yields nothing — precision over recall.
+func TestPyTemplate_DRFDynamicRenderersDropped(t *testing.T) {
+	src := `class DynView(APIView):
+    renderer_classes = get_default_renderers()
+`
+	recs := extractPy(t, src, "views.py")
+	for i := range recs {
+		if recs[i].Kind == string(types.EntityKindTemplate) {
+			t.Fatalf("dynamic renderer_classes must not create a render node, got %q", recs[i].Name)
+		}
+		for _, r := range recs[i].Relationships {
+			if r.Kind == "RENDERS" {
+				t.Fatalf("dynamic renderer_classes must not yield a RENDERS edge")
+			}
+		}
+	}
+}
+
 // Convergence: two views rendering the same template → one node.
 func TestPyTemplate_Convergence(t *testing.T) {
 	src := `from flask import render_template
