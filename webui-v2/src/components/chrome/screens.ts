@@ -17,6 +17,7 @@ import {
   Route as RouteIcon,
   FileText,
   ShieldCheck,
+  GaugeCircle,
   Wrench,
   Inbox,
   Settings,
@@ -38,6 +39,7 @@ export const SCREENS: ScreenDef[] = [
   { to: "flows", label: "Flows", Icon: Workflow, shortcut: "F" },
   { to: "docs", label: "Docs", Icon: FileText, shortcut: "D" },
   { to: "security", label: "Security", Icon: ShieldCheck, shortcut: "S" },
+  { to: "quality", label: "Quality", Icon: GaugeCircle, shortcut: "Q" },
   { to: "operations", label: "Operations", Icon: Wrench, shortcut: "O" },
 ];
 
