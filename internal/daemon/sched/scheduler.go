@@ -42,6 +42,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"sync"
@@ -190,6 +191,26 @@ type Config struct {
 	// ExtractorConfig.IsIncrementalEnabled() call, preserving backward
 	// compatibility for callers that have not yet been migrated.
 	ExtractorConfig *extractor.ExtractorConfig
+
+	// MemReleaseDebounce is the quiet window after the scheduler goes fully
+	// idle (no in-flight index, empty pending queue, no pending algo/link
+	// passes) before FreeOSMemory is called once to return the retained Go
+	// heap arena to the OS (#3648). The daemon reindexes frequently under
+	// file-event churn, so calling FreeOSMemory after every index — a full
+	// stop-the-world GC + madvise each time — would be far too costly; the
+	// debounce ensures it fires at most once per idle period, after activity
+	// has actually settled. <=0 defaults to memReleaseDebounceDefault. Set
+	// negative-via-disable through MemReleaseDisabled.
+	MemReleaseDebounce time.Duration
+
+	// MemReleaseDisabled turns the idle FreeOSMemory trigger off entirely
+	// (escape hatch / tests that don't want the goroutine). Default false.
+	MemReleaseDisabled bool
+
+	// FreeOSMemory is the function the idle trigger calls to return retained
+	// heap to the OS. nil defaults to runtime/debug.FreeOSMemory. Overridable
+	// so tests can assert the trigger fires without paying for a real STW GC.
+	FreeOSMemory func()
 }
 
 // deadManTimeout is how long the scheduler waits with a non-empty pending
@@ -197,6 +218,19 @@ type Config struct {
 // job. This is the relief valve for admission-control wedge scenarios
 // (e.g. inflated RSS history predictions that exceed the budget).
 const deadManTimeout = 2 * time.Minute
+
+// memReleaseDebounceDefault is how long the scheduler must be fully idle
+// (no in-flight index, empty queue, no pending algo/link passes) before it
+// calls FreeOSMemory once to hand the retained Go heap arena back to the OS
+// (#3648). 30s is deliberately well past the typical file-event reindex
+// cadence (~1/min under churn) so a burst of edits does not repeatedly pay
+// for a stop-the-world GC + madvise. It fires at most once per idle period.
+const memReleaseDebounceDefault = 30 * time.Second
+
+// memReleaseTick is the poll interval of the idle-detection loop. It only
+// reads cheap in-memory counters under the scheduler lock, so a short tick
+// is fine; the actual FreeOSMemory call is gated by the debounce above.
+const memReleaseTick = 5 * time.Second
 
 // enqueueRequest carries a repo path plus the ref snapshot taken at
 // Enqueue time. This is the unit flowing from public Enqueue → dedupLoop →
@@ -256,6 +290,16 @@ type Scheduler struct {
 	// admitted jobs. The dead-man goroutine force-admits a job when this
 	// exceeds deadManTimeout. Zero means the clock is not running.
 	deadManAt time.Time
+
+	// idleSince is the wall-clock time the scheduler last became fully idle
+	// (no in-flight index, empty queue, no pending algo/link passes). Zero
+	// means "not currently idle". The memReleaseLoop arms FreeOSMemory off
+	// this clock and the debounce window (#3648). Guarded by mu.
+	idleSince time.Time
+	// memReleased records whether FreeOSMemory has already fired for the
+	// CURRENT idle period, so we release at most once until activity resumes
+	// (which resets it). Guarded by mu.
+	memReleased bool
 }
 
 // jobToken couples a repo path with the predicted MB that admission
@@ -320,6 +364,12 @@ func New(cfg Config) *Scheduler {
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "sched")
 	}
+	if cfg.MemReleaseDebounce <= 0 {
+		cfg.MemReleaseDebounce = memReleaseDebounceDefault
+	}
+	if cfg.FreeOSMemory == nil {
+		cfg.FreeOSMemory = debug.FreeOSMemory
+	}
 	algoCap := resolveAlgoCap(cfg.AlgoCap)
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	return &Scheduler{
@@ -353,6 +403,10 @@ func (s *Scheduler) Start() {
 	go s.admitLoop()
 	s.wg.Add(1)
 	go s.deadManLoop()
+	if !s.cfg.MemReleaseDisabled {
+		s.wg.Add(1)
+		go s.memReleaseLoop()
+	}
 	for i := 0; i < s.cfg.Workers; i++ {
 		s.wg.Add(1)
 		go s.workerLoop()
@@ -575,6 +629,103 @@ func (s *Scheduler) checkDeadMan() {
 		case <-s.stop:
 		}
 	}()
+}
+
+// memReleaseLoop polls the scheduler's activity counters and, once it has
+// been fully idle for MemReleaseDebounce, calls FreeOSMemory exactly once to
+// return the retained Go heap arena to the OS (#3648).
+//
+// Why this is needed: a full reindex transiently allocates several GB of
+// heap, then frees it back to the GO RUNTIME — but Go keeps that dirty arena
+// as a high-water mark and only madvise()s it back to the OS lazily. On a
+// memory-pressured host macOS swaps those idle dirty pages out, inflating the
+// process footprint to multiple GB (vmmap on the live daemon: 5.5GB footprint,
+// 5.5GB swapped, only 176MB actually resident). FreeOSMemory forces the GC +
+// scavenge so the OS reclaims the pages instead of swapping them.
+//
+// Why debounced (not per-index): FreeOSMemory is a synchronous
+// stop-the-world GC followed by a scavenge — expensive. The daemon reindexes
+// often under file-event churn (~1/min), so firing it after every index would
+// thrash. We instead fire at most once per idle period, after activity has
+// settled for the debounce window.
+func (s *Scheduler) memReleaseLoop() {
+	defer s.wg.Done()
+	tick := time.NewTicker(memReleaseTick)
+	defer tick.Stop()
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-tick.C:
+			s.maybeReleaseMemory(time.Now())
+		}
+	}
+}
+
+// busyLocked reports whether any indexing-related work is in flight or
+// pending. Must be called with s.mu held. Algo/link debounce timers count
+// as "busy" so we don't FreeOSMemory in the gap between an index completing
+// and its downstream passes firing.
+func (s *Scheduler) busyLocked() bool {
+	if len(s.inflight) > 0 || s.queueLen > 0 || len(s.pendingQ) > 0 {
+		return true
+	}
+	for _, p := range s.algoPending {
+		if p {
+			return true
+		}
+	}
+	for _, p := range s.linkPending {
+		if p {
+			return true
+		}
+	}
+	return false
+}
+
+// maybeReleaseMemory is the testable core of the idle-release trigger. It
+// tracks when the scheduler became idle and, once idle for the debounce
+// window, invokes FreeOSMemory exactly once (until the next busy→idle
+// transition). Exposed as a method (not an inline closure) so tests can drive
+// it with a synthetic clock and a stub FreeOSMemory. It is safe to call
+// repeatedly; only the first post-debounce call in an idle period releases.
+func (s *Scheduler) maybeReleaseMemory(now time.Time) {
+	s.mu.Lock()
+	if s.busyLocked() {
+		// Activity resumed (or never settled): reset the idle clock so the
+		// next idle period must serve out a fresh debounce, and re-arm the
+		// one-shot release.
+		s.idleSince = time.Time{}
+		s.memReleased = false
+		s.mu.Unlock()
+		return
+	}
+	if s.idleSince.IsZero() {
+		s.idleSince = now
+		s.mu.Unlock()
+		return
+	}
+	if s.memReleased || now.Sub(s.idleSince) < s.cfg.MemReleaseDebounce {
+		s.mu.Unlock()
+		return
+	}
+	// Idle long enough and not yet released this period — fire once.
+	s.memReleased = true
+	idleFor := now.Sub(s.idleSince).Truncate(time.Second)
+	free := s.cfg.FreeOSMemory
+	s.logEventLocked("mem_release", "",
+		"idle "+idleFor.String()+" — returning retained heap to OS (FreeOSMemory)")
+	s.mu.Unlock()
+
+	// Call FreeOSMemory OUTSIDE the lock: it triggers a stop-the-world GC +
+	// scavenge that can take tens of ms, and we must not stall enqueue/admit
+	// paths (which take s.mu) for that duration.
+	if free != nil {
+		t0 := time.Now()
+		free()
+		s.logger.Info("sched: returned idle heap to OS",
+			"idle_for", idleFor, "freeosmemory_took", time.Since(t0).Truncate(time.Millisecond))
+	}
 }
 
 // tryAdmit walks the pending queue head-first and dispatches every job

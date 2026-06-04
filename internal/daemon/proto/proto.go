@@ -27,10 +27,34 @@ type StatusArgs struct{}
 // StatusReply summarises the daemon's runtime state. Fields are added
 // here as new phases land; clients must tolerate missing fields.
 type StatusReply struct {
-	Version    string   `json:"version"`
-	PID        int      `json:"pid"`
-	UptimeSec  int64    `json:"uptime_sec"`
-	RSSBytes   uint64   `json:"rss_bytes"`
+	Version   string `json:"version"`
+	PID       int    `json:"pid"`
+	UptimeSec int64  `json:"uptime_sec"`
+	// RSSBytes is the daemon's physical-memory reading. As of #3648 it is
+	// sourced from the honest process footprint (resident set size), NOT
+	// runtime.MemStats.Sys (reserved virtual address space) which it
+	// previously — and incorrectly — reported and labeled "actual RSS".
+	RSSBytes uint64 `json:"rss_bytes"`
+
+	// Honest memory breakdown (#3648). These are reported alongside RSSBytes
+	// so clients can distinguish OS-level resident memory from Go-heap state.
+	//
+	//   FootprintBytes  — best honest physical-memory number (== RSSBytes).
+	//   FootprintLabel  — names exactly what FootprintBytes measured, incl.
+	//                     the macOS caveat that RSS under-counts swapped /
+	//                     compressed pages (Activity Monitor's phys_footprint
+	//                     may be larger).
+	//   HeapInuseBytes  — MemStats.HeapInuse: heap spans with live objects.
+	//   HeapReleasedBytes — MemStats.HeapReleased: heap returned to the OS
+	//                     (rises after debug.FreeOSMemory / GOMEMLIMIT GC).
+	//   SysBytes        — MemStats.Sys: total VA reserved from the OS. This is
+	//                     the number that USED to be mislabeled as RSS.
+	FootprintBytes    uint64 `json:"footprint_bytes,omitempty"`
+	FootprintLabel    string `json:"footprint_label,omitempty"`
+	HeapInuseBytes    uint64 `json:"heap_inuse_bytes,omitempty"`
+	HeapReleasedBytes uint64 `json:"heap_released_bytes,omitempty"`
+	SysBytes          uint64 `json:"sys_bytes,omitempty"`
+
 	InFlight   int      `json:"in_flight"`
 	Groups     []string `json:"groups,omitempty"`
 	StartedAt  string   `json:"started_at"`

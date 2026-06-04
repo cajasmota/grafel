@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
-	"runtime"
 	"strings"
 	"testing"
 
@@ -157,34 +156,40 @@ func TestStatusRSSReportsActualMemory(t *testing.T) {
 		t.Fatalf("Status RPC failed: %v", err)
 	}
 
-	// RSSBytes should be populated from runtime.MemStats.Sys.
+	// #3648: RSSBytes is now sourced from the honest process footprint
+	// (resident set size), NOT runtime.MemStats.Sys (reserved virtual
+	// address space). It must be populated and must equal FootprintBytes.
 	if reply.RSSBytes == 0 {
-		t.Errorf("expected RSSBytes > 0 (actual daemon memory), got 0")
+		t.Errorf("expected RSSBytes > 0 (honest process footprint), got 0")
+	}
+	if reply.FootprintBytes != reply.RSSBytes {
+		t.Errorf("RSSBytes (%d) must mirror FootprintBytes (%d)",
+			reply.RSSBytes, reply.FootprintBytes)
+	}
+	if reply.FootprintLabel == "" {
+		t.Error("FootprintLabel must describe what FootprintBytes measured")
 	}
 
-	// RSSUsedMB should be the RSSBytes converted to MB.
+	// #3648: the distinct honest heap fields must be populated so clients can
+	// see the Go-heap breakdown instead of a single mislabeled number.
+	if reply.HeapInuseBytes == 0 {
+		t.Error("expected HeapInuseBytes > 0")
+	}
+	if reply.SysBytes == 0 {
+		t.Error("expected SysBytes > 0 (MemStats.Sys, reported as its own field)")
+	}
+
+	// The footprint (resident) must NOT be the old ms.Sys value — that was
+	// the mislabel this change fixes. Sys (reserved VA) is typically far
+	// larger than resident RSS; assert they are reported as DISTINCT fields.
+	if reply.RSSBytes == reply.SysBytes {
+		t.Error("RSSBytes must be the resident footprint, distinct from SysBytes (the old mislabel)")
+	}
+
+	// RSSUsedMB should be the RSSBytes (footprint) converted to MB.
 	expectedUsedMB := int64(reply.RSSBytes / (1024 * 1024))
 	if reply.RSSUsedMB != expectedUsedMB {
 		t.Errorf("RSSUsedMB: got %d, want %d (RSSBytes %d / 1MB)",
 			reply.RSSUsedMB, expectedUsedMB, reply.RSSBytes)
-	}
-
-	// RSSUsedMB should be non-zero when daemon has allocated heap.
-	if reply.RSSUsedMB <= 0 {
-		t.Errorf("expected RSSUsedMB > 0 (actual daemon memory), got %d", reply.RSSUsedMB)
-	}
-
-	// The difference between header RSS and budget display should be
-	// within ~10% tolerance. Verify that they're using the same source.
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
-	headerMB := int64(ms.Sys / (1024 * 1024))
-	budgetMB := reply.RSSUsedMB
-	if headerMB > 0 {
-		pctDiff := float64(headerMB-budgetMB) / float64(headerMB) * 100
-		if pctDiff < -10 || pctDiff > 10 {
-			t.Logf("warning: header RSS (≈%dMB) differs from budget display (%dMB) by >10%%",
-				headerMB, budgetMB)
-		}
 	}
 }

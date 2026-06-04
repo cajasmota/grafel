@@ -9,10 +9,69 @@
 //	Kill(pid)         — sends SIGTERM on unix; calls TerminateProcess on windows.
 //	CPUPercent(pid)   — returns the instantaneous CPU percent for pid.
 //	RSSBytes(pid)     — returns the resident-set size of pid in bytes.
+//	FootprintBytes()  — returns the best honest physical-memory number for
+//	                    the CURRENT process plus a label describing what it
+//	                    measured (see FootprintBytes for the per-OS caveats).
 //
 // All functions return errors rather than panicking on unsupported
 // platforms, so callers can degrade gracefully.
 package process
+
+import (
+	"os"
+	"runtime"
+)
+
+// Footprint is an honest physical-memory reading for the current process.
+//
+// Bytes is the best number we can obtain WITHOUT cgo. Label names exactly
+// what was measured so callers never mislabel it (the bug this type was
+// introduced to kill — see #3648). Source is a short machine-readable tag
+// ("resident_rss", "memstats_sys") for clients that branch on it.
+//
+// IMPORTANT macOS caveat: the metric Activity Monitor shows is
+// `phys_footprint`, which counts dirty + swapped-out + compressed pages.
+// Reading it requires the mach `task_info(TASK_VM_INFO)` trap, which is a
+// MIG routine over mach_msg and is not reachable from pure Go without cgo.
+// archigraph is a pure-Go, cgo-free binary, so on darwin we report the
+// RESIDENT set size (`ps -o rss`), which UNDER-counts swapped/compressed
+// pages — under heavy memory pressure the real footprint can be much
+// larger than what we report here. The Label makes that explicit rather
+// than pretending RSS is the footprint.
+type Footprint struct {
+	Bytes  uint64
+	Label  string
+	Source string
+}
+
+// FootprintBytes returns the most honest physical-memory number available
+// for the current process, without cgo. It never errors: on any failure it
+// falls back to runtime.MemStats and labels the value accordingly so the
+// caller still reports a non-zero, correctly-described number.
+//
+// Resolution order:
+//  1. resident set size via RSSBytes(self) — /proc on Linux, `ps -o rss` on
+//     macOS. Honest "resident in RAM"; on macOS it under-counts swapped and
+//     compressed pages (see Footprint doc).
+//  2. runtime.MemStats.Sys — the virtual address space Go has reserved from
+//     the OS. This is NOT process RSS; it is the absolute last resort so the
+//     daemon reports SOMETHING when even ps/proc are unavailable.
+func FootprintBytes() Footprint {
+	if rss, err := RSSBytes(os.Getpid()); err == nil && rss > 0 {
+		label := "resident set size (RSS)"
+		if runtime.GOOS == "darwin" {
+			label = "resident set size (RSS; under-counts swapped/compressed pages — Activity Monitor's phys_footprint may be larger)"
+		}
+		return Footprint{Bytes: rss, Label: label, Source: "resident_rss"}
+	}
+	var ms runtime.MemStats
+	runtime.ReadMemStats(&ms)
+	return Footprint{
+		Bytes:  ms.Sys,
+		Label:  "Go runtime reserved virtual address space (MemStats.Sys — NOT process RSS; ps/proc unavailable)",
+		Source: "memstats_sys",
+	}
+}
 
 // Info describes a running process.
 type Info struct {

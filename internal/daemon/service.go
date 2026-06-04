@@ -16,6 +16,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/daemon/watch"
 	"github.com/cajasmota/archigraph/internal/install/hooks"
 	"github.com/cajasmota/archigraph/internal/perf"
+	"github.com/cajasmota/archigraph/internal/process"
 	"github.com/cajasmota/archigraph/internal/registry"
 	"github.com/cajasmota/archigraph/internal/version"
 )
@@ -214,17 +215,27 @@ func (s *Service) Ping(_ *proto.PingArgs, reply *proto.PingReply) error {
 	return nil
 }
 
-// Status reports a snapshot of daemon state. RSS is read via the Go
-// runtime memstats (Sys); this is approximate but does not require
-// platform-specific code. Phase B fields (watcher + scheduler) are
-// populated when the daemon was started with both attached.
+// Status reports a snapshot of daemon state. Memory is reported honestly
+// (#3648): RSSBytes is sourced from the process footprint (resident set
+// size) via internal/process, NOT runtime.MemStats.Sys — Sys is the
+// reserved virtual address space, which previously over-reported by ~8GB
+// and was wrongly labeled "actual RSS". Heap in-use / released / Sys are
+// surfaced as distinct fields so clients can see the Go-heap breakdown.
+// Phase B fields (watcher + scheduler) are populated when the daemon was
+// started with both attached.
 func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	reply.Version = version.String()
 	reply.PID = os.Getpid()
 	reply.UptimeSec = int64(time.Since(s.startedAt).Seconds())
-	reply.RSSBytes = ms.Sys
+	fp := process.FootprintBytes()
+	reply.RSSBytes = fp.Bytes
+	reply.FootprintBytes = fp.Bytes
+	reply.FootprintLabel = fp.Label
+	reply.HeapInuseBytes = ms.HeapInuse
+	reply.HeapReleasedBytes = ms.HeapReleased
+	reply.SysBytes = ms.Sys
 	reply.InFlight = int(atomic.LoadInt64(&s.inFlight))
 	reply.RebuildInFlight = int(atomic.LoadInt64(&s.rebuildInFlight))
 	reply.RebuildGroupsActive = int(atomic.LoadInt64(&s.groupsActiveCount))

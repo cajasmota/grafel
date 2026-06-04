@@ -462,10 +462,12 @@ func itoa(n int) string {
 	return strconv.Itoa(n)
 }
 
-// getRSSMB returns the resident set size in megabytes.
-// Uses runtime.ReadMemStats which is portable and does not require /proc.
+// getRSSMB returns the honest process footprint (resident set size) in
+// megabytes. #3648: previously this returned runtime.MemStats.Sys (the
+// reserved virtual address space, ~8GB), which is NOT process RSS and
+// over-reported by gigabytes. It now reads the real footprint via
+// internal/process (resident set size); on macOS that under-counts
+// swapped/compressed pages but is far closer to reality than Sys.
 func getRSSMB() float64 {
-	var ms runtime.MemStats
-	runtime.ReadMemStats(&ms)
-	return float64(ms.Sys) / 1024 / 1024
+	return float64(process.FootprintBytes().Bytes) / 1024 / 1024
 }
