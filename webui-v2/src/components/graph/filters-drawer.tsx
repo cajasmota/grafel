@@ -5,18 +5,35 @@
    ============================================================ */
 
 import { Dialog, DrawerContent, DialogTitle, Button } from "@/components/ui";
-import { useGraphStore, type LodLevel } from "@/store/use-graph-store";
+import {
+  useGraphStore,
+  type LodLevel,
+  STRUCTURAL_EDGE_KINDS,
+  SEMANTIC_EDGE_KINDS,
+} from "@/store/use-graph-store";
 import type { EdgeKind, GraphRepo } from "@/data/types";
 import { TuningPanels } from "./tuning-panels";
 
-const EDGE_KINDS: EdgeKind[] = [
-  "CALLS",
-  "REFERENCES",
-  "RENDERS",
-  "DEPENDS_ON",
-  "EXTENDS",
-  "CONTAINS",
-  "IMPORTS",
+// Distinct dot color per edge kind (toggle accent / legend). Structural kinds
+// reuse the pastel scale; semantic kinds (#4252) get their own distinct hues.
+const EDGE_KIND_COLOR: Record<EdgeKind, string> = {
+  CALLS: "var(--pastel-1)",
+  REFERENCES: "var(--pastel-2)",
+  RENDERS: "var(--pastel-3)",
+  DEPENDS_ON: "var(--pastel-4)",
+  EXTENDS: "var(--pastel-5)",
+  CONTAINS: "var(--pastel-6)",
+  IMPORTS: "var(--pastel-7)",
+  INJECTED_INTO: "var(--pastel-8)",
+  THROWS: "var(--pastel-9)",
+  CATCHES: "var(--pastel-10)",
+  JOINS_COLLECTION: "var(--pastel-1)",
+  HTTP_ENDPOINT_CALL: "var(--pastel-2)",
+};
+
+const EDGE_KIND_GROUPS: { title: string; kinds: EdgeKind[] }[] = [
+  { title: "Structural", kinds: STRUCTURAL_EDGE_KINDS },
+  { title: "Semantic", kinds: SEMANTIC_EDGE_KINDS },
 ];
 
 const LODS: LodLevel[] = ["low", "mid", "high"];
@@ -40,25 +57,37 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
         <div className="ag-scroll mt-4 min-h-0 flex-1 space-y-4">
           <section>
             <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-3">Edge types</h4>
-            <div className="flex flex-wrap gap-1.5">
-              {EDGE_KINDS.map((k) => {
-                const on = enabledEdgeKinds.has(k);
-                return (
-                  <button
-                    key={k}
-                    onClick={() => toggleEdgeKind(k)}
-                    aria-pressed={on}
-                    className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs transition-colors ${
-                      on
-                        ? "border-transparent bg-accent-soft text-accent-strong"
-                        : "border-border bg-surface text-text-3 hover:bg-surface-2"
-                    }`}
-                  >
-                    <span className="h-1.5 w-1.5 rounded-full bg-current" />
-                    {k}
-                  </button>
-                );
-              })}
+            <div className="space-y-3">
+              {EDGE_KIND_GROUPS.map((group) => (
+                <div key={group.title}>
+                  <h5 className="mb-1.5 text-[0.65rem] font-semibold uppercase tracking-wider text-text-4">
+                    {group.title}
+                  </h5>
+                  <div className="flex flex-wrap gap-1.5">
+                    {group.kinds.map((k) => {
+                      const on = enabledEdgeKinds.has(k);
+                      return (
+                        <button
+                          key={k}
+                          onClick={() => toggleEdgeKind(k)}
+                          aria-pressed={on}
+                          className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 font-mono text-xs transition-colors ${
+                            on
+                              ? "border-transparent bg-accent-soft text-accent-strong"
+                              : "border-border bg-surface text-text-3 hover:bg-surface-2"
+                          }`}
+                        >
+                          <span
+                            className="h-1.5 w-1.5 rounded-full"
+                            style={{ background: EDGE_KIND_COLOR[k] }}
+                          />
+                          {k}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </section>
 

@@ -18,7 +18,12 @@ import { X, RotateCcw, SlidersHorizontal, Boxes } from "lucide-react";
 import { SearchInput, Pill, Kbd } from "@/components/ui";
 import { useGraph } from "@/hooks/use-graph";
 import { useModuleAnalysis } from "@/hooks/use-module-analysis";
-import { useGraphStore, type ColorMode } from "@/store/use-graph-store";
+import {
+  useGraphStore,
+  type ColorMode,
+  ALL_EDGE_KINDS,
+  STRUCTURAL_EDGE_KINDS,
+} from "@/store/use-graph-store";
 import { useAppStore } from "@/store/use-app-store";
 import type { EdgeKind, GraphNode } from "@/data/types";
 import { ModuleOverview } from "@/components/graph/module-overview";
@@ -161,7 +166,8 @@ export default function GraphScreen() {
   // Edge-kind filter applied client-side (kinds are cheap to filter locally).
   const edges = useMemo(() => {
     if (!data) return [];
-    if (s.enabledEdgeKinds.size === 7) return data.edges;
+    // Fast path: every selectable kind enabled → no filtering needed.
+    if (s.enabledEdgeKinds.size === ALL_EDGE_KINDS.length) return data.edges;
     return data.edges.filter((e) => s.enabledEdgeKinds.has(e.kind as EdgeKind));
   }, [data, s.enabledEdgeKinds]);
 
@@ -328,7 +334,14 @@ export default function GraphScreen() {
     data?.totalNodeCount ?? nodes.length
   ).toLocaleString()}`;
 
-  const activeFilterCount = (s.activeRepos?.size ?? 0) + (7 - s.enabledEdgeKinds.size);
+  // Edge-kind filters count as "active" when they deviate from the default-on
+  // set (structural kinds ON, semantic kinds OFF): each structural kind turned
+  // OFF and each semantic kind turned ON is one active filter.
+  const edgeKindDeviations = ALL_EDGE_KINDS.reduce((acc, k) => {
+    const isDefaultOn = STRUCTURAL_EDGE_KINDS.includes(k);
+    return acc + (s.enabledEdgeKinds.has(k) === isDefaultOn ? 0 : 1);
+  }, 0);
+  const activeFilterCount = (s.activeRepos?.size ?? 0) + edgeKindDeviations;
 
   return (
     <div className="relative flex h-full flex-col">

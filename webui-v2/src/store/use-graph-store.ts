@@ -161,7 +161,8 @@ export const DEFAULT_RENDER: RenderConfig = {
   showLinks: true,
 };
 
-const ALL_EDGE_KINDS: EdgeKind[] = [
+// Structural edge kinds — default ON (the long-standing graph behaviour).
+export const STRUCTURAL_EDGE_KINDS: EdgeKind[] = [
   "CALLS",
   "REFERENCES",
   "RENDERS",
@@ -170,6 +171,22 @@ const ALL_EDGE_KINDS: EdgeKind[] = [
   "CONTAINS",
   "IMPORTS",
 ];
+
+// Semantic edge kinds (#4252) — daemon-emitted, reach the payload unfiltered,
+// but default OFF because they can be high-volume / noisy. Toggleable.
+export const SEMANTIC_EDGE_KINDS: EdgeKind[] = [
+  "INJECTED_INTO",
+  "THROWS",
+  "CATCHES",
+  "JOINS_COLLECTION",
+  "HTTP_ENDPOINT_CALL",
+];
+
+// Every selectable edge kind (structural + semantic).
+export const ALL_EDGE_KINDS: EdgeKind[] = [...STRUCTURAL_EDGE_KINDS, ...SEMANTIC_EDGE_KINDS];
+
+// Default-ON set: structural kinds only. Semantic kinds start hidden.
+const DEFAULT_ENABLED_EDGE_KINDS: EdgeKind[] = STRUCTURAL_EDGE_KINDS;
 
 // Fix #1567-4: persisted-defaults VERSION. The localStorage tuning keys
 // (ag.v2.graph.sim/sizing/render) override new code defaults forever, so shipped
@@ -351,7 +368,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   filtersOpen: false,
   communitiesOpen: false,
 
-  enabledEdgeKinds: new Set(ALL_EDGE_KINDS),
+  enabledEdgeKinds: new Set(DEFAULT_ENABLED_EDGE_KINDS),
   activeRepos: null,
   // Fix #1599: DEFAULT to HIGH so the FULL graph renders out of the box (no
   // node/edge thinning). MID/overview previously capped the daemon payload to
@@ -443,7 +460,7 @@ export const useGraphStore = create<GraphState>((set) => ({
   requestRelayout: () => set((s) => ({ relayoutNonce: s.relayoutNonce + 1 })),
   clearAllFilters: () =>
     set({
-      enabledEdgeKinds: new Set(ALL_EDGE_KINDS),
+      enabledEdgeKinds: new Set(DEFAULT_ENABLED_EDGE_KINDS),
       activeRepos: null,
       // Fix #1599: clearing filters returns to the full-graph default (HIGH).
       lod: "high",

@@ -13,7 +13,15 @@ export type EdgeKind =
   | "DEPENDS_ON"
   | "EXTENDS"
   | "CONTAINS"
-  | "IMPORTS";
+  | "IMPORTS"
+  // Semantic edge kinds (#4252). These are emitted by the daemon and reach the
+  // /api/v2/graph payload unfiltered; they default OFF in the graph filters
+  // because they can be high-volume / noisy, but are toggleable.
+  | "INJECTED_INTO"
+  | "THROWS"
+  | "CATCHES"
+  | "JOINS_COLLECTION"
+  | "HTTP_ENDPOINT_CALL";
 
 export interface Repo {
   id: string;
