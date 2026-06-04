@@ -54,7 +54,6 @@
 package engine
 
 import (
-	"fmt"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -251,7 +250,22 @@ func scanPythonMongoAggregation(
 			// Stage entity Name — computed up front so the node-anchored
 			// JOINS_COLLECTION twin (#4244) can reference THIS stage entity by
 			// its exact file+name in a Format-A structural-ref stub.
-			name := fmt.Sprintf("%s.aggregate#%d %s", coll, idx, op)
+			//
+			// #4244 re-fix: the Name MUST embed the call-site line. The graph
+			// entity ID is graph.EntityID(repo, kind, NAME, file) — it ignores
+			// StartLine and the looked-up `from`. A file with several
+			// `coll.aggregate(...)` calls on the SAME collection (the upvate
+			// building/service.py shape — four `inspections_cln.aggregate(...)`
+			// calls) independently restarts stage indexing at #0, so stage #2 of
+			// call A and stage #2 of call B previously produced the IDENTICAL
+			// Name (`inspections.aggregate#2 $lookup`) and therefore the IDENTICAL
+			// graph ID — collapsing two DISTINCT `$lookup` stages (different
+			// `from`) into ONE node. That node then carried BOTH stages'
+			// JOINS_COLLECTION twins, so neighbors() returned a cross-stage
+			// mix (and the `find`-able node looked wrong / unresolvable). The
+			// `@L<line>` segment makes the per-call-site stage Name — and thus
+			// the node ID and the twin's FromID stub — unique.
+			name := mongoAggStageName(coll, callLine, idx, op)
 
 			switch op {
 			case "$lookup":

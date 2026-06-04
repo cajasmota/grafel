@@ -81,6 +81,28 @@ const mongoAggPatternType = "mongo_aggregation"
 // lives in Subtype.
 var mongoAggStageEntityKind = string(types.EntityKindDataAccess)
 
+// mongoAggStageName builds the canonical Name for a single pipeline-stage
+// SCOPE.DataAccess entity, shared by every per-language Mongo-aggregation
+// emitter so the naming scheme stays identical across languages.
+//
+// Format: `<coll>.aggregate@L<callLine>#<stageIdx> <op>`
+//
+// The `@L<callLine>` segment is load-bearing (#4244 re-fix): the graph entity
+// ID is graph.EntityID(repo, kind, Name, file), which ignores StartLine and
+// the looked-up `from` collection. Without the call-line segment, two
+// `coll.aggregate(...)` calls on the SAME collection in the SAME file each
+// restart stage indexing at #0, so stage #N of one call and stage #N of the
+// other produce the IDENTICAL Name → IDENTICAL graph ID. That collapses two
+// DISTINCT `$lookup` stages (with different `from`) into ONE node, and the
+// node-anchored JOINS_COLLECTION twins from both stages pile onto it —
+// producing the cross-stage mis-link / "isolated-looking" node observed live
+// on upvate-core building/service.py (four `inspections_cln.aggregate(...)`
+// calls). The call line disambiguates the per-call-site stage so each node
+// owns exactly its own join.
+func mongoAggStageName(coll string, callLine, stageIdx int, op string) string {
+	return fmt.Sprintf("%s.aggregate@L%d#%d %s", coll, callLine, stageIdx, op)
+}
+
 // mongoAggJoinEdgeKind is the cross-collection join edge emitted for
 // $lookup / $graphLookup.
 var mongoAggJoinEdgeKind = string(types.RelationshipKindJoinsCollection)
@@ -255,7 +277,9 @@ func mongoAggEmitStages(
 
 		// Stage entity Name — computed up front so the node-anchored
 		// JOINS_COLLECTION twin (#4244) can reference THIS stage entity.
-		name := fmt.Sprintf("%s.aggregate#%d %s", coll, idx, op)
+		// The `@L<callLine>` segment keeps the per-call-site stage node unique
+		// (see mongoAggStageName).
+		name := mongoAggStageName(coll, callLine, idx, op)
 
 		switch op {
 		case "$lookup":

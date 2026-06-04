@@ -58,7 +58,6 @@
 package engine
 
 import (
-	"fmt"
 	"regexp"
 	"strings"
 
@@ -148,7 +147,9 @@ func scanCSharpMongoAggregation(
 		emitJoin(mongoAggJoinEdge(coll, lk, "lookup"))
 		// #4244 — node-anchored twin so the join is reachable from the
 		// $lookup DataAccess node. entityName MUST match the emitStage Name.
-		entityName := fmt.Sprintf("%s.aggregate#%d $lookup", coll, stageIdx)
+		// The `@L<line>` segment keeps the per-call-site stage node unique
+		// (see mongoAggStageName).
+		entityName := mongoAggStageName(coll, lineOfOffset(src, off), stageIdx, "$lookup")
 		emitJoin(mongoAggStageJoinEdge(entityName, path, lang, lk, "lookup"))
 
 		props := map[string]string{

@@ -178,7 +178,7 @@ func scanRubyMongoidAggCalls(
 
 			// Stage entity Name — computed up front so the node-anchored
 			// JOINS_COLLECTION twin (#4244) can reference THIS stage entity.
-			name := fmt.Sprintf("%s.aggregate#%d %s", coll, idx, op)
+			name := mongoAggStageName(coll, callLine, idx, op)
 
 			switch op {
 			case "$lookup":
