@@ -1686,3 +1686,164 @@ export interface GroupCyclesReport {
   info_count: number;
   findings: CycleFinding[];
 }
+
+// ---------------------------------------------------------------------------
+// Coverage / Quality screen (#4251, epic #4249)
+//
+// Wire shapes for the capability routes the backend already serves but no
+// screen previously rendered. All RAW JSON (not the v2 { ok, data } envelope):
+//   GET /api/quality/coverage/{group}        (handlers_coverage.go)
+//   GET /api/dependencies/{group}            (handlers_dependencies.go)
+//   GET /api/quality/anti-patterns/{group}   (handlers_nplus1.go)
+//   GET /api/groups/{group}/god-nodes        (handlers_graph.go)
+//   GET /api/quality/trends/{group}          (handlers_quality_trends.go)
+// ---------------------------------------------------------------------------
+
+/** One production entity with no inbound TESTS edge. */
+export interface UncoveredEntity {
+  entity_id: string;
+  name: string;
+  kind: string;
+  source_file: string;
+  start_line: number;
+  language: string;
+  module?: string;
+  /** "high" | "medium" | "low". */
+  severity: string;
+}
+
+/** Per-directory coverage statistics. */
+export interface DirCoverage {
+  dir: string;
+  total: number;
+  covered: number;
+  coverage_pct: number;
+}
+
+/** Per-module coverage statistics. */
+export interface ModuleCoverage {
+  module: string;
+  total: number;
+  covered: number;
+  coverage_pct: number;
+}
+
+/** GET /api/quality/coverage/{group}. */
+export interface GroupCoverageReport {
+  group: string;
+  total_production: number;
+  covered_production: number;
+  coverage_pct: number;
+  total_tests: number;
+  total_tests_edges: number;
+  repos: number;
+  uncovered_entities: UncoveredEntity[];
+  by_directory: DirCoverage[];
+  by_module: ModuleCoverage[];
+}
+
+/** One declared / used / unused / phantom external dependency. */
+export interface PackageEntry {
+  name: string;
+  package_manager: string;
+  version?: string;
+  dependency_kind: string;
+  /** "used" | "unused" | "phantom". */
+  status: "used" | "unused" | "phantom";
+  source_file?: string;
+  importers?: string[];
+}
+
+/** Group-level declared/used/unused/phantom totals. */
+export interface DependencyGroupSummary {
+  declared: number;
+  used: number;
+  unused: number;
+  phantom: number;
+}
+
+/** Per-repo dependency breakdown. */
+export interface RepoDepSummary {
+  package_manager: string;
+  declared: number;
+  used: number;
+  unused: number;
+  phantom: number;
+  packages: PackageEntry[];
+}
+
+/** GET /api/dependencies/{group}. */
+export interface DependenciesReply {
+  group: string;
+  summary: DependencyGroupSummary;
+  by_repo: Record<string, RepoDepSummary>;
+}
+
+/** One detected N+1 query anti-pattern site. */
+export interface NPlusOneFinding {
+  caller_entity_id: string;
+  caller_name: string;
+  caller_file: string;
+  caller_start_line: number;
+  query_entity_id: string;
+  query_name: string;
+  query_file: string;
+  query_line: number;
+  orm: string;
+  language: string;
+  loop_entity_id?: string;
+  loop_subtype?: string;
+  suggestion: string;
+}
+
+/** GET /api/quality/anti-patterns/{group}. */
+export interface GroupNPlusOneReport {
+  group: string;
+  total_findings: number;
+  entities_scanned: number;
+  rels_scanned: number;
+  by_orm: Record<string, number>;
+  by_language: Record<string, number>;
+  findings: NPlusOneFinding[];
+}
+
+/** One high-degree hotspot (god-node). */
+export interface GodNode {
+  id: string;
+  label: string;
+  kind: string;
+  repo: string;
+  pagerank: number;
+}
+
+/** GET /api/groups/{group}/god-nodes. */
+export interface GodNodesReply {
+  god_nodes: GodNode[];
+}
+
+/** A single data point in a quality metric series. */
+export interface TrendPoint {
+  /** ISO-8601 rebuild timestamp. */
+  ts: string;
+  v: number;
+}
+
+/** Time series for one quality metric. */
+export interface MetricTrend {
+  label: string;
+  /** "%" | "count". */
+  unit: string;
+  lower_is_better: boolean;
+  goal?: number;
+  points: TrendPoint[];
+  latest?: number;
+  delta_7d?: number;
+  delta_30d?: number;
+}
+
+/** GET /api/quality/trends/{group}. */
+export interface QualityTrendsReply {
+  group: string;
+  days: number;
+  metrics: MetricTrend[];
+}

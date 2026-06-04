@@ -60,6 +60,11 @@ import type {
   GroupAuthCoverageReport,
   GroupSecretsReport,
   GroupCyclesReport,
+  GroupCoverageReport,
+  DependenciesReply,
+  GroupNPlusOneReport,
+  GodNodesReply,
+  QualityTrendsReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -692,6 +697,77 @@ export const api = {
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return request<GroupCyclesReport>(
       `/security/cycles/${encodeURIComponent(groupId)}${suffix}`,
+    );
+  },
+
+  // --- Coverage / Quality screen (#4251) ---
+  // These call capability routes the backend already serves but no screen
+  // previously rendered. All raw JSON (no v2 envelope) → `request`, not
+  // `requestV2`. Handlers: handlers_coverage.go, handlers_dependencies.go,
+  // handlers_nplus1.go, handlers_graph.go (god-nodes), handlers_quality_trends.go.
+
+  /** GET /api/quality/coverage/{group} — test-coverage report + uncovered drill-down. */
+  getQualityCoverage: (
+    groupId: string,
+    params?: { dir?: string; module?: string; severity?: string; limit?: number },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.dir) qs.set("dir", params.dir);
+    if (params?.module) qs.set("module", params.module);
+    if (params?.severity) qs.set("severity", params.severity);
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<GroupCoverageReport>(
+      `/quality/coverage/${encodeURIComponent(groupId)}${suffix}`,
+    );
+  },
+
+  /** GET /api/dependencies/{group} — declared/used/unused/phantom per repo. */
+  getDependencies: (
+    groupId: string,
+    params?: { status?: string; pm?: string; kind?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.status) qs.set("status", params.status);
+    if (params?.pm) qs.set("pm", params.pm);
+    if (params?.kind) qs.set("kind", params.kind);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<DependenciesReply>(
+      `/dependencies/${encodeURIComponent(groupId)}${suffix}`,
+    );
+  },
+
+  /** GET /api/quality/anti-patterns/{group} — N+1 query findings. */
+  getAntiPatterns: (
+    groupId: string,
+    params?: { orm?: string; file?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.orm) qs.set("orm", params.orm);
+    if (params?.file) qs.set("file", params.file);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<GroupNPlusOneReport>(
+      `/quality/anti-patterns/${encodeURIComponent(groupId)}${suffix}`,
+    );
+  },
+
+  /** GET /api/groups/{group}/god-nodes — high-degree structural hotspots. */
+  getGodNodes: (groupId: string, params?: { limit?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.limit != null) qs.set("limit", String(params.limit));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<GodNodesReply>(
+      `/groups/${encodeURIComponent(groupId)}/god-nodes${suffix}`,
+    );
+  },
+
+  /** GET /api/quality/trends/{group} — per-metric quality time series. */
+  getQualityTrends: (groupId: string, params?: { days?: number }) => {
+    const qs = new URLSearchParams();
+    if (params?.days != null) qs.set("days", String(params.days));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<QualityTrendsReply>(
+      `/quality/trends/${encodeURIComponent(groupId)}${suffix}`,
     );
   },
 };

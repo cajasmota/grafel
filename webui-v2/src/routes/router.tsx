@@ -21,6 +21,7 @@ import TopologyScreen from "./topology";
 import PathsScreen from "./paths";
 import DocsScreen from "./docs";
 import SecurityScreen from "./security";
+import QualityScreen from "./quality";
 import SettingsScreen from "./settings";
 import PendingScreen from "./pending";
 import OperationsScreen from "./operations";
@@ -52,6 +53,7 @@ export const router = createBrowserRouter([
           // Wildcard: the doc key (repoSlug/rel/path.md) may contain slashes.
           { path: "docs/*", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
           { path: "security", element: <SecurityScreen />, handle: { surfaceLabel: "Security" } },
+          { path: "quality", element: <QualityScreen />, handle: { surfaceLabel: "Quality" } },
           { path: "settings", element: <SettingsScreen />, handle: { surfaceLabel: "Group settings" } },
           { path: "pending", element: <PendingScreen />, handle: { surfaceLabel: "Pending" } },
           { path: "operations", element: <OperationsScreen />, handle: { surfaceLabel: "Operations" } },
