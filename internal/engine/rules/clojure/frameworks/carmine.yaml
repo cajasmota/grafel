@@ -1,7 +1,6 @@
 # Clojure Carmine Redis extraction rules.
 #
 # Top-level `frameworks:` key is consumed by the modular_loader (detection).
-# custom_extractors entries are consumed by CustomExtractorRegistry.
 
 frameworks:
   name: Carmine (taoensso/carmine)
@@ -24,12 +23,3 @@ frameworks:
     Carmine is the primary Clojure Redis client. The wcar macro (with-car-connection)
     is the idiomatic way to send commands. Commands are namespaced under the car/ alias.
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.redis_extractor
-    function: extract
-    description: >-
-      Redis cross-language extractor: wcar/*conn*/car/wcar/taoensso.carmine connections
-      (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), pub/sub
-      (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op), Lua
-      (SCOPE.Operation/lua_script).

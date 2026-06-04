@@ -117,13 +117,3 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.javascript_typescript.express_extractor"
-    function: "extract"
-    description: "Extract Express.js route handlers, Router composition, middleware chains, error handling, static, config, Passport strategies, Socket.io, and param middleware"
-  - module: "archigraph.engine.rules.languages._engine.config_prefix_extractor"
-    function: "extract"
-    description: "Extract app.use() mount path prefix from app.js as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."
-  - module: "archigraph.engine.rules.languages._engine.config_consumer_extractor"
-    function: "extract"
-    description: "Extract process.env.KEY and process.env['KEY'] reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities."

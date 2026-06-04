@@ -19,8 +19,3 @@ orms_and_database:
   notes: Active-record style ORM built on top of Knex; models subclass Model and
     declare tableName/jsonSchema/relationMappings. Migrations reuse the Knex schema
     builder.
-  custom_extractors:
-  - module: archigraph.internal.custom.javascript.objection
-    callable: Extract
-    frameworks:
-    - objection

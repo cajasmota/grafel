@@ -30,7 +30,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.javascript_typescript.vue_extractor"
-    function: "extract"
-    description: "Extract Vue SFC components, composables, Pinia stores, Nuxt routes, and OWNS/DEPENDS_ON relationships"

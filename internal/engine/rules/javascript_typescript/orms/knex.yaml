@@ -18,6 +18,3 @@ orms_and_database:
   - .where(
   - .select(
   notes: Query builder (not full ORM); often used with Objection.js on top
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract

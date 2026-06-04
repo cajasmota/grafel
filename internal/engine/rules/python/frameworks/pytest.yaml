@@ -76,15 +76,3 @@ relationship_rules:
     source_group: 1
     target_group: 1
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.pytest_extractor
-    function: extract
-    description: >-
-      Pytest-specific extractor: def test_xxx / class TestXxx (SCOPE.Operation),
-      @pytest.fixture (SCOPE.Pattern), @pytest.mark.parametrize metadata,
-      conftest.py fixtures (SCOPE.Pattern), @pytest.mark.skip/xfail/slow metadata,
-      class TestXxx (SCOPE.Component) + OWNS test methods,
-      @pytest.mark.usefixtures DEPENDS_ON fixture,
-      monkeypatch/capsys/tmp_path DEPENDS_ON built-in fixture.
-      Emits OWNS (class→test), DEPENDS_ON (test/class→fixture).

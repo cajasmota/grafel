@@ -16,10 +16,3 @@ orms_database:
   notes: |
     Official Python Elasticsearch client. elasticsearch-dsl provides a high-level
     ORM-like interface (Document, Search, Q). Both are detected here.
-  custom_extractors:
-  - module: "archigraph.engine.rules.languages.elasticsearch.elasticsearch_extractor"
-    function: "extract"
-    description: >
-      Extract Elasticsearch() client connections, elasticsearch-dsl Document classes,
-      Search() instances, Q() query builders, aggregations A(), ILM policies, and
-      index creation calls. Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

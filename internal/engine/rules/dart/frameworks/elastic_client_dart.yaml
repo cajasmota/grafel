@@ -11,10 +11,3 @@ frameworks:
     - client.search(
   notes: |
     elastic_client is the primary Dart Elasticsearch client (pub.dev).
-  custom_extractors:
-  - module: "archigraph.engine.rules.languages.elasticsearch.elasticsearch_extractor"
-    function: "extract"
-    description: >
-      Extract ElasticClient connections, search queries, aggregations,
-      and ILM patterns for Dart.
-      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

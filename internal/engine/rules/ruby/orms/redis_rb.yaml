@@ -1,7 +1,6 @@
 # Ruby Redis client extraction rules.
 #
 # Top-level `orms:` key is consumed by the modular_loader (detection).
-# custom_extractors entries are consumed by CustomExtractorRegistry.
 
 orms:
   name: redis-rb
@@ -26,13 +25,3 @@ orms:
     redis-rb is the official Ruby Redis client. Sidekiq uses Redis as its queue
     backend. The Redis.current thread-safe accessor is common in Rails apps.
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.redis_extractor
-    function: extract
-    description: >-
-      Redis cross-language extractor: Redis.new/Redis.current connections (SCOPE.Service),
-      cache ops .get/.set/.hget/.hset/.expire (SCOPE.Operation/cache_op), pub/sub
-      .publish/.subscribe/.psubscribe (SCOPE.Operation/pubsub), streams .xadd/.xread
-      (SCOPE.Operation/stream_op), Lua .eval/.evalsha (SCOPE.Operation/lua_script),
-      Sidekiq::Worker/Sidekiq::Job include patterns (SCOPE.Component/queue).

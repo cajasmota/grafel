@@ -38,14 +38,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.neo4j.neo4j_extractor"
-    function: "extract"
-    description: >
-      Cross-language Neo4j extractor: driver connections (SCOPE.Service,
-      INFERRED_FROM_NEO4J_DRIVER), Cypher query strings (SCOPE.Operation/query,
-      INFERRED_FROM_NEO4J_CYPHER) with node labels and relationship types,
-      Spring Data Neo4j @Node/@Relationship (SCOPE.Schema,
-      INFERRED_FROM_NEO4J_SDN), Neo4j OGM @NodeEntity/@RelationshipEntity
-      (SCOPE.Schema, INFERRED_FROM_NEO4J_OGM). Emits DEPENDS_ON relationships
-      for SDN and OGM mappings.

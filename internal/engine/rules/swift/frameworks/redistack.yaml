@@ -1,7 +1,6 @@
 # Swift RediStack (Vapor redis-kit) extraction rules.
 #
 # Top-level `frameworks:` key is consumed by the modular_loader (detection).
-# custom_extractors entries are consumed by CustomExtractorRegistry.
 
 frameworks:
   name: RediStack (vapor/redis-kit)
@@ -23,12 +22,3 @@ frameworks:
     RediStack is the Swift NIO-based Redis client used in Vapor ecosystem.
     RedisConnection.make() is the primary connection factory.
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.redis_extractor
-    function: extract
-    description: >-
-      Redis cross-language extractor: RedisConnection.make/RedisClient.make connections
-      (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), pub/sub
-      (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op), Lua
-      (SCOPE.Operation/lua_script).

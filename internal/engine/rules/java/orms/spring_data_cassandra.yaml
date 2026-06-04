@@ -29,15 +29,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.cassandra.cassandra_extractor"
-    function: "extract"
-    description: >
-      Cross-language Cassandra extractor: driver connections
-      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), CQL execution
-      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), table definitions
-      (SCOPE.Schema/table, INFERRED_FROM_CASSANDRA_TABLE), materialized
-      views (SCOPE.Schema/view, INFERRED_FROM_CASSANDRA_VIEW), UDTs
-      (SCOPE.Schema/udt, INFERRED_FROM_CASSANDRA_UDT), Spring Data repos/
-      templates (SCOPE.Schema, INFERRED_FROM_CASSANDRA_SPRING), prepared
-      statements (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

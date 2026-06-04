@@ -29,10 +29,3 @@ queues:
     BullMQ uses new Worker() for consumer registration.
     QueueScheduler is BullMQ-only (handles delayed/repeatable jobs).
 
-custom_extractors:
-  - module: archigraph.engine.rules.languages.javascript_typescript.bull_extractor
-    callable: extract
-    frameworks:
-      - bull
-      - bullmq
-      - bull-board

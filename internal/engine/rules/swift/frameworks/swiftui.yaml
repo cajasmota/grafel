@@ -30,7 +30,3 @@ frameworks:
     = app entry point.
 
     '
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.swift.swiftui_extractor"
-    function: "extract"
-    description: "Extract SwiftUI View structs, body hierarchy nesting, NavigationStack paths, and @State/@Binding property wrapper relationships"

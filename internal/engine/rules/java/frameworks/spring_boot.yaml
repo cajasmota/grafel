@@ -38,19 +38,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.spring_boot_extractor"
-    function: "extract"
-    description: "Extract Spring Boot DI graph (@Autowired, constructor injection), request mappings (@RequestMapping, @GetMapping etc.), and @Configuration beans. Emits DEPENDS_ON and OWNS relationships."
-  - module: "archigraph.engine.rules.languages.java.spring_ecosystem_extractor"
-    function: "extract"
-    description: "Extract Spring Ecosystem advanced patterns: Security (FilterChain, @PreAuthorize, @Secured), Batch (Job/Step/Reader/Writer chains), AMQP (@RabbitListener, queue beans), AI (ChatClient, @Description tools, VectorStore), Vault (@VaultPropertySource), Data (Mongo/Redis repos, @Document, @Query), Cloud (@FeignClient, @CircuitBreaker, @StreamListener), Integration (@ServiceActivator, IntegrationFlow), WebFlux (RouterFunction, HandlerFunction, WebClient), Kafka (@KafkaListener, @KafkaHandler)."
-  - module: "archigraph.engine.rules.languages.java.spring_request_response_extractor"
-    function: "extract"
-    description: "Extract ACCEPTS_INPUT and RETURNS relationships from Spring controller methods. Detects @RequestBody parameter annotations and method return types (including ResponseEntity<T> unwrapping). Emits DTO entities as SCOPE.Schema(kind=dto)."
-  - module: "archigraph.engine.rules.languages._engine.config_prefix_extractor"
-    function: "extract"
-    description: "Extract server.servlet.context-path (properties) and server.servlet.context-path / spring.application.name (YAML) as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."
-  - module: "archigraph.engine.rules.languages._engine.config_consumer_extractor"
-    function: "extract"
-    description: "Extract @Value(\"${key}\") annotations as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming classes/methods to config key entities. Enables blast-radius analysis for Spring config changes."

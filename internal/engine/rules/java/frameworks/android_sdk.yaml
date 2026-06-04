@@ -38,7 +38,3 @@ frameworks:
     local.properties with sdk.dir distinguishes Android from server-side Java.
 
     '
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.android_extractor"
-    function: "extract"
-    description: "Extract Android Manifest components (activity/service/receiver/provider), Intent-based navigation, Fragment transactions, and ViewModel/LiveData dependencies. Emits DEPENDS_ON and OWNS relationships."

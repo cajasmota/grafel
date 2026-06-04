@@ -21,6 +21,3 @@ frameworks:
   - useRoute
   - definePageMeta
   notes: nuxt.config.ts is definitive; also check pages/ + composables/ dirs
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.javascript_typescript.nuxt_extractor
-    function: extract

@@ -31,14 +31,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.postgresql.postgresql_extractor"
-    function: "extract"
-    description: >
-      Cross-language PostgreSQL extractor: psycopg2/psycopg/asyncpg connections
-      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), connection pools
-      (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY channels
-      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY operations
-      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
-      with table/column extraction (SCOPE.Operation/query,
-      INFERRED_FROM_POSTGRES_QUERY).

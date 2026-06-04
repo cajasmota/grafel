@@ -18,6 +18,14 @@ func init() {
 	extractor.Register("custom_go_gin", &ginExtractor{})
 }
 
+// ginExtractor extracts Gin HTTP-framework structure from Go source.
+//
+// It recognises routes (r.GET/POST/PUT/DELETE/PATCH and friends), route groups
+// (r.Group) with full path resolution, middleware chains (r.Use), request
+// binding (c.ShouldBindJSON/BindJSON), engine creation (gin.Default/gin.New),
+// custom validators (RegisterValidation), NoRoute/NoMethod error handlers, and
+// static file serving (r.Static/r.StaticFS). It emits OWNS, DEPENDS_ON, and
+// CALLS relationships among the resulting entities.
 type ginExtractor struct{}
 
 func (e *ginExtractor) Language() string { return "custom_go_gin" }

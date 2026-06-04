@@ -154,28 +154,5 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
 # These run after YAML-driven extraction and contribute additional entities +
 # relationships to the pipeline result.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.django_extractor
-    function: extract
-    description: >-
-      Django-specific extractor: URL resolver patterns (path/re_path),
-      class-based view HTTP method handlers (OWNS edges), signal receivers
-      with sender model CALLS edges, admin.site.register and @admin.register
-      CALLS edges to registered models.
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract
-  - module: archigraph.engine.rules.languages._engine.config_prefix_extractor
-    function: extract
-    description: >-
-      Extract FORCE_SCRIPT_NAME / SCRIPT_NAME from Django settings.py as
-      SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated
-      on well-known config file basenames.
-  - module: archigraph.engine.rules.languages._engine.config_consumer_extractor
-    function: extract
-    description: >-
-      Extract os.getenv('KEY'), os.environ['KEY'], and os.environ.get('KEY')
-      reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read)
-      edges from consuming entities.

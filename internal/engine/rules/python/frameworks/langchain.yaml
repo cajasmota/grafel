@@ -52,14 +52,3 @@ source_patterns:
 
 relationship_rules: []
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.langchain_extractor
-    function: extract
-    description: >-
-      LangChain Python extractor: LCEL pipe chains, legacy chains, agents
-      (create_*_agent + AgentExecutor), @tool decorators and BaseTool classes,
-      RAG pipelines (RetrievalQA, create_stuff_documents_chain), prompts
-      (ChatPromptTemplate, PromptTemplate), memory (ConversationBufferMemory,
-      RunnableWithMessageHistory). Emits DEPENDS_ON (chain stages), OWNS
-      (agent->tools), CALLS (chain invocations).

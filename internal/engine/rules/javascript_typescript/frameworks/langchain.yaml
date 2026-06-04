@@ -81,14 +81,3 @@ source_patterns:
 
 relationship_rules: []
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.javascript_typescript.langchain_ts_extractor
-    function: extract
-    description: >-
-      LangChain TS/JS extractor: LCEL .pipe() chains, RunnableSequence.from(),
-      agents (createReactAgent + AgentExecutor), DynamicTool/DynamicStructuredTool
-      and tool() factory, RAG pipelines (createRetrievalChain, RetrievalQAChain),
-      prompts (ChatPromptTemplate, PromptTemplate), memory (BufferMemory,
-      ConversationSummaryMemory). Emits DEPENDS_ON (pipe stages), OWNS
-      (agent->tools), CALLS (chain invocations).

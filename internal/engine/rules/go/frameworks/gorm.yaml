@@ -37,7 +37,3 @@ source_patterns:
 
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.go.gorm_extractor"
-    function: "extract"
-    description: "Extract GORM models (gorm.Model embedded structs and gorm-tagged structs -> SCOPE.Schema), associations (HasOne/HasMany/BelongsTo/Many2Many struct tags and slice/pointer fields -> DEPENDS_ON), lifecycle hooks (BeforeCreate/AfterCreate/etc. -> SCOPE.Operation/function), scope functions (func(db *gorm.DB) *gorm.DB -> SCOPE.Operation/function), migrations (AutoMigrate/Migrator -> SCOPE.Pattern), DB operations (db.Create/Find/First/Where/Preload/etc. -> SCOPE.Operation/function), custom table names (TableName() method -> schema metadata), and DB connections (gorm.Open() -> SCOPE.Service)."

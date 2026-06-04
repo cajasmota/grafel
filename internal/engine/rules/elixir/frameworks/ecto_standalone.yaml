@@ -40,18 +40,3 @@ frameworks:
     it is the primary DB layer.
 
     '
-custom_extractors:
-  - module: archigraph.engine.rules.languages.elixir.ecto_extractor
-    function: extract
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract
-    description: >
-      Extracts Ecto schema "table_name" declarations, has_one/has_many/belongs_to/many_to_many
-      associations, changeset/2 function definitions (cast/validate_required), Repo.get/all/
-      insert/update/delete calls, from q in Schema Ecto.Query expressions, Ecto.Multi.new()
-      transaction chains with step operations, use Ecto.Repo module declarations, and
-      Migration create table/alter table/create index blocks.
-      Emits SCOPE.Schema, SCOPE.Operation/function, SCOPE.Operation/query,
-      SCOPE.Pattern, SCOPE.Service.
-      Relationships: DEPENDS_ON (ecto_association), OWNS (schema->changesets, repo->queries,
-      multi->steps).

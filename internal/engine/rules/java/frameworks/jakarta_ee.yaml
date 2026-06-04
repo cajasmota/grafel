@@ -41,10 +41,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.jakarta_ee_extractor"
-    function: "extract"
-    description: "Extract Jakarta EE Servlets (@WebServlet, @WebFilter), JPA entities (@Entity, @ManyToOne etc.), EJB beans (@Stateless, @Stateful, @Singleton, @MessageDriven), WebSocket endpoints (@ServerEndpoint), Bean Validation (ConstraintValidator), Interceptors (@Interceptor, @AroundInvoke), and resource injection (@Resource, @PersistenceContext). Emits DEPENDS_ON, OWNS relationships."
-  - module: "archigraph.engine.rules.languages.java.jakarta_ee_advanced_extractor"
-    function: "extract"
-    description: "Extract Jakarta EE advanced APIs: CDI producers/observers/decorators, Security auth mechanisms and identity stores, Batch batchlets and chunk steps, Concurrency managed executors, Lifecycle PostConstruct/PreDestroy, JAX-WS SOAP services, JAXB XML models, JSON-B serializers, JSP custom tags. Emits DEPENDS_ON and OWNS relationships."

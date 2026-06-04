@@ -22,6 +22,3 @@ orms_database:
     SQL syntax required.
 
     '
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract

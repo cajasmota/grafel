@@ -22,8 +22,4 @@ frameworks:
   - useLoaderData
   - useActionData
   - Form
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.javascript_typescript.remix_extractor
-    function: extract
-    description: "Remix file-based routes, loader/action, nested layouts, and boundary detection"
   notes: remix.config.js or @remix-run/react dep is definitive

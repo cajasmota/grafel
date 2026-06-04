@@ -26,13 +26,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.mysql.mysql_extractor"
-    function: "extract"
-    description: >
-      Cross-language MySQL extractor: driver connections
-      (SCOPE.Service, INFERRED_FROM_MYSQL_DRIVER), stored procedure CALL
-      (SCOPE.Operation/procedure, INFERRED_FROM_MYSQL_PROCEDURE), prepared
-      statements (SCOPE.Operation/prepared, INFERRED_FROM_MYSQL_PREPARED),
-      embedded SQL table extraction
-      (SCOPE.Operation/query, INFERRED_FROM_MYSQL_QUERY).

@@ -39,7 +39,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.javascript_typescript.jest_extractor"
-    function: "extract"
-    description: "Extract Jest/Vitest describe suites, test cases, mocks, spies, snapshots, lifecycle hooks"

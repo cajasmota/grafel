@@ -111,14 +111,3 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.celery_extractor
-    function: extract
-    description: >-
-      Celery-specific extractor: @shared_task/@app.task (SCOPE.Service/task) with
-      queue/bind/max_retries metadata; chain/group/chord canvas primitives
-      (SCOPE.Pattern/canvas) + DEPENDS_ON edges between tasks; beat_schedule entries
-      (SCOPE.Pattern/beat_entry) + DEPENDS_ON task; class-based Task lifecycle hooks
-      on_failure/on_success/on_retry/on_revoke (SCOPE.Operation/function) + OWNS from
-      task class; retry metadata captured from function body.

@@ -15,10 +15,3 @@ orms_database:
   notes: |
     Official Ruby Elasticsearch client. elasticsearch-model and elasticsearch-rails
     add ActiveRecord/ActiveModel integration.
-  custom_extractors:
-  - module: "archigraph.engine.rules.languages.elasticsearch.elasticsearch_extractor"
-    function: "extract"
-    description: >
-      Extract Elasticsearch::Client.new connections, .search() calls,
-      aggregations, ILM policies, and index creation for Ruby.
-      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

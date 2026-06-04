@@ -1,15 +1,13 @@
-# ADR: Engine — rescue / remove / extend the YAML-rules `custom_extractor` mechanism
+# ADR-0021: Engine — rescue / remove / extend the YAML-rules `custom_extractor` mechanism
 
-- **Status:** Proposed
-- **Date:** 2026-06-02
+- **Status:** Accepted
+- **Date:** 2026-06-02 (accepted 2026-06-03)
 - **Deciders:** archigraph maintainers
 - **Related:** ADR-0001 (Go-native single binary), ADR-0018 (agent-learned patterns), issue #3585/#3586 (dead Java pattern-extractor layer cited as coverage)
-- **Scope:** read-only architecture evaluation; this ADR adds documentation only. No code changed.
-
-> Note on location: the repo's existing ADRs live in `docs/adrs/` with numbered
-> prefixes (`0001-…`, `0018-…`). This file was placed at the explicitly-requested
-> path `docs/adr/ENGINE-rescue-vs-remove.md` for review; on acceptance it should be
-> renumbered and moved into `docs/adrs/` to match convention.
+- **Scope:** architecture evaluation. The REMOVE half (#3636 P1) is implemented: the dead
+  `custom_extractors:` YAML blocks and the `CustomExtractor` struct were deleted, a
+  cite-validity guard added, and useful description prose migrated into the corresponding
+  Go extractor doc-comments. EXTEND (P2–P4) is deferred.
 
 ---
 

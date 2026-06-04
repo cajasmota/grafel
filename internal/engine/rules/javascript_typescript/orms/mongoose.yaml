@@ -15,8 +15,3 @@ orms_and_database:
   - mongoose.model(
   - Schema.Types.
   notes: MongoDB ODM; no config file — detect via dep + mongoose.connect() call
-custom_extractors:
-  - module: archigraph.engine.rules.languages.javascript_typescript.mongoose_extractor
-    callable: extract
-    frameworks:
-      - mongoose

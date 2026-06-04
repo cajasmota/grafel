@@ -14,7 +14,3 @@
 # Custom extractors
 # ---------------------------------------------------------------------------
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.ruby.sidekiq_extractor"
-    function: "extract"
-    description: "Extract Sidekiq worker classes (include Sidekiq::Worker/Job), def perform, perform_async/in/at dispatch sites, sidekiq_options metadata, Sidekiq.configure_server/client blocks, Sidekiq::Middleware chain operations — SCOPE.Service, SCOPE.Operation, SCOPE.Pattern, OWNS and CALLS relationships"

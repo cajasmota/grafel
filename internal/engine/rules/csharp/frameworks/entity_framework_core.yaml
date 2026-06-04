@@ -33,20 +33,4 @@ frameworks:
 
       '
 
-custom_extractors:
-  - module: archigraph.engine.rules.languages.csharp.ef_core_extractor
-    function: extract
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract
-    description: >
-      Extracts EF Core DbContext subclasses as SCOPE.Service (INFERRED_FROM_EF_CONTEXT),
-      DbSet<T> properties as SCOPE.Schema (INFERRED_FROM_EF_ENTITY) with OWNS edges from
-      context, HasOne/HasMany/WithOne/WithMany Fluent API calls as SCOPE.Schema
-      (INFERRED_FROM_EF_RELATIONSHIP) with DEPENDS_ON to target entity, LINQ
-      .Where()/.Select()/.Include()/.ThenInclude() chains as SCOPE.Operation/query
-      (INFERRED_FROM_EF_QUERY), Migration Up()/Down() methods as SCOPE.Schema
-      (INFERRED_FROM_EF_MIGRATION) with OWNS from migration class, modelBuilder.Entity<T>()
-      configuration blocks with .HasIndex()/.HasKey() metadata, and database provider
-      registrations (UseSqlServer/UseNpgsql/UseSqlite/etc.) as SCOPE.Service/provider
-      (INFERRED_FROM_EF_PROVIDER).
 

@@ -13,10 +13,3 @@ orms_database:
     - client.indices.create(
   notes: |
     Official JavaScript/TypeScript Elasticsearch client from Elastic.
-  custom_extractors:
-  - module: "archigraph.engine.rules.languages.elasticsearch.elasticsearch_extractor"
-    function: "extract"
-    description: >
-      Extract Client connections, client.search() calls, aggregations, ILM policies,
-      and index creation calls for JavaScript and TypeScript.
-      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

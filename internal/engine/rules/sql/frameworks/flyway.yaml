@@ -22,6 +22,3 @@ frameworks_and_dialects:
     convention and directory location.
 
     '
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract

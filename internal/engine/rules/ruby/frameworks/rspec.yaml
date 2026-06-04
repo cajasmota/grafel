@@ -13,7 +13,3 @@
 # Custom extractors
 # ---------------------------------------------------------------------------
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.ruby.rspec_extractor"
-    function: "extract"
-    description: "Extract RSpec describe/context groups, it/specify examples, let/let! helpers, before/after hooks, shared_examples/shared_context declarations, include_examples/it_behaves_like includes, and subject blocks — SCOPE.Component, SCOPE.Operation, SCOPE.Pattern, DEPENDS_ON relationships"

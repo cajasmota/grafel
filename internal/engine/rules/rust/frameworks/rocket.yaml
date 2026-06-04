@@ -24,15 +24,3 @@ frameworks:
 
       '
 
-custom_extractors:
-  - module: archigraph.engine.rules.languages.rust.rocket_extractor
-    function: extract
-    description: >
-      Extracts Rocket macro-annotated route handlers (#[get], #[post], etc.) as
-      SCOPE.Operation/endpoint (INFERRED_FROM_ROCKET_ROUTE), #[catch(N)] error catchers
-      as SCOPE.Pattern (INFERRED_FROM_ROCKET_CATCHER), impl FromRequest guards as
-      SCOPE.Pattern (INFERRED_FROM_ROCKET_GUARD), impl Fairing types as SCOPE.Pattern
-      (INFERRED_FROM_ROCKET_FAIRING), Json<T>/Form<T>/Data<T>/MsgPack<T> data guards as
-      SCOPE.Schema (INFERRED_FROM_ROCKET_DATA_GUARD), rocket::build()/rocket::ignite()
-      as SCOPE.Service (INFERRED_FROM_ROCKET_LAUNCH), and State<T> managed state as
-      SCOPE.Pattern (INFERRED_FROM_ROCKET_STATE).

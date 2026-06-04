@@ -28,11 +28,3 @@ orm_database:
 
       '
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.sqlite.sqlite_extractor"
-    function: "extract"
-    description: >
-      Cross-language SQLite extractor: drift LazyDatabase/NativeDatabase connections
-      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
-      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
-      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS).

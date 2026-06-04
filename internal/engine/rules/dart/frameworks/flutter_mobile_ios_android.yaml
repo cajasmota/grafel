@@ -43,7 +43,3 @@ mobile:
 
       '
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.dart.flutter_extractor"
-    function: "extract"
-    description: "Extract Flutter widgets, BLoC/Cubit/ChangeNotifier state management, Navigator routes, and GoRouter routes"

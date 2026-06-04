@@ -1,7 +1,6 @@
 # Kotlin Redis client extraction rules.
 #
 # Top-level `orms:` key is consumed by the modular_loader (detection).
-# custom_extractors entries are consumed by CustomExtractorRegistry.
 
 orms:
   name: Lettuce / Kreds (Kotlin Redis clients)
@@ -23,14 +22,3 @@ orms:
     Kotlin typically uses Lettuce (same JVM library as Java) or Kreds (native Kotlin
     coroutine-based client). Spring Data Redis integrates seamlessly with both.
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.redis_extractor
-    function: extract
-    description: >-
-      Redis cross-language extractor: LettuceConnectionFactory/RedisClient.create/Kreds
-      connections (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), Spring Data
-      Redis @Cacheable/@CachePut/@CacheEvict/RedisTemplate/ReactiveRedisTemplate/
-      @RedisHash (SCOPE.Pattern/INFERRED_FROM_REDIS_SPRING), pub/sub
-      (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op), Lua
-      (SCOPE.Operation/lua_script).

@@ -27,12 +27,3 @@ orms:
 
     '
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.redis_extractor
-    function: extract
-    description: >-
-      Redis cross-language extractor: redis::Client::open/Client::open connections
-      (SCOPE.Service), cache ops con.get/set/hget/hset/expire (SCOPE.Operation/cache_op),
-      pub/sub (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op),
-      Lua con.eval/con.evalsha (SCOPE.Operation/lua_script).

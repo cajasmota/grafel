@@ -18,12 +18,3 @@ frameworks:
     Elixir apps that do not need PostgreSQL. exqlite provides the raw SQLite3
     NIF bindings. Configured via config :myapp, MyApp.Repo, adapter: Ecto.Adapters.SQLite3.
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.sqlite.sqlite_extractor"
-    function: "extract"
-    description: >
-      Cross-language SQLite extractor: Ecto.Adapters.SQLite3/exqlite connections
-      (SCOPE.Service, INFERRED_FROM_SQLITE_DRIVER), WAL mode
-      (SCOPE.Pattern, INFERRED_FROM_SQLITE_WAL), FTS virtual tables
-      (SCOPE.Schema/fts, INFERRED_FROM_SQLITE_FTS). In-memory databases
-      flagged with is_in_memory=true.

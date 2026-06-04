@@ -24,10 +24,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.neo4j.neo4j_extractor"
-    function: "extract"
-    description: >
-      Cross-language Neo4j extractor: driver connections via Bolt.Sips
-      (SCOPE.Service, INFERRED_FROM_NEO4J_DRIVER), Cypher queries
-      (SCOPE.Operation/query, INFERRED_FROM_NEO4J_CYPHER).

@@ -128,10 +128,3 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.micronaut_extractor"
-    function: "extract"
-    description: "Extract Micronaut @Controller endpoints (class+method path resolution), @Singleton/@Prototype beans, @Scheduled tasks, @Retryable/@CircuitBreaker AOP patterns, @Client HTTP client interfaces, and @Replaces bean overrides. Emits DEPENDS_ON relationships for DI injection and client/override references."
-  - module: "archigraph.engine.rules.languages._engine.config_prefix_extractor"
-    function: "extract"
-    description: "Extract micronaut.server.context-path (YAML) as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."

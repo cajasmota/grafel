@@ -18,12 +18,3 @@ orms_database:
 
     '
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.redis_extractor
-    function: extract
-    description: >-
-      Redis cross-language extractor: JedisPool/LettuceConnectionFactory/RedisClient.create
-      connections (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), Spring Data
-      Redis patterns @Cacheable/@CachePut/@CacheEvict/RedisTemplate/ReactiveRedisTemplate/
-      @RedisHash (SCOPE.Pattern/INFERRED_FROM_REDIS_SPRING).

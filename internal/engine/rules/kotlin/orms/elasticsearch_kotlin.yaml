@@ -15,10 +15,3 @@ orms_database:
   notes: |
     Kotlin uses the Java high-level client via Kotlin extensions.
     Spring Data Elasticsearch is the most common integration.
-  custom_extractors:
-  - module: "archigraph.engine.rules.languages.elasticsearch.elasticsearch_extractor"
-    function: "extract"
-    description: >
-      Extract RestHighLevelClient / ElasticsearchClient connections, @Document classes,
-      ElasticsearchRepository interfaces, QueryBuilders, AggregationBuilders, ILM policies.
-      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

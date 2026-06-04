@@ -14,10 +14,3 @@ frameworks:
   notes: |
     elastisch (clojurewerkz/elastisch) is the primary Clojure Elasticsearch client.
     Uses (esr/connect "http://...") pattern.
-  custom_extractors:
-  - module: "archigraph.engine.rules.languages.elasticsearch.elasticsearch_extractor"
-    function: "extract"
-    description: >
-      Extract esr/connect / es/connect connection calls, search queries,
-      aggregations, and ILM patterns for Clojure.
-      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.

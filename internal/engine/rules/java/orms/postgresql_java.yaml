@@ -26,13 +26,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.postgresql.postgresql_extractor"
-    function: "extract"
-    description: >
-      Cross-language PostgreSQL extractor: JDBC/HikariCP/PGSimpleDataSource
-      connections (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), HikariCP
-      pool setup (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY
-      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), COPY
-      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
-      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

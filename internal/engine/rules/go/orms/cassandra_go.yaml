@@ -16,11 +16,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.cassandra.cassandra_extractor"
-    function: "extract"
-    description: >
-      Cross-language Cassandra extractor: gocql.NewCluster
-      (SCOPE.Service, INFERRED_FROM_CASSANDRA_DRIVER), .Query()/.Execute()
-      (SCOPE.Operation/cql, INFERRED_FROM_CASSANDRA_CQL), .Prepare()
-      (SCOPE.Operation/prepared, INFERRED_FROM_CASSANDRA_PREPARED).

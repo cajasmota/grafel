@@ -36,7 +36,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.javascript_typescript.react_extractor"
-    function: "extract"
-    description: "Extract React components, hooks, context relationships, OWNS and DEPENDS_ON edges"

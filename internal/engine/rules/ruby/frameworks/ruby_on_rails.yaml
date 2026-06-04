@@ -48,15 +48,3 @@ frameworks:
 # Custom extractors
 # ---------------------------------------------------------------------------
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.ruby.rails_routes_extractor"
-    function: "extract"
-    description: "Deep config/routes.rb route_extraction: resolves the full route table from the Rails routing DSL — resources/resource (7/6 RESTful actions), nested resources (/photos/:photo_id/comments path composition), namespace + scope + scope module: prefixing, member/collection blocks, only:/except: filters, root, get/post/put/patch/delete to: 'c#a', match via:, mount engines, and concern/concerns: expansion. Each route carries the resolved full path, HTTP method, and controller#action handler with a CALLS structural-ref edge to the ActionController action."
-  - module: "archigraph.engine.rules.languages.ruby.rails_extractor"
-    function: "extract"
-    description: "Extract Rails routes (resources, member/collection), concerns, ActiveRecord callbacks and associations, controller filters — CALLS, OWNS, DEPENDS_ON relationships"
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract
-  - module: archigraph.engine.rules.languages._engine.config_prefix_extractor
-    function: extract
-    description: "Extract scope prefix from config/routes.rb as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."

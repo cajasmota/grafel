@@ -36,7 +36,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.kotlin.langchain4j_extractor"
-    function: "extract"
-    description: "Extract LangChain4J AI service interfaces (@AiService), tool methods (@Tool), prompt patterns, ChatLanguageModel fields, RAG components, ChatMemory, and DI wiring for Kotlin syntax. Emits OWNS and DEPENDS_ON relationships."

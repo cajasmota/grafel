@@ -32,7 +32,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.javascript_typescript.angular_extractor"
-    function: "extract"
-    description: "Extract Angular NgModule DI graph, components, directives, services, pipes, and router routes"

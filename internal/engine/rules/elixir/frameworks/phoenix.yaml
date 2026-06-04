@@ -46,16 +46,3 @@ frameworks:
     Phoenix apps.
 
     '
-custom_extractors:
-  - module: archigraph.engine.rules.languages.elixir.phoenix_extractor
-    function: extract
-    description: >
-      Extracts Phoenix router HTTP routes (get/post/put/patch/delete/options),
-      resources CRUD expansion (8 routes), live routes, pipeline declarations,
-      LiveView/LiveComponent module declarations with mount/handle_event/handle_info
-      callbacks, Phoenix Controller action functions, and HEEx template component
-      calls (<.component> and <Module.function>).
-      Emits SCOPE.Operation/endpoint, SCOPE.Pattern, SCOPE.UIComponent/component,
-      SCOPE.Operation/function.
-      Relationships: CALLS (routes_to), OWNS (module->callbacks/actions),
-      DEPENDS_ON (scope->pipeline, template->component).

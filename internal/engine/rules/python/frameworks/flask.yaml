@@ -117,23 +117,5 @@ relationship_rules:
     source_group: 2
     target_group: 3
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
 # These run after YAML-driven extraction and contribute additional entities +
 # relationships to the pipeline result.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.flask_extractor
-    function: extract
-    description: >-
-      Flask-specific extractor: route decorators (@app.route, @app.get/post etc.),
-      Blueprint composition with url_prefix, before/after_request hooks,
-      @app.errorhandler, Flask-SQLAlchemy db.Model (SCOPE.Schema),
-      Flask-Login @login_required, Flask-WTF FlaskForm (SCOPE.Schema),
-      Flask-RESTful Resource + api.add_resource(), Flask-SocketIO @socketio.on,
-      app.config patterns, and @app.cli.command CLI commands.
-      Emits OWNS (blueprint→route, app→blueprint), DEPENDS_ON (endpoint→resource).
-  - module: archigraph.engine.rules.languages.python.flask_request_response_extractor
-    function: extract
-    description: >-
-      Flask request/response extractor: marshmallow schema.load() references
-      → ACCEPTS_INPUT, return type annotations → RETURNS.
-      Out of scope: Flask-RESTX/Flask-Smorest.

@@ -105,18 +105,6 @@ source_patterns:
     name_group: 1
     scope: file
 
-custom_extractors:
-  - module: archigraph.engine.rules.languages.rust.actix_web_extractor
-    function: extract
-    description: >
-      Extracts Actix-web macro-annotated route handlers (#[get], #[post], etc.) as
-      SCOPE.Operation/endpoint (INFERRED_FROM_ACTIX_ROUTE), web::scope groupings as
-      SCOPE.Component (INFERRED_FROM_ACTIX_SCOPE), .wrap(Middleware) registrations as
-      SCOPE.Pattern (INFERRED_FROM_ACTIX_MIDDLEWARE), web::Json/Path/Query/Form<T>
-      extractor types as SCOPE.Schema (INFERRED_FROM_ACTIX_EXTRACTOR), HttpServer::new()
-      as SCOPE.Service (INFERRED_FROM_ACTIX_SERVER), web::Data<T> app state as
-      SCOPE.Pattern (INFERRED_FROM_ACTIX_STATE), and WebSocket handler functions as
-      SCOPE.Operation/websocket (INFERRED_FROM_ACTIX_WEBSOCKET).
 
 relationship_rules:
   # Macro route connects path to the function immediately following it:

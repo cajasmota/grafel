@@ -38,18 +38,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.hibernate_extractor"
-    function: "extract"
-    description: >
-      Extract Hibernate/JPA deep patterns: @Entity classes (SCOPE.Schema),
-      @OneToMany/@ManyToOne/@OneToOne/@ManyToMany associations (DEPENDS_ON),
-      @NamedQuery HQL strings (SCOPE.Operation/function, INFERRED_FROM_HIBERNATE_HQL),
-      CriteriaBuilder/CriteriaQuery usage (SCOPE.Operation/function,
-      INFERRED_FROM_HIBERNATE_CRITERIA), @EntityListeners (SCOPE.Pattern,
-      INFERRED_FROM_HIBERNATE_LISTENER), @Cacheable/@Cache L2 caching metadata,
-      @NamedEntityGraph (SCOPE.Pattern, INFERRED_FROM_HIBERNATE_ENTITY_GRAPH),
-      @Converter / AttributeConverter (SCOPE.Component,
-      INFERRED_FROM_HIBERNATE_CONVERTER), EntityManagerFactory / EntityManager
-      (SCOPE.Service, INFERRED_FROM_HIBERNATE_EM). Emits OWNS and DEPENDS_ON
-      relationships.

@@ -54,7 +54,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.cpp.qt_extractor"
-    function: "extract"
-    description: "Extract Qt signal/slot graph (connect() old and new syntax), QObject subclass hierarchy, .ui XML widget tree, and Q_PROPERTY metadata. Emits DEPENDS_ON (signal/slot wiring) and OWNS (widget hierarchy) relationships."

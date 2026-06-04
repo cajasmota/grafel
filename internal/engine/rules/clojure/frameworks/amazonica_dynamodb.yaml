@@ -14,12 +14,3 @@ framework:
     Amazonica provides a Clojure wrapper around the AWS Java SDK.
     cognitect-labs/aws-api is the alternative pure-Clojure approach.
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.dynamodb.dynamodb_extractor"
-    function: "extract"
-    description: >
-      Cross-language DynamoDB extractor: amazonica/far DynamoDB calls (SCOPE.Service,
-      INFERRED_FROM_DYNAMODB_CLIENT), table definitions (SCOPE.Schema,
-      INFERRED_FROM_DYNAMODB_TABLE), query/scan operations (SCOPE.Operation/query,
-      INFERRED_FROM_DYNAMODB_QUERY), single-table design (SCOPE.Pattern,
-      INFERRED_FROM_DYNAMODB_SINGLE_TABLE).

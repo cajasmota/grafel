@@ -52,25 +52,5 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
 # These run after YAML-driven extraction and contribute additional entities +
 # relationships to the pipeline result.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.go.fiber_extractor
-    function: extract
-    description: >-
-      Fiber-specific extractor: HTTP route registrations (app.Get/Post/Put/Delete/Patch,
-      Title-case methods) → SCOPE.Operation/endpoint (INFERRED_FROM_FIBER_ROUTE);
-      app.Group("/prefix") with nested group path resolution → SCOPE.Component
-      (INFERRED_FROM_FIBER_GROUP) + OWNS edges to child routes; app.Use(middleware)
-      pipeline registrations → SCOPE.Pattern (INFERRED_FROM_FIBER_MIDDLEWARE) + CALLS
-      edges from engine/group; c.BodyParser/c.QueryParser/c.ParamsParser/c.ReqHeaderParser
-      binding sites → SCOPE.Schema (INFERRED_FROM_FIBER_BINDING); fiber.New() engine
-      instantiation → SCOPE.Service (INFERRED_FROM_FIBER_ENGINE); app.Static() mounts
-      → SCOPE.Pattern metadata (INFERRED_FROM_FIBER_STATIC); WebSocket upgrades via
-      websocket.New() → SCOPE.Operation/endpoint (INFERRED_FROM_FIBER_WEBSOCKET).
-  - module: archigraph.engine.rules.languages._engine.config_consumer_extractor
-    function: extract
-    description: >-
-      Extract viper.Get/GetString/GetBool/GetInt etc. reads as SCOPE.Pattern/config_key
-      entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities.

@@ -138,10 +138,3 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.quarkus_extractor"
-    function: "extract"
-    description: "Extract Quarkus JAX-RS endpoints (class+method @Path resolution), Panache ORM/MongoDB entities and repositories, CDI @Inject dependency graph, REST Data Panache auto CRUD, and @MongoEntity metadata. Emits DEPENDS_ON relationships."
-  - module: "archigraph.engine.rules.languages._engine.config_prefix_extractor"
-    function: "extract"
-    description: "Extract quarkus.http.root-path (properties) and quarkus.http.root-path (YAML) as SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated on well-known config file basenames."

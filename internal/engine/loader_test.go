@@ -1,6 +1,10 @@
 package engine
 
 import (
+	"io/fs"
+	"path/filepath"
+	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -96,6 +100,50 @@ func TestLoadAllRules_EmbedFS(t *testing.T) {
 		if len(data) == 0 {
 			t.Errorf("embedded file %q is empty", p)
 		}
+	}
+}
+
+// TestRules_NoCustomExtractors is a cite-validity guard. The `custom_extractors:`
+// YAML mechanism was a dead, never-read pointer to legacy Python module paths
+// (see docs/adr/ENGINE-rescue-vs-remove.md, #3636). It was removed wholesale —
+// the FrameworkRule struct no longer carries the field, and every block was
+// deleted from the rule corpus. The Go extractors those blocks pointed at run
+// via the internal/custom registry, not via this YAML.
+//
+// This test FAILS if any rule YAML reintroduces a `custom_extractors` key or
+// comment, so the dead mechanism cannot silently return.
+func TestRules_NoCustomExtractors(t *testing.T) {
+	var offenders []string
+
+	err := fs.WalkDir(rulesFS, "rules", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			return nil
+		}
+		if ext := filepath.Ext(path); ext != ".yaml" && ext != ".yml" {
+			return nil
+		}
+		data, readErr := rulesFS.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for i, line := range strings.Split(string(data), "\n") {
+			if strings.Contains(line, "custom_extractors") {
+				offenders = append(offenders, path+":"+strconv.Itoa(i+1))
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking embedded rules: %v", err)
+	}
+
+	if len(offenders) > 0 {
+		t.Fatalf("the dead `custom_extractors` YAML mechanism was reintroduced in %d location(s); "+
+			"remove it and document the corresponding Go extractor instead (see #3636):\n  %s",
+			len(offenders), strings.Join(offenders, "\n  "))
 	}
 }
 

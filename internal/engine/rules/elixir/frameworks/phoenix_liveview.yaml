@@ -34,14 +34,3 @@ frameworks:
     marker. LiveComponent modules use use Phoenix.LiveComponent.
 
     '
-custom_extractors:
-  - module: archigraph.engine.rules.languages.elixir.phoenix_extractor
-    function: extract
-    description: >
-      Extracts Phoenix LiveView/LiveComponent module declarations with
-      mount/handle_event/handle_info callbacks, Phoenix router live routes,
-      and HEEx template component calls (<.component> and <Module.function>).
-      Emits SCOPE.UIComponent/component, SCOPE.Operation/function,
-      SCOPE.Operation/endpoint.
-      Relationships: OWNS (module->callbacks), CALLS (routes_to),
-      DEPENDS_ON (template->component).

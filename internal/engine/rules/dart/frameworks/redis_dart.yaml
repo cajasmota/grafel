@@ -1,7 +1,6 @@
 # Dart Redis client extraction rules.
 #
 # Top-level `frameworks:` key is consumed by the modular_loader (detection).
-# custom_extractors entries are consumed by CustomExtractorRegistry.
 
 frameworks:
   name: redis_dart / resp_client
@@ -23,12 +22,3 @@ frameworks:
     redis_dart and resp_client are the primary Dart Redis packages. Both provide
     similar APIs. RedisConnection() is the primary connection signal.
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.redis_extractor
-    function: extract
-    description: >-
-      Redis cross-language extractor: RedisConnection/RedisClient connections
-      (SCOPE.Service), cache ops (SCOPE.Operation/cache_op), pub/sub
-      (SCOPE.Operation/pubsub), streams (SCOPE.Operation/stream_op), Lua
-      (SCOPE.Operation/lua_script).

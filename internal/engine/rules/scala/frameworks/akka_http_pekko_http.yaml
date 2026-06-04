@@ -40,14 +40,3 @@ frameworks:
     continuation; treat as equivalent for detection purposes.
 
     '
-custom_extractors:
-  - module: archigraph.engine.rules.languages.scala.akka_extractor
-    function: extract
-    description: >
-      Extracts Akka/Pekko actor definitions (classic Actor, typed AbstractBehavior,
-      functional Behavior[T]), actor spawn hierarchy (context.spawn, context.actorOf)
-      with parent-child DEPENDS_ON edges, Akka HTTP route DSL with nested directive
-      resolution into full endpoint paths, and sealed trait/case class message protocols.
-      Emits SCOPE.Service (actors), SCOPE.Operation/endpoint (HTTP routes),
-      SCOPE.Pattern (message protocols).
-      Relationships: DEPENDS_ON (actor_spawn, message_protocol), EXTENDS (message variant).

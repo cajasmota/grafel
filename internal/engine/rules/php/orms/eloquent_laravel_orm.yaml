@@ -40,16 +40,3 @@ orms:
     Migration files in database/migrations/ contain Blueprint schema calls.
 
     '
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.php.eloquent_extractor
-    function: extract
-    description: >
-      Extracts Eloquent ORM-specific entities: Model class declarations, relationship
-      methods (hasOne/hasMany/belongsTo/belongsToMany/morphTo/morphMany),
-      query scope methods (scopeActive etc.), Observer lifecycle hooks
-      (creating/created/updating/updated/deleting/deleted), accessor/mutator methods
-      (getXAttribute/setXAttribute, Attribute::make), $casts/$fillable/$guarded metadata,
-      $table property, and DB::table() query scopes.
-      Emits SCOPE.Schema (model), SCOPE.Operation (scope/accessor/query), SCOPE.Pattern (observer).
-      Relationships: DEPENDS_ON (model->related, kind=eloquent_relationship),
-      OWNS (model->scope, model->accessor, model->query, observer->hook).

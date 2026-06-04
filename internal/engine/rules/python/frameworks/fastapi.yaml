@@ -115,36 +115,5 @@ relationship_rules:
     source_group: 1
     target_group: 1
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
 # These run after YAML-driven extraction and contribute additional entities +
 # relationships to the pipeline result.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.fastapi_extractor
-    function: extract
-    description: >-
-      FastAPI-specific extractor: HTTP route decorators (@app.get/post/put/delete/patch),
-      Depends() injection (CALLS edges to dependency functions), Pydantic BaseModel/
-      BaseSettings subclasses (SCOPE.Schema), APIRouter instantiation with prefix/tags
-      (SCOPE.Component), @app.websocket routes (SCOPE.Operation/endpoint),
-      @app.middleware decorators (SCOPE.Pattern), BackgroundTasks.add_task() call
-      sites (SCOPE.Operation/function + CALLS edges), and @app.on_event("startup"/
-      "shutdown") lifecycle hooks (SCOPE.Operation/function).
-  - module: archigraph.engine.rules.languages.python.fastapi_request_response_extractor
-    function: extract
-    description: >-
-      FastAPI request/response extractor: emits ACCEPTS_INPUT edges
-      from endpoint entities to Pydantic body parameter types, and RETURNS edges
-      from endpoint entities to response_model= decorator types and -> return
-      type annotations. Skips primitives and FastAPI framework response types.
-  - module: archigraph.engine.rules.languages._engine.config_prefix_extractor
-    function: extract
-    description: >-
-      Extract root_path / root_path_in_servers from FastAPI main.py as
-      SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated
-      on well-known config file basenames.
-  - module: archigraph.engine.rules.languages._engine.config_consumer_extractor
-    function: extract
-    description: >-
-      Extract os.getenv('KEY'), os.environ['KEY'], and os.environ.get('KEY')
-      reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read)
-      edges from consuming entities.

@@ -122,7 +122,3 @@ relationship_rules:
     source_group: 1
     target_group: 2
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.rust.axum_extractor"
-    function: "extract"
-    description: "Extract Axum Router routes (.route with get/post/put/delete/patch/head/options), nested routers (.nest), tower middleware layers (.layer, ServiceBuilder), State<T>/Extension<T> dependency injection patterns, Json<T>/Path<T>/Query<T>/Form<T> request extractors, axum::serve()/Server::bind() server entry points, and WebSocketUpgrade handlers. Emits OWNS (nest OWNS route), CALLS (server CALLS layer), DEPENDS_ON (handler DEPENDS_ON state) relationships."

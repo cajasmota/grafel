@@ -189,17 +189,3 @@ relationship_rules:
     source_group: 1
     target_group: 1
 
-custom_extractors:
-- module: archigraph.engine.rules.languages.php.symfony_extractor
-  function: extract
-  description: >
-    Extracts Symfony routes (#[Route] attributes and @Route annotations with full
-    path resolution including class-level prefixes), controller class declarations,
-    Doctrine ORM entities (#[ORM\Entity]/@ORM\Entity) with column annotations and
-    relationship mappings (OneToMany/ManyToOne/ManyToMany/OneToOne),
-    EventSubscriberInterface implementations with getSubscribedEvents() bindings,
-    and #[AsMessageHandler]/MessageHandlerInterface message handler classes.
-    Emits SCOPE.Operation/endpoint, SCOPE.Component, SCOPE.Schema, SCOPE.Pattern,
-    SCOPE.Service.
-    Relationships: CALLS (routes_to), OWNS (entity->column, subscriber->handler),
-    DEPENDS_ON (doctrine_relation, subscribes_to).

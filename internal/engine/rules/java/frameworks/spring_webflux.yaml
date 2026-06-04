@@ -27,10 +27,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.spring_ecosystem_extractor"
-    function: "extract"
-    description: "Extract Spring Ecosystem advanced patterns: Security, Batch, AMQP, AI, Vault, Data, Cloud, Integration, WebFlux, Kafka."
-  - module: "archigraph.engine.rules.languages.java.spring_request_response_extractor"
-    function: "extract"
-    description: "Extract ACCEPTS_INPUT and RETURNS relationships from Spring controller methods. Detects @RequestBody parameter annotations and method return types (including ResponseEntity<T> unwrapping). Emits DTO entities as SCOPE.Schema(kind=dto)."

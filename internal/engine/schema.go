@@ -17,8 +17,6 @@ type FrameworkRule struct {
 	SourcePatterns []SourcePattern `yaml:"source_patterns"`
 	// RelationshipRules maps regex patterns to relationship edges.
 	RelationshipRules []RelationshipRule `yaml:"relationship_rules"`
-	// CustomExtractors references Go functions for complex extraction logic.
-	CustomExtractors []CustomExtractor `yaml:"custom_extractors"`
 }
 
 // FileConvention describes a file naming pattern for a framework.
@@ -72,15 +70,4 @@ type RelationshipRule struct {
 	SourceGroup int `yaml:"source_group"`
 	// TargetGroup is the regex capture group index for the target entity name.
 	TargetGroup int `yaml:"target_group"`
-}
-
-// CustomExtractor references a Go function for framework-specific extraction
-// that goes beyond what regex patterns can handle.
-type CustomExtractor struct {
-	// Module is a legacy module path retained for YAML compatibility, unused in Go.
-	Module string `yaml:"module"`
-	// Function is the function name within the module.
-	Function string `yaml:"function"`
-	// Description documents what the extractor does.
-	Description string `yaml:"description"`
 }

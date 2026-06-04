@@ -38,7 +38,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.java.langchain4j_extractor"
-    function: "extract"
-    description: "Extract LangChain4J AI service interfaces (@AiService), tool methods (@Tool), prompt patterns (@SystemMessage/@UserMessage), ChatLanguageModel fields, RAG components (EmbeddingStore/ContentRetriever), ChatMemory, and DI wiring. Emits OWNS and DEPENDS_ON relationships."

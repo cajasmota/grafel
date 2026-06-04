@@ -18,6 +18,3 @@ frameworks:
   - '$:'
   - on:click
   notes: .svelte extension is definitive
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.javascript_typescript.svelte_extractor
-    function: extract

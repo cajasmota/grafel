@@ -96,21 +96,3 @@ relationship_rules:
     source_group: 1
     target_group: 1
 
-# custom_extractors: Python callables for patterns YAML rules cannot capture.
-custom_extractors:
-  - module: archigraph.engine.rules.languages.python.sqlalchemy_extractor
-    function: extract
-    description: >-
-      SQLAlchemy-specific extractor: declarative model classes (SCOPE.Schema,
-      INFERRED_FROM_SQLALCHEMY_MODEL), Column()/mapped_column() metadata,
-      relationship() → DEPENDS_ON (INFERRED_FROM_SQLALCHEMY_RELATIONSHIP),
-      ForeignKey() → DEPENDS_ON (INFERRED_FROM_SQLALCHEMY_FK),
-      session.query()/session.execute(select()) → SCOPE.Operation
-      (INFERRED_FROM_SQLALCHEMY_QUERY), create_engine() → SCOPE.Service
-      (INFERRED_FROM_SQLALCHEMY_ENGINE), @hybrid_property → SCOPE.Operation
-      (INFERRED_FROM_SQLALCHEMY_HYBRID), event.listen()/@event.listens_for()
-      → SCOPE.Pattern (INFERRED_FROM_SQLALCHEMY_EVENT), association Table()
-      → SCOPE.Schema (INFERRED_FROM_SQLALCHEMY_ASSOCIATION).
-      Supports both SQLAlchemy 1.x and 2.0 Mapped[]/mapped_column() style.
-      Emits OWNS (model→hybrid_property), DEPENDS_ON (model→related model,
-      model→FK table, event→target).

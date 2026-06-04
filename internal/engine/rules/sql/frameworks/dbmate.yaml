@@ -15,6 +15,3 @@ frameworks_and_dialects:
     migration scripts. Detection is via these comment markers in .sql files.
 
     '
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract

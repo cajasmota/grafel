@@ -29,6 +29,3 @@ frameworks_and_dialects:
     root element. The --rollback comment in SQL format is a strong Liquibase SQL signal.
 
     '
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.migration.migration_extractor
-    function: extract

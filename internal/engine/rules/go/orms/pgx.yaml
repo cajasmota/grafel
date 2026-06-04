@@ -25,13 +25,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.postgresql.postgresql_extractor"
-    function: "extract"
-    description: >
-      Cross-language PostgreSQL extractor: pgx.Connect/pgxpool.New connections
-      (SCOPE.Service, INFERRED_FROM_POSTGRES_DRIVER), pgxpool setup
-      (SCOPE.Pattern, INFERRED_FROM_POSTGRES_POOL), LISTEN/NOTIFY
-      (SCOPE.Operation/pubsub, INFERRED_FROM_POSTGRES_NOTIFY), CopyFrom/CopyTo
-      (SCOPE.Operation/copy_op, INFERRED_FROM_POSTGRES_COPY), embedded SQL
-      (SCOPE.Operation/query, INFERRED_FROM_POSTGRES_QUERY).

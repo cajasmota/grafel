@@ -35,7 +35,3 @@ frameworks:
     by absence of commonMain/ dirs.
 
     '
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.kotlin.compose_extractor"
-    function: "extract"
-    description: "Extract @Composable function tree, NavHost navigation graph routes, and ViewModel dependencies"

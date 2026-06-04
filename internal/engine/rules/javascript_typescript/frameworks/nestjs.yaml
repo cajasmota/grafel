@@ -34,10 +34,3 @@ file_conventions: []
 source_patterns: []
 relationship_rules: []
 
-custom_extractors:
-  - module: "archigraph.engine.rules.languages.javascript_typescript.nestjs_extractor"
-    function: "extract"
-    description: "Extract NestJS Module DI graph, controllers, route handlers, guards, interceptors, and services"
-  - module: "archigraph.engine.rules.languages._engine.config_consumer_extractor"
-    function: "extract"
-    description: "Extract process.env.KEY and process.env['KEY'] reads as SCOPE.Pattern/config_key entities and emit DEPENDS_ON(kind=config_read) edges from consuming entities."

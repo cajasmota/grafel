@@ -52,19 +52,3 @@ frameworks:
     alone is insufficient — always check artisan + app/Http/.
 
     '
-  custom_extractors:
-  - module: archigraph.engine.rules.languages.php.laravel_extractor
-    function: extract
-    description: >
-      Extracts Laravel routes (HTTP verb routes and Route::resource expansions),
-      service container bindings (bind/singleton/scoped/instance),
-      Blade component class declarations, and Blade x-component tag usage.
-      Emits SCOPE.Operation/endpoint, SCOPE.Pattern, SCOPE.UIComponent/component.
-      Relationships: CALLS (routes_to), DEPENDS_ON (binding->concrete, template->component),
-      OWNS (provider->binding).
-  - module: archigraph.engine.rules.languages._engine.config_prefix_extractor
-    function: extract
-    description: >
-      Extract APP_URL prefix from RouteServiceProvider.php as
-      SCOPE.Pattern/config_prefix entities. Cross-framework extractor gated
-      on well-known config file basenames.

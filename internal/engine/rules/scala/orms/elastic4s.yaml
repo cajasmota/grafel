@@ -14,10 +14,3 @@ orms_database:
   notes: |
     elastic4s is the most popular Scala Elasticsearch client (sksamuel/elastic4s).
     Provides type-safe DSL for Elasticsearch operations.
-  custom_extractors:
-  - module: "archigraph.engine.rules.languages.elasticsearch.elasticsearch_extractor"
-    function: "extract"
-    description: >
-      Extract ElasticClient connections, search queries, aggregations,
-      ILM policies, and index creation for Scala.
-      Emits SCOPE.Service, SCOPE.Schema, SCOPE.Operation, SCOPE.Pattern.
