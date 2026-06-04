@@ -92,3 +92,25 @@ func TestCPUPercent_Self(t *testing.T) {
 		t.Errorf("CPUPercent returned negative value %f", pct)
 	}
 }
+
+// TestFootprintBytes_Self verifies FootprintBytes returns a non-zero,
+// labeled reading for the current process and never errors.
+func TestFootprintBytes_Self(t *testing.T) {
+	fp := process.FootprintBytes()
+	if fp.Bytes == 0 {
+		t.Error("FootprintBytes returned 0 for self; expected a positive value")
+	}
+	if fp.Label == "" {
+		t.Error("FootprintBytes returned an empty Label; callers rely on it to avoid mislabeling")
+	}
+	if fp.Source == "" {
+		t.Error("FootprintBytes returned an empty Source tag")
+	}
+	// On Linux/macOS we expect the resident-RSS source; the memstats_sys
+	// fallback only fires when ps/proc are unavailable.
+	switch fp.Source {
+	case "resident_rss", "memstats_sys":
+	default:
+		t.Errorf("unexpected Source %q", fp.Source)
+	}
+}

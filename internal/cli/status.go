@@ -115,7 +115,18 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 				// These are intentionally distinct — idle RSS can exceed the
 				// budget without blocking jobs, because jobs are only blocked
 				// when sum(predicted_in_flight) + new_job_pred > budget.
-				fmt.Fprintf(w, "  rss: daemon=%dMB (actual process RSS)\n", st.RSSUsedMB)
+				// #3648: report the honest process footprint (resident set
+				// size), not the old MemStats.Sys mislabel. On macOS RSS
+				// under-counts swapped/compressed pages — note that, plus the
+				// Go-heap breakdown, so the number is interpretable.
+				fmt.Fprintf(w, "  mem: footprint=%dMB heap_inuse=%dMB heap_released=%dMB go_sys=%dMB\n",
+					st.RSSUsedMB,
+					st.HeapInuseBytes/(1024*1024),
+					st.HeapReleasedBytes/(1024*1024),
+					st.SysBytes/(1024*1024))
+				if st.FootprintLabel != "" {
+					fmt.Fprintf(w, "       (footprint = %s)\n", st.FootprintLabel)
+				}
 				admHeadroom := st.RSSBudgetMB - st.AdmissionUsedMB
 				if admHeadroom < 0 {
 					admHeadroom = 0

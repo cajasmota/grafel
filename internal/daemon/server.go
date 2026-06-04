@@ -202,6 +202,13 @@ func Run(ctx context.Context, cfg Config) error {
 	// Keep a short alias for readability in the long Run body below.
 	logger := slogger
 
+	// #3648: apply a conservative Go soft memory limit so the runtime GCs
+	// harder as it approaches the cap, bounding the 10.2GB peak observed on a
+	// 16GB host during concurrent reindex bursts. Combined with the
+	// scheduler's idle FreeOSMemory trigger this attacks both the PEAK
+	// (GOMEMLIMIT) and the idle RETAINED arena (FreeOSMemory).
+	applyMemoryLimit(logger)
+
 	// Layer 1 self-defense: refuse to start if a canonical (non-/tmp) daemon
 	// is already running and this binary lives under /tmp. This prevents the
 	// hot-loop runaway observed on 2026-05-20 where agent-spawned daemons were
