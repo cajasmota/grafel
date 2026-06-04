@@ -57,6 +57,9 @@ import type {
   DiffResult,
   DaemonModeReply,
   SetDaemonModeReply,
+  GroupAuthCoverageReport,
+  GroupSecretsReport,
+  GroupCyclesReport,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -646,6 +649,51 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ mode: newMode }),
     }),
+
+  // --- Security / Auth-Coverage screen (#4250) ---
+  // These call the v1 /api/security/* routes served by
+  // internal/dashboard/handlers_security.go. Responses are raw JSON (no v2
+  // envelope), so they go through `request`, not `requestV2`.
+
+  /** GET /api/security/auth-coverage/{group} — HTTP endpoint auth coverage. */
+  getAuthCoverage: (
+    groupId: string,
+    params?: { severity?: string; file?: string; only_uncovered?: boolean },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.severity) qs.set("severity", params.severity);
+    if (params?.file) qs.set("file", params.file);
+    if (params?.only_uncovered) qs.set("only_uncovered", "true");
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<GroupAuthCoverageReport>(
+      `/security/auth-coverage/${encodeURIComponent(groupId)}${suffix}`,
+    );
+  },
+
+  /** GET /api/security/secrets/{group} — hardcoded secrets + SM integrations. */
+  getSecrets: (groupId: string, params?: { severity?: string; file?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.severity) qs.set("severity", params.severity);
+    if (params?.file) qs.set("file", params.file);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<GroupSecretsReport>(
+      `/security/secrets/${encodeURIComponent(groupId)}${suffix}`,
+    );
+  },
+
+  /** GET /api/security/cycles/{group} — import-cycle findings. */
+  getSecurityCycles: (
+    groupId: string,
+    params?: { severity?: string; min_size?: number },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.severity) qs.set("severity", params.severity);
+    if (params?.min_size != null) qs.set("min_size", String(params.min_size));
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return request<GroupCyclesReport>(
+      `/security/cycles/${encodeURIComponent(groupId)}${suffix}`,
+    );
+  },
 };
 
 export type Api = typeof api;

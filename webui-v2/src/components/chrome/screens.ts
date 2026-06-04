@@ -16,6 +16,7 @@ import {
   Radio,
   Route as RouteIcon,
   FileText,
+  ShieldCheck,
   Wrench,
   Inbox,
   Settings,
@@ -36,6 +37,7 @@ export const SCREENS: ScreenDef[] = [
   { to: "paths", label: "Paths", Icon: RouteIcon, shortcut: "P" },
   { to: "flows", label: "Flows", Icon: Workflow, shortcut: "F" },
   { to: "docs", label: "Docs", Icon: FileText, shortcut: "D" },
+  { to: "security", label: "Security", Icon: ShieldCheck, shortcut: "S" },
   { to: "operations", label: "Operations", Icon: Wrench, shortcut: "O" },
 ];
 

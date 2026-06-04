@@ -1588,3 +1588,101 @@ export interface SetDaemonModeReply {
   config_path: string;
   restart_initiated: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Security / Auth-Coverage screen (#4250, epic #4249)
+//
+// Wire shapes for the three v1 security routes served by
+// internal/dashboard/handlers_security.go:
+//   GET /api/security/auth-coverage/{group}
+//   GET /api/security/secrets/{group}
+//   GET /api/security/cycles/{group}
+// All three responses are RAW JSON (not the v2 { ok, data } envelope).
+// ---------------------------------------------------------------------------
+
+/** Finding severity shared across all three security reports. */
+export type SecuritySeverity = "error" | "warn" | "info";
+
+/** One HTTP endpoint auth-coverage finding. */
+export interface AuthEndpointFinding {
+  entity_id: string;
+  name: string;
+  repo: string;
+  source_file?: string;
+  start_line?: number;
+  method?: string;
+  path?: string;
+  has_auth: boolean;
+  auth_evidence?: string;
+  severity: SecuritySeverity;
+  sensitive_op?: boolean;
+  idor_risk?: boolean;
+}
+
+/** GET /api/security/auth-coverage/{group}. */
+export interface GroupAuthCoverageReport {
+  group: string;
+  total_endpoints: number;
+  covered_count: number;
+  uncovered_count: number;
+  coverage_pct: number;
+  error_count: number;
+  warn_count: number;
+  info_count: number;
+  findings: AuthEndpointFinding[];
+}
+
+/** One secret-related finding. */
+export interface SecuritySecretFinding {
+  entity_id: string;
+  name: string;
+  repo: string;
+  source_file?: string;
+  start_line?: number;
+  language?: string;
+  /** "hardcoded_credential" | "secrets_management". */
+  category: string;
+  /** Set for secrets_management findings (e.g. "vault", "aws_secrets_manager"). */
+  provider?: string;
+  severity: SecuritySeverity;
+  remediation?: string;
+}
+
+/** GET /api/security/secrets/{group}. */
+export interface GroupSecretsReport {
+  group: string;
+  total_findings: number;
+  error_count: number;
+  warn_count: number;
+  info_count: number;
+  by_category: Record<string, number>;
+  findings: SecuritySecretFinding[];
+}
+
+/** A directed edge within an import cycle. */
+export interface CycleFindingEdge {
+  from_id: string;
+  to_id: string;
+}
+
+/** One import-cycle finding. */
+export interface CycleFinding {
+  repo: string;
+  members: string[];
+  edges: CycleFindingEdge[];
+  weakest_link_from_id?: string;
+  weakest_link_to_id?: string;
+  suggested_extraction_id?: string;
+  size: number;
+  severity: SecuritySeverity;
+}
+
+/** GET /api/security/cycles/{group}. */
+export interface GroupCyclesReport {
+  group: string;
+  total_cycles: number;
+  error_count: number;
+  warn_count: number;
+  info_count: number;
+  findings: CycleFinding[];
+}
