@@ -164,8 +164,8 @@ func scanGoMongoAggregation(
 						props["as"] = lk.as
 					}
 					emitJoin(mongoAggJoinEdge(coll, lk, "lookup"))
-					// #4244 — node-anchored twin.
-					emitJoin(mongoAggStageJoinEdge(name, path, lang, lk, "lookup"))
+					// #4244 — node-anchored twin emitted post-stamp from
+					// props["from"] (buildMongoAggStageJoinRels).
 				}
 			case "$graphLookup":
 				lk := mongoAggGoParseLookup(st)
@@ -175,8 +175,8 @@ func scanGoMongoAggregation(
 						props["as"] = lk.as
 					}
 					emitJoin(mongoAggJoinEdge(coll, lk, "graphLookup"))
-					// #4244 — node-anchored twin (graphLookup stage node).
-					emitJoin(mongoAggStageJoinEdge(name, path, lang, lk, "graphLookup"))
+					// #4244 — node-anchored twin emitted post-stamp from
+					// props["from"] (buildMongoAggStageJoinRels).
 				}
 			case "$group":
 				if id, accs := mongoAggGoParseGroup(st); id != "" || accs != "" {

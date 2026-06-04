@@ -217,14 +217,13 @@ func scanPHPMongoAggregation(
 			return // dynamic from or unresolved collection — honest skip.
 		}
 		emitJoin(mongoAggJoinEdge(coll, lk, stageName))
-		// #4244 — node-anchored twin so the join is reachable from the
-		// $lookup DataAccess node. entityName MUST match the emitStage Name.
-		// The `@L<line>` segment keeps the per-call-site stage node unique so
-		// two `$lookup`s at the same per-file stage index in different
-		// aggregations never collapse onto one graph node (see
+		// #4244 — node-anchored twin emitted post-stamp by
+		// buildMongoAggStageJoinRels from props["from"]. entityName MUST match
+		// the emitStage Name; the `@L<line>` segment keeps the per-call-site
+		// stage node unique so two `$lookup`s at the same per-file stage index
+		// in different aggregations never collapse onto one graph node (see
 		// mongoAggStageName).
 		entityName := mongoAggStageName(coll, lineOfOffset(src, off), stageIdx, "$lookup")
-		emitJoin(mongoAggStageJoinEdge(entityName, path, lang, lk, stageName))
 
 		props := map[string]string{
 			"pattern_type": mongoAggPatternType,

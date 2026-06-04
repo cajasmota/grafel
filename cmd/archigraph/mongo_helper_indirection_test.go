@@ -45,9 +45,17 @@ func TestMongoLookupHelperIndirection_MinimalShape(t *testing.T) {
 	type edge struct{ from, to string }
 	var joins []edge
 	for _, r := range doc.Relationships {
-		if r.Kind == "JOINS_COLLECTION" {
-			joins = append(joins, edge{from: r.FromID, to: r.ToID})
+		if r.Kind != "JOINS_COLLECTION" {
+			continue
 		}
+		// #4244 — skip the per-stage node-anchored twin (FromID = the $lookup
+		// node's hex id). This test asserts the collection-anchored edges
+		// (Class:Inspection -> Class:<from>); the node-anchored twins are
+		// covered by TestMongoAggLookupNode_FromIDEqualsNodeID_4244.
+		if r.Properties != nil && r.Properties["anchor"] == "stage_node" {
+			continue
+		}
+		joins = append(joins, edge{from: r.FromID, to: r.ToID})
 	}
 
 	if len(joins) == 0 {
@@ -100,6 +108,14 @@ func TestMongoLookupHelperIndirection_RealUpvateSource(t *testing.T) {
 	got := map[string]bool{}
 	for _, r := range doc.Relationships {
 		if r.Kind != "JOINS_COLLECTION" {
+			continue
+		}
+		// #4244 — the per-stage `$lookup` node also emits a NODE-ANCHORED twin
+		// JOINS_COLLECTION edge whose FromID is the stage node's graph id (a hex
+		// id), not Class:Inspection. This test asserts the COLLECTION-anchored
+		// edges (the helper-indirection resolution), so skip the node-anchored
+		// twins (Properties["anchor"]=="stage_node").
+		if r.Properties != nil && r.Properties["anchor"] == "stage_node" {
 			continue
 		}
 		if r.FromID != wantFrom {

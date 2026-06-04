@@ -3088,6 +3088,60 @@ func (i *Indexer) buildPatternContainsRels(records []types.EntityRecord) []types
 	return out
 }
 
+// buildMongoAggStageJoinRels emits the NODE-ANCHORED JOINS_COLLECTION twin for
+// every Mongo-aggregation `$lookup` / `$graphLookup` stage entity, with a
+// FIRST-CLASS FromID equal to the stage entity's own (already-stamped) graph id
+// — `r.ID`. This is the #4244 fix: the per-stage SCOPE.DataAccess node a
+// consumer `find`s ("inspections.aggregate@L38#9 $lookup") must be traversable
+// to its join target via `node → JOINS_COLLECTION → Class:<from>`. The two
+// previous fixes emitted this twin at EXTRACT time with a structural-ref STUB
+// FromID and relied on the resolver to rewrite it to the node id; that rewrite
+// did NOT land on the node's actual id in production (twin FromID stayed a
+// synthetic value ≠ graph.EntityID(<the node>)), so neighbors(<node>) was empty
+// live — twice. Emitting here, AFTER stampEntityIDs, lets us use the node's real
+// id directly (no stub, no resolver round-trip) — exactly like
+// buildPatternContainsRels emits file→Pattern CONTAINS edges.
+//
+// Targets: the stage entity's `from` property (the top-level lookup target) plus
+// any extra targets recorded under join_targets (the Python correlated
+// sub-pipeline nested froms). Both endpoints are deterministic — FromID is a
+// resolved hex id (resolver leaves it untouched via isHexID), ToID is the
+// canonical Class:<from> node the collection-anchored edge already points at.
+// Runs after stampEntityIDs so r.ID is populated. Returns nil when no
+// aggregation stage entities are present (zero-cost on graphs without Mongo).
+func (i *Indexer) buildMongoAggStageJoinRels(records []types.EntityRecord) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
+	for k := range records {
+		r := &records[k]
+		if r.ID == "" || r.Properties == nil {
+			continue
+		}
+		if r.Kind != string(types.EntityKindDataAccess) {
+			continue
+		}
+		if r.Properties["pattern_type"] != engine.MongoAggPatternType {
+			continue
+		}
+		// Only $lookup / $graphLookup stages carry a join target; other
+		// stages ($group, $facet, …) have no `from` and no join_targets.
+		var targets []string
+		if from := r.Properties["from"]; from != "" {
+			targets = append(targets, from)
+		}
+		if extra := r.Properties[engine.MongoAggStageJoinTargetsKey]; extra != "" {
+			for _, t := range strings.Split(extra, ",") {
+				if t != "" {
+					targets = append(targets, t)
+				}
+			}
+		}
+		for _, t := range targets {
+			out = append(out, engine.MongoAggStageNodeJoinRel(r.ID, t))
+		}
+	}
+	return out
+}
+
 // foldShadowStats reports the result of foldClassHierarchyShadows for the
 // stderr log line.
 type foldShadowStats struct {
@@ -3811,6 +3865,18 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 			len(patternContainsRels))
 	}
 
+	// #4244 — node-anchored $lookup/$graphLookup JOINS_COLLECTION twins. Emitted
+	// here, AFTER stampEntityIDs, so each twin's FromID is the stage entity's
+	// REAL graph id (r.ID) rather than a structural-ref stub. Appended alongside
+	// patternContainsRels below (post-disposition, both endpoints are resolved
+	// hex ids so they bypass the resolver/classifier).
+	mongoAggStageJoinRels := i.buildMongoAggStageJoinRels(merged)
+	if len(mongoAggStageJoinRels) > 0 {
+		fmt.Fprintf(os.Stderr,
+			"mongo-agg-stage-joins: emitted %d node-anchored JOINS_COLLECTION twins ($lookup node → Class:<from>)\n",
+			len(mongoAggStageJoinRels))
+	}
+
 	// Resolver pass — rewrite stub-form FromID/ToID values across:
 	//   - embedded EntityRecord.Relationships (Pass 1 + Pass 2.5 + Pass 3)
 	//   - standalone Pass 2.5 RelationshipRecords (engine output)
@@ -4113,6 +4179,26 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// flow straight into the output without rewrite or classification.
 	for j := range patternContainsRels {
 		rel := &patternContainsRels[j]
+		relID := graph.RelationshipID(rel.FromID, rel.ToID, rel.Kind)
+		if seenRel[relID] {
+			continue
+		}
+		seenRel[relID] = true
+		relationships = append(relationships, graph.Relationship{
+			ID:         relID,
+			FromID:     rel.FromID,
+			ToID:       rel.ToID,
+			Kind:       rel.Kind,
+			Properties: rel.Properties,
+		})
+	}
+
+	// #4244 — node-anchored $lookup JOINS_COLLECTION twins (see
+	// buildMongoAggStageJoinRels above). Both endpoints are deterministic hex
+	// ids (FromID = the stage node's graph id), so they flow straight into the
+	// output without rewrite or classification — same as patternContainsRels.
+	for j := range mongoAggStageJoinRels {
+		rel := &mongoAggStageJoinRels[j]
 		relID := graph.RelationshipID(rel.FromID, rel.ToID, rel.Kind)
 		if seenRel[relID] {
 			continue

@@ -1,30 +1,36 @@
 package engine
 
 import (
-	"strings"
 	"testing"
 
-	"github.com/cajasmota/archigraph/internal/resolve"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// #4244 — the `$lookup` SCOPE.DataAccess stage node was fully isolated: the
-// JOINS_COLLECTION edge connected the aggregating Class to the looked-up Class,
-// but NOTHING connected the per-stage node a consumer naturally `find`s
-// ("inspections.aggregate#N $lookup"). This test indexes a Python pymongo
-// aggregation carrying `$lookup: { from: "inspections_history", ... }` inside a
-// service method and asserts that, after reference resolution, a
-// JOINS_COLLECTION edge originates FROM the `$lookup` stage entity's graph ID —
-// i.e. the join target is reachable from the node `find` returns.
+// #4244 (third fix) — the per-stage `$lookup` SCOPE.DataAccess node a consumer
+// `find`s ("inspections.aggregate@L38#9 $lookup") must be traversable to its
+// join target. The two PRIOR fixes emitted the node-anchored twin at EXTRACT
+// time with a structural-ref STUB FromID (scope:dataaccess:...) and relied on
+// the reference resolver to rewrite that stub to the node's graph id via
+// byLocation[file][name]. That rewrite did NOT land on the node's id in
+// production (the twin's FromID stayed a synthetic value ≠ the node id), so
+// neighbors(<node>) returned empty live — twice. BOTH prior tests asserted only
+// that "a JOINS_COLLECTION edge exists" and never that "an edge whose
+// FromID == graph.EntityID(<the $lookup node>) exists" — that gap was the false
+// pass.
 //
-// NON-VACUOUS PROOF: the same body first asserts the PRE-FIX invariant — that
-// the ONLY JOINS_COLLECTION edge whose FromID resolves to the stage node is the
-// one mongoAggStageJoinEdge adds. We assert the Class-anchored edge (FromID
-// "Class:Inspection") STILL fires (no regression), AND that a SEPARATE
-// node-anchored edge exists whose FromID is the stage-node structural-ref stub.
-// Deleting the mongoAggStageJoinEdge calls makes the node-anchored assertions
-// fail (the stage node has zero outgoing edges — the original bug).
-func TestMongoAggPy_LookupNode_IsTraversableToJoin_4244(t *testing.T) {
+// This fix abandons the stub+resolver entirely: the extract pass RECORDS join
+// targets on the stage entity (props["from"] for the primary lookup,
+// props["join_targets"] for the Python correlated nested froms) and a post-stamp
+// pass (buildMongoAggStageJoinRels in cmd/archigraph) emits the twin edge with
+// FromID = the stage node's already-stamped graph id. The two assertions below
+// are unit-level guards on the engine-side contract that pass relies on; the
+// FromID==node-id end-to-end assertion lives in
+// cmd/archigraph/index_mongoagg_4244_test.go.
+
+// TestMongoAggPy_StageRecordsJoinTargetsOnEntity asserts the extract pass NO
+// LONGER emits a stub-FromID node-anchored twin, and instead records the join
+// target(s) on the stage entity so the post-stamp pass can emit a real-id edge.
+func TestMongoAggPy_StageRecordsJoinTargetsOnEntity(t *testing.T) {
 	src := `
 from pymongo import MongoClient
 
@@ -41,8 +47,6 @@ class InspectionService:
         ]
         return db.inspections.aggregate(pipeline)
 `
-	// Drive the scanner directly so we collect the UNFILTERED edge set,
-	// including the node-anchored twin (runMongoAggPy strips it).
 	funcs := indexEnclosingFunctions("python", src)
 	var ents []types.EntityRecord
 	var rels []types.RelationshipRecord
@@ -51,7 +55,6 @@ class InspectionService:
 		func(r types.RelationshipRecord) { rels = append(rels, r) },
 	)
 
-	// Locate the $lookup stage entity the consumer would `find`.
 	lookupEnt := pyFindStage(ents, "$lookup")
 	if lookupEnt == nil {
 		t.Fatalf("expected a $lookup SCOPE.DataAccess stage entity; ents=%+v", ents)
@@ -59,83 +62,103 @@ class InspectionService:
 	if lookupEnt.Kind != string(types.EntityKindDataAccess) {
 		t.Fatalf("stage kind = %q, want SCOPE.DataAccess", lookupEnt.Kind)
 	}
+	// The stage entity carries the join target so the post-stamp pass can emit
+	// the node-anchored twin with a real FromID.
+	if lookupEnt.Properties["from"] != "inspections_history" {
+		t.Fatalf("stage entity props[from] = %q, want inspections_history",
+			lookupEnt.Properties["from"])
+	}
 
 	// REGRESSION GUARD: the collection-anchored edge must still fire.
 	classEdge := pyFindJoinTo(rels, capitalisedSingular("inspections_history"))
 	if classEdge == nil {
-		t.Fatalf("expected a JOINS_COLLECTION edge to inspections_history; rels=%+v", rels)
+		t.Fatalf("expected a collection-anchored JOINS_COLLECTION edge to inspections_history; rels=%+v", rels)
 	}
 	if classEdge.FromID != "Class:"+capitalisedSingular("inspections") {
-		// The collection-anchored edge originates from the aggregating Class.
-		// (There are now two edges to the same target; ensure at least one is
-		// the Class-anchored form.)
-		var sawClassAnchored bool
-		for i := range rels {
-			r := &rels[i]
-			if r.Kind == string(types.RelationshipKindJoinsCollection) &&
-				r.ToID == "Class:"+capitalisedSingular("inspections_history") &&
-				r.FromID == "Class:"+capitalisedSingular("inspections") {
-				sawClassAnchored = true
-			}
-		}
-		if !sawClassAnchored {
-			t.Fatalf("collection-anchored JOINS_COLLECTION edge (Class:Inspection -> Class:Inspections_history) missing; rels=%+v", rels)
-		}
+		t.Fatalf("collection-anchored FromID = %q, want Class:%s",
+			classEdge.FromID, capitalisedSingular("inspections"))
 	}
 
-	// THE FIX: find the node-anchored JOINS_COLLECTION edge whose FromID is the
-	// stage-node structural-ref stub (Format A: scope:dataaccess:...:<name>).
-	var nodeEdge *types.RelationshipRecord
+	// THE ANTI-FALSE-PASS GUARD: the extract pass must NOT emit any
+	// node-anchored twin at extract time — neither a `scope:` stub (the failed
+	// approach) NOR a hex id (the node id is unknown here). The twin is emitted
+	// exclusively by the post-stamp pass. Asserting zero stage-node edges here
+	// proves we abandoned the resolver-dependent emission.
 	for i := range rels {
 		r := &rels[i]
-		if r.Kind != string(types.RelationshipKindJoinsCollection) {
-			continue
-		}
-		if r.ToID != "Class:"+capitalisedSingular("inspections_history") {
-			continue
-		}
-		if strings.HasPrefix(r.FromID, "scope:dataaccess:") {
-			nodeEdge = r
-			break
+		if r.Properties != nil && r.Properties["anchor"] == "stage_node" {
+			t.Fatalf("extract pass emitted a node-anchored twin (FromID=%q) — it must be emitted post-stamp, not here", r.FromID)
 		}
 	}
-	if nodeEdge == nil {
-		t.Fatalf("PRE-FIX BUG: no node-anchored JOINS_COLLECTION edge from the $lookup stage node; the node is isolated. rels=%+v", rels)
-	}
-	// The stub must name THIS stage entity by file+name so the resolver binds
-	// it to the stage node and not something else.
-	if !strings.HasSuffix(nodeEdge.FromID, ":"+lookupEnt.Name) {
-		t.Fatalf("node-anchored FromID %q does not reference stage entity name %q", nodeEdge.FromID, lookupEnt.Name)
-	}
+}
 
-	// END-TO-END PROOF: run the real reference resolver over the emitted
-	// entities + edges. After resolution the node-anchored edge's FromID MUST
-	// equal the $lookup stage entity's deterministic graph ID — i.e. the join
-	// is genuinely traversable FROM the node `find` returns, not a dangling
-	// stub. The stage entity carries the file+name the stub keys on.
-	//
-	// The real pipeline assigns each entity its deterministic graph ID before
-	// resolution; replicate that here (BuildIndex skips ID-less records).
-	for i := range ents {
-		ents[i].ID = ents[i].ComputeID()
-	}
-	idx := resolve.BuildIndex(ents)
-	resolve.References(rels, idx)
+// TestMongoAggPy_NestedCorrelatedFromsRecordedAsJoinTargets asserts a correlated
+// `$lookup` carrying a nested sub-pipeline `$lookup` records BOTH the top-level
+// and the nested `from` so the post-stamp pass emits one node-anchored twin per
+// target (all anchored on the SAME stage node).
+func TestMongoAggPy_NestedCorrelatedFromsRecordedAsJoinTargets(t *testing.T) {
+	src := `
+from pymongo import MongoClient
 
-	wantID := lookupEnt.ComputeID()
-	var resolvedNodeEdge *types.RelationshipRecord
-	for i := range rels {
-		r := &rels[i]
-		if r.Kind == string(types.RelationshipKindJoinsCollection) && r.FromID == wantID {
-			resolvedNodeEdge = r
-			break
-		}
+def q(db):
+    pipeline = [
+        {"$lookup": {
+            "from": "m_contracts",
+            "as": "contract",
+            "pipeline": [
+                {"$lookup": {"from": "m_group_device_settings", "as": "gds"}},
+            ],
+        }},
+    ]
+    return db.inspections.aggregate(pipeline)
+`
+	funcs := indexEnclosingFunctions("python", src)
+	var ents []types.EntityRecord
+	scanPythonMongoAggregation(src, funcs, "svc/agg.py", "python", nil,
+		func(e types.EntityRecord) { ents = append(ents, e) },
+		func(r types.RelationshipRecord) {},
+	)
+	lookupEnt := pyFindStage(ents, "$lookup")
+	if lookupEnt == nil {
+		t.Fatalf("expected a $lookup stage entity; ents=%+v", ents)
 	}
-	if resolvedNodeEdge == nil {
-		t.Fatalf("after resolution no JOINS_COLLECTION edge originates from the $lookup stage node ID %q (node still isolated); rels=%+v", wantID, rels)
+	if lookupEnt.Properties["from"] != "m_contracts" {
+		t.Fatalf("props[from] = %q, want m_contracts", lookupEnt.Properties["from"])
 	}
-	// And it points at the looked-up collection.
-	if resolvedNodeEdge.ToID == "" {
-		t.Fatalf("resolved node-anchored edge has empty ToID")
+	if got := lookupEnt.Properties[mongoAggStageJoinTargetsKey]; got != "m_group_device_settings" {
+		t.Fatalf("props[%s] = %q, want m_group_device_settings (nested correlated from)",
+			mongoAggStageJoinTargetsKey, got)
+	}
+}
+
+// TestMongoAggStageNodeJoinRel_FromIDIsTheNodeID asserts the edge builder uses a
+// first-class FromID equal to the node id passed in (no stub), and the canonical
+// Class:<from> ToID.
+func TestMongoAggStageNodeJoinRel_FromIDIsTheNodeID(t *testing.T) {
+	nodeID := "deadbeefdeadbeef" // stands in for graph.EntityID(...) output
+	rel := mongoAggStageNodeJoinRel(nodeID, "m_contracts")
+	if rel.FromID != nodeID {
+		t.Fatalf("FromID = %q, want the node id %q (first-class, not a stub)", rel.FromID, nodeID)
+	}
+	if rel.ToID != "Class:"+capitalisedSingular("m_contracts") {
+		t.Fatalf("ToID = %q, want Class:%s", rel.ToID, capitalisedSingular("m_contracts"))
+	}
+	if rel.Kind != string(types.RelationshipKindJoinsCollection) {
+		t.Fatalf("Kind = %q, want JOINS_COLLECTION", rel.Kind)
+	}
+	if rel.Properties["anchor"] != "stage_node" {
+		t.Fatalf("anchor prop = %q, want stage_node", rel.Properties["anchor"])
+	}
+}
+
+// TestMongoAggAddStageJoinTarget_DedupAndOrder guards the join-targets recorder.
+func TestMongoAggAddStageJoinTarget_DedupAndOrder(t *testing.T) {
+	props := map[string]string{}
+	mongoAggAddStageJoinTarget(props, "a")
+	mongoAggAddStageJoinTarget(props, "b")
+	mongoAggAddStageJoinTarget(props, "a") // dup — ignored
+	mongoAggAddStageJoinTarget(props, "")  // empty — ignored
+	if got := props[mongoAggStageJoinTargetsKey]; got != "a,b" {
+		t.Fatalf("join_targets = %q, want a,b", got)
 	}
 }
