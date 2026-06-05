@@ -2353,10 +2353,11 @@ func readInheritedBody(ctx context.Context, abs string, e *graph.Entity, context
 	}
 }
 
-// readSourceWindow is implemented in read_source_unix.go (darwin/linux) and
-// read_source_windows.go (windows). The Unix implementation uses a non-blocking
-// open(2) to avoid macOS fsevents kernel stalls (#1773); the Windows path falls
-// back to plain os.Open (no fsevents equivalent).
+// readSourceWindow is implemented in read_source_unix.go (darwin || linux) and
+// read_source_other.go (!darwin && !linux, i.e. windows + BSDs). The Unix
+// implementation uses a non-blocking open(2) to avoid macOS fsevents kernel
+// stalls (#1773); the other path falls back to plain os.Open (no fsevents
+// equivalent).
 
 // ---------------------------------------------------------------------------
 // candidate tools

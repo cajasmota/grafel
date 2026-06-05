@@ -20,6 +20,9 @@ package mcp
 //
 // The 5s deadline in handleGetNodeSource is preserved as a true safety net; in
 // practice it will rarely fire once the non-blocking open path is in effect.
+//
+// The plain-os.Open counterparts of openSourceFile and readSourceWindow for
+// non-unix platforms live in read_source_other.go (//go:build !darwin && !linux).
 
 import (
 	"bufio"

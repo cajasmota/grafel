@@ -1,7 +1,7 @@
 // Package mcp — read_source_export.go
 //
 // Exports readSourceWindow (defined in the build-tag-split files
-// read_source_unix.go / read_source_windows.go) so that sibling packages
+// read_source_unix.go / read_source_other.go) so that sibling packages
 // such as internal/docgen can reuse the cross-platform implementation
 // without duplicating the fsevents-defense logic.
 //
