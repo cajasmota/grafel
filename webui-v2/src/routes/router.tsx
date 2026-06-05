@@ -19,6 +19,7 @@ import FlowsScreen from "./flows";
 import EventFlowsScreen from "./event-flows";
 import TopologyScreen from "./topology";
 import PathsScreen from "./paths";
+import LinksScreen from "./links";
 import DocsScreen from "./docs";
 import SecurityScreen from "./security";
 import QualityScreen from "./quality";
@@ -49,6 +50,7 @@ export const router = createBrowserRouter([
           { path: "event-flows", element: <EventFlowsScreen />, handle: { surfaceLabel: "Event Flows" } },
           { path: "topology", element: <TopologyScreen />, handle: { surfaceLabel: "Topology" } },
           { path: "paths", element: <PathsScreen />, handle: { surfaceLabel: "Paths" } },
+          { path: "links", element: <LinksScreen />, handle: { surfaceLabel: "Links" } },
           { path: "docs", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },
           // Wildcard: the doc key (repoSlug/rel/path.md) may contain slashes.
           { path: "docs/*", element: <DocsScreen />, handle: { surfaceLabel: "Docs" } },

@@ -17,7 +17,7 @@
        Name 22% | In 12% | Type 28% | Description 38%.
    ============================================================ */
 
-import { useState, useMemo, useCallback, useRef, useEffect } from "react";
+import { useState, useMemo, useCallback, useRef, useEffect, createContext, useContext } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import {
   Search, X, ChevronRight, ChevronLeft, Lock, ExternalLink, Copy,
@@ -30,12 +30,31 @@ import { RefLine } from "@/components/RefLine";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ShapeTree, type ShapeTreeRow } from "@/components/ShapeTree";
 import { AuthSection } from "@/components/Paths/EndpointDetail/AuthSection";
-import { usePaths, usePathDetail, useOrphans } from "@/hooks/use-paths";
+import { AuthSeverityBadge } from "@/components/Paths/AuthSeverityBadge";
+import {
+  usePaths, usePathDetail, useOrphans, useAuthCoverageIndex,
+  type AuthCoverageIndex,
+} from "@/hooks/use-paths";
 import type {
   PathBackend, ControllerGroupShape, PathRoute, PathDetail,
   OrphanCaller, HttpVerb, OrphanReason, PathEntity, HandlerDetail,
   PathParameter, ResponseShape, PerStatusResponse,
 } from "@/data/types";
+
+/* ============================================================
+   Auth-coverage context (#4253) — provides a (verb, path) → finding
+   resolver to deeply-nested rows without prop-drilling. Defaults to a
+   no-op resolver so components render fine when no provider is mounted.
+   ============================================================ */
+const AuthCoverageContext = createContext<AuthCoverageIndex>({
+  isLoading: false,
+  lookup: () => undefined,
+  lookupAny: () => undefined,
+});
+
+function useAuthFor() {
+  return useContext(AuthCoverageContext);
+}
 
 /* ============================================================
    Color / semantic tokens — all via CSS vars, no hardcoded hex
@@ -191,6 +210,8 @@ function VerbRouteRow({
   onClick: () => void;
 }) {
   const { route, verb } = row;
+  const auth = useAuthFor();
+  const finding = auth.lookup(verb, route.path);
   return (
     <button
       type="button"
@@ -218,6 +239,7 @@ function VerbRouteRow({
       <PathString path={route.path} className="flex-1 text-xs text-text-2 leading-tight min-w-0 truncate" />
       {/* Right meta */}
       <div className="flex items-center gap-1 shrink-0">
+        <AuthSeverityBadge finding={finding} variant="row" />
         {route.auth && (
           <span title="Authenticated">
             <Lock size={10} className="text-success" />
@@ -671,6 +693,7 @@ function responseToShapeTreeRows(s: ResponseShape, idx: number): ShapeTreeRow[] 
 }
 
 function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathDetail; initialVerb?: string; groupId: string }) {
+  const authForDetail = useAuthFor();
   // Real polyglot data can omit array/object fields entirely. Normalize once so
   // every downstream access is null-safe (#1536).
   const detail = {
@@ -766,6 +789,10 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
 
         {/* Chip row: auth, framework, repos */}
         <div className="flex flex-wrap items-center gap-1.5">
+          <AuthSeverityBadge
+            finding={authForDetail.lookupAny(detail.verbs, detail.path)}
+            variant="header"
+          />
           {detail.auth ? (
             <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-success-soft text-success border border-success-soft">
               <Lock size={10} /> Auth · {detail.auth_scheme ?? "Bearer"}
@@ -1432,6 +1459,9 @@ export default function PathsScreen() {
   // Data
   const { data: pathsData, isLoading, isError } = usePaths(groupId);
   const { data: detail, isLoading: isDetailLoading } = usePathDetail(groupId, selectedHash);
+  // Auth-coverage overlay (#4253) — reuses the Security screen's cached query
+  // and indexes findings by method+path so rows + detail header can badge.
+  const authIndex = useAuthCoverageIndex(groupId);
 
   const allBackends = pathsData?.backends ?? [];
   const totals = pathsData?.totals;
@@ -1600,6 +1630,7 @@ export default function PathsScreen() {
   }, [search, backends, scopedRouteCount]);
 
   return (
+    <AuthCoverageContext.Provider value={authIndex}>
     <div className="flex flex-col h-full overflow-hidden bg-bg" data-testid="paths-screen">
       {/* Sub-stats bar */}
       <div className="flex items-center gap-4 px-4 h-9 bg-bg-soft border-b border-border shrink-0">
@@ -1891,5 +1922,6 @@ export default function PathsScreen() {
         </TabsContent>
       </Tabs>
     </div>
+    </AuthCoverageContext.Provider>
   );
 }
