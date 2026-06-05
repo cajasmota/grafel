@@ -71,6 +71,7 @@ import type {
   IaCReport,
   DataflowReport,
   DIReport,
+  ErrorFlowReport,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -839,6 +840,18 @@ export const api = {
   getDI: (groupId: string) =>
     request<DIReport>(
       `/di/${encodeURIComponent(groupId)}`,
+    ),
+
+  // --- Error-flow (#4267) ---
+  // Raw JSON (no v2 envelope) → `request`. Handler: handlers_errorflow.go
+  // handleErrorFlow, which rolls up SCOPE.ExceptionType nodes across the group
+  // with their THROWS (throwers) and CATCHES (catchers) and an honest uncaught
+  // flag (thrown-but-no-typed-catcher-in-graph).
+
+  /** GET /api/errorflow/{group} — exception types → throwers + catchers, uncaught flag. */
+  getErrorFlow: (groupId: string) =>
+    request<ErrorFlowReport>(
+      `/errorflow/${encodeURIComponent(groupId)}`,
     ),
 };
 

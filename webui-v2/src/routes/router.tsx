@@ -26,6 +26,7 @@ import DocsScreen from "./docs";
 import SecurityScreen from "./security";
 import DataflowScreen from "./dataflow";
 import DIScreen from "./di";
+import ErrorFlowScreen from "./errorflow";
 import QualityScreen from "./quality";
 import SettingsScreen from "./settings";
 import PendingScreen from "./pending";
@@ -63,6 +64,7 @@ export const router = createBrowserRouter([
           { path: "security", element: <SecurityScreen />, handle: { surfaceLabel: "Security" } },
           { path: "taint", element: <DataflowScreen />, handle: { surfaceLabel: "Taint" } },
           { path: "di", element: <DIScreen />, handle: { surfaceLabel: "Dependency Injection" } },
+          { path: "errorflow", element: <ErrorFlowScreen />, handle: { surfaceLabel: "Error flow" } },
           { path: "quality", element: <QualityScreen />, handle: { surfaceLabel: "Quality" } },
           { path: "settings", element: <SettingsScreen />, handle: { surfaceLabel: "Group settings" } },
           { path: "pending", element: <PendingScreen />, handle: { surfaceLabel: "Pending" } },

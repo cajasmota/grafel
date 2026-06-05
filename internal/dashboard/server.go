@@ -564,6 +564,11 @@ func (s *Server) routes() http.Handler {
 	// Angular/… DI).
 	mux.HandleFunc("GET /api/di/{group}", s.handleDI)
 
+	// #4267 (epic #4249): Error-flow surface — exception types rolled up across
+	// the group, each listing its THROWS (throwers) and CATCHES (catchers) with
+	// an honest uncaught flag (thrown-but-no-typed-catcher-in-graph).
+	mux.HandleFunc("GET /api/errorflow/{group}", s.handleErrorFlow)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)

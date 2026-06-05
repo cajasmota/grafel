@@ -2274,3 +2274,51 @@ export interface DIReport {
   frameworks: string[];
   groups: DIFrameworkGroup[];
 }
+
+// ---------------------------------------------------------------------------
+// Error-flow surface (#4267, epic #4249). GET /api/errorflow/{group} →
+// handlers_errorflow.go, which rolls up SCOPE.ExceptionType nodes across the
+// group: each exception type lists the callables that THROW it (throwers) and
+// the handlers that CATCH it (catchers), with an honest uncaught flag.
+// ---------------------------------------------------------------------------
+
+/** One callable that throws or catches an exception type (THROWS/CATCHES FromID). */
+export interface ErrorFlowSite {
+  entity_id: string;
+  name: string;
+  /** Callable entity Kind when resolved (SCOPE.Function / SCOPE.Method / …). */
+  kind?: string;
+  repo?: string;
+  source_file?: string;
+  start_line?: number;
+  /** Detector label the edge recorded (throw_new / raise / instanceof / …). */
+  pattern?: string;
+}
+
+/** One exception type with everything that throws and catches it in the group. */
+export interface ErrorFlowException {
+  /** Bare exception type name, no "exception:" prefix (e.g. "ValidationError"). */
+  type: string;
+  throwers: ErrorFlowSite[];
+  catchers: ErrorFlowSite[];
+  /**
+   * True when thrown ≥1× but no CATCHES edge anywhere in the indexed group.
+   * Honestly this means "no typed catcher in graph" (see uncaught_reason) — it
+   * may be a genuine leak OR caught by an untyped / out-of-scope handler.
+   */
+  uncaught: boolean;
+  /** Qualifies `uncaught`: "no_catcher_in_graph" (the only value emitted today). */
+  uncaught_reason?: string;
+  throw_count: number;
+  catch_count: number;
+}
+
+/** GET /api/errorflow/{group} — exception types rolled up with throw/catch sites. */
+export interface ErrorFlowReport {
+  group: string;
+  total_exceptions: number;
+  total_uncaught: number;
+  total_throws: number;
+  total_catches: number;
+  exceptions: ErrorFlowException[];
+}
