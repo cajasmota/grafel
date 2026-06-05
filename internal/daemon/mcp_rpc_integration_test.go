@@ -109,8 +109,7 @@ func cancelOnCleanup(t *testing.T) (ctx context.Context, cancel context.CancelFu
 // socket path. The daemon stops when the test ends.
 func runDaemonWithMCP(t *testing.T) string {
 	t.Helper()
-	root := shortTempRoot(t)
-	t.Setenv(daemon.EnvRoot, root)
+	isolateDaemonEnv(t)
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		t.Fatalf("layout: %v", err)
@@ -218,8 +217,7 @@ func TestMCPToolCall_Integration_StatsReturnsContent(t *testing.T) {
 func TestMCPToolCall_Integration_NilCallTool_ReturnsErrorBlock(t *testing.T) {
 	// Start a daemon where MCPCallTool is nil — the service should return
 	// a structured error block (IsError=true) rather than a protocol error.
-	root := shortTempRoot(t)
-	t.Setenv(daemon.EnvRoot, root)
+	isolateDaemonEnv(t)
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		t.Fatalf("layout: %v", err)

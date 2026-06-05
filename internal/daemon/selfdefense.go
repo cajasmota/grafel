@@ -30,6 +30,24 @@ import (
 	"github.com/cajasmota/archigraph/internal/process"
 )
 
+// EnvDisableSelfDefense, when set to a truthy value ("1", "true"), disables the
+// Layer-1 startup conflict check in SelfDefenseCheck. It exists solely so the
+// daemon integration tests can boot a fully-isolated daemon (its own
+// ARCHIGRAPH_DAEMON_ROOT + per-test socket) on a machine where a real canonical
+// daemon is already running.
+//
+// Without this seam, every in-test daemon whose test binary lives under /tmp
+// (which is where `go test` compiles and runs its binary) is refused startup by
+// SelfDefenseCheck the moment any canonical daemon is alive — producing the
+// "daemon never became ready" timeouts tracked in #4022. The in-test daemons
+// never touch the canonical socket (they use isolated roots/sockets), so the
+// anti-displacement protection the check provides is not needed for them.
+//
+// This is NEVER set in production: cmd/archigraph does not set it, and the
+// canonical daemon installed via launchd/systemd runs from a non-/tmp path so
+// the check is a no-op for it regardless.
+const EnvDisableSelfDefense = "ARCHIGRAPH_DISABLE_SELFDEFENSE"
+
 // canonicalBasenames is the set of binary base-names that identify a genuine
 // archigraph daemon process. A process whose executable base-name is NOT in
 // this set is never treated as canonical, even if the full path contains the
@@ -54,6 +72,13 @@ func isTmpPath(path string) bool {
 func SelfDefenseCheck(logger *slog.Logger) error {
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "selfdefense")
+	}
+
+	// Test isolation seam (#4022): allow a fully-isolated in-test daemon to boot
+	// even when a real canonical daemon is running. See EnvDisableSelfDefense.
+	if v := os.Getenv(EnvDisableSelfDefense); v == "1" || strings.EqualFold(v, "true") {
+		logger.Warn("selfdefense: Layer-1 conflict check disabled via " + EnvDisableSelfDefense)
+		return nil
 	}
 
 	self, err := os.Executable()

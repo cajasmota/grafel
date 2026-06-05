@@ -56,14 +56,34 @@ func shortTempRoot(t *testing.T) string {
 	return d
 }
 
+// isolateDaemonEnv points this test's in-process daemon at a per-test temp
+// root (its own socket, pid file and log dir) and disables the Layer-1
+// self-defense check (#4022).
+//
+// Without the self-defense override these tests are NOT hermetic: `go test`
+// compiles and runs the test binary under /tmp, so SelfDefenseCheck treats the
+// in-test daemon as an ephemeral /tmp daemon and refuses to start it whenever a
+// real canonical daemon is running on the machine — surfacing as the
+// "daemon never became ready" timeouts this change fixes. The in-test daemon
+// uses an isolated root + socket and never touches the canonical socket, so
+// skipping the anti-displacement check is correct here.
+//
+// It returns the temp root so callers can build a Layout from it.
+func isolateDaemonEnv(t *testing.T) string {
+	t.Helper()
+	root := shortTempRoot(t)
+	t.Setenv(daemon.EnvRoot, root)
+	t.Setenv(daemon.EnvDisableSelfDefense, "1")
+	return root
+}
+
 // runDaemonForTest starts daemon.Run in a goroutine and returns the
 // layout (for dialing) plus a stop function. The returned context is
 // the one the daemon listens on — cancel it to force shutdown if Stop
 // over RPC is what's being exercised.
 func runDaemonForTest(t *testing.T, idx daemon.IndexFunc, rb daemon.RebuildFunc) daemon.Layout {
 	t.Helper()
-	root := shortTempRoot(t)
-	t.Setenv(daemon.EnvRoot, root)
+	isolateDaemonEnv(t)
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		t.Fatalf("layout: %v", err)
