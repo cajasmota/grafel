@@ -66,6 +66,7 @@ import type {
   GodNodesReply,
   QualityTrendsReply,
   GroupLinksReply,
+  GraphQLReport,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -780,6 +781,16 @@ export const api = {
   getGroupLinks: (groupId: string) =>
     request<GroupLinksReply>(
       `/groups/${encodeURIComponent(groupId)}/links`,
+    ),
+
+  // --- GraphQL resolver-effects (#4255) ---
+  // Raw JSON (no v2 envelope) → `request`. Handler: handlers_graphql.go
+  // handleGraphQL, which returns a GraphQLReport (resolvers grouped by type).
+
+  /** GET /api/graphql/{group} — GraphQL resolvers, effects, auth, schema types. */
+  getGraphQL: (groupId: string) =>
+    request<GraphQLReport>(
+      `/graphql/${encodeURIComponent(groupId)}`,
     ),
 };
 

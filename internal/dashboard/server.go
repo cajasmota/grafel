@@ -548,6 +548,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/security/secrets/{group}", s.handleSecuritySecrets)
 	mux.HandleFunc("GET /api/security/cycles/{group}", s.handleSecurityCycles)
 
+	// #4255 (epic #4249): GraphQL resolver-effects surface.
+	mux.HandleFunc("GET /api/graphql/{group}", s.handleGraphQL)
+
 	// Supporting endpoints
 	mux.HandleFunc("GET /api/groups/{group}/communities", s.handleGroupCommunities)
 	mux.HandleFunc("GET /api/groups/{group}/god-nodes", s.handleGroupGodNodes)

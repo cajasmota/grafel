@@ -1887,3 +1887,80 @@ export interface CrossRepoLink {
 export interface GroupLinksReply {
   links: CrossRepoLink[];
 }
+
+// ---------------------------------------------------------------------------
+// GraphQL resolver-effects surface (#4255, epic #4249)
+//
+// Wire shape for GET /api/graphql/{group} (handlers_graphql.go →
+// handleGraphQL). RAW JSON (not the v2 envelope). Mirrors the Go structs in
+// internal/dashboard/handlers_graphql.go. Surfaces the GraphQL extraction the
+// graph already has: each framework emits a `verb=GRAPHQL` resolver endpoint
+// carrying graphql_operation / graphql_root / graphql_field / framework, with
+// effects stamped by the link effect-propagation pass and (when modeled) the
+// flat auth contract.
+// ---------------------------------------------------------------------------
+
+/** One classified effect on a resolver (db_read/db_write/http_out/mutation/…). */
+export interface GraphQLEffect {
+  name: string;
+  /** 0..1 confidence; omitted when unknown. */
+  confidence?: number;
+}
+
+/** One resolved GraphQL field resolver. */
+export interface GraphQLResolver {
+  entity_id: string;
+  repo: string;
+  /** The GraphQL field this resolver answers (e.g. "users"). */
+  field: string;
+  /** Owning SDL object type / resolver class (graphql_root). */
+  parent_type: string;
+  /** "query" | "mutation" | "subscription". */
+  operation: string;
+  framework?: string;
+  /** Underlying handler method (resolver_method). */
+  method?: string;
+  source_file?: string;
+  start_line?: number;
+  /** Effects from the link effect-propagation pass; [] when none/not run. */
+  effects: GraphQLEffect[];
+  /** "endpoint" | "direct" | "transitive" | "pure". */
+  effect_source?: string;
+  /** Auth — present only when resolver-level auth is statically modeled. */
+  auth_required?: boolean;
+  auth_roles?: string[];
+  auth_method?: string;
+}
+
+/** Resolvers grouped under one parent SDL type. */
+export interface GraphQLTypeGroup {
+  parent_type: string;
+  resolvers: GraphQLResolver[];
+}
+
+/** One SDL type definition surfaced as schema context. */
+export interface GraphQLSchemaType {
+  name: string;
+  /** "type"|"interface"|"enum"|"union"|"input"|"scalar". */
+  kind: string;
+  repo: string;
+  source_file?: string;
+  start_line?: number;
+  federated?: boolean;
+}
+
+/** GET /api/graphql/{group} — GraphQL resolver-effects report. */
+export interface GraphQLReport {
+  group: string;
+  total_resolvers: number;
+  total_types: number;
+  query_count: number;
+  mutation_count: number;
+  subscription_count: number;
+  with_effects_count: number;
+  with_auth_count: number;
+  resolvers_with_db_ops: number;
+  frameworks: string[];
+  groups: GraphQLTypeGroup[];
+  schema_types: GraphQLSchemaType[];
+}
