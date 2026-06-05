@@ -2184,59 +2184,23 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 	if errRes != nil {
 		return errRes, nil
 	}
-	var e *graph.Entity
-	var lr *LoadedRepo
-	if rp, lid := splitPrefixed(nodeID); rp != "" {
-		if r, ok := lg.Repos[rp]; ok && r.Doc != nil {
-			e = r.LabelIndex.ByID[lid]
-			lr = r
-		}
+	// #4272 / #1650 — hardened entity resolution. resolveSourceEntity accepts an
+	// id, qualified_name, or label, each optionally "<repo>::"-prefixed, and
+	// tries id → qname → label → qname-suffix across the group for both the raw
+	// arg and its prefix-stripped local form (the prefix gap that erroneously
+	// returned "node not found" — the same class fixed for effective_contract in
+	// #4243). A label matching >1 distinct entity yields a clarifier list; a
+	// genuine miss yields a clearer error (attempted forms + did-you-mean) so the
+	// caller can self-correct rather than re-erroring.
+	resn := resolveSourceEntity(lg, nodeID)
+	if resn.notFound != "" {
+		return mcpapi.NewToolResultError(resn.notFound), nil
 	}
-	// #1650: accept qualified_name or label. Gather all matches across repos;
-	// if more than one resolves we return a clarifier list of {id,
-	// qualified_name, file:line, repo} so the caller can disambiguate without
-	// a follow-up inspect round-trip.
-	if e == nil {
-		type cand struct {
-			ent  *graph.Entity
-			repo *LoadedRepo
-		}
-		var cands []cand
-		for _, r := range lg.Repos {
-			if r.Doc == nil {
-				continue
-			}
-			for _, hit := range r.LabelIndex.LookupAll(nodeID) {
-				cands = append(cands, cand{ent: hit, repo: r})
-			}
-		}
-		if len(cands) == 0 {
-			return mcpapi.NewToolResultError("node not found: " + nodeID), nil
-		}
-		if len(cands) > 1 {
-			out := make([]map[string]any, 0, len(cands))
-			for _, c := range cands {
-				out = append(out, map[string]any{
-					"id":             prefixedID(c.repo.Repo, c.ent.ID),
-					"qualified_name": c.ent.QualifiedName,
-					"label":          c.ent.Name,
-					"repo":           c.repo.Repo,
-					"source_file":    c.ent.SourceFile,
-					"start_line":     c.ent.StartLine,
-					"kind":           stripScopePrefix(c.ent.Kind),
-				})
-			}
-			return jsonResult(map[string]any{
-				"ambiguous": true,
-				"query":     nodeID,
-				"count":     len(out),
-				"matches":   out,
-				"note":      "multiple entities match this label; call again with one of the ids above.",
-			}), nil
-		}
-		e = cands[0].ent
-		lr = cands[0].repo
+	if len(resn.ambiguous) > 0 {
+		return jsonResult(ambiguousMatches(resn.ambiguous, nodeID)), nil
 	}
+	e := resn.entity
+	lr := resn.repo
 
 	// #3833 — MRO-aware resolution. When the entity is an INHERITED member (a
 	// bodyless DRF synthetic, or a method resolved via EXTENDS to a base that
