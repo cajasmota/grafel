@@ -194,6 +194,194 @@ async fn list(session: &Session) {
 	}
 }
 
+// Raw-SQL: sqlx Postgres backend. `sqlx::query_as::<_, T>("SELECT ... FROM users")`
+// → QUERIES edge to Class:User with orm=postgres (the PgPool/sqlx::Postgres gate
+// selects the postgres backend tag). Covers lang.rust.driver.postgres.
+func TestDriver_RustSqlxPostgresRawSQL(t *testing.T) {
+	src := `use sqlx::PgPool;
+async fn load_users(pool: &PgPool) -> Vec<User> {
+    sqlx::query_as::<_, User>("SELECT id, name FROM users WHERE active = true")
+        .fetch_all(pool)
+        .await
+        .unwrap()
+}
+`
+	edges := detectORM(t, "rust", "users_repo.rs", src)
+	e := assertEdgeExists(t, edges, "Function:load_users", "Class:User", "find")
+	if e.ORM != "postgres" {
+		t.Errorf("expected orm=postgres, got %q", e.ORM)
+	}
+}
+
+// Raw-SQL: tokio-postgres `client.query("...")`. Covers postgres backend via the
+// standalone driver gate.
+func TestDriver_RustTokioPostgresRawSQL(t *testing.T) {
+	src := `use tokio_postgres::Client;
+async fn fetch(client: &Client) {
+    let rows = client.query("SELECT * FROM orders WHERE id = $1", &[&1i32]).await.unwrap();
+}
+`
+	edges := detectORM(t, "rust", "orders.rs", src)
+	e := assertEdgeExists(t, edges, "Function:fetch", "Class:Order", "find")
+	if e.ORM != "postgres" {
+		t.Errorf("expected orm=postgres, got %q", e.ORM)
+	}
+}
+
+// Raw-SQL: sqlx MySQL backend (`MySqlPool`). An INSERT statement → create op.
+// Covers lang.rust.driver.mysql.
+func TestDriver_RustSqlxMySQLRawSQL(t *testing.T) {
+	src := `use sqlx::MySqlPool;
+async fn add_product(pool: &MySqlPool) {
+    sqlx::query("INSERT INTO products (name) VALUES (?)")
+        .execute(pool)
+        .await
+        .unwrap();
+}
+`
+	edges := detectORM(t, "rust", "products.rs", src)
+	e := assertEdgeExists(t, edges, "Function:add_product", "Class:Product", "create")
+	if e.ORM != "mysql" {
+		t.Errorf("expected orm=mysql, got %q", e.ORM)
+	}
+}
+
+// Raw-SQL: rusqlite SQLite. `conn.execute("...")`. Covers lang.rust.driver.sqlite.
+func TestDriver_RustRusqliteSQLite(t *testing.T) {
+	src := `use rusqlite::Connection;
+fn delete_session(conn: &Connection) {
+    conn.execute("DELETE FROM sessions WHERE expired = 1", []).unwrap();
+}
+`
+	edges := detectORM(t, "rust", "sessions.rs", src)
+	e := assertEdgeExists(t, edges, "Function:delete_session", "Class:Session", "delete")
+	if e.ORM != "sqlite" {
+		t.Errorf("expected orm=sqlite, got %q", e.ORM)
+	}
+}
+
+// Non-vacuous proof for raw SQL: the SAME query call WITHOUT a backend-crate
+// import must NOT emit a SQL QUERIES edge — the backend gate is load-bearing.
+func TestDriver_RustRawSQLNoBackendGateSkipped(t *testing.T) {
+	src := `async fn load_users(pool: &SomePool) {
+    sqlx_like_query("SELECT id FROM users").fetch_all(pool).await.unwrap();
+}
+`
+	edges := detectORM(t, "rust", "ungated.rs", src)
+	for _, e := range edges {
+		if e.ORM == "postgres" || e.ORM == "mysql" || e.ORM == "sqlite" {
+			t.Errorf("expected no SQL-driver edge without a backend-crate gate, got %+v", e)
+		}
+	}
+}
+
+// Raw-SQL dynamic: an interpolated `format!` SQL string has no static literal
+// table for extractSQLTable → honest-skipped (no hallucinated edge).
+func TestDriver_RustRawSQLDynamicSkipped(t *testing.T) {
+	src := `use sqlx::PgPool;
+async fn load(pool: &PgPool, table: &str) {
+    let q = format!("SELECT * FROM {}", table);
+    sqlx::query(&q).fetch_all(pool).await.unwrap();
+}
+`
+	edges := detectORM(t, "rust", "dyn.rs", src)
+	for _, e := range edges {
+		if e.ORM == "postgres" {
+			t.Errorf("expected no postgres edge for interpolated SQL, got %+v", e)
+		}
+	}
+}
+
+// DynamoDB: aws-sdk-rust fluent builder `.table_name("Products")`. Covers
+// lang.rust.driver.dynamodb.
+func TestDriver_RustDynamoTableName(t *testing.T) {
+	src := `use aws_sdk_dynamodb::Client;
+async fn get_item(client: &Client) {
+    let resp = client
+        .get_item()
+        .table_name("Products")
+        .key("id", AttributeValue::S("1".into()))
+        .send()
+        .await
+        .unwrap();
+}
+`
+	edges := detectORM(t, "rust", "store.rs", src)
+	e := assertEdgeExists(t, edges, "Function:get_item", "Class:Product", "find")
+	if e.ORM != "dynamodb" {
+		t.Errorf("expected orm=dynamodb, got %q", e.ORM)
+	}
+}
+
+// DynamoDB dynamic: a table name bound to a variable is not a literal — the
+// `.table_name(tbl)` form is honest-skipped.
+func TestDriver_RustDynamoDynamicTableSkipped(t *testing.T) {
+	src := `use aws_sdk_dynamodb::Client;
+async fn get_item(client: &Client, tbl: &str) {
+    client.get_item().table_name(tbl).send().await.unwrap();
+}
+`
+	edges := detectORM(t, "rust", "store.rs", src)
+	for _, e := range edges {
+		if e.ORM == "dynamodb" {
+			t.Errorf("expected no dynamodb edge for dynamic table_name, got %+v", e)
+		}
+	}
+}
+
+// Elasticsearch: elasticsearch-rs lowercase `.index("products")` fluent builder.
+// Covers lang.rust.driver.elastic.
+func TestDriver_RustElasticIndexBuilder(t *testing.T) {
+	src := `use elasticsearch::Elasticsearch;
+async fn run(client: &Elasticsearch) {
+    let resp = client.index(IndexParts::Index("products")).body(json!({})).send().await.unwrap();
+}
+`
+	edges := detectORM(t, "rust", "search.rs", src)
+	e := assertEdgeExists(t, edges, "Function:run", "Class:Product", "find")
+	if e.ORM != "elastic" {
+		t.Errorf("expected orm=elastic, got %q", e.ORM)
+	}
+}
+
+// Elasticsearch: request-path enum `SearchParts::Index(&["logs"])`.
+func TestDriver_RustElasticSearchParts(t *testing.T) {
+	src := `use elasticsearch::{Elasticsearch, SearchParts};
+async fn search(client: &Elasticsearch) {
+    let resp = client.search(SearchParts::Index(&["logs"])).send().await.unwrap();
+}
+`
+	edges := detectORM(t, "rust", "search.rs", src)
+	e := assertEdgeExists(t, edges, "Function:search", "Class:Log", "find")
+	if e.ORM != "elastic" {
+		t.Errorf("expected orm=elastic, got %q", e.ORM)
+	}
+}
+
+// Elasticsearch dynamic / ungated: an index bound to a variable is honest-skipped,
+// AND without the elasticsearch gate no edge fires (non-vacuous proof).
+func TestDriver_RustElasticDynamicAndUngatedSkipped(t *testing.T) {
+	dyn := `use elasticsearch::Elasticsearch;
+async fn search(client: &Elasticsearch, idx: &str) {
+    client.search(SearchParts::Index(&[idx])).send().await.unwrap();
+}
+`
+	for _, e := range detectORM(t, "rust", "dyn.rs", dyn) {
+		if e.ORM == "elastic" {
+			t.Errorf("expected no elastic edge for dynamic index, got %+v", e)
+		}
+	}
+	ungated := `async fn search(client: &Foo) {
+    client.index("products").send();
+}
+`
+	for _, e := range detectORM(t, "rust", "ungated.rs", ungated) {
+		if e.ORM == "elastic" {
+			t.Errorf("expected no elastic edge without elasticsearch gate, got %+v", e)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Python
 // ---------------------------------------------------------------------------

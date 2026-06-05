@@ -222,6 +222,27 @@ var rustCqlRe = regexp.MustCompile(
 	`\b(?:session|_session|sess)\.(?:query|execute|query_unpaged|prepare)\s*\(`,
 )
 
+// rustSqlRe matches a raw-SQL driver query call whose FIRST argument is a SQL
+// string literal, covering the dominant sqlx / tokio-postgres / rusqlite /
+// mysql_async surfaces:
+//
+//	sqlx::query("SELECT ... FROM t")
+//	sqlx::query_as::<_, User>("SELECT ... FROM users")
+//	query("...")              // `use sqlx::query;`
+//	query_as::<_, T>("...")   // `use sqlx::query_as;`
+//	client.query("...")       // tokio-postgres / postgres
+//	conn.execute("...")       // postgres / rusqlite / mysql
+//	conn.query_one("...")     // tokio-postgres
+//
+// The receiver / path is left open because the SQL string — not the receiver —
+// carries the table. The crate import gate (mentionsRust* below) keeps the
+// broad surface from firing on unrelated `.query(`/`.execute(` calls, and
+// emitSQLDatastoreTargets only emits when extractSQLTable resolves a literal
+// table (interpolated `format!` SQL yields no literal → honest-skipped).
+var rustSqlRe = regexp.MustCompile(
+	`(?:[A-Za-z_$][\w$]*(?:::)?)?\b(?:query|query_as|query_scalar|query_one|query_opt|execute|fetch_all|fetch_one|fetch_optional|prepare)(?:::\s*<[^>]*>)?\s*\(`,
+)
+
 func mentionsRustMongo(src string) bool {
 	return strings.Contains(src, "mongodb") || strings.Contains(src, "Collection<")
 }
@@ -230,6 +251,56 @@ func mentionsRustScylla(src string) bool {
 	return strings.Contains(src, "scylla") || strings.Contains(src, "cassandra") ||
 		strings.Contains(src, "cdrs")
 }
+
+// mentionsRustPostgres reports whether the file uses a Postgres Rust driver:
+// the sqlx Postgres backend (`sqlx::Postgres` / `PgPool` / `postgres://`) or
+// the standalone `tokio-postgres` / `postgres` crate.
+func mentionsRustPostgres(src string) bool {
+	return strings.Contains(src, "tokio_postgres") || strings.Contains(src, "tokio-postgres") ||
+		strings.Contains(src, "PgPool") || strings.Contains(src, "sqlx::Postgres") ||
+		strings.Contains(src, "postgres::") || strings.Contains(src, "postgres://")
+}
+
+// mentionsRustMySQL reports whether the file uses a MySQL Rust driver: the
+// sqlx MySQL backend (`sqlx::MySql` / `MySqlPool` / `mysql://`) or the
+// standalone `mysql` / `mysql_async` crate.
+func mentionsRustMySQL(src string) bool {
+	return strings.Contains(src, "mysql_async") || strings.Contains(src, "MySqlPool") ||
+		strings.Contains(src, "sqlx::MySql") || strings.Contains(src, "mysql::") ||
+		strings.Contains(src, "mysql://")
+}
+
+// mentionsRustSQLite reports whether the file uses a SQLite Rust driver: the
+// sqlx SQLite backend (`sqlx::Sqlite` / `SqlitePool` / `sqlite:`) or the
+// standalone `rusqlite` crate.
+func mentionsRustSQLite(src string) bool {
+	return strings.Contains(src, "rusqlite") || strings.Contains(src, "SqlitePool") ||
+		strings.Contains(src, "sqlx::Sqlite") || strings.Contains(src, "sqlite:")
+}
+
+// mentionsRustElastic reports whether the file imports / references the
+// elasticsearch-rs client (`elasticsearch::` crate, `Elasticsearch::` client,
+// or the `SearchParts` request-path enum). The gate keeps the broad
+// `.index("x")` literal surface (esIndexKeyRe) from firing on unrelated Rust
+// builder calls.
+func mentionsRustElastic(src string) bool {
+	return strings.Contains(src, "elasticsearch") || strings.Contains(src, "Elasticsearch") ||
+		strings.Contains(src, "SearchParts") || strings.Contains(src, "IndexParts")
+}
+
+// rustEsIndexRe matches the elasticsearch-rs index selectors, capturing the
+// first quoted literal index name in either form:
+//
+//	SearchParts::Index(&["products"])   // request-path enum (one or more)
+//	IndexParts::Index("products")
+//	.index("products")                   // lowercase fluent builder
+//
+// The shared esIndexKeyRe handles the `index: 'x'` / `'index' => 'x'` /
+// `.Index("x")` (capital-I) forms used by other languages; Rust's lowercase
+// `.index(` and the `*Parts::Index(` enum are Rust-specific and matched here.
+var rustEsIndexRe = regexp.MustCompile(
+	`(?:\b(?:Search|Index|Get|Update|Delete|Count|Bulk)Parts::Index\s*\(\s*&?\s*\[?\s*|\.index\s*\(\s*)"([A-Za-z_][\w$.-]*)"`,
+)
 
 func scanRustDrivers(src string, funcs []funcSpan, emit emitORMQueryFn) {
 	if mentionsRustMongo(src) {
@@ -245,7 +316,67 @@ func scanRustDrivers(src string, funcs []funcSpan, emit emitORMQueryFn) {
 	if mentionsRustScylla(src) {
 		emitCQLTargets(src, funcs, emit, rustCqlRe)
 	}
+	// Raw SQL (sqlx / tokio-postgres / mysql_async / rusqlite). The SQL string
+	// literal carries the table; the backend crate import selects the orm tag
+	// (postgres / mysql / sqlite) so the per-driver query_attribution cell is
+	// attributed accurately. Files that mention several backends emit under
+	// each matched backend — rare, and the edge target (the table) is identical.
+	switch {
+	case mentionsRustPostgres(src):
+		emitSQLDatastoreTargets(src, funcs, emit, rustSqlRe, "postgres")
+	case mentionsRustMySQL(src):
+		emitSQLDatastoreTargets(src, funcs, emit, rustSqlRe, "mysql")
+	case mentionsRustSQLite(src):
+		emitSQLDatastoreTargets(src, funcs, emit, rustSqlRe, "sqlite")
+	}
+	// DynamoDB: the aws-sdk-rust fluent builder carries the table as a
+	// `.table_name("X")` METHOD call (not a `table_name = "X"` assignment), so
+	// the shared dynamoTableNameKeyRe (key/value form) does not match it. We
+	// capture the builder-method form with rustDynamoTableNameRe and also run
+	// emitDynamoTargets for any `table_name = "X"` literal. Dynamic table names
+	// (a variable) are honest-skipped because both only capture quoted literals.
+	if mentionsRustDynamo(src) {
+		for _, m := range rustDynamoTableNameRe.FindAllStringSubmatchIndex(src, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			caller := enclosingFuncAt(funcs, m[0])
+			emit(caller, capitalisedSingular(src[m[2]:m[3]]), "find", "", "dynamodb", false)
+		}
+		emitDynamoTargets(src, funcs, emit)
+	}
+	// Elasticsearch (elasticsearch-rs): the `.index("x")` builder literal is
+	// captured by the shared esIndexKeyRe / emitElasticTargets; the
+	// `SearchParts::Index(&["x"])` request-path form is captured here. Both are
+	// gated on mentionsRustElastic so the broad index-literal surface does not
+	// fire on unrelated Rust code. Dynamic index names are honest-skipped.
+	if mentionsRustElastic(src) {
+		// Shared key/value + capital-`.Index(` forms (cross-language).
+		emitElasticTargets(src, funcs, emit)
+		// Rust-specific lowercase `.index("x")` builder + `*Parts::Index(...)`.
+		for _, m := range rustEsIndexRe.FindAllStringSubmatchIndex(src, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			caller := enclosingFuncAt(funcs, m[0])
+			emit(caller, capitalisedSingular(src[m[2]:m[3]]), "find", "", "elastic", false)
+		}
+	}
 }
+
+// mentionsRustDynamo reports whether the file uses the aws-sdk-rust DynamoDB
+// client (`aws_sdk_dynamodb` crate / `aws-sdk-dynamodb` dependency).
+func mentionsRustDynamo(src string) bool {
+	return strings.Contains(src, "aws_sdk_dynamodb") || strings.Contains(src, "aws-sdk-dynamodb") ||
+		strings.Contains(src, "DynamoDb") || strings.Contains(src, "dynamodb")
+}
+
+// rustDynamoTableNameRe matches the aws-sdk-rust fluent-builder table selector
+// `.table_name("Products")`, where the table is the first quoted literal. The
+// key/value `table_name = "X"` form is handled separately by emitDynamoTargets.
+var rustDynamoTableNameRe = regexp.MustCompile(
+	`\.table_name\s*\(\s*"([A-Za-z_][\w$.-]*)"\s*\)`,
+)
 
 // ---------------------------------------------------------------------------
 // Python (pymongo collection / boto3 dynamo / elasticsearch / cassandra)
