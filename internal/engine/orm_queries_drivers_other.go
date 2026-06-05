@@ -571,6 +571,271 @@ func scanJavaDrivers(src string, funcs []funcSpan, emit emitORMQueryFn) {
 	if mentionsJavaCassandra(src) {
 		emitCQLTargets(src, funcs, emit, javaCqlRe)
 	}
+	// Spring Data (NOT the native drivers above): @Query CQL/JSON on a
+	// repository method, @Table/@Document index-collection literals, and the
+	// *Template.execute/select/find executor calls. Each Spring module is
+	// gated independently so the broad annotation surfaces never fire on
+	// unrelated Java code.
+	scanJavaSpringDataCassandra(src, funcs, emit)
+	scanJavaSpringDataElastic(src, funcs, emit)
+	scanJavaSpringDataMongo(src, funcs, emit)
+}
+
+// ---------------------------------------------------------------------------
+// Spring Data (Cassandra / Elasticsearch / MongoDB) query attribution
+// ---------------------------------------------------------------------------
+//
+// These passes attribute Spring Data repository / template query sites to the
+// table (Cassandra), index (Elasticsearch) or collection (MongoDB) they touch,
+// emitting the SAME `caller -> Class:<resource>` QUERIES edge the native-driver
+// passes do. Unlike the native drivers, the resource literal lives in an
+// ANNOTATION (`@Query`, `@Table`, `@Document`) that frequently sits on a
+// different method than the executor call, so each annotation is attributed to
+// ITS OWN method (the identifier following the annotation), recovered by
+// javaAnnotatedMethodName. Only statically-resolvable literals are emitted;
+// dynamic / builder-constructed resources are honest-skipped.
+
+// javaSpringQueryAnnoRe locates a `@Query(` annotation (Spring Data repository
+// method query). The CQL / JSON string argument is pulled from the call.
+var javaSpringQueryAnnoRe = regexp.MustCompile(`@Query\s*\(`)
+
+// javaSpringTableAnnoRe matches `@Table("events")` / `@Table(value = "events")`
+// (Spring Data Cassandra entity → table name).
+var javaSpringTableAnnoRe = regexp.MustCompile(
+	`@Table\s*\(\s*(?:(?:value|name)\s*=\s*)?"([A-Za-z_][\w$.-]*)"`,
+)
+
+// javaSpringDocIndexNameRe matches `@Document(indexName = "products")` (Spring
+// Data Elasticsearch entity → index name). The `indexName` key is mandatory so
+// this never collides with the Mongo `@Document(collection=...)` form.
+var javaSpringDocIndexNameRe = regexp.MustCompile(
+	`@Document\s*\(\s*(?:[^)]*?,\s*)?indexName\s*=\s*"([A-Za-z_][\w$.-]*)"`,
+)
+
+// javaSpringDocCollectionRe matches the Spring Data MongoDB entity collection
+// form `@Document("books")` / `@Document(collection = "books")` /
+// `@Document(value = "books")`. The `indexName=` form is excluded by requiring
+// the literal to be the first positional / collection|value keyed argument.
+var javaSpringDocCollectionRe = regexp.MustCompile(
+	`@Document\s*\(\s*(?:(?:collection|value)\s*=\s*)?"([A-Za-z_][\w$.-]*)"`,
+)
+
+// javaMethodNameAfterRe captures the first `name(` method identifier in a blob
+// — used to recover the repository method an annotation decorates.
+var javaMethodNameAfterRe = regexp.MustCompile(
+	`(?:[\w<>\[\],?.\s]+\s+)?([A-Za-z_]\w*)\s*\(`,
+)
+
+// javaClassNameAfterRe captures the `class|interface|record|enum Name`
+// identifier following an entity-level annotation (`@Table` / `@Document`),
+// which decorates a TYPE rather than a method.
+var javaClassNameAfterRe = regexp.MustCompile(
+	`\b(?:class|interface|record|enum)\s+([A-Za-z_]\w*)`,
+)
+
+func mentionsJavaSpringCassandra(src string) bool {
+	return strings.Contains(src, "org.springframework.data.cassandra") ||
+		strings.Contains(src, "CassandraRepository") ||
+		strings.Contains(src, "CassandraTemplate") ||
+		strings.Contains(src, "ReactiveCassandraRepository")
+}
+
+func mentionsJavaSpringElastic(src string) bool {
+	return strings.Contains(src, "org.springframework.data.elasticsearch") ||
+		strings.Contains(src, "ElasticsearchRepository") ||
+		strings.Contains(src, "ElasticsearchOperations") ||
+		strings.Contains(src, "ElasticsearchTemplate") ||
+		strings.Contains(src, "ReactiveElasticsearchRepository")
+}
+
+func mentionsJavaSpringMongo(src string) bool {
+	return strings.Contains(src, "org.springframework.data.mongodb") ||
+		strings.Contains(src, "MongoRepository") ||
+		strings.Contains(src, "MongoTemplate") ||
+		strings.Contains(src, "ReactiveMongoRepository") ||
+		strings.Contains(src, "ReactiveMongoTemplate")
+}
+
+// javaAnnotatedMethodName recovers the repository method name an annotation at
+// `annoStart` decorates, by scanning forward past the annotation's own argument
+// list to the first `methodName(` declaration. Returns "" when none is found
+// within a bounded window (then the call falls back to enclosingFuncAt).
+func javaAnnotatedMethodName(src string, annoStart, annoEnd int) string {
+	end := annoEnd + 400
+	if end > len(src) {
+		end = len(src)
+	}
+	window := src[annoEnd:end]
+	// Skip any chained annotations (e.g. @Query ... @AllowFiltering) on the way
+	// to the method declaration by scanning past lines that begin with `@`.
+	m := javaMethodNameAfterRe.FindStringSubmatch(window)
+	if m == nil {
+		return ""
+	}
+	return m[1]
+}
+
+// resolveJavaSpringCaller resolves the caller for a METHOD-level annotation
+// (`@Query` on a repository method): the decorated method name (interface
+// methods have no `{` body so enclosingFuncAt misses them), falling back to the
+// enclosing function of the annotation site.
+func resolveJavaSpringCaller(src string, funcs []funcSpan, annoStart, annoEnd int) string {
+	if name := javaAnnotatedMethodName(src, annoStart, annoEnd); name != "" {
+		return name
+	}
+	return enclosingFuncAt(funcs, annoStart)
+}
+
+// resolveJavaSpringTypeCaller resolves the caller for a TYPE-level annotation
+// (`@Table` / `@Document` on an entity): the decorated `class|interface|record|
+// enum Name`, falling back to the enclosing function then a file anchor. Using
+// the type name keeps the entity-attribution edge's FromID stable and distinct
+// from the per-method query edges.
+func resolveJavaSpringTypeCaller(src string, funcs []funcSpan, annoStart, annoEnd int) string {
+	end := annoEnd + 400
+	if end > len(src) {
+		end = len(src)
+	}
+	if m := javaClassNameAfterRe.FindStringSubmatch(src[annoEnd:end]); m != nil {
+		return m[1]
+	}
+	return enclosingFuncAt(funcs, annoStart)
+}
+
+// scanJavaSpringDataCassandra attributes Spring Data Cassandra query sites:
+//
+//   - `@Query("SELECT ... FROM t")` on a repository method  → Class:<t>
+//   - `@Table("t")` entity + a cassandraTemplate.select(Query, T.class) /
+//     cqlSession execute in the same file → Class:<t> (table literal target).
+//
+// The native DataStax `session.execute("CQL")` form is already covered by
+// scanJavaDrivers' emitCQLTargets; here we add the annotation-driven forms.
+// Dynamic / non-literal CQL yields no edge (extractSQLTable returns "").
+func scanJavaSpringDataCassandra(src string, funcs []funcSpan, emit emitORMQueryFn) {
+	if !mentionsJavaSpringCassandra(src) {
+		return
+	}
+	// @Query("CQL") on a repository method → CQL FROM/INTO/UPDATE table.
+	for _, loc := range javaSpringQueryAnnoRe.FindAllStringIndex(src, -1) {
+		argsBlob := matchCall(src, loc[1]-1, 4096)
+		cql := firstStringLiteral(argsBlob)
+		if cql == "" {
+			continue
+		}
+		table, verb, isJoin := extractSQLTable(cql)
+		if table == "" {
+			continue
+		}
+		caller := resolveJavaSpringCaller(src, funcs, loc[0], loc[1])
+		emit(caller, capitalisedSingular(table), sqlOp(verb), "", "cassandra", isJoin)
+	}
+	// @Table("t") entity → the table the entity maps to. Attributed to the
+	// enclosing declaration (the entity class). This records the table topology
+	// even when the only access is via derived-query repository methods.
+	for _, m := range javaSpringTableAnnoRe.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		caller := resolveJavaSpringTypeCaller(src, funcs, m[0], m[1])
+		emit(caller, capitalisedSingular(src[m[2]:m[3]]), "find", "", "cassandra", false)
+	}
+}
+
+// scanJavaSpringDataElastic attributes Spring Data Elasticsearch query sites to
+// the index they touch:
+//
+//   - `@Document(indexName = "products")` entity                → Class:<index>
+//   - `@Query("...")` on an ElasticsearchRepository method      → Class:<index>
+//     (the index is the entity's; resolved from the file's @Document indexName)
+//   - any `index: "x"` / `.Index("x")` literal (shared emitter) → Class:<index>
+//
+// The `@Document(indexName=..)` IS the index attribution. Spring Data ES does
+// NOT carry the index in the @Query string (it is an extended-JSON query body),
+// so the @Query method is attributed to the file's resolved index entity rather
+// than parsed for a table. Dynamic index names are honest-skipped.
+func scanJavaSpringDataElastic(src string, funcs []funcSpan, emit emitORMQueryFn) {
+	if !mentionsJavaSpringElastic(src) {
+		return
+	}
+	// Resolve the file's index from the first @Document(indexName=..) entity.
+	var fileIndex string
+	if m := javaSpringDocIndexNameRe.FindStringSubmatch(src); m != nil {
+		fileIndex = m[1]
+	}
+	// @Document(indexName="products") entity → index attribution.
+	for _, m := range javaSpringDocIndexNameRe.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		caller := resolveJavaSpringTypeCaller(src, funcs, m[0], m[1])
+		emit(caller, capitalisedSingular(src[m[2]:m[3]]), "find", "", "elastic", false)
+	}
+	// @Query("{...}") on an ElasticsearchRepository method → the file's index.
+	if fileIndex != "" {
+		for _, loc := range javaSpringQueryAnnoRe.FindAllStringIndex(src, -1) {
+			argsBlob := matchCall(src, loc[1]-1, 4096)
+			if firstStringLiteral(argsBlob) == "" {
+				continue // dynamic / no body — honest skip.
+			}
+			caller := resolveJavaSpringCaller(src, funcs, loc[0], loc[1])
+			emit(caller, capitalisedSingular(fileIndex), "find", "", "elastic", false)
+		}
+	}
+	// Shared `index: "x"` / `.Index("x")` literal forms (ElasticsearchOperations
+	// search-request builders), language-agnostic.
+	emitElasticTargets(src, funcs, emit)
+}
+
+// scanJavaSpringDataMongo deepens the Spring Data MongoDB query attribution
+// beyond the aggregation-$lookup pass (scanJavaSpringMongoAggregation): it
+// attributes the per-method query sites to the COLLECTION they touch:
+//
+//   - `@Document("books")` / `@Document(collection = "books")` entity → Class:<c>
+//   - `@Query("{...}")` on a MongoRepository method                   → Class:<c>
+//     (the collection is the repository's entity; resolved from the file's
+//     @Document collection)
+//
+// The collection literal in `@Document` is the attribution; the `@Query` JSON
+// body does NOT name the collection (it is a filter), so the @Query method is
+// attributed to the file's resolved collection. The existing aggregation pass
+// (JOINS_COLLECTION edges + stage entities) is untouched. Dynamic collections
+// are honest-skipped.
+func scanJavaSpringDataMongo(src string, funcs []funcSpan, emit emitORMQueryFn) {
+	if !mentionsJavaSpringMongo(src) {
+		return
+	}
+	// Resolve the file's collection from the first @Document(collection=..) /
+	// @Document("x") entity (excluding the indexName= Elastic form).
+	var fileColl string
+	for _, m := range javaSpringDocCollectionRe.FindAllStringSubmatchIndex(src, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		// Skip an Elastic @Document(indexName=..) that happens to also be in
+		// this file: the collection matcher would not capture indexName, but a
+		// positional `@Document("x", indexName=...)` could — guard explicitly.
+		annoBlob := matchCall(src, m[1]-1, 512)
+		if strings.Contains(annoBlob, "indexName") {
+			continue
+		}
+		coll := src[m[2]:m[3]]
+		if fileColl == "" {
+			fileColl = coll
+		}
+		caller := resolveJavaSpringTypeCaller(src, funcs, m[0], m[1])
+		emit(caller, capitalisedSingular(coll), "find", "", "mongodb", false)
+	}
+	// @Query("{...}") on a MongoRepository method → the file's collection.
+	if fileColl != "" {
+		for _, loc := range javaSpringQueryAnnoRe.FindAllStringIndex(src, -1) {
+			argsBlob := matchCall(src, loc[1]-1, 4096)
+			if firstStringLiteral(argsBlob) == "" {
+				continue // dynamic / no body — honest skip.
+			}
+			caller := resolveJavaSpringCaller(src, funcs, loc[0], loc[1])
+			emit(caller, capitalisedSingular(fileColl), "find", "", "mongodb", false)
+		}
+	}
 }
 
 // ---------------------------------------------------------------------------

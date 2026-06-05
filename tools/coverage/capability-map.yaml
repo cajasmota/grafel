@@ -15102,6 +15102,65 @@ records:
           tests:
             - file: internal/custom/java/orm_extractors_test.go
           issues_implemented: ["3007"]
+  lang.java.orm.spring-data-cassandra:
+    capabilities:
+      Queries:
+        query_attribution:
+          # TOPOLOGY (#4271): @Query("SELECT ... FROM t") on a CassandraRepository
+          # method is CQL-parsed to the touched table via
+          # scanJavaSpringDataCassandra/extractSQLTable, and @Table("t") entities
+          # are attributed to Class:<Table>, both emitting QUERIES edges in
+          # orm_queries_drivers_other.go. The native DataStax
+          # cqlSession.execute("CQL") form is covered by scanJavaDrivers/
+          # emitCQLTargets. Dynamic/runtime CQL honest-skipped.
+          status: full
+          symbols:
+            - file: internal/engine/orm_queries_drivers_other.go
+              functions: [scanJavaSpringDataCassandra, scanJavaDrivers, emitCQLTargets]
+          tests:
+            - file: internal/engine/orm_queries_drivers_other_test.go
+          issues_implemented: ["4271"]
+          verified_at: "2026-06-05"
+  lang.java.orm.spring-data-elastic:
+    capabilities:
+      Queries:
+        query_attribution:
+          # TOPOLOGY (#4271): @Document(indexName="products") entities and
+          # @Query("{...}") ElasticsearchRepository methods are attributed to
+          # Class:<Index> via scanJavaSpringDataElastic, and the shared
+          # index:"x"/.Index("x") literal forms via emitElasticTargets, all in
+          # orm_queries_drivers_other.go. Dynamic index names honest-skipped.
+          # model_extraction (@Document schema) honestly left missing this round.
+          status: full
+          symbols:
+            - file: internal/engine/orm_queries_drivers_other.go
+              functions: [scanJavaSpringDataElastic, emitElasticTargets]
+          tests:
+            - file: internal/engine/orm_queries_drivers_other_test.go
+          issues_implemented: ["4271"]
+          verified_at: "2026-06-05"
+  lang.java.orm.spring-data-mongo:
+    capabilities:
+      Queries:
+        query_attribution:
+          # TOPOLOGY (#3845/#4271): aggregation $lookup joins via
+          # scanJavaSpringMongoAggregation (JOINS_COLLECTION edges + stage
+          # entities), PLUS per-method query attribution via
+          # scanJavaSpringDataMongo — @Document("books")/@Document(collection=..)
+          # entities and @Query("{...}") MongoRepository methods attributed to
+          # Class:<Collection> in orm_queries_drivers_other.go. Dynamic
+          # collection/@Query honest-skipped.
+          status: full
+          symbols:
+            - file: internal/engine/orm_queries_drivers_other.go
+              functions: [scanJavaSpringDataMongo]
+            - file: internal/engine/orm_queries_java_mongo_agg.go
+              functions: [scanJavaSpringMongoAggregation]
+          tests:
+            - file: internal/engine/orm_queries_drivers_other_test.go
+            - file: internal/engine/orm_queries_java_mongo_agg_test.go
+          issues_implemented: ["3845", "4271"]
+          verified_at: "2026-06-05"
   lang.java.framework.akka-http:
     capabilities:
       Observability:

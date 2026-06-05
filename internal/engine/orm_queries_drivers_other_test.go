@@ -608,6 +608,148 @@ public class Events {
 }
 
 // ---------------------------------------------------------------------------
+// Java — Spring Data (Cassandra / Elasticsearch / MongoDB)
+// ---------------------------------------------------------------------------
+
+func TestDriver_JavaSpringCassandraQueryAnnotation(t *testing.T) {
+	src := `import org.springframework.data.cassandra.repository.Query;
+import org.springframework.data.cassandra.repository.CassandraRepository;
+public interface EventRepository extends CassandraRepository<Event, UUID> {
+    @Query("SELECT id, name FROM events WHERE day = ?0")
+    List<Event> findByDay(String day);
+}
+`
+	edges := detectORM(t, "java", "EventRepository.java", src)
+	e := assertEdgeExists(t, edges, "Function:findByDay", "Class:Event", "find")
+	if e.ORM != "cassandra" {
+		t.Errorf("expected orm=cassandra, got %q", e.ORM)
+	}
+}
+
+func TestDriver_JavaSpringCassandraTableEntity(t *testing.T) {
+	src := `import org.springframework.data.cassandra.core.mapping.Table;
+@Table("sensor_readings")
+public class SensorReading {
+    @PrimaryKey private UUID id;
+}
+`
+	edges := detectORM(t, "java", "SensorReading.java", src)
+	e := assertEdgeExists(t, edges, "Function:SensorReading", "Class:Sensor_reading", "find")
+	if e.ORM != "cassandra" {
+		t.Errorf("expected orm=cassandra, got %q", e.ORM)
+	}
+}
+
+func TestDriver_JavaSpringCassandraDynamicCQLSkipped(t *testing.T) {
+	src := `import org.springframework.data.cassandra.core.CassandraTemplate;
+public class EventDao {
+    private CassandraTemplate cassandraTemplate;
+    public void run(String cql) {
+        cassandraTemplate.getCqlOperations().execute(cql);
+    }
+}
+`
+	edges := detectORM(t, "java", "EventDao.java", src)
+	for _, e := range edges {
+		if e.ORM == "cassandra" {
+			t.Errorf("expected no cassandra edge for dynamic CQL, got %+v", e)
+		}
+	}
+}
+
+func TestDriver_JavaSpringElasticDocumentIndex(t *testing.T) {
+	src := `import org.springframework.data.elasticsearch.annotations.Document;
+@Document(indexName = "products")
+public class Product {
+    @Id private String id;
+}
+`
+	edges := detectORM(t, "java", "Product.java", src)
+	e := assertEdgeExists(t, edges, "Function:Product", "Class:Product", "find")
+	if e.ORM != "elastic" {
+		t.Errorf("expected orm=elastic, got %q", e.ORM)
+	}
+}
+
+func TestDriver_JavaSpringElasticQueryAnnotation(t *testing.T) {
+	src := `import org.springframework.data.elasticsearch.annotations.Document;
+import org.springframework.data.elasticsearch.annotations.Query;
+import org.springframework.data.elasticsearch.repository.ElasticsearchRepository;
+
+@Document(indexName = "orders")
+class Order { @Id String id; }
+
+interface OrderRepository extends ElasticsearchRepository<Order, String> {
+    @Query("{\"match\": {\"status\": \"?0\"}}")
+    List<Order> findByStatus(String status);
+}
+`
+	edges := detectORM(t, "java", "OrderRepository.java", src)
+	// @Document → index "orders"
+	assertEdgeExists(t, edges, "Function:Order", "Class:Order", "find")
+	// @Query method attributed to the file's resolved index "orders".
+	e := assertEdgeExists(t, edges, "Function:findByStatus", "Class:Order", "find")
+	if e.ORM != "elastic" {
+		t.Errorf("expected orm=elastic, got %q", e.ORM)
+	}
+}
+
+func TestDriver_JavaSpringElasticDynamicIndexSkipped(t *testing.T) {
+	src := `import org.springframework.data.elasticsearch.core.ElasticsearchOperations;
+public class SearchSvc {
+    private ElasticsearchOperations ops;
+    public void run(String idx) {
+        var req = IndexCoordinates.of(idx);
+        ops.search(query, Doc.class, req);
+    }
+}
+`
+	edges := detectORM(t, "java", "SearchSvc.java", src)
+	for _, e := range edges {
+		if e.ORM == "elastic" {
+			t.Errorf("expected no elastic edge for dynamic index, got %+v", e)
+		}
+	}
+}
+
+func TestDriver_JavaSpringMongoDocumentCollection(t *testing.T) {
+	src := `import org.springframework.data.mongodb.core.mapping.Document;
+@Document(collection = "books")
+public class Book {
+    @Id private String id;
+}
+`
+	edges := detectORM(t, "java", "Book.java", src)
+	e := assertEdgeExists(t, edges, "Function:Book", "Class:Book", "find")
+	if e.ORM != "mongodb" {
+		t.Errorf("expected orm=mongodb, got %q", e.ORM)
+	}
+}
+
+func TestDriver_JavaSpringMongoQueryAnnotation(t *testing.T) {
+	src := `import org.springframework.data.mongodb.core.mapping.Document;
+import org.springframework.data.mongodb.repository.Query;
+import org.springframework.data.mongodb.repository.MongoRepository;
+
+@Document("orders")
+class OrderDoc { @Id String id; }
+
+interface OrderRepo extends MongoRepository<OrderDoc, String> {
+    @Query("{ 'status': ?0 }")
+    List<OrderDoc> findByStatus(String status);
+}
+`
+	edges := detectORM(t, "java", "OrderRepo.java", src)
+	// @Document("orders") → collection.
+	assertEdgeExists(t, edges, "Function:OrderDoc", "Class:Order", "find")
+	// @Query method attributed to the file's resolved collection "orders".
+	e := assertEdgeExists(t, edges, "Function:findByStatus", "Class:Order", "find")
+	if e.ORM != "mongodb" {
+		t.Errorf("expected orm=mongodb, got %q", e.ORM)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Ruby
 // ---------------------------------------------------------------------------
 
