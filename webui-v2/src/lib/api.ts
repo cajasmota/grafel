@@ -32,6 +32,7 @@ import type {
   EventFlowDetailResponse,
   PathsListResponse,
   PathDetail,
+  PathPostureResponse,
   OrphansResponse,
   ShapeResponse,
   SystemStatus,
@@ -495,6 +496,18 @@ export const api = {
   /** GET /api/v2/groups/:id/paths/orphans — orphan caller list. */
   listOrphans: (groupId: string) =>
     requestV2<OrphansResponse>(`/groups/${encodeURIComponent(groupId)}/paths/orphans`),
+
+  /**
+   * GET /api/v2/groups/:id/paths/:hash/posture — lazy posture +
+   * effective-contract sections for the detail pane (#4254). Reuses the
+   * archigraph_endpoint_posture / archigraph_effective_contract computation
+   * server-side. Fetched only when a path is opened so the main paths payload
+   * stays lean.
+   */
+  getPathPosture: (groupId: string, pathHash: string) =>
+    requestV2<PathPostureResponse>(
+      `/groups/${encodeURIComponent(groupId)}/paths/${encodeURIComponent(pathHash)}/posture`,
+    ),
 
   /**
    * GET /api/v2/groups/:id/shape — lazy ShapeTree subtree resolver

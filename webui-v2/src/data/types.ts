@@ -995,6 +995,88 @@ export interface PathDetail {
   tests: PathEntity[];
 }
 
+/* ------------------------------------------------------------------
+   Endpoint posture + effective contract (#4254, epic #4249)
+
+   Returned by GET /api/v2/groups/:id/paths/:hash/posture — the lazy
+   sibling route the detail pane fetches when a path is opened. Mirrors
+   the Go internal/mcp.PosturePayload / EffectiveContractResult shapes
+   the archigraph_endpoint_posture / archigraph_effective_contract tools
+   emit (same code path, no drift). All facets are honest-empty: a row
+   may carry no posture at all (has_posture=false), and `contract` is
+   null for non-ViewSet endpoints.
+   ------------------------------------------------------------------ */
+
+/** THROWS / CATCHES exception-flow facet of an endpoint's posture. */
+export interface PostureErrorFlow {
+  throws?: string[];
+  catches?: string[];
+}
+
+/** Per-endpoint posture row (one per matched endpoint entity). */
+export interface PosturePayload {
+  entity_id: string;
+  name?: string;
+  kind?: string;
+  repo: string;
+  source_file?: string;
+  start_line?: number;
+  method?: string;
+  path?: string;
+  error_flow?: PostureErrorFlow;
+  /** rate_limited / rate_limit / rate_limit_scope / rate_limit_source props. */
+  rate_limit?: Record<string, string>;
+  /** deprecated / deprecated_since / api_version / ... props. */
+  deprecation?: Record<string, string>;
+  /** Feature-flag keys this endpoint is gated by (GATED_BY edges). */
+  feature_gates?: string[];
+  /** Resolved auth/interceptor props (HTTP guard + gRPC/tRPC). */
+  auth?: Record<string, string>;
+  /** True when at least one facet above is non-empty. */
+  has_posture: boolean;
+}
+
+/** One verb's effective contract within a ViewSet group. */
+export interface EffectiveContract {
+  verb: string;
+  path?: string;
+  handler?: string;
+  /** "explicit" | "inherited" | "action" — "inherited" marks an MRO handler. */
+  kind?: string;
+  source_class?: string;
+  default_status?: number;
+  error_statuses?: number[];
+  serializer?: string;
+  pagination?: boolean;
+  permissions?: string[];
+  behaviour?: string;
+  auth_required?: boolean;
+}
+
+/** One owning ViewSet's grouped per-verb contracts. */
+export interface EffectiveContractGroup {
+  class: string;
+  framework?: string;
+  repo?: string;
+  handlers: EffectiveContract[];
+}
+
+/** Grouped effective-contract result; note explains an empty groups list. */
+export interface EffectiveContractResult {
+  target: string;
+  groups: EffectiveContractGroup[] | null;
+  note?: string;
+}
+
+/** Payload for GET /api/v2/groups/:id/paths/:hash/posture. */
+export interface PathPostureResponse {
+  path_hash: string;
+  path: string;
+  endpoints: PosturePayload[];
+  /** null when no DRF/pack-known ViewSet backs this path. */
+  contract: EffectiveContractResult | null;
+}
+
 /** One orphan caller row. */
 export interface OrphanCaller {
   id: string;

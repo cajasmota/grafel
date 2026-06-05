@@ -161,6 +161,16 @@ func (s *Server) handleEffectiveContract(_ context.Context, req mcpapi.CallToolR
 		return errRes, nil
 	}
 
+	out := computeEffectiveContract(lg, target)
+	return jsonResult(out), nil
+}
+
+// computeEffectiveContract resolves the target ViewSet within lg, gathers its
+// router-expanded routes (or class-fallback synthesis), and returns the grouped
+// per-verb effective-contract result. Factored out of handleEffectiveContract so
+// the dashboard backend can reuse the EXACT same MRO/pack-aware computation
+// (#4254) without going through the MCP request envelope.
+func computeEffectiveContract(lg *LoadedGroup, target string) effectiveContractResult {
 	wantVS, _ := resolveEffectiveContractTarget(lg, target)
 
 	// Gather, per (repo, ViewSet), the projected per-verb contracts of every
@@ -264,7 +274,7 @@ func (s *Server) handleEffectiveContract(_ context.Context, req mcpapi.CallToolR
 			"(pass its entity_id or exact class name, not a method or module), that " +
 			"it is a DRF ViewSet, and that its base class is one the pack knows."
 	}
-	return jsonResult(out), nil
+	return out
 }
 
 // backfillEffectiveContractFromMRO fills the per-verb contract fields a

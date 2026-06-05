@@ -42,6 +42,22 @@ export function usePathDetail(groupId: string, pathHash: string | null) {
   });
 }
 
+export const pathPostureQueryKey = (groupId: string, hash: string) =>
+  ["paths", groupId, "posture", hash] as const;
+
+/**
+ * Lazy posture + effective-contract sections for the open path (#4254).
+ * Fetched only once a path is selected so the main detail payload stays lean.
+ */
+export function usePathPosture(groupId: string, pathHash: string | null) {
+  return useQuery({
+    queryKey: pathPostureQueryKey(groupId, pathHash ?? ""),
+    queryFn: () => api.getPathPosture(groupId, pathHash!),
+    enabled: !!groupId && !!pathHash,
+    staleTime: 60_000,
+  });
+}
+
 /** Orphan callers list — fetched when the Orphans tab is active. */
 export function useOrphans(groupId: string, enabled: boolean) {
   return useQuery({

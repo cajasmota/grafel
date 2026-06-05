@@ -30,6 +30,7 @@ import { RefLine } from "@/components/RefLine";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ShapeTree, type ShapeTreeRow } from "@/components/ShapeTree";
 import { AuthSection } from "@/components/Paths/EndpointDetail/AuthSection";
+import { PostureSection } from "@/components/Paths/EndpointDetail/PostureSection";
 import { AuthSeverityBadge } from "@/components/Paths/AuthSeverityBadge";
 import {
   usePaths, usePathDetail, useOrphans, useAuthCoverageIndex,
@@ -718,6 +719,8 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     description: true,
     auth: true,
+    posture: false,
+    contract: false,
     parameters: true,
     response: true,
     defined: true,
@@ -863,6 +866,20 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
               Uses auth_policy when present (Java, #1942 Phase 1); falls back
               to legacy auth/auth_scheme flags. */}
         <AuthSection detail={detail} />
+
+        {/* 1c. Posture + Effective contract (#4254) — lazy-fetched sibling
+              route. Posture surfaces deprecation / rate-limit / error-flow /
+              feature-gates; Effective contract surfaces the per-verb status
+              codes / serializer / permissions with an MRO-inherited tag. Both
+              honest-empty (collapsed by default). */}
+        <PostureSection
+          groupId={groupId}
+          pathHash={detail.path_hash}
+          postureOpen={openSections.posture}
+          contractOpen={openSections.contract}
+          onTogglePosture={() => toggleSection("posture")}
+          onToggleContract={() => toggleSection("contract")}
+        />
 
         {/* 2. Parameters — ShapeTree subtree (#1935 Phase 1).
             Each parameter row is its own top-level entry; body params
