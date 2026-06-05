@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -99,7 +100,16 @@ func TestDaemonRebuildParallel(t *testing.T) {
 	if peak < 2 {
 		t.Errorf("peak concurrency = %d, want ≥2", peak)
 	}
-	if speedup < 1.3 {
+	// The wall-clock speedup ratio is environment-sensitive: on a 2-core CI
+	// runner (e.g. GitHub's windows-latest) two 60ms sleeps barely overlap and
+	// the ratio dips below 1.3× even though real parallelism happened (peak≥2,
+	// asserted above). Gate the ratio assertion to hosts with enough cores to
+	// make it meaningful; the parallelism itself is still covered everywhere
+	// via the peakConc check (#4285).
+	if runtime.NumCPU() < 4 {
+		t.Logf("skipping speedup-ratio assertion on %d-core host (#4285); "+
+			"parallelism still verified via peakConc=%d", runtime.NumCPU(), peak)
+	} else if speedup < 1.3 {
 		t.Errorf("parallel speedup = %.2f×, want ≥1.3× vs serial", speedup)
 	}
 }
