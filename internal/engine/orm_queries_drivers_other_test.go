@@ -852,3 +852,185 @@ end
 		t.Errorf("expected orm=neo4j, got %q", e.ORM)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Elixir (Xandra Cassandra / ExAws DynamoDB / Elasticsearch / mongodb / Bolt.Sips Neo4j)
+// (#4271)
+// ---------------------------------------------------------------------------
+
+// Xandra: the CQL `FROM events` table is parsed out of the execute string and
+// attributed to the enclosing def. Asserts the exact Class:<table> target.
+func TestDriver_ElixirXandraCQL(t *testing.T) {
+	src := `defmodule Events do
+  def list(conn) do
+    Xandra.execute!(conn, "SELECT id, name FROM events WHERE day = ?")
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/events.ex", src)
+	e := assertEdgeExists(t, edges, "Function:list", "Class:Event", "find")
+	if e.ORM != "cassandra" {
+		t.Errorf("expected orm=cassandra, got %q", e.ORM)
+	}
+}
+
+// Xandra INSERT: verb canonicalises to create via the shared CQL extractor.
+func TestDriver_ElixirXandraInsert(t *testing.T) {
+	src := `defmodule Writer do
+  def add(conn) do
+    Xandra.execute(conn, "INSERT INTO orders (id) VALUES (?)")
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/writer.ex", src)
+	e := assertEdgeExists(t, edges, "Function:add", "Class:Order", "create")
+	if e.ORM != "cassandra" {
+		t.Errorf("expected orm=cassandra, got %q", e.ORM)
+	}
+}
+
+// ExAws DynamoDB helper form: the table is the first positional literal.
+func TestDriver_ElixirExAwsDynamoFirstArg(t *testing.T) {
+	src := `defmodule Store do
+  def get(id) do
+    ExAws.Dynamo.get_item("Products", %{"id" => id}) |> ExAws.request()
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/store.ex", src)
+	e := assertEdgeExists(t, edges, "Function:get", "Class:Product", "find")
+	if e.ORM != "dynamodb" {
+		t.Errorf("expected orm=dynamodb, got %q", e.ORM)
+	}
+}
+
+// ExAws DynamoDB low-level map form: `"TableName" => "X"` via the shared
+// emitDynamoTargets (dynamoTableNameKeyRe).
+func TestDriver_ElixirExAwsDynamoTableNameMap(t *testing.T) {
+	src := `defmodule LowLevel do
+  def scan() do
+    ExAws.Dynamo.scan(%{"TableName" => "Orders"}) |> ExAws.request()
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/low_level.ex", src)
+	e := assertEdgeExists(t, edges, "Function:scan", "Class:Order", "find")
+	if e.ORM != "dynamodb" {
+		t.Errorf("expected orm=dynamodb, got %q", e.ORM)
+	}
+}
+
+// Elasticsearch: `index: "products"` literal → Class:<index> via the shared
+// emitElasticTargets (esIndexKeyRe).
+func TestDriver_ElixirElasticIndex(t *testing.T) {
+	src := `defmodule Search do
+  alias Elasticsearch
+  def run(cluster) do
+    Elasticsearch.post(cluster, "/products/_search", %{index: "products"})
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/search.ex", src)
+	e := assertEdgeExists(t, edges, "Function:run", "Class:Product", "find")
+	if e.ORM != "elastic" {
+		t.Errorf("expected orm=elastic, got %q", e.ORM)
+	}
+}
+
+// MongoDB: the collection is the SECOND positional arg literal of Mongo.find.
+func TestDriver_ElixirMongoFind(t *testing.T) {
+	src := `defmodule Users do
+  def all(conn) do
+    Mongo.find(conn, "users", %{})
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/users.ex", src)
+	e := assertEdgeExists(t, edges, "Function:all", "Class:User", "find")
+	if e.ORM != "mongodb" {
+		t.Errorf("expected orm=mongodb, got %q", e.ORM)
+	}
+}
+
+// Bolt.Sips Neo4j: the primary Cypher node label → Class:<label>, op from the
+// leading clause (MATCH → find).
+func TestDriver_ElixirBoltSipsCypher(t *testing.T) {
+	src := `defmodule Graph do
+  def find_users(conn) do
+    Bolt.Sips.query!(conn, "MATCH (u:User) RETURN u")
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/graph.ex", src)
+	e := assertEdgeExists(t, edges, "Function:find_users", "Class:User", "find")
+	if e.ORM != "neo4j" {
+		t.Errorf("expected orm=neo4j, got %q", e.ORM)
+	}
+}
+
+// Bolt.Sips CREATE: verb canonicalises to create.
+func TestDriver_ElixirBoltSipsCreate(t *testing.T) {
+	src := `defmodule Graph do
+  def add(conn) do
+    Bolt.Sips.query(conn, "CREATE (a:Person {name: $name}) RETURN a")
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/graph.ex", src)
+	e := assertEdgeExists(t, edges, "Function:add", "Class:Person", "create")
+	if e.ORM != "neo4j" {
+		t.Errorf("expected orm=neo4j, got %q", e.ORM)
+	}
+}
+
+// Non-vacuous negative: a dynamically-built CQL table name (interpolated) is
+// honest-skipped — extractSQLTable resolves no literal table, so no Cassandra
+// edge is emitted.
+func TestDriver_ElixirXandraDynamicTableSkipped(t *testing.T) {
+	src := `defmodule Dyn do
+  def list(conn, table) do
+    Xandra.execute!(conn, "SELECT * FROM " <> table)
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/dyn.ex", src)
+	for _, e := range edges {
+		if e.ORM == "cassandra" {
+			t.Errorf("expected no cassandra edge for dynamic table, got %+v", e)
+		}
+	}
+}
+
+// Non-vacuous negative: a dynamic DynamoDB table (a variable, not a literal) is
+// honest-skipped by both the first-arg matcher and emitDynamoTargets.
+func TestDriver_ElixirExAwsDynamoDynamicTableSkipped(t *testing.T) {
+	src := `defmodule Store do
+  def get(table, id) do
+    ExAws.Dynamo.get_item(table, %{"id" => id}) |> ExAws.request()
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/store.ex", src)
+	for _, e := range edges {
+		if e.ORM == "dynamodb" {
+			t.Errorf("expected no dynamodb edge for dynamic table, got %+v", e)
+		}
+	}
+}
+
+// Non-vacuous negative: an interpolated Cypher node label (#{var}) yields no
+// static label, so no neo4j QUERIES edge is emitted — honest-partial.
+func TestDriver_ElixirBoltSipsDynamicLabelSkipped(t *testing.T) {
+	src := `defmodule Graph do
+  def find_node(conn, label) do
+    Bolt.Sips.query!(conn, "MATCH (n) WHERE n.label = $label RETURN n")
+  end
+end
+`
+	edges := detectORM(t, "elixir", "lib/graph.ex", src)
+	for _, e := range edges {
+		if e.ORM == "neo4j" {
+			t.Errorf("expected no neo4j edge for label-less MATCH, got %+v", e)
+		}
+	}
+}

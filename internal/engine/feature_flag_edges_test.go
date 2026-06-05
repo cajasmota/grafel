@@ -1386,8 +1386,8 @@ end
 	if !ok {
 		t.Fatalf("expected GATED_BY for new_checkout, got %v", edges)
 	}
-	if g.From != "File:checkout.ex" {
-		t.Errorf("GATED_BY FromID = %q, want File:checkout.ex (no Elixir enclosing-func index)", g.From)
+	if g.From != "Function:run" {
+		t.Errorf("GATED_BY FromID = %q, want Function:run (Elixir def-head enclosing-func index, #4271)", g.From)
 	}
 	if g.To != "feature:new_checkout" {
 		t.Errorf("GATED_BY ToID = %q, want feature:new_checkout", g.To)

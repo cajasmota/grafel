@@ -917,6 +917,156 @@ func scanRubyDrivers(src string, funcs []funcSpan, emit emitORMQueryFn) {
 }
 
 // ---------------------------------------------------------------------------
+// Elixir (Xandra Cassandra / ExAws DynamoDB / Elasticsearch / mongodb / Bolt.Sips Neo4j)
+// ---------------------------------------------------------------------------
+//
+// Elixir is driver-based (no Ecto here — that is a separate ORM cell). Each
+// raw driver carries its target resource as a STATIC string literal in the
+// call: the CQL `FROM` table (Xandra), the DynamoDB table (ExAws first arg /
+// `"TableName" => "X"`), the ES index, the Mongo collection (2nd positional
+// arg), and the Cypher node label (Bolt.Sips). Interpolated literals (`#{var}`)
+// and pinned vars (`^var`) are honest-skipped because every matcher captures
+// only quoted literals.
+
+// elixirCqlRe matches a Xandra Cassandra execute call:
+//
+//	Xandra.execute(conn, "SELECT ... FROM t")
+//	Xandra.execute!(conn, "INSERT INTO t ...")
+//	Xandra.prepare(conn, "SELECT ... FROM t")
+//
+// The matcher ends at the opening paren; emitCQLTargets pulls the first string
+// literal (the conn arg is not a string, so the CQL is the first literal) and
+// parses the FROM/INTO/UPDATE table out of it.
+var elixirCqlRe = regexp.MustCompile(
+	`\bXandra\.(?:execute|execute!|prepare|prepare!|stream_pages!|run)\s*\(`,
+)
+
+// elixirMongoFindRe matches the elixir mongodb driver collection access, where
+// the collection is the SECOND positional argument (a quoted literal):
+//
+//	Mongo.find(conn, "users", %{})
+//	Mongo.find_one(topology, "orders", %{})
+//	Mongo.insert_one(conn, "products", %{...})
+//	Mongo.aggregate(conn, "events", pipeline)
+//
+// Captures the collection literal directly (group 1). The conn / topology arg
+// is consumed as a non-quote, non-paren run before the literal.
+var elixirMongoFindRe = regexp.MustCompile(
+	`\bMongo\.(?:find|find_one|insert_one|insert_many|update_one|update_many|delete_one|delete_many|count|count_documents|aggregate|replace_one)\s*\(\s*[^",()]*?,\s*"([A-Za-z_][\w$.-]*)"`,
+)
+
+// elixirDynamoFirstArgRe matches the ExAws.Dynamo helper form where the table
+// is the FIRST positional quoted literal:
+//
+//	ExAws.Dynamo.get_item("Products", %{...})
+//	ExAws.Dynamo.scan("Orders")
+//	ExAws.Dynamo.query("Events", ...)
+//	ExAws.Dynamo.put_item("Products", item)
+//
+// The `"TableName" => "X"` low-level map form is covered by the shared
+// emitDynamoTargets (dynamoTableNameKeyRe), so both idioms are attributed.
+var elixirDynamoFirstArgRe = regexp.MustCompile(
+	`\bExAws\.Dynamo\.(?:get_item|put_item|update_item|delete_item|query|scan|batch_get_item|batch_write_item)\s*\(\s*"([A-Za-z_][\w$.-]*)"`,
+)
+
+// elixirBoltCypherRe matches a Bolt.Sips / Boltx Cypher call and captures the
+// Cypher string literal (group 1):
+//
+//	Bolt.Sips.query!(conn, "MATCH (n:Label) ...")
+//	Bolt.Sips.query(conn, "CREATE (a:Person) ...")
+//	Boltx.query!(conn, "MATCH (u:User) ...")
+//
+// The conn arg is consumed as a non-quote run before the Cypher literal. This
+// mirrors reNeo4jExRun in internal/custom/elixir/neo4j.go (which emits the
+// SCOPE.Schema node/relationship entities); here we add the cross-language
+// QUERIES topology edge to the primary node label.
+var elixirBoltCypherRe = regexp.MustCompile(
+	`(?:Bolt\.Sips|Boltx)\.query!?\s*\(\s*[^"]*?"((?:[^"\\]|\\.)*)"`,
+)
+
+func mentionsElixirXandra(src string) bool {
+	return strings.Contains(src, "Xandra")
+}
+func mentionsElixirDynamo(src string) bool {
+	return strings.Contains(src, "ExAws.Dynamo") || strings.Contains(src, "ExAws.Dynamo.")
+}
+func mentionsElixirElastic(src string) bool {
+	return strings.Contains(src, "Elasticsearch") || strings.Contains(src, "Snap.") ||
+		strings.Contains(src, "elasticsearch")
+}
+func mentionsElixirMongo(src string) bool {
+	return strings.Contains(src, "Mongo.") || strings.Contains(src, "mongodb_driver") ||
+		strings.Contains(src, ":mongodb")
+}
+func mentionsElixirBolt(src string) bool {
+	return strings.Contains(src, "Bolt.Sips") || strings.Contains(src, "Boltx")
+}
+
+func scanElixirDrivers(src string, funcs []funcSpan, emit emitORMQueryFn) {
+	// Cassandra (Xandra): CQL FROM/INTO/UPDATE table.
+	if mentionsElixirXandra(src) {
+		emitCQLTargets(src, funcs, emit, elixirCqlRe)
+	}
+	// DynamoDB (ExAws): first-arg table literal + `"TableName" => "X"` map form.
+	if mentionsElixirDynamo(src) {
+		for _, m := range elixirDynamoFirstArgRe.FindAllStringSubmatchIndex(src, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			caller := enclosingFuncAt(funcs, m[0])
+			emit(caller, capitalisedSingular(src[m[2]:m[3]]), "find", "", "dynamodb", false)
+		}
+		emitDynamoTargets(src, funcs, emit)
+	}
+	// Elasticsearch: `index: "x"` / `"index" => "x"` / `.Index("x")` literal.
+	if mentionsElixirElastic(src) {
+		emitElasticTargets(src, funcs, emit)
+	}
+	// MongoDB: 2nd-arg collection literal → Class:<collection>.
+	if mentionsElixirMongo(src) {
+		for _, m := range elixirMongoFindRe.FindAllStringSubmatchIndex(src, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			caller := enclosingFuncAt(funcs, m[0])
+			emit(caller, capitalisedSingular(src[m[2]:m[3]]), "find", "", "mongodb", false)
+		}
+	}
+	// Neo4j (Bolt.Sips / Boltx): the primary Cypher node label → Class:<label>.
+	// The native extractor (internal/custom/elixir/neo4j.go) emits the
+	// SCOPE.Schema node/relationship entities + GRAPH_RELATES edges; this adds the
+	// cross-language QUERIES topology edge so the elixir neo4j query_attribution
+	// cell reaches sibling parity with the other languages. Cypher whose label is
+	// dynamic / interpolated yields no edge (cypherLabelRe captures only static
+	// labels) — honest-partial.
+	if mentionsElixirBolt(src) {
+		for _, m := range elixirBoltCypherRe.FindAllStringSubmatchIndex(src, -1) {
+			if len(m) < 4 {
+				continue
+			}
+			cypher := src[m[2]:m[3]]
+			lm := cypherLabelRe.FindStringSubmatch(cypher)
+			if lm == nil {
+				continue
+			}
+			op := "find"
+			if vm := cypherVerbRe.FindStringSubmatch(cypher); vm != nil {
+				switch strings.ToLower(vm[1]) {
+				case "create", "merge":
+					op = "create"
+				case "set":
+					op = "update"
+				case "delete", "remove":
+					op = "delete"
+				}
+			}
+			caller := enclosingFuncAt(funcs, m[0])
+			emit(caller, lm[1], op, "", "neo4j", false)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Shared target emitters (language-agnostic — keyed on the literal value)
 // ---------------------------------------------------------------------------
 

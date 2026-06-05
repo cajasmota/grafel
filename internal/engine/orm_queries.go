@@ -246,6 +246,14 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 	case "rust":
 		scanRustDrivers(src, funcs, emit)
 		scanInfra()
+	case "elixir":
+		// Driver-topology: Xandra CQL, ExAws DynamoDB TableName, Elasticsearch
+		// index, MongoDB collection (2nd-arg literal), and Bolt.Sips Cypher
+		// node-label attribution (#4271). The native Bolt.Sips schema/relationship
+		// extractor (internal/custom/elixir/neo4j.go) is unchanged; this pass adds
+		// the cross-language QUERIES topology edge.
+		scanElixirDrivers(src, funcs, emit)
+		scanInfra()
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -257,7 +265,7 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 func ormQueriesSupportsLanguage(lang string) bool {
 	switch lang {
 	case "python", "javascript", "typescript", "go", "java", "ruby",
-		"csharp", "php", "rust":
+		"csharp", "php", "rust", "elixir":
 		return true
 	default:
 		return false
@@ -375,6 +383,14 @@ var (
 	rustOrmFuncRe = regexp.MustCompile(
 		`(?m)^\s*(?:pub\s+(?:\([^)]*\)\s*)?)?(?:async\s+|const\s+|unsafe\s+|extern\s+(?:"[^"]*"\s+)?)*fn\s+([A-Za-z_]\w*)`,
 	)
+
+	// Elixir: `def name(` / `defp name(` (public / private function head). The
+	// `?!` suffix some Elixir functions carry (e.g. `query!`) is NOT part of a
+	// `def` head; bang/question idioms appear on calls, not declarations, so the
+	// trailing-punctuation case is intentionally omitted.
+	elixirOrmFuncRe = regexp.MustCompile(
+		`(?m)^[ \t]*defp?\s+([A-Za-z_]\w*)`,
+	)
 )
 
 func indexEnclosingFunctions(lang, content string) []funcSpan {
@@ -396,6 +412,8 @@ func indexEnclosingFunctions(lang, content string) []funcSpan {
 		re = phpOrmFuncRe
 	case "rust":
 		re = rustOrmFuncRe
+	case "elixir":
+		re = elixirOrmFuncRe
 	default:
 		return nil
 	}
