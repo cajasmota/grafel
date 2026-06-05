@@ -65,6 +65,7 @@ import type {
   GroupNPlusOneReport,
   GodNodesReply,
   QualityTrendsReply,
+  GroupLinksReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -770,6 +771,16 @@ export const api = {
       `/quality/trends/${encodeURIComponent(groupId)}${suffix}`,
     );
   },
+
+  // --- Cross-repo links map (#4253) ---
+  // Raw JSON (no v2 envelope) → `request`. Handler: handlers_graph.go
+  // handleGroupLinks, which returns { links: CrossRepoLink[] }.
+
+  /** GET /api/groups/{group}/links — resolved cross-repo link records. */
+  getGroupLinks: (groupId: string) =>
+    request<GroupLinksReply>(
+      `/groups/${encodeURIComponent(groupId)}/links`,
+    ),
 };
 
 export type Api = typeof api;

@@ -1855,3 +1855,35 @@ export interface QualityTrendsReply {
   days: number;
   metrics: MetricTrend[];
 }
+
+// ---------------------------------------------------------------------------
+// Cross-repo links map (#4253, epic #4249)
+//
+// Wire shape for GET /api/groups/{group}/links (handlers_graph.go →
+// handleGroupLinks). RAW JSON (not the v2 envelope): { links: [...] }.
+// Each CrossRepoLink mirrors internal/dashboard/graphstate.go CrossRepoLink.
+// `source`/`target` are canonical prefixed entity IDs of the form
+// "<repo>::<localId>" (normalizeLinkEndpoints rewrites them at load time),
+// so the repo of each side is the segment before "::".
+// ---------------------------------------------------------------------------
+
+/** One resolved cross-repo link (e.g. a frontend fetch → a backend endpoint). */
+export interface CrossRepoLink {
+  /** Source entity id, "<repo>::<localId>". */
+  source: string;
+  /** Target entity id, "<repo>::<localId>". */
+  target: string;
+  /** Relationship kind, e.g. "HTTP_FETCH", "PUBLISHES", "GRPC_CALL". */
+  kind: string;
+  /** Resolution confidence 0..1 (omitted ⇒ treat as unknown). */
+  confidence?: number;
+  /** Transport channel for message links (topic / queue name), when present. */
+  channel?: string;
+  /** HTTP method for HTTP links, when present. */
+  method?: string;
+}
+
+/** GET /api/groups/{group}/links — cross-repo link records. */
+export interface GroupLinksReply {
+  links: CrossRepoLink[];
+}

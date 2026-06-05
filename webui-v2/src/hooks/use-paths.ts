@@ -7,8 +7,11 @@
      useOrphans(groupId)       → orphan caller list for Orphans tab
    ============================================================ */
 
+import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
+import { useAuthCoverage } from "@/hooks/use-security";
+import type { AuthEndpointFinding } from "@/data/types";
 
 export const pathsQueryKey = (groupId: string) =>
   ["paths", groupId] as const;
@@ -71,4 +74,88 @@ export function useShape(
     enabled: !!groupId && enabled && !!key,
     staleTime: 5 * 60_000,
   });
+}
+
+/* ============================================================
+   Auth-coverage overlay for the Paths screen (#4253, epic #4249)
+
+   The Paths list rows / detail header have no entity_id, but the
+   auth-coverage findings (AuthEndpointFinding) carry method + path.
+   So we index findings by a normalised "<METHOD> <path>" key and let
+   Paths look up a finding per (verb, route.path). This reuses the
+   Security screen's cached query (authCoverageQueryKey) — no refetch.
+   ============================================================ */
+
+/** Normalise a path for join-keying: strip a trailing slash, lowercase nothing. */
+function normPath(p: string | undefined): string {
+  const s = (p ?? "").trim();
+  if (s.length > 1 && s.endsWith("/")) return s.slice(0, -1);
+  return s;
+}
+
+/** Build the lookup key for a (method, path) pair. Method is upper-cased. */
+function authKey(method: string | undefined, path: string | undefined): string {
+  return `${(method ?? "").toUpperCase()} ${normPath(path)}`;
+}
+
+/** A method+path → finding lookup plus convenience getters. */
+export interface AuthCoverageIndex {
+  /** True while the underlying auth-coverage query is loading. */
+  isLoading: boolean;
+  /** Look up the worst finding for a (verb, path). */
+  lookup: (verb: string | undefined, path: string | undefined) => AuthEndpointFinding | undefined;
+  /** Look up the worst finding across several verbs for one path (detail header). */
+  lookupAny: (verbs: string[] | undefined, path: string | undefined) => AuthEndpointFinding | undefined;
+}
+
+/** Severity rank — higher is worse, used to pick the worst finding per key. */
+const SEV_RANK: Record<string, number> = { error: 3, warn: 2, info: 1 };
+
+function worse(a: AuthEndpointFinding, b: AuthEndpointFinding): AuthEndpointFinding {
+  // Prefer a NO-AUTH finding, then higher severity, then sensitive/IDOR.
+  const sa = (a.has_auth ? 0 : 1) * 10 + (SEV_RANK[a.severity] ?? 0);
+  const sb = (b.has_auth ? 0 : 1) * 10 + (SEV_RANK[b.severity] ?? 0);
+  return sb > sa ? b : a;
+}
+
+/**
+ * useAuthCoverageIndex — reuses the cached auth-coverage query and indexes
+ * findings by "<METHOD> <path>" so the Paths screen can badge each row and
+ * the detail header. Falls back to a path-only index for findings that lack
+ * a method, so a row can still match when only the path is known.
+ */
+export function useAuthCoverageIndex(groupId: string): AuthCoverageIndex {
+  const { data, isLoading } = useAuthCoverage(groupId);
+
+  const { byMethodPath, byPath } = useMemo(() => {
+    const byMethodPath = new Map<string, AuthEndpointFinding>();
+    const byPath = new Map<string, AuthEndpointFinding>();
+    for (const f of data?.findings ?? []) {
+      if (!f.path) continue;
+      const mpKey = authKey(f.method, f.path);
+      const existingMp = byMethodPath.get(mpKey);
+      byMethodPath.set(mpKey, existingMp ? worse(existingMp, f) : f);
+
+      const pKey = normPath(f.path);
+      const existingP = byPath.get(pKey);
+      byPath.set(pKey, existingP ? worse(existingP, f) : f);
+    }
+    return { byMethodPath, byPath };
+  }, [data]);
+
+  return useMemo<AuthCoverageIndex>(() => {
+    const lookup = (verb: string | undefined, path: string | undefined) =>
+      byMethodPath.get(authKey(verb, path)) ?? byPath.get(normPath(path));
+
+    const lookupAny = (verbs: string[] | undefined, path: string | undefined) => {
+      let best: AuthEndpointFinding | undefined;
+      for (const v of verbs ?? []) {
+        const f = byMethodPath.get(authKey(v, path));
+        if (f) best = best ? worse(best, f) : f;
+      }
+      return best ?? byPath.get(normPath(path));
+    };
+
+    return { isLoading, lookup, lookupAny };
+  }, [byMethodPath, byPath, isLoading]);
 }
