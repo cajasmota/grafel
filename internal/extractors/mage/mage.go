@@ -31,7 +31,7 @@
 //     (dependency_graph).
 //
 // Detection mirrors the build_tools.yaml signal set: a *.go file with the
-// `//go:build mage` (or legacy `// +build mage`) constraint, or any *.go file
+// `//go:build mage` (or legacy `+build mage`) constraint, or any *.go file
 // inside a magefiles/ directory. Failure is per-file and non-fatal.
 package mage
 
@@ -241,7 +241,7 @@ func ParseMagefile(content []byte) ([]Target, bool) {
 }
 
 // hasMageBuildTag reports whether the file carries `//go:build mage` or the
-// legacy `// +build mage` constraint anywhere in its leading comment groups.
+// legacy `+build mage` constraint anywhere in its leading comment groups.
 func hasMageBuildTag(f *ast.File) bool {
 	for _, cg := range f.Comments {
 		for _, c := range cg.List {
