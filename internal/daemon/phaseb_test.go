@@ -19,8 +19,7 @@ import (
 // is created in a tempdir and registered via ReposToWatch.
 func runDaemonWithPhaseBForTest(t *testing.T, repos []string, schedIdx daemon.Config) (daemon.Layout, func()) {
 	t.Helper()
-	root := shortTempRoot(t)
-	t.Setenv(daemon.EnvRoot, root)
+	isolateDaemonEnv(t)
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		t.Fatalf("layout: %v", err)

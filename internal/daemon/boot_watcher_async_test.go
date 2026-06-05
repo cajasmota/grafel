@@ -26,8 +26,7 @@ import (
 // deadline; with the old synchronous code Dial would never succeed until the
 // stall cleared.
 func TestBoot_WatcherSubscriptionDoesNotBlockBind(t *testing.T) {
-	root := shortTempRoot(t)
-	t.Setenv(daemon.EnvRoot, root)
+	isolateDaemonEnv(t)
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		t.Fatalf("layout: %v", err)
