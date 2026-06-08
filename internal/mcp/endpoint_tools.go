@@ -198,14 +198,28 @@ func expandKindAlias(kind string) []string {
 // matchesKindFilter reports whether entity e matches kindFilter, respecting
 // alias expansion. An empty kindFilter always returns true (no filtering).
 //
+// Kinds are namespaced with a leading "SCOPE." segment per ADR-0003 (e.g.
+// "SCOPE.DataAccess"). #4287: a filter may be supplied either fully-qualified
+// ("SCOPE.DataAccess") or as the short leaf form ("DataAccess"). To support the
+// natural short form, both the entity kind and the filter are compared with the
+// "SCOPE." namespace prefix stripped, in addition to the literal comparison.
+// This keeps fully-qualified filters working while letting the leaf match.
+//
 // Use this instead of strings.EqualFold(e.Kind, kindFilter) everywhere a kind
 // filter is applied to graph entities.
 func matchesKindFilter(e *graph.Entity, kindFilter string) bool {
 	if kindFilter == "" {
 		return true
 	}
+	entityLeaf := stripScopePrefix(e.Kind)
 	for _, k := range expandKindAlias(kindFilter) {
+		// Literal / fully-qualified comparison (e.g. "SCOPE.DataAccess").
 		if strings.EqualFold(e.Kind, k) {
+			return true
+		}
+		// Leaf comparison: a short-form filter ("DataAccess") matches a
+		// namespaced entity kind ("SCOPE.DataAccess"), and vice versa.
+		if strings.EqualFold(entityLeaf, stripScopePrefix(k)) {
 			return true
 		}
 	}

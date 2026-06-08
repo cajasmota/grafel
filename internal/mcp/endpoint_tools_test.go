@@ -228,6 +228,31 @@ func TestMatchesKindFilter_NonHTTPKindNotAffected(t *testing.T) {
 	}
 }
 
+// #4287: a short-form (unprefixed leaf) kind_filter must match a namespaced
+// SCOPE.* entity kind, while the fully-qualified form keeps working.
+func TestMatchesKindFilter_ShortFormMatchesScopeNamespaced(t *testing.T) {
+	e := &graph.Entity{Kind: "SCOPE.DataAccess"}
+	if !matchesKindFilter(e, "DataAccess") {
+		t.Error("short-form filter DataAccess should match SCOPE.DataAccess entity (#4287)")
+	}
+	if !matchesKindFilter(e, "SCOPE.DataAccess") {
+		t.Error("fully-qualified filter SCOPE.DataAccess should still match SCOPE.DataAccess entity")
+	}
+	// Leaf match is symmetric: a SCOPE.-prefixed filter should match an
+	// unprefixed entity kind too.
+	bare := &graph.Entity{Kind: "DataAccess"}
+	if !matchesKindFilter(bare, "SCOPE.DataAccess") {
+		t.Error("SCOPE.DataAccess filter should match unprefixed DataAccess entity")
+	}
+	// Unrelated leaf must not collide.
+	if matchesKindFilter(e, "Function") {
+		t.Error("SCOPE.DataAccess entity should not match Function filter")
+	}
+	if matchesKindFilter(e, "SCOPE.Function") {
+		t.Error("SCOPE.DataAccess entity should not match SCOPE.Function filter")
+	}
+}
+
 // ---------------------------------------------------------------------------
 // #2314: classifyEndpointKind tests
 // ---------------------------------------------------------------------------
