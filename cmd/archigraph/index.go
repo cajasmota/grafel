@@ -4015,6 +4015,20 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		indexEntities = append(indexEntities, merged...)
 		indexEntities = append(indexEntities, i.incrementalCarryForwardEntities...)
 	}
+	// NOTE (#4331): we intentionally call BuildIndex here, NOT the M5
+	// per-module path resolve.BuildIndexFromModules (#2182/#2184). M5 is a
+	// scale-only speed optimisation (pre-sized maps for big monorepos) and was
+	// built to be edge-set-identical to BuildIndex, but the #4331
+	// investigation found a CONCRETE divergence: M5 re-sorts entities by ID
+	// within a module, and the platform-variant merge (#1818) in
+	// byPackageOperation/byPackageComponent is order-sensitive for 3+
+	// mutually-exclusive GOOS variants of the same (pkgDir, name). That yields
+	// a different PlatformVariants fan-out topology, which clones a different
+	// set of CALLS edges downstream (refs.go ReferencesEmbeddedWithAllowlist).
+	// The guard test is TestM5_PlatformVariantParity_KnownDivergence in
+	// internal/resolve/symbol_index_parity_test.go. Until M5 preserves
+	// extraction order (or the variant merge is made order-independent) and
+	// that test asserts parity, BuildIndex stays the production resolver.
 	idx := resolve.BuildIndex(indexEntities)
 	// #2049 — Django string-FK late-binding: rewrite scope:component:ref:python:*
 	// stubs on REFERENCES edges with django_rel set, using app-label-aware

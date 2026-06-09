@@ -28,6 +28,22 @@
 //   - LazyEdgeKey / LazyEdgeSet — deferred edge registry; hot-path callers
 //     register stubs they know will appear frequently, and the set resolves
 //     them in one pass rather than paying per-edge lookup cost.
+//
+// PRODUCTION STATUS (#4331): this module is UNWIRED — the production index
+// pipeline (cmd/archigraph/index.go) still calls BuildIndex, not
+// BuildIndexFromModules. M5 was designed as an edge-set-identical, scale-only
+// speed optimisation, but the #4331 investigation found it is NOT yet parity-
+// safe: BuildModuleSymbols sorts a module's entities by ID, whereas BuildIndex
+// preserves extraction order, and the platform-variant merge (#1818) in
+// byPackageOperation/byPackageComponent is order-sensitive for 3+ mutually-
+// exclusive GOOS variants of one (pkgDir, name). The differing iteration order
+// produces a different PlatformVariants fan-out topology, which clones a
+// different set of CALLS edges in ReferencesEmbeddedWithAllowlist (refs.go).
+// See TestM5_PlatformVariantParity_KnownDivergence (symbol_index_parity_test.go)
+// for the pinned divergence. To wire M5: preserve extraction order for the
+// platform-variant side-tables (or make that merge order-independent), flip the
+// guard test to assert parity, then update cmd/archigraph/index.go. M5 only
+// helps large monorepos; for small/medium codebases BuildIndex is already fine.
 package resolve
 
 import (
