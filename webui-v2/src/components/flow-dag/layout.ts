@@ -29,6 +29,8 @@ export interface FlowDagNodeData extends Record<string, unknown> {
   expanded: boolean;
   /** Toggle handler for the inline collapsed-children expander. */
   onToggleExpand: (id: string) => void;
+  /** Whether this node is the caller's selected node (Flows inspector, #4354). */
+  selected?: boolean;
 }
 
 /** Data carried on each React Flow edge, consumed by the custom edge renderer. */

@@ -21,7 +21,7 @@ import type { FlowDagNodeData } from "./layout";
  * The collapsed-children count badge expands an inline list on click.
  */
 function FlowDagNodeImpl({ data, sourcePosition, targetPosition }: NodeProps) {
-  const { node, expanded, onToggleExpand } = data as FlowDagNodeData;
+  const { node, expanded, onToggleExpand, selected } = data as FlowDagNodeData;
   const rs = roleStyle(node.role);
   const collapsed = node.collapsed_children ?? [];
   const hasCollapsed = collapsed.length > 0;
@@ -31,15 +31,21 @@ function FlowDagNodeImpl({ data, sourcePosition, targetPosition }: NodeProps) {
       className={cn(
         "rounded-lg border bg-surface shadow-[var(--shadow-2)] text-left",
         "min-w-[220px] max-w-[220px]",
+        selected && "cursor-pointer",
       )}
       style={{
         // Role tint as a soft background wash; the ink as the border.
         background: `color-mix(in srgb, ${rs.bg} 22%, var(--surface))`,
-        borderColor: `color-mix(in srgb, ${rs.ink} 55%, transparent)`,
-        // Terminal sinks get a heavier outline ring.
-        boxShadow: node.terminal
-          ? `0 0 0 2px color-mix(in srgb, ${rs.ink} 45%, transparent)`
-          : undefined,
+        borderColor: selected
+          ? "var(--accent)"
+          : `color-mix(in srgb, ${rs.ink} 55%, transparent)`,
+        // Selected node gets an accent ring; otherwise terminal sinks get a
+        // heavier outline ring.
+        boxShadow: selected
+          ? "0 0 0 2px var(--accent)"
+          : node.terminal
+            ? `0 0 0 2px color-mix(in srgb, ${rs.ink} 45%, transparent)`
+            : undefined,
       }}
     >
       {/* in/out handles — positions follow the H/V layout direction. */}

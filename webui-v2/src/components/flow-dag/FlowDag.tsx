@@ -27,6 +27,7 @@ import {
   Controls,
   MiniMap,
   ReactFlowProvider,
+  type Node as RFNode,
   type NodeTypes,
   type EdgeTypes,
 } from "@xyflow/react";
@@ -41,12 +42,13 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useDownstreamDAG } from "@/hooks/use-paths";
-import type { DownstreamDAGResponse } from "@/data/types";
+import type { DownstreamDAGNode, DownstreamDAGResponse } from "@/data/types";
 import {
   layoutDAG,
   FLOW_DAG_NODE_TYPE,
   FLOW_DAG_EDGE_TYPE,
   type FlowDagDirection,
+  type FlowDagNodeData,
 } from "./layout";
 import { FlowDagNode } from "./FlowDagNode";
 import { FlowDagEdge } from "./FlowDagEdge";
@@ -69,6 +71,14 @@ export interface FlowDagProps {
   payload?: DownstreamDAGResponse;
   /** Whether the internal fetch is enabled (e.g. only when a modal is open). */
   enabled?: boolean;
+  /**
+   * Notified when a node is clicked, with its underlying DAG node. Lets a
+   * caller open a side inspector (Flows view, #4354) without forking the
+   * renderer. Omit for a purely read-only canvas (Paths modal).
+   */
+  onNodeClick?: (node: DownstreamDAGNode) => void;
+  /** Node id to highlight as selected (pairs with `onNodeClick`). */
+  selectedNodeId?: string | null;
   className?: string;
 }
 
@@ -79,6 +89,8 @@ function FlowDagInner({
   verb,
   payload,
   enabled = true,
+  onNodeClick,
+  selectedNodeId,
   className,
 }: FlowDagProps) {
   // Controls — fetch params. Changing mode/depth refetches (TanStack caches
@@ -111,8 +123,22 @@ function FlowDagInner({
 
   const { nodes, edges } = useMemo(() => {
     if (!data) return { nodes: [], edges: [] };
-    return layoutDAG(data.nodes, data.edges, direction, expanded, onToggleExpand);
-  }, [data, direction, expanded, onToggleExpand]);
+    const laid = layoutDAG(data.nodes, data.edges, direction, expanded, onToggleExpand);
+    // Stamp the selected flag so the node renderer can highlight the active
+    // node when the caller drives selection (Flows step inspector, #4354).
+    if (selectedNodeId != null) {
+      for (const n of laid.nodes) n.data.selected = n.id === selectedNodeId;
+    }
+    return laid;
+  }, [data, direction, expanded, onToggleExpand, selectedNodeId]);
+
+  const handleNodeClick = useCallback(
+    (_: React.MouseEvent, n: RFNode) => {
+      if (!onNodeClick) return;
+      onNodeClick((n.data as FlowDagNodeData).node);
+    },
+    [onNodeClick],
+  );
 
   const setDepthClamped = (n: number) =>
     setDepth(Math.max(DEPTH_MIN, Math.min(DEPTH_MAX, n)));
@@ -231,6 +257,7 @@ function FlowDagInner({
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
+            onNodeClick={onNodeClick ? handleNodeClick : undefined}
             fitView
             // The graph is a read-only visualization; disable interaction edits.
             nodesDraggable={false}
