@@ -262,6 +262,137 @@ func primaryPath(root *ChainStep) []string {
 	return out
 }
 
+// primaryPathCrossRepo returns the canonical linear chain through the DAG,
+// but — unlike primaryPath's pure leftmost walk — it prefers a sibling
+// branch that CONTINUES ACROSS A RESOLVED CROSS-REPO BOUNDARY over a
+// sibling that dead-ends at a consumer http_endpoint synthetic (#4316).
+//
+// Motivation (B1): a frontend caller typically has TWO outgoing edges in
+// the unified adjacency:
+//
+//   - a FETCHES edge to its consumer http_endpoint synthetic (a dead-end:
+//     the synthetic has no outgoing traversable edge in the source repo),
+//     and
+//   - a phantom cross-repo CALLS edge to the resolved backend handler,
+//     which continues handler → service → repository.
+//
+// primaryPath picks whichever child sorts first by entity ID. When the
+// synthetic's ID happens to sort before the handler's, the persisted
+// chain dead-ends at the synthetic and the real end-to-end cross-repo
+// path is buried in a non-primary DAG branch — exactly the "307 resolved
+// links but only 5 cross-repo flows" symptom. This chooser fixes that by,
+// at each fan-out, preferring the child whose subtree actually crosses a
+// repo boundary (and, among those, the one that reaches deepest).
+//
+// Guard-rails (no over-chaining):
+//   - The decision is made ONLY from real edges already present in the
+//     DAG (which itself respects MaxDepth / BranchingFactor / cycle caps).
+//     No edge is fabricated; an unresolved/orphan http-call still has no
+//     cross-repo child and stays terminal.
+//   - When NO sibling subtree crosses a repo boundary the walk is byte-
+//     identical to primaryPath (leftmost), so pure intra-repo flows and
+//     UI-state setter chains (getState/setIsLoading/dispatch) are
+//     unchanged — those never reach a cross-repo edge.
+//
+// adj and byID may be nil; with either nil the function degrades to the
+// leftmost primaryPath behaviour.
+func primaryPathCrossRepo(root *ChainStep, adj *callsAdjacency, byID map[string]*graph.Entity) []string {
+	if root == nil {
+		return nil
+	}
+	if adj == nil {
+		return primaryPath(root)
+	}
+	out := []string{root.EntityID}
+	cur := root
+	for len(cur.Branches) > 0 {
+		next := chooseBranch(cur, adj, byID)
+		if next == nil || next.EntityID == branchOverflowEntityID {
+			break
+		}
+		out = append(out, next.EntityID)
+		cur = next
+	}
+	return out
+}
+
+// chooseBranch selects the child of node to follow as the primary path.
+// It prefers, in order:
+//  1. a real child whose subtree crosses a resolved cross-repo boundary
+//     (and, among those, the one reaching the greatest depth), then
+//  2. the leftmost real child (preserving primaryPath determinism).
+//
+// Returns nil when node has no real (non-overflow) child.
+func chooseBranch(node *ChainStep, adj *callsAdjacency, byID map[string]*graph.Entity) *ChainStep {
+	var leftmost *ChainStep
+	var bestXRepo *ChainStep
+	bestXRepoDepth := -1
+	for _, b := range node.Branches {
+		if b == nil || b.EntityID == branchOverflowEntityID {
+			continue
+		}
+		if leftmost == nil {
+			leftmost = b
+		}
+		// A branch is preferred when EITHER the hop into it is itself a
+		// cross-repo / handler-continuation edge, OR its subtree reaches
+		// such an edge deeper down. The first case captures the phantom
+		// caller→handler hop directly (B1); the second lets a chain that
+		// passes through one extra intra-repo step still find the bridge.
+		d := subtreeCrossRepoDepth(node.EntityID, b, adj)
+		if d >= 0 && d > bestXRepoDepth {
+			bestXRepoDepth = d
+			bestXRepo = b
+		}
+	}
+	if bestXRepo != nil {
+		return bestXRepo
+	}
+	return leftmost
+}
+
+// subtreeCrossRepoDepth returns the depth (number of hops below `child`,
+// 0-based) at which the subtree rooted at `child` first traverses a
+// resolved cross-repo edge (phantom CALLS) or a handler-continuation edge
+// (reversed IMPLEMENTS → http_endpoint_definition). Returns -1 when the
+// subtree never crosses a boundary. `parent` is the EntityID of child's
+// parent so the parent→child hop itself can be classified.
+//
+// The returned depth is used only to break ties toward the branch that
+// reaches the boundary AND continues furthest, so a chain that bridges
+// then chains handler→service is preferred over one that merely touches
+// the boundary and stops.
+func subtreeCrossRepoDepth(parent string, child *ChainStep, adj *callsAdjacency) int {
+	if child == nil || adj == nil {
+		return -1
+	}
+	// Is the parent→child hop itself a boundary-crossing edge?
+	k := edgeKey{parent, child.EntityID}
+	hopCrosses := adj.phantom[k] || adj.handlerCont[k]
+
+	best := -1
+	for _, b := range child.Branches {
+		if b == nil || b.EntityID == branchOverflowEntityID {
+			continue
+		}
+		if d := subtreeCrossRepoDepth(child.EntityID, b, adj); d >= 0 {
+			if d+1 > best {
+				best = d + 1
+			}
+		}
+	}
+	if hopCrosses {
+		// This hop crosses the boundary; depth contribution is how far the
+		// subtree continues past it (0 if the bridge target is a leaf).
+		if best < 0 {
+			return 0
+		}
+		return best
+	}
+	// This hop doesn't cross, but a descendant might. Propagate that depth.
+	return best
+}
+
 // encodeDAGJSON marshals the DAG to a compact JSON blob suitable for
 // stashing on the Process entity's Properties map. Errors are swallowed:
 // the DAG fields are advisory metadata, not load-bearing semantics, and
