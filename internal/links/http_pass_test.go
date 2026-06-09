@@ -3933,3 +3933,253 @@ func TestHTTPPass_JSONRPCCrossRepoMatch(t *testing.T) {
 		t.Errorf("identifier: want http:JSONRPC:/jsonrpc/add, got %v", hit.Identifier)
 	}
 }
+
+// TestRuntimeEnumSuffixShape unit-tests the #4315 shape detector: a param-led
+// suffix after a param first segment is claimed (ok=true); a static-led suffix
+// (#2813's territory), a static first segment, an anchor-less shape, or a too-
+// short path are all rejected.
+func TestRuntimeEnumSuffixShape(t *testing.T) {
+	cases := []struct {
+		path       string
+		wantSuffix string
+		wantStatic int
+		wantOK     bool
+	}{
+		// The canonical #4315 case: param first segment (companyType), param-led
+		// remainder with a static anchor (branches).
+		{"/{companyType}/{companyId}/branches/{branchId}", "/{*}/branches/{*}", 1, true},
+		{"/{companyType}/{companyId}/branches", "/{*}/branches", 1, true},
+		{"/{companyType}/{companyId}/branches/{id}/migrate", "/{*}/branches/{*}/migrate", 2, true},
+		// Static-led suffix → #2813 owns it, not us.
+		{"/{apiUrl}/schedule/import", "", 0, false},
+		// No static anchor in the suffix → never expand (would fan out).
+		{"/{companyType}/{companyId}", "", 0, false},
+		{"/{a}/{b}/{c}", "", 0, false},
+		// Static first segment → ordinary path, not a runtime enum.
+		{"/companies/{id}/branches", "", 0, false},
+		// Too short / empty.
+		{"/{companyType}", "", 0, false},
+		{"", "", 0, false},
+	}
+	for _, tc := range cases {
+		gotSuffix, gotStatic, gotOK := runtimeEnumSuffixShape(tc.path)
+		if gotOK != tc.wantOK {
+			t.Errorf("runtimeEnumSuffixShape(%q) ok = %v, want %v", tc.path, gotOK, tc.wantOK)
+			continue
+		}
+		if !tc.wantOK {
+			continue
+		}
+		if gotSuffix != tc.wantSuffix || gotStatic != tc.wantStatic {
+			t.Errorf("runtimeEnumSuffixShape(%q) = (%q, %d), want (%q, %d)",
+				tc.path, gotSuffix, gotStatic, tc.wantSuffix, tc.wantStatic)
+		}
+	}
+}
+
+// TestRuntimeEnumProducerSuffix unit-tests the #4315 producer matcher: only a
+// LITERAL-first-segment route whose remaining segments line up positionally
+// with the consumer suffix qualifies. A param-first producer (the ambiguous
+// case #2813 keeps orphan), a static divergence, or a segment-count mismatch
+// are all rejected.
+func TestRuntimeEnumProducerSuffix(t *testing.T) {
+	const suffix = "/{*}/branches/{*}"
+	cases := []struct {
+		producer  string
+		wantEnum  string
+		wantMatch bool
+	}{
+		// Literal first segment + matching suffix shape → qualifies; the literal
+		// (enum value) is returned. API prefix is stripped first.
+		{"/api/v1/contracting-companies/{id}/branches/{branchId}", "contracting-companies", true},
+		{"/witnessing-companies/{pk}/branches/{bid}", "witnessing-companies", true},
+		// Param first segment → the genuinely-ambiguous case; rejected.
+		{"/api/v1/{companyId}/branches/{branchId}", "", false},
+		// Static divergence in the suffix (offices != branches) → rejected.
+		{"/contracting-companies/{id}/offices/{bid}", "", false},
+		// Segment-count mismatch → rejected.
+		{"/contracting-companies/{id}/branches", "", false},
+		{"/contracting-companies/{id}/branches/{bid}/extra", "", false},
+		{"", "", false},
+	}
+	for _, tc := range cases {
+		gotEnum, gotMatch := runtimeEnumProducerSuffix(tc.producer, suffix)
+		if gotMatch != tc.wantMatch {
+			t.Errorf("runtimeEnumProducerSuffix(%q) match = %v, want %v", tc.producer, gotMatch, tc.wantMatch)
+			continue
+		}
+		if gotMatch && gotEnum != tc.wantEnum {
+			t.Errorf("runtimeEnumProducerSuffix(%q) enum = %q, want %q", tc.producer, gotEnum, tc.wantEnum)
+		}
+	}
+}
+
+// TestHTTPPass_RuntimeEnumExpansion_AutoLink is the end-to-end #4315 success
+// case: a frontend call `GET /{companyType}/{companyId}/branches/{branchId}`
+// (companyType is a render-time enum) expands to BOTH literal-prefixed backend
+// routes — the contracting and witnessing siblings — each stamped
+// resolve_strategy=runtime_enum_expansion with heuristic confidence.
+func TestHTTPPass_RuntimeEnumExpansion_AutoLink(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "hc", "name": "ContractingBranchView", "kind": "Controller", "source_file": "core/views/contracting.py"},
+			{
+				"id": "epc", "name": "http:GET:/api/v1/contracting-companies/{companyId}/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "core/views/contracting.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/contracting-companies/{companyId}/branches/{branchId}",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+			{"id": "hw", "name": "WitnessingBranchView", "kind": "Controller", "source_file": "core/views/witnessing.py"},
+			{
+				"id": "epw", "name": "http:GET:/api/v1/witnessing-companies/{companyId}/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "core/views/witnessing.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/witnessing-companies/{companyId}/branches/{branchId}",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "hc", "to_id": "epc", "kind": "IMPLEMENTS"},
+			{"from_id": "hw", "to_id": "epw", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "getBranch", "kind": "Function", "source_file": "src/stores/company/branchService.js"},
+			{
+				"id": "ep2", "name": "http:GET:/{companyType}/{companyId}/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "src/stores/company/branchService.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/{companyType}/{companyId}/branches/{branchId}",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"url_kind": "dynamic_baseurl", "dynamic_baseurl": "true",
+					"source_caller": "Function:getBranch",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g4315-auto", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g4315-auto-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotTargets := map[string]*Link{}
+	for i, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" {
+			gotTargets[l.Target] = &doc.Links[i]
+		}
+	}
+	for _, want := range []string{"backend::hc", "backend::hw"} {
+		l, ok := gotTargets[want]
+		if !ok {
+			t.Errorf("#4315: expected runtime_enum_expansion link frontend::fn1 → %s; got %v", want, gotTargets)
+			continue
+		}
+		if l.Properties["resolve_strategy"] != "runtime_enum_expansion" {
+			t.Errorf("%s resolve_strategy: want runtime_enum_expansion, got %q", want, l.Properties["resolve_strategy"])
+		}
+		if l.Properties[EdgeConfidenceKey] != ConfidenceHeuristic {
+			t.Errorf("%s confidence: want heuristic, got %q", want, l.Properties[EdgeConfidenceKey])
+		}
+	}
+	if l := gotTargets["backend::hc"]; l != nil && l.Properties["runtime_enum"] != "contracting-companies" {
+		t.Errorf("hc runtime_enum: want contracting-companies, got %q", l.Properties["runtime_enum"])
+	}
+}
+
+// TestHTTPPass_RuntimeEnumExpansion_NoFalseLinks is the guardrail case: shapes
+// that MUST stay orphan. (a) A param-first producer (no literal enum) keeps the
+// #2813 RuntimeStaysUnlinked behaviour. (b) A static asset `/version.txt` and a
+// genuinely-nonexistent route never link. (c) An anchor-less `/{*}/{*}` shape
+// never expands.
+func TestHTTPPass_RuntimeEnumExpansion_NoFalseLinks(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			// Param-first producer only — NOT a literal enum prefix.
+			{"id": "h1", "name": "BranchView", "kind": "Controller", "source_file": "v.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v1/{companyId}/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "v.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v1/{companyId}/branches/{branchId}",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"}},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			// Runtime-enum shape, but only a param-first producer exists → orphan.
+			{"id": "fnRuntime", "name": "getBranch", "kind": "Function", "source_file": "src/b.js"},
+			{
+				"id": "epRuntime", "name": "http:GET:/{companyType}/{companyId}/branches/{branchId}", "kind": "http_endpoint",
+				"source_file": "src/b.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/{companyType}/{companyId}/branches/{branchId}",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"url_kind": "dynamic_baseurl", "dynamic_baseurl": "true",
+					"source_caller": "Function:getBranch",
+				},
+			},
+			// Static asset — must STAY orphan.
+			{"id": "fnAsset", "name": "loadVersion", "kind": "Function", "source_file": "src/v.js"},
+			{
+				"id": "epAsset", "name": "http:GET:/version.txt", "kind": "http_endpoint",
+				"source_file": "src/v.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/version.txt",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:loadVersion",
+				},
+			},
+			// Anchor-less runtime shape — never expands.
+			{"id": "fnNoAnchor", "name": "getThing", "kind": "Function", "source_file": "src/t.js"},
+			{
+				"id": "epNoAnchor", "name": "http:GET:/{companyType}/{companyId}", "kind": "http_endpoint",
+				"source_file": "src/t.js",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/{companyType}/{companyId}",
+					"framework": "axios", "pattern_type": "http_endpoint_client_synthesis",
+					"url_kind": "dynamic_baseurl", "dynamic_baseurl": "true",
+					"source_caller": "Function:getThing",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	if _, err := RunAllPasses("g4315-orphan", root, home); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(filepath.Join(home, "groups", "g4315-orphan-links.json"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method != MethodHTTP {
+			continue
+		}
+		switch l.Source {
+		case "frontend::fnRuntime":
+			t.Errorf("#4315: param-first producer must NOT expand (RuntimeStaysUnlinked), got %+v", l)
+		case "frontend::fnAsset":
+			t.Errorf("#4315: static asset /version.txt must stay orphan, got %+v", l)
+		case "frontend::fnNoAnchor":
+			t.Errorf("#4315: anchor-less /{*}/{*} must stay orphan, got %+v", l)
+		}
+	}
+}

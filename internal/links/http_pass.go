@@ -708,6 +708,129 @@ func isDynamicPrefixSegment(seg string) bool {
 	return seg == "{*}" || seg == "${*}"
 }
 
+// runtimeEnumMinStaticSuffixSegments is the floor on how many concrete
+// (non-param) segments the post-first-segment SUFFIX of a runtime-enum consumer
+// path must carry before the runtime-enum expansion (#4315) will link it. The
+// first segment is a render-time enum (`{companyType}` →
+// contracting-companies | witnessing-companies); the remainder is what anchors
+// the match. Requiring ≥1 static anchor segment (e.g. `branches`) keeps the
+// expansion from fanning out across unrelated `/{*}/{*}/{*}` shapes.
+const runtimeEnumMinStaticSuffixSegments = 1
+
+// runtimeEnumMaxExpansion caps how many distinct literal-prefixed server routes
+// a single runtime-enum consumer may expand to (#4315). A render-time enum such
+// as companyType has a small, closed value set (2 in upvate:
+// contracting-companies / witnessing-companies); a candidate set larger than
+// this cap signals a generic shape that would fan out into false links, so the
+// consumer is left orphan instead.
+const runtimeEnumMaxExpansion = 4
+
+// runtimeEnumSuffixShape recognises the deferred-by-#2813 consumer shape that
+// #4315 expands: a path whose FIRST segment is a single param placeholder
+// (a render-time enum like `{companyType}`) AND whose REMAINDER is itself
+// param-led (so dynamicSuffixTemplate returned ok=false and left it orphan).
+//
+// It returns the {*}-normalized SUFFIX (everything after the first segment,
+// e.g. `/{*}/branches/{*}`) and the count of STATIC (non-param) segments that
+// suffix carries. ok is false for any shape that is NOT this case — a static
+// first segment, a base-URL prefix the dynamic-suffix matcher already owns, a
+// suffix with no static anchor, or a too-short path.
+//
+// Examples (input → suffix, staticSegs, ok):
+//
+//	/{companyType}/{companyId}/branches/{branchId} → /{*}/branches/{*}, 1, true
+//	/{companyType}/{companyId}/branches            → /{*}/branches,      1, true
+//	/{apiUrl}/schedule/import                       → "", 0, false (static-led suffix; #2813 owns it)
+//	/{companyType}/{companyId}                       → "", 0, false (no static anchor)
+//	/companies/{id}/branches                         → "", 0, false (static first segment)
+func runtimeEnumSuffixShape(consumerPath string) (suffix string, staticSegs int, ok bool) {
+	if consumerPath == "" {
+		return "", 0, false
+	}
+	norm := normalizePathForIndex(consumerPath)
+	segs := strings.Split(norm, "/")
+	// segs[0] is the empty leading-slash segment. Need a param first segment
+	// plus at least one more segment to form a suffix.
+	if len(segs) < 3 || !isDynamicPrefixSegment(segs[1]) {
+		return "", 0, false
+	}
+	rest := segs[2:]
+	// #2813 already owns the static-led suffix (`/{apiUrl}/schedule/import`);
+	// #4315 only claims the param-led remainder it deferred.
+	if rest[0] != "{*}" {
+		return "", 0, false
+	}
+	for _, s := range rest {
+		if s != "" && s != "{*}" {
+			staticSegs++
+		}
+	}
+	if staticSegs < runtimeEnumMinStaticSuffixSegments {
+		return "", 0, false
+	}
+	suffix = "/" + strings.Join(rest, "/")
+	return suffix, staticSegs, true
+}
+
+// runtimeEnumProducerSuffix reports whether a producer path is a viable
+// runtime-enum expansion target for a consumer with the given {*}-normalized
+// suffix shape (#4315). The producer qualifies when, after stripping a leading
+// API/version prefix:
+//
+//   - it has the SAME segment count as the consumer's full shape (first enum
+//     segment + suffix), i.e. one more segment than the suffix; and
+//   - its FIRST post-prefix segment is a concrete LITERAL (the enum value such
+//     as `contracting-companies`) — NOT a param. A param-first producer is the
+//     genuinely-ambiguous case (#2813's RuntimeStaysUnlinked) and is rejected
+//     here; and
+//   - every remaining segment matches the consumer suffix positionally: a
+//     consumer param ({*}) matches any producer segment; a consumer static
+//     must equal the producer static case-insensitively (both are already
+//     lower-cased by normalizePathForIndex).
+//
+// On success it returns the producer's concrete first segment (the resolved
+// enum value) so the link can be stamped with it for traceability.
+func runtimeEnumProducerSuffix(producerPath, consumerSuffix string) (enumValue string, ok bool) {
+	if producerPath == "" || consumerSuffix == "" {
+		return "", false
+	}
+	pNorm := normalizePathForIndex(producerPath)
+	if stripped, had := stripAPIPrefix(pNorm); had {
+		pNorm = stripped
+	}
+	pSegs := strings.Split(pNorm, "/")
+	sufSegs := strings.Split(consumerSuffix, "/")
+	// pSegs and sufSegs both lead with an empty element from the leading slash.
+	// The producer must be exactly: [<empty> <enum-literal> <suffix...>], i.e.
+	// one concrete segment longer than the suffix's content.
+	if len(pSegs) < 2 {
+		return "", false
+	}
+	enum := pSegs[1]
+	// First segment must be a concrete literal, not a param slot.
+	if enum == "" || enum == "{*}" {
+		return "", false
+	}
+	// Remaining producer segments must line up positionally with the suffix.
+	// sufSegs[0] is the empty leading-slash element; sufSegs[1:] is the content.
+	rest := pSegs[2:]
+	sufContent := sufSegs[1:]
+	if len(rest) != len(sufContent) {
+		return "", false
+	}
+	for i := range rest {
+		cs := sufContent[i]
+		ps := rest[i]
+		if cs == "{*}" {
+			continue // consumer param matches any producer segment
+		}
+		if cs != ps {
+			return "", false // static divergence disqualifies
+		}
+	}
+	return enum, true
+}
+
 // patternTypeURLMountPoint is the synthesis marker set by
 // internal/engine/django_urlconf_nested.go (#2677) on the synthetic emitted
 // for every `path("prefix", include(...))` declaration. The consumer-side
@@ -2459,6 +2582,165 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					},
 				}
 				fresh = append(fresh, link)
+			}
+		}
+	}
+
+	// #4315: runtime-enum first-segment expansion. This claims the shape #2813
+	// deliberately deferred (RuntimeStaysUnlinked): a consumer whose FIRST
+	// segment is a render-time enum (`/{companyType}/{companyId}/branches/{id}`,
+	// companyType ∈ {contracting-companies, witnessing-companies}) and whose
+	// remainder is param-led, so the static-suffix matcher returned ok=false.
+	//
+	// We resolve it by matching the param-led SUFFIX (`/{*}/branches/{*}`)
+	// against producers whose FIRST post-prefix segment is a CONCRETE LITERAL
+	// (the enum value) and whose remaining segments line up positionally. The
+	// enum's closed value set fans out to a SMALL number of literal routes
+	// (the contracting/witnessing siblings), so — unlike a single dynamic base
+	// URL — linking to ALL surviving candidates is correct, not a guess.
+	//
+	// Guardrails against false links (over-matching erodes trust):
+	//   - the suffix MUST carry ≥ runtimeEnumMinStaticSuffixSegments static
+	//     anchor segments (`branches`); a bare `/{*}/{*}` shape never expands.
+	//   - producers whose first segment is itself a PARAM are rejected — that is
+	//     the genuinely-ambiguous case #2813 keeps orphan; only literal-prefixed
+	//     routes qualify.
+	//   - the distinct candidate set must be 1..runtimeEnumMaxExpansion; a wider
+	//     set signals a generic shape and the consumer stays orphan.
+	//   - runs dead-last (after every exact/normalized/suffix stage) so a
+	//     consumer with any stronger match was already linked.
+	// Links are stamped resolve_strategy=runtime_enum_expansion and confidence
+	// heuristic (param-led suffix, multi-target — weaker than a unique suffix).
+	for _, byRepo := range hits {
+		for _, perRepo := range byRepo {
+			for _, c := range perRepo {
+				if c.side != sideConsumer {
+					continue
+				}
+				cKey := entityKey(c.repo, c.stampedID)
+				if matchedConsumers[cKey] {
+					continue
+				}
+				consumerPath := c.canonicalPath
+				if consumerPath == "" {
+					if _, p, ok := parseHTTPName(c.name); ok {
+						consumerPath = p
+					}
+				}
+				suffix, _, ok := runtimeEnumSuffixShape(consumerPath)
+				if !ok {
+					continue
+				}
+				allConsumers[cKey] = true
+
+				// Collect distinct literal-prefixed producer routes whose suffix
+				// matches positionally, in OTHER repos, verb-compatible. We walk
+				// every producer hit (there is no suffix-keyed index for the
+				// literal-first-segment shape) and filter via runtimeEnumProducerSuffix.
+				var candidates []*httpEndpointHit
+				seenCand := map[string]bool{}
+				seenRoute := map[string]bool{}
+				for _, pByRepo := range hits {
+					for _, pPerRepo := range pByRepo {
+						for _, ph := range pPerRepo {
+							if ph.side != sideProducer || ph.repo == c.repo {
+								continue
+							}
+							if !verbsCompatible(c.verb, ph.verb) {
+								continue
+							}
+							producerPath := ph.canonicalPath
+							if producerPath == "" {
+								if _, pp, ok := parseHTTPName(ph.name); ok {
+									producerPath = pp
+								}
+							}
+							if _, match := runtimeEnumProducerSuffix(producerPath, suffix); !match {
+								continue
+							}
+							pid := entityKey(ph.repo, ph.stampedID)
+							if seenCand[pid] {
+								continue
+							}
+							seenCand[pid] = true
+							// Track distinct ROUTES (verb+canonical path) for the
+							// fan-out gate so a route emitted twice does not inflate
+							// the count.
+							routeKey := strings.ToUpper(ph.verb) + " " + normalizePathForIndex(producerPath)
+							seenRoute[routeKey] = true
+							candidates = append(candidates, ph)
+						}
+					}
+				}
+				if len(candidates) == 0 {
+					// Specific shape but no literal-prefixed producer serves it —
+					// leave as a dynamic_baseurl miss for the classifier below.
+					continue
+				}
+				// Fan-out gate: a render-time enum has a small closed value set.
+				// A wider candidate set is a generic shape — do not guess.
+				if len(seenRoute) > runtimeEnumMaxExpansion {
+					residualCandidates += len(candidates)
+					missesByReason["dynamic_baseurl"]++
+					dynamicSuffixCounted[cKey] = true
+					continue
+				}
+				sort.SliceStable(candidates, func(i, j int) bool { return less(candidates[i], candidates[j]) })
+
+				linkedAny := false
+				for _, p := range candidates {
+					srcID := c.callerID
+					if srcID == "" {
+						srcID = c.stampedID
+					}
+					tgtID := p.handlerID
+					if tgtID == "" {
+						tgtID = p.stampedID
+					}
+					source := entityKey(c.repo, srcID)
+					target := entityKey(p.repo, tgtID)
+					id := MakeID(source, target, MethodHTTP)
+					if emitted[id] {
+						linkedAny = true
+						continue
+					}
+					emitted[id] = true
+					linkedAny = true
+					hitsByStrategy["runtime_enum_expansion"]++
+					enumValue, _ := runtimeEnumProducerSuffix(p.canonicalPath, suffix)
+					ident := canonicalIdentifier(c, p)
+					ch := httpChannel
+					link := Link{
+						ID:           id,
+						Source:       source,
+						Target:       target,
+						Relation:     RelationCalls,
+						Method:       MethodHTTP,
+						Confidence:   ScoreImport(),
+						Channel:      &ch,
+						Identifier:   &ident,
+						DiscoveredAt: now,
+						SourceLocations: [][]string{
+							{c.sourceFile},
+							{p.sourceFile},
+						},
+						MatchQuality: matchQualityAnyFallback,
+						Properties: map[string]string{
+							"resolve_strategy":  "runtime_enum_expansion",
+							"runtime_suffix":    suffix,
+							"runtime_enum":      enumValue,
+							"expansion_targets": strconv.Itoa(len(seenRoute)),
+							// #4315 — the consumer's first segment was a render-time
+							// enum; resolved by matching the param-led suffix against
+							// literal-prefixed routes. Heuristic, not exact.
+							EdgeConfidenceKey: ConfidenceHeuristic,
+						},
+					}
+					fresh = append(fresh, link)
+				}
+				if linkedAny {
+					matchedConsumers[cKey] = true
+				}
 			}
 		}
 	}
