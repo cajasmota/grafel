@@ -23,9 +23,14 @@ import {
   Search, X, ChevronRight, ChevronLeft, Lock, ExternalLink, Copy,
   Database, Zap, Globe, TestTube, Server,
   Layers, Box, List, Maximize2, FolderTree, Boxes, AlertTriangle,
+  Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/components/ui";
+import {
+  Dialog, DialogContent, DialogTitle, DialogDescription,
+} from "@/components/ui";
+import { FlowDag } from "@/components/flow-dag";
 import { RefLine } from "@/components/RefLine";
 import { getRepoColor } from "@/lib/repo-color";
 import { SectionHeader } from "@/components/SectionHeader";
@@ -735,6 +740,12 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
     setOpenSections((p) => ({ ...p, [k]: !p[k] }));
   }, []);
 
+  // Downstream-DAG modal (#4350) — the shared <FlowDag> rooted at this
+  // endpoint. The verb passed disambiguates a multi-verb path hash (falls back
+  // to the first verb when the list filter is "all").
+  const [dagOpen, setDagOpen] = useState(false);
+  const dagVerb = verbFilter !== "all" ? verbFilter : detail.verbs[0];
+
   // Filter verb-scoped data
   const filteredParams =
     verbFilter === "all"
@@ -1005,14 +1016,36 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
 
         {/* 6. Downstream */}
         <div>
-          <SectionHeader
-            icon={<Database size={14} />}
-            title="Downstream"
-            count={totalDownstream}
-            infoText="Outbound dependencies — services / DB / external APIs this endpoint calls during request handling."
-            open={openSections.downstream}
-            onToggle={() => toggleSection("downstream")}
-          />
+          {/* The SectionHeader is a full-width button, so the "Flow" trigger is
+              overlaid on the title's right edge (left of the chevron) rather
+              than nested inside it — a nested <button> is invalid. It opens the
+              shared <FlowDag> modal (#4350) rooted at this endpoint. */}
+          <div className="relative">
+            <SectionHeader
+              icon={<Database size={14} />}
+              title="Downstream"
+              count={totalDownstream}
+              infoText="Outbound dependencies — services / DB / external APIs this endpoint calls during request handling."
+              open={openSections.downstream}
+              onToggle={() => toggleSection("downstream")}
+            />
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDagOpen(true);
+              }}
+              title="Open the downstream flow DAG"
+              className={cn(
+                "absolute right-9 top-1/2 -translate-y-1/2 z-10",
+                "inline-flex items-center gap-1 h-6 px-2 rounded text-xs font-medium",
+                "text-text-3 bg-surface-2 hover:bg-bg-soft transition-colors",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
+              )}
+            >
+              <Workflow size={12} /> Flow
+            </button>
+          </div>
           {openSections.downstream && (
             <div className="py-1">
               {totalDownstream === 0 ? (
@@ -1079,6 +1112,35 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
           )}
         </div>
       </div>
+
+      {/* Downstream-DAG modal (#4350) — shared <FlowDag>. Mounted only while
+          open so the DAG fetch is lazy; reuses the house Dialog primitive. */}
+      <Dialog open={dagOpen} onOpenChange={setDagOpen}>
+        <DialogContent
+          className="max-w-[min(1100px,94vw)] w-full h-[82vh] p-0 flex flex-col overflow-hidden"
+        >
+          <div className="px-5 pt-4 pb-3 border-b border-border shrink-0">
+            <DialogTitle className="flex items-center gap-2">
+              <Workflow size={16} className="text-text-3" />
+              Downstream flow
+            </DialogTitle>
+            <DialogDescription>
+              {detail.path} — the endpoint's downstream as a branching DAG.
+            </DialogDescription>
+          </div>
+          <div className="flex-1 min-h-0">
+            {dagOpen && (
+              <FlowDag
+                groupId={groupId}
+                pathHash={detail.path_hash}
+                verb={dagVerb}
+                enabled={dagOpen}
+                className="h-full"
+              />
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

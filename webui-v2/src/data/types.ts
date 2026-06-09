@@ -2322,3 +2322,84 @@ export interface ErrorFlowReport {
   total_catches: number;
   exceptions: ErrorFlowException[];
 }
+
+/* ============================================================
+   Endpoint downstream-DAG (#4349 backend / #4350 modal)
+
+   GET /api/v2/groups/:id/paths/:hash/downstream-dag
+     ?mode=spine|full &depth= &semantic= &verb=
+
+   Wire shape mirrors internal/dashboard/v2_paths_downstream_dag.go.
+   The endpoint's DOWNSTREAM rendered as a branching DAG rooted at the
+   endpoint: endpoint → handler → service → repository → pipeline, plus
+   JOINS_COLLECTION / THROWS / VALIDATES side-branches. Nodes are emitted
+   ONCE; a convergence node accumulates >1 in-edge (the payload is already
+   deduped — the renderer keys on node id and draws every incoming edge).
+   ============================================================ */
+
+/** Semantic kind of one directed DAG in-edge. */
+export type DownstreamDAGEdgeKind =
+  | "CALLS"
+  | "HANDLER_CONTINUATION"
+  | "JOINS_COLLECTION"
+  | "THROWS"
+  | "VALIDATES";
+
+/** A node's place on the spine — drives layout + styling without re-deriving
+ *  from kind. The endpoint root is always "endpoint". */
+export type DownstreamDAGRole = "endpoint" | "handler" | "node" | "collection";
+
+/** One low-level builder/predicate call collapsed INTO a spine node in spine
+ *  mode (eq/gte/in/$lookup helpers, …). Expanding is inline — no refetch. */
+export interface DownstreamDAGCollapsedChild {
+  id: string;
+  name: string;
+  kind: string;
+  file?: string;
+  line?: number;
+  /** Relationship via which the parent reached this collapsed child (usually CALLS). */
+  edge_kind: string;
+}
+
+/** One node in the downstream DAG. IDs are repo-prefixed ("<slug>::<entityID>"). */
+export interface DownstreamDAGNode {
+  id: string;
+  name: string;
+  kind: string;
+  file?: string;
+  line?: number;
+  repo: string;
+  role?: DownstreamDAGRole;
+  /** A deliberate leaf the walk stops at (e.g. a joined collection sink). */
+  terminal?: boolean;
+  /** Builder/predicate noise folded into this node in spine mode (empty in full). */
+  collapsed_children?: DownstreamDAGCollapsedChild[];
+}
+
+/** One directed in-edge of the DAG. A convergence node has >1 edge with the same `to`. */
+export interface DownstreamDAGEdge {
+  from: string;
+  to: string;
+  kind: DownstreamDAGEdgeKind;
+}
+
+/** What (if anything) the caps dropped. All-false means complete within depth. */
+export interface DownstreamDAGTruncation {
+  depth_truncated: boolean;
+  fanout_truncated: boolean;
+  node_truncated: boolean;
+}
+
+/** GET /api/v2/groups/:id/paths/:hash/downstream-dag → the endpoint-flow modal payload. */
+export interface DownstreamDAGResponse {
+  root_id: string;
+  path: string;
+  verb: string;
+  mode: "spine" | "full";
+  depth: number;
+  nodes: DownstreamDAGNode[];
+  edges: DownstreamDAGEdge[];
+  truncation: DownstreamDAGTruncation;
+  /** Count of internal fan-out points (kept nodes with out-degree > 1). */
+  branch_count: number;
+}

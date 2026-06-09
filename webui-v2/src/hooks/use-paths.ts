@@ -42,6 +42,51 @@ export function usePathDetail(groupId: string, pathHash: string | null) {
   });
 }
 
+/* ============================================================
+   Downstream-DAG for the endpoint-flow modal (#4350, backend #4349)
+
+   The DAG is parameterised by (mode, depth, semantic, verb): changing the
+   spine/full toggle or the depth control refetches with a new query key, and
+   TanStack caches each (mode, depth) combination so toggling back is instant.
+   ============================================================ */
+
+export interface DownstreamDAGParams {
+  mode: "spine" | "full";
+  depth: number;
+  semantic: boolean;
+  verb?: string;
+}
+
+export const downstreamDAGQueryKey = (
+  groupId: string,
+  hash: string,
+  p: DownstreamDAGParams,
+) => ["paths", groupId, "downstream-dag", hash, p.mode, p.depth, p.semantic, p.verb ?? ""] as const;
+
+/**
+ * Fetch the endpoint downstream-DAG for the <FlowDag> modal. Fetched lazily
+ * (enabled only when the modal is open) so the main paths payload stays lean.
+ */
+export function useDownstreamDAG(
+  groupId: string,
+  pathHash: string | null,
+  params: DownstreamDAGParams,
+  enabled: boolean,
+) {
+  return useQuery({
+    queryKey: downstreamDAGQueryKey(groupId, pathHash ?? "", params),
+    queryFn: () =>
+      api.getPathDownstreamDAG(groupId, pathHash!, {
+        mode: params.mode,
+        depth: params.depth,
+        semantic: params.semantic,
+        verb: params.verb,
+      }),
+    enabled: !!groupId && !!pathHash && enabled,
+    staleTime: 60_000,
+  });
+}
+
 export const pathPostureQueryKey = (groupId: string, hash: string) =>
   ["paths", groupId, "posture", hash] as const;
 

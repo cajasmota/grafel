@@ -72,6 +72,7 @@ import type {
   DataflowReport,
   DIReport,
   ErrorFlowReport,
+  DownstreamDAGResponse,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -500,6 +501,35 @@ export const api = {
   /** GET /api/v2/groups/:id/paths/orphans — orphan caller list. */
   listOrphans: (groupId: string) =>
     requestV2<OrphansResponse>(`/groups/${encodeURIComponent(groupId)}/paths/orphans`),
+
+  /**
+   * GET /api/v2/groups/:id/paths/:hash/downstream-dag — the endpoint's
+   * DOWNSTREAM as a branching DAG rooted at the endpoint (#4349 backend,
+   * #4350 modal). Drives the shared <FlowDag> component.
+   *
+   *   mode      — "spine" (default; collapses query-builder/predicate noise into
+   *               owning nodes as collapsed_children) | "full" (every node).
+   *   depth     — max hops from the endpoint (default 8, clamped server-side to
+   *               [1, 24]).
+   *   semantic  — include JOINS_COLLECTION/THROWS/VALIDATES side-edges (default
+   *               true); false walks the CALLS spine only.
+   *   verb      — disambiguate when a path hash maps to several verb endpoints.
+   */
+  getPathDownstreamDAG: (
+    groupId: string,
+    pathHash: string,
+    params?: { mode?: "spine" | "full"; depth?: number; semantic?: boolean; verb?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    if (params?.mode) qs.set("mode", params.mode);
+    if (params?.depth != null) qs.set("depth", String(params.depth));
+    if (params?.semantic === false) qs.set("semantic", "0");
+    if (params?.verb) qs.set("verb", params.verb);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return requestV2<DownstreamDAGResponse>(
+      `/groups/${encodeURIComponent(groupId)}/paths/${encodeURIComponent(pathHash)}/downstream-dag${suffix}`,
+    );
+  },
 
   /**
    * GET /api/v2/groups/:id/paths/:hash/posture — lazy posture +
