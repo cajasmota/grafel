@@ -1543,6 +1543,17 @@ var semanticEdgeKinds = map[string]struct{}{
 	string(types.RelationshipKindInjectedInto):     {},
 	string(types.RelationshipKindBinds):            {},
 	string(types.RelationshipKindDependsOnConfig):  {},
+	// #4307 (Layer 1 of epic #4294): the documentation-link edge emitted by the
+	// markdown ingest pass (SCOPE.Section --MENTIONS--> code entity). It is a
+	// genuine semantic relation ("this code is documented in that section"), not
+	// structural scaffolding like CONTAINS/IMPORTS, so it belongs in the
+	// projected set: inspect lists it under semantic_edges, neighbors annotates
+	// each row with semantic_kind=MENTIONS, and the inbound walk
+	// (find_callers / neighbors direction=in) surfaces the documenting Section as
+	// a predecessor of the code entity (via isInboundNeighborKind, which accepts
+	// any isSemanticEdgeKind). The outbound walk (Section → code) already
+	// traversed every out-edge, so this makes the edge_kind label symmetric.
+	string(types.RelationshipKindMentions): {},
 }
 
 // isSemanticEdgeKind reports whether k is one of the projected semantic edge
