@@ -940,6 +940,22 @@ func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 	classIdx := len(x.entities)
 	x.emit(className, "SCOPE.Component", n, "class", fmt.Sprintf("class %s", className))
 
+	// Issue #4322 — emit generic EXTENDS / IMPLEMENTS edges from the class to
+	// its superclass / implemented interfaces. This connects the large orphan
+	// ring of framework-interface implementors (NestInterceptor, NestMiddleware,
+	// EntitySubscriberInterface, OnApplicationBootstrap/Shutdown, …) and
+	// base-entity subclasses (extends AuditableEntity / SoftDeletableEntity /
+	// MinimalEntity) that were previously extracted as isolated SCOPE.Components.
+	// Mirrors the Java/Python heritage emission; bare-name ToID resolves to a
+	// same-repo class/interface via byName, otherwise stays as a present
+	// (unresolved-target) edge that still de-islands the implementer.
+	if classIdx < len(x.entities) {
+		if hr := x.classHeritageRels(n, className); len(hr) > 0 {
+			x.entities[classIdx].Relationships = append(
+				x.entities[classIdx].Relationships, hr...)
+		}
+	}
+
 	body := n.ChildByFieldName("body")
 	// Issue #2875 — React Internals/suspense_error_boundary: a class component
 	// that declares componentDidCatch / getDerivedStateFromError is a React

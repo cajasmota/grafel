@@ -277,6 +277,14 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 		props["angular_role"] = role
 		rels = append(rels, guardRels...)
 	}
+
+	// Issue #4322 — generic class heritage. Beyond the narrow Angular guard /
+	// interceptor interfaces handled above, an Angular-decorated class can still
+	// `extends BaseComponent` / `implements OnInit, OnDestroy` (Angular
+	// lifecycle interfaces are a classic orphan source). Emit the generic
+	// EXTENDS / IMPLEMENTS edges, deduped against any guard IMPLEMENTS already
+	// added, so these classes are connected to their base/interface.
+	rels = appendHeritageDeduped(rels, x.classHeritageRels(n, className))
 	if call != nil {
 		meta := x.angularDecoratorMeta(call)
 		if tmpl := meta["template"]; tmpl != "" {
