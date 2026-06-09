@@ -1,0 +1,75 @@
+import { IsArray, IsBoolean, IsNumber, IsOptional, IsString, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+
+export class CreateChecklistItemBody {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  required?: boolean;
+
+  @IsOptional()
+  @IsString()
+  value_type?: string;
+
+  @IsOptional()
+  @IsString()
+  value?: string;
+
+  @IsOptional()
+  @IsNumber()
+  part?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  condition?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  remedy?: number | null;
+}
+
+export class CreateChecklistCategoryBody {
+  @IsString()
+  name!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateChecklistItemBody)
+  datasource?: CreateChecklistItemBody[];
+}
+
+export class CreateChecklistBody {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  shared?: boolean;
+
+  @IsOptional()
+  @IsNumber()
+  group_id?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  type_id?: number | null;
+
+  @IsOptional()
+  @IsNumber()
+  jurisdiction_id?: number | null;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateChecklistCategoryBody)
+  categories?: CreateChecklistCategoryBody[];
+}

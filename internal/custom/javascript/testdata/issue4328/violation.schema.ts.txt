@@ -1,0 +1,15 @@
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+
+export type ViolationDocument = Violation & Document;
+
+@Schema({ collection: 'violations', timestamps: false, strict: false })
+export class Violation {
+  @Prop({ type: Number, required: false })
+  building_id?: number;
+
+  @Prop({ type: String, required: false })
+  issue_date?: string;
+}
+
+export const ViolationSchema = SchemaFactory.createForClass(Violation);

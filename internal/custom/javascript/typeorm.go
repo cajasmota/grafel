@@ -40,8 +40,17 @@ var (
 	// Uses [^@]* instead of [^)]* to handle arrow functions like (() => Post, post => post.user)
 	// that contain nested parentheses. Stops at next decorator (@) instead.
 	// Group 1 = relation kind, group 2 = decorator-args blob, group 3 = field name.
+	//
+	// The field name is captured AFTER any number of intervening companion
+	// decorators (e.g. `@ManyToOne(() => Role) @JoinColumn({ name: 'role_id' })
+	// role!: Role;`) — issue #4328. Without the optional decorator run the
+	// `@JoinColumn` between the relation decorator and the field name caused the
+	// whole relation (and its member/target edges) to be dropped, orphaning the
+	// field.
 	reTypeORMRelation = regexp.MustCompile(
-		`@(OneToMany|ManyToOne|OneToOne|ManyToMany)\s*\(([^@]*?)\)\s+(\w+)`,
+		`@(OneToMany|ManyToOne|OneToOne|ManyToMany)\s*\(([^@]*?)\)\s*` +
+			`(?:@\w+\s*(?:\([^@]*?\))?\s*)*` +
+			`(\w+)`,
 	)
 	// The type-target arrow inside a relation decorator: `() => Order` or
 	// `type => Order` or `() => Order` (with optional parens around the param).
@@ -262,11 +271,18 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 		addEntity(ent)
 	}
 
-	// @Column properties
+	// @Column properties. Each column becomes a member of its owning @Entity via
+	// a CONTAINS edge hung off the owner model node (issue #4328) so the field is
+	// not an orphan. The edge targets the column entity's own ID.
 	for _, m := range reTypeORMColumn.FindAllStringSubmatchIndex(src, -1) {
 		colName := src[m[2]:m[3]]
 		ent := makeEntity(colName, "SCOPE.Component", "column", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "typeorm", "provenance", "INFERRED_FROM_TYPEORM_COLUMN")
+		if owner, ok := owningEntity(m[0]); ok && owner.idx >= 0 {
+			setProps(&ent, "owner_class", owner.name)
+			entities[owner.idx].Relationships = append(entities[owner.idx].Relationships,
+				containsFieldEdge(owner.name, ent.ID, colName, "typeorm"))
+		}
 		addEntity(ent)
 	}
 
@@ -286,6 +302,20 @@ func (e *typeormExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 			"provenance", "INFERRED_FROM_TYPEORM_RELATION")
 		if target != "" {
 			setProps(&ent, "target_entity", target)
+			// REFERENCES edge from the relation field to the thunk-target class.
+			// Emitted even cross-file (issue #4328): the target type is a real
+			// symbol reference, so the field carries an outbound edge instead of
+			// ringing. The resolver matches `Class:<Target>` to the entity by name
+			// when it exists; cross-file targets that never resolve stay honest
+			// (the edge records the topology either way).
+			ent.Relationships = append(ent.Relationships,
+				referencesClassEdge(ent.ID, target, "typeorm", fieldName))
+		}
+		// CONTAINS membership: the relation field belongs to its owning @Entity.
+		if owner, ok := owningEntity(m[0]); ok && owner.idx >= 0 {
+			setProps(&ent, "owner_class", owner.name)
+			entities[owner.idx].Relationships = append(entities[owner.idx].Relationships,
+				containsFieldEdge(owner.name, ent.ID, fieldName, "typeorm"))
 		}
 		addEntity(ent)
 

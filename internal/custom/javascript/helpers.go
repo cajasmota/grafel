@@ -38,6 +38,48 @@ func makeEntity(name, kind, subtype, filePath, language string, lineNum int) typ
 	return e
 }
 
+// containsFieldEdge builds the structural CONTAINS membership edge from an
+// owning class (DTO / entity / schema) to one of its decorated field/property
+// entities. Issue #4328: decorated DTO properties and entity columns were
+// emitted as standalone nodes with no owner, leaving them as orphans on the
+// graph. The edge is hung off the owner model node; FromID names the owner
+// class (`Class:<owner>`) so the resolver binds it to the real class entity,
+// ToID is the concrete member entity ID.
+func containsFieldEdge(ownerClass, memberID, fieldName, framework string) types.RelationshipRecord {
+	return types.RelationshipRecord{
+		FromID: "Class:" + ownerClass,
+		ToID:   memberID,
+		Kind:   string(types.RelationshipKindContains),
+		Properties: map[string]string{
+			"framework":  framework,
+			"member":     "field",
+			"field_name": fieldName,
+			"provenance": "INFERRED_FROM_DECORATED_FIELD_MEMBERSHIP",
+		},
+	}
+}
+
+// referencesClassEdge builds a REFERENCES edge from a field/property entity to
+// the class named in a decorator thunk — `@ManyToOne(() => Role)`,
+// `@Type(() => AddressDto)`, `@Prop({ type: () => X })`. Issue #4328: the thunk
+// target type carries the field's only outbound semantic edge; without it the
+// nested DTO / related entity rings. ToID is the `Class:<target>` stub the
+// resolver binds to the real class entity (same-file or symbol-table wide).
+func referencesClassEdge(fromID, targetClass, framework, fieldName string) types.RelationshipRecord {
+	return types.RelationshipRecord{
+		FromID: fromID,
+		ToID:   "Class:" + targetClass,
+		Kind:   string(types.RelationshipKindReferences),
+		Properties: map[string]string{
+			"framework":   framework,
+			"ref_kind":    "field_target_type",
+			"field_name":  fieldName,
+			"target_type": targetClass,
+			"provenance":  "INFERRED_FROM_DECORATOR_THUNK_TARGET",
+		},
+	}
+}
+
 // setProps merges extra key-value pairs into entity.Properties.
 func setProps(e *types.EntityRecord, kv ...string) {
 	if len(kv)%2 != 0 {

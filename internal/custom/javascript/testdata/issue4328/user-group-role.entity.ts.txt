@@ -1,0 +1,20 @@
+import { Column, Entity, JoinColumn, ManyToOne } from 'typeorm';
+import { MinimalEntity } from '../../entities/base/minimal.entity';
+import { bigintTransformer } from '../../entities/transformers/bigint.transformer';
+import { Role } from './role.entity';
+
+@Entity({ name: 'user_group_roles' })
+export class UserGroupRole extends MinimalEntity {
+  @Column({ name: 'user_id', type: 'bigint', transformer: bigintTransformer })
+  userId!: number;
+
+  @Column({ name: 'group_id', type: 'bigint', transformer: bigintTransformer })
+  groupId!: number;
+
+  @Column({ name: 'role_id', type: 'bigint', transformer: bigintTransformer })
+  roleId!: number;
+
+  @ManyToOne(() => Role)
+  @JoinColumn({ name: 'role_id' })
+  role!: Role;
+}

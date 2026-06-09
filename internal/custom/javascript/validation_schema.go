@@ -68,6 +68,14 @@ var (
 			`(?:\s*@\w+\s*\([^)]*\))*\s*` +
 			`([A-Za-z_]\w*)\s*[!?]?\s*(?::\s*([A-Za-z_][\w.<>\[\] ]*?))?\s*[;=\n]`)
 
+	// cvNestedTypeRe: a class-transformer `@Type(() => TargetClass)` thunk,
+	// optionally preceded/followed by other decorators, bound to a property name.
+	// Group 1 = target class, group 2 = field name. Issue #4328.
+	cvNestedTypeRe = regexp.MustCompile(
+		`(?m)@Type\s*\(\s*\(\s*\)\s*=>\s*([A-Z][A-Za-z0-9_]*)\s*\)` +
+			`(?:\s*@\w+\s*(?:\([^)]*\))?\s*)*\s*` +
+			`([A-Za-z_]\w*)\s*[!?]?\s*:`)
+
 	// route header (express/fastify/koa/nest-style decorator or method call).
 	vsRouteCallRe = regexp.MustCompile(
 		`(?i)(?:app|router|fastify|server|\w+)\s*\.\s*(get|post|put|delete|patch|all|options|head)\s*\(\s*['` + "`" + `"]([^'"` + "`" + ` ]+)['` + "`" + `"]`)
@@ -168,6 +176,15 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 			setProps(&ent, "library", "class-validator", "pattern_type", "validation_schema",
 				"provenance", "INFERRED_FROM_CLASS_VALIDATOR")
 			applyFieldProps(&ent, fields)
+			// Nested-DTO target edges (issue #4328): `@ValidateNested()
+			// @Type(() => AddressDto)` carries a class target in a class-transformer
+			// thunk. Without an outbound edge the nested DTO rings. Emit a REFERENCES
+			// edge from this DTO to each nested target class so the membership /
+			// type topology is preserved and the nested DTO is no longer an orphan.
+			for _, tgt := range extractClassValidatorNestedTargets(body) {
+				ent.Relationships = append(ent.Relationships,
+					referencesClassEdge(ent.ID, tgt.target, "class-validator", tgt.field))
+			}
 			addSchema(ent)
 		}
 	}
@@ -363,6 +380,42 @@ func extractClassValidatorFields(body string) []schemaField {
 		fields = append(fields, schemaField{name: name, typ: typ})
 	}
 	return fields
+}
+
+// cvNestedTarget is a captured `@Type(() => X)` nested-DTO target + the field
+// it decorates.
+type cvNestedTarget struct {
+	target string
+	field  string
+}
+
+// cvPrimitiveCoercion is the set of class-transformer primitive coercion
+// targets — `@Type(() => Number)` etc. coerce a scalar, they are not nested
+// DTO references, so they must NOT yield a class REFERENCES edge.
+var cvPrimitiveCoercion = map[string]bool{
+	"Number": true, "String": true, "Boolean": true, "Date": true,
+	"BigInt": true, "Symbol": true,
+}
+
+// extractClassValidatorNestedTargets pulls `@Type(() => TargetClass) field:`
+// nested-DTO references out of a class body, skipping primitive coercions.
+func extractClassValidatorNestedTargets(body string) []cvNestedTarget {
+	var out []cvNestedTarget
+	seen := make(map[string]bool)
+	for _, m := range cvNestedTypeRe.FindAllStringSubmatch(body, -1) {
+		target := m[1]
+		field := m[2]
+		if target == "" || cvPrimitiveCoercion[target] {
+			continue
+		}
+		key := target + ":" + field
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, cvNestedTarget{target: target, field: field})
+	}
+	return out
 }
 
 // normalizeScalar maps a raw factory/type token to a normalized scalar type.

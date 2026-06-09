@@ -53,7 +53,34 @@ var (
 	reMongooseIndex = regexp.MustCompile(
 		`([A-Za-z_][A-Za-z0-9_]*)\.index\s*\(\s*\{([^}]*)\}`,
 	)
+
+	// NestJS `@nestjs/mongoose` decorator style (issue #4328): `@Schema(...)
+	// class Foo { @Prop(...) field: type; }`. mongoose.go previously only handled
+	// the classic `new Schema()` form, so the entire decorator-based schema class
+	// — and every @Prop field — was unextracted, orphaning the document shape.
+	reMongooseSchemaClass = regexp.MustCompile(
+		`@Schema\s*\([^@]*?\)\s*(?:export\s+)?(?:abstract\s+)?class\s+([A-Z][A-Za-z0-9_]*)`,
+	)
+	// @Prop(...) field: type;  — captures field name (group 1). The optional
+	// decorator run handles companion decorators between @Prop and the property.
+	reMongooseProp = regexp.MustCompile(
+		`@Prop\s*\(([^@]*?)\)\s*(?:@\w+\s*(?:\([^@]*?\))?\s*)*([A-Za-z_]\w*)\s*[!?]?\s*:`,
+	)
+	// Thunk / array target type inside a @Prop options object:
+	// `type: () => Foo`, `type: [Foo]`, `ref: 'Foo'`, `type: Foo`.
+	reMongoosePropThunk = regexp.MustCompile(
+		`(?:type\s*:\s*\(\s*\)\s*=>\s*([A-Z][A-Za-z0-9_]*))` +
+			`|(?:type\s*:\s*\[\s*([A-Z][A-Za-z0-9_]*)\s*\])` +
+			`|(?:ref\s*:\s*['"]([A-Z][A-Za-z0-9_]*)['"])`,
+	)
 )
+
+// mongoosePropPrimitive is the set of mongoose @Prop primitive constructor
+// targets that coerce a scalar rather than reference a document class.
+var mongoosePropPrimitive = map[string]bool{
+	"String": true, "Number": true, "Boolean": true, "Date": true,
+	"Buffer": true, "Mixed": true, "ObjectId": true, "Map": true, "Array": true,
+}
 
 func (e *mongooseExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/javascript")
@@ -189,6 +216,62 @@ func (e *mongooseExtractor) Extract(ctx context.Context, file extreg.FileInput) 
 		setProps(&ent, "framework", "mongoose", "schema_var", schemaVar, "fields", indexFields,
 			"provenance", "INFERRED_FROM_MONGOOSE_INDEX")
 		addEntity(ent)
+	}
+
+	// NestJS @Schema()/@Prop() decorator-style schemas (issue #4328). Each
+	// @Schema class becomes a SCOPE.Schema model; each @Prop field is emitted as
+	// a member entity with a CONTAINS edge from the owning schema class, and a
+	// `type: () => X` / `type: [X]` / `ref: 'X'` thunk yields a REFERENCES edge
+	// to the target document class so embedded/referenced docs are not orphans.
+	schemaClassMatches := reMongooseSchemaClass.FindAllStringSubmatchIndex(src, -1)
+	for i, m := range schemaClassMatches {
+		className := src[m[2]:m[3]]
+		classEnt := makeEntity(className, "SCOPE.Schema", "schema_class", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&classEnt, "framework", "mongoose", "provenance", "INFERRED_FROM_NESTJS_MONGOOSE_SCHEMA")
+
+		// Class body: from this @Schema to the next @Schema class (or EOF).
+		bodyEnd := len(src)
+		if i+1 < len(schemaClassMatches) {
+			bodyEnd = schemaClassMatches[i+1][0]
+		}
+		body := src[m[0]:bodyEnd]
+
+		classIdx := len(entities)
+		addEntity(classEnt)
+		// addEntity may have skipped a duplicate class name; only attach members
+		// when this class was actually appended at classIdx.
+		appended := classIdx < len(entities) && entities[classIdx].Name == className
+
+		for _, pm := range reMongooseProp.FindAllStringSubmatchIndex(body, -1) {
+			optsBlob := body[pm[2]:pm[3]]
+			fieldName := body[pm[4]:pm[5]]
+			propEnt := makeEntity(fmt.Sprintf("%s.%s", className, fieldName),
+				"SCOPE.Component", "prop", file.Path, file.Language, lineOf(src, m[0]+pm[0]))
+			setProps(&propEnt, "framework", "mongoose", "field_name", fieldName,
+				"owner_class", className, "provenance", "INFERRED_FROM_NESTJS_MONGOOSE_PROP")
+
+			// Thunk / array / ref target document class.
+			if tm := reMongoosePropThunk.FindStringSubmatch(optsBlob); tm != nil {
+				target := tm[1]
+				if target == "" {
+					target = tm[2]
+				}
+				if target == "" {
+					target = tm[3]
+				}
+				if target != "" && !mongoosePropPrimitive[target] {
+					setProps(&propEnt, "target_type", target)
+					propEnt.Relationships = append(propEnt.Relationships,
+						referencesClassEdge(propEnt.ID, target, "mongoose", fieldName))
+				}
+			}
+
+			if appended {
+				entities[classIdx].Relationships = append(entities[classIdx].Relationships,
+					containsFieldEdge(className, propEnt.ID, fieldName, "mongoose"))
+			}
+			addEntity(propEnt)
+		}
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
