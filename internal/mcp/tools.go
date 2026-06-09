@@ -2073,6 +2073,49 @@ func (s *Server) handleListCommunities(ctx context.Context, req mcpapi.CallToolR
 }
 
 // ---------------------------------------------------------------------------
+// orient (#4290) — graph-orientation analysis
+// ---------------------------------------------------------------------------
+
+// handleOrient surfaces a "where do I start reading this codebase?" view built
+// from Pass-4 attributes already on the graph (betweenness Centrality,
+// PageRank, CommunityID) plus cheap inline degree/boundary computation. Three
+// parts: key entities (structural hubs/bridges), cross-cutting edges (boundary
+// crossers), and templated orientation questions. See
+// internal/graph/orientation.go for the analysis.
+//
+// Per-repo: each repo in scope gets its own analysis block (communities and
+// centrality are repo-local). Optional caps: top_entities, top_edges,
+// max_questions (all default to the production values in
+// graph.DefaultOrientationOptions).
+func (s *Server) handleOrient(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	_, lg, errRes := s.resolveAndGroup(req)
+	if errRes != nil {
+		return errRes, nil
+	}
+	repos := reposToConsider(lg, argStringSlice(req, "repo_filter"))
+	def := graph.DefaultOrientationOptions()
+	opts := graph.OrientationOptions{
+		TopEntities:  argInt(req, "top_entities", def.TopEntities),
+		TopEdges:     argInt(req, "top_edges", def.TopEdges),
+		MaxQuestions: argInt(req, "max_questions", def.MaxQuestions),
+	}
+	out := []map[string]any{}
+	for _, r := range repos {
+		if r.Doc == nil {
+			continue
+		}
+		res := graph.AnalyzeOrientation(r.Doc.Entities, r.Doc.Relationships, opts)
+		out = append(out, map[string]any{
+			"repo":                  r.Repo,
+			"key_entities":          res.KeyEntities,
+			"cross_cutting_edges":   res.CrossCutEdges,
+			"orientation_questions": res.Questions,
+		})
+	}
+	return jsonResult(out), nil
+}
+
+// ---------------------------------------------------------------------------
 // save_finding
 // ---------------------------------------------------------------------------
 

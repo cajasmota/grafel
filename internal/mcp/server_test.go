@@ -529,6 +529,8 @@ func TestToolNameSurface(t *testing.T) {
 		// renamed (5)
 		"archigraph_find", "archigraph_inspect", "archigraph_expand",
 		"archigraph_clusters", "archigraph_stats",
+		// #4290 graph-orientation analysis
+		"archigraph_orient",
 		// bundled (2 retained; cross_links re-wired)
 		"archigraph_enrichments", "archigraph_repairs",
 		// unchanged — trace included here as it was not renamed
@@ -691,8 +693,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_effective_contract (#3836 per-verb ViewSet effective contract).
 	// +1 archigraph_endpoint_posture (deploy-9 caps surfacing: error_flow/
 	// rate_limit/deprecation/feature_flag/grpc-auth posture).
-	if got := len(allRegisteredTools); got != 57 {
-		t.Errorf("expected 57 registered tools, got %d — update this count if tools are added/removed (added archigraph_endpoint_posture deploy-9 caps surfacing)", got)
+	// +1 archigraph_orient (#4290 graph-orientation analysis).
+	if got := len(allRegisteredTools); got != 58 {
+		t.Errorf("expected 58 registered tools, got %d — update this count if tools are added/removed (added archigraph_orient #4290 orientation analysis)", got)
 	}
 }
 
@@ -3145,6 +3148,7 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_trace":                {"group": "g", "source": "r1::a1", "target": "r1::a4"},
 		"archigraph_traces":               {"group": "g", "action": "list"},
 		"archigraph_clusters":             {"group": "g"},
+		"archigraph_orient":               {"group": "g"}, // #4290 orientation analysis
 		"archigraph_stats":                {"group": "g"},
 		"archigraph_enrichments":          {"group": "g", "action": "list"},
 		"archigraph_repairs":              {"group": "g", "action": "list"},
@@ -3252,8 +3256,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 57 {
-		t.Errorf("expected 57 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_endpoint_posture deploy-9 caps surfacing)", len(tools))
+	if len(tools) != 58 {
+		t.Errorf("expected 58 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_orient #4290 orientation analysis)", len(tools))
 	}
 
 	for _, st := range tools {

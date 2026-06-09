@@ -546,6 +546,24 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
 	), s.wrap("archigraph_clusters", s.handleListCommunities))
 
+	// #4290 — graph-orientation analysis. Reads Pass-4 attributes already on the
+	// graph (betweenness Centrality, PageRank, CommunityID) plus cheap inline
+	// degree/boundary computation to answer "where do I start reading this
+	// codebase?". Returns, per repo: key entities (structural hubs/bridges ranked
+	// by a betweenness+degree blend), cross-cutting edges (bridge communities /
+	// cross layer / cross file-type / peripheral->hub, with reasons), and
+	// templated orientation questions mined from ambiguous edges, bridge nodes,
+	// and isolated nodes. Caps overridable via top_entities/top_edges/max_questions.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_orient",
+		mcpapi.WithDescription("Orientation analysis: key entities, cross-cutting edges, orientation questions."),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithNumber("top_entities", mcpapi.DefaultNumber(15)),
+		mcpapi.WithNumber("top_edges", mcpapi.DefaultNumber(15)),
+		mcpapi.WithNumber("max_questions", mcpapi.DefaultNumber(12)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_orient", s.handleOrient))
+
 	// #2764 — Phase 1A effect classification. Returns the union of
 	// db/http/fs/mutation effects for the named entity, plus per-effect
 	// confidence (0..1) and sink primitive tags. Pure functions report
