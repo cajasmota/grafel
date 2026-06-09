@@ -242,7 +242,14 @@ func RunProcessFlowWithCompanions(doc *graph.Document, companions []*graph.Docum
 		if res.Root == nil {
 			continue
 		}
-		chain := primaryPath(res.Root)
+		// #4316 — choose the canonical linear chain with cross-repo awareness:
+		// when a fan-out offers both a dead-end consumer http_endpoint
+		// synthetic (FETCHES) and a phantom cross-repo continuation into the
+		// backend handler, follow the continuation so the persisted chain goes
+		// end-to-end (caller → handler → service) instead of dead-ending at the
+		// HTTP-call node. Falls back to leftmost primaryPath for pure intra-repo
+		// flows, so UI-state setter chains stay terminal (no over-chaining).
+		chain := primaryPathCrossRepo(res.Root, adj, byID)
 
 		// #754 — short chains are allowed when the chain traverses a
 		// FETCHES edge (cross-repo bridge) or a phantom cross-repo edge.
