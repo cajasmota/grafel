@@ -67,6 +67,41 @@ var (
 	reGetArg     = regexp.MustCompile(`\.get\(\s*([A-Z][A-Za-z0-9_]*)\s*[),]`)
 	// A bare TitleCase identifier (for matching describe labels against imports).
 	reIdentToken = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
+
+	// ── supertest e2e route-call resolution (issue #4351) ───────────────────
+	// NestJS/Express e2e specs exercise the app through HTTP via supertest:
+	//   request(app.getHttpServer()).post('/inspections/123/items').send(dto)
+	//   request(httpServer).get(`${ROUTE}/${id}`)...
+	// We capture the HTTP verb + the route argument so the resolve pass can
+	// match (verb, normalized-route) against the synthesized
+	// http_endpoint_definition entities and emit a TESTS edge from the e2e
+	// suite to the endpoint(s) it covers. Without this, e2e suites link (at
+	// best) to a class subject (#4343) and the endpoints they cover look
+	// untested.
+	//
+	// reSupertestCall matches `request(<anything>).<verb>(<route-arg>` — the
+	// route-arg group captures a single-quoted, double-quoted, or back-tick
+	// (template-literal) string. We do NOT require the `request(` and the
+	// verb call to be adjacent on the same line because specs frequently chain
+	// across lines; instead we first find each `request(` opener, then scan a
+	// bounded window for the first verb call. (See extractSupertestRouteCalls.)
+	// The route argument is either a quoted/back-tick string OR a bare
+	// identifier (e.g. `.post(ROUTE)`) that resolves via a local route const.
+	reSupertestVerbCall = regexp.MustCompile(
+		`\.(get|post|put|patch|delete|head|options)\s*\(\s*(` +
+			"`" + `[^` + "`" + `]*` + "`" + `|'[^']*'|"[^"]*"|[A-Za-z_$][\w$]*)`,
+	)
+	// reRequestOpener locates a supertest invocation start. Both bare
+	// `request(` and a `supertest(`-aliased form are recognised.
+	reRequestOpener = regexp.MustCompile(`\b(?:request|supertest)\s*\(`)
+	// reRouteConstDecl folds simple `const ROUTE = '/literal'` /
+	// `const ROUTE = "/literal"` declarations so a `${ROUTE}/${id}` template in
+	// a supertest call resolves to a concrete-ish path. Only literal string
+	// initialisers are captured (no concatenation / function calls) to stay
+	// conservative.
+	reRouteConstDecl = regexp.MustCompile(
+		`(?:^|[;\n])\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*('[^']*'|"[^"]*")`,
+	)
 )
 
 // Extract emits ONE linked test_suite entity per recognised unit-under-test in
@@ -115,6 +150,9 @@ func (e *jestExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 	imported := collectImportedSymbols(src)
 	subjects := resolveTestSubjects(src, imported)
 
+	// ── collect supertest e2e route calls (issue #4351) ──────────────────────
+	routeCalls := extractSupertestRouteCalls(src)
+
 	// Per-spec aggregate counts folded onto the suite(s).
 	caseCount := len(tests)
 	hookCount := len(hooks)
@@ -158,6 +196,21 @@ func (e *jestExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 		"hook_count", strconv.Itoa(hookCount),
 		"mock_count", strconv.Itoa(mockCount),
 	)
+	// #4351 — stamp the supertest route calls so the resolve pass
+	// (ResolveHTTPEndpointHandlers) can match (verb, normalized-route) against
+	// the synthesized http_endpoint_definition entities and emit TESTS edges
+	// from this e2e suite to the endpoints it covers. We attach the raw
+	// "VERB route" pairs (one per line) as a single property rather than
+	// emitting per-call entities, keeping the one-node-per-spec invariant from
+	// #4343. The actual endpoint resolution is deferred to resolve-time because
+	// only there is the cross-file http_endpoint_definition index available —
+	// the controller defining the route usually lives in a different file than
+	// the spec, and resolve-time resolution is merge-stable (it runs over the
+	// fully-merged entity table, the same place the call→definition linkage
+	// resolves).
+	if len(routeCalls) > 0 {
+		setProps(&ent, "e2e_route_calls", strings.Join(routeCalls, "\n"))
+	}
 	if len(subjects) > 0 {
 		setProps(&ent, "tests_target", strings.Join(subjects, ","))
 		for _, subj := range subjects {
@@ -291,6 +344,140 @@ func resolveTestSubjects(src string, imported map[string]bool) []string {
 	}
 
 	return ordered
+}
+
+// extractSupertestRouteCalls returns the de-duplicated set of "VERB route"
+// pairs invoked through supertest in a spec, e.g. ["POST /api/v1/items",
+// "GET /probe/buildings"]. The route is the raw argument string with quotes
+// stripped and simple `${CONST}` template substitutions folded from local
+// `const NAME = '/literal'` declarations; remaining `${expr}` params (path
+// IDs) are left intact for the resolver's structural normalizer to wildcard.
+//
+// Matching strategy: for each `request(` / `supertest(` opener we scan a
+// bounded window (the supertest chain rarely spans more than a few hundred
+// bytes) for the FIRST verb call and capture its route argument. This keeps a
+// `.set('Authorization', ...)` or `.send(dto)` in the chain from being
+// mistaken for the route call, and tolerates the chain breaking across lines.
+//
+// Only the route ARGUMENT is interpreted — no edges are emitted here; the
+// resolve pass owns endpoint matching so the linkage is merge-stable and
+// reuses the same path-normalization the call→definition resolver uses.
+func extractSupertestRouteCalls(src string) []string {
+	consts := collectRouteConsts(src)
+
+	seen := make(map[string]bool)
+	var out []string
+	openers := reRequestOpener.FindAllStringIndex(src, -1)
+	for _, op := range openers {
+		// Bounded forward window from the opener to find the verb call. 400
+		// bytes comfortably covers a multi-line supertest chain without
+		// bleeding into the next statement/test.
+		end := op[1] + 400
+		if end > len(src) {
+			end = len(src)
+		}
+		window := src[op[0]:end]
+		m := reSupertestVerbCall.FindStringSubmatch(window)
+		if m == nil {
+			continue
+		}
+		verb := strings.ToUpper(m[1])
+		route := normalizeRouteArg(m[2], consts)
+		if route == "" {
+			continue
+		}
+		key := verb + " " + route
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, key)
+	}
+	return out
+}
+
+// collectRouteConsts folds `const NAME = '/literal'` declarations into a
+// name→value map so `${NAME}` template substitutions in supertest route
+// arguments can be expanded. Only string-literal initialisers are recorded.
+func collectRouteConsts(src string) map[string]string {
+	out := map[string]string{}
+	for _, m := range reRouteConstDecl.FindAllStringSubmatch(src, -1) {
+		name := m[1]
+		val := stripQuote(m[2])
+		if name != "" && val != "" {
+			out[name] = val
+		}
+	}
+	return out
+}
+
+// normalizeRouteArg turns a captured supertest route argument (a quoted or
+// back-tick string, including surrounding quotes) into a route path. Simple
+// `${NAME}` substitutions resolve from the const map; unresolved `${...}`
+// expressions are kept verbatim so the resolver's structural normalizer can
+// wildcard them. Returns "" when the argument is not a usable route (e.g. an
+// absolute URL to a third-party host, or an empty/relative-less string).
+func normalizeRouteArg(arg string, consts map[string]string) string {
+	arg = strings.TrimSpace(arg)
+	// Bare identifier argument (e.g. `.post(ROUTE)`): resolve via the local
+	// route-const map; if unknown it is too ambiguous to use — skip.
+	if len(arg) > 0 && arg[0] != '\'' && arg[0] != '"' && arg[0] != '`' {
+		if v, ok := consts[arg]; ok {
+			return normalizeRouteArg("'"+v+"'", consts)
+		}
+		return ""
+	}
+	s := stripQuote(arg)
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	// Fold ${NAME} → const value when NAME is a known route const.
+	if strings.Contains(s, "${") {
+		s = reTemplateExpr.ReplaceAllStringFunc(s, func(match string) string {
+			inner := reTemplateExpr.FindStringSubmatch(match)
+			if len(inner) < 2 {
+				return match
+			}
+			name := strings.TrimSpace(inner[1])
+			if v, ok := consts[name]; ok {
+				return v
+			}
+			return match
+		})
+	}
+	// Collapse accidental duplicate slashes introduced by `${ROUTE}/...`
+	// folding where ROUTE already ended in `/`.
+	for strings.Contains(s, "//") && !strings.HasPrefix(s, "http://") && !strings.HasPrefix(s, "https://") {
+		s = strings.ReplaceAll(s, "//", "/")
+	}
+	// Only path-shaped routes are interpretable; an absolute URL to another
+	// host is not an in-repo endpoint and must be skipped.
+	if strings.HasPrefix(s, "http://") || strings.HasPrefix(s, "https://") {
+		return ""
+	}
+	if !strings.HasPrefix(s, "/") {
+		// Supertest routes are server-relative and start with '/'. Anything
+		// else (a bare path fragment, a variable that didn't fold) is too
+		// ambiguous to resolve — skip conservatively.
+		return ""
+	}
+	return s
+}
+
+// reTemplateExpr matches a `${expr}` substitution in a template literal.
+var reTemplateExpr = regexp.MustCompile(`\$\{([^}]*)\}`)
+
+// stripQuote removes a single layer of surrounding ', ", or ` from s.
+func stripQuote(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		q := s[0]
+		if (q == '\'' || q == '"' || q == '`') && s[len(s)-1] == q {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
 }
 
 // suiteEntityName namespaces a test_suite's entity name so it never collides

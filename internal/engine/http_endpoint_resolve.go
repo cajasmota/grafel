@@ -106,6 +106,9 @@ type ResolveHTTPEndpointStats struct {
 	// separately from emitted so an external DTO (third-party SDK) doesn't
 	// look like a bug in the new pass.
 	DTOHandlerEdgesUnresolved int
+	// #4351 — TESTS edges emitted from an e2e test_suite to the
+	// http_endpoint_definition it exercises via a supertest route-by-string call.
+	E2ERouteTestEdges int
 }
 
 // ResolveHTTPEndpointHandlers runs the Phase-2 post-pass over `merged`.
@@ -255,6 +258,9 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// stripped and ANY-verb is the only cross-verb match (see
 	// http_endpoint_match.go).
 	definitionByPath := make(map[string][]int, len(merged))
+	// #4351 — flat list of definition indices for the e2e route-test matcher,
+	// which scans every definition with the concrete-vs-template segment matcher.
+	var defIndices []int
 	for i := range merged {
 		r := &merged[i]
 		if r.Kind == httpEndpointDefinitionKind {
@@ -264,6 +270,7 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			for _, k := range endpointMatchKeys(propOr(r, "path", "")) {
 				definitionByPath[k] = append(definitionByPath[k], i)
 			}
+			defIndices = append(defIndices, i)
 		}
 	}
 
@@ -612,6 +619,15 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			}
 		}
 	}
+
+	// #4351 — link e2e HTTP route tests (supertest route-by-string) to the
+	// http_endpoint_definition they exercise. The Jest extractor stamps an
+	// `e2e_route_calls` property on the one-per-spec test_suite; here we resolve
+	// each (verb, route) against the definition index built above and emit a
+	// TESTS edge from the suite to each uniquely-matched endpoint. Runs at
+	// resolve-time (merge-stable, cross-file index available) and is
+	// conservative — only unique verb+route matches produce an edge.
+	stats.E2ERouteTestEdges = linkE2ERouteTestsToEndpoints(merged, definitionByPath, defIndices)
 
 	// Issue #1999 — DTO ↔ Handler bidirectional REFERENCES edges.
 	//
