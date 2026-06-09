@@ -531,6 +531,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_clusters", "archigraph_stats",
 		// #4290 graph-orientation analysis
 		"archigraph_orient",
+		// #4292 PR-scoped impact + cross-change merge-risk
+		"archigraph_pr_impact",
 		// bundled (2 retained; cross_links re-wired)
 		"archigraph_enrichments", "archigraph_repairs",
 		// unchanged — trace included here as it was not renamed
@@ -694,8 +696,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_endpoint_posture (deploy-9 caps surfacing: error_flow/
 	// rate_limit/deprecation/feature_flag/grpc-auth posture).
 	// +1 archigraph_orient (#4290 graph-orientation analysis).
-	if got := len(allRegisteredTools); got != 58 {
-		t.Errorf("expected 58 registered tools, got %d — update this count if tools are added/removed (added archigraph_orient #4290 orientation analysis)", got)
+	// +1 archigraph_pr_impact (#4292 PR-scoped impact + cross-change merge-risk).
+	if got := len(allRegisteredTools); got != 59 {
+		t.Errorf("expected 59 registered tools, got %d — update this count if tools are added/removed (added archigraph_pr_impact #4292 PR-impact/merge-risk)", got)
 	}
 }
 
@@ -3175,6 +3178,9 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_status":               {"group": "g"},
 		// PH5 (#2093): diff tool — repo/ref_a/ref_b all required.
 		"archigraph_diff_refs": {"group": "g", "repo": "r1", "ref_a": "main", "ref_b": "feat/x"},
+		// #4292: PR-impact tool. Single mode args; repo lookup fails gracefully
+		// (text result) in the test registry, which still exercises the wrapper.
+		"archigraph_pr_impact": {"group": "g", "repo": "r1", "base": "main", "head": "feat/x"},
 		// #2214 (epic #2207): 6 docgen staging tools. Pass no_git=true so the
 		// handler doesn't require a real git repo. group is required for most.
 		"archigraph_docgen_start_run": {"group": "g", "no_git": true},
@@ -3256,8 +3262,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 58 {
-		t.Errorf("expected 58 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_orient #4290 orientation analysis)", len(tools))
+	if len(tools) != 59 {
+		t.Errorf("expected 59 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_pr_impact #4292 PR-impact/merge-risk)", len(tools))
 	}
 
 	for _, st := range tools {

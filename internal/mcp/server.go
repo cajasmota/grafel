@@ -1070,6 +1070,24 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_diff_refs", s.handleDiffRefs))
 
+	// #4292 — diff/PR-scoped impact analysis + cross-change merge-risk. Single
+	// mode {base,head}: changed entities (via the diff_refs DiffDocs engine) ->
+	// impacted Pass-4 communities -> downstream blast radius (inbound BFS, the
+	// impact_radius traversal generalised to a seed set). Conflicts mode
+	// {refs:[...]}: each ref's impacted-community set intersected pairwise into a
+	// ranked merge-order/conflict triage. Core logic is pure (graph.AnalyzePRImpact
+	// / AnalyzeMergeRisk); refs are taken explicitly (offline, deterministic).
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_pr_impact",
+		mcpapi.WithDescription("PR impact + merge-risk: changes->communities->blast radius."),
+		mcpapi.WithString("repo", mcpapi.Required()),
+		mcpapi.WithString("base"),
+		mcpapi.WithString("head"),
+		mcpapi.WithArray("refs"),
+		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(3)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_pr_impact", s.handlePRImpact))
+
 	// archigraph_docgen_* — docgen-via-local-staging tools (epic #2207, issue #2214).
 	// start_run: create or resume a per-group staging run.
 	// status:    inspect in-flight run (files written + SHAs).
