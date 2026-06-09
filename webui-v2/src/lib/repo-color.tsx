@@ -65,24 +65,34 @@ function slugIndex(slug: string): number {
 }
 
 /**
- * Derive a comfortable HSL color pair for a repo slug beyond the curated 8.
- * Saturation is capped at 42% and lightness band is 55–68% (light theme) /
- * 35–50% (dark theme, rendered via CSS).  We can't detect theme in pure TS so
- * we output static HSL values tuned for the dark theme (dark is more common
- * in dev tools) and rely on a mild mismatch in light mode being acceptable.
+ * Derive an accessible HSL color pair for a repo slug beyond the curated 8.
+ *
+ * Contrast strategy (issue: repo-chip contrast):
+ *   We can't detect the active theme in pure TS, and a *translucent* chip
+ *   background composites differently over a light vs. dark surface — so a
+ *   single foreground can never clear AA in both themes against a translucent
+ *   tint. We therefore make the hash-derived chip background a FULLY OPAQUE
+ *   pale tint (high lightness, L≈82) so its rendered luminance is the same in
+ *   either theme, and pair it with a DARK, slightly-more-saturated text color
+ *   of the same hue (L≈20). That pair clears ~6:1 across the whole golden-ratio
+ *   hue wheel in both themes, while preserving per-repo hue identity.
+ *
+ *   Worst-case computed contrast across the hue wheel: ≈6.1:1 (light == dark,
+ *   because the opaque background removes theme dependence).
  */
 function hslDerived(slug: string): RepoColors {
   const idx = slugIndex(slug);
   const hue = ((idx * GOLDEN_RATIO) % 1) * 360;
-  // Saturation slightly varied (36–46%) to avoid monotony.
-  const sat = 36 + (idx % 5) * 2;
-  // Lightness in comfortable dark-theme band.
-  const L = 44 + (idx % 7);
-  const Ld = L - 8; // darker for border/ink
+  // Saturation varied (46–58%) to keep adjacent hues distinguishable.
+  const sat = 46 + (idx % 4) * 4;
+  const Lbg = 82; // pale, opaque tint — theme-independent luminance
+  const Lfg = 20; // dark text of the same hue
+  const satFg = Math.min(sat + 15, 90);
 
-  const bg = `hsl(${hue.toFixed(0)}, ${sat}%, ${L}%, 0.28)`;
-  const fg = `hsl(${hue.toFixed(0)}, ${(sat + 20).toFixed(0)}%, ${(L + 22).toFixed(0)}%)`;
-  const border = `hsl(${hue.toFixed(0)}, ${sat}%, ${Ld}%, 0.45)`;
+  const bg = `hsl(${hue.toFixed(0)}, ${sat}%, ${Lbg}%)`;
+  const fg = `hsl(${hue.toFixed(0)}, ${satFg.toFixed(0)}%, ${Lfg}%)`;
+  // Border: same dark hue at moderate opacity for a crisp edge.
+  const border = `hsl(${hue.toFixed(0)}, ${satFg.toFixed(0)}%, ${(Lfg + 14).toFixed(0)}%, 0.55)`;
   return { background: bg, foreground: fg, border };
 }
 

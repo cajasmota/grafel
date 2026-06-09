@@ -55,16 +55,19 @@
   --pastel-9:  #b8c0e0;   /* cornflower */
   --pastel-10: #f7caa3;   /* apricot  */
 
-  --pastel-1-ink:  #3e7fa3;
-  --pastel-2-ink:  #4e8f6e;
-  --pastel-3-ink:  #c47a3a;
-  --pastel-4-ink:  #b66078;
-  --pastel-5-ink:  #7960b0;
-  --pastel-6-ink:  #b08f36;
-  --pastel-7-ink:  #5d8e62;
-  --pastel-8-ink:  #c2718a;
-  --pastel-9-ink:  #6573b3;
-  --pastel-10-ink: #c08741;
+  /* ink = chip text. Darkened so foreground clears WCAG AA (~4.5:1) over the
+     pastel @28%-over-surface chip background in light theme (issue: repo-chip
+     contrast). Each retains its hue so chips stay per-repo distinct. */
+  --pastel-1-ink:  #366f8f;   /* 4.77:1 */
+  --pastel-2-ink:  #40765b;   /* 4.77:1 */
+  --pastel-3-ink:  #965d2c;   /* 4.79:1 */
+  --pastel-4-ink:  #9b5266;   /* 4.76:1 */
+  --pastel-5-ink:  #735ba7;   /* 4.75:1 */
+  --pastel-6-ink:  #816928;   /* 4.80:1 */
+  --pastel-7-ink:  #4b734f;   /* 4.76:1 */
+  --pastel-8-ink:  #96586b;   /* 4.75:1 */
+  --pastel-9-ink:  #59659e;   /* 4.76:1 */
+  --pastel-10-ink: #8c632f;   /* 4.78:1 */
 
   /* -- Skeleton / loading placeholders -- */
   --skeleton-base:      #e2e6ed;   /* noticeably darker than surface-2 (#f3f5f8) */
