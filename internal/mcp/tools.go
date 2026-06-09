@@ -568,7 +568,7 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	}
 	var err error
 	_ = err // retained for symmetry with other handlers
-	_, lg, errRes := s.resolveAndGroup(req)
+	resolvedGroup, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -605,15 +605,28 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 	// Priority order:
 	//   1. repo_filter set explicitly → use it (existing behaviour).
 	//   2. cross_repo=true           → search all repos (new opt-in).
-	//   3. neither, cwd resolves     → filter to the cwd-resolved repo.
-	//   4. neither, cwd unresolved   → search all repos (graceful fallback).
+	//   3. neither, cwd resolves to THIS group → filter to the cwd-resolved repo.
+	//   4. neither, cwd unresolved / other group → search all repos in the
+	//      resolved group (graceful fallback).
+	//
+	// #4286: the cwd-repo default must only apply when the cwd actually resolves
+	// to the group we're serving. resolveAndGroup honors an explicit `group=`
+	// param, so the served group can differ from the cwd's group (e.g. caller is
+	// inside repo of group A but passes group=B). In that case ResolveCWD returns
+	// a RepoSlug from group A that does NOT exist in group B's loaded repo set,
+	// so reposToConsider yields zero repos → "no repos loaded for this group".
+	// The other group-scoped tools (search_entities, neighbors, stats, …) never
+	// pin to a cwd repo, so they serve an explicit group correctly. We align find
+	// with them: skip the cwd-repo default unless the cwd's group matches the
+	// served group.
 	if len(repoFilter) == 0 && !crossRepo {
 		cwd := s.inferCWD(req)
 		cwdRes := ResolveCWD(s.State, cwd)
-		if cwdRes.RepoSlug != "" {
+		if cwdRes.RepoSlug != "" && cwdRes.Group == resolvedGroup {
 			repoFilter = []string{cwdRes.RepoSlug}
 		}
-		// If cwd doesn't resolve, repoFilter stays nil → reposToConsider returns all.
+		// If cwd doesn't resolve, or resolves to a different group, repoFilter
+		// stays nil → reposToConsider returns all repos in the served group.
 	}
 
 	repos := reposToConsider(lg, repoFilter)
