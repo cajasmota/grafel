@@ -294,6 +294,28 @@ const (
 	// key (`t(keyVar)`, interpolated) or a non-i18n `_('x')` (lodash) /
 	// unrelated `t(...)` emits NO node/edge. See internal/extractor/translation_key.go.
 	EntityKindTranslationKey EntityKind = "SCOPE.TranslationKey"
+
+	// #4306 (Layer 1 of epic #4294): deterministic markdown documentation
+	// ingestion. Two new structural kinds model the prose layer of a repo so
+	// the graph can answer "where is X documented?" and "what does this doc
+	// describe?". Emission is OPT-IN (--ingest-docs, default OFF) and FULLY
+	// DETERMINISTIC — no LLM calls, no network.
+	//
+	// EntityKindMarkdownDocument represents ONE markdown file (a *.md). One
+	// entity per discovered, non-vendored markdown file. SourceFile is the
+	// repo-relative path; StartLine/EndLine span the whole file.
+	//
+	// EntityKindSection represents ONE heading-delimited block within a
+	// markdown document — the heading line plus all body text up to the next
+	// heading of equal-or-shallower depth. Sections nest by heading depth via
+	// CONTAINS (Document → top-level Section → sub-Section). The section's
+	// source span (StartLine/EndLine) is preserved so get_source can quote it.
+	//
+	// Distinct from the pre-existing SCOPE.Document / SCOPE.Heading kinds,
+	// which were reserved for an unrelated detector taxonomy and carry no
+	// hierarchy/span contract.
+	EntityKindMarkdownDocument EntityKind = "SCOPE.MarkdownDocument"
+	EntityKindSection          EntityKind = "SCOPE.Section"
 )
 
 // AllEntityKinds returns every EntityKind that archigraph extractors are
@@ -377,6 +399,9 @@ func AllEntityKinds() []EntityKind {
 		// [sbom] synthetic package convergence node (child of #3628).
 		EntityKindPackage,
 		EntityKindTranslationKey,
+		// #4306 deterministic markdown doc ingestion (opt-in):
+		EntityKindMarkdownDocument,
+		EntityKindSection,
 	}
 }
 
@@ -1213,6 +1238,19 @@ const (
 	// synthetically from the EXTENDS walk + pack so it works before any
 	// indexer-side emission; an indexer producer MAY later materialise it.
 	RelationshipKindInherits RelationshipKind = "INHERITS"
+
+	// #4306 (Layer 1 of epic #4294): deterministic markdown doc ingestion.
+	//   MENTIONS : SCOPE.Section → code entity. Emitted when a section's body
+	//              text contains an identifier token that EXACTLY matches a
+	//              code entity's Name or QualifiedName in the current index
+	//              (word-boundary, case-sensitive). Precision-first: keywords,
+	//              very common short words, and sub-threshold-length tokens are
+	//              skipped, and a token that matches more than one distinct
+	//              entity is dropped (ambiguous → no edge). Under-linking is
+	//              preferred to noisy links. OPT-IN (--ingest-docs), no LLM.
+	//              The document→section hierarchy uses the existing CONTAINS
+	//              edge (RelationshipKindContains); no new hierarchy kind.
+	RelationshipKindMentions RelationshipKind = "MENTIONS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -1366,6 +1404,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindTypedAs,
 		// #3834 (epic #3829) member-granularity inheritance edge:
 		RelationshipKindInherits,
+		// #4306 deterministic markdown doc ingestion (opt-in):
+		RelationshipKindMentions,
 	}
 }
 

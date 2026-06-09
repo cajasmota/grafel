@@ -37,6 +37,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 	idiff "github.com/cajasmota/archigraph/internal/indexer/diff"
+	"github.com/cajasmota/archigraph/internal/ingest"
 	"github.com/cajasmota/archigraph/internal/install/detect"
 	"github.com/cajasmota/archigraph/internal/module"
 	"github.com/cajasmota/archigraph/internal/progress"
@@ -182,6 +183,16 @@ type Indexer struct {
 	// Issue #1381 — module extraction via path rollup.
 	moduleMarkers module.MarkerSet
 
+	// ingestDocs enables deterministic markdown documentation ingestion
+	// (#4306, Layer 1 of epic #4294). OFF by default. When true, after the
+	// code graph is built the indexer discovers in-repo *.md files, parses
+	// each into a SCOPE.MarkdownDocument node + heading-delimited SCOPE.Section
+	// nodes (CONTAINS hierarchy), and links section text to code entities by
+	// EXACT identifier-token match (MENTIONS edges). Fully deterministic — no
+	// LLM calls, no network. When false this whole subsystem is skipped and
+	// adds zero overhead. Also honored via env ARCHIGRAPH_INGEST_DOCS=1|true.
+	ingestDocs bool
+
 	// singleModuleLabel, when non-empty, forces every entity in this repo into
 	// ONE module row instead of the per-directory path rollup. It is set for
 	// PLAIN (non-monorepo) repos so the per-module progress + Group-by-Module
@@ -240,6 +251,26 @@ func WithExportJSON(export bool) IndexOption {
 // directory skipped at walk-time is printed to stderr with its rule.
 func WithPrintSkipped(enabled bool) IndexOption {
 	return func(i *Indexer) { i.printSkipped = enabled }
+}
+
+// WithIngestDocs toggles deterministic markdown documentation ingestion
+// (#4306, Layer 1 of epic #4294). Default OFF. When true the indexer discovers
+// in-repo *.md files and emits SCOPE.MarkdownDocument + SCOPE.Section nodes
+// (CONTAINS hierarchy) plus exact-match MENTIONS edges to code entities. Fully
+// deterministic — no LLM calls, no network. Wired from the --ingest-docs CLI
+// flag; also honored via env ARCHIGRAPH_INGEST_DOCS.
+func WithIngestDocs(enabled bool) IndexOption {
+	return func(i *Indexer) { i.ingestDocs = enabled }
+}
+
+// ingestDocsEnvEnabled reports whether ARCHIGRAPH_INGEST_DOCS requests doc
+// ingestion (accepts "1", "true", "yes", "on"; case-insensitive).
+func ingestDocsEnvEnabled() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ARCHIGRAPH_INGEST_DOCS"))) {
+	case "1", "true", "yes", "on":
+		return true
+	}
+	return false
 }
 
 // WithAdditionalSkipDirs extends the hard-coded walk-time skip list
@@ -381,6 +412,14 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 	}
 	for _, opt := range opts {
 		opt(idx)
+	}
+
+	// #4306: env fallback for the opt-in markdown-ingestion flag, so the
+	// subsystem can be exercised without threading a new field through the
+	// daemon RPC proto (deploy-deferred). The CLI --ingest-docs flag and any
+	// WithIngestDocs(true) option take precedence; the env var only flips it ON.
+	if !idx.ingestDocs && ingestDocsEnvEnabled() {
+		idx.ingestDocs = true
 	}
 
 	doc, err := idx.Run(context.Background(), absRepo)
@@ -1304,6 +1343,25 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// have been emitted by a Wave 3-5 path) are also caught.
 	if ePruned, rPruned := extractors.PruneMigrationEntities(doc); ePruned > 0 && verbose() {
 		fmt.Fprintf(os.Stderr, "migration-prune: dropped %d entities + %d relationships anchored to Django migration files\n", ePruned, rPruned)
+	}
+
+	// #4306 (Layer 1 of epic #4294): deterministic markdown documentation
+	// ingestion. OPT-IN (--ingest-docs / ARCHIGRAPH_INGEST_DOCS), default OFF.
+	// Runs AFTER buildDocument + incremental merge so the code-entity name
+	// index used for exact-mention linking reflects the full, ID-stamped graph,
+	// and the emitted doc/section nodes participate in Pass 4 graph algorithms
+	// and the on-disk write. Fully deterministic: no LLM calls, no network.
+	// When the flag is off this block is skipped entirely (zero overhead).
+	if i.ingestDocs {
+		mdFiles := ingest.DiscoverMarkdown(allFiles)
+		ingRes := ingest.Ingest(absRepo, i.repoTag, mdFiles, doc.Entities)
+		doc.Entities = append(doc.Entities, ingRes.Entities...)
+		doc.Relationships = append(doc.Relationships, ingRes.Relationships...)
+		if verbose() {
+			fmt.Fprintf(os.Stderr,
+				"ingest-docs: %d markdown files → %d documents, %d sections, %d mentions (deterministic, no LLM)\n",
+				ingRes.FilesRead, ingRes.Documents, ingRes.Sections, ingRes.Mentions)
+		}
 	}
 	// Drop the per-pass record slices now that buildDocument has produced
 	// the merged + deduped graph.Entity / graph.Relationship slices. These
