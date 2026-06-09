@@ -317,7 +317,13 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 				// both id and name so the signal reaches the agent. Without
 				// this, find_callers returns N-1 callers for any model whose
 				// admin.py / __init__.py source isn't an indexed entity.
-				if !isFileRefEdge {
+				//
+				// #4288: extend the same synthetic-fallback to projected semantic
+				// predecessors whose far side is unresolved (symmetric with the
+				// callees-side JOINS_COLLECTION fix). inspect's semantic_edges emits
+				// these regardless of resolution; neighbors must not silently drop
+				// them.
+				if !isFileRefEdge && !isSemanticEdgeKind(dk) {
 					continue
 				}
 				name := id
@@ -631,6 +637,33 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 				e = mroExternal[id]
 			}
 			if e == nil {
+				// #4288: a semantic out-edge (JOINS_COLLECTION, GRAPH_RELATES,
+				// DEPENDS_ON_SERVICE, …) may point at a far-side id that has no
+				// backing indexed entity — the real upvate-core case is a
+				// DataAccess node JOINS_COLLECTION-ing a class id (Class:Inspection)
+				// that was never stamped as an Entity. inspect's semantic_edges
+				// section emits that edge regardless of target resolution; neighbors
+				// previously DROPPED it here, producing the inspect-vs-neighbors gap.
+				// Emit a synthetic callee using the id as both id and name so the
+				// semantic neighbour surfaces with its edge_kind, exactly like the
+				// callers-side file-ref synthetic fallback (#2015). Pure-structural
+				// or CALLS targets that fail to resolve are NOT fabricated — only
+				// the projected semantic kinds, to avoid leaking dangling refs.
+				dk := discoveredVia[id]
+				if !isSemanticEdgeKind(dk) {
+					continue
+				}
+				name := id
+				if i := strings.LastIndexByte(name, '/'); i >= 0 {
+					name = name[i+1:]
+				}
+				callees = append(callees, callee{
+					EntityID: prefixedID(r.Repo, id),
+					Name:     name,
+					HopCount: d,
+					EdgeKind: dk,
+					isTest:   isTestFileMCP(id),
+				})
 				continue
 			}
 			c := callee{
