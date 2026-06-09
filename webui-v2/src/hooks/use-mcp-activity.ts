@@ -131,6 +131,21 @@ export function useMCPActivity(enabled = true): UseMCPActivityReturn {
     let reconnectAttempt = 0;
     let reconnectTimer: ReturnType<typeof setTimeout> | null = null;
     let isFirstConnect = true;
+    // #4319 — guard against a backoff-reset busy-loop. If the daemon emits the
+    // `connected` event and then the stream drops again immediately (a flapping
+    // server), resetting reconnectAttempt to 0 on every `connected` would pin
+    // the backoff at its 1s floor and hammer fetch(/history) + EventSource every
+    // ~1s forever. We only reset the backoff once a connection has proven STABLE
+    // (stayed open past STABLE_MS), so a flapping daemon decays to the 5s cap
+    // instead of a tight reconnect storm.
+    const STABLE_MS = 10_000;
+    let stableTimer: ReturnType<typeof setTimeout> | null = null;
+    const clearStableTimer = () => {
+      if (stableTimer !== null) {
+        clearTimeout(stableTimer);
+        stableTimer = null;
+      }
+    };
 
     const clearReconnectTimer = () => {
       if (reconnectTimer !== null) {
@@ -140,6 +155,9 @@ export function useMCPActivity(enabled = true): UseMCPActivityReturn {
     };
 
     const closeES = () => {
+      // #4319 — a connection is being torn down; cancel the pending "proven
+      // stable" reset so a flapping stream can never reset the backoff.
+      clearStableTimer();
       if (es) {
         // Drop handlers before closing so a late error can't schedule a
         // reconnect against a connection we're tearing down (no ES leaks).
@@ -201,10 +219,18 @@ export function useMCPActivity(enabled = true): UseMCPActivityReturn {
       esRef.current = conn;
 
       conn.addEventListener("connected", () => {
-        // A successful (re)connect resets the backoff progression.
-        reconnectAttempt = 0;
         isFirstConnect = false;
         setState((prev) => ({ ...prev, connected: true }));
+        // #4319 — do NOT reset the backoff here. A flapping daemon that emits
+        // `connected` then immediately drops would otherwise reset to the 1s
+        // floor every cycle and busy-loop fetch(/history)+EventSource. Only
+        // reset once the connection has held open past STABLE_MS, so a flapping
+        // stream decays to the 5s cap instead of hammering the endpoint.
+        clearStableTimer();
+        stableTimer = setTimeout(() => {
+          stableTimer = null;
+          if (!cancelled) reconnectAttempt = 0;
+        }, STABLE_MS);
       });
 
       // The Go backend emits this event as "mcp_activity"
@@ -259,6 +285,7 @@ export function useMCPActivity(enabled = true): UseMCPActivityReturn {
     return () => {
       cancelled = true;
       clearReconnectTimer();
+      clearStableTimer();
       closeES();
       esRef.current = null;
     };

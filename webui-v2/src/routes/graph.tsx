@@ -60,6 +60,37 @@ const COLOR_MODES: { id: ColorMode; label: string }[] = [
   { id: "degree", label: "Degree" },
 ];
 
+/**
+ * #4319 — SUPER-HUB DEGREE CAP (graph-view freeze fix).
+ *
+ * A single structural aggregate node can be incident to a huge share of the
+ * graph — e.g. the `core-backend-v3` Module is connected to ~every entity via
+ * CONTAINS (degree ~15,613 on the upvate-v3 graph), and new aggregate
+ * "god-nodes" (AggregationBuilder, betweenness ~141k) form similar mega-stars.
+ *
+ * cosmos.gl's force-directed layout does O(edges) work PER TICK (the link
+ * spring is evaluated for every link every frame), and a single node with tens
+ * of thousands of incident edges both (a) dominates that per-tick cost and (b)
+ * creates an extreme force imbalance that makes the layout thrash and never
+ * settle — pinning the main thread and FREEZING the page.
+ *
+ * Such a node is also visually useless: a 15k-edge hairball star conveys no
+ * structure. So we EXCLUDE any node whose incident-edge count (in the currently
+ * rendered edge set) exceeds HUB_DEGREE_CAP, and drop its incident edges, before
+ * the data ever reaches the cosmos canvas. This is a pure pre-render filter:
+ *
+ *   • Normal graphs are untouched — no real entity approaches ~2k incident
+ *     edges; the cap only ever trips on pathological structural aggregates.
+ *   • The count of pruned hubs is surfaced in the LOD badge so the omission is
+ *     visible and explainable, never silent.
+ *   • The canvas stays a pure renderer (it caps nothing itself); the transform
+ *     lives here alongside the existing edge-kind filter.
+ *
+ * The cap is generous (well above any sane real degree) so it degrades ONLY the
+ * pathological mega-stars and never a legitimately well-connected hub.
+ */
+const HUB_DEGREE_CAP = 2000;
+
 export default function GraphScreen() {
   const { groupId = "demo" } = useParams();
   const theme = useAppStore((st) => st.theme);
@@ -164,14 +195,42 @@ export default function GraphScreen() {
   }, [s]);
 
   // Edge-kind filter applied client-side (kinds are cheap to filter locally).
-  const edges = useMemo(() => {
+  const kindFilteredEdges = useMemo(() => {
     if (!data) return [];
     // Fast path: every selectable kind enabled → no filtering needed.
     if (s.enabledEdgeKinds.size === ALL_EDGE_KINDS.length) return data.edges;
     return data.edges.filter((e) => s.enabledEdgeKinds.has(e.kind as EdgeKind));
   }, [data, s.enabledEdgeKinds]);
 
-  const nodes = data?.nodes ?? [];
+  const allNodes = data?.nodes ?? [];
+
+  // ── #4319 — prune pathological super-hub nodes (see HUB_DEGREE_CAP) ───────────
+  // Count each node's incident edges in the CURRENTLY RENDERED edge set (after
+  // the edge-kind filter), then drop any node above the cap together with its
+  // incident edges, so cosmos.gl never sees a 15k-edge star that freezes the
+  // layout. Computed from the rendered edges (not the daemon `degree`) so it
+  // respects the user's edge-kind toggles. No-op on normal graphs.
+  const { nodes, edges, prunedHubCount } = useMemo(() => {
+    const incident = new Map<string, number>();
+    for (const e of kindFilteredEdges) {
+      incident.set(e.source, (incident.get(e.source) ?? 0) + 1);
+      incident.set(e.target, (incident.get(e.target) ?? 0) + 1);
+    }
+    const prunedIds = new Set<string>();
+    for (const n of allNodes) {
+      if ((incident.get(n.id) ?? 0) > HUB_DEGREE_CAP) prunedIds.add(n.id);
+    }
+    if (prunedIds.size === 0) {
+      return { nodes: allNodes, edges: kindFilteredEdges, prunedHubCount: 0 };
+    }
+    return {
+      nodes: allNodes.filter((n) => !prunedIds.has(n.id)),
+      edges: kindFilteredEdges.filter(
+        (e) => !prunedIds.has(e.source) && !prunedIds.has(e.target),
+      ),
+      prunedHubCount: prunedIds.size,
+    };
+  }, [allNodes, kindFilteredEdges]);
 
   // ── monorepo-aware default coloring/grouping (Fix #1532-1) ───────────────────
   // A monorepo is a single repo split into many modules. Repo grouping there is
@@ -330,9 +389,15 @@ export default function GraphScreen() {
     if (!node) exitFocus();
   };
 
-  const lodLabel = `${s.lod.toUpperCase()}  ${nodes.length.toLocaleString()}/${(
-    data?.totalNodeCount ?? nodes.length
-  ).toLocaleString()}`;
+  // #4319 — note any pruned super-hubs in the LOD badge so the omission is
+  // visible (e.g. "… · −1 hub") rather than a silent drop.
+  const lodLabel =
+    `${s.lod.toUpperCase()}  ${nodes.length.toLocaleString()}/${(
+      data?.totalNodeCount ?? nodes.length
+    ).toLocaleString()}` +
+    (prunedHubCount > 0
+      ? ` · −${prunedHubCount} hub${prunedHubCount === 1 ? "" : "s"}`
+      : "");
 
   // Edge-kind filters count as "active" when they deviate from the default-on
   // set (structural kinds ON, semantic kinds OFF): each structural kind turned
