@@ -3,6 +3,7 @@
 package transport
 
 import (
+	"context"
 	"net"
 	"os/user"
 	"strings"
@@ -10,6 +11,19 @@ import (
 
 	"github.com/Microsoft/go-winio"
 )
+
+// maxDialTimeout caps the wall-clock time a single named-pipe dial may take
+// before failing fast. The Unix path relies on net.DialTimeout(addr, timeout)
+// which is strictly bounded by the supplied timeout; this is the Windows
+// equivalent and exists so that a non-positive (zero/negative) timeout from a
+// caller can never degrade into go-winio's silent 2 s default — or, worse, an
+// unbounded ERROR_PIPE_BUSY retry loop — when no daemon is listening.
+//
+// All real callers pass an explicit positive timeout (2 s / 1 s / 200 ms — see
+// internal/daemon/client and internal/daemon/service); this constant only
+// guards the degenerate case so every CLI command fails fast when the daemon
+// is down, matching the Unix ENOENT-fast-fail behaviour. See issue #4304.
+const maxDialTimeout = 2 * time.Second
 
 // WindowsPipeName returns the canonical named-pipe path for the current user.
 // Form: \\.\pipe\archigraph-daemon-<username>
@@ -50,10 +64,26 @@ func listen(addr string) (net.Listener, error) {
 	return &statsListener{Listener: l}, nil
 }
 
-// dialTimeout dials a Windows named pipe at addr with the given timeout.
-// Returns a stats-tracked connection.
+// dialTimeout dials a Windows named pipe at addr, bounded by timeout.
+//
+// This mirrors the Unix path's net.DialTimeout("unix", addr, timeout): the dial
+// must fail fast (within timeout) when no daemon is listening rather than block.
+// We drive go-winio via an explicit context deadline we fully own — instead of
+// winio.DialPipe(addr, &timeout), whose nil/zero handling would silently fall
+// back to a 2 s default — so the bound is always honoured.
+//
+// A non-positive timeout is clamped to maxDialTimeout so a degenerate caller
+// can never produce an already-expired context that yields a confusing
+// "context deadline exceeded" before a single connect attempt, nor an
+// unbounded retry. See issue #4304.
 func dialTimeout(addr string, timeout time.Duration) (net.Conn, error) {
-	c, err := winio.DialPipe(addr, &timeout)
+	if timeout <= 0 {
+		timeout = maxDialTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	defer cancel()
+
+	c, err := winio.DialPipeContext(ctx, addr)
 	if err != nil {
 		return nil, err
 	}
