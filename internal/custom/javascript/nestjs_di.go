@@ -85,6 +85,39 @@ var nestUseRoleMap = map[string]string{
 	"Pipes":        "pipe",
 }
 
+// nestAppTokenRole maps a NestJS global cross-cutting DI token (from
+// '@nestjs/core') to the di_role of the class it binds app-wide. These tokens
+// register a guard/interceptor/filter/pipe globally via the object-form
+// provider shape { provide: APP_*, useClass|useExisting|useFactory: Impl } in a
+// module's providers array (#4329). The bound class otherwise looks unused
+// because the only inbound edge would dangle from the phantom magic token.
+var nestAppTokenRole = map[string]string{
+	"APP_GUARD":       "guard",
+	"APP_INTERCEPTOR": "interceptor",
+	"APP_FILTER":      "filter",
+	"APP_PIPE":        "pipe",
+}
+
+// nestGlobalMethodRole maps an app.useGlobal*() bootstrap call (typically in
+// main.ts) to the di_role of the class it binds app-wide (#4329).
+var nestGlobalMethodRole = map[string]string{
+	"useGlobalGuards":       "guard",
+	"useGlobalInterceptors": "interceptor",
+	"useGlobalFilters":      "filter",
+	"useGlobalPipes":        "pipe",
+}
+
+// nestAppEntityName is the synthetic owner name for app-level global wiring
+// emitted from a bootstrap file's app.useGlobal*() calls.
+const nestAppEntityName = "app"
+
+// reNestUseGlobal captures the head of an app.useGlobal*( call. Group 1 is the
+// method name; the argument list is read with balanced-paren scanning from the
+// captured '(' so nested calls like new ValidationPipe({...}) are not truncated.
+var reNestUseGlobal = regexp.MustCompile(
+	`\.\s*(useGlobalGuards|useGlobalInterceptors|useGlobalFilters|useGlobalPipes)\s*\(`,
+)
+
 // extractNestDIEdges scans a NestJS source file and returns the DI edges grouped
 // by the bare entity name they should attach to (the FromID side for
 // INJECTED_INTO/USES on a class, the module name for BINDS). The caller merges
@@ -251,10 +284,110 @@ func extractNestDIEdges(src string) map[string][]types.RelationshipRecord {
 					"via":          "nestjs_provider_token",
 				},
 			})
+
+			// Global cross-cutting DI mounts: { provide: APP_*, useClass|…: Impl }
+			// binds the impl class app-wide (#4329). The token-form BINDS above
+			// dangles from the phantom magic token, so without this the impl class
+			// (guard/interceptor/filter/pipe) looks orphan / dead. Emit a
+			// module → impl USES edge marked global so the app-wide scope is
+			// queryable and the class is connected to a real source entity.
+			if role, ok := nestAppTokenRole[token]; ok {
+				add(module, types.RelationshipRecord{
+					FromID: module,
+					ToID:   impl,
+					Kind:   string(types.RelationshipKindUses),
+					Properties: map[string]string{
+						"framework": "nestjs",
+						"di_role":   role,
+						"di_scope":  "global",
+						"di_token":  token,
+						"global":    "true",
+						"module":    module,
+						"via":       "nestjs_app_token",
+					},
+				})
+			}
 		}
 	}
 
+	// ---- Bootstrap global wiring: app.useGlobal*() -----------------------
+	// In main.ts the app instance binds guards/interceptors/filters/pipes
+	// app-wide via app.useGlobalGuards(...) etc. These have no owning class or
+	// module, so the edge is hung off a synthetic `app` entity (emitted by the
+	// caller when global wiring is present) and points at the bound class.
+	for owner, r := range extractNestGlobalWiring(src) {
+		out[owner] = append(out[owner], r...)
+	}
+
 	return out
+}
+
+// extractNestGlobalWiring returns app.useGlobal*() USES edges keyed by the
+// synthetic app-owner name (#4329). Each call arg that names a class — bare
+// `Foo` or `new Foo(...)` — yields an `app` USES <class> edge marked global.
+func extractNestGlobalWiring(src string) map[string][]types.RelationshipRecord {
+	out := map[string][]types.RelationshipRecord{}
+	for _, m := range reNestUseGlobal.FindAllStringSubmatchIndex(src, -1) {
+		method := src[m[2]:m[3]]
+		role := nestGlobalMethodRole[method]
+		open := m[1] - 1 // index of the '(' captured at the end of the match
+		args := nestBalanced(src, open, '(', ')')
+		if args == "" {
+			continue
+		}
+		seen := map[string]bool{}
+		for _, cls := range nestGlobalArgClasses(args) {
+			if seen[cls] {
+				continue
+			}
+			seen[cls] = true
+			out[nestAppEntityName] = append(out[nestAppEntityName], types.RelationshipRecord{
+				FromID: nestAppEntityName,
+				ToID:   cls,
+				Kind:   string(types.RelationshipKindUses),
+				Properties: map[string]string{
+					"framework": "nestjs",
+					"di_role":   role,
+					"di_scope":  "global",
+					"global":    "true",
+					"via":       "nestjs_use_global",
+				},
+			})
+		}
+	}
+	return out
+}
+
+// nestGlobalArgClasses returns the PascalCase class identifiers referenced in an
+// app.useGlobal*() argument list. It handles `Foo`, `new Foo(...)`, and
+// multiple comma-separated args, ignoring config-object option keys by only
+// taking the leading identifier of each top-level argument.
+func nestGlobalArgClasses(args string) []string {
+	var out []string
+	for _, raw := range nestSplitParams(args) {
+		a := strings.TrimSpace(raw)
+		if a == "" {
+			continue
+		}
+		a = strings.TrimPrefix(a, "new ")
+		a = strings.TrimSpace(a)
+		// Leaf identifier before any (, <, ., space.
+		if i := strings.IndexAny(a, " <([{.,"); i >= 0 {
+			a = a[:i]
+		}
+		a = strings.TrimSpace(a)
+		if a == "" || a[0] < 'A' || a[0] > 'Z' {
+			continue
+		}
+		out = append(out, a)
+	}
+	return out
+}
+
+// nestHasGlobalWiring reports whether src contains any app.useGlobal*() call,
+// so the caller knows to emit the synthetic `app` owner entity.
+func nestHasGlobalWiring(src string) bool {
+	return reNestUseGlobal.MatchString(src)
 }
 
 // nestClassInfo describes a class declaration span within a file.

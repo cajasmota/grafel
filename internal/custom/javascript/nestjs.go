@@ -478,6 +478,17 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 	// entity Name (consumer class, controller, route operation, or module).
 	diEdges := extractNestDIEdges(src)
 	if len(diEdges) > 0 {
+		// Bootstrap files (main.ts) bind cross-cutting providers app-wide via
+		// app.useGlobal*() but have no module/class entity to own those edges.
+		// Emit a synthetic `app` application entity so the global USES edges are
+		// retained and the bound classes are connected (#4329).
+		if nestHasGlobalWiring(src) {
+			appEnt := makeEntity(nestAppEntityName, "SCOPE.Pattern", "application",
+				file.Path, file.Language, 1)
+			setProps(&appEnt, "framework", "nestjs",
+				"provenance", "INFERRED_FROM_NESTJS_BOOTSTRAP")
+			addEntity(appEnt)
+		}
 		byName := make(map[string]int, len(entities))
 		for i := range entities {
 			// First entity wins per name (controllers/services are unique by
