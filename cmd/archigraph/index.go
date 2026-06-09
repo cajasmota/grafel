@@ -4039,6 +4039,14 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	if djangoFKRewrites > 0 {
 		fmt.Fprintf(os.Stderr, "resolver: django-string-fk rewrote=%d FK REFERENCES stubs\n", djangoFKRewrites)
 	}
+	// #4332 — Go cross-package CALLS resolution. Binds `pkg.Func()` edges
+	// stamped with go_call_pkg_dir + call_leaf to byPackageOperation[pkgDir][leaf].
+	// Runs after BuildIndex (needs the package-operation index) and before
+	// ReferencesEmbeddedWithAllowlist so the rewritten hex IDs count as resolved.
+	goCrossPkgCallRewrites := idx.ResolveGoCrossPackageCalls(merged)
+	if goCrossPkgCallRewrites > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: go-cross-package rewrote=%d CALLS targets\n", goCrossPkgCallRewrites)
+	}
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
 	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)

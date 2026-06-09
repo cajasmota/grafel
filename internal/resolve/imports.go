@@ -2208,6 +2208,70 @@ func ResolveGoInTreeImports(records []types.EntityRecord) int {
 	return rewrites
 }
 
+// ResolveGoCrossPackageCalls binds Go CALLS edges that target an exported
+// symbol in another in-tree package — `resolve.BuildIndex()` from a file in
+// internal/engine — to the callee's entity ID.
+//
+// Background (issue #4332): the Go extractor emits a selector call
+// `pkg.Func()` as a CALLS edge whose ToID is the BARE leaf name (`BuildIndex`),
+// dropping the `pkg` qualifier. A bare name resolves through the global byName
+// index, which goes ambiguous the moment two packages define a symbol of the
+// same name (`BuildIndex` in both internal/resolve and internal/symbols) — so
+// the edge is dropped and the callee package looks falsely uncalled. This is
+// the CALLS analogue of the IMPORTS under-resolution the in-tree import pass
+// (#1841) fixed.
+//
+// The extractor now stamps Properties["go_call_pkg_dir"] (the imported
+// package's directory, derived from the import path minus the module root)
+// and Properties["call_leaf"] (the bare callee name) on every such edge. This
+// pass reads those, looks up byPackageOperation[pkgDir][leaf] — the same
+// package-scoped operation index the resolver already builds and uses for
+// same-package cross-file calls — and rewrites the ToID to the exact callee.
+//
+// Conservative by construction:
+//   - Only edges carrying go_call_pkg_dir AND call_leaf participate.
+//   - Edges whose ToID is already a hex ID are left alone (idempotent).
+//   - A blank-string sentinel in byPackageOperation marks (pkgDir, leaf)
+//     collisions (e.g. build-tag variants); those are skipped, never guessed.
+//
+// Must run AFTER BuildIndex (needs byPackageOperation) and BEFORE the
+// embedded-reference resolver so the rewritten hex ID is seen as resolved.
+// Returns the number of edges rewritten.
+func (idx Index) ResolveGoCrossPackageCalls(records []types.EntityRecord) int {
+	if len(idx.byPackageOperation) == 0 {
+		return 0
+	}
+	rewrites := 0
+	for k := range records {
+		rec := &records[k]
+		for j := range rec.Relationships {
+			r := &rec.Relationships[j]
+			if r.Kind != "CALLS" || r.Properties == nil {
+				continue
+			}
+			pkgDir := r.Properties["go_call_pkg_dir"]
+			leaf := r.Properties["call_leaf"]
+			if pkgDir == "" || leaf == "" {
+				continue
+			}
+			if r.ToID == "" || isHexID(r.ToID) {
+				continue // already resolved
+			}
+			bucket, ok := idx.byPackageOperation[pkgDir]
+			if !ok {
+				continue
+			}
+			id, ok := bucket[leaf]
+			if !ok || id == "" { // miss or ambiguity sentinel
+				continue
+			}
+			r.ToID = id
+			rewrites++
+		}
+	}
+	return rewrites
+}
+
 // buildGoPkgDirIndex builds a map from Go package directory (e.g.
 // "internal/types") to the entity ID of a representative file in that package.
 // Only Go SCOPE.Component subtype="file" entities are considered. When multiple

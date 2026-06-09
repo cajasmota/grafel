@@ -114,7 +114,12 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	// resolution to the implementing struct is the resolver's job
 	// (refs.go interface-field dispatch lookup).
 	structFields := collectStructFieldTypes(root, file.Content)
-	funcEntities, fCount := extractFunctions(root, file.Content, file.Path, structFields)
+	// Issue #4332 — per-file map of in-tree package qualifier → package dir,
+	// so cross-package selector calls (`resolve.BuildIndex()`) can be stamped
+	// with the importing package directory and bound by the resolver instead
+	// of collapsing to an ambiguity-prone bare name.
+	inTreeQualifiers := buildGoInTreeQualifiers(root, file.Content, goModuleRoot(file.RepoRoot))
+	funcEntities, fCount := extractFunctions(root, file.Content, file.Path, structFields, inTreeQualifiers)
 	records = append(records, funcEntities...)
 	funcs = fCount
 
@@ -899,7 +904,7 @@ func collectIntraFileFuncNames(nodes []*sitter.Node, src []byte) map[string]stru
 // RelationshipRecord values extracted from call_expression nodes inside its
 // body. Methods additionally carry a DEPENDS_ON edge to the receiver type
 // so the graph can traverse from method back to its owning schema.
-func extractFunctions(root *sitter.Node, src []byte, filePath string, structFields map[string]map[string]string) ([]types.EntityRecord, int) {
+func extractFunctions(root *sitter.Node, src []byte, filePath string, structFields map[string]map[string]string, inTreeQualifiers map[string]string) ([]types.EntityRecord, int) {
 	importStems := collectImportStems(root, src)
 	nodes := findAll(root, "function_declaration", "method_declaration")
 
@@ -1036,7 +1041,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 		// Body-derived var types do NOT include closure-param shadowing — the
 		// per-call walker below maintains its own scope stack to disambiguate.
 		paramTypes = mergeVarTypes(paramTypes, collectBodyVarTypes(bodyOrNode, src))
-		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath, structFields, intraFileFuncs)
+		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath, structFields, intraFileFuncs, inTreeQualifiers)
 		// Rewrite FromID on each CALLS edge to the qualified Name so the
 		// edge source matches the entity ID downstream.
 		//
@@ -1164,7 +1169,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 // than bug-resolver — a v1 limitation documented in the comment above
 // (single-file confirmation at extraction time; cross-file resolution depends
 // on byPackageOperation being unambiguous).
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string, structFields map[string]map[string]string, intraFileFuncs map[string]struct{}) []types.RelationshipRecord {
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string, structFields map[string]map[string]string, intraFileFuncs map[string]struct{}, inTreeQualifiers map[string]string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -1286,6 +1291,19 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 				case operand != "":
 					if ty := lookup(operand); ty != "" {
 						rec.Properties = map[string]string{"receiver_type": ty, "line": callLine}
+					} else if dir := inTreeQualifiers[operand]; dir != "" {
+						// Issue #4332 — cross-package selector call. `operand` is an
+						// in-tree imported package qualifier (not a local var or
+						// receiver, since lookup(operand) missed), so this is
+						// `pkg.Exported(...)`. Stamp the imported package directory
+						// and the bare callee leaf so the resolver binds the edge
+						// to that package's byPackageOperation entry instead of
+						// falling back to an ambiguity-prone global bare-name match.
+						rec.Properties = map[string]string{
+							"go_call_pkg_dir": dir,
+							"call_leaf":       target,
+							"line":            callLine,
+						}
 					} else {
 						rec.Properties = map[string]string{"line": callLine}
 					}

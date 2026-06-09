@@ -53,8 +53,105 @@ package golang
 import (
 	"strings"
 
+	sitter "github.com/smacker/go-tree-sitter"
+
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// buildGoInTreeQualifiers returns a map from the package qualifier used in
+// selector calls (the identifier before the dot in `resolve.BuildIndex()`)
+// to the in-tree package directory (`internal/resolve`) for every in-tree
+// import in the file. moduleRoot is the go.mod module path; when empty (no
+// go.mod) the map is empty — external imports are never in-tree.
+//
+// The qualifier is the import alias when present (`r "github.com/o/p/internal/resolve"`
+// → qualifier "r"), else the last slash-segment of the import path
+// (`github.com/o/p/internal/resolve` → "resolve"). Only imports whose path
+// starts with moduleRoot+"/" are recorded — external packages resolve via the
+// ext: pathway and must not shadow an in-tree qualifier of the same leaf name.
+//
+// This map is consumed by extractCallRelationships to stamp a CALLS edge's
+// package qualifier so the resolver can bind a cross-package call back to the
+// imported package's directory (issue #4332) instead of dropping the
+// package qualifier and emitting an ambiguity-prone bare name.
+func buildGoInTreeQualifiers(root *sitter.Node, src []byte, moduleRoot string) map[string]string {
+	if moduleRoot == "" || root == nil {
+		return nil
+	}
+	out := make(map[string]string)
+	for _, spec := range findAll(root, "import_spec") {
+		pathNode := spec.ChildByFieldName("path")
+		if pathNode == nil {
+			count := int(spec.ChildCount())
+			for i := 0; i < count; i++ {
+				ch := spec.Child(i)
+				if ch.Type() == "interpreted_string_literal" || ch.Type() == "raw_string_literal" {
+					pathNode = ch
+					break
+				}
+			}
+		}
+		if pathNode == nil {
+			continue
+		}
+		importPath := strings.Trim(nodeText(pathNode, src), "\"`")
+		if importPath == "" {
+			continue
+		}
+		if !strings.HasPrefix(importPath, moduleRoot+"/") {
+			continue // external or the module root itself — not an in-tree subpackage
+		}
+		pkgDir := importPath[len(moduleRoot)+1:]
+		if pkgDir == "" {
+			continue
+		}
+		// Qualifier: alias if present, else last path segment. Dot and blank
+		// imports do not introduce a usable selector qualifier, so skip them.
+		qualifier := ""
+		if nameNode := spec.ChildByFieldName("name"); nameNode != nil {
+			switch nameNode.Type() {
+			case "package_identifier":
+				qualifier = nodeText(nameNode, src)
+			case "dot", "blank_identifier":
+				continue
+			}
+		}
+		if qualifier == "" {
+			if slash := strings.LastIndexByte(pkgDir, '/'); slash >= 0 {
+				qualifier = pkgDir[slash+1:]
+			} else {
+				qualifier = pkgDir
+			}
+		}
+		if qualifier == "" {
+			continue
+		}
+		// A package directory whose last segment carries a major-version
+		// suffix (`.../redis/v8` → import name is still `redis`) is an
+		// external concern handled elsewhere; in-tree dirs don't use the
+		// `vN` convention, so the last-segment default is correct here.
+		if _, dup := out[qualifier]; dup {
+			// Two in-tree imports share a leaf name in this file (rare; both
+			// would need an alias to compile). Without a reliable per-call
+			// qualifier we cannot disambiguate — drop the mapping so the
+			// resolver leaves the bare-name fallback in place rather than
+			// guessing wrong.
+			out[qualifier] = ""
+			continue
+		}
+		out[qualifier] = pkgDir
+	}
+	// Strip the conflict sentinels.
+	for q, dir := range out {
+		if dir == "" {
+			delete(out, q)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
 
 // goKnownExternalRoots is the set of import-path prefixes that the
 // resolver's external-disposition gate classifies as ExternalKnown via
