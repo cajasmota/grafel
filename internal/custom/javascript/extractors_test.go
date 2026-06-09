@@ -246,37 +246,48 @@ func TestFastifyNoMatch(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestJestDescribe(t *testing.T) {
+	// #4343: the spec imports the unit under test, so a single linked
+	// test_suite is emitted and the it/test cases are folded into counts
+	// (NOT emitted as standalone orphan entities).
 	src := `
+import { UserService } from './user.service';
 describe('UserService', () => {
   it('should create a user', () => {})
   test('should find by id', async () => {})
 })
 `
 	ents := extract(t, "custom_js_jest", fi("user.spec.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.Operation", "UserService") {
-		t.Error("expected UserService test_suite")
+	if !containsSubtype(ents, "test_suite") {
+		t.Error("expected a test_suite entity")
 	}
-	if !containsEntity(ents, "SCOPE.Operation", "should create a user") {
-		t.Error("expected 'should create a user' test_case")
+	// Individual test cases must NOT be emitted as their own entities anymore.
+	if containsEntity(ents, "SCOPE.Operation", "should create a user") {
+		t.Error("test cases must not be emitted as standalone entities (#4343)")
+	}
+	if len(ents) != 1 {
+		t.Errorf("expected exactly 1 suite entity, got %d", len(ents))
 	}
 }
 
 func TestJestHooks(t *testing.T) {
+	// Hooks no longer produce standalone entities; a spec that is just hooks
+	// with no describe/it is not a recognisable suite → no entities.
 	src := `
 beforeEach(() => { db.clear() })
 afterAll(() => { db.close() })
 `
 	ents := extract(t, "custom_js_jest", fi("setup.spec.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.Pattern", "beforeEach") {
-		t.Error("expected beforeEach hook")
+	if containsEntity(ents, "SCOPE.Pattern", "beforeEach") {
+		t.Error("hooks must not be emitted as standalone entities (#4343)")
 	}
 }
 
 func TestJestMock(t *testing.T) {
+	// jest.mock alone (no describe/it) is not a suite → no orphan entity.
 	src := `jest.mock('./service')`
 	ents := extract(t, "custom_js_jest", fi("mock.spec.ts", "typescript", src))
-	if !containsEntity(ents, "SCOPE.Pattern", "jest.mock") {
-		t.Error("expected jest.mock entity")
+	if containsEntity(ents, "SCOPE.Pattern", "jest.mock") {
+		t.Error("jest.mock must not be emitted as a standalone entity (#4343)")
 	}
 }
 
