@@ -65,6 +65,7 @@ func newRoot() *cobra.Command {
 		newDocgenCmd(),
 		newRegisterCmd(),
 		newGroupCmd(),
+		newExportCmd(),
 		newRemoveCmd(),
 		newDeleteCmd(),
 		newBranchesCmd(),
@@ -175,6 +176,10 @@ MCP:
 Dashboard:
   dashboard                       Open dashboard in browser (auto-starts daemon if needed)
   dashboard serve [--port N]      Run standalone dashboard HTTP server (dev/advanced)
+
+Export:
+  export graphml [--group --ref --out file]   Export the group graph to GraphML (XML)
+  export cypher  [--group --ref --out file]   Export the group graph to Neo4j Cypher
 
 Quality:
   quality <fixture-dir>                       Measure extraction recall vs a golden fixture
