@@ -158,6 +158,24 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// multi-method controller maps each endpoint to ITS OWN handler.
 	type fileBareKey struct{ sourceFile, bare string }
 	sameFileBareIdx := make(map[fileBareKey][]int, len(merged))
+	// #4319 re-fix — file:line co-location index. The bare↔qualified NAME
+	// reconciliation above only fires when the synthetic carries a bindable
+	// `source_handler` whose bare name matches a same-file handler. But the LIVE
+	// NestJS failure is different: entity-merge can keep, for a given (verb,path),
+	// a synthetic that carries NO usable `source_handler` (e.g. a same-path
+	// definition emitted by another pass wins attribution), so every name-based
+	// path misses and the endpoint is left a graph island even though its handler
+	// Operation sits at the EXACT same file:line (the decorated controller
+	// method). This index maps (sourceFile, startLine) → candidate indices of
+	// handler-kind Operation entities at that position. It is consulted ONLY as
+	// the final fallback, AFTER all name-based resolution fails, and ONLY binds
+	// when EXACTLY ONE handler-kind Operation sits at that file:line — so it can
+	// never guess between a DTO/Schema (different line) or two co-located methods.
+	type fileLineKey struct {
+		sourceFile string
+		line       int
+	}
+	sameFileLineIdx := make(map[fileLineKey][]int, len(merged))
 	// #2692 — multi-match index for the Phoenix-style `name@file_hint`
 	// resolution path. Routes-file frameworks (Phoenix router) declare
 	// handlers by short action name (`index`, `show`) that collides
@@ -211,6 +229,16 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 		if bare != "" {
 			fk := fileBareKey{r.SourceFile, bare}
 			sameFileBareIdx[fk] = append(sameFileBareIdx[fk], i)
+		}
+		// #4319 re-fix — register handler-kind Operations under their file:line so
+		// the co-location fallback can find the controller method an endpoint sits
+		// on. Restricted to handler-shaped kinds (a controller/route method) so a
+		// DTO Component / Schema / Class that happens to share the line is never a
+		// co-location candidate. A non-positive line carries no co-location signal
+		// (synthetics and many declarations land at 0), so skip it.
+		if r.StartLine > 0 && isCoLocationHandlerKind(r.Kind) {
+			flk := fileLineKey{r.SourceFile, r.StartLine}
+			sameFileLineIdx[flk] = append(sameFileLineIdx[flk], i)
 		}
 	}
 
@@ -340,6 +368,17 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			handlerRef = r.Properties["source_handler"]
 		}
 		if handlerRef == "" {
+			// #4319 re-fix — no bindable source_handler (the live NestJS island:
+			// the surviving merged synthetic for this (verb,path) carries no
+			// handler ref). Before giving up, try file:line co-location: bind to
+			// the lone handler-kind Operation sitting at the endpoint's own
+			// file:line (the decorated controller method). Guarded to fire only on
+			// an EXACTLY-ONE match so it never guesses.
+			if hi, ok := resolveCoLocatedHandler(r, sameFileLineIdx[fileLineKey{r.SourceFile, r.StartLine}], merged); ok {
+				bridgeEndpointToHandler(&merged[hi], r)
+				stats.HandlerResolved++
+				continue
+			}
 			stats.NoHandlerProp++
 			continue
 		}
@@ -443,6 +482,23 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			}
 		}
 		if !found {
+			// #4319 re-fix — file:line co-location fallback. All same-file
+			// name-based resolution (exact-kind, cross-kind, bare↔qualified) has
+			// missed: the synthesizer's `source_handler` name does not match any
+			// same-file handler entity (the live NestJS case — the bare ref points
+			// at a method the indexer landed under a different identity, or the
+			// surviving merged synthetic's ref is stale). Before resorting to the
+			// risky cross-file GLOBAL bare-name guess, bind to the lone handler-kind
+			// Operation at the endpoint's OWN file:line — the decorated controller
+			// method. Same-file + same-line + exactly-one makes this unambiguous and
+			// strictly safer than a repo-wide name guess; it never fires when 0 or
+			// >1 handlers share the line (no guessing) and never binds a DTO/Schema
+			// (those sit at a different line and are not handler-kind).
+			if hi, ok := resolveCoLocatedHandler(r, sameFileLineIdx[fileLineKey{r.SourceFile, r.StartLine}], merged); ok {
+				bridgeEndpointToHandler(&merged[hi], r)
+				stats.HandlerResolved++
+				continue
+			}
 			// Cross-file fallback (#753). Django composed routes record
 			// a `View:<ViewSet>` handler reference whose entity lives in
 			// views.py while the synthetic lives in urls.py. Express
@@ -520,71 +576,9 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 			}
 		}
 
-		// Resolved. Append an embedded IMPLEMENTS edge on the handler.
-		// Use placeholder ID stubs (Kind:Name) for the endpoints; the
-		// resolver in buildDocument rewrites these against the stamped
-		// entity index after we return.
-		handler := &merged[handlerIdx]
-		fromStub := handler.Kind + ":" + handler.Name
-		toStub := r.Kind + ":" + r.Name
-		handler.Relationships = append(handler.Relationships, types.RelationshipRecord{
-			FromID: fromStub,
-			ToID:   toStub,
-			Kind:   implementsEdgeKind,
-			Properties: map[string]string{
-				"pattern_type": "http_endpoint_synthesis_resolved",
-				"framework":    propOr(r, "framework", ""),
-			},
-		})
-		// deploy-9 item-3 — propagate the synthetic endpoint's resolved
-		// fine-grained authorisation identity onto the handler Operation so a
-		// symbol-keyed query (archigraph_inspect / get_source on the @action
-		// method, e.g. `JurisdictionViewSet.get_inspection_types`) surfaces the
-		// SAME `auth_permissions` page-key the endpoint carries. The DRF
-		// get_permissions per-action page-key pass (#3978) stamps
-		// `auth_permissions` (e.g. JURISDICTIONS) on the synthesized
-		// http_endpoint, but auth_coverage / endpoint_posture consumers that
-		// start from the handler method saw nothing because the property never
-		// reached the handler entity. We copy it here — at the one resolution
-		// site that knows BOTH the endpoint (page-key source) and its handler —
-		// rather than re-deriving it. Honest-partial: when the endpoint carries
-		// no `auth_permissions` (dynamic / unresolvable page key, or a guard
-		// with no PERMISSION_PAGES subscript) nothing is stamped. First write
-		// wins so a handler shared by several verb-routes (the email PATCH/PUT
-		// pair) is not churned, and an explicit value already on the handler is
-		// never overwritten.
-		propagateHandlerAuthPermissions(handler, r)
-		// #2678 — rebind the synthetic's source_file / start_line / end_line
-		// to the resolved handler so the endpoint points at the method body,
-		// not the routing/registration site. Mirrors the DRF fix (#2677): for
-		// route-table frameworks (Laravel, Rust Axum, future Phoenix/ASP.NET)
-		// the synthetic was anchored to the routes file by construction. For
-		// annotation-based frameworks (Spring, JAX-RS) the file was already
-		// correct but the line was unset; this rebind populates it from the
-		// handler entity. Record the previous values as properties so the bug
-		// is auditable and the resolver's strategy is traceable in the graph.
-		if handler.SourceFile != "" {
-			if r.Properties == nil {
-				r.Properties = map[string]string{}
-			}
-			if r.SourceFile != "" && r.SourceFile != handler.SourceFile {
-				r.Properties["registration_source_file"] = r.SourceFile
-			}
-			if r.StartLine > 0 && r.StartLine != handler.StartLine {
-				r.Properties["registration_start_line"] = itoaSmall(r.StartLine)
-			}
-			r.SourceFile = handler.SourceFile
-			r.StartLine = handler.StartLine
-			r.EndLine = handler.EndLine
-			if r.Language == "" {
-				r.Language = handler.Language
-			}
-			// Mark that the handler resolution and re-attribution passed
-			r.Properties["attribution"] = "handler_resolved"
-		}
-		// Clear the now-redundant properties.
-		delete(r.Properties, "source_handler")
-		delete(r.Properties, "handler_file")
+		// Resolved via a name-based path. Emit the IMPLEMENTS bridge and rebind
+		// the synthetic onto the handler body.
+		bridgeEndpointToHandler(&merged[handlerIdx], r)
 		stats.HandlerResolved++
 	}
 
@@ -756,6 +750,96 @@ func hasGlobalCandidate(globalMulti map[httpResolveNameKey][]int, base httpResol
 		}
 	}
 	return false
+}
+
+// isCoLocationHandlerKind reports whether a kind is a plausible HTTP-route
+// HANDLER (a controller/route method or function) for the #4319 file:line
+// co-location fallback. It deliberately EXCLUDES container/data kinds — a
+// SCOPE.Class controller, a SCOPE.Component / Schema / Model DTO — so a DTO or
+// the controller class that shares a line with the method is never a
+// co-location candidate. Mirrors the handler kinds the synthesizers and the
+// cross-kind equivalence table already treat as methods.
+func isCoLocationHandlerKind(kind string) bool {
+	switch kind {
+	case "SCOPE.Operation", "SCOPE.Function", "Operation", "Function", "Method":
+		return true
+	}
+	return false
+}
+
+// resolveCoLocatedHandler returns the index of the unique handler-kind
+// Operation co-located at the endpoint's file:line, or ok=false when the
+// binding would be a guess. `cands` is the pre-filtered candidate list from the
+// file:line index (already restricted to handler-kind Operations at that
+// position). The no-guess guard: bind ONLY when exactly one candidate exists,
+// and never when the endpoint carries no positive line (a synthetic anchored at
+// line 0 has no co-location signal). The candidate is re-validated as a handler
+// kind defensively even though the index is pre-filtered, so a future index
+// change can't silently widen the binding.
+func resolveCoLocatedHandler(endpoint *types.EntityRecord, cands []int, merged []types.EntityRecord) (int, bool) {
+	if endpoint == nil || endpoint.StartLine <= 0 {
+		return 0, false
+	}
+	if len(cands) != 1 {
+		return 0, false
+	}
+	hi := cands[0]
+	if hi < 0 || hi >= len(merged) {
+		return 0, false
+	}
+	if !isCoLocationHandlerKind(merged[hi].Kind) {
+		return 0, false
+	}
+	return hi, true
+}
+
+// bridgeEndpointToHandler emits the IMPLEMENTS bridge edge from a resolved
+// handler to its http_endpoint synthetic and rebinds the synthetic's
+// source_file/line onto the handler body. Shared by every resolution path
+// (name-based and #4319 file:line co-location) so the bridge shape, the
+// deploy-9 auth-permission propagation, and the #2678 attribution rebind stay
+// identical regardless of HOW the handler was found.
+func bridgeEndpointToHandler(handler, r *types.EntityRecord) {
+	// Append an embedded IMPLEMENTS edge on the handler. Use placeholder ID
+	// stubs (Kind:Name) for the endpoint; the resolver in buildDocument rewrites
+	// these against the stamped entity index after we return.
+	handler.Relationships = append(handler.Relationships, types.RelationshipRecord{
+		FromID: handler.Kind + ":" + handler.Name,
+		ToID:   r.Kind + ":" + r.Name,
+		Kind:   implementsEdgeKind,
+		Properties: map[string]string{
+			"pattern_type": "http_endpoint_synthesis_resolved",
+			"framework":    propOr(r, "framework", ""),
+		},
+	})
+	// deploy-9 item-3 — propagate the endpoint's resolved fine-grained
+	// authorisation identity onto the handler Operation (see
+	// propagateHandlerAuthPermissions). Honest-partial + first-write-wins.
+	propagateHandlerAuthPermissions(handler, r)
+	// #2678 — rebind the synthetic's source_file / start_line / end_line to the
+	// resolved handler so the endpoint points at the method body, not the
+	// routing/registration site. Record the previous values for auditability.
+	if handler.SourceFile != "" {
+		if r.Properties == nil {
+			r.Properties = map[string]string{}
+		}
+		if r.SourceFile != "" && r.SourceFile != handler.SourceFile {
+			r.Properties["registration_source_file"] = r.SourceFile
+		}
+		if r.StartLine > 0 && r.StartLine != handler.StartLine {
+			r.Properties["registration_start_line"] = itoaSmall(r.StartLine)
+		}
+		r.SourceFile = handler.SourceFile
+		r.StartLine = handler.StartLine
+		r.EndLine = handler.EndLine
+		if r.Language == "" {
+			r.Language = handler.Language
+		}
+		r.Properties["attribution"] = "handler_resolved"
+	}
+	// Clear the now-redundant properties.
+	delete(r.Properties, "source_handler")
+	delete(r.Properties, "handler_file")
 }
 
 // splitHandlerRef parses "<Kind>:<Name>" into its parts. Returns ok=false

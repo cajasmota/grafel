@@ -706,7 +706,14 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// receivers match the `app`/`router` allowlist).
 		synthesizeExpress(string(content), emit)
 		// Producer side: NestJS @Controller + @Get/@Post/... decorators (#1418).
-		synthesizeNestJS(string(content), emit)
+		// emitDef is forwarded (alongside emit) so the synthetic is anchored at
+		// the handler METHOD line (#4319): NestJS controller methods are
+		// co-located with their route decorator, and stamping the method line on
+		// the synthetic lets the Phase-2 resolver bridge the endpoint to its
+		// handler by file:line co-location when the name-based source_handler
+		// resolution misses (e.g. when entity-merge keeps a same-path synthetic
+		// from another pass that carries no bindable source_handler).
+		synthesizeNestJS(string(content), emit, emitDef)
 		// Producer side: Fastify — `fastify.<verb>(...)` / `server.<verb>(...)`.
 		// The Express synthesizer's receiver allowlist does not include
 		// "fastify", so a dedicated pass is needed (#2678 audit).
@@ -4290,9 +4297,12 @@ var nestjsHandlerNameRe = regexp.MustCompile(
 // blank lines, comment lines (`//`, `*`, `/*`, `*/`, `/**`) and decorator lines
 // (`@...`) and returns the first line that looks like a method declaration.
 // Returns "" if no handler is found before the next verb decorator or EOF.
+// The second return value is the 0-based index of the line the handler method
+// declaration sits on (-1 when no handler is found), used by #4319 to anchor
+// the synthetic at the handler method line for file:line co-location bridging.
 //
 // This is the parens-in-strings-immune replacement for the old combined regex.
-func nestjsFindHandlerName(lines []string, fromLine int) string {
+func nestjsFindHandlerName(lines []string, fromLine int) (string, int) {
 	// depth tracks unbalanced ()/{}/[] carried over from a multi-line decorator
 	// argument (e.g. `@ApiOperation({` … `})` or `@ApiResponse(` … `)`). While
 	// depth > 0 we are INSIDE a decorator's argument list — those continuation
@@ -4346,15 +4356,15 @@ func nestjsFindHandlerName(lines []string, fromLine int) string {
 				}
 				continue
 			}
-			return name
+			return name, i
 		}
 		// A non-blank, non-comment, non-decorator, non-handler line means we've
 		// walked past the handler region for this decorator (e.g. into the next
 		// class member without a recognisable signature). Stop to avoid binding
 		// a far-away symbol.
-		return ""
+		return "", -1
 	}
-	return ""
+	return "", -1
 }
 
 // nestjsBracketDelta returns the net change in (){}[]-nesting contributed by a
@@ -4396,7 +4406,7 @@ type nestController struct {
 	prefix  string
 }
 
-func synthesizeNestJS(content string, emit emitFn) {
+func synthesizeNestJS(content string, emit emitFn, emitDef emitDefFn) {
 	if !strings.Contains(content, "@Controller") {
 		return
 	}
@@ -4431,7 +4441,7 @@ func synthesizeNestJS(content string, emit emitFn) {
 		if verb == "ALL" {
 			verb = "ANY"
 		}
-		methodName := nestjsFindHandlerName(lines, lineIdx+1)
+		methodName, methodLineIdx := nestjsFindHandlerName(lines, lineIdx+1)
 		if methodName == "" {
 			continue
 		}
@@ -4443,7 +4453,12 @@ func synthesizeNestJS(content string, emit emitFn) {
 		if canonical == "" {
 			continue
 		}
-		emit(verb, canonical, "nestjs", "Controller", methodName)
+		// #4319 — anchor the synthetic at the handler method's 1-based line so
+		// the Phase-2 resolver can bridge endpoint→handler by file:line
+		// co-location when the name-based source_handler match fails. methodLineIdx
+		// is a 0-based index into `lines`; +1 makes it the 1-based StartLine the
+		// treesitter handler Operation also carries.
+		emitDef(verb, canonical, "nestjs", "Controller", methodName, methodLineIdx+1)
 	}
 }
 
