@@ -83,6 +83,12 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// typed `catch (X $e)` (incl. PHP 8 union multi-catch). Dynamic / re-throw
 	// shapes are dropped (precision-first).
 	emitExceptionFlowEdges(root, file, &entities)
+	// Constant-collection value-sets (data-model, epic #3628 / #4419) —
+	// SCOPE.Enum value-set nodes for `const X = [...]` array maps, class /
+	// interface / trait constant groups, PHP 8.1 backed enums, and
+	// `define('X', [...])` maps so the member roster + literal values are
+	// searchable and diffable. Empty collections emit no node (honest-partial).
+	emitConstValueSets(root, file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")
