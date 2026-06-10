@@ -24,8 +24,10 @@
      name   — entity / caller name (regular weight)
    ============================================================ */
 
+import { useParams } from "react-router-dom";
 import { cn } from "@/lib/utils";
 import { getRepoColor } from "@/lib/repo-color";
+import { useSourcePeek } from "@/components/SourcePeek";
 
 export interface RefLineProps {
   repo: string;
@@ -35,8 +37,18 @@ export interface RefLineProps {
   /** Accessibility: full title on hover (defaults to "repo · file:line  name") */
   title?: string;
   className?: string;
-  /** Called when the file path link is clicked. Receives "file:line" string. */
+  /**
+   * Called when the file path link is clicked. Receives "file:line" string.
+   * When provided it runs IN ADDITION to opening the shared source-peek modal
+   * (#4499), so existing nav side-effects are preserved.
+   */
   onFileClick?: (fileRef: string) => void;
+  /**
+   * Disable the shared source-peek modal on click (#4499). Defaults to false
+   * (clicking the file:line opens its source). Set true when the caller wants
+   * onFileClick to be the only click behavior.
+   */
+  disableSourcePeek?: boolean;
   /**
    * Render the right-anchored repo chip (default true). Set false when the
    * caller already shows the repo elsewhere in the row to avoid a duplicate
@@ -100,11 +112,21 @@ export function RefLine({
   className,
   onFileClick,
   showRepoChip = true,
+  disableSourcePeek = false,
 }: RefLineProps) {
   const repoColors = getRepoColor(repo);
   const fileLabel = file ? `${file}:${line}` : line > 0 ? `:${line}` : "";
   const derivedTitle = title ?? `${repo} · ${file}:${line}  ${name}`;
   const { head, tail } = splitPathForEllipsis(file, line);
+  const { openSourcePeek } = useSourcePeek();
+  const { groupId = "" } = useParams<{ groupId: string }>();
+
+  const handleFileClick = () => {
+    onFileClick?.(fileLabel);
+    if (!disableSourcePeek && file && groupId) {
+      openSourcePeek({ groupId, file, line, repo });
+    }
+  };
 
   return (
     <div
@@ -120,7 +142,7 @@ export function RefLine({
       {fileLabel && (
         <button
           type="button"
-          onClick={() => onFileClick?.(fileLabel)}
+          onClick={handleFileClick}
           title={fileLabel}
           className={cn(
             "flex items-center min-w-0 text-left",

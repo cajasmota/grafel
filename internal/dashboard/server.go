@@ -749,6 +749,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/v2/groups/{id}/paths/{hash}/downstream-dag", s.handleV2PathDownstreamDAG)
 	// #1935 Phase 1 — ShapeTree subtree resolution (lazy class-field walk).
 	mux.HandleFunc("GET /api/v2/groups/{id}/shape", s.handleV2Shape)
+	// #4499 — shared "source peek": window of source for any file:line ref.
+	mux.HandleFunc("GET /api/v2/groups/{id}/source", s.handleV2Source)
 	// Module-level GDS analysis (#1384, epic #1380) — SCC + PageRank +
 	// betweenness over the aggregated module graph.
 	mux.HandleFunc("GET /api/v2/groups/{group}/modules/analysis", s.handleV2ModulesAnalysis)

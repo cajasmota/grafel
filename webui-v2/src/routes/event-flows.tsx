@@ -33,6 +33,7 @@ import { toast } from "sonner";
 
 import { api } from "@/lib/api";
 import { Badge, Skeleton } from "@/components/ui";
+import { useSourcePeek } from "@/components/SourcePeek";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -67,6 +68,8 @@ function useEventFlowDetail(groupId: string | undefined, eventFlowId: string | n
 
 function StepNode({ step }: { step: EventFlowStep }) {
   const isChannel = step.is_channel;
+  const { openSourcePeek } = useSourcePeek();
+  const { groupId = "" } = useParams<{ groupId: string }>();
   return (
     <div
       className={cn(
@@ -90,7 +93,28 @@ function StepNode({ step }: { step: EventFlowStep }) {
         <div className="truncate text-sm font-medium text-text-1">{step.label || step.entity_id}</div>
         <div className="truncate text-xs text-text-3">
           {isChannel ? "channel" : "operation"} · {step.repo}
-          {step.source_file ? ` · ${step.source_file}` : ""}
+          {step.source_file && (
+            <>
+              {" · "}
+              <button
+                type="button"
+                onClick={() =>
+                  groupId &&
+                  openSourcePeek({
+                    groupId,
+                    file: step.source_file!,
+                    line: step.start_line ?? 0,
+                    repo: step.repo,
+                  })
+                }
+                className="text-accent hover:underline cursor-pointer"
+                title={`${step.source_file}${step.start_line ? `:${step.start_line}` : ""} — open source`}
+              >
+                {step.source_file}
+                {step.start_line ? `:${step.start_line}` : ""}
+              </button>
+            </>
+          )}
         </div>
       </div>
       <span className="text-xs text-text-4">#{step.step_index}</span>

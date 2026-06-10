@@ -73,6 +73,7 @@ import type {
   DIReport,
   ErrorFlowReport,
   DownstreamDAGResponse,
+  SourceReply,
 } from "@/data/types";
 
 const BASE = import.meta.env.VITE_AG_API_BASE ?? "/api";
@@ -558,6 +559,27 @@ export const api = {
     else if (opts.type) qs.set("type", opts.type);
     return requestV2<ShapeResponse>(
       `/groups/${encodeURIComponent(groupId)}/shape?${qs.toString()}`,
+    );
+  },
+
+  /**
+   * GET /api/v2/groups/:id/source — a window of source for any file:line ref
+   * (#4499), read from the indexed repo working tree. Powers the shared
+   * <SourcePeek> modal: small files come back whole, large files as a window
+   * centered on `line`. `repo` pins resolution when the same relative path
+   * exists in more than one repo of the group; omit it to search all repos.
+   */
+  getSource: (
+    groupId: string,
+    opts: { file: string; line?: number; context?: number; repo?: string },
+  ) => {
+    const qs = new URLSearchParams();
+    qs.set("file", opts.file);
+    if (opts.line != null && opts.line > 0) qs.set("line", String(opts.line));
+    if (opts.context != null) qs.set("context", String(opts.context));
+    if (opts.repo) qs.set("repo", opts.repo);
+    return requestV2<SourceReply>(
+      `/groups/${encodeURIComponent(groupId)}/source?${qs.toString()}`,
     );
   },
 

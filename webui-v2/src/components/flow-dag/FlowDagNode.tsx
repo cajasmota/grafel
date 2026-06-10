@@ -14,10 +14,12 @@
    ============================================================ */
 
 import { memo } from "react";
+import { useParams } from "react-router-dom";
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { ChevronRight, ChevronDown, CircleDot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RepoChip } from "@/lib/repo-color";
+import { useSourcePeek } from "@/components/SourcePeek";
 import { roleStyle, edgeStyle } from "./style";
 import type { FlowDagNodeData } from "./layout";
 
@@ -51,6 +53,8 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
   const { node, edgeKind, expanded, onToggleExpand, selected, onRoute } =
     data as FlowDagNodeData;
   const rs = roleStyle(node.role);
+  const { openSourcePeek } = useSourcePeek();
+  const { groupId = "" } = useParams<{ groupId: string }>();
   const collapsed = node.collapsed_children ?? [];
   const hasCollapsed = collapsed.length > 0;
   // Click-to-highlight (#4479): when a route is active, off-route nodes dim.
@@ -168,18 +172,31 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
           )}
         </div>
 
-        {/* file:line — plain muted text (read-only canvas, no source-open). */}
+        {/* file:line — click opens the shared source-peek modal (#4499). */}
         {fileRef && (
-          <div
-            className="mt-0.5 flex items-center font-mono text-[10px] text-text-4 tabular-nums min-w-0"
-            title={fileRef}
+          <button
+            type="button"
+            onClick={(e) => {
+              // Don't let the node-select / canvas handlers swallow the click.
+              e.stopPropagation();
+              if (node.file && groupId) {
+                openSourcePeek({
+                  groupId,
+                  file: node.file,
+                  line: node.line ?? 0,
+                  repo: node.repo,
+                });
+              }
+            }}
+            className="mt-0.5 flex items-center font-mono text-[10px] text-text-4 tabular-nums min-w-0 w-full text-left cursor-pointer hover:text-accent"
+            title={`${fileRef} — open source`}
           >
             {/* head (dir prefix) truncates LTR; tail (filename:line) never shrinks. */}
             <span className="overflow-hidden whitespace-nowrap text-ellipsis min-w-0 shrink">
               {fileHead}
             </span>
             <span className="shrink-0 whitespace-nowrap">{fileTail}</span>
-          </div>
+          </button>
         )}
 
         {/* effect badges — small, only what's present. */}

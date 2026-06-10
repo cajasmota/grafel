@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { RepoChip as SharedRepoChip } from "@/lib/repo-color";
 import { Skeleton } from "@/components/ui/skeleton";
 import { FlowDag as SharedFlowDag } from "@/components/flow-dag";
+import { useSourcePeek } from "@/components/SourcePeek";
 import { flowToDagPayload } from "@/lib/flow-to-dag";
 
 // ─── Step-kind metadata ───────────────────────────────────────────────────────
@@ -847,6 +848,8 @@ function StepInspector({
 }) {
   const meta = getStepMeta(step.step_kind);
   const snippet = flow.source_snippets?.[step.entity_id];
+  const { openSourcePeek } = useSourcePeek();
+  const { groupId = "" } = useParams<{ groupId: string }>();
 
   return (
     <div
@@ -883,10 +886,27 @@ function StepInspector({
       <div className="flex flex-wrap gap-2.5 text-[11px] text-text-3">
         <span>{meta.label}</span>
         <span>·</span>
-        <span className="font-mono">
-          {step.source_file}
-          {step.start_line ? `:${step.start_line}` : ""}
-        </span>
+        {step.source_file ? (
+          <button
+            type="button"
+            onClick={() =>
+              groupId &&
+              openSourcePeek({
+                groupId,
+                file: step.source_file,
+                line: step.start_line ?? 0,
+                repo: step.repo,
+              })
+            }
+            className="font-mono text-accent hover:underline cursor-pointer"
+            title={`${step.source_file}${step.start_line ? `:${step.start_line}` : ""} — open source`}
+          >
+            {step.source_file}
+            {step.start_line ? `:${step.start_line}` : ""}
+          </button>
+        ) : (
+          <span className="font-mono">{step.source_file}</span>
+        )}
         <span>·</span>
         <span>{step.repo}</span>
         {step.edge_kind && (

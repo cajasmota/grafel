@@ -2424,3 +2424,39 @@ export interface DownstreamDAGResponse {
   /** Count of internal fan-out points (kept nodes with out-degree > 1). */
   branch_count: number;
 }
+
+// ---------------------------------------------------------------------------
+// Source peek (#4499) — GET /api/v2/groups/:id/source
+// ---------------------------------------------------------------------------
+
+/** One source line with its absolute 1-based number. */
+export interface SourceLine {
+  number: number;
+  text: string;
+}
+
+/**
+ * GET /api/v2/groups/:id/source — a window of source for a file:line ref,
+ * read from the indexed repo working tree. Powers the shared <SourcePeek>
+ * modal (the get_source equivalent for the UI).
+ */
+export interface SourceReply {
+  /** Repo-relative path that was read. */
+  file: string;
+  /** Slug of the repo the file was found in. */
+  repo: string;
+  /** Highlighter language hint derived from the extension (e.g. "typescript"). */
+  language: string;
+  /** Target line the caller asked to center on (echoed back). */
+  line: number;
+  /** 1-based number of the first returned line. */
+  start_line: number;
+  /** 1-based number of the last returned line. */
+  end_line: number;
+  /** Full line count of the file (for "x of N" affordances). */
+  total_lines: number;
+  /** True when the returned window is a slice of a larger file. */
+  truncated: boolean;
+  /** The returned window. */
+  lines: SourceLine[];
+}

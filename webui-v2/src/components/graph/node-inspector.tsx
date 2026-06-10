@@ -9,6 +9,7 @@
 import { X } from "lucide-react";
 import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Button } from "@/components/ui";
 import { useEntityDetail } from "@/hooks/use-graph";
+import { useSourcePeek } from "@/components/SourcePeek";
 import type { GraphNode } from "@/data/types";
 
 export interface NodeInspectorProps {
@@ -20,6 +21,7 @@ export interface NodeInspectorProps {
 
 export function NodeInspector({ groupId, node, onClose, onFocusNode }: NodeInspectorProps) {
   const { data, isLoading } = useEntityDetail(groupId, node.id);
+  const { openSourcePeek } = useSourcePeek();
 
   const inbound = data?.inbound_edges ?? [];
   const outbound = data?.outbound_edges ?? [];
@@ -44,10 +46,26 @@ export function NodeInspector({ groupId, node, onClose, onFocusNode }: NodeInspe
         </button>
       </header>
 
-      <div className="border-b border-border px-4 py-2 font-mono text-xs text-text-3 break-all">
-        {data?.entity.source_file
-          ? `${data.entity.source_file}:${data.entity.start_line}`
-          : "—"}
+      <div className="border-b border-border px-4 py-2 font-mono text-xs break-all">
+        {data?.entity.source_file ? (
+          <button
+            type="button"
+            onClick={() =>
+              openSourcePeek({
+                groupId,
+                file: data.entity.source_file!,
+                line: data.entity.start_line ?? 0,
+                repo: node.repo,
+              })
+            }
+            className="text-accent hover:underline cursor-pointer text-left"
+            title={`${data.entity.source_file}:${data.entity.start_line} — open source`}
+          >
+            {`${data.entity.source_file}:${data.entity.start_line}`}
+          </button>
+        ) : (
+          <span className="text-text-3">—</span>
+        )}
       </div>
 
       <div className="grid grid-cols-3 gap-2 border-b border-border px-4 py-3 text-center">
