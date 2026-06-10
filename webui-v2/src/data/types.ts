@@ -1818,6 +1818,13 @@ export interface UncoveredEntity {
   start_line: number;
   language: string;
   module?: string;
+  /**
+   * Owning repository slug, stamped by the group-level coverage aggregator
+   * (#4551). Used to resolve the entity's source through the correct repo
+   * root in a multi-repo group. May be absent on older backends — callers
+   * should fall back to the group-level repo only as a last resort.
+   */
+  repo?: string;
   /** "high" | "medium" | "low". */
   severity: string;
 }

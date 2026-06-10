@@ -175,9 +175,11 @@ func (s *Server) handleV2Source(w http.ResponseWriter, r *http.Request) {
 // disk within a repo of grp, guarding against path traversal. It returns the
 // absolute path, the owning repo slug, the cleaned repo-relative path, and ok.
 //
-// When wantRepo is set we only consider that repo; otherwise we try each repo
-// root and accept the first where the file exists on disk and stays within the
-// root.
+// When wantRepo is set we try that repo first, but if the file is not found
+// there (a stale/wrong hint, or a group name passed in place of a slug, #4551)
+// we fall back to scanning every repo root in the group. Otherwise we try each
+// repo root and accept the first where the file exists on disk and stays within
+// the root.
 func resolveSourcePath(grp *DashGroup, rawFile, wantRepo string) (abs, slug, rel string, ok bool) {
 	if grp == nil {
 		return "", "", "", false
@@ -208,13 +210,19 @@ func resolveSourcePath(grp *DashGroup, rawFile, wantRepo string) (abs, slug, rel
 		return candidate, clean, true
 	}
 
+	// When the caller pins a repo, prefer it — but do NOT fail hard if the file
+	// is not there. The hint may be a group name, a stale slug, or simply wrong
+	// (e.g. an aggregated list that lost the per-entity repo, #4551). Fall back
+	// to scanning every repo root in the group so a file that genuinely exists
+	// in a sibling repo still resolves. This mirrors the entity-based path used
+	// by get_source, which always resolves through the owning repo root.
 	if wantRepo != "" {
 		if repo, found := grp.Repos[wantRepo]; found {
 			if a, rl, good := tryRepo(repo); good {
 				return a, wantRepo, rl, true
 			}
 		}
-		return "", "", "", false
+		// fall through to the all-repos scan below
 	}
 
 	for s, repo := range grp.Repos {

@@ -120,7 +120,13 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 		result.TotalTests += report.TotalTests
 		result.TotalTestsEdges += report.TotalTestsEdges
 
-		// Merge uncovered entities.
+		// Merge uncovered entities, stamping the owning repo slug so the UI can
+		// resolve each entity's source through the correct repo root in a
+		// multi-repo group (#4551). ComputeCoverage runs per-document and does
+		// not know the slug, so it is the aggregator's job to attach it here.
+		for i := range report.UncoveredEntities {
+			report.UncoveredEntities[i].Repo = rp.Slug
+		}
 		result.UncoveredEntities = append(result.UncoveredEntities, report.UncoveredEntities...)
 
 		// Merge per-directory stats.

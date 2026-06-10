@@ -459,6 +459,10 @@ function CoverageTree({ dirs }: { dirs: DirCoverage[] }) {
 }
 
 function UncoveredRow({ u, repo }: { u: UncoveredEntity; repo: string }) {
+  // Prefer the entity's own repo slug (stamped by the aggregator, #4551) so
+  // source-peek resolves through the correct repo root in a multi-repo group.
+  // The `repo` prop is the group-level slug and is only a last-resort fallback.
+  const entityRepo = u.repo || repo;
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 transition-colors">
       <div className="flex items-center gap-2 min-w-0">
@@ -473,10 +477,10 @@ function UncoveredRow({ u, repo }: { u: UncoveredEntity; repo: string }) {
         </div>
       </div>
       <div className="flex items-center gap-2 min-w-0 -mx-1">
-        <RepoChip slug={repo} className="text-[10px] shrink-0" />
+        <RepoChip slug={entityRepo} className="text-[10px] shrink-0" />
         {u.source_file ? (
           <RefLine
-            repo={repo}
+            repo={entityRepo}
             file={u.source_file}
             line={u.start_line ?? 0}
             name={u.language ?? ""}

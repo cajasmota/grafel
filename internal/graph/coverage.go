@@ -87,6 +87,12 @@ type UncoveredEntity struct {
 	StartLine  int    `json:"start_line"`
 	Language   string `json:"language"`
 	Module     string `json:"module,omitempty"`
+	// Repo is the slug of the owning repository. ComputeCoverage runs on a
+	// single document and leaves this empty; the group-level aggregator stamps
+	// it so the UI can resolve source through the correct repo root in a
+	// multi-repo group (#4551). Without it, a source-peek ref like
+	// "src/app.controller.ts:9" cannot be mapped to the repo it lives in.
+	Repo string `json:"repo,omitempty"`
 	// Severity is "high" | "medium" | "low".
 	Severity string `json:"severity"`
 }
