@@ -1344,6 +1344,16 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	// skipped (only literals are recorded).
 	applyEndpointResponseCodes(lang, string(content), path, entities, deprecationBefore)
 
+	// #4583/#4584/#4585/#4586 — cross-framework scalar request-param extraction.
+	// Generalises the NestJS scalar @Query/@Param work (#4568) to Express/Koa,
+	// FastAPI, Spring and DRF: stamps one parameter record {name, in, type,
+	// required} per scalar request param (query / path / header) the handler
+	// declares onto the SYNTHESIZED http_endpoint_definition the dashboard Paths
+	// panel renders. Mutates Properties in place (index >= deprecationBefore, same
+	// source file); never adds/removes entities and is a no-op for any endpoint a
+	// synthesizer already stamped a `parameters` signature on (e.g. NestJS).
+	applyScalarRequestParams(lang, string(content), path, entities, deprecationBefore)
+
 	// #722 — response/request shape extraction. Mutates Properties on
 	// the synthetic entities emitted above; never adds or removes
 	// entities, so it cannot regress the bug-rate of upstream passes.
