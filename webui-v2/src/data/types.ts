@@ -2026,6 +2026,29 @@ export interface CrossRepoLink {
   channel?: string;
   /** HTTP method for HTTP links, when present. */
   method?: string;
+
+  // Endpoint enrichment resolved from the source/target entities at serve time
+  // (#4596). NOT persisted to the on-disk links file — populated by
+  // enrichLinkEndpoints just before the /links payload is written. They let the
+  // detail panel render readable names + open a real source-peek instead of
+  // only a graph deep-link fallback (#4648). All optional: older daemons or
+  // entities that no longer resolve simply omit them.
+  /** Resolved display name of the source entity. */
+  source_name?: string;
+  /** Fully-qualified name of the source entity, when distinct from source_name. */
+  source_qualified_name?: string;
+  /** Repo-relative source file of the source entity. */
+  source_file?: string;
+  /** 1-based start line of the source entity in source_file. */
+  source_line?: number;
+  /** Resolved display name of the target (sink) entity. */
+  target_name?: string;
+  /** Fully-qualified name of the target entity, when distinct from target_name. */
+  target_qualified_name?: string;
+  /** Repo-relative source file of the target (sink) entity. */
+  target_file?: string;
+  /** 1-based start line of the target entity in target_file. */
+  target_line?: number;
 }
 
 /** GET /api/groups/{group}/links — cross-repo link records. */

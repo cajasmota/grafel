@@ -34,8 +34,10 @@
    ============================================================ */
 
 import { useMemo, useState } from "react";
-import { Link, useParams } from "react-router-dom";
-import { ArrowRight, GitBranch, Link2, AlertTriangle, FileCode2 } from "lucide-react";
+import { useParams } from "react-router-dom";
+import { ArrowRight, GitBranch, Link2, AlertTriangle, PanelRightOpen } from "lucide-react";
+
+import { LinkDetailPanel } from "./links-detail-panel";
 
 import {
   Badge,
@@ -236,11 +238,6 @@ function ErrorState() {
 // § One link row
 // ---------------------------------------------------------------------------
 
-/** Deep-link into the graph view focused on a given entity id. */
-function graphHref(groupId: string, entityId: string): string {
-  return `/g/${groupId}/graph?node=${encodeURIComponent(entityId)}`;
-}
-
 /**
  * One endpoint of a link: repo chip + readable name, with the raw id as a
  * hover tooltip. Hash-only (unnamed) endpoints are visually de-emphasised and
@@ -290,17 +287,26 @@ function EndpointLabel({
   );
 }
 
-function LinkRow({ link, groupId }: { link: CrossRepoLink; groupId: string }) {
+function LinkRow({
+  link,
+  groupId,
+  onSelect,
+}: {
+  link: CrossRepoLink;
+  groupId: string;
+  onSelect: (link: CrossRepoLink) => void;
+}) {
   const src = splitEntity(link.source);
   const tgt = splitEntity(link.target);
-  // The whole row deep-links to the target entity in the graph; the source
-  // chip carries its own link so either endpoint is reachable.
-  const rowHref = graphHref(groupId, link.target || link.source);
+  // The primary click now opens the data-flow detail panel (#4648) instead of
+  // deep-linking into the graph; the panel keeps a secondary "open in graph"
+  // for power users.
   return (
-    <Link
-      to={rowHref}
-      title="Open the target entity in the graph"
-      className="group flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 hover:border-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+    <button
+      type="button"
+      onClick={() => onSelect(link)}
+      title="Open the data-flow detail panel"
+      className="group w-full text-left flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 hover:border-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
     >
       <div className="flex items-center gap-2 min-w-0">
         <EndpointLabel ep={src} groupId={groupId} emphasis="source" />
@@ -317,7 +323,7 @@ function LinkRow({ link, groupId }: { link: CrossRepoLink; groupId: string }) {
             {kindLabel(link.kind)}
           </Badge>
           <ConfidenceMeter value={link.confidence} />
-          <FileCode2
+          <PanelRightOpen
             size={13}
             className="text-text-4 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
           />
@@ -328,7 +334,7 @@ function LinkRow({ link, groupId }: { link: CrossRepoLink; groupId: string }) {
           channel: <span className="font-mono text-text-3">{link.channel}</span>
         </p>
       )}
-    </Link>
+    </button>
   );
 }
 
@@ -347,10 +353,12 @@ function RepoPairSection({
   group,
   groupId,
   isCrossRepo,
+  onSelect,
 }: {
   group: RepoPairGroup;
   groupId: string;
   isCrossRepo: boolean;
+  onSelect: (link: CrossRepoLink) => void;
 }) {
   // Within a single repo (source === target) it's an intra-repo data flow,
   // so collapse the duplicate repo chip into a clear "within" label (#4582).
@@ -385,7 +393,12 @@ function RepoPairSection({
         </div>
         <div className="space-y-2">
           {group.links.map((l, i) => (
-            <LinkRow key={`${l.source}->${l.target}:${i}`} link={l} groupId={groupId} />
+            <LinkRow
+              key={`${l.source}->${l.target}:${i}`}
+              link={l}
+              groupId={groupId}
+              onSelect={onSelect}
+            />
           ))}
         </div>
       </CardBody>
@@ -410,7 +423,8 @@ const LINKS_INSIGHT: InsightValue = {
       with the link kind and how confident the resolver is in the match.
       When the group spans more than one repository these are cross-repo
       links; when it's a single repo they're intra-repo data flows.
-      Click a row to open the target entity in the graph.
+      Click a row to open its data-flow detail — source, sink, the
+      resolver's confidence, and a jump to the endpoint or graph.
     </>
   ),
   agent: {
@@ -425,6 +439,11 @@ export default function LinksScreen() {
   const { groupId = "" } = useParams<{ groupId: string }>();
   const { data, isLoading, isError } = useGroupLinks(groupId);
   const [kindFilter, setKindFilter] = useState<string>("all");
+  // Data-flow detail panel selection (#4648). Holds the clicked link; `open`
+  // drives the drawer so closing keeps the last link mounted for the exit
+  // animation without flashing empty.
+  const [selected, setSelected] = useState<CrossRepoLink | null>(null);
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const links = useMemo(() => data?.links ?? [], [data]);
 
@@ -546,6 +565,10 @@ export default function LinksScreen() {
                     group={g}
                     groupId={groupId}
                     isCrossRepo={isCrossRepo}
+                    onSelect={(l) => {
+                      setSelected(l);
+                      setPanelOpen(true);
+                    }}
                   />
                 ))}
               </div>
@@ -553,6 +576,13 @@ export default function LinksScreen() {
           </>
         )}
       </div>
+
+      <LinkDetailPanel
+        link={selected}
+        groupId={groupId}
+        open={panelOpen}
+        onOpenChange={setPanelOpen}
+      />
     </div>
   );
 }
