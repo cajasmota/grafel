@@ -62,9 +62,10 @@ import {
   TooltipTrigger,
   TooltipContent,
   TabCount,
-  InsightBanner,
   DefTerm,
+  useSetInsight,
 } from "@/components/ui";
+import type { InsightValue } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { useSourcePeek } from "@/components/SourcePeek";
@@ -748,26 +749,6 @@ function CoverageTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <InsightBanner
-        storageKey="quality.coverage"
-        human={
-          <>
-            Structural test coverage — which production entities (functions,
-            classes, endpoints) are reached by a test via a{" "}
-            <DefTerm
-              term="TESTS edge"
-              def="A graph edge linking a test entity to the production entity it exercises. Coverage here is reachability over these edges, not executed-line coverage."
-            />
-            . This is graph reachability, not line coverage.
-          </>
-        }
-        agent={{
-          tool: "archigraph_test_coverage",
-          example:
-            "Before writing tests for a payments module, an agent calls archigraph_test_coverage to list production endpoints with no inbound TESTS edge, then generates tests targeting exactly those gaps instead of duplicating existing ones.",
-        }}
-      />
-
       <CoverageGauge
         covered={data.covered_production}
         total={data.total_production}
@@ -935,23 +916,6 @@ function DependenciesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <InsightBanner
-        storageKey="quality.deps"
-        human={
-          <>
-            Dependency hygiene — declared third-party packages cross-checked
-            against what the code actually imports. Surfaces unused (declared,
-            never imported) and phantom (imported, never declared) packages per
-            repository.
-          </>
-        }
-        agent={{
-          tool: "archigraph_import_cycles",
-          example:
-            "Before splitting a large module, an agent calls archigraph_import_cycles to confirm the move won't introduce a circular import, and cross-references phantom packages so it adds the right dependency to package.json instead of guessing.",
-        }}
-      />
-
       <div className="flex flex-wrap gap-3">
         <MetricStat
           label="Declared"
@@ -1090,22 +1054,6 @@ function AntiPatternsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <InsightBanner
-        storageKey="quality.antipatterns"
-        human={
-          <>
-            Anti-patterns — code shapes the indexer flags as likely performance
-            or correctness smells. Currently surfaces N+1 query patterns: an ORM
-            query executed inside a loop, which issues one query per iteration.
-          </>
-        }
-        agent={{
-          tool: "archigraph_graph_patterns",
-          example:
-            "Reviewing a PR that adds a loop over orders, an agent calls archigraph_graph_patterns to detect a new N+1 query it introduced, then suggests a bulk prefetch or select_related fix before approving.",
-        }}
-      />
-
       <div className="flex flex-wrap gap-3">
         <MetricStat
           label="N+1 findings"
@@ -1205,23 +1153,6 @@ function GodNodesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <InsightBanner
-        storageKey="quality.godnodes"
-        human={
-          <>
-            God-nodes — high-centrality hub entities that many other things
-            depend on or route through. They concentrate risk: a change here
-            ripples widely. Ranked by PageRank over the dependency graph;
-            refactor candidates.
-          </>
-        }
-        agent={{
-          tool: "archigraph_impact_radius",
-          example:
-            "Before refactoring a high-PageRank service class, an agent calls archigraph_impact_radius to enumerate every downstream caller and route, then scopes the change set and flags the blast radius for human review rather than editing blind.",
-        }}
-      />
-
       <div className="flex flex-wrap gap-3">
         <MetricStat
           label="God-nodes"
@@ -1436,22 +1367,6 @@ function TrendsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <InsightBanner
-        storageKey="quality.trends"
-        human={
-          <>
-            Trends — how each quality metric moves across successive re-indexes.
-            A sparkline appears only once there's genuine multi-snapshot history;
-            freshly-indexed groups show the current value with a goal until
-            history builds up.
-          </>
-        }
-        agent={{
-          tool: "archigraph_test_coverage",
-          example:
-            "Running in CI after each index, an agent calls archigraph_test_coverage across snapshots to detect that coverage dropped 4% on the last merge, then opens a follow-up issue naming the newly-uncovered entities responsible for the regression.",
-        }}
-      />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {data.metrics.map((m) => (
           <MetricTrendCard key={m.label} m={m} />
@@ -1467,9 +1382,105 @@ function TrendsTab({ groupId }: { groupId: string }) {
 
 type QualityTab = "coverage" | "dependencies" | "anti-patterns" | "god-nodes" | "trends";
 
+/**
+ * Per-tab insights (#4655). Registered with the breadcrumb Insights button via
+ * useSetInsight based on the ACTIVE tab — switching tabs re-registers a new
+ * object identity so the button re-glows and the popover updates. These are
+ * module-level constants so each tab's identity is stable across renders (only
+ * a real tab change swaps the registered value). Moved here out of the page
+ * body, which previously rendered an inline <InsightBanner> per tab.
+ */
+const QUALITY_INSIGHTS: Record<QualityTab, InsightValue> = {
+  coverage: {
+    storageKey: "quality.coverage",
+    human: (
+      <>
+        Structural test coverage — which production entities (functions,
+        classes, endpoints) are reached by a test via a{" "}
+        <DefTerm
+          term="TESTS edge"
+          def="A graph edge linking a test entity to the production entity it exercises. Coverage here is reachability over these edges, not executed-line coverage."
+        />
+        . This is graph reachability, not line coverage.
+      </>
+    ),
+    agent: {
+      tool: "archigraph_test_coverage",
+      example:
+        "Before writing tests for a payments module, an agent calls archigraph_test_coverage to list production endpoints with no inbound TESTS edge, then generates tests targeting exactly those gaps instead of duplicating existing ones.",
+    },
+  },
+  dependencies: {
+    storageKey: "quality.deps",
+    human: (
+      <>
+        Dependency hygiene — declared third-party packages cross-checked against
+        what the code actually imports. Surfaces unused (declared, never
+        imported) and phantom (imported, never declared) packages per repository.
+      </>
+    ),
+    agent: {
+      tool: "archigraph_import_cycles",
+      example:
+        "Before splitting a large module, an agent calls archigraph_import_cycles to confirm the move won't introduce a circular import, and cross-references phantom packages so it adds the right dependency to package.json instead of guessing.",
+    },
+  },
+  "anti-patterns": {
+    storageKey: "quality.antipatterns",
+    human: (
+      <>
+        Anti-patterns — code shapes the indexer flags as likely performance or
+        correctness smells. Currently surfaces N+1 query patterns: an ORM query
+        executed inside a loop, which issues one query per iteration.
+      </>
+    ),
+    agent: {
+      tool: "archigraph_graph_patterns",
+      example:
+        "Reviewing a PR that adds a loop over orders, an agent calls archigraph_graph_patterns to detect a new N+1 query it introduced, then suggests a bulk prefetch or select_related fix before approving.",
+    },
+  },
+  "god-nodes": {
+    storageKey: "quality.godnodes",
+    human: (
+      <>
+        God-nodes — high-centrality hub entities that many other things depend on
+        or route through. They concentrate risk: a change here ripples widely.
+        Ranked by PageRank over the dependency graph; refactor candidates.
+      </>
+    ),
+    agent: {
+      tool: "archigraph_impact_radius",
+      example:
+        "Before refactoring a high-PageRank service class, an agent calls archigraph_impact_radius to enumerate every downstream caller and route, then scopes the change set and flags the blast radius for human review rather than editing blind.",
+    },
+  },
+  trends: {
+    storageKey: "quality.trends",
+    human: (
+      <>
+        Trends — how each quality metric moves across successive re-indexes. A
+        sparkline appears only once there's genuine multi-snapshot history;
+        freshly-indexed groups show the current value with a goal until history
+        builds up.
+      </>
+    ),
+    agent: {
+      tool: "archigraph_test_coverage",
+      example:
+        "Running in CI after each index, an agent calls archigraph_test_coverage across snapshots to detect that coverage dropped 4% on the last merge, then opens a follow-up issue naming the newly-uncovered entities responsible for the regression.",
+    },
+  },
+};
+
 export default function QualityScreen() {
   const { groupId = "" } = useParams<{ groupId: string }>();
   const [tab, setTab] = useState<QualityTab>("coverage");
+
+  // #4655: register the ACTIVE tab's insight with the breadcrumb Insights
+  // button. Switching tabs passes a new object identity → the button re-glows
+  // and the popover content updates. Clears on unmount (navigating away).
+  useSetInsight(QUALITY_INSIGHTS[tab]);
 
   // Lightweight count pills on the tab strip (re-uses the same cached queries).
   const coverage = useQualityCoverage(groupId);

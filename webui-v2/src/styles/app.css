@@ -134,6 +134,22 @@
   }
 }
 
+/* ── Insight button glow (#4655) ─────────────────────────────────────────────
+   Pulsing warning-tinted ring on the breadcrumb "Insights" button, fired for
+   ~4s whenever the active screen insight changes (navigation / tab switch) so
+   users notice fresh context is available. JS removes the class after the glow
+   window; the animation simply repeats while present.
+   ──────────────────────────────────────────────────────────────────────── */
+@keyframes ag-insight-glow {
+  0%   { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.45); }
+  70%  { box-shadow: 0 0 0 6px rgba(245, 158, 11, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+}
+
+.ag-insight-glow {
+  animation: ag-insight-glow 1.4s ease-out infinite;
+}
+
 /* Honor reduced-motion globally (per handoff motion rules). */
 @media (prefers-reduced-motion: reduce) {
   *,

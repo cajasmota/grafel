@@ -29,3 +29,5 @@ export { DefTerm } from "./screen-description";
 export type { ScreenDescriptionTerm } from "./screen-description";
 export { InsightBanner } from "./insight-banner";
 export type { InsightBannerProps, InsightBannerAgent } from "./insight-banner";
+export { InsightProvider, useInsight, useSetInsight } from "./insight-context";
+export type { InsightValue } from "./insight-context";

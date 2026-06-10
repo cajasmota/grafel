@@ -18,6 +18,7 @@ import { healthDisplay, healthTooltip } from "@/lib/health";
 import { RefSelector } from "@/components/chrome/ref-selector";
 import { useRefState } from "@/lib/use-ref-state";
 import { ModeBadge } from "@/components/Topbar/ModeBadge";
+import { InsightButton } from "@/components/chrome/insight-button";
 
 export interface TopBarProps {
   group: string;
@@ -44,6 +45,10 @@ export function TopBar({ group, surfaceLabel }: TopBarProps) {
         <span className="font-mono text-text-2">{group}</span>
         <ChevronRight size={12} className="text-text-4" />
         <span className="font-medium text-text">{surfaceLabel}</span>
+
+        {/* #4655: glowing per-screen Insights button. Hidden until the active
+            screen/tab registers an insight via useSetInsight. */}
+        <InsightButton />
       </nav>
 
       <div className="flex items-center gap-2">
