@@ -56,6 +56,9 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  TabCount,
+  ScreenDescription,
+  AgentUsage,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -136,29 +139,6 @@ function ErrorState({ what }: { what: string }) {
 // ---------------------------------------------------------------------------
 // § Explanation primitives (#4507) — per-tab headers + per-metric tooltips
 // ---------------------------------------------------------------------------
-
-/** A small, consistent count/value badge for the tab strip. */
-function TabBadge({
-  children,
-  tone = "neutral",
-}: {
-  children: React.ReactNode;
-  tone?: "neutral" | "warning";
-}) {
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full",
-        "text-[10px] font-semibold tabular-nums leading-none",
-        tone === "warning"
-          ? "bg-warning-soft text-warning"
-          : "bg-surface-2 text-text-3",
-      )}
-    >
-      {children}
-    </span>
-  );
-}
 
 /** A short header line under the tab strip explaining what the tab shows. */
 function TabHeader({ children }: { children: React.ReactNode }) {
@@ -569,11 +549,23 @@ function CoverageTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <TabHeader>
+      <ScreenDescription
+        terms={[
+          {
+            term: "TESTS edge",
+            def: "A graph edge linking a test entity to the production entity it exercises. Coverage here is reachability over these edges, not executed-line coverage.",
+          },
+        ]}
+      >
         Structural test coverage — which production entities (functions, classes,
         endpoints) are reached by a test via a TESTS edge. This is graph reachability,
         not line coverage.
-      </TabHeader>
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_test_coverage"
+        example="An agent lists untested endpoints before writing tests."
+      />
 
       <CoverageGauge
         covered={data.covered_production}
@@ -1243,30 +1235,44 @@ export default function QualityScreen() {
               <GaugeCircle size={14} />
               Test coverage
               {!coverage.isLoading && coverage.data && (
-                <TabBadge tone="neutral">
-                  {coverage.data.coverage_pct.toFixed(0)}%
-                </TabBadge>
+                <TabCount
+                  value={Math.round(coverage.data.coverage_pct)}
+                  tone="neutral"
+                  label="percent of production entities reached by a test"
+                />
               )}
             </TabsTrigger>
             <TabsTrigger value="dependencies" className="flex items-center gap-1.5">
               <Boxes size={14} />
               Dependencies
               {!deps.isLoading && deps.data && depHygiene > 0 && (
-                <TabBadge tone="warning">{depHygiene}</TabBadge>
+                <TabCount
+                  value={depHygiene}
+                  tone="warning"
+                  label="dependency-hygiene issues (cycles + orphans)"
+                />
               )}
             </TabsTrigger>
             <TabsTrigger value="anti-patterns" className="flex items-center gap-1.5">
               <Repeat size={14} />
               Anti-patterns
               {!anti.isLoading && anti.data && anti.data.total_findings > 0 && (
-                <TabBadge tone="warning">{anti.data.total_findings}</TabBadge>
+                <TabCount
+                  value={anti.data.total_findings}
+                  tone="warning"
+                  label="anti-pattern findings"
+                />
               )}
             </TabsTrigger>
             <TabsTrigger value="god-nodes" className="flex items-center gap-1.5">
               <Crown size={14} />
               God-nodes
               {!god.isLoading && god.data && god.data.god_nodes.length > 0 && (
-                <TabBadge tone="warning">{god.data.god_nodes.length}</TabBadge>
+                <TabCount
+                  value={god.data.god_nodes.length}
+                  tone="warning"
+                  label="god-nodes (overly-connected entities)"
+                />
               )}
             </TabsTrigger>
             <TabsTrigger value="trends" className="flex items-center gap-1.5">
