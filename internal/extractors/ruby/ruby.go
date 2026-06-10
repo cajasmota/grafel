@@ -116,6 +116,19 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 					*out = append(*out, vs)
 				}
 			}
+			// #4427 — class/module-body constant COLLECTIONS
+			// (`KINDS = { a: 1 }.freeze`, `STATUSES = %w[..]`) → per-constant
+			// value-set SCOPE.Enum nodes are emitted by the recursive
+			// `case "assignment"` branch when walk() descends into the body
+			// below (avoids a double-emit).
+			//
+			// #4427 — a `module Roles; ADMIN='admin'; USER='user'; end` group
+			// of scalar constants → one value-set named after the module/class.
+			// Constants bound to collections are excluded (they get their own
+			// node above).
+			if gs, gok := buildModuleConstGroupValueSet(rec.Name, body, file); gok {
+				*out = append(*out, gs)
+			}
 			before := len(*out)
 			for i := range body.ChildCount() {
 				walk(body.Child(int(i)), file, out)
@@ -164,6 +177,16 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	case "call":
 		if rec, ok := buildRequireImport(node, file); ok {
 			*out = append(*out, rec)
+		}
+
+	case "assignment":
+		// #4427 — top-level / nested constant COLLECTIONS outside any class or
+		// module body (`PERMISSION_PAGES = { ... }.freeze` at file scope). The
+		// class/module branch handles body-scoped constants directly; this
+		// catches the file-scope and arbitrarily-nested cases. Recursion
+		// continues below so we never miss a deeper assignment.
+		if vs, vok := buildConstCollectionValueSet(node, file); vok {
+			*out = append(*out, vs)
 		}
 	}
 
