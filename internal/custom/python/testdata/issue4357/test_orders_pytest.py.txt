@@ -1,0 +1,44 @@
+"""Pytest function + class style tests for the order service.
+
+Representative pure-pytest file: module-level test_ functions, a fixture, a
+parametrized case, and a pytest-style Test class with test methods. Exercises
+the test→SUT-symbol axis (test_place_order → place_order, reference-gated on the
+import below).
+"""
+import pytest
+
+from app.services.orders import place_order, cancel_order, OrderService
+
+
+@pytest.fixture
+def sample_items():
+    return [{"price": 10.0}, {"price": 5.0}]
+
+
+@pytest.fixture(scope="session", autouse=True)
+def db():
+    yield "conn"
+
+
+def test_place_order(sample_items):
+    order = place_order(1, sample_items)
+    assert order.total == 15.0
+    assert order.id == 1
+
+
+@pytest.mark.parametrize("items,expected", [([], 0.0), ([{"price": 2.0}], 2.0)])
+def test_place_order_totals(items, expected):
+    order = place_order(7, items)
+    assert order.total == expected
+
+
+def test_cancel_order():
+    order = place_order(2, [])
+    assert cancel_order(order) is True
+
+
+class TestOrderServiceComputes:
+    def test_total(self):
+        svc = OrderService(repo=None)
+        order = place_order(3, [{"price": 1.0}])
+        assert svc.total(order) == 1.0

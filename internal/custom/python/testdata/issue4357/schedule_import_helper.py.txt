@@ -1,0 +1,939 @@
+"""
+Helper functions for the MASS scheduled inspection CSV import feature.
+
+All functions here are pure (no HTTP/request objects) so they can be
+unit-tested independently of the view.  MongoDB-dependent logic
+(duplicate detection) intentionally lives in the view, which already
+owns the MongoDBConnection and validate_existing_inspection().
+"""
+from __future__ import annotations
+
+import csv
+import io
+import logging
+import re
+from collections import defaultdict, namedtuple
+from datetime import datetime
+from typing import Optional
+
+import pytz
+from django.db import transaction, IntegrityError
+from django.db.models import Q
+
+from core.models import (
+    Checklist,
+    ContractDevice,
+    Device,
+    Group,
+    GroupDeviceSettings,
+    Jurisdiction,
+    User,
+    UserGroup,
+    UserGroupRole,
+)
+
+# ---------------------------------------------------------------------------
+# Utility functions — mirror implementations in import_viewset.py.
+# Defined here rather than imported to avoid a circular import through
+# core.views.__init__ → schedule_viewset → this module.
+# ---------------------------------------------------------------------------
+
+def _s(v) -> str:
+    """Strip and normalize a value to string."""
+    return (v or "").strip() if isinstance(v, str) else (str(v).strip() if v is not None else "")
+
+
+def _norm(v) -> str:
+    """Normalize to lowercase, single-space."""
+    return " ".join(_s(v).split()).lower()
+
+
+def _norm_addr(v: str) -> str:
+    """Normalize an address string for loose comparison (alphanumeric + space only)."""
+    return re.sub(r"[^a-z0-9 ]", "", v.lower()).strip()
+
+
+_device_token_re = re.compile(r"[A-Za-z]+|\d+")
+
+
+def normalize_device_number(value: str) -> Optional[str]:
+    """
+    Normalize a raw device tag into the canonical hyphen-separated format
+    used when devices are stored (mirrors import_viewset.normalize_device_number):
+      "281P154"   → "281-P-154"
+      "281 P 154" → "281-P-154"
+      "281-P-154" → "281-P-154"
+    Returns None if the input is empty or contains no alphanumeric tokens.
+    """
+    if not value:
+        return None
+    s = str(value).strip().upper()
+    if not s:
+        return None
+    parts = _device_token_re.findall(s)
+    if not parts:
+        return None
+    return "-".join(parts)
+
+
+def strip_test_type_tag_suffix(raw_test_type: str, tag_number: str) -> str:
+    """
+    Remove the appended device-tag suffix from a raw CSV Test Type string.
+
+    The MASS CSV format embeds the device tag directly in the Test Type column:
+        "Annual Inspection - 282-P-12"
+        "Annual Weight Test - 282-P-12"
+        "90 Day Annual - 282-P-12"
+
+    The tag is already captured from the Tag # column, so only the leading
+    type text is needed for inspection-type mapping.
+
+    Uses a case-insensitive suffix check so minor casing differences between
+    the Tag # value and the embedded suffix are handled gracefully.
+
+    Returns the cleaned type text, or the original string unchanged when no
+    matching suffix is found (e.g. a plain "Cat1" value still works).
+    """
+    cleaned = _s(raw_test_type)
+    tag = _s(tag_number)
+    if tag and cleaned.lower().endswith(tag.lower()):
+        # Remove the tag portion, then strip any trailing separator ("  -  ", " - ", "-")
+        cleaned = cleaned[: -len(tag)].rstrip(" -").strip()
+    return cleaned
+
+
+def split_full_name(full_name: str) -> tuple[str, str]:
+    """Split 'First Last Name' into ('First', 'Last Name')."""
+    s = (full_name or "").strip()
+    if not s:
+        return "", ""
+    parts = s.split()
+    if len(parts) == 1:
+        return parts[0], ""
+    return parts[0], " ".join(parts[1:])
+
+
+def ensure_user_group_and_roles(*, user: User, group: Group, role_ids: list) -> tuple:
+    """
+    Idempotently ensure UserGroup + UserGroupRole records exist.
+    Mirrors ensure_user_group_and_roles() in import_viewset.py.
+    """
+    cleaned = [int(r) for r in (role_ids or []) if r]
+    with transaction.atomic():
+        ug, _ = UserGroup.objects.get_or_create(user_id=user.id, group_id=group.id)
+        ugrs = []
+        for rid in cleaned:
+            ugr, _ = UserGroupRole.objects.get_or_create(
+                user_id=user.id, group_id=group.id, role_id=rid
+            )
+            ugrs.append(ugr)
+    return ug, ugrs
+
+logger = logging.getLogger(__name__)
+
+UTC = pytz.utc
+
+# ---------------------------------------------------------------------------
+# Column definitions
+# ---------------------------------------------------------------------------
+
+REQUIRED_COLUMNS = {"date", "time", "inspector", "test type"}
+
+# Any of these (normalized) is accepted as the device/tag column.
+DEVICE_COLUMN_ALIASES = {
+    "tag#",
+    "tag #",
+    "device id",
+    "tag# / device id",
+    "tag#/device id",
+    "tag # / device id",
+    "tag # /device id",
+    "tag # / device id",
+}
+
+# Map normalized CSV test-type strings → internal type codes.
+# Internal codes: "cat1", "retest", "placard".
+TEST_TYPE_NORMALIZATION: dict[str, str] = {
+    # Annual / Cat1
+    "cat1": "cat1",
+    "cat 1": "cat1",
+    "category 1": "cat1",
+    "annual": "cat1",
+    "annual inspection": "cat1",
+    "one year": "cat1",
+    "1 year": "cat1",
+    "1-year": "cat1",
+    # Re-Test
+    "retest": "retest",
+    "re-test": "retest",
+    "re test": "retest",
+    "cat1 retest": "retest",
+    "cat1 re-test": "retest",
+    # Placard
+    "placard": "placard",
+}
+
+# Human-readable labels returned in the API response.
+CHECKLIST_DISPLAY_LABELS: dict[str, str] = {
+    "cat1": "Annual",
+    "retest": "Re-Test",
+    "placard": "Placard",
+}
+
+# Names used for ChecklistType DB lookup (resolved via iexact).
+CHECKLIST_DB_NAMES: dict[str, str] = {
+    "cat1": "Cat1",
+    "retest": "Retest",
+    "placard": "Placard",
+}
+
+DATE_FORMATS = ["%m/%d/%Y", "%Y-%m-%d", "%m-%d-%Y", "%d/%m/%Y"]
+TIME_FORMATS = ["%H:%M", "%H:%M:%S", "%I:%M %p", "%I:%M:%S %p"]
+
+# ---------------------------------------------------------------------------
+# Keyword-based test-type mapping for free-text values (e.g. MASS CSV exports)
+# ---------------------------------------------------------------------------
+
+# Ordered substring patterns applied after the exact-match lookup fails.
+# "cat1 re-test" MUST appear before "re-test" and "cat1" so the combined
+# form is not split across two separate matches.
+_TEST_TYPE_KEYWORD_MAP: list[tuple[str, str]] = [
+    ("cat1 re-test", "retest"),
+    ("cat1 retest", "retest"),
+    ("annual inspection", "cat1"),
+    ("annual", "cat1"),
+    ("re-test", "retest"),
+    ("retest", "retest"),
+]
+
+# Patterns that are valid MASS inspection types but not supported for this
+# import — yield a skip warning rather than an error so other rows are not
+# blocked.
+_TEST_TYPE_UNSUPPORTED_KEYWORDS: list[str] = [
+    "90 day annual",
+]
+
+# Test types that belong to a different jurisdiction and are explicitly
+# rejected (hard error, not skipped).
+_TEST_TYPE_REJECTED_KEYWORDS: list[str] = [
+    "annual weight test",   # Cat5 — wrong jurisdiction
+    "cat5",
+    "cat 5",
+    "category 5",
+    "five year",
+    "5 year",
+    "5-year",
+    "periodic",
+    "maintenance",
+]
+
+
+def map_test_type_to_checklist_name(test_type_raw: str) -> tuple[Optional[str], bool, bool]:
+    """
+    Map a raw CSV test-type string to an internal type code.
+
+    Strategy (in order):
+      1. Unsupported-keyword check ("90 day annual") → (None, True, False).
+         Caller should skip the row with a warning, not an error.
+      2. Rejected-keyword check (Cat5, Periodic, etc.) → (None, False, True).
+         Caller should error the row — these types are not valid for this import.
+      3. Exact lookup in TEST_TYPE_NORMALIZATION.
+      4. Ordered substring matching via _TEST_TYPE_KEYWORD_MAP.
+      5. Completely unknown → (None, False, False). Caller records an error.
+
+    Returns:
+        (internal_code_or_None, is_unsupported, is_rejected)
+    """
+    norm = _norm(test_type_raw)
+
+    for keyword in _TEST_TYPE_UNSUPPORTED_KEYWORDS:
+        if keyword in norm:
+            return None, True, False
+
+    for keyword in _TEST_TYPE_REJECTED_KEYWORDS:
+        if keyword in norm:
+            return None, False, True
+
+    code = TEST_TYPE_NORMALIZATION.get(norm)
+    if code:
+        return code, False, False
+
+    for keyword, internal_code in _TEST_TYPE_KEYWORD_MAP:
+        if keyword in norm:
+            return internal_code, False, False
+
+    return None, False, False
+
+# Named tuple used as dict key for grouping rows.
+InspectionGroupKey = namedtuple("InspectionGroupKey", ["start_date_iso", "inspector_id", "building_id"])
+
+
+# ---------------------------------------------------------------------------
+# CSV parsing
+# ---------------------------------------------------------------------------
+
+def _find_device_key(norm_fieldnames: list[str]) -> Optional[str]:
+    """Return the first normalized fieldname that matches a device column alias."""
+    for f in norm_fieldnames:
+        if f in DEVICE_COLUMN_ALIASES:
+            return f
+    return None
+
+
+def parse_csv_file(file_bytes: bytes) -> tuple[list[dict], list[dict]]:
+    """
+    Parse CSV bytes into a list of normalized row dicts.
+
+    Returns:
+        (rows, top_level_errors)
+        On top-level error, rows is empty and top_level_errors contains one entry.
+        Row dicts have normalized (lowercase, single-space) keys.
+    """
+    for encoding in ("utf-8-sig", "utf-8", "latin-1"):
+        try:
+            content = file_bytes.decode(encoding)
+            break
+        except UnicodeDecodeError:
+            continue
+    else:
+        return [], [
+            {
+                "code": "INVALID_FILE_TYPE",
+                "message": "Could not decode file. Please upload a UTF-8 or Latin-1 CSV.",
+                "context": {},
+            }
+        ]
+
+    reader = csv.DictReader(io.StringIO(content))
+    raw_fieldnames = list(reader.fieldnames or [])
+
+    if not raw_fieldnames:
+        return [], [{"code": "EMPTY_FILE", "message": "CSV file is empty or has no headers.", "context": {}}]
+
+    # Read all rows first so we can check for data before validating columns.
+    # Filter out rows where every value is blank (e.g. trailing empty rows in Excel exports).
+    rows = []
+    for raw_row in reader:
+        norm_row = {_norm(k): _s(v) for k, v in raw_row.items() if k is not None}
+        if any(v for v in norm_row.values()):
+            rows.append(norm_row)
+
+    # Collect all top-level errors so the user can fix everything at once.
+    top_errors = []
+
+    if not rows:
+        top_errors.append({"code": "NO_DATA", "message": "CSV file has no data rows.", "context": {}})
+
+    norm_fieldnames = [_norm(f) for f in raw_fieldnames]
+    device_key = _find_device_key(norm_fieldnames)
+
+    missing = sorted(REQUIRED_COLUMNS - set(norm_fieldnames))
+    if device_key is None:
+        missing = sorted(set(missing) | {"tag# / device id"})
+
+    if missing:
+        top_errors.append(
+            {
+                "code": "MISSING_COLUMNS",
+                "message": "Required columns missing from CSV.",
+                "context": {"missing": missing},
+            }
+        )
+
+    if top_errors:
+        return [], top_errors
+
+    return rows, []
+
+
+def normalize_row(raw_row: dict, row_index: int) -> dict:
+    """
+    Parse and normalize one raw CSV row.
+
+    Returns a row_result dict with keys:
+        row_index, raw_inspector, raw_tag_number, raw_address, raw_company,
+        resolved (dict of resolved fields, filled incrementally),
+        errors (list of error dicts),
+        warnings (list of warning dicts),
+        status ('valid' | 'error' — caller may later change to 'pending_inspector' or 'skipped')
+    """
+    row_result: dict = {
+        "row_index": row_index,
+        "raw_inspector": "",
+        "raw_tag_number": "",
+        "raw_address": "",
+        "raw_company": "",
+        "resolved": {
+            "device_id": None,
+            "device_name": None,
+            "building_id": None,
+            "building_name": None,
+            "building_address": None,
+            "contract_id": None,
+            "contract_number": None,
+            "contract_type": None,
+            "client_id": None,
+            "client_name": None,
+            "jurisdiction_id": None,
+            "inspector_id": None,
+            "inspector_name": None,
+            "checklist_id": None,
+            "checklist_type_int": None,
+            "checklist_name": None,
+            "start_date_iso": None,
+            "start_time_str": None,
+            # Internal fields — stripped from API response (keys prefixed with _)
+            "_start_dt": None,
+            "_end_dt": None,
+            "_checklist_db_name": None,
+        },
+        "errors": [],
+        "warnings": [],
+        "status": "valid",
+    }
+
+    # --- Inspector ---
+    row_result["raw_inspector"] = _s(raw_row.get("inspector", ""))
+    if not row_result["raw_inspector"]:
+        row_result["errors"].append(
+            {"code": "MISSING_INSPECTOR", "field": "inspector", "message": "Inspector name is required."}
+        )
+
+    # --- Device / Tag# ---
+    tag_number = ""
+    for alias in DEVICE_COLUMN_ALIASES:
+        if alias in raw_row:
+            tag_number = _s(raw_row[alias])
+            break
+    row_result["raw_tag_number"] = tag_number
+    if not tag_number:
+        row_result["errors"].append(
+            {"code": "MISSING_TAG_NUMBER", "field": "tag_number", "message": "Tag# / Device ID is required."}
+        )
+
+    # --- Optional columns ---
+    row_result["raw_address"] = _s(raw_row.get("address", ""))
+    # Accept "elevator company" (MASS CSV export) as well as legacy column names.
+    row_result["raw_company"] = _s(
+        raw_row.get("company / client name", "")
+        or raw_row.get("elevator company", "")
+        or raw_row.get("company", "")
+    )
+
+    # --- Date ---
+    date_str = _s(raw_row.get("date", ""))
+    parsed_date = None
+    for fmt in DATE_FORMATS:
+        try:
+            parsed_date = datetime.strptime(date_str, fmt).date()
+            break
+        except ValueError:
+            pass
+    if parsed_date is None:
+        row_result["errors"].append(
+            {"code": "INVALID_DATE", "field": "date", "message": f"Cannot parse date '{date_str}'."}
+        )
+
+    # --- Time ---
+    time_str = _s(raw_row.get("time", ""))
+    parsed_time = None
+    for fmt in TIME_FORMATS:
+        try:
+            parsed_time = datetime.strptime(time_str, fmt).time()
+            break
+        except ValueError:
+            pass
+    if parsed_time is None:
+        row_result["errors"].append(
+            {"code": "INVALID_TIME", "field": "time", "message": f"Cannot parse time '{time_str}'."}
+        )
+
+    # --- Build UTC datetimes ---
+    if parsed_date and parsed_time:
+        start_dt = datetime(
+            parsed_date.year, parsed_date.month, parsed_date.day,
+            parsed_time.hour, parsed_time.minute, parsed_time.second,
+            tzinfo=UTC,
+        )
+        # endDate = same calendar date, time stripped (midnight UTC)
+        end_dt = datetime(parsed_date.year, parsed_date.month, parsed_date.day, 0, 0, 0, tzinfo=UTC)
+        row_result["resolved"]["_start_dt"] = start_dt
+        row_result["resolved"]["_end_dt"] = end_dt
+        row_result["resolved"]["start_date_iso"] = parsed_date.isoformat()
+        row_result["resolved"]["start_time_str"] = parsed_time.strftime("%H:%M:%S")
+
+    # --- Test type ---
+    # Strip the appended device-tag suffix ("Annual Inspection - 282-P-12" →
+    # "Annual Inspection") before mapping. The tag is already captured via
+    # Tag #, so only the leading type text is needed.
+    test_type_raw = _s(raw_row.get("test type", ""))
+    test_type_clean = strip_test_type_tag_suffix(test_type_raw, tag_number)
+    internal_code, is_unsupported, is_rejected = map_test_type_to_checklist_name(test_type_clean)
+
+    if is_unsupported:
+        row_result["warnings"].append(
+            {
+                "code": "UNSUPPORTED_TEST_TYPE",
+                "field": "test type",
+                "message": (
+                    f"Test type '{test_type_raw}' is not yet supported "
+                    "and will be skipped."
+                ),
+            }
+        )
+    elif is_rejected:
+        accepted_labels = [CHECKLIST_DISPLAY_LABELS[c] for c in ("cat1", "retest", "placard")]
+        row_result["errors"].append(
+            {
+                "code": "INVALID_TEST_TYPE",
+                "field": "test type",
+                "message": (
+                    f"Test type '{test_type_raw}' is not valid for this import. "
+                    f"Accepted values: {', '.join(accepted_labels)}."
+                ),
+            }
+        )
+    elif internal_code is None:
+        accepted_labels = [CHECKLIST_DISPLAY_LABELS[c] for c in ("cat1", "retest", "placard")]
+        row_result["errors"].append(
+            {
+                "code": "UNKNOWN_TEST_TYPE",
+                "field": "test type",
+                "message": (
+                    f"Unknown test type '{test_type_raw}'. "
+                    f"Accepted values: {', '.join(accepted_labels)}."
+                ),
+            }
+        )
+    else:
+        row_result["resolved"]["checklist_name"] = CHECKLIST_DISPLAY_LABELS[internal_code]
+        row_result["resolved"]["_checklist_db_name"] = CHECKLIST_DB_NAMES[internal_code]
+
+    # Errors take priority; unsupported rows are skipped (not errored) so
+    # valid rows in the same file are not blocked.
+    if row_result["errors"]:
+        row_result["status"] = "error"
+    elif is_unsupported:
+        row_result["status"] = "skipped"
+
+    return row_result
+
+
+# ---------------------------------------------------------------------------
+# Inspector cache
+# ---------------------------------------------------------------------------
+
+def build_inspector_cache(raw_rows: list[dict], uploading_group_id: int) -> dict[str, object]:
+    """
+    Build a name → User mapping for every unique inspector name in the CSV.
+
+    Values:
+        User object       — exactly one active inspector matched
+        'ambiguous'       — more than one user matched the name
+        None              — no match found (unknown inspector)
+
+    Strategy: search within the uploading group first; fall back to
+    system-wide (any group) if not found in group.  Cross-group matches
+    are returned as User objects — the caller must call
+    ensure_user_group_and_roles() during finalize to link them.
+    """
+    unique_names: set[str] = set()
+    for row in raw_rows:
+        name = _norm(row.get("inspector", ""))
+        if name:
+            unique_names.add(name)
+
+    cache: dict[str, object] = {}
+
+    for norm_name in unique_names:
+        fn, ln = split_full_name(norm_name)
+
+        # 1. Group-scoped
+        qs_group = User.objects.filter(
+            first_name__iexact=fn,
+            last_name__iexact=ln,
+            usergrouprole__group_id=uploading_group_id,
+            usergrouprole__role_id=4,
+            status="active",
+        ).distinct()
+
+        count_group = qs_group.count()
+        if count_group == 1:
+            cache[norm_name] = qs_group.first()
+            continue
+        if count_group > 1:
+            cache[norm_name] = "ambiguous"
+            continue
+
+        # 2. System-wide fallback
+        qs_all = User.objects.filter(
+            first_name__iexact=fn,
+            last_name__iexact=ln,
+            usergrouprole__role_id=4,
+            status="active",
+        ).distinct()
+
+        count_all = qs_all.count()
+        if count_all == 1:
+            cache[norm_name] = qs_all.first()
+        elif count_all > 1:
+            cache[norm_name] = "ambiguous"
+        else:
+            cache[norm_name] = None  # unknown
+
+    return cache
+
+
+# ---------------------------------------------------------------------------
+# Device / contract / checklist resolution
+# ---------------------------------------------------------------------------
+
+def resolve_device(
+    tag_number: str,
+    uploading_group_id: int,
+    raw_address: str = "",
+) -> tuple[Optional[Device], list[dict]]:
+    """
+    Resolve a device by Device.name.
+
+    Strategy:
+      1. Find all devices whose name exactly matches the tag number (no
+         contract filter).  This prevents spurious DEVICE_NOT_FOUND errors
+         when the device exists but its ContractDevice / Contract status is
+         in any state other than "active".  Group / contract validation is
+         the responsibility of resolve_contract(), which is called separately.
+      2. If exactly one candidate → return it.
+      3. If multiple candidates, narrow by the uploading group's active
+         contracts (prefers the device already linked to this group).
+      4. If still multiple (or none match the group), narrow further by
+         building address.
+      5. Still ambiguous → DEVICE_AMBIGUOUS.
+
+    The returned Device has building pre-fetched via select_related.
+    """
+    tag_number = _s(tag_number)
+    if not tag_number:
+        return None, [
+            {
+                "code": "MISSING_TAG_NUMBER",
+                "field": "tag_number",
+                "message": "Tag# / Device ID is required.",
+            }
+        ]
+
+    # Normalize to the canonical hyphenated format used when devices are stored.
+    # Handles format variations like "281P154" or "281 P 154" → "281-P-154".
+    # Falls back to the raw value if normalization produces nothing.
+    normalized_tag = normalize_device_number(tag_number) or tag_number
+
+    qs = (
+        Device.objects.filter(
+            Q(name__iexact=normalized_tag)
+            | Q(
+                group_device_settings__name__iexact=normalized_tag,
+                group_device_settings__group_id=uploading_group_id,
+            )
+        )
+        .select_related("building")
+        .distinct()
+    )
+
+    count = qs.count()
+    if count == 0:
+        return None, [
+            {
+                "code": "DEVICE_NOT_FOUND",
+                "field": "tag_number",
+                "message": f"No device found with name '{tag_number}'.",
+            }
+        ]
+    if count == 1:
+        return qs.first(), []
+
+    # --- Multiple devices share this name — disambiguate ---
+
+    # Step 2: prefer the device linked to an active contract for this group
+    group_qs = (
+        qs.filter(
+
+            device_contracts__contract__group_id=uploading_group_id,
+            device_contracts__contract__status="active",
+            device_contracts__status="active",
+        )
+        .distinct()
+    )
+    group_count = group_qs.count()
+    if group_count == 1:
+        return group_qs.first(), []
+
+    # Step 3: narrow further by building address (optional — only used if provided).
+    # Building address is always derived from device.building in the caller;
+    # the CSV address is only used here as a disambiguation hint.
+    # Use premises_address (MA canonical) falling back to physical_address,
+    # consistent with how building_address is resolved in the view.
+    candidates = list(group_qs if group_count > 1 else qs)
+    if raw_address:
+        norm_input = _norm_addr(raw_address)
+        addr_matches = [
+            d for d in candidates
+            if d.building and norm_input in _norm_addr(
+                d.building.premises_address or d.building.physical_address or ""
+            )
+        ]
+        if len(addr_matches) == 1:
+            return addr_matches[0], []
+
+    return None, [
+        {
+            "code": "DEVICE_AMBIGUOUS",
+            "field": "tag_number",
+            "message": (
+                f"Multiple devices matched '{tag_number}'. "
+                "Provide a unique device ID or verify the address."
+            ),
+        }
+    ]
+
+
+def resolve_contract(
+    device_id: int,
+    uploading_group_id: int,
+) -> tuple[Optional[ContractDevice], list[dict], list[dict]]:
+    """
+    Find the active ContractDevice for the given device and group.
+
+    Returns (contract_device_or_none, errors, warnings).
+    The returned ContractDevice has contract and client pre-fetched.
+    """
+    qs = (
+        ContractDevice.objects.filter(
+            device_id=device_id,
+            status="active",
+            contract__status="active",
+            contract__group_id=uploading_group_id,
+        )
+        .select_related("contract__client")
+        .order_by("-contract__start_date")
+    )
+
+    count = qs.count()
+    if count == 0:
+        return None, [
+            {
+                "code": "NO_ACTIVE_CONTRACT",
+                "field": "tag_number",
+                "message": "No active contract found for this device and group.",
+            }
+        ], []
+
+    warnings: list[dict] = []
+    if count > 1:
+        warnings.append(
+            {
+                "code": "MULTIPLE_ACTIVE_CONTRACTS",
+                "field": "tag_number",
+                "message": f"{count} active contracts found for this device; using the most recent.",
+            }
+        )
+
+    return qs.first(), [], warnings
+
+
+def resolve_checklist(
+    checklist_name: str,
+    jurisdiction_id: int,
+    group_id: Optional[int] = None,
+    display_name: Optional[str] = None,
+) -> tuple[Optional[Checklist], list[dict]]:
+    """
+    Find the Checklist record for the given canonical name and jurisdiction.
+
+    checklist_name is the DB lookup name (matched via ChecklistType.name iexact,
+    e.g. "Cat1", "Retest", "Placard").  display_name, if provided, is used in
+    error messages instead of checklist_name so the user sees human-readable
+    labels (e.g. "Annual" rather than "Cat1").
+
+    Resolution order:
+      1. group-scoped + jurisdiction  (specific override)
+      2. jurisdiction-only            (shared checklist)
+    """
+    # Filter by ChecklistType.name rather than Checklist.name.
+    # Checklist display names vary ("Cat1 ELV3 Checklist", "Mobile Check List 1",
+    # etc.) while ChecklistType.name is the stable semantic identifier used
+    # throughout the scheduling system (e.g. "CAT1", "CAT5", "Periodic").
+    # iexact handles the casing difference ("Cat1" vs "CAT1").
+    #
+    # Phase 2: lookup goes through the M2M `jurisdictions` rather than the
+    # legacy `jurisdiction_id` FK. The Phase 1 backfill mirrored every
+    # non-null FK into the through table, so this filter returns the same
+    # set as before for legacy data — plus any new multi-jurisdiction
+    # mappings going forward. `.distinct()` guards against duplicate rows
+    # when a checklist maps to multiple matching jurisdictions.
+    base_qs = Checklist.objects.filter(
+        type__name__iexact=checklist_name,
+        jurisdictions__id=jurisdiction_id,
+        status="active",
+    ).distinct()
+
+    # Prefer group-specific checklist if one exists
+    if group_id:
+        group_qs = base_qs.filter(group_id=group_id)
+        if group_qs.exists():
+            return group_qs.first(), []
+
+    # Fall back to shared / jurisdiction-level
+    shared_qs = base_qs.filter(group__isnull=True)
+    if shared_qs.exists():
+        return shared_qs.first(), []
+
+    # Last resort: any active checklist for the jurisdiction
+    if base_qs.exists():
+        return base_qs.first(), []
+
+    label = display_name or checklist_name
+    return None, [
+        {
+            "code": "CHECKLIST_NOT_FOUND",
+            "field": "test type",
+            "message": (
+                f"No active checklist found for inspection type '{label}' "
+                f"in jurisdiction id={jurisdiction_id}. "
+                "Ensure a checklist with the matching ChecklistType is configured "
+                "for this jurisdiction."
+            ),
+        }
+    ]
+
+
+# ---------------------------------------------------------------------------
+# Row grouping
+# ---------------------------------------------------------------------------
+
+def group_rows(resolved_rows: list[dict]) -> dict[InspectionGroupKey, list[dict]]:
+    """
+    Group valid resolved rows by (start_date_iso, inspector_id, building_id).
+    Rows missing any of the three keys are silently excluded (they should
+    already be marked 'error' by the time this is called).
+    """
+    groups: dict[InspectionGroupKey, list[dict]] = defaultdict(list)
+    for row in resolved_rows:
+        r = row["resolved"]
+        start_date = r.get("start_date_iso")
+        inspector_id = r.get("inspector_id")
+        building_id = r.get("building_id")
+        if start_date and inspector_id and building_id:
+            key = InspectionGroupKey(
+                start_date_iso=start_date,
+                inspector_id=inspector_id,
+                building_id=building_id,
+            )
+            groups[key].append(row)
+    return dict(groups)
+
+
+# ---------------------------------------------------------------------------
+# MongoDB document builders
+# ---------------------------------------------------------------------------
+
+def build_inspection_group_data(
+    group_key: InspectionGroupKey,
+    rows: list[dict],
+    uploading_group_id: int,
+    jurisdiction: Optional[Jurisdiction],
+) -> dict:
+    """
+    Build the inspection_groups MongoDB document dict from a group of resolved rows.
+    All rows in the group share the same date, inspector, and building.
+    """
+    first = rows[0]["resolved"]
+    start_dt = first["_start_dt"]
+    end_dt = first["_end_dt"]
+    start_time_str = first.get("start_time_str", "")
+
+    return {
+        "groupId": int(uploading_group_id),
+        "clientId": int(first.get("client_id") or 0),
+        "clientName": first.get("client_name", ""),
+        "buildingId": int(group_key.building_id),
+        "buildingName": first.get("building_name", ""),
+        "buildingAddress": first.get("building_address", ""),
+        "jurisdictionId": jurisdiction.id if jurisdiction else None,
+        "jurisdictionName": jurisdiction.name if jurisdiction else "",
+        "startDate": start_dt,
+        "endDate": end_dt,
+        "inspectorId": int(group_key.inspector_id),
+        "performingInspectorId": int(group_key.inspector_id),
+        "witnessingInspectorId": 0,
+        "jobNumber": None,
+        "witnessingCompanyId": None,
+        "elevator_company_id": None,
+        "startTime": start_time_str,
+        "endTime": "",
+    }
+
+
+def build_device_inspections(rows: list[dict]) -> list[dict]:
+    """
+    Convert resolved row dicts into the device_inspections format expected by
+    ScheduleViewset._persist_inspection_group().
+
+    Each item maps to one inspection document in MongoDB.
+    """
+    device_inspections = []
+    for row in rows:
+        r = row["resolved"]
+        device_inspections.append(
+            {
+                "device_id": r.get("device_id"),
+                "name": r.get("device_name", "Unknown Device"),
+                "contract_id": r.get("contract_id"),
+                "contract_number": r.get("contract_number", ""),
+                "contract_type": r.get("contract_type", ""),
+                "fsot_date": None,
+                "checklist": [
+                    {
+                        "id": r.get("checklist_id"),
+                        "type": r.get("checklist_type_int"),
+                    }
+                ],
+            }
+        )
+    return device_inspections
+
+
+# ---------------------------------------------------------------------------
+# Inspector creation (no Cognito)
+# ---------------------------------------------------------------------------
+
+def create_inspector_without_cognito(
+    name: str,
+    email: Optional[str],
+    group: Group,
+) -> User:
+    """
+    Create a User record for an imported inspector and link them to the group.
+
+    No Cognito provisioning.  email is stored when provided but is not
+    required (User.email is nullable in this project).
+    Raises IntegrityError if a duplicate username/email cannot be resolved.
+    """
+    fn, ln = split_full_name(name)
+    base_username = email.lower() if email else f"import.{fn.lower()}.{ln.lower()}".strip(".")
+
+    username = base_username
+    counter = 1
+    while User.objects.filter(username=username).exists():
+        username = f"{base_username}.{counter}"
+        counter += 1
+
+    with transaction.atomic():
+        new_user = User.objects.create(
+            username=username,
+            email=email if email else None,
+            first_name=fn,
+            last_name=ln or "",
+            status="active",
+        )
+
+    ensure_user_group_and_roles(user=new_user, group=group, role_ids=[4])
+    return new_user

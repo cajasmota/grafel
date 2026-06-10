@@ -1125,6 +1125,24 @@ def simple_task():
 // Pytest tests
 // ============================================================================
 
+// pytestSuite returns the single collapsed test_suite entity emitted by the
+// pytest/unittest extractor for a file (issue #4357), or fails.
+func pytestSuite(t *testing.T, ents []extractResult) extractResult {
+	t.Helper()
+	var suites []extractResult
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Pattern" && e.Subtype == "test_suite" {
+			suites = append(suites, e)
+		}
+	}
+	if len(suites) != 1 {
+		t.Fatalf("expected exactly 1 test_suite entity, got %d", len(suites))
+	}
+	return suites[0]
+}
+
+// Issue #4357: the per-test/per-class/per-fixture nodes are collapsed into one
+// test_suite entity per file with counts folded into properties.
 func TestPytest_TestFunction(t *testing.T) {
 	src := `def test_user_creation():
     assert True
@@ -1133,14 +1151,12 @@ async def test_async_endpoint():
     assert True
 `
 	ents := extract(t, "python_pytest", src)
-	testCount := 0
-	for _, e := range ents {
-		if e.Props["pattern_type"] == "test" {
-			testCount++
-		}
+	suite := pytestSuite(t, ents)
+	if suite.Props["test_func_count"] != "2" {
+		t.Fatalf("expected test_func_count=2, got %q", suite.Props["test_func_count"])
 	}
-	if testCount != 2 {
-		t.Fatalf("expected 2 test functions, got %d", testCount)
+	if suite.Props["toplevel_func_count"] != "2" {
+		t.Fatalf("expected toplevel_func_count=2, got %q", suite.Props["toplevel_func_count"])
 	}
 }
 
@@ -1152,21 +1168,12 @@ func TestPytest_TestClass(t *testing.T) {
         pass
 `
 	ents := extract(t, "python_pytest", src)
-	classCount := 0
-	methodCount := 0
-	for _, e := range ents {
-		if e.Props["pattern_type"] == "test_class" {
-			classCount++
-		}
-		if e.Props["pattern_type"] == "test" {
-			methodCount++
-		}
+	suite := pytestSuite(t, ents)
+	if suite.Props["test_class_count"] != "1" {
+		t.Fatalf("expected test_class_count=1, got %q", suite.Props["test_class_count"])
 	}
-	if classCount != 1 {
-		t.Fatalf("expected 1 test class, got %d", classCount)
-	}
-	if methodCount != 2 {
-		t.Fatalf("expected 2 test methods, got %d", methodCount)
+	if suite.Props["test_method_count"] != "2" {
+		t.Fatalf("expected test_method_count=2, got %q", suite.Props["test_method_count"])
 	}
 }
 
@@ -1174,16 +1181,20 @@ func TestPytest_Fixture(t *testing.T) {
 	src := `@pytest.fixture(scope="session", autouse=True)
 def db_connection():
     pass
+
+def test_uses_db(db_connection):
+    assert True
 `
 	ents := extract(t, "python_pytest", src)
-	found := false
-	for _, e := range ents {
-		if e.Name == "db_connection" && e.Props["fixture_scope"] == "session" && e.Props["autouse"] == "true" {
-			found = true
-		}
+	suite := pytestSuite(t, ents)
+	if suite.Props["fixture_count"] != "1" {
+		t.Fatalf("expected fixture_count=1, got %q", suite.Props["fixture_count"])
 	}
-	if !found {
-		t.Fatal("expected fixture entity")
+	// The fixture is no longer a standalone orphan node.
+	for _, e := range ents {
+		if e.Name == "db_connection" {
+			t.Fatalf("fixture should not be a standalone entity, got %+v", e)
+		}
 	}
 }
 
@@ -1193,14 +1204,9 @@ def test_double(input, expected):
     assert input * 2 == expected
 `
 	ents := extract(t, "python_pytest", src)
-	found := false
-	for _, e := range ents {
-		if e.Name == "test_double" && e.Props["parametrized"] == "true" {
-			found = true
-		}
-	}
-	if !found {
-		t.Fatal("expected parametrized test entity")
+	suite := pytestSuite(t, ents)
+	if suite.Props["parametrize_count"] != "1" {
+		t.Fatalf("expected parametrize_count=1, got %q", suite.Props["parametrize_count"])
 	}
 }
 
@@ -4489,37 +4495,22 @@ def test_process_order_task():
     assert result.id
 `
 	ents := extract(t, "python_pytest", src)
-	byName := map[string]extractResult{}
-	for _, e := range ents {
-		byName[e.Name] = e
-	}
-
-	sendTest, ok := byName["test_send_email_task"]
-	if !ok {
-		t.Fatal("expected entity test_send_email_task")
-	}
-	foundDelay := false
-	for _, r := range sendTest.Rels {
+	// Issue #4357: celery TESTS edges are now folded onto the single test_suite.
+	suite := pytestSuite(t, ents)
+	foundDelay, foundApply := false, false
+	for _, r := range suite.Rels {
 		if r.Kind == "TESTS" && r.ToID == "Task:send_email" {
 			foundDelay = true
 		}
-	}
-	if !foundDelay {
-		t.Errorf("test_send_email_task: expected TESTS → Task:send_email (via .delay()), got rels: %+v", sendTest.Rels)
-	}
-
-	processTest, ok := byName["test_process_order_task"]
-	if !ok {
-		t.Fatal("expected entity test_process_order_task")
-	}
-	foundApply := false
-	for _, r := range processTest.Rels {
 		if r.Kind == "TESTS" && r.ToID == "Task:process_order" {
 			foundApply = true
 		}
 	}
+	if !foundDelay {
+		t.Errorf("expected TESTS → Task:send_email (via .delay()), got rels: %+v", suite.Rels)
+	}
 	if !foundApply {
-		t.Errorf("test_process_order_task: expected TESTS → Task:process_order (via .apply_async()), got rels: %+v", processTest.Rels)
+		t.Errorf("expected TESTS → Task:process_order (via .apply_async()), got rels: %+v", suite.Rels)
 	}
 }
 
@@ -4530,24 +4521,15 @@ func TestCelery_TestsEdges_Apply(t *testing.T) {
     assert result.result == 3
 `
 	ents := extract(t, "python_pytest", src)
-	var testEnt *extractResult
-	for i := range ents {
-		if ents[i].Name == "test_sync_task" {
-			testEnt = &ents[i]
-			break
-		}
-	}
-	if testEnt == nil {
-		t.Fatal("expected entity test_sync_task")
-	}
+	suite := pytestSuite(t, ents)
 	found := false
-	for _, r := range testEnt.Rels {
+	for _, r := range suite.Rels {
 		if r.Kind == "TESTS" && r.ToID == "Task:my_task" {
 			found = true
 		}
 	}
 	if !found {
-		t.Errorf("expected TESTS → Task:my_task (via .apply()), got rels: %+v", testEnt.Rels)
+		t.Errorf("expected TESTS → Task:my_task (via .apply()), got rels: %+v", suite.Rels)
 	}
 }
 

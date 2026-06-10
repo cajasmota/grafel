@@ -1,0 +1,26 @@
+"""Order service — production module under test (representative SUT)."""
+
+from dataclasses import dataclass
+
+
+@dataclass
+class Order:
+    id: int
+    total: float
+
+
+class OrderService:
+    def __init__(self, repo):
+        self.repo = repo
+
+    def total(self, order: Order) -> float:
+        return order.total
+
+
+def place_order(customer_id: int, items: list) -> Order:
+    total = sum(i["price"] for i in items)
+    return Order(id=customer_id, total=total)
+
+
+def cancel_order(order: Order) -> bool:
+    return order.total == 0
