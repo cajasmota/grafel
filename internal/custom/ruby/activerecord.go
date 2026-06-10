@@ -270,6 +270,16 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 	//    Covers has_many, belongs_to, has_one, has_and_belongs_to_many.
 	// -------------------------------------------------------------------------
 	if !isSchemaFile && !isMigrationFile {
+		// #4367 — owning model class for this file (one model per file is the
+		// Rails convention). When known, every association/FK relation entity
+		// below carries a CONTAINS edge from the model (so it is a member, not
+		// an orphan) and a REFERENCES edge to its target model (so it is not a
+		// dead-end). Both stubs resolve via the `Class:<Name>` byName convention.
+		ownerModel := ""
+		if mm := reARModelClass.FindStringSubmatch(src); mm != nil {
+			ownerModel = mm[1]
+		}
+
 		for _, m := range reARAssociation.FindAllStringSubmatchIndex(src, -1) {
 			assocType := src[m[2]:m[3]]
 			assocName := src[m[4]:m[5]]
@@ -281,6 +291,13 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 				"association_type", assocType,
 				"association_name", assocName,
 			)
+			if ownerModel != "" {
+				target := targetModel(assocType, assocName, assocOptions{})
+				setProps(&ent, "owner_model", ownerModel, "target_model", target)
+				ent.Relationships = append(ent.Relationships,
+					containsFieldEdge(ownerModel, ent.ID, assocName, "activerecord"),
+					referencesClassEdge(ent.ID, target, "activerecord", assocName))
+			}
 			add(ent)
 		}
 
@@ -306,6 +323,13 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 				"association_name", assocName,
 				"through_model", throughName,
 			)
+			if ownerModel != "" {
+				target := targetModel("has_many", assocName, assocOptions{})
+				setProps(&ent, "owner_model", ownerModel, "target_model", target)
+				ent.Relationships = append(ent.Relationships,
+					containsFieldEdge(ownerModel, ent.ID, assocName, "activerecord"),
+					referencesClassEdge(ent.ID, target, "activerecord", assocName))
+			}
 			add(ent)
 		}
 
@@ -319,6 +343,10 @@ func (e *activeRecordExtractor) Extract(ctx context.Context, file extractor.File
 				"provenance", "INFERRED_FROM_AR_FOREIGN_KEY",
 				"association_name", assocName,
 			)
+			if ownerModel != "" {
+				ent.Relationships = append(ent.Relationships,
+					containsFieldEdge(ownerModel, ent.ID, assocName, "activerecord"))
+			}
 			add(ent)
 		}
 

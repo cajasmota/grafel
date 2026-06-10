@@ -358,6 +358,15 @@ func patternResultToRecords(res *PatternResult, filePath string) []types.EntityR
 			Kind:       r.RelationshipType,
 			Properties: map[string]string{},
 		}
+		// #4367 — explicit FromID override. When the edge's source must resolve
+		// to an entity OTHER than its carrier (the field-membership CONTAINS edge
+		// whose carrier is the field but whose source is the owning class), the
+		// extractor sets FromName to a resolvable stub (`Class:<Owner>`). The
+		// resolver's ReferencesEmbedded rewrites FromID by name, binding it to the
+		// real class. Left empty -> implicit carrier-as-source (the default).
+		if r.FromName != "" {
+			rr.FromID = r.FromName
+		}
 		for k, v := range r.Properties {
 			rr.Properties[k] = v
 		}

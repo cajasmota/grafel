@@ -350,6 +350,21 @@ func extractARModelsAndAssociations(src string, file extractor.FileInput, add fu
 		if modelName != "" {
 			setProps(&rel, "owner_model", modelName)
 		}
+		// #4367 — field membership + relation target. The association entity was
+		// a degree-0 orphan: no owning-model membership, no target-model edge.
+		//   • REFERENCES (assoc entity → Class:<target>): the related model is the
+		//     association's only outbound semantic edge. Polymorphic associations
+		//     have no single concrete target, so they stay honest-partial.
+		//   • CONTAINS (Class:<owner> → assoc entity): hung off the owner model
+		//     node so the field is a member, not an orphan.
+		if target != "" && !o.polymorph {
+			rel.Relationships = append(rel.Relationships,
+				referencesClassEdge(rel.ID, target, "activerecord", assocName))
+		}
+		if modelEnt != nil {
+			modelEnt.Relationships = append(modelEnt.Relationships,
+				containsFieldEdge(modelName, rel.ID, assocName, "activerecord"))
+		}
 		add(rel)
 
 		// GRAPH_RELATES model↔model edge with cardinality, hung off the owner
@@ -398,6 +413,16 @@ func extractARModelsAndAssociations(src string, file extractor.FileInput, add fu
 			if o.polymorph {
 				setProps(&fkEnt, "polymorphic", "true")
 				setProps(&fkEnt, "type_column", assocName+"_type")
+			}
+			// #4367 — FK field membership + relation target (same shape as the
+			// association entity above).
+			if target != "" && !o.polymorph {
+				fkEnt.Relationships = append(fkEnt.Relationships,
+					referencesClassEdge(fkEnt.ID, target, "activerecord", assocName))
+			}
+			if modelEnt != nil {
+				modelEnt.Relationships = append(modelEnt.Relationships,
+					containsFieldEdge(modelName, fkEnt.ID, assocName, "activerecord"))
 			}
 			add(fkEnt)
 		}

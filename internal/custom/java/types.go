@@ -28,10 +28,19 @@ type SecondaryEntity struct {
 
 // Relationship represents a directed edge between two entities identified
 // by their ref strings.
+//
+// SourceRef names the CARRIER entity the edge is hung off (the entity whose
+// Ref == SourceRef, or a synthesised carrier). By default the edge's FromID is
+// left implicit (the carrier's own ID). When FromName is set, it overrides the
+// edge's FromID with an explicit resolvable stub (e.g. `Class:<Owner>`) so the
+// edge's source binds to a DIFFERENT entity than its carrier — used for #4367
+// field-membership CONTAINS edges, where the field entity carries the edge but
+// the source must resolve to its (separately-extracted) owning class by name.
 type Relationship struct {
 	SourceRef        string            `json:"source_ref"`
 	TargetRef        string            `json:"target_ref"`
 	RelationshipType string            `json:"relationship_type"`
+	FromName         string            `json:"from_name,omitempty"`
 	Properties       map[string]string `json:"properties,omitempty"`
 }
 

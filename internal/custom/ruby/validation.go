@@ -194,6 +194,16 @@ func (e *rubyValidationExtractor) Extract(ctx context.Context, file extractor.Fi
 		entities = append(entities, ent)
 	}
 
+	// #4367 — owning model class for this file (one model per file is the Rails
+	// convention). When present, ActiveModel `validates :field` declarations
+	// carry a CONTAINS edge from the model so the validation field is a member,
+	// not an orphan. Plain (non-model) classes carrying validations stay
+	// honest-partial (no model node to anchor membership).
+	valOwnerModel := ""
+	if mm := reARModelClass.FindStringSubmatch(src); mm != nil {
+		valOwnerModel = mm[1]
+	}
+
 	// 1. Rails strong params: params.require(...)
 	for _, idx := range rbStrongParamRequire.FindAllStringIndex(src, -1) {
 		ln := lineOf(src, idx[0])
@@ -233,6 +243,11 @@ func (e *rubyValidationExtractor) Extract(ctx context.Context, file extractor.Fi
 			"signal", "validation",
 			"field", field,
 		)
+		if valOwnerModel != "" {
+			setProps(&ent, "owner_model", valOwnerModel)
+			ent.Relationships = append(ent.Relationships,
+				containsFieldEdge(valOwnerModel, ent.ID, field, "activemodel"))
+		}
 		add(ent)
 	}
 
@@ -263,6 +278,11 @@ func (e *rubyValidationExtractor) Extract(ctx context.Context, file extractor.Fi
 			"macro", macro,
 			"field", field,
 		)
+		if valOwnerModel != "" {
+			setProps(&ent, "owner_model", valOwnerModel)
+			ent.Relationships = append(ent.Relationships,
+				containsFieldEdge(valOwnerModel, ent.ID, field, "activemodel"))
+		}
 		add(ent)
 	}
 

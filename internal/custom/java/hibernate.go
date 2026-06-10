@@ -34,6 +34,16 @@ var (
 		`(?s)@(OneToMany|ManyToOne|OneToOne|ManyToMany)\b(?:\s*\([^)]*\))?` +
 			`\s*(?:@\w+(?:\s*\([^)]*\))?\s*)*(?:private|protected|public|var|val|)\s+` +
 			`(?:(?:final|transient)\s+)*(?:\w+<(\w+)>|(\w+))\s+(\w+)(?:\s*[:?=;])`)
+	// hibColumnFieldRE matches a scalar / embedded JPA field declaration
+	// (#4367). Group 1 = annotation head (Column/Embedded/Basic/Lob/Enumerated),
+	// group 2 = declared type, group 3 = field/property name. Companion
+	// annotations (e.g. @Enumerated, @Temporal) between the head annotation and
+	// the field are skipped. Accepts Java (`private String x;`) and Kotlin
+	// (`var x: String`) field forms.
+	hibColumnFieldRE = regexp.MustCompile(
+		`(?s)@(Column|Embedded|Basic|Lob|Enumerated)\b(?:\s*\([^)]*\))?` +
+			`\s*(?:@\w+(?:\s*\([^)]*\))?\s*)*(?:private|protected|public|var|val|)\s+` +
+			`(?:(?:final|transient)\s+)*(\w+)\s+(\w+)(?:\s*[:?=;])`)
 	hibNamedQueryRE = regexp.MustCompile(
 		`(?s)@NamedQuery\s*\(\s*` +
 			`(?:name\s*=\s*\"(?P<name>[^\"]*)\"\s*,\s*query\s*=\s*\"(?P<query>[^\"]*)\"` +
@@ -135,8 +145,13 @@ func ExtractHibernate(ctx PatternContext) PatternResult {
 		if targetType == "" {
 			continue
 		}
+		// Group 4 (m[8:9]) is the field/property name (#4367).
+		fieldName := ""
+		if m[8] >= 0 {
+			fieldName = source[m[8]:m[9]]
+		}
 
-		_, ownerRef := findOwningEntity(m[0])
+		ownerName, ownerRef := findOwningEntity(m[0])
 		if ownerRef == "" {
 			continue
 		}
@@ -149,6 +164,59 @@ func ExtractHibernate(ctx PatternContext) PatternResult {
 				"provenance": "INFERRED_FROM_HIBERNATE_ASSOCIATION",
 			},
 		})
+
+		// #4367 — per-field membership + relation target. The association is a
+		// concrete field of the entity: emit a relation field entity, hang a
+		// CONTAINS edge from the owning @Entity class (so the field is a member,
+		// not an orphan), and a REFERENCES edge to the target entity type (the
+		// generic element type for collection relations, e.g. List<Item> -> Item,
+		// already unwrapped into targetType by hibAssociationRE).
+		if fieldName != "" {
+			fieldRef := "scope:component:hibernate_relation:" + fp + ":" + ownerName + "." + fieldName
+			if addEntity(&result, seenRefs, SecondaryEntity{
+				Name: ownerName + "." + fieldName, Kind: "SCOPE.Component", Subtype: "relation",
+				SourceFile: fp, LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+				Provenance: "INFERRED_FROM_HIBERNATE_ASSOCIATION", Ref: fieldRef,
+				Properties: map[string]any{
+					"framework": "hibernate", "owner_class": ownerName,
+					"field_name": fieldName, "association_kind": ann,
+					"target_type": targetType,
+				},
+			}) {
+				addRel(&result, seenRels, containsFieldRel(ownerName, fieldRef, fieldName, "hibernate"))
+				addRel(&result, seenRels, referencesClassRel(fieldRef, targetType, fieldName, "hibernate"))
+			}
+		}
+	}
+
+	// 2b. JPA @Column / @Embedded scalar + embedded fields (#4367). Each becomes
+	// a member of its owning @Entity via a CONTAINS edge; @Embedded fields also
+	// carry a REFERENCES edge to the embeddable type. These were not emitted at
+	// all before, so the entity's scalar columns had no structural membership.
+	for _, m := range hibColumnFieldRE.FindAllStringSubmatchIndex(source, -1) {
+		ann := source[m[2]:m[3]]      // Column | Embedded | Basic | Lob | Enumerated
+		fieldType := source[m[4]:m[5]] // declared type (may be generic-wrapped)
+		fieldName := source[m[6]:m[7]]
+		ownerName, _ := findOwningEntity(m[0])
+		if ownerName == "" {
+			continue
+		}
+		fieldRef := "scope:component:hibernate_column:" + fp + ":" + ownerName + "." + fieldName
+		if addEntity(&result, seenRefs, SecondaryEntity{
+			Name: ownerName + "." + fieldName, Kind: "SCOPE.Component", Subtype: "column",
+			SourceFile: fp, LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
+			Provenance: "INFERRED_FROM_HIBERNATE_COLUMN", Ref: fieldRef,
+			Properties: map[string]any{
+				"framework": "hibernate", "owner_class": ownerName,
+				"field_name": fieldName, "column_annotation": ann, "field_type": fieldType,
+			},
+		}) {
+			addRel(&result, seenRels, containsFieldRel(ownerName, fieldRef, fieldName, "hibernate"))
+			// @Embedded fields reference their embeddable value type.
+			if ann == "Embedded" && fieldType != "" && !primitiveTypes[fieldType] {
+				addRel(&result, seenRels, referencesClassRel(fieldRef, fieldType, fieldName, "hibernate"))
+			}
+		}
 	}
 
 	// 3. @NamedQuery
