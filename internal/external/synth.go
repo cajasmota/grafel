@@ -1185,6 +1185,33 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return root, "package", true
 	}
 
+	// #4695 — JS/TS bare-specifier external packages. By the time an
+	// IMPORTS edge from a JS/TS file reaches this point its ToID is a raw
+	// stub: the JS/TS extractor (internal/extractors/javascript/imports.go)
+	// already exhausted relative-path resolution AND tsconfig path-alias /
+	// baseUrl resolution before leaving the spec unresolved. A specifier
+	// that is neither relative (`./`, `../`) nor an internal alias, whose
+	// root is a legal npm package name, is by construction a third-party
+	// dependency (class-validator, typeorm, mongoose, reflect-metadata,
+	// @nestjs/common, …). Third-party packages are correctly NOT indexed,
+	// so they must be routed to an ext:<package> placeholder (disposition
+	// external_package) rather than left as a bug-extractor stub that
+	// inflates the import-bug count and depresses the fidelity badge.
+	//
+	// The static isKnownExternalPackage allowlist above can never keep pace
+	// with the npm ecosystem; this branch is the catch-all that trusts the
+	// extractor's "didn't resolve internally" signal. Gated to IMPORTS so
+	// it never swallows ambiguous bare CALLS/REFERENCES targets (which may
+	// still be local symbols), and to javascript/typescript so other
+	// ecosystems keep their existing safer-bias behaviour. Per-language
+	// equivalents (pip, maven, gems, cargo, go-module, nuget) are tracked
+	// as follow-ups.
+	if (lang == "javascript" || lang == "typescript") && relKind == string(types.RelationshipKindImports) {
+		if pkg, ok := jsExternalPackageRoot(stub, relProps); ok {
+			return pkg, "package", true
+		}
+	}
+
 	// Issue #120 — receiver-typed Java/Kotlin call where the leading
 	// segment is the simple name of an imported external class.
 	// `MockMvc.perform`, `RedirectAttributes.addFlashAttribute` etc.
@@ -1951,6 +1978,79 @@ func scopedNpmRoot(s string) (string, bool) {
 		return "", false
 	}
 	return "@" + scope + "/" + pkg, true
+}
+
+// jsExternalPackageRoot derives the canonical npm package root for a
+// JS/TS IMPORTS edge that survived relative + alias resolution, returning
+// (root, true) when the specifier is a legal third-party npm package
+// (#4695). The raw import specifier is read from relProps["import_path"]
+// when present (the extractor stamps the verbatim spec there) and falls
+// back to the dotted-module stub otherwise.
+//
+// Resolution:
+//   - "./x", "../x", "/x"        → not external (relative/absolute), reject.
+//   - "@scope/pkg[/sub]"         → "@scope/pkg".
+//   - "node:fs", "fs/promises"   → leading segment ("node:fs" kept whole,
+//     "fs" for the slash form) — Node builtins are external too.
+//   - "lodash/fp", "lodash.debounce" → "lodash".
+//   - "class-validator"          → "class-validator".
+//
+// The spec must canonicalise to a legal npm name segment; anything that
+// isn't (whitespace, control chars, structural-ref residue) is rejected so
+// genuinely malformed stubs still surface as bugs.
+func jsExternalPackageRoot(stub string, relProps map[string]string) (string, bool) {
+	spec := stub
+	if relProps != nil {
+		if ip := strings.TrimSpace(relProps["import_path"]); ip != "" {
+			spec = ip
+		}
+	}
+	spec = strings.TrimSpace(spec)
+	if spec == "" {
+		return "", false
+	}
+	// Relative / absolute specifiers are project-internal (or out-of-repo
+	// file paths) — never external npm packages.
+	if strings.HasPrefix(spec, "./") || strings.HasPrefix(spec, "../") ||
+		strings.HasPrefix(spec, "/") || spec == "." || spec == ".." {
+		return "", false
+	}
+	// Node builtins of the explicit `node:<mod>` form — keep the prefix so
+	// the placeholder is distinct from a same-named npm package.
+	if strings.HasPrefix(spec, "node:") {
+		mod := spec[len("node:"):]
+		if i := strings.IndexByte(mod, '/'); i > 0 {
+			mod = mod[:i]
+		}
+		if mod != "" && isNodeBuiltinIdent(mod) {
+			return "node:" + mod, true
+		}
+		return "", false
+	}
+	// Scoped npm packages: "@scope/pkg[/sub]" → "@scope/pkg".
+	if scope, ok := scopedNpmRoot(spec); ok {
+		return scope, true
+	}
+	// A leading '@' that did NOT match the scoped form is malformed.
+	if strings.HasPrefix(spec, "@") {
+		return "", false
+	}
+	// Unscoped: take the first path segment ("lodash/fp" → "lodash"). When
+	// the spec arrived in dotted-module form (the extractor's fallback for
+	// bare specifiers), take the first dot segment instead.
+	root := spec
+	if i := strings.IndexByte(root, '/'); i > 0 {
+		root = root[:i]
+	} else if i := strings.IndexByte(root, '.'); i > 0 {
+		// Dotted-module fallback form (e.g. "lodash.debounce"); the leading
+		// segment is the package. Note legitimate package names never start
+		// with '.' (caught by the relative reject above).
+		root = root[:i]
+	}
+	if !isNpmSegment(root) {
+		return "", false
+	}
+	return root, true
 }
 
 // isNpmSegment reports whether s is a valid scope or package segment

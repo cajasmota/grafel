@@ -115,8 +115,19 @@ type AliasMap struct {
 	// BaseURL is the repo-relative path of tsconfig compilerOptions.baseUrl
 	// when the tsconfig has no paths{} entries. Empty when paths{} are
 	// declared (paths take precedence and the baseUrl-only fallback is not
-	// needed) or when no tsconfig is present.
+	// needed), when no tsconfig is present, OR when baseUrl is the repo root
+	// (`.` / `./`) — in which case BaseURLSet is true and BaseURL is "".
 	BaseURL string
+	// BaseURLSet (#4696) records whether tsconfig declared ANY baseUrl —
+	// including the repo-root form (`baseUrl: "."`). The root form is the
+	// common TS path-alias-free convention `import { X } from 'src/modules/...'`
+	// where every bare specifier rooted at a real top-level source dir
+	// (`src`, `app`, `lib`, ...) is project-internal, resolved against the
+	// repo root. BaseURL stays "" for the root form so callers concatenate
+	// the bare specifier directly; BaseURLSet distinguishes it from the
+	// "no baseUrl at all" case (where BaseURLSet is false and the bare
+	// specifier is treated as an npm package).
+	BaseURLSet bool
 }
 
 // Resolve returns the repo-relative POSIX path the import specifier
@@ -270,18 +281,27 @@ func LoadAliasMap(repoRoot string) AliasMap {
 	// that happen to share a name (e.g. "react") are not misclassified when
 	// no matching file exists under baseUrl.
 	var baseURL string
+	var baseURLSet bool
 	if len(tsEntries) == 0 {
-		baseURL = parseTsconfigBaseURL(repoRoot)
+		baseURL, baseURLSet = parseTsconfigBaseURL(repoRoot)
 	}
 
-	return AliasMap{entries: dedupAliasEntries(entries), BaseURL: baseURL}
+	return AliasMap{entries: dedupAliasEntries(entries), BaseURL: baseURL, BaseURLSet: baseURLSet}
 }
 
 // parseTsconfigBaseURL reads the tsconfig.json / jsconfig.json at configDir
-// and returns the repo-relative baseUrl value, or "" when none is set or
-// the file cannot be parsed. Used by LoadAliasMap to populate AliasMap.BaseURL
-// when no paths{} entries are present.
-func parseTsconfigBaseURL(configDir string) string {
+// and returns (baseURL, set). set is true when a compilerOptions.baseUrl is
+// declared at all — including the repo-root forms `.` / `./` (#4696), which
+// resolve bare specifiers against the repo root and yield baseURL == "". A
+// non-root baseUrl (e.g. "src") yields that repo-relative path. When no
+// baseUrl is declared (or the file cannot be parsed) set is false and
+// baseURL is "".
+//
+// Distinguishing "baseUrl: '.'" (set, root) from "no baseUrl" (unset) is the
+// crux of #4696: the root form is the dominant `import { X } from
+// 'src/modules/...'` convention where every bare specifier rooted at a real
+// top-level source directory is project-internal, not an npm package.
+func parseTsconfigBaseURL(configDir string) (string, bool) {
 	for _, name := range []string{"tsconfig.json", "jsconfig.json"} {
 		configPath := filepath.Join(configDir, name)
 		data, err := os.ReadFile(configPath)
@@ -297,12 +317,18 @@ func parseTsconfigBaseURL(configDir string) string {
 		if err := json.Unmarshal(cleaned, &raw); err != nil {
 			continue
 		}
-		bu := strings.TrimPrefix(strings.TrimPrefix(raw.CompilerOptions.BaseURL, "./"), "/")
-		if bu != "" && bu != "." {
-			return bu
+		if raw.CompilerOptions.BaseURL == "" {
+			continue
 		}
+		bu := strings.TrimPrefix(strings.TrimPrefix(raw.CompilerOptions.BaseURL, "./"), "/")
+		// Root baseUrl (`.` / `./`): set, but resolves against the repo
+		// root with no directory prefix.
+		if bu == "" || bu == "." {
+			return "", true
+		}
+		return bu, true
 	}
-	return ""
+	return "", false
 }
 
 // loadSubdirAliasMap parses configs found under a specific subdirectory

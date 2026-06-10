@@ -393,6 +393,97 @@ func TestTSExtractor_TsconfigBaseUrlAndPaths_PathsWins(t *testing.T) {
 	}
 }
 
+// TestTSExtractor_TsconfigRootBaseUrl_ResolvesSrcImport is Fixture B for
+// #4696: a tsconfig with `baseUrl: "."` (repo root, no paths{}) and an import
+// rooted at a real top-level source dir — `import { X } from 'src/modules/x'`
+// — must resolve to the internal target file under the repo root, NOT be
+// left unresolved (which previously surfaced as 91 `src`-rooted
+// external_unknown edges on upvate-v3).
+func TestTSExtractor_TsconfigRootBaseUrl_ResolvesSrcImport(t *testing.T) {
+	resetAliasMapCache()
+	dir := t.TempDir()
+
+	// Root baseUrl, no paths{}. This is the exact upvate-v3 shape.
+	writeTsconfigAliasFile(t, dir, `{
+		"compilerOptions": {
+			"baseUrl": "."
+		}
+	}`)
+
+	// AliasMap must record BaseURLSet=true even though BaseURL is "" (root).
+	m := LoadAliasMap(dir)
+	if !m.BaseURLSet {
+		t.Fatalf("expected BaseURLSet=true for baseUrl: '.'")
+	}
+	if m.BaseURL != "" {
+		t.Errorf("expected BaseURL=='' for root baseUrl, got %q", m.BaseURL)
+	}
+
+	// Target file under src/modules/.
+	modDir := filepath.Join(dir, "src", "modules")
+	if err := os.MkdirAll(modDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writePlainFile(t, modDir, "x.ts", `export class X {}`)
+
+	src := []byte(`import { X } from 'src/modules/x';`)
+	tree := parseTSForAlias(t, src)
+	entities := extractWithRepo(t, dir, "src/app.ts", src, tree)
+
+	paths := importsEdgePaths2572(entities)
+	if len(paths) == 0 {
+		t.Fatal("no IMPORTS edges emitted")
+	}
+	// The import must resolve to the internal target file under src/modules,
+	// not remain a bare external spec rooted at "src".
+	found := false
+	for p := range paths {
+		if (strings.Contains(p, "src") && strings.Contains(p, "modules") && strings.Contains(p, "x")) ||
+			p == "src/modules/x.ts" || p == "src/modules/x" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected resolved internal edge for 'src/modules/x'; got %v", paths)
+	}
+}
+
+// TestTSExtractor_TsconfigRootBaseUrl_ExternalStillFallsThrough confirms the
+// #4696 root-baseUrl branch only resolves specifiers that actually exist on
+// disk: a bare npm import with no matching file under the repo root must NOT
+// be misclassified as project-internal.
+func TestTSExtractor_TsconfigRootBaseUrl_ExternalStillFallsThrough(t *testing.T) {
+	resetAliasMapCache()
+	dir := t.TempDir()
+
+	writeTsconfigAliasFile(t, dir, `{
+		"compilerOptions": {
+			"baseUrl": "."
+		}
+	}`)
+
+	srcDir := filepath.Join(dir, "src")
+	if err := os.MkdirAll(srcDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// No file matches 'class-validator' under the repo root.
+	src := []byte(`import { IsString } from 'class-validator';`)
+	tree := parseTSForAlias(t, src)
+	entities := extractWithRepo(t, dir, "src/dto.ts", src, tree)
+
+	paths := importsEdgePaths2572(entities)
+	if !paths["class-validator"] {
+		t.Errorf("expected raw external import_path 'class-validator'; got %v", paths)
+	}
+	for p := range paths {
+		if strings.HasPrefix(p, "class-validator.") {
+			t.Errorf("'class-validator' must not resolve via root baseUrl; got %q", p)
+		}
+	}
+}
+
 // --- test helpers -----------------------------------------------------------
 
 func writeTsconfigAliasFile(t *testing.T, dir, body string) {

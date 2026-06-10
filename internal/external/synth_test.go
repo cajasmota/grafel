@@ -370,6 +370,67 @@ func TestSynthesize_ScopeExternalRejectsPathSeparator(t *testing.T) {
 	}
 }
 
+// TestSynthesize_JSExternalPackages_Fixture is Fixture A for #4695: a JS/TS
+// file importing bare third-party npm packages that are NOT on the static
+// isKnownExternalPackage allowlist (class-validator, typeorm) must be
+// routed to ext:<package> placeholders (disposition external_package) rather
+// than left as bug-extractor stubs that inflate the import-bug count and
+// depress the fidelity badge.
+func TestSynthesize_JSExternalPackages_Fixture(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "src/user.dto.ts", Language: "typescript", SourceFile: "src/user.dto.ts"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "class-validator", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "typescript", "import_path": "class-validator"}},
+			{ID: "rel-2", FromID: "aaaaaaaaaaaaaaaa", ToID: "typeorm", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "typescript", "import_path": "typeorm"}},
+			// Scoped package NOT on the static allowlist — exercises the
+			// #4695 catch-all via import_path (collapses to "@scope/pkg").
+			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "@acme.widgets", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "typescript", "import_path": "@acme/widgets/sub"}},
+			// Subpath import collapses to the package root.
+			{ID: "rel-4", FromID: "aaaaaaaaaaaaaaaa", ToID: "class-transformer.plainToClass", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "typescript", "import_path": "class-transformer/plain"}},
+		},
+	}
+	Synthesize(doc)
+
+	want := map[string]string{
+		"rel-1": "ext:class-validator",
+		"rel-2": "ext:typeorm",
+		"rel-3": "ext:@acme/widgets",
+		"rel-4": "ext:class-transformer",
+	}
+	for _, r := range doc.Relationships {
+		if exp, ok := want[r.ID]; ok && r.ToID != exp {
+			t.Errorf("%s ToID=%q, want %q", r.ID, r.ToID, exp)
+		}
+	}
+}
+
+// TestSynthesize_JSRelativeImportNotExternal confirms the #4695 branch does
+// NOT swallow relative imports as external packages — a `./` specifier is
+// project-internal and must not be routed to an ext: placeholder.
+func TestSynthesize_JSRelativeImportNotExternal(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "aaaaaaaaaaaaaaaa", Name: "src/a.ts", Language: "typescript", SourceFile: "src/a.ts"},
+		},
+		Relationships: []graph.Relationship{
+			{ID: "rel-1", FromID: "aaaaaaaaaaaaaaaa", ToID: "src.b", Kind: "IMPORTS",
+				Properties: map[string]string{"language": "typescript", "import_path": "./b"}},
+		},
+	}
+	Synthesize(doc)
+	for _, r := range doc.Relationships {
+		if strings.HasPrefix(r.ToID, "ext:") {
+			t.Errorf("relative import wrongly externalised: ToID=%q", r.ToID)
+		}
+	}
+}
+
 // TestSynthesize_KindNameForm covers the "Kind:Name" stub shape, e.g.
 // "Module:django" or "Function:Println" — the leading kind hint is
 // stripped and the bare Name is classified.
