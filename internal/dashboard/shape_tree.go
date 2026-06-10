@@ -362,12 +362,26 @@ func splitTopLevelComma(s string) []string {
 	return out
 }
 
-// findClassEntityByName scans the group's repos for a SCOPE.Component
-// (class/interface/enum/record) whose simple name matches `name`. The
-// match is case-sensitive; the first hit (by sorted-repo iteration)
-// wins. Returns nil when no class matches — primitives, JDK types, and
-// container element types with no in-group DTO definition all fall
-// through.
+// findClassEntityByName scans the group's repos for a class-like model
+// entity whose simple name matches `name`. The match is case-sensitive;
+// the first hit (by sorted-repo iteration) wins. Returns nil when no
+// model matches — primitives, JDK types, and container element types
+// with no in-group DTO definition all fall through.
+//
+// Two entity shapes resolve:
+//
+//   - SCOPE.Component (class/interface/record/enum) — the OO class shape
+//     emitted for Java/TS/etc. classes.
+//   - SCOPE.Schema object/model nodes — the shape emitted for DTOs and
+//     ORM/GraphQL models (NestJS response DTOs under dto/response/, Mongoose
+//     @Schema classes, Prisma/Drizzle/Mongoose models, GraphQL types, …).
+//     #4569: a `@Get() …(): Promise<ProposalCountsResponse>` handler emits a
+//     RETURNS/response_type of `ProposalCountsResponse`, but that DTO is
+//     indexed as kind SCOPE.Schema (not SCOPE.Component), so the Response row
+//     resolved the NAME yet found no entity to expand and rendered "(none)".
+//     Resolving the Schema model node lets the field-set (its SCOPE.Schema/
+//     field CONTAINS children) render. Sub-field nodes (subtype
+//     field/column/property) are excluded — only the object shape itself.
 //
 // Primitive / framework names are short-circuited so we do not pay
 // the entity scan cost for unresolvable types.
@@ -381,12 +395,24 @@ func findClassEntityByName(g *DashGroup, name string) *graph.Entity {
 		}
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
-			if e.Kind != "SCOPE.Component" {
+			if e.Name != name {
 				continue
 			}
-			if e.Name == name {
+			switch e.Kind {
+			case "SCOPE.Component":
 				switch e.Subtype {
 				case "class", "interface", "record", "enum", "":
+					return e
+				}
+			case "SCOPE.Schema":
+				// A Schema object/model shape (DTO, ORM/GraphQL model) — its
+				// fields render as the response/body field-set. Exclude the
+				// per-field/column/property sub-nodes, which are children, not
+				// the shape itself.
+				switch e.Subtype {
+				case "field", "column", "property":
+					// sub-field node — not an object shape.
+				default:
 					return e
 				}
 			}

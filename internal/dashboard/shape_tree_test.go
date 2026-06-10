@@ -241,6 +241,55 @@ func TestShape_UnknownType(t *testing.T) {
 	}
 }
 
+// TestFindClassEntityByName_ResolvesSchemaKindDTO covers #4569: a NestJS
+// response DTO (e.g. ProposalCountsResponse under dto/response/) is indexed as
+// kind SCOPE.Schema, NOT SCOPE.Component. The resolver must find it so the
+// endpoint's Response row can expand its field-set instead of rendering
+// "(none)". Before the fix findClassEntityByName only matched SCOPE.Component.
+func TestFindClassEntityByName_ResolvesSchemaKindDTO(t *testing.T) {
+	entities := []graph.Entity{
+		// A response DTO indexed as a Schema model (the upvate-v3 shape).
+		{
+			ID: "schema_counts", Name: "ProposalCountsResponse",
+			Kind: "SCOPE.Schema", Subtype: "model",
+			SourceFile: "src/modules/proposals/dto/response/proposal-counts.response.dto.ts",
+			Language:   "typescript",
+		},
+		{
+			ID: "fld_total", Name: "ProposalCountsResponse.total",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/modules/proposals/dto/response/proposal-counts.response.dto.ts",
+			Language:   "typescript", Signature: "total: number",
+		},
+		// A Schema FIELD sub-node with a matching simple name must NOT be
+		// mistaken for the object shape.
+		{
+			ID: "fld_decoy", Name: "DecoyShape",
+			Kind: "SCOPE.Schema", Subtype: "field",
+			SourceFile: "src/x.ts", Language: "typescript",
+		},
+	}
+	rels := []graph.Relationship{
+		{FromID: "schema_counts", ToID: "fld_total", Kind: "CONTAINS"},
+	}
+	grp := makePathsTestGroup(entities, rels)
+
+	got := findClassEntityByName(grp, "ProposalCountsResponse")
+	if got == nil {
+		t.Fatal("#4569: SCOPE.Schema response DTO not resolved by findClassEntityByName")
+	}
+	if got.ID != "schema_counts" {
+		t.Errorf("#4569: resolved %q, want schema_counts", got.ID)
+	}
+	if !classHasFieldChildren(grp, got) {
+		t.Error("#4569: resolved Schema DTO must report field children (CONTAINS field)")
+	}
+	// A field sub-node must not resolve as an object shape.
+	if d := findClassEntityByName(grp, "DecoyShape"); d != nil {
+		t.Errorf("#4569: Schema/field sub-node must not resolve as a shape, got %q", d.ID)
+	}
+}
+
 // TestShape_MissingTypeParam returns 400 when no type/type_entity_id
 // query parameter is supplied.
 func TestShape_MissingTypeParam(t *testing.T) {

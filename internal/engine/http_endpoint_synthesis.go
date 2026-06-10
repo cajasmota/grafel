@@ -601,6 +601,29 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		}
 	}
 
+	// emitDefSig wraps emitDef and additionally stamps the NestJS handler
+	// SIGNATURE (parameters + response/request DTO) onto the just-appended
+	// http_endpoint entity (#4568/#4569). The synthesized entity — not the
+	// custom extractor's SCOPE.Operation — is the one the dashboard Paths panel
+	// reads `parameters`/`response_type` from, so without this the Parameters
+	// table is empty and the Response row is "(none)" even though the handler
+	// declares both. defLine is the 1-based handler line; sig is parsed from it.
+	emitDefSig := func(method, canonicalPath, framework, refKind, refName string, defLine int, sig nestSignature) {
+		before := len(entities)
+		emit(method, canonicalPath, framework, refKind, refName)
+		if len(entities) == before {
+			return
+		}
+		last := &entities[len(entities)-1]
+		if defLine > 0 {
+			last.StartLine = defLine
+		}
+		if last.Properties == nil {
+			last.Properties = map[string]string{}
+		}
+		stampNestSignature(last.Properties, sig)
+	}
+
 	// emitFile wraps emit and stamps `handler_file` (cross-file hint,
 	// #2691 — Rails maps "users#index" to app/controllers/users_controller.rb)
 	// plus StartLine (#2691 — Sinatra anchors the synthetic at its verb
@@ -909,7 +932,7 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// handler by file:line co-location when the name-based source_handler
 		// resolution misses (e.g. when entity-merge keeps a same-path synthetic
 		// from another pass that carries no bindable source_handler).
-		synthesizeNestJS(string(content), emit, emitDef)
+		synthesizeNestJS(string(content), emit, emitDefSig)
 		// Producer side: Fastify — `fastify.<verb>(...)` / `server.<verb>(...)`.
 		// The Express synthesizer's receiver allowlist does not include
 		// "fastify", so a dedicated pass is needed (#2678 audit).
@@ -5247,7 +5270,7 @@ type nestController struct {
 	prefix  string
 }
 
-func synthesizeNestJS(content string, emit emitFn, emitDef emitDefFn) {
+func synthesizeNestJS(content string, emit emitFn, emitDef emitDefSigFn) {
 	if !strings.Contains(content, "@Controller") {
 		return
 	}
@@ -5298,12 +5321,16 @@ func synthesizeNestJS(content string, emit emitFn, emitDef emitDefFn) {
 		if canonical == "" {
 			continue
 		}
+		// #4568/#4569 — parse the handler signature (decorated params + return
+		// type) starting at the handler method line and stamp it onto the
+		// synthesized endpoint so the Parameters table and Response shape render.
+		sig := nestjsReadSignature(lines, methodLineIdx)
 		// #4319 — anchor the synthetic at the handler method's 1-based line so
 		// the Phase-2 resolver can bridge endpoint→handler by file:line
 		// co-location when the name-based source_handler match fails. methodLineIdx
 		// is a 0-based index into `lines`; +1 makes it the 1-based StartLine the
 		// treesitter handler Operation also carries.
-		emitDef(verb, canonical, "nestjs", "Controller", methodName, methodLineIdx+1)
+		emitDef(verb, canonical, "nestjs", "Controller", methodName, methodLineIdx+1, sig)
 	}
 }
 
@@ -5411,6 +5438,12 @@ type emitFn func(method, canonicalPath, framework, handlerKind, handlerName stri
 // routing decorator and the line is recoverable from the match offset.
 // A defLine of 0 means "unknown" and leaves StartLine untouched.
 type emitDefFn func(method, canonicalPath, framework, handlerKind, handlerName string, defLine int)
+
+// emitDefSigFn extends emitDefFn with a parsed NestJS handler signature
+// (parameters + response/request DTO), stamped onto the synthesized
+// http_endpoint entity so the dashboard renders the Parameters table and
+// Response shape (#4568/#4569).
+type emitDefSigFn func(method, canonicalPath, framework, handlerKind, handlerName string, defLine int, sig nestSignature)
 
 // lineOfOffset returns the 1-based line number containing byte offset `off`
 // in `content`. Newlines are counted up to (but not including) the offset,
