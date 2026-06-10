@@ -144,8 +144,29 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		}
 		return
 
+	case "property_declaration":
+		// #4428: a TOP-LEVEL `val X = mapOf(...)` constant map. (Class/object
+		// body properties are intercepted by their declaration case below and
+		// never reach this top-level branch.) Emit a value-set when the
+		// initialiser is a closed all-literal map; otherwise fall through to
+		// the default recursion so nested constructs are still visited.
+		if vs, ok := emitMapValueSet(node, file); ok {
+			*out = append(*out, vs)
+		}
+		for i := range node.ChildCount() {
+			walk(node.Child(int(i)), file, out, ctx)
+		}
+		return
+
 	case "class_declaration":
 		subtype := classDeclarationSubtype(node, file.Content)
+		// #4428: an `enum class` carries a value-set (entries + constructor
+		// literal values). Emitted alongside the SCOPE.Component below.
+		if subtype == "enum" {
+			if vs, ok := emitEnumValueSet(node, file); ok {
+				*out = append(*out, vs)
+			}
+		}
 		rec, ok := buildComponent(node, file, subtype)
 		if !ok {
 			for i := range node.ChildCount() {
@@ -176,12 +197,21 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				// so property entities would get bare names and CONTAINS
 				// stubs would not resolve. Emit them here instead.
 				if ch.Type() == "property_declaration" {
+					// #4428: a body-level `val X = mapOf(...)` constant map.
+					if vs, ok := emitMapValueSet(ch, file); ok {
+						*out = append(*out, vs)
+					}
 					if propRec, ok := buildProperty(ch, file, rec.Name); ok {
 						*out = append(*out, propRec)
 					}
 					continue
 				}
 				walk(ch, file, out, ctx)
+			}
+			// #4428: grouped `const val` string properties form a class-level
+			// value-set named after the class.
+			if vs, ok := emitConstGroupValueSet(body, file, rec.Name); ok {
+				*out = append(*out, vs)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
@@ -234,12 +264,22 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				// Issue #690 — intercept property_declaration children so
 				// we can qualify the name with the enclosing object name.
 				if ch.Type() == "property_declaration" {
+					// #4428: a body-level `val X = mapOf(...)` constant map.
+					if vs, ok := emitMapValueSet(ch, file); ok {
+						*out = append(*out, vs)
+					}
 					if propRec, ok := buildProperty(ch, file, rec.Name); ok {
 						*out = append(*out, propRec)
 					}
 					continue
 				}
 				walk(ch, file, out, ctx)
+			}
+			// #4428: grouped `const val` string properties form an
+			// object-level value-set named after the object (the common
+			// `object Pages { const val CORE_ADMIN = "core-admin" }` shape).
+			if vs, ok := emitConstGroupValueSet(body, file, rec.Name); ok {
+				*out = append(*out, vs)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {

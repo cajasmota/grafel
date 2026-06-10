@@ -154,6 +154,10 @@ func walk(
 		*out = append(*out, rec)
 		body := findTypeBody(node)
 		if body != nil {
+			// #4428: emit value-set nodes for class-level constant COLLECTIONS
+			// (static-readonly Dictionary const maps + grouped string consts).
+			// Append-only: never replaces the field entities the walk emits.
+			emitConstCollectionsForClass(body, file, rec.Name, out)
 			localCtx := &classCtx{fields: collectFieldTypes(body, file.Content)}
 			before := len(*out)
 			for i := range body.ChildCount() {
