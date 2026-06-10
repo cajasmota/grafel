@@ -49,6 +49,13 @@ type v2PathRoute struct {
 	AuthChipTone string   `json:"auth_chip_tone,omitempty"`
 	Repos        []string `json:"repos"`
 	Controller   string   `json:"controller"`
+	// SourceFile is the repo-relative path of THIS route's own defining file
+	// (the handler/controller source). The frontend module-grouping derives the
+	// `src/modules/<MODULE>/…` bucket per-route from this field rather than from
+	// the shared controller-group file, so endpoints that happen to land in the
+	// same controller group (resolved-viewset name collisions, mixed-module
+	// router files) are never mis-bucketed under a sibling's module (#4608).
+	SourceFile string `json:"source_file,omitempty"`
 	// Confidence (#1129) is the 0..1 candidate-quality score computed at
 	// list-build time. Always populated when the confidence filter ran.
 	Confidence float64 `json:"confidence,omitempty"`
@@ -529,6 +536,10 @@ func (s *Server) handleV2PathsList(w http.ResponseWriter, r *http.Request) {
 				Frameworks: []string{},
 				Repos:      []string{},
 				Controller: cID,
+				// #4608 — stamp THIS route's own defining file so the frontend
+				// module-grouping derives its `src/modules/<MODULE>/…` bucket
+				// per-route, never inheriting a sibling route's module.
+				SourceFile: ep.SourceFile,
 			}
 			cm.order = append(cm.order, ep.Path)
 		}

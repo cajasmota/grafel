@@ -212,7 +212,11 @@ function groupByModule(backend: PathBackend): ControllerGroupShape[] {
   const buckets = new Map<string, ControllerGroupShape>();
   for (const g of backend.groups ?? []) {
     for (const r of g.routes ?? []) {
-      const m = deriveModule(g.file ?? r.controller, r.controller);
+      // #4608 — group each route by the module parsed from ITS OWN defining
+      // file (`r.source_file`), not the shared controller-group file. Falling
+      // back to the group file only when a route carries no source_file keeps
+      // older/partial payloads working without cross-module mis-bucketing.
+      const m = deriveModule(r.source_file ?? g.file, r.controller);
       let bucket = buckets.get(m.key);
       if (!bucket) {
         bucket = {
@@ -477,14 +481,22 @@ function BackendSection({
         ? "var(--pastel-5-ink)"
         : "var(--pastel-1-ink)";
 
+  // #4608 — the service tint base, shared by the (translucent) section body and
+  // the OPAQUE sticky header overlay. The header lays this tint over a solid
+  // `--surface` so it keeps its colour without letting rows bleed through.
+  const svcTintBase =
+    backend.service_type === "gRPC"
+      ? "var(--pastel-9)"
+      : backend.service_type === "GraphQL"
+        ? "var(--pastel-5)"
+        : "var(--pastel-1)";
+  const svcTintOverlay = `color-mix(in srgb, ${svcTintBase} 6%, transparent)`;
+
   return (
     <div
       className="border-b border-border"
       style={{
-        background: `color-mix(in srgb, ${
-          backend.service_type === "gRPC" ? "var(--pastel-9)" :
-          backend.service_type === "GraphQL" ? "var(--pastel-5)" : "var(--pastel-1)"
-        } 6%, transparent)`,
+        background: svcTintOverlay,
       }}
     >
       {/* Backend header — sticky */}
@@ -493,13 +505,20 @@ function BackendSection({
         onClick={() => toggle(key)}
         className={cn(
           "w-full text-left flex items-center gap-2 px-3 py-2",
-          "sticky top-0 z-[3]",
+          "sticky top-0 z-[5]",
           "text-sm font-semibold text-text",
           "hover:brightness-95 transition-all duration-100",
           "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]",
         )}
         style={{
-          background: "inherit",
+          // #4608 — the sticky header must be OPAQUE so rows scrolling beneath
+          // it don't bleed through. `inherit` resolved to the container's
+          // translucent tint (color-mix(... transparent)), letting the first
+          // row show through. Layer the same service tint over a solid surface
+          // so the header keeps its colour but is fully opaque, and raise the
+          // z-index above the sticky column header (z-[2]) and rows.
+          backgroundColor: "var(--surface)",
+          backgroundImage: `linear-gradient(0deg, ${svcTintOverlay}, ${svcTintOverlay})`,
           borderLeft: `3px solid ${svcBorderColor}`,
           paddingLeft: "calc(0.75rem - 3px)",
         }}

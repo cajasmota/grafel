@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -491,6 +492,92 @@ func TestV2PathsList_GroupsByFile(t *testing.T) {
 	if detail.Data.Parameters == nil {
 		t.Error("parameters: want [] (non-nil), got nil")
 	}
+}
+
+// TestV2PathsList_RouteSourceFilePerEndpoint is the #4608 guard: every emitted
+// route must carry its OWN defining `source_file`, and the `src/modules/<MODULE>`
+// segment parsed from that file must match the route's own module — never a
+// sibling's. The frontend module left-tree groups per-route by this field, so a
+// stale/shared file here is exactly the cross-module mis-bucketing bug (an
+// inspections endpoint showing under modules/dob-sync).
+func TestV2PathsList_RouteSourceFilePerEndpoint(t *testing.T) {
+	entities := []graph.Entity{
+		{ID: "a", Name: "getCounts", Kind: "http_endpoint",
+			SourceFile: "src/modules/inspections/api/inspection.controller.ts",
+			Properties: map[string]string{"path": "/v1/inspections/get_counts", "verb": "GET", "owning_backend": "src"}},
+		{ID: "b", Name: "sync", Kind: "http_endpoint",
+			SourceFile: "src/modules/dob-sync/api/dob-sync.controller.ts",
+			Properties: map[string]string{"path": "/v1/dob-sync/run", "verb": "POST", "owning_backend": "src"}},
+		{ID: "c", Name: "templates", Kind: "http_endpoint",
+			SourceFile: "src/modules/me-email-templates/api/me-email-templates.controller.ts",
+			Properties: map[string]string{"path": "/v1/me-email-templates", "verb": "GET", "owning_backend": "src"}},
+	}
+	grp := makePathsTestGroup(entities, nil)
+	ts := newPathsTestServer(t, grp)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v2/groups/testgrp/paths")
+	if err != nil {
+		t.Fatalf("GET paths: %v", err)
+	}
+	defer resp.Body.Close()
+	var body struct {
+		Data v2PathsListResponse `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+
+	// Expected module segment per path, derived from each endpoint's OWN file.
+	wantModule := map[string]string{
+		"/v1/inspections/get_counts": "inspections",
+		"/v1/dob-sync/run":           "dob-sync",
+		"/v1/me-email-templates":     "me-email-templates",
+	}
+	seen := 0
+	for _, b := range body.Data.Backends {
+		for _, g := range b.Groups {
+			for _, r := range g.Routes {
+				if r.SourceFile == "" {
+					t.Errorf("route %q: source_file is empty — frontend cannot derive its own module", r.Path)
+					continue
+				}
+				wantMod, ok := wantModule[r.Path]
+				if !ok {
+					continue
+				}
+				seen++
+				// Guard: an endpoint's module must equal `src/modules/<label>/`
+				// of ITS OWN source file (#4608).
+				wantPrefix := "src/modules/" + wantMod + "/"
+				if !strings.HasPrefix(r.SourceFile, wantPrefix) {
+					t.Errorf("route %q: source_file %q does not live under %q (cross-module mis-bucketing)",
+						r.Path, r.SourceFile, wantPrefix)
+				}
+				if gotMod := moduleSegmentFromFile(r.SourceFile); gotMod != wantMod {
+					t.Errorf("route %q: derived module %q, want %q", r.Path, gotMod, wantMod)
+				}
+			}
+		}
+	}
+	if seen != len(wantModule) {
+		t.Fatalf("expected %d guarded routes, saw %d", len(wantModule), seen)
+	}
+}
+
+// moduleSegmentFromFile mirrors the frontend deriveModule() anchor rule: returns
+// the segment immediately after a `modules/` (or apps/packages/services/domains)
+// anchor in the path. Used by the #4608 guard to prove the backend stamps each
+// route with a file whose module matches the route.
+func moduleSegmentFromFile(file string) string {
+	segs := strings.Split(strings.ReplaceAll(file, "\\", "/"), "/")
+	anchors := map[string]bool{"modules": true, "apps": true, "packages": true, "services": true, "domains": true}
+	for i := 0; i < len(segs)-1; i++ {
+		if anchors[strings.ToLower(segs[i])] {
+			return segs[i+1]
+		}
+	}
+	return ""
 }
 
 // ---------------------------------------------------------------------------

@@ -788,6 +788,13 @@ export interface PathRoute {
   auth: boolean;
   repos: string[];
   controller: string;
+  /**
+   * Repo-relative path of THIS route's own defining file (#4608). The module
+   * left-tree groups each route by the `src/modules/<MODULE>/…` segment of this
+   * field, so a route is never bucketed under a sibling's module just because
+   * they share a controller group.
+   */
+  source_file?: string;
 }
 
 /** One controller group inside a backend. */
