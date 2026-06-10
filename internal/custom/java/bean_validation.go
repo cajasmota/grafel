@@ -328,12 +328,17 @@ func ExtractBeanValidation(ctx PatternContext) PatternResult {
 			props["collection_type"] = rawTypeName
 			props["element_type"] = elementType
 		}
-		addEntity(&result, seenRefs, SecondaryEntity{
+		if addEntity(&result, seenRefs, SecondaryEntity{
 			Name: ownerClass + "." + fieldName, Kind: "SCOPE.Schema", SourceFile: fp,
 			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
 			Provenance: "INFERRED_FROM_BEAN_VALIDATION_FIELD", Ref: ref,
 			Properties: props,
-		})
+		}) && ownerClass != "unknown" {
+			// #4367 — CONTAINS membership: the DTO field belongs to its owning
+			// (@Validated) class so it is a member, not an orphan. Carrier = the
+			// field entity; source resolves to the real class via FromName.
+			addRel(&result, seenRels, containsFieldRel(ownerClass, ref, fieldName, ctx.Framework))
+		}
 
 		// ── 4. @Valid recursion → VALIDATES edge (nested_model_extraction) ──────
 
@@ -346,6 +351,10 @@ func ExtractBeanValidation(ctx PatternContext) PatternResult {
 			validTarget = elementType
 		}
 		if strings.Contains(annotBlock, "@Valid") && !primitiveTypes[validTarget] {
+			// #4367 — REFERENCES from the @Valid field to the nested DTO type, so
+			// the field carries an outbound edge to the model it validates (the
+			// VALIDATES edge below is class→class; this one is field→class).
+			addRel(&result, seenRels, referencesClassRel(ref, validTarget, fieldName, ctx.Framework))
 			ownerRef := "scope:class:bean_validation:" + fp + ":" + ownerClass
 			nestedRef := findRefForType(validTarget, fp, "bean_validation", &result)
 			addRel(&result, seenRels, Relationship{

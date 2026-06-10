@@ -60,6 +60,15 @@ var (
 	reGORMFieldTag = regexp.MustCompile(
 		"(?m)^\\s*(\\w+)\\s+([\\w\\.\\[\\]\\*]+)\\s+`[^`]*gorm:\"([^\"]*)\"[^`]*`",
 	)
+	// Any struct field line `Name Type` (with or without a trailing tag),
+	// used to recover untagged association fields (#4367) such as
+	//   Customer Customer
+	//   Items    []Item
+	// that carry no gorm tag and are therefore invisible to reGORMFieldTag.
+	// Group 1 = field name, group 2 = field type (slice/pointer/pkg-qualified).
+	reGORMAssocField = regexp.MustCompile(
+		"(?m)^\\s*([A-Z]\\w*)\\s+([\\w\\.\\[\\]\\*]+)\\s*(?:`[^`]*`)?\\s*$",
+	)
 	// column:<name> inside a gorm tag.
 	reGORMColumnTag = regexp.MustCompile(`(?:^|;)\s*column:([A-Za-z0-9_]+)`)
 	// type:<sqltype> inside a gorm tag.
@@ -165,6 +174,9 @@ func (e *gormExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 	gormModelStructs := make(map[string]bool)
 	modelEnts := make(map[string]*types.EntityRecord)
 	modelEmbeds := make(map[string]bool)
+	// seenFields dedups field/relation emission across the tagged-field loop and
+	// the untagged-association pass (#4367), keyed by "<Struct>.<Field>".
+	seenFields := make(map[string]bool)
 	var modelOrder []string
 	for _, m := range reGORMModel.FindAllStringSubmatchIndex(src, -1) {
 		modelName := src[m[2]:m[3]]
@@ -233,7 +245,15 @@ func (e *gormExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 			if tm := reGORMTypeTag.FindStringSubmatch(tag); tm != nil {
 				setProps(&fieldEnt, "sql_type", strings.TrimSpace(tm[1]))
 			}
+			// #4367 — CONTAINS membership: the column field belongs to its owning
+			// model struct. Hung off the (deferred) model node so the field is a
+			// member, not an orphan.
+			if me := modelEnts[structName]; me != nil {
+				me.Relationships = append(me.Relationships,
+					containsFieldEdge(structName, fieldEnt.ID, fieldName, "gorm"))
+			}
 			add(fieldEnt)
+			seenFields[structName+"."+fieldName] = true
 
 			// Relationships: association tags.
 			rel := relationshipKind(tag, fieldType, fieldName)
@@ -252,6 +272,53 @@ func (e *gormExtractor) Extract(ctx context.Context, file extractor.FileInput) (
 			}
 			if m2m := reGORMManyToMany.FindStringSubmatch(tag); m2m != nil {
 				setProps(&relEnt, "join_table", m2m[1])
+			}
+			// #4367 — REFERENCES to the target model (the relation field's only
+			// outbound semantic edge) + CONTAINS membership from the owner struct.
+			if target != "" {
+				relEnt.Relationships = append(relEnt.Relationships,
+					referencesClassEdge(relEnt.ID, target, "gorm", fieldName))
+			}
+			if me := modelEnts[structName]; me != nil {
+				me.Relationships = append(me.Relationships,
+					containsFieldEdge(structName, relEnt.ID, fieldName, "gorm"))
+			}
+			add(relEnt)
+			seenFields[structName+"."+fieldName] = true
+		}
+
+		// #4367 — untagged association fields. A bare `Customer Customer` or
+		// `Items []Item` struct/slice field has NO gorm tag, so the tag-keyed
+		// field loop above never saw it — the relation (and the related model
+		// edge) were dropped entirely. Scan the struct body for capitalised
+		// struct-ref fields that the loop did not already emit and record them
+		// as association relations with a REFERENCES edge to the target model.
+		for _, am := range reGORMAssocField.FindAllStringSubmatch(body, -1) {
+			fieldName := am[1]
+			fieldType := am[2]
+			if seenFields[structName+"."+fieldName] {
+				continue
+			}
+			if !isStructRefType(fieldType) {
+				continue
+			}
+			seenFields[structName+"."+fieldName] = true
+			rel := relationshipKind("", fieldType, fieldName)
+			if rel == "" {
+				continue
+			}
+			target := relationshipTarget(fieldType)
+			relEnt := makeEntity("rel:"+structName+"."+fieldName, "SCOPE.Component", "relation", file.Path, file.Language, structLine)
+			setProps(&relEnt, "framework", "gorm", "provenance", "INFERRED_FROM_GORM_ASSOCIATION",
+				"model_name", structName, "field_name", fieldName, "relationship", rel,
+				"target_model", target, "untagged", "true")
+			if target != "" {
+				relEnt.Relationships = append(relEnt.Relationships,
+					referencesClassEdge(relEnt.ID, target, "gorm", fieldName))
+			}
+			if me := modelEnts[structName]; me != nil {
+				me.Relationships = append(me.Relationships,
+					containsFieldEdge(structName, relEnt.ID, fieldName, "gorm"))
 			}
 			add(relEnt)
 		}

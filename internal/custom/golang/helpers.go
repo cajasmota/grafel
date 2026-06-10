@@ -57,6 +57,62 @@ func setProps(e *types.EntityRecord, kv ...string) {
 	}
 }
 
+// goClassRef returns the structural reference used as the FromID/ToID for an
+// edge targeting a Go struct/model entity (e.g. a GORM model). The
+// `Class:<Name>` form resolves through the resolver's byName fallback to the
+// SCOPE.Schema model node the extractor emits, mirroring the JS/Python/Ruby ORM
+// field-membership convention (#4328/#4366/#4367).
+func goClassRef(className string) string { return "Class:" + className }
+
+// containsFieldEdge builds the structural CONTAINS membership edge from an
+// owning GORM model struct to one of its column / association field entities.
+// Issue #4367: GORM `field:<Model>.<name>` and `rel:<Model>.<name>` entities
+// were emitted as standalone nodes with no owning-model membership, leaving them
+// as degree-0 orphans on the graph.
+//
+// FromID names the owner struct (`Class:<owner>`) so the resolver binds it to
+// the real model entity; ToID is the field/relation entity's own ID. The edge
+// is hung off the owner model node by the caller.
+func containsFieldEdge(ownerModel, memberID, fieldName, framework string) types.RelationshipRecord {
+	return types.RelationshipRecord{
+		FromID: goClassRef(ownerModel),
+		ToID:   memberID,
+		Kind:   string(types.RelationshipKindContains),
+		Properties: map[string]string{
+			"framework":  framework,
+			"language":   "go",
+			"member":     "field",
+			"field_name": fieldName,
+			"provenance": "INFERRED_FROM_MODEL_FIELD_MEMBERSHIP",
+		},
+	}
+}
+
+// referencesClassEdge builds a REFERENCES edge from a GORM association field
+// entity to the model struct it points at — the related struct type of a
+// belongs_to/has_one/has_many/many2many field (`Items []Item` → `Item`). Issue
+// #4367: that target model is the association field's only outbound semantic
+// edge; without it the related model rings.
+//
+// FromID is the relation entity's own ID; ToID is the `Class:<target>` stub the
+// resolver binds to the real model entity. The edge is hung off the relation
+// entity by the caller.
+func referencesClassEdge(memberID, targetModel, framework, fieldName string) types.RelationshipRecord {
+	return types.RelationshipRecord{
+		FromID: memberID,
+		ToID:   goClassRef(targetModel),
+		Kind:   string(types.RelationshipKindReferences),
+		Properties: map[string]string{
+			"framework":   framework,
+			"language":    "go",
+			"ref_kind":    "field_target_type",
+			"field_name":  fieldName,
+			"target_type": targetModel,
+			"provenance":  "INFERRED_FROM_MODEL_FIELD_TARGET",
+		},
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Shared middleware + auth detection (issue #3213)
 //
