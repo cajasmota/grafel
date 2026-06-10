@@ -22,7 +22,7 @@
    components.
    ============================================================ */
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   GaugeCircle,
@@ -35,6 +35,10 @@ import {
   ArrowDownRight,
   ArrowUpRight,
   Minus,
+  Info,
+  ChevronRight,
+  Folder,
+  FolderOpen,
 } from "lucide-react";
 
 import {
@@ -48,6 +52,9 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -124,13 +131,69 @@ function ErrorState({ what }: { what: string }) {
   );
 }
 
-function CountStat({
+// ---------------------------------------------------------------------------
+// § Explanation primitives (#4507) — per-tab headers + per-metric tooltips
+// ---------------------------------------------------------------------------
+
+/** A small, consistent count/value badge for the tab strip. */
+function TabBadge({
+  children,
+  tone = "neutral",
+}: {
+  children: React.ReactNode;
+  tone?: "neutral" | "warning";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5 rounded-full",
+        "text-[10px] font-semibold tabular-nums leading-none",
+        tone === "warning"
+          ? "bg-warning-soft text-warning"
+          : "bg-surface-2 text-text-3",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** A short header line under the tab strip explaining what the tab shows. */
+function TabHeader({ children }: { children: React.ReactNode }) {
+  return <p className="text-sm text-text-3 -mt-1 mb-1 max-w-3xl">{children}</p>;
+}
+
+/**
+ * A hoverable info icon that reveals a metric definition: what it means, how
+ * it's computed, and the goal. Sits next to a metric label/title.
+ */
+function MetricInfo({ hint }: { hint: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label="What is this metric?"
+          className="inline-flex items-center justify-center text-text-4 hover:text-text-2 transition-colors cursor-help shrink-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)] rounded-full"
+        >
+          <Info size={13} />
+        </button>
+      </TooltipTrigger>
+      <TooltipContent className="max-w-[18rem] leading-relaxed">{hint}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** A metric stat card with a label, value, tone, and a definition tooltip. */
+function MetricStat({
   label,
   value,
+  hint,
   tone,
 }: {
   label: string;
   value: number | string;
+  hint: React.ReactNode;
   tone?: "danger" | "warning" | "info" | "success";
 }) {
   const color =
@@ -144,10 +207,13 @@ function CountStat({
             ? "text-success"
             : "text-text";
   return (
-    <Card className="flex-1 min-w-[120px]">
+    <Card className="flex-1 min-w-[140px]">
       <CardBody className="py-3">
         <p className={cn("text-2xl font-semibold tabular-nums", color)}>{value}</p>
-        <p className="text-xs text-text-4 mt-0.5">{label}</p>
+        <p className="mt-0.5 flex items-center gap-1 text-xs text-text-4">
+          {label}
+          <MetricInfo hint={hint} />
+        </p>
       </CardBody>
     </Card>
   );
@@ -209,7 +275,19 @@ function CoverageGauge({
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
-        <CardTitle>Test coverage</CardTitle>
+        <CardTitle className="flex items-center gap-1.5">
+          Test coverage
+          <MetricInfo
+            hint={
+              <>
+                <strong>Test coverage</strong> = % of production entities reached
+                by at least one TESTS edge (covered ÷ production entities). Measures
+                how much of the indexed code a test exercises structurally, not
+                line coverage. Goal 80%+.
+              </>
+            }
+          />
+        </CardTitle>
         <span className="text-2xl font-semibold tabular-nums text-text">
           {pct.toFixed(1)}%
         </span>
@@ -230,21 +308,152 @@ function CoverageGauge({
   );
 }
 
-function DirRow({ d }: { d: DirCoverage }) {
+// ---------------------------------------------------------------------------
+// § Coverage tree (#4511) — nest flat per-directory rows into a folder tree,
+//   aggregating covered/total up from the leaves.
+// ---------------------------------------------------------------------------
+
+interface CovTreeNode {
+  /** Last path segment (display name). */
+  name: string;
+  /** Full path from root, used as a stable key. */
+  path: string;
+  /** depth from root (0 = top level). */
+  depth: number;
+  covered: number;
+  total: number;
+  children: CovTreeNode[];
+}
+
+/**
+ * Build a nested folder tree from the flat per-directory coverage list.
+ * Each leaf dir's covered/total counts are added to every ancestor so parent
+ * folders report rolled-up aggregates. Intermediate folders that the backend
+ * never emitted directly are synthesised so the hierarchy is complete.
+ */
+function buildCoverageTree(dirs: DirCoverage[]): CovTreeNode[] {
+  const root: CovTreeNode = { name: "", path: "", depth: -1, covered: 0, total: 0, children: [] };
+
+  const childByPath = new Map<string, CovTreeNode>();
+  const ensureChild = (parent: CovTreeNode, name: string): CovTreeNode => {
+    const path = parent.path ? `${parent.path}/${name}` : name;
+    let node = childByPath.get(path);
+    if (!node) {
+      node = { name, path, depth: parent.depth + 1, covered: 0, total: 0, children: [] };
+      childByPath.set(path, node);
+      parent.children.push(node);
+    }
+    return node;
+  };
+
+  for (const d of dirs) {
+    const segments = (d.dir || "(root)").split("/").filter(Boolean);
+    if (segments.length === 0) segments.push("(root)");
+    let cursor = root;
+    for (const seg of segments) {
+      cursor = ensureChild(cursor, seg);
+      // Roll the leaf's counts up into this ancestor (and the leaf itself).
+      cursor.covered += d.covered;
+      cursor.total += d.total;
+    }
+  }
+
+  const sortRec = (nodes: CovTreeNode[]) => {
+    nodes.sort((a, b) => a.name.localeCompare(b.name));
+    nodes.forEach((n) => sortRec(n.children));
+  };
+  sortRec(root.children);
+  return root.children;
+}
+
+function CovTreeRow({
+  node,
+  expanded,
+  toggle,
+}: {
+  node: CovTreeNode;
+  expanded: Set<string>;
+  toggle: (path: string) => void;
+}) {
+  const hasChildren = node.children.length > 0;
+  const isOpen = expanded.has(node.path);
+  const pct = node.total > 0 ? (node.covered / node.total) * 100 : 0;
+
   return (
-    <div className="flex items-center gap-3 px-3 py-2 rounded-lg border border-border bg-surface">
-      <span className="font-mono text-xs text-text-2 truncate flex-1 min-w-0" title={d.dir}>
-        {d.dir || "(root)"}
-      </span>
-      <div className="w-32 shrink-0">
-        <CoverageBar pct={d.coverage_pct} />
+    <div>
+      <div
+        className={cn(
+          "flex items-center gap-2 pr-3 py-1.5 rounded-lg border border-transparent",
+          "hover:bg-surface-2 transition-colors",
+          hasChildren && "cursor-pointer",
+        )}
+        style={{ paddingLeft: `${0.5 + node.depth * 1.1}rem` }}
+        onClick={hasChildren ? () => toggle(node.path) : undefined}
+        role={hasChildren ? "button" : undefined}
+        aria-expanded={hasChildren ? isOpen : undefined}
+      >
+        <span className="w-4 shrink-0 text-text-4">
+          {hasChildren ? (
+            <ChevronRight
+              size={13}
+              className={cn("transition-transform", isOpen && "rotate-90")}
+            />
+          ) : null}
+        </span>
+        <span className="shrink-0 text-text-4">
+          {hasChildren ? (
+            isOpen ? (
+              <FolderOpen size={13} className="text-accent" />
+            ) : (
+              <Folder size={13} className="text-accent" />
+            )
+          ) : (
+            <Folder size={13} className="text-text-4" />
+          )}
+        </span>
+        <span className="font-mono text-xs text-text-2 truncate flex-1 min-w-0" title={node.path}>
+          {node.name}
+        </span>
+        <div className="w-28 shrink-0 hidden sm:block">
+          <CoverageBar pct={pct} />
+        </div>
+        <span className="text-xs tabular-nums text-text-3 w-12 text-right shrink-0">
+          {pct.toFixed(0)}%
+        </span>
+        <span className="text-[11px] tabular-nums text-text-4 w-16 text-right shrink-0">
+          {node.covered}/{node.total}
+        </span>
       </div>
-      <span className="text-xs tabular-nums text-text-3 w-16 text-right shrink-0">
-        {d.coverage_pct.toFixed(0)}%
-      </span>
-      <span className="text-[11px] tabular-nums text-text-4 w-20 text-right shrink-0">
-        {d.covered}/{d.total}
-      </span>
+      {hasChildren && isOpen && (
+        <div>
+          {node.children.map((c) => (
+            <CovTreeRow key={c.path} node={c} expanded={expanded} toggle={toggle} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CoverageTree({ dirs }: { dirs: DirCoverage[] }) {
+  const tree = useMemo(() => buildCoverageTree(dirs), [dirs]);
+  // Default: top level expanded, deeper collapsed.
+  const [expanded, setExpanded] = useState<Set<string>>(
+    () => new Set(tree.map((n) => n.path)),
+  );
+  const toggle = (path: string) =>
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(path)) next.delete(path);
+      else next.add(path);
+      return next;
+    });
+
+  return (
+    <div className="space-y-0.5">
+      {tree.map((n) => (
+        <CovTreeRow key={n.path} node={n} expanded={expanded} toggle={toggle} />
+      ))}
     </div>
   );
 }
@@ -304,6 +513,12 @@ function CoverageTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <TabHeader>
+        Structural test coverage — which production entities (functions, classes,
+        endpoints) are reached by a test via a TESTS edge. This is graph reachability,
+        not line coverage.
+      </TabHeader>
+
       <CoverageGauge
         covered={data.covered_production}
         total={data.total_production}
@@ -313,13 +528,24 @@ function CoverageTab({ groupId }: { groupId: string }) {
 
       {data.by_directory.length > 0 && (
         <Card>
-          <CardHeader>
-            <CardTitle>By directory</CardTitle>
+          <CardHeader className="flex items-center justify-between gap-2">
+            <CardTitle className="flex items-center gap-1.5">
+              By directory
+              <MetricInfo
+                hint={
+                  <>
+                    Coverage rolled up into a folder tree. Each folder aggregates the
+                    covered ÷ total entity counts of everything beneath it; expand a
+                    folder to drill into subdirectories. Bar color: red &lt;50%, amber
+                    50–80%, green 80%+.
+                  </>
+                }
+              />
+            </CardTitle>
+            <span className="text-[11px] text-text-4">expand to drill in</span>
           </CardHeader>
           <CardBody className="space-y-1.5">
-            {data.by_directory.map((d) => (
-              <DirRow key={d.dir} d={d} />
-            ))}
+            <CoverageTree dirs={data.by_directory} />
           </CardBody>
         </Card>
       )}
@@ -441,11 +667,59 @@ function DependenciesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <TabHeader>
+        Dependency hygiene — declared third-party packages cross-checked against
+        what the code actually imports. Surfaces unused (declared, never imported)
+        and phantom (imported, never declared) packages per repository.
+      </TabHeader>
+
       <div className="flex flex-wrap gap-3">
-        <CountStat label="Declared" value={data.summary.declared} />
-        <CountStat label="Used" value={data.summary.used} tone="success" />
-        <CountStat label="Unused" value={data.summary.unused} tone="warning" />
-        <CountStat label="Phantom" value={data.summary.phantom} tone="danger" />
+        <MetricStat
+          label="Declared"
+          value={data.summary.declared}
+          hint={
+            <>
+              <strong>Declared</strong> = packages listed in the manifest
+              (package.json, requirements.txt, go.mod…). The baseline the other
+              counts are measured against.
+            </>
+          }
+        />
+        <MetricStat
+          label="Used"
+          value={data.summary.used}
+          tone="success"
+          hint={
+            <>
+              <strong>Used</strong> = declared packages with at least one matching
+              IMPORTS edge in the code. These are healthy. Higher is better.
+            </>
+          }
+        />
+        <MetricStat
+          label="Unused"
+          value={data.summary.unused}
+          tone="warning"
+          hint={
+            <>
+              <strong>Unused</strong> = declared in the manifest but never imported.
+              Dead dependencies — candidates to remove to shrink the install and
+              attack surface. Goal 0.
+            </>
+          }
+        />
+        <MetricStat
+          label="Phantom"
+          value={data.summary.phantom}
+          tone="danger"
+          hint={
+            <>
+              <strong>Phantom</strong> = imported in code but not declared in any
+              manifest. Relies on a transitive/implicit install and can break at any
+              time — should be declared explicitly. Goal 0.
+            </>
+          }
+        />
       </div>
 
       <div className="flex items-center justify-between gap-3">
@@ -537,9 +811,37 @@ function AntiPatternsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <TabHeader>
+        Anti-patterns — code shapes the indexer flags as likely performance or
+        correctness smells. Currently surfaces N+1 query patterns: an ORM query
+        executed inside a loop, which issues one query per iteration.
+      </TabHeader>
+
       <div className="flex flex-wrap gap-3">
-        <CountStat label="N+1 findings" value={data.total_findings} tone="warning" />
-        <CountStat label="Entities scanned" value={data.entities_scanned} tone="info" />
+        <MetricStat
+          label="N+1 findings"
+          value={data.total_findings}
+          tone="warning"
+          hint={
+            <>
+              <strong>N+1 findings</strong> = count of ORM query calls detected
+              inside a loop (a CALLS edge to a query method from a loop body). Each
+              is a candidate to batch/eager-load into a single query. Goal 0.
+            </>
+          }
+        />
+        <MetricStat
+          label="Entities scanned"
+          value={data.entities_scanned}
+          tone="info"
+          hint={
+            <>
+              <strong>Entities scanned</strong> = number of functions/methods the
+              N+1 detector inspected for loop-wrapped queries. Context for how broad
+              the scan was — not a quality target itself.
+            </>
+          }
+        />
       </div>
 
       {Object.keys(data.by_orm).length > 0 && (
@@ -614,8 +916,26 @@ function GodNodesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <TabHeader>
+        God-nodes — high-centrality hub entities that many other things depend on
+        or route through. They concentrate risk: a change here ripples widely.
+        Ranked by PageRank over the dependency graph; refactor candidates.
+      </TabHeader>
+
       <div className="flex flex-wrap gap-3">
-        <CountStat label="God-nodes" value={nodes.length} tone="warning" />
+        <MetricStat
+          label="God-nodes"
+          value={nodes.length}
+          tone="warning"
+          hint={
+            <>
+              <strong>God-node</strong> = a high-centrality hub entity (many things
+              depend on or route through it), scored by PageRank over the dependency
+              graph. High scores signal a refactor candidate — splitting it reduces
+              blast radius. Fewer is better.
+            </>
+          }
+        />
       </div>
       <div className="space-y-2">
         {nodes.map((n) => (
@@ -630,11 +950,72 @@ function GodNodesTab({ groupId }: { groupId: string }) {
 // § Quality-trends tab
 // ---------------------------------------------------------------------------
 
-/** Inline SVG sparkline for a metric series. */
+/** Per-metric definitions keyed by the backend label (#4507). */
+const METRIC_HINTS: Record<string, React.ReactNode> = {
+  "Health score": (
+    <>
+      <strong>Health score</strong> = composite 0–100 blending orphan rate, bug
+      rate and test coverage into one figure. A quick at-a-glance signal; drill
+      into the individual metrics for the why. Higher is better; goal 90+.
+    </>
+  ),
+  "Orphan rate": (
+    <>
+      <strong>Orphan rate</strong> = % of entities with no graph edges at all
+      (nothing imports, calls or references them). High values mean dead or
+      disconnected code, or gaps in extraction. Lower is better.
+    </>
+  ),
+  "Bug rate": (
+    <>
+      <strong>Bug rate</strong> = density of bug-risk findings (e.g. error-prone
+      patterns) relative to entities scanned. A heuristic smell signal, not a test
+      pass-rate. Lower is better.
+    </>
+  ),
+  "Test coverage": (
+    <>
+      <strong>Test coverage</strong> = % of production entities reached by a TESTS
+      edge (structural reachability, not line coverage). Higher is better; goal 80%+.
+    </>
+  ),
+  "Import cycles": (
+    <>
+      <strong>Import cycles</strong> = number of circular import chains (module A →
+      B → A) in the IMPORTS graph. Cycles hurt build/test isolation and signal tangled
+      modules. Lower is better; goal 0.
+    </>
+  ),
+  "Auth-uncovered endpoints": (
+    <>
+      <strong>Auth-uncovered endpoints</strong> = HTTP endpoints with no detected
+      authentication guard/middleware on their route. Potential unauthenticated
+      surface to review. Lower is better; goal 0.
+    </>
+  ),
+  "Secret findings": (
+    <>
+      <strong>Secret findings</strong> = count of likely hardcoded secrets
+      (keys, tokens, credentials) detected in the source. Each should be rotated and
+      moved to a secret store. Lower is better; goal 0.
+    </>
+  ),
+};
+
+/**
+ * A metric has real, plottable trend history only when there are at least two
+ * snapshots AND the values are not all identical. A single snapshot (or a flat
+ * line) is not a time-series — drawing a sparkline for it would be fabricated
+ * (#4506), so callers fall back to an honest "no trend data yet" state.
+ */
+function hasRealTrend(points: { v: number }[]): boolean {
+  if (points.length < 2) return false;
+  const first = points[0].v;
+  return points.some((p) => p.v !== first);
+}
+
+/** Inline SVG sparkline for a metric series. Only call when hasRealTrend(). */
 function Sparkline({ points, lowerIsBetter }: { points: { v: number }[]; lowerIsBetter: boolean }) {
-  if (points.length < 2) {
-    return <div className="h-10 flex items-center text-[11px] text-text-4">insufficient history</div>;
-  }
   const vals = points.map((p) => p.v);
   const min = Math.min(...vals);
   const max = Math.max(...vals);
@@ -690,10 +1071,19 @@ function DeltaPill({ delta, lowerIsBetter }: { delta?: number; lowerIsBetter: bo
 }
 
 function MetricTrendCard({ m }: { m: MetricTrend }) {
+  const real = hasRealTrend(m.points);
+  const hint = METRIC_HINTS[m.label];
+  const goal = m.goal != null && m.goal !== 0
+    ? `goal ${m.unit === "%" ? `${m.goal}%` : m.goal}`
+    : null;
+
   return (
     <Card>
       <CardHeader className="flex items-center justify-between gap-2">
-        <CardTitle className="text-md">{m.label}</CardTitle>
+        <CardTitle className="text-md flex items-center gap-1.5">
+          {m.label}
+          {hint && <MetricInfo hint={hint} />}
+        </CardTitle>
         <span className="text-xl font-semibold tabular-nums text-text">
           {m.latest != null
             ? m.unit === "%"
@@ -703,20 +1093,27 @@ function MetricTrendCard({ m }: { m: MetricTrend }) {
         </span>
       </CardHeader>
       <CardBody className="space-y-2">
-        <Sparkline points={m.points} lowerIsBetter={m.lower_is_better} />
-        <div className="flex items-center gap-4 text-[11px] text-text-4">
-          <span className="flex items-center gap-1">
-            7d <DeltaPill delta={m.delta_7d} lowerIsBetter={m.lower_is_better} />
-          </span>
-          <span className="flex items-center gap-1">
-            30d <DeltaPill delta={m.delta_30d} lowerIsBetter={m.lower_is_better} />
-          </span>
-          {m.goal != null && m.goal !== 0 && (
-            <span className="ml-auto">
-              goal {m.unit === "%" ? `${m.goal}%` : m.goal}
-            </span>
-          )}
-        </div>
+        {real ? (
+          <>
+            <Sparkline points={m.points} lowerIsBetter={m.lower_is_better} />
+            <div className="flex items-center gap-4 text-[11px] text-text-4">
+              <span className="flex items-center gap-1">
+                7d <DeltaPill delta={m.delta_7d} lowerIsBetter={m.lower_is_better} />
+              </span>
+              <span className="flex items-center gap-1">
+                30d <DeltaPill delta={m.delta_30d} lowerIsBetter={m.lower_is_better} />
+              </span>
+              {goal && <span className="ml-auto">{goal}</span>}
+            </div>
+          </>
+        ) : (
+          <div className="flex flex-col gap-1.5 h-[58px] justify-center">
+            <p className="text-[11px] text-text-4 leading-snug">
+              No trend data yet — snapshots accumulate over time.
+            </p>
+            {goal && <span className="text-[11px] text-text-4">{goal}</span>}
+          </div>
+        )}
       </CardBody>
     </Card>
   );
@@ -738,10 +1135,18 @@ function TrendsTab({ groupId }: { groupId: string }) {
   }
 
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-      {data.metrics.map((m) => (
-        <MetricTrendCard key={m.label} m={m} />
-      ))}
+    <div className="space-y-4">
+      <TabHeader>
+        Trends — how each quality metric moves across successive re-indexes. A
+        sparkline appears only once there's genuine multi-snapshot history;
+        freshly-indexed groups show the current value with a goal until history
+        builds up.
+      </TabHeader>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+        {data.metrics.map((m) => (
+          <MetricTrendCard key={m.label} m={m} />
+        ))}
+      </div>
     </div>
   );
 }
@@ -775,37 +1180,39 @@ export default function QualityScreen() {
       >
         {/* Tab strip */}
         <div className="border-b border-border shrink-0 px-4">
-          <TabsList className="border-0">
-            <TabsTrigger value="coverage">
-              <GaugeCircle size={14} className="mr-1.5" />
+          <TabsList className="border-0 gap-1">
+            <TabsTrigger value="coverage" className="flex items-center gap-1.5">
+              <GaugeCircle size={14} />
               Test coverage
               {!coverage.isLoading && coverage.data && (
-                <Pill className="ml-1.5">{coverage.data.coverage_pct.toFixed(0)}%</Pill>
+                <TabBadge tone="neutral">
+                  {coverage.data.coverage_pct.toFixed(0)}%
+                </TabBadge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="dependencies">
-              <Boxes size={14} className="mr-1.5" />
+            <TabsTrigger value="dependencies" className="flex items-center gap-1.5">
+              <Boxes size={14} />
               Dependencies
               {!deps.isLoading && deps.data && depHygiene > 0 && (
-                <Pill className="ml-1.5">{depHygiene}</Pill>
+                <TabBadge tone="warning">{depHygiene}</TabBadge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="anti-patterns">
-              <Repeat size={14} className="mr-1.5" />
+            <TabsTrigger value="anti-patterns" className="flex items-center gap-1.5">
+              <Repeat size={14} />
               Anti-patterns
               {!anti.isLoading && anti.data && anti.data.total_findings > 0 && (
-                <Pill className="ml-1.5">{anti.data.total_findings}</Pill>
+                <TabBadge tone="warning">{anti.data.total_findings}</TabBadge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="god-nodes">
-              <Crown size={14} className="mr-1.5" />
+            <TabsTrigger value="god-nodes" className="flex items-center gap-1.5">
+              <Crown size={14} />
               God-nodes
               {!god.isLoading && god.data && god.data.god_nodes.length > 0 && (
-                <Pill className="ml-1.5">{god.data.god_nodes.length}</Pill>
+                <TabBadge tone="warning">{god.data.god_nodes.length}</TabBadge>
               )}
             </TabsTrigger>
-            <TabsTrigger value="trends">
-              <TrendingUp size={14} className="mr-1.5" />
+            <TabsTrigger value="trends" className="flex items-center gap-1.5">
+              <TrendingUp size={14} />
               Trends
             </TabsTrigger>
           </TabsList>
