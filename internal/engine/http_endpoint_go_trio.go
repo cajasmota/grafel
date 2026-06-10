@@ -29,6 +29,21 @@ import (
 	"github.com/cajasmota/archigraph/internal/engine/httproutes"
 )
 
+// isGoInlineHandlerToken reports whether a handler token captured by a Go HTTP
+// route registration regex is actually the start of an ANONYMOUS / INLINE func
+// literal (`func(...) {...}`) rather than a real, addressable handler symbol.
+//
+// The route regexes capture the handler argument as a `[\w.]+` identifier; when
+// the argument is `func(w, r) {...}` the greedy group captures the bare `func`
+// keyword. `func` is a Go reserved word and can never be a handler name, so it
+// is an unambiguous, name-agnostic signal that the handler is inline. Callers
+// turn this into refKind="InlineHandler" so makeEmit synthesizes a stable
+// inline-handler entity + merge-stable IMPLEMENTS bridge (#4382, mirroring the
+// JS fix #4324) instead of leaving the endpoint a handler-less graph island.
+func isGoInlineHandlerToken(handler string) bool {
+	return handler == "func"
+}
+
 // ---------------------------------------------------------------------------
 // gorilla/mux — issue #2684
 // ---------------------------------------------------------------------------
@@ -114,6 +129,90 @@ func synthesizeGorillaMux(content string, emit emitDefFn) {
 			emit(verb, canonical, "gorilla", "Controller", handler, regLine)
 		}
 	}
+	synthesizeGorillaMuxInline(content, emit)
+}
+
+// gorillaInlineRouteRe matches a gorilla/mux route whose handler is an
+// ANONYMOUS / INLINE func literal:
+//
+//	r.HandleFunc("/widgets", func(w http.ResponseWriter, r *http.Request) {
+//	r.HandleFunc("/x", func(w, r) { ... }).Methods("GET")
+//
+// The named-handler regex (gorillaRouteRe) requires `handler)` immediately
+// after the path and so cannot match a func literal (the `)` belongs to the
+// func signature, and the registration `)` only appears after the multi-line
+// body). This regex anchors on the `func(` opener instead. Group 1 is the path;
+// the .Methods(...) verb list — which on a multi-line inline handler appears
+// after the body, out of regex reach — is recovered by scanning forward to the
+// statement-terminating `)` (see verbsForGorillaInline). #4382.
+var gorillaInlineRouteRe = regexp.MustCompile(
+	`\b\w+\s*\.\s*HandleFunc\s*\(\s*` +
+		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]+)["` + "`" + `]` + "`" + `?\s*,\s*func\s*\(`,
+)
+
+// gorillaInlineMethodsRe finds the `.Methods("GET", http.MethodPost, …)` suffix
+// that may trail an inline gorilla/mux handler after the func body's closing
+// brace, within the forward window the caller passes.
+var gorillaInlineMethodsRe = regexp.MustCompile(`\.\s*Methods\s*\(([^)]*)\)`)
+
+// synthesizeGorillaMuxInline emits endpoints for gorilla/mux routes whose
+// handler is an inline func literal. Each is signalled InlineHandler so makeEmit
+// synthesizes a stable inline-handler node + bridge (#4382). The verb is taken
+// from a trailing `.Methods(...)` when present (scanning past the func body),
+// else ANY — matching gorilla's wildcard semantics for an un-Methods'd route.
+func synthesizeGorillaMuxInline(content string, emit emitDefFn) {
+	for _, m := range gorillaInlineRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		rawPath := content[m[2]:m[3]]
+		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, rawPath)
+		regLine := lineOfOffset(content, m[0])
+
+		verbs := verbsForGorillaInline(content, m[1])
+		if len(verbs) == 0 {
+			verbs = []string{"ANY"}
+		}
+		for _, verb := range verbs {
+			emit(verb, canonical, "gorilla", inlineHandlerRefKind, "", regLine)
+		}
+	}
+}
+
+// verbsForGorillaInline recovers the verb list from a `.Methods(...)` suffix on
+// an inline-handler registration. Starting at the `func(` opener offset, it
+// finds the matching close of the func literal body and looks for a `.Methods(`
+// immediately after; returns the parsed verbs, or nil when absent.
+func verbsForGorillaInline(content string, funcOpenOffset int) []string {
+	brace := strings.IndexByte(content[funcOpenOffset:], '{')
+	if brace < 0 {
+		return nil
+	}
+	bodyOpen := funcOpenOffset + brace
+	bodyEnd := findMatchingBracket(content, bodyOpen)
+	if bodyEnd < 0 {
+		return nil
+	}
+	// The registration closes with `)` after the func body; the optional
+	// `.Methods(...)` follows that. Scan a small forward window past the body.
+	rest := content[bodyEnd:]
+	if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
+		// Allow the `.Methods(...)` on the same line as the closing `})`.
+		if line := rest[:nl]; gorillaInlineMethodsRe.MatchString(line) {
+			mm := gorillaInlineMethodsRe.FindStringSubmatch(line)
+			return parseGorillaVerbs(mm[1])
+		}
+	}
+	if mm := gorillaInlineMethodsRe.FindStringSubmatch(rest); mm != nil {
+		// Only honour a `.Methods(...)` that appears before the next route
+		// registration so we don't borrow a sibling route's verbs.
+		methodsIdx := strings.Index(rest, mm[0])
+		nextReg := strings.Index(rest, "HandleFunc")
+		if nextReg < 0 || methodsIdx < nextReg {
+			return parseGorillaVerbs(mm[1])
+		}
+	}
+	return nil
 }
 
 // parseGorillaVerbs extracts verb strings from a .Methods(...) argument
@@ -222,7 +321,17 @@ func synthesizeNetHTTPStdlib(content string, emit emitDefFn) {
 			path = strings.TrimSpace(mp[2])
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, path)
-		emit(verb, canonical, "nethttp", "Controller", handler, regLine)
+		// #4382 — `http.HandleFunc("/x", func(w, r) {...})`: the `([\w.]+)`
+		// handler group captured the bare `func` literal keyword, not a real
+		// handler symbol. Signal InlineHandler so makeEmit synthesizes a stable
+		// inline-handler node + bridge instead of a dangling `Controller:func`
+		// ref that leaves the endpoint a graph island.
+		refKind := "Controller"
+		if isGoInlineHandlerToken(handler) {
+			handler = ""
+			refKind = inlineHandlerRefKind
+		}
+		emit(verb, canonical, "nethttp", refKind, handler, regLine)
 	}
 }
 

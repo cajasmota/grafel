@@ -117,7 +117,19 @@ func synthesizeGoRouters(content string, emit emitFn) {
 			handler = handler[i+1:]
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, raw)
-		emit(verb, canonical, framework, "Controller", handler)
+		// #4382 — the handler argument is an ANONYMOUS / INLINE func literal
+		// (`r.GET("/x", func(c *gin.Context) {...})`). The `([\w.]+)` handler
+		// group greedily captures the bare `func` keyword, which is NOT an
+		// addressable handler symbol — emitting it as a named Controller ref
+		// produces a bridge to a non-existent `func` def, leaving the endpoint
+		// a graph ISLAND. Signal InlineHandler (empty refName) so makeEmit
+		// synthesizes a stable inline-handler entity + merge-stable bridge.
+		refKind := "Controller"
+		if isGoInlineHandlerToken(handler) {
+			handler = ""
+			refKind = inlineHandlerRefKind
+		}
+		emit(verb, canonical, framework, refKind, handler)
 	}
 }
 
