@@ -1387,6 +1387,20 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	i.stats.extSynth = extStats
 
+	// #4480 — retarget THROWS / CATCHES edges from the synthetic
+	// SCOPE.ExceptionType convergence node to the REAL exception class entity
+	// (declared in-repo class, or the imported `ext:<Type>` placeholder just
+	// synthesised above), and drop the now-redundant synthetic node. Runs
+	// AFTER external.Synthesize so imported exception classes are present.
+	// Keeps exactly one node per exception with the throws/catches edge on it;
+	// the synthetic node survives only for genuinely unresolvable types.
+	excStats := external.ResolveExceptionTypes(doc)
+	if verbose() {
+		fmt.Fprintf(os.Stderr,
+			"exception-resolve: retargeted=%d synthetic_dropped=%d synthetic_kept=%d\n",
+			excStats.Retargeted, excStats.SyntheticDropped, excStats.SyntheticKept)
+	}
+
 	// Issue #1381 — stamp module="_external" on synthesised placeholder
 	// entities that have no source_file (ext:* nodes from external.Synthesize,
 	// and any other synthetic entities that buildDocument could not tag because
