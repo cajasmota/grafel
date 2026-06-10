@@ -2385,6 +2385,100 @@ func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
 	return rewrites
 }
 
+// ResolveCSharpCrossNamespaceCalls binds C# CALLS edges that reach a method on
+// a type in another namespace through a qualifier on a member-access call —
+// `App.Services.Orders.OrderService.Place()`, an aliased
+// `using Ord = App.Services.Orders; Ord.OrderService.Place()`, a
+// `using static App.Services.Orders.OrderService; Place()`, a same-namespace
+// static `OrderService.Create()`, or a `global::App.Services...Place()` — to
+// the callee's entity ID.
+//
+// Background (issue #4374): the C# extractor only types a single-level receiver,
+// so a multi-segment qualified call collapses to the bare leaf method name
+// (`Place`). A bare name resolves through the global byName index, which goes
+// ambiguous the moment two namespaces define a same-named method/type
+// (`OrderService.Place` in both App.Services.Orders and App.Services.Billing) —
+// so the CALLS edge drops and the callee namespace looks falsely uncalled. This
+// is the C# analogue of the Go cross-package (#4332) and Rust cross-module
+// (#4373) qualifier drops.
+//
+// Unlike Go/Rust, C# namespaces are NOT directory-bound, so this pass keys on
+// the C# NAMESPACE via byNamespaceMember[namespace][Type][leaf] rather than a
+// source directory. The extractor stamps, on each qualified CALLS edge:
+//   - Properties["csharp_call_ns"]: ";"-separated candidate namespaces (a
+//     fully-qualified path yields one; a `Type.method()` static call yields the
+//     static-import / file / using namespaces, most-specific first).
+//   - Properties["csharp_call_type"]: the declaring type name.
+//   - Properties["call_leaf"]: the bare callee method name.
+//
+// Conservative by construction, mirroring the Go/Rust passes:
+//   - Only edges carrying csharp_call_ns, csharp_call_type AND call_leaf
+//     participate.
+//   - Edges whose ToID is already a hex ID are left alone (idempotent).
+//   - The first candidate namespace that yields an unambiguous non-blank id
+//     wins; if two candidates resolve to DIFFERENT ids the edge is left alone
+//     (ambiguous). A blank-string sentinel (collision) is skipped, never
+//     guessed.
+//
+// Must run AFTER BuildIndex (needs byNamespaceMember) and BEFORE the
+// embedded-reference resolver so the rewritten hex ID is seen as resolved.
+// Returns the number of edges rewritten.
+func (idx Index) ResolveCSharpCrossNamespaceCalls(records []types.EntityRecord) int {
+	if len(idx.byNamespaceMember) == 0 {
+		return 0
+	}
+	rewrites := 0
+	for k := range records {
+		rec := &records[k]
+		for j := range rec.Relationships {
+			r := &rec.Relationships[j]
+			if r.Kind != "CALLS" || r.Properties == nil {
+				continue
+			}
+			nsRaw := r.Properties["csharp_call_ns"]
+			typ := r.Properties["csharp_call_type"]
+			leaf := r.Properties["call_leaf"]
+			if nsRaw == "" || typ == "" || leaf == "" {
+				continue
+			}
+			if r.ToID == "" || isHexID(r.ToID) {
+				continue // already resolved
+			}
+			resolved := ""
+			conflict := false
+			for _, ns := range strings.Split(nsRaw, ";") {
+				if ns == "" {
+					continue
+				}
+				nsBucket, ok := idx.byNamespaceMember[ns]
+				if !ok {
+					continue
+				}
+				typeBucket, ok := nsBucket[typ]
+				if !ok {
+					continue
+				}
+				id := typeBucket[leaf] // "" => collision sentinel or miss
+				if id == "" {
+					continue
+				}
+				if resolved == "" {
+					resolved = id
+				} else if resolved != id {
+					conflict = true
+					break
+				}
+			}
+			if conflict || resolved == "" {
+				continue
+			}
+			r.ToID = resolved
+			rewrites++
+		}
+	}
+	return rewrites
+}
+
 // lookupUniqueMember returns the entity id for scope.member if and only if it
 // is unique across the whole crate (every byMember file-bucket that defines it
 // agrees on the same id). Returns "" on miss or any disagreement (ambiguous).

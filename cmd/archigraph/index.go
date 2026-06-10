@@ -4056,6 +4056,16 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	if rustCrossModCallRewrites > 0 {
 		fmt.Fprintf(os.Stderr, "resolver: rust-cross-module rewrote=%d CALLS targets\n", rustCrossModCallRewrites)
 	}
+	// #4374 — C# cross-namespace CALLS resolution. Binds qualified
+	// `Ns.Type.method()` / aliased / `using static` / `global::` edges stamped
+	// with csharp_call_ns + csharp_call_type + call_leaf to a namespace-keyed
+	// member index (C# namespaces are not directory-bound). Same ordering
+	// constraints as the Go/Rust passes: after BuildIndex, before the
+	// embedded-reference resolver.
+	csharpCrossNSCallRewrites := idx.ResolveCSharpCrossNamespaceCalls(merged)
+	if csharpCrossNSCallRewrites > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: csharp-cross-namespace rewrote=%d CALLS targets\n", csharpCrossNSCallRewrites)
+	}
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
 	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)
