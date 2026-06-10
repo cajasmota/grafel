@@ -59,6 +59,8 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
   const setLod = useGraphStore((s) => s.setLod);
   const minDegree = useGraphStore((s) => s.minDegree);
   const setMinDegree = useGraphStore((s) => s.setMinDegree);
+  const hideUnconnected = useGraphStore((s) => s.hideUnconnected);
+  const setHideUnconnected = useGraphStore((s) => s.setHideUnconnected);
   const clearAllFilters = useGraphStore((s) => s.clearAllFilters);
 
   return (
@@ -182,11 +184,29 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
             </div>
             <p className="mt-1.5 text-xs text-text-3">
               {minDegree === 0
-                ? "Showing all nodes. Low-degree nodes are de-emphasized, not hidden."
+                ? "Showing connected + low-degree leaf nodes. Low-degree nodes are de-emphasized, not hidden."
                 : minDegree === 1
                   ? "Hiding unconnected (zero-edge) nodes."
                   : "Hiding unconnected + degree-1 leaf nodes."}
             </p>
+            {/* #4641 — unconnected (zero-edge) nodes are typically constants,
+                types, and config with no graph edges; hidden by default so the
+                connected component reads clearly (not a health problem). */}
+            <label className="mt-2.5 flex cursor-pointer items-start gap-2 text-xs text-text-2">
+              <input
+                type="checkbox"
+                checked={hideUnconnected}
+                onChange={(e) => setHideUnconnected(e.target.checked)}
+                className="mt-0.5 h-3.5 w-3.5 cursor-pointer accent-accent"
+              />
+              <span>
+                Hide unconnected nodes
+                <span className="mt-0.5 block text-text-3">
+                  Zero-edge constants, types, and config — hidden by default so
+                  the connected structure reads clearly.
+                </span>
+              </span>
+            </label>
           </section>
 
           <TuningPanels />

@@ -1387,6 +1387,42 @@ function GraphCanvasInner(
     kickFreshSettleRef.current();
   }, [relayoutNonce, packed]);
 
+  // ── #4641: AUTO-SETTLE on first data load (the recurring "explode"/clumped
+  //    bug, #4492/#2107). On the very first render of a NON-EMPTY renderable
+  //    graph the canvas used to arrive clumped — the seed positions paused
+  //    before the force layout spread them — and the user had to click Reset.
+  //    Reset runs kickFreshSettle; so do we, exactly once, the first time a
+  //    renderable graph appears WITHOUT a healthy cached layout. With a healthy
+  //    cache we intentionally pin+fit the saved spread instead (instant reload),
+  //    which the mount/group handlers already own. This is the single guaranteed
+  //    entry point so the graph arrives already spread with no manual Reset; it
+  //    is idempotent (autoSettledRef), respects the crash-guard (renderable),
+  //    and never double-fires against the mount/group/relayout settles (which all
+  //    set didAutoStartRef / hasSettledRef that we check before kicking). ──────
+  const autoSettledRef = useRef(false);
+  useEffect(() => {
+    if (autoSettledRef.current) return;
+    if (!renderable) return; // crash-guard: never seed/start an empty graph
+    const g = graphRef.current;
+    if (!g) return;
+    // If another settle path already claimed the first layout (mount no-cache
+    // kick, group-change, relayout) or the graph is already settled (healthy
+    // cache pinned), don't fire a competing fresh settle.
+    if (didAutoStartRef.current || hasSettledRef.current) {
+      autoSettledRef.current = true;
+      return;
+    }
+    // A healthy cache is owned by the mount/group handlers (pin + fit). Only the
+    // no-valid-cache case needs an explicit kick here.
+    const saved = loadLayout(group, nodeIds);
+    if (saved && isLayoutHealthy(saved.positions, nodeIds.length * 2)) {
+      autoSettledRef.current = true;
+      return;
+    }
+    autoSettledRef.current = true;
+    kickFreshSettleRef.current();
+  }, [renderable, group, nodeIds]);
+
   // ── re-layout when the node SET changes (Fix #1548-3 ego enter/exit) ─────────
   // Entering/leaving focus swaps `group` (…::ego) and the node set. The settled
   // engine would otherwise just re-pin the new (scattered) positions and pause —

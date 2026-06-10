@@ -273,6 +273,24 @@ function persist<T>(key: string, value: T): void {
   }
 }
 
+/**
+ * #4641 — read a persisted BOOLEAN preference, version-independent (it's a pure
+ * UX choice, not force-tuning that a DEFAULTS_VERSION bump should reset). Falls
+ * back to `fallback` when unset or unparseable.
+ */
+function persistedBool(key: string, fallback: boolean): boolean {
+  if (typeof localStorage === "undefined") return fallback;
+  try {
+    const raw = localStorage.getItem(key);
+    if (raw === null) return fallback;
+    return JSON.parse(raw) === true;
+  } catch {
+    return fallback;
+  }
+}
+
+const HIDE_UNCONNECTED_KEY = "ag.v2.graph.hideUnconnected";
+
 interface GraphState {
   // Interaction
   selectedNodeId: string | null;
@@ -303,6 +321,17 @@ interface GraphState {
    * extraction bugs are fixed separately.
    */
   minDegree: number;
+
+  /**
+   * #4641 — hide UNCONNECTED (rendered degree 0) nodes by default. These are
+   * almost always constants / types / config with no graph edges; showing them
+   * makes the graph read as an unhealthy "orphan ring" even though the
+   * connected component is fine. Default ON (true) so the main graph shows only
+   * the connected + low-degree (≥1 edge) structure; a calm footer chip lets the
+   * user toggle them back on. Independent of `minDegree` (which also hides
+   * degree-1 leaves) and persisted to localStorage so the choice sticks.
+   */
+  hideUnconnected: boolean;
 
   // View knobs
   colorMode: ColorMode;
@@ -352,6 +381,8 @@ interface GraphState {
   setLod: (lod: LodLevel) => void;
   /** #4467 — set the min-degree threshold (clamped to 0..2). */
   setMinDegree: (d: number) => void;
+  /** #4641 — toggle hiding of unconnected (zero-edge) nodes (persisted). */
+  setHideUnconnected: (hide: boolean) => void;
   setColorMode: (m: ColorMode) => void;
   setGroupBy: (m: GroupByMode) => void;
   /**
@@ -405,6 +436,10 @@ export const useGraphStore = create<GraphState>((set) => ({
   // (smaller + dimmer) rather than hidden, so the default view is honest.
   minDegree: 0,
 
+  // #4641 — hide zero-edge nodes by default (persisted, version-independent) so
+  // the main graph shows only the connected component + low-degree leaves.
+  hideUnconnected: persistedBool(HIDE_UNCONNECTED_KEY, true),
+
   colorMode: "repo",
   groupBy: "repo",
   groupingTouched: false,
@@ -446,6 +481,10 @@ export const useGraphStore = create<GraphState>((set) => ({
   clearRepos: () => set({ activeRepos: null }),
   setLod: (lod) => set({ lod }),
   setMinDegree: (d) => set({ minDegree: Math.max(0, Math.min(2, Math.round(d))) }),
+  setHideUnconnected: (hide) => {
+    persist(HIDE_UNCONNECTED_KEY, hide);
+    set({ hideUnconnected: hide });
+  },
   setColorMode: (colorMode) => set({ colorMode, groupingTouched: true }),
   setGroupBy: (groupBy) => set({ groupBy, groupingTouched: true }),
   applyMonorepoDefaults: (isMonorepo) =>

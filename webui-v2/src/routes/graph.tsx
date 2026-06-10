@@ -211,8 +211,15 @@ export default function GraphScreen() {
   // incident edges, so cosmos.gl never sees a 15k-edge star that freezes the
   // layout. Computed from the rendered edges (not the daemon `degree`) so it
   // respects the user's edge-kind toggles. No-op on normal graphs.
-  const { nodes, edges, prunedHubCount, lowDegreeCount, orphanCount, hiddenLowDegreeCount } =
-    useMemo(() => {
+  const {
+    nodes,
+    edges,
+    prunedHubCount,
+    lowDegreeCount,
+    orphanCount,
+    hiddenLowDegreeCount,
+    hiddenUnconnectedCount,
+  } = useMemo(() => {
       const incident = new Map<string, number>();
       for (const e of kindFilteredEdges) {
         incident.set(e.source, (incident.get(e.source) ?? 0) + 1);
@@ -245,10 +252,21 @@ export default function GraphScreen() {
       }
       const lowDegree = orphans + leaves;
 
-      // Apply the min-degree filter (default 0 = show everything). Hiding is always
-      // surfaced in the badge, so it stays explicit + reversible.
+      // #4641 — the EFFECTIVE minimum rendered degree a node must have to be
+      // shown, combining two independent controls:
+      //   • hideUnconnected (default ON): drop zero-edge nodes (orphans). These
+      //     are typically constants / types / config with no graph edges, so the
+      //     main graph shows the healthy connected component by default.
+      //   • minDegree (default 0): the explicit "also hide degree-1 leaves" knob.
+      // We take the max so whichever is stricter wins, then surface the hidden
+      // counts in the footer so nothing is ever silently dropped.
       const minD = s.minDegree;
-      if (minD <= 0 && prunedIds.size === 0) {
+      const effMinD = Math.max(minD, s.hideUnconnected ? 1 : 0);
+      // How many of the hidden nodes are unconnected (degree 0) — surfaced as the
+      // calm "M isolated · show" chip when hideUnconnected is on and minDegree is 0.
+      const hiddenUnconnected = s.hideUnconnected && minD <= 0 ? orphans : 0;
+
+      if (effMinD <= 0 && prunedIds.size === 0) {
         return {
           nodes: allNodes,
           edges: kindFilteredEdges,
@@ -256,15 +274,16 @@ export default function GraphScreen() {
           lowDegreeCount: lowDegree,
           orphanCount: orphans,
           hiddenLowDegreeCount: 0,
+          hiddenUnconnectedCount: 0,
         };
       }
       const keptNodes =
-        minD <= 0
+        effMinD <= 0
           ? hubKept
-          : hubKept.filter((n) => (incident.get(n.id) ?? 0) >= minD);
+          : hubKept.filter((n) => (incident.get(n.id) ?? 0) >= effMinD);
       const keptIds = new Set(keptNodes.map((n) => n.id));
       const keptEdges =
-        minD <= 0
+        effMinD <= 0
           ? hubKeptEdges
           : hubKeptEdges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target));
       return {
@@ -273,9 +292,12 @@ export default function GraphScreen() {
         prunedHubCount: prunedIds.size,
         lowDegreeCount: lowDegree,
         orphanCount: orphans,
-        hiddenLowDegreeCount: hubKept.length - keptNodes.length,
+        // hiddenLowDegreeCount reports the degree-1 leaves the minDegree knob hid
+        // (the unconnected count is reported separately as the isolated chip).
+        hiddenLowDegreeCount: hubKept.length - keptNodes.length - hiddenUnconnected,
+        hiddenUnconnectedCount: hiddenUnconnected,
       };
-    }, [allNodes, kindFilteredEdges, s.minDegree]);
+    }, [allNodes, kindFilteredEdges, s.minDegree, s.hideUnconnected]);
 
   // ── monorepo-aware default coloring/grouping (Fix #1532-1) ───────────────────
   // A monorepo is a single repo split into many modules. Repo grouping there is
@@ -564,7 +586,10 @@ export default function GraphScreen() {
               references). Search to jump to a symbol, color by
               repo/kind/community, or collapse to a module overview. Node color
               encodes the active mode; faint peripheral nodes are low-degree
-              leaves, not orphans.
+              leaves, not orphans. Unconnected (zero-edge) nodes — typically
+              constants, types, and config with no graph edges — are hidden by
+              default so the connected structure reads clearly; bring them back
+              anytime with the &ldquo;isolated · show&rdquo; chip.
             </>
           }
           agent={{
@@ -738,30 +763,58 @@ export default function GraphScreen() {
               <div className="pointer-events-none rounded-md border border-border bg-surface/80 px-2 py-1 font-mono text-xs text-text-3 backdrop-blur-sm">
                 LOD: {lodLabel}
               </div>
-              {/* #4467 — honest low-degree badge. The force layout pushes degree-1
-                  nodes to the periphery, which reads as a misleading "orphan ring";
-                  in reality almost all are degree-1 leaves (a single CONTAINS edge),
-                  not true orphans. This badge names the real counts and offers an
-                  explicit, reversible show/hide so nothing is ever silently dropped. */}
-              {lowDegreeCount > 0 ? (
+              {/* #4641 — calm "isolated" chip. Unconnected (zero-edge) nodes are
+                  typically constants / types / config that simply have no graph
+                  edges; they're hidden by default so the main graph shows the
+                  healthy connected component instead of a misleading "orphan ring."
+                  When some are hidden we show a quiet "M isolated · show" chip to
+                  bring them back; when shown we offer the reverse. Low-degree (≥1
+                  edge) leaves stay visible and are reported for context. */}
+              {hiddenUnconnectedCount > 0 ? (
+                <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface/80 px-2 py-1 text-xs text-text-3 backdrop-blur-sm">
+                  <span className="tabular-nums">
+                    {hiddenUnconnectedCount.toLocaleString()} isolated
+                  </span>
+                  <span className="text-text-4" title="Nodes with no graph edges (constants, types, config) — hidden by default; they aren't a health problem.">
+                    hidden
+                  </span>
+                  <button
+                    onClick={() => s.setHideUnconnected(false)}
+                    className="ml-0.5 rounded border border-border bg-surface px-1.5 py-0.5 text-[0.7rem] font-medium text-text-2 hover:bg-surface-2"
+                    title="Show unconnected (zero-edge) nodes — typically constants, types, and config"
+                  >
+                    show
+                  </button>
+                </div>
+              ) : lowDegreeCount > 0 ? (
                 <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface/80 px-2 py-1 text-xs text-text-3 backdrop-blur-sm">
                   <span className="tabular-nums">
                     {(lowDegreeCount - orphanCount).toLocaleString()} low-degree
                   </span>
-                  <span className="text-text-4">·</span>
-                  <span className="tabular-nums">{orphanCount.toLocaleString()} unconnected</span>
+                  {orphanCount > 0 ? (
+                    <>
+                      <span className="text-text-4">·</span>
+                      <span className="tabular-nums">
+                        {orphanCount.toLocaleString()} unconnected
+                      </span>
+                    </>
+                  ) : null}
                   {hiddenLowDegreeCount > 0 ? (
                     <span className="tabular-nums text-warning">
                       · {hiddenLowDegreeCount.toLocaleString()} hidden
                     </span>
                   ) : null}
-                  <button
-                    onClick={() => s.setMinDegree(s.minDegree > 0 ? 0 : 1)}
-                    className="ml-0.5 rounded border border-border bg-surface px-1.5 py-0.5 text-[0.7rem] font-medium text-text-2 hover:bg-surface-2"
-                    title="Toggle hiding of low-degree / unconnected nodes"
-                  >
-                    {s.minDegree > 0 ? "show" : "hide"}
-                  </button>
+                  {/* When unconnected nodes are currently SHOWN, offer to hide
+                      them again (back to the calm default). */}
+                  {orphanCount > 0 && !s.hideUnconnected ? (
+                    <button
+                      onClick={() => s.setHideUnconnected(true)}
+                      className="ml-0.5 rounded border border-border bg-surface px-1.5 py-0.5 text-[0.7rem] font-medium text-text-2 hover:bg-surface-2"
+                      title="Hide unconnected (zero-edge) nodes — typically constants, types, and config"
+                    >
+                      hide isolated
+                    </button>
+                  ) : null}
                 </div>
               ) : null}
             </div>
