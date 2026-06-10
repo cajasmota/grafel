@@ -124,6 +124,23 @@ var nestSkipDTOTypes = map[string]bool{
 	"null": true, "undefined": true, "never": true, "this": true,
 }
 
+// nestEnvelopeWrappers are framework / convention "envelope" generics whose
+// single payload type argument carries the actual response DTO — the wrapper
+// itself is transport boilerplate (status/meta/pagination), never the rendered
+// shape. `ApiResponse<UserDto>` / `PagedResponse<UserDto>` must resolve to
+// `UserDto`, not to the envelope, so the Response row renders the DTO's fields
+// instead of "(none)" (#4488). These are treated like Promise/Observable: the
+// unwrapper descends into their first type argument. Generalized across
+// frameworks (NestJS conventions, Spring `Page`/`ResponseEntity` analogues,
+// common hand-rolled wrappers) so the same unwrap applies everywhere.
+var nestEnvelopeWrappers = map[string]bool{
+	"ApiResponse": true, "PagedResponse": true, "PaginatedResponse": true,
+	"Paginated": true, "Page": true, "PageResponse": true, "Pagination": true,
+	"CollectionResponse": true, "ListResponse": true, "DataResponse": true,
+	"ResponseWrapper": true, "Wrapped": true, "Envelope": true,
+	"ResponseEntity": true, "ApiResult": true, "Result": true,
+}
+
 // nestParamsBlock returns the handler parameter list starting at openParenEnd
 // (the byte just past the method's opening `(`), via balanced-paren scanning,
 // and the offset of the matching close paren.
@@ -146,48 +163,144 @@ func nestParamsBlock(src string, openParenEnd int) (string, int) {
 }
 
 // nestUnwrapType strips generic wrappers (Promise<T>, Observable<T>, Array<T>,
-// T[]) to the innermost user type, returning "" for built-ins/primitives.
+// T[]) AND convention envelopes (ApiResponse<T>, PagedResponse<T>, …) to the
+// innermost user type, returning "" for built-ins/primitives. Kept as the
+// boolean-free entry point used by the request-DTO (@Body/@Query/@Param) edge
+// passes — those only need the resolved type name.
 func nestUnwrapType(raw string) string {
+	dto, _, _ := nestResolveResponseType(raw)
+	return dto
+}
+
+// nestResolveResponseType unwraps a response/return type annotation to its
+// innermost user DTO, reporting whether the payload is an array and whether the
+// response is a genuine no-content (void/undefined/never) result.
+//
+//	Promise<InspectorDto>            → ("InspectorDto", false, false)
+//	Promise<InspectorDto[]>          → ("InspectorDto", true,  false)
+//	Promise<PagedResponse<GroupDto>> → ("GroupDto",     false, false)  (#4488 envelope unwrap)
+//	Observable<ApiResponse<UserDto>> → ("UserDto",      false, false)
+//	{ data: UserDto }                → ("UserDto",      false, false)  (inline envelope)
+//	Promise<void> / void             → ("",             false, true)   (#4488 204/No-Content)
+//	Promise<number> / string         → ("",             false, false)  (typed primitive, no DTO)
+//
+// The (dto=="" && !isVoid) case is an honest "typed but not a resolvable DTO"
+// (primitive / built-in) — the caller renders it as a scalar, never "(none)".
+// The isVoid case lets the dashboard label "204 No Content" instead of a
+// misleading "(1) (none)". Generalized so the same unwrap applies across
+// frameworks (Promise/Observable async wrappers, array containers, and the
+// envelope set above).
+func nestResolveResponseType(raw string) (dto string, isArray, isVoid bool) {
 	raw = strings.TrimSpace(raw)
-	raw = strings.TrimSuffix(raw, "[]")
+	if raw == "" {
+		return "", false, false
+	}
+	if strings.HasSuffix(raw, "[]") {
+		isArray = true
+		raw = strings.TrimSpace(strings.TrimSuffix(raw, "[]"))
+	}
 	for {
+		// Inline object envelope `{ data: T }` / `{ data: T[] }` → descend to T.
+		if inner, ok := nestInlineDataEnvelope(raw); ok {
+			raw = strings.TrimSpace(inner)
+			if strings.HasSuffix(raw, "[]") {
+				isArray = true
+				raw = strings.TrimSpace(strings.TrimSuffix(raw, "[]"))
+			}
+			continue
+		}
 		open := strings.IndexByte(raw, '<')
 		if open < 0 {
 			break
 		}
 		base := strings.TrimSpace(raw[:open])
-		if !nestSkipDTOTypes[base] {
+		isWrapper := nestSkipDTOTypes[base] || nestEnvelopeWrappers[base]
+		if !isWrapper {
 			// A user generic like UserDto<T> — keep the base type.
 			raw = base
 			break
 		}
-		// Wrapper generic: descend into the first type argument.
-		close := strings.LastIndexByte(raw, '>')
-		if close <= open {
+		// `Array<T>` / `Set<T>` are array containers — flag the payload.
+		if base == "Array" || base == "Set" {
+			isArray = true
+		}
+		// Wrapper / envelope generic: descend into the first type argument.
+		closeIdx := strings.LastIndexByte(raw, '>')
+		if closeIdx <= open {
 			break
 		}
-		inner := raw[open+1 : close]
+		inner := raw[open+1 : closeIdx]
 		if comma := strings.IndexByte(inner, ','); comma >= 0 {
 			inner = inner[:comma]
 		}
 		raw = strings.TrimSpace(inner)
-		raw = strings.TrimSuffix(raw, "[]")
+		if strings.HasSuffix(raw, "[]") {
+			isArray = true
+			raw = strings.TrimSpace(strings.TrimSuffix(raw, "[]"))
+		}
 	}
-	// Union `T | null` → first member.
+	// Union `T | null` / `T | undefined` → first member.
 	if pipe := strings.IndexByte(raw, '|'); pipe >= 0 {
 		raw = strings.TrimSpace(raw[:pipe])
 	}
 	base := strings.TrimSpace(raw)
+	switch base {
+	case "void", "undefined", "never":
+		return "", isArray, true
+	}
 	if base == "" || nestSkipDTOTypes[base] {
-		return ""
+		return "", isArray, false
 	}
 	// Must be a bare identifier (no leftover punctuation).
 	for _, r := range base {
 		if !(r == '_' || r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' || r >= '0' && r <= '9') {
-			return ""
+			return "", isArray, false
 		}
 	}
-	return base
+	return base, isArray, false
+}
+
+// nestInlineDataEnvelope detects an inline `{ data: T }` (or `{ data: T; ... }`)
+// object-literal envelope and returns the payload type T. Only the leading
+// `data` property is honored — the convention carrier for the response body.
+func nestInlineDataEnvelope(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if !strings.HasPrefix(raw, "{") || !strings.HasSuffix(raw, "}") {
+		return "", false
+	}
+	body := strings.TrimSpace(raw[1 : len(raw)-1])
+	if !strings.HasPrefix(body, "data") {
+		return "", false
+	}
+	rest := strings.TrimSpace(body[len("data"):])
+	rest = strings.TrimPrefix(rest, "?")
+	rest = strings.TrimSpace(rest)
+	if !strings.HasPrefix(rest, ":") {
+		return "", false
+	}
+	val := strings.TrimSpace(rest[1:])
+	// Cut at the first top-level `;` or `,` (additional envelope props).
+	depth := 0
+	for i := 0; i < len(val); i++ {
+		switch val[i] {
+		case '<', '{', '[':
+			depth++
+		case '>', '}', ']':
+			if depth > 0 {
+				depth--
+			}
+		case ';', ',':
+			if depth == 0 {
+				val = val[:i]
+				i = len(val)
+			}
+		}
+	}
+	val = strings.TrimSpace(val)
+	if val == "" {
+		return "", false
+	}
+	return val, true
 }
 
 func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
@@ -348,7 +461,9 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		}
 
 		if rm := reNestReturnType.FindStringSubmatch(src[closeOff+1 : min(closeOff+200, len(src))]); rm != nil {
-			if dto := nestUnwrapType(rm[1]); dto != "" {
+			dto, isArray, isVoid := nestResolveResponseType(rm[1])
+			switch {
+			case dto != "":
 				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
 					ToID: "Class:" + dto,
 					Kind: string(types.RelationshipKindReturns),
@@ -359,8 +474,19 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 				// #4325 — the RETURNS edge alone made the Paths panel count a
 				// response but render "(none)" because the Response row reads
 				// the `response_type` PROPERTY, which was never set. Set it so
-				// the actual DTO name renders.
+				// the actual DTO name renders. #4488 — also unwrap envelopes
+				// (ApiResponse/PagedResponse/{ data: T }) to the payload DTO and
+				// flag arrays so the row shows the element shape with an array
+				// marker instead of the envelope (which has no DTO fields).
 				setProps(&ent, "response_type", dto)
+				if isArray {
+					setProps(&ent, "response_is_array", "true")
+				}
+			case isVoid:
+				// #4488 — a genuine no-content response (`Promise<void>` / `void`).
+				// Mark it so the dashboard labels "204 No Content" / "void"
+				// rather than counting a response with a "(none)" body.
+				setProps(&ent, "response_void", "true")
 			}
 		}
 		addEntity(ent)

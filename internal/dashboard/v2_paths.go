@@ -148,6 +148,15 @@ type v2ResponseShape struct {
 	TypeName     string `json:"type_name,omitempty"`
 	TypeEntityID string `json:"type_entity_id,omitempty"`
 	HasChildren  bool   `json:"has_children,omitempty"`
+	// #4488 — Void is true for a genuine no-content response
+	// (`Promise<void>` / `void`); the frontend renders a "204 No Content"
+	// label instead of an empty "(none)" body. IsArray flags an
+	// array-payload response so the row can render an array marker on the
+	// element shape. These reconcile the Response count with the rendered
+	// shape: a counted response is always either a typed shape, a scalar,
+	// or an explicit void — never a silent "(none)".
+	Void    bool `json:"void,omitempty"`
+	IsArray bool `json:"is_array,omitempty"`
 }
 
 // v2PerStatusResponse is one entry in the per-status-code tab strip
@@ -799,6 +808,13 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		// engine.extractJavaReturnType (e.g. "LoginResponse"). Used to
 		// surface a ShapeTree-expandable response row.
 		ResponseType string
+		// #4488 — ResponseVoid marks a genuine no-content response
+		// (`Promise<void>` / `void`) so the Response row renders a
+		// "204 No Content" label instead of a "(none)" body. ResponseIsArray
+		// flags an array-payload response (`T[]`) so the row shows the element
+		// shape with an array marker.
+		ResponseVoid    bool
+		ResponseIsArray bool
 		// Issue #1938 Phase 1 — JSON-encoded []engine.APIResponseEntry extracted
 		// from @APIResponse / @ApiResponse annotations. Decoded below to build
 		// the PerStatusResponses tab strip.
@@ -956,6 +972,11 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				// Refs #1935 Phase 1 — handler return type for the
 				// Response ShapeTree subtree.
 				ResponseType: e.Properties["response_type"],
+				// #4488 — void/no-content + array-payload markers so the
+				// Response row labels "204 No Content" instead of a
+				// misleading "(none)" and flags array element shapes.
+				ResponseVoid:    e.Properties["response_void"] == "true",
+				ResponseIsArray: e.Properties["response_is_array"] == "true",
 				// Issue #1938 Phase 1 — per-status @APIResponse annotations.
 				APIResponsesJSON: e.Properties["api_responses"],
 				// #1942 Phase 1 — auth_policy decoded from the endpoint entity.
@@ -1059,6 +1080,13 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 		}
 		if h.ResponseType != "" && shape.TypeName == "" {
 			shape.TypeName = h.ResponseType
+			if h.ResponseIsArray {
+				shape.IsArray = true
+			}
+			// unwrapElementType handles Java container element types
+			// (List<T>/Optional<T>/…); for NestJS the extractor already
+			// unwrapped Promise/Observable/envelope/array to the bare DTO
+			// name, so this is a no-op on that name. #4488.
 			resolveType := unwrapElementType(h.ResponseType)
 			if target := findClassEntityByName(grp, resolveType); target != nil {
 				if slug, _ := findRepoForEntity(grp, target.ID); slug != "" {
@@ -1066,6 +1094,12 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 					shape.HasChildren = classHasFieldChildren(grp, target)
 				}
 			}
+		}
+		// #4488 — a genuine no-content response. Only mark Void when no typed
+		// shape was resolved for this verb, so a verb that has BOTH a typed
+		// handler and a void overload still renders the shape.
+		if h.ResponseVoid && shape.TypeName == "" {
+			shape.Void = true
 		}
 	}
 	responseShapes := make([]v2ResponseShape, 0, len(shapesByVerb))
