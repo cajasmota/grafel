@@ -46,6 +46,7 @@ import {
   Crosshair,
   Target,
   ListFilter,
+  Info,
 } from "lucide-react";
 
 import {
@@ -57,6 +58,9 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -125,15 +129,73 @@ function confidenceTone(c: number): Tone {
   return "info";
 }
 
+/** Plain-language definition of a sink_kind — what kind of dangerous operation it is. */
+function sinkKindDescription(kind: string): string {
+  switch ((kind || "").toLowerCase()) {
+    case "sql":
+      return "a SQL query / database statement";
+    case "db_write":
+    case "db":
+      return "a database write";
+    case "db_read":
+      return "a database read";
+    case "command":
+    case "shell":
+    case "exec":
+      return "an OS command / shell execution";
+    case "fs":
+    case "file":
+    case "path":
+      return "a filesystem path / file operation";
+    case "template":
+      return "a template render";
+    case "http":
+    case "url":
+      return "an outbound HTTP request";
+    case "log":
+      return "a log sink";
+    default:
+      return kind ? `a ${kind} sink` : "a sensitive sink";
+  }
+}
+
+/** Human-readable label for a sink_kind (keeps the raw token but title-cased). */
+function sinkKindLabel(kind: string): string {
+  return (kind || "sink").replace(/_/g, " ");
+}
+
+/** What the confidence number means, in words. */
+function confidenceMeaning(c: number): string {
+  const pct = Math.round(c * 100);
+  if (c >= 0.85)
+    return `High confidence (${pct}%): the analyzer is very sure tainted data reaches this sink along the traced path.`;
+  if (c >= 0.7)
+    return `Moderate confidence (${pct}%): the path is likely but involves hops or inference the analyzer is less certain about.`;
+  return `Lower confidence (${pct}%): a plausible flow, but with weaker evidence on the path.`;
+}
+
+/** Plain-language one-liner describing a flow: "<source> data flows into <sink-desc> in <sink-entity>". */
+function flowSentence(flow: TaintFlow): string {
+  const src = flow.field
+    ? `request field \`${flow.field}\``
+    : flow.source?.name
+      ? `data from ${flow.source.name}`
+      : "tainted request data";
+  const sinkDesc = sinkKindDescription(flow.sink_kind ?? "");
+  const where = flow.sink?.name ? ` in ${flow.sink.name}` : "";
+  return `${src} flows into ${sinkDesc}${where}.`;
+}
+
 function ConfidencePill({ value }: { value: number }) {
   return (
-    <Badge
-      tone={confidenceTone(value)}
-      className="tabular-nums shrink-0"
-      title={`Aggregated taint confidence ${value.toFixed(2)}`}
-    >
-      {Math.round(value * 100)}%
-    </Badge>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Badge tone={confidenceTone(value)} className="tabular-nums shrink-0 cursor-help">
+          {Math.round(value * 100)}%
+        </Badge>
+      </TooltipTrigger>
+      <TooltipContent>{confidenceMeaning(value)}</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -230,12 +292,94 @@ function ErrorState() {
   );
 }
 
+/** Inline count badge for a tab trigger. A plain <span> (never a nested button)
+ *  so it doesn't disturb the trigger's baseline / active underline. */
+function TabCount({ value, active }: { value: number; active?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5",
+        "rounded-full text-[11px] font-medium tabular-nums leading-none transition-colors",
+        active
+          ? "bg-accent-soft text-accent-strong"
+          : "bg-surface-2 text-text-3",
+      )}
+    >
+      {value}
+    </span>
+  );
+}
+
 function SummaryStat({ label, value }: { label: string; value: number }) {
   return (
     <Card className={cn("flex-1 min-w-[120px]")}>
       <CardBody className="py-3">
         <p className="text-2xl font-semibold tabular-nums text-text">{value}</p>
         <p className="text-xs text-text-4 mt-0.5">{label}</p>
+      </CardBody>
+    </Card>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// § Purpose header — explains what taint / data-flow analysis is
+// ---------------------------------------------------------------------------
+
+function DefTerm({ term, def }: { term: string; def: React.ReactNode }) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="cursor-help underline decoration-dotted decoration-text-4 underline-offset-2 text-text-2">
+          {term}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>{def}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+function PurposeHeader() {
+  return (
+    <Card>
+      <CardBody className="py-3 flex gap-3">
+        <Info size={16} className="text-text-4 shrink-0 mt-0.5" />
+        <div className="space-y-1.5 min-w-0">
+          <p className="text-md font-medium text-text">Taint &amp; data-flow analysis</p>
+          <p className="text-sm text-text-3 leading-relaxed">
+            This view traces how untrusted data (typically{" "}
+            <DefTerm
+              term="request input"
+              def="A taint source — data entering the system from outside, e.g. an HTTP request body, query param, or header."
+            />
+            ) moves through the code until it reaches a{" "}
+            <DefTerm
+              term="sensitive sink"
+              def="An operation where untrusted data is dangerous — a SQL query, OS command, filesystem path, template render, or outbound HTTP call (a DB_WRITE is one such sink kind)."
+            />
+            . Each path carries a{" "}
+            <DefTerm
+              term="confidence"
+              def="How sure the analyzer is that the data actually reaches the sink along the traced path. Higher = stronger evidence."
+            />{" "}
+            score.
+          </p>
+          <p className="text-sm text-text-3 leading-relaxed">
+            <span className="text-text-2 font-medium">Findings</span> are flows the
+            taint pass judged risky — an unsanitized source→sink path, tagged with a{" "}
+            <DefTerm
+              term="vuln category"
+              def="The class of vulnerability the path resembles: SQL injection, command injection, path traversal, SSRF, XSS, etc."
+            />
+            .{" "}
+            <span className="text-text-2 font-medium">Flows</span> are every traced
+            source→sink data movement, grouped by{" "}
+            <DefTerm
+              term="sink kind"
+              def="What kind of operation the data lands in (sql, db_write, command, fs, http, template, …). Findings are the subset of flows that are exploitable."
+            />
+            .
+          </p>
+        </div>
       </CardBody>
     </Card>
   );
@@ -328,13 +472,35 @@ function FindingRow({
 // ---------------------------------------------------------------------------
 
 function FlowRow({ flow, groupId }: { flow: TaintFlow; groupId: string }) {
+  const [open, setOpen] = useState(false);
+  // hop_path is an "a -> b -> c" chain when the sniffer crossed functions.
+  const steps = useMemo(
+    () =>
+      (flow.hop_path ?? "")
+        .split(/\s*->\s*/)
+        .map((s) => s.trim())
+        .filter(Boolean),
+    [flow.hop_path],
+  );
+  const hasPath = steps.length > 2; // more than just source + sink
+
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 transition-colors">
       <div className="flex items-center gap-2 min-w-0 flex-wrap">
         {flow.sink_kind && (
-          <Badge tone={sinkKindTone(flow.sink_kind)} className="uppercase shrink-0">
-            {flow.sink_kind}
-          </Badge>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Badge
+                tone={sinkKindTone(flow.sink_kind)}
+                className="capitalize shrink-0 cursor-help"
+              >
+                {sinkKindLabel(flow.sink_kind)}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent>
+              Sink kind — the tainted data reaches {sinkKindDescription(flow.sink_kind)}.
+            </TooltipContent>
+          </Tooltip>
         )}
         <EndpointRef endpoint={flow.source} groupId={groupId} icon="source" />
         {flow.field && (
@@ -349,7 +515,10 @@ function FlowRow({ flow, groupId }: { flow: TaintFlow; groupId: string }) {
         <EndpointRef endpoint={flow.sink} groupId={groupId} icon="sink" />
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
           {(flow.hop_count ?? 0) > 0 && (
-            <span className="text-[11px] text-text-4 tabular-nums">
+            <span
+              className="text-[11px] text-text-4 tabular-nums"
+              title={`${flow.hop_count} call hop(s) the data crossed from source to sink`}
+            >
               {flow.hop_count} hop{flow.hop_count === 1 ? "" : "s"}
             </span>
           )}
@@ -357,19 +526,50 @@ function FlowRow({ flow, groupId }: { flow: TaintFlow; groupId: string }) {
         </div>
       </div>
 
-      {flow.hop_path && (
-        <p
-          className="font-mono text-[11px] text-text-4 truncate"
-          title={flow.hop_path}
-        >
-          {flow.hop_path}
-        </p>
-      )}
+      {/* Plain-language one-liner */}
+      <p className="text-[12px] text-text-3 leading-snug">{flowSentence(flow)}</p>
 
+      {/* Source + sink refs */}
       <div className="flex flex-col gap-0.5">
         <EndpointRefLine endpoint={flow.source} />
         <EndpointRefLine endpoint={flow.sink} />
       </div>
+
+      {/* Expandable source→sink path */}
+      {hasPath ? (
+        <div>
+          <button
+            type="button"
+            onClick={() => setOpen((v) => !v)}
+            className="inline-flex items-center gap-1 text-[11px] text-text-3 hover:text-text"
+          >
+            <ChevronRight
+              size={12}
+              className={cn("transition-transform", open && "rotate-90")}
+            />
+            {open ? "Hide" : "Show"} path ({steps.length} steps)
+          </button>
+          {open && (
+            <div className="mt-1 flex flex-wrap items-center gap-1 pl-4">
+              {steps.map((step, i) => (
+                <span key={`${step}:${i}`} className="inline-flex items-center gap-1">
+                  {i > 0 && <ArrowRight size={11} className="text-text-4" />}
+                  <span className="font-mono text-[11px] text-text-3">{step}</span>
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      ) : (
+        flow.hop_path && (
+          <p
+            className="font-mono text-[11px] text-text-4 truncate"
+            title={flow.hop_path}
+          >
+            {flow.hop_path}
+          </p>
+        )
+      )}
     </div>
   );
 }
@@ -539,24 +739,22 @@ export default function DataflowScreen() {
         >
           <div className="border-b border-border shrink-0 px-4">
             <TabsList className="border-0">
-              <TabsTrigger value="findings">
+              <TabsTrigger value="findings" className="inline-flex items-center">
                 <ShieldAlert size={14} className="mr-1.5" />
                 Findings
-                {data!.total_findings > 0 && (
-                  <Pill className="ml-1.5">{data!.total_findings}</Pill>
-                )}
+                <TabCount value={data!.total_findings} active={tab === "findings"} />
               </TabsTrigger>
-              <TabsTrigger value="flows">
+              <TabsTrigger value="flows" className="inline-flex items-center">
                 <Waypoints size={14} className="mr-1.5" />
                 Flows
-                {data!.total_flows > 0 && (
-                  <Pill className="ml-1.5">{data!.total_flows}</Pill>
-                )}
+                <TabCount value={data!.total_flows} active={tab === "flows"} />
               </TabsTrigger>
             </TabsList>
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto ag-scroll px-4 py-4 space-y-4">
+            <PurposeHeader />
+
             {/* Summary */}
             <div className="flex flex-wrap gap-3">
               <SummaryStat label="Findings" value={data!.total_findings} />
