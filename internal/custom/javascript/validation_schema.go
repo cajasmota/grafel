@@ -59,15 +59,6 @@ var (
 	joiFieldRe = regexp.MustCompile(`(?m)([A-Za-z_]\w*)\s*:\s*(?:Joi|joi)\s*\.\s*([A-Za-z_]\w*)\s*\(`)
 	// yup field: `name: yup.string()`.
 	yupFieldRe = regexp.MustCompile(`(?m)([A-Za-z_]\w*)\s*:\s*(?:yup|Yup)\s*\.\s*([A-Za-z_]\w*)\s*\(`)
-	// class-validator field: a `@IsString()` / `@IsInt()` ... decorator followed
-	// (possibly across blank lines / more decorators) by `name: string;` or
-	// `name!: string` or just `name;`. We capture the decorator type and the
-	// property name; the TS type annotation (if present) refines the type.
-	cvFieldRe = regexp.MustCompile(
-		`(?m)@(Is[A-Za-z]\w*|Min|Max|Length|MinLength|MaxLength|ValidateNested|Type)\s*\([^)]*\)` +
-			`(?:\s*@\w+\s*\([^)]*\))*\s*` +
-			`([A-Za-z_]\w*)\s*[!?]?\s*(?::\s*([A-Za-z_][\w.<>\[\] ]*?))?\s*[;=\n]`)
-
 	// cvNestedTypeRe: a class-transformer `@Type(() => TargetClass)` thunk,
 	// optionally preceded/followed by other decorators, bound to a property name.
 	// Group 1 = target class, group 2 = field name. Issue #4328.
@@ -156,7 +147,13 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 			setProps(&ent, "library", sd.lib, "pattern_type", "validation_schema",
 				"provenance", "INFERRED_FROM_"+strings.ToUpper(sd.lib)+"_OBJECT")
 			applyFieldProps(&ent, fields)
+			// Field-membership sub-entities (issue #4606): emit before addSchema
+			// so the CONTAINS edges are recorded on the owner.
+			children := emitSchemaFieldMembers(&ent, fields, sd.lib, file.Path, file.Language)
 			addSchema(ent)
+			for _, c := range children {
+				addSchema(c)
+			}
 		}
 	}
 
@@ -176,6 +173,11 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 			setProps(&ent, "library", "class-validator", "pattern_type", "validation_schema",
 				"provenance", "INFERRED_FROM_CLASS_VALIDATOR")
 			applyFieldProps(&ent, fields)
+			// Field-membership sub-entities (issue #4606): request `@Body` DTOs and
+			// `@Query` object DTOs now expand to their fields, parity with response
+			// Schema fields. Emitted before the nested-target edges so all
+			// relationships land on the same owner.
+			cvChildren := emitSchemaFieldMembers(&ent, fields, "class-validator", file.Path, file.Language)
 			// Nested-DTO target edges (issue #4328): `@ValidateNested()
 			// @Type(() => AddressDto)` carries a class target in a class-transformer
 			// thunk. Without an outbound edge the nested DTO rings. Emit a REFERENCES
@@ -186,6 +188,9 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 					referencesClassEdge(ent.ID, tgt.target, "class-validator", tgt.field))
 			}
 			addSchema(ent)
+			for _, c := range cvChildren {
+				addSchema(c)
+			}
 		}
 	}
 
@@ -334,10 +339,17 @@ func detectResponseSchemas(region string, schemaNames map[string]bool) []schemaR
 	return refs
 }
 
-// schemaField is a captured field name + normalized type.
+// schemaField is a captured field name + normalized type. `validators` carries
+// the class-validator decorators (e.g. `@IsString`, `@IsOptional`) that
+// annotate the field, and `optional` records whether the field is declared
+// optional (`name?:` or `@IsOptional()`). These feed the field-membership
+// sub-entities (issue #4606) so the dashboard /shape resolver can expand a
+// request/query DTO's fields with parity to response Schema fields.
 type schemaField struct {
-	name string
-	typ  string
+	name       string
+	typ        string
+	validators []string
+	optional   bool
 }
 
 // extractSchemaFields pulls `name: lib.<kind>()` field declarations out of a
@@ -356,28 +368,81 @@ func extractSchemaFields(re *regexp.Regexp, body string) []schemaField {
 	return fields
 }
 
+// cvFieldDecoratorsRe captures the full run of decorators preceding a property
+// declaration plus the property name and (optional) TS type annotation. Group 1
+// = the raw decorator block (one or more `@X(...)`), group 2 = property name,
+// group 3 = the TS type annotation (may be empty). Issue #4606: the per-field
+// validator set is needed so request/query DTO fields expand with their
+// validators (parity with response Schema annotations).
+var cvFieldDecoratorsRe = regexp.MustCompile(
+	`(?m)((?:@[A-Za-z]\w*\s*(?:\([^)]*\))?\s*)+)` +
+		`([A-Za-z_]\w*)\s*([!?])?\s*(?::\s*([A-Za-z_][\w.<>\[\] ]*?))?\s*[;=\n]`)
+
+// cvDecoratorNameRe pulls each decorator's bare name from a decorator block.
+var cvDecoratorNameRe = regexp.MustCompile(`@([A-Za-z]\w*)`)
+
 // extractClassValidatorFields pulls `@IsX() name: type;` fields from a class
-// body. The TS annotation refines the type; otherwise the decorator does.
+// body. The TS annotation refines the type; otherwise the decorator does. The
+// full decorator run is captured as the field's validator set, and `name?:` /
+// `@IsOptional()` mark the field optional (issue #4606).
 func extractClassValidatorFields(body string) []schemaField {
 	var fields []schemaField
 	seen := make(map[string]bool)
-	for _, m := range cvFieldRe.FindAllStringSubmatch(body, -1) {
-		decorator := m[1]
+	for _, m := range cvFieldDecoratorsRe.FindAllStringSubmatch(body, -1) {
+		decoratorBlock := m[1]
 		name := m[2]
-		annot := strings.TrimSpace(m[3])
+		optMark := m[3]
+		annot := strings.TrimSpace(m[4])
 		if name == "" || seen[name] {
 			continue
 		}
+		validators := cvDecoratorNameRe.FindAllStringSubmatch(decoratorBlock, -1)
+		var validatorNames []string
+		isValidatorDTO := false
+		for _, v := range validators {
+			validatorNames = append(validatorNames, "@"+v[1])
+			if _, isCV := cvDecoratorType[v[1]]; isCV {
+				isValidatorDTO = true
+			}
+			switch v[1] {
+			case "IsString", "IsInt", "IsNumber", "IsBoolean", "IsDate", "IsEmail",
+				"IsUUID", "IsArray", "IsObject", "IsEnum", "IsPositive", "IsNegative",
+				"IsOptional", "ValidateNested", "Type", "Min", "Max", "Length",
+				"MinLength", "MaxLength", "IsNotEmpty", "IsDefined":
+				isValidatorDTO = true
+			}
+		}
+		if !isValidatorDTO {
+			// A plain property with non-validator decorators — skip so we keep
+			// parity with the original IsX-anchored detection (no false fields).
+			continue
+		}
 		seen[name] = true
+		// Determine the scalar type: TS annotation wins, else the first
+		// type-bearing class-validator decorator.
 		typ := ""
 		if annot != "" {
 			typ = normalizeScalar(annot)
-		} else if dt, ok := cvDecoratorType[decorator]; ok {
-			typ = dt
 		} else {
+			for _, v := range validators {
+				if dt, ok := cvDecoratorType[v[1]]; ok {
+					typ = dt
+					break
+				}
+			}
+		}
+		if typ == "" {
 			typ = "unknown"
 		}
-		fields = append(fields, schemaField{name: name, typ: typ})
+		optional := optMark == "?"
+		for _, vn := range validatorNames {
+			if vn == "@IsOptional" {
+				optional = true
+			}
+		}
+		fields = append(fields, schemaField{
+			name: name, typ: typ, validators: validatorNames, optional: optional,
+		})
 	}
 	return fields
 }
@@ -450,6 +515,72 @@ func applyFieldProps(ent *types.EntityRecord, fields []schemaField) {
 	}
 	sort.Strings(names)
 	setProps(ent, "fields", strings.Join(names, ","), "field_count", fmt.Sprintf("%d", len(fields)))
+}
+
+// emitSchemaFieldMembers emits one `SCOPE.Schema/field` sub-entity per captured
+// field of a schema/DTO, plus a CONTAINS edge from the owning schema entity to
+// each child — parity with the response Schema field sub-nodes the dashboard
+// /shape resolver already expands (shape_tree.go, #4587/#4569). Issue #4606:
+// request `@Body` DTOs (CreateNoteBody), `@Query` object DTOs
+// (InspectionCountsQuery), and any zod/joi/yup/class-validator schema now carry
+// expandable field members instead of being opaque scalar-prop bags.
+//
+// The child entity's Signature is `[@Validators ...] <type> <name>` so the
+// shape resolver's parseFieldSignature recovers (annotations, type, name)
+// exactly as it does for Java/response DTO fields. Optional fields prepend an
+// `@IsOptional` marker (when not already present) so the resolver infers
+// nullability consistently. Each child is returned to the caller, and the
+// CONTAINS edge is appended to the owner entity in place.
+func emitSchemaFieldMembers(owner *types.EntityRecord, fields []schemaField, library, filePath, language string) []types.EntityRecord {
+	if owner == nil || len(fields) == 0 {
+		return nil
+	}
+	var out []types.EntityRecord
+	for _, f := range fields {
+		annots := append([]string(nil), f.validators...)
+		if f.optional {
+			hasOpt := false
+			for _, a := range annots {
+				if a == "@IsOptional" {
+					hasOpt = true
+					break
+				}
+			}
+			if !hasOpt {
+				annots = append(annots, "@IsOptional")
+			}
+		}
+		// Build a Java-style field signature: `[@Ann ...] Type name`.
+		var sb strings.Builder
+		for _, a := range annots {
+			sb.WriteString(a)
+			sb.WriteByte(' ')
+		}
+		typ := f.typ
+		if typ == "" {
+			typ = "unknown"
+		}
+		sb.WriteString(typ)
+		sb.WriteByte(' ')
+		sb.WriteString(f.name)
+
+		childName := owner.Name + "." + f.name
+		child := makeEntity(childName, "SCOPE.Schema", "field", filePath, language, owner.StartLine)
+		child.Signature = sb.String()
+		setProps(&child, "library", library, "pattern_type", "field",
+			"field_name", f.name, "field_type", typ, "parent_class", owner.Name,
+			"provenance", "INFERRED_FROM_SCHEMA_FIELD_MEMBERSHIP")
+		if f.optional {
+			setProps(&child, "optional", "true")
+		}
+		if len(annots) > 0 {
+			setProps(&child, "validators", strings.Join(annots, " "))
+		}
+		owner.Relationships = append(owner.Relationships,
+			containsFieldEdge(owner.Name, child.ID, f.name, library))
+		out = append(out, child)
+	}
+	return out
 }
 
 // balancedObjectBody returns the substring inside the parentheses starting at

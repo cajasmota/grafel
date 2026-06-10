@@ -691,3 +691,84 @@ func TestV2PathDetail_Issue1936_JavaParametersSurfaced(t *testing.T) {
 		t.Errorf("[#1936] dryRun: should not be required when default value present, got %+v", dr)
 	}
 }
+
+// TestV2PathDetail_Issue4606_QueryBodyDTOExpandable verifies that an object-
+// valued parameter (a @Body DTO or a @Query object DTO) whose type resolves to
+// an in-group Schema class carrying CONTAINS field children is stamped with
+// TypeEntityID + HasChildren so the frontend ShapeTree renders an expand
+// chevron. Scalar params stay leaf rows.
+func TestV2PathDetail_Issue4606_QueryBodyDTOExpandable(t *testing.T) {
+	path := "/inspections/counts"
+	hash := hashStr(path)
+	paramsJSON := `[` +
+		`{"name":"q","in":"query","type":"InspectionCountsQuery","required":false,"annotations":["@Query"]},` +
+		`{"name":"body","in":"body","type":"CreateNoteBody","required":true,"annotations":["@Body"]},` +
+		`{"name":"limit","in":"query","type":"number","required":false,"annotations":["@Query"]}` +
+		`]`
+	entities := []graph.Entity{
+		{
+			ID: "e-ep-1", Name: "InspectionsController.counts", Kind: "http_endpoint",
+			SourceFile: "src/inspections.controller.ts", StartLine: 10, Language: "typescript",
+			Properties: map[string]string{
+				"path": path, "verb": "POST", "framework": "nestjs", "parameters": paramsJSON,
+			},
+		},
+		// Query DTO + one field child.
+		{ID: "e-qdto", Name: "InspectionCountsQuery", Kind: "SCOPE.Schema",
+			SourceFile: "src/dto/counts.query.ts", Language: "typescript",
+			Properties: map[string]string{"library": "class-validator"}},
+		{ID: "e-qdto-f", Name: "InspectionCountsQuery.buildingId", Kind: "SCOPE.Schema",
+			Subtype: "field", SourceFile: "src/dto/counts.query.ts", Language: "typescript",
+			Signature: "@IsUUID string buildingId"},
+		// Body DTO + one field child.
+		{ID: "e-bdto", Name: "CreateNoteBody", Kind: "SCOPE.Schema",
+			SourceFile: "src/dto/note.dto.ts", Language: "typescript",
+			Properties: map[string]string{"library": "class-validator"}},
+		{ID: "e-bdto-f", Name: "CreateNoteBody.title", Kind: "SCOPE.Schema",
+			Subtype: "field", SourceFile: "src/dto/note.dto.ts", Language: "typescript",
+			Signature: "@IsString string title"},
+	}
+	rels := []graph.Relationship{
+		{FromID: "e-qdto", ToID: "e-qdto-f", Kind: "CONTAINS"},
+		{FromID: "e-bdto", ToID: "e-bdto-f", Kind: "CONTAINS"},
+	}
+	grp := makePathsTestGroup(entities, rels)
+	ts := newPathsTestServer(t, grp)
+	defer ts.Close()
+
+	resp, err := http.Get(ts.URL + "/api/v2/groups/testgrp/paths/" + hash)
+	if err != nil {
+		t.Fatalf("GET detail: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("want 200, got %d", resp.StatusCode)
+	}
+	var body struct {
+		OK   bool         `json:"ok"`
+		Data v2PathDetail `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	got := map[string]v2PathParameter{}
+	for _, p := range body.Data.Parameters {
+		got[p.Name] = p
+	}
+	for _, name := range []string{"q", "body"} {
+		p, ok := got[name]
+		if !ok {
+			t.Fatalf("[#4606] param %q missing", name)
+		}
+		if !p.HasChildren {
+			t.Errorf("[#4606] object param %q should be expandable (HasChildren), got %+v", name, p)
+		}
+		if p.TypeEntityID == "" {
+			t.Errorf("[#4606] object param %q should carry TypeEntityID, got %+v", name, p)
+		}
+	}
+	// Scalar query param must NOT be expandable.
+	if lp, ok := got["limit"]; ok && lp.HasChildren {
+		t.Errorf("[#4606] scalar param 'limit' must not be expandable, got %+v", lp)
+	}
+}
