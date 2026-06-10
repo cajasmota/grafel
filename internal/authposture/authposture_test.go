@@ -289,3 +289,98 @@ func TestE2E_OraclePageVsV3RequirePage_Equivalent(t *testing.T) {
 		t.Fatalf("verdict=%s detail=%s, want equivalent (page client_admin ~ client-admin)", d.Verdict, d.Detail)
 	}
 }
+
+// --- #4667: EFFECTIVE-guard decode from the engine-stamped auth_guard ---------
+//
+// The engine stamps the most-specific (handler ▸ class ▸ global) guard's
+// decorator text into the auth_guard property — e.g.
+// `@RequirePage(PermissionPage.Buildings)` for a per-handler @RequirePage, or
+// the inherited class guard for a handler with no override. The resolver MUST
+// decode that decorator's page/action literal, NOT collapse every guard to
+// authenticated (the bug that produced false NO-AUTH/looser verdicts).
+
+// (A) per-handler @RequirePage with NO class guard → page grant, not authenticated.
+func TestNest_EffectiveGuard_HandlerPage_NoClassGuard(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "nestjs", "auth_required": "true", "auth_method": "guard",
+		"auth_guard": "@RequirePage(PermissionPage.Buildings)",
+	}})
+	if fw != "nestjs" {
+		t.Fatalf("framework=%s, want nestjs", fw)
+	}
+	if p.Kind != KindPage || p.Literal != "Buildings" {
+		t.Fatalf("got %s/%q, want page/Buildings (handler guard must not collapse to authenticated)", p.Kind, p.Literal)
+	}
+}
+
+// @RequireAction enum-form decode.
+func TestNest_EffectiveGuard_HandlerAction(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "nestjs", "auth_required": "true", "auth_method": "guard",
+		"auth_guard": "@RequireAction(PermissionAction.Lite)",
+	}})
+	if p.Kind != KindAction || p.Literal != "Lite" {
+		t.Fatalf("got %s/%q, want action/Lite", p.Kind, p.Literal)
+	}
+}
+
+// (B) handler @RequirePage(ContractProposals) OVERRIDES class @RequirePage(Clients):
+// the engine stamps the EFFECTIVE (handler) guard into auth_guard, so the
+// resolver decodes ContractProposals — while a sibling that inherits the class
+// guard decodes Clients.
+func TestNest_EffectiveGuard_HandlerOverridesClass(t *testing.T) {
+	reg := NewRegistry()
+	over, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "nestjs", "auth_required": "true", "auth_method": "guard",
+		"auth_guard": "@RequirePage(PermissionPage.ContractProposals)",
+	}})
+	if over.Kind != KindPage || over.Literal != "ContractProposals" {
+		t.Fatalf("override: got %s/%q, want page/ContractProposals (handler wins)", over.Kind, over.Literal)
+	}
+	sib, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "nestjs", "auth_required": "true", "auth_method": "guard",
+		"auth_guard": "@RequirePage(PermissionPage.Clients)",
+	}})
+	if sib.Kind != KindPage || sib.Literal != "Clients" {
+		t.Fatalf("sibling: got %s/%q, want page/Clients (inherited class guard)", sib.Kind, sib.Literal)
+	}
+}
+
+// A page-guarded NestJS handler vs a Django page oracle is EQUIVALENT — the
+// pre-fix collapse to authenticated made this a FALSE looser (RBAC false alarm).
+func TestNest_EffectiveGuard_PageVsOraclePage_Equivalent(t *testing.T) {
+	reg := NewRegistry()
+	oracle, _ := reg.Resolve(Signal{
+		Props: map[string]string{"has_get_permissions": "true"}, Source: clientViewSetGetPerms, Action: "approve",
+	}) // → page client_admin
+	v3, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "nestjs", "auth_required": "true", "auth_guard": "@RequirePage(PermissionPage.client_admin)",
+	}})
+	if d := Diff(v3, oracle); d.Verdict != VerdictEquivalent {
+		t.Fatalf("verdict=%s detail=%s, want equivalent (both page client_admin)", d.Verdict, d.Detail)
+	}
+}
+
+// Authenticated-only guard (@AuthenticatedOrInternalKey) decodes to authenticated.
+func TestNest_EffectiveGuard_AuthenticatedOnly(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "nestjs", "auth_required": "true", "auth_guard": "@AuthenticatedOrInternalKey()",
+	}})
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated", p.Kind)
+	}
+}
+
+// Engine explicit public verdict (@Public → auth_required=false, no guard).
+func TestNest_EffectiveGuard_ExplicitPublic(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "nestjs", "auth_required": "false", "auth_method": "config",
+	}})
+	if fw != "nestjs" || p.Kind != KindPublic {
+		t.Fatalf("got %s/%s, want nestjs/public", fw, p.Kind)
+	}
+}
