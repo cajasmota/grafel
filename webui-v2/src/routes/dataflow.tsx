@@ -187,14 +187,20 @@ function flowSentence(flow: TaintFlow): string {
 }
 
 function ConfidencePill({ value }: { value: number }) {
+  const pct = Math.round(value * 100);
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <Badge tone={confidenceTone(value)} className="tabular-nums shrink-0 cursor-help">
-          {Math.round(value * 100)}%
+          {pct}%
         </Badge>
       </TooltipTrigger>
-      <TooltipContent>{confidenceMeaning(value)}</TooltipContent>
+      <TooltipContent>
+        <span className="block font-medium text-text-2">
+          Confidence this request-input → sink flow is real — {pct}%. Not a risk score.
+        </span>
+        <span className="mt-1 block text-text-3">{confidenceMeaning(value)}</span>
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -310,12 +316,35 @@ function TabCount({ value, active }: { value: number; active?: boolean }) {
   );
 }
 
-function SummaryStat({ label, value }: { label: string; value: number }) {
+function SummaryStat({
+  label,
+  value,
+  chips,
+}: {
+  label: string;
+  value: number;
+  /** Distinct breakdown shown as small "<name> ×<count>" chips under the stat. */
+  chips?: { key: string; label: string; count: number }[];
+}) {
   return (
     <Card className={cn("flex-1 min-w-[120px]")}>
       <CardBody className="py-3">
         <p className="text-2xl font-semibold tabular-nums text-text">{value}</p>
         <p className="text-xs text-text-4 mt-0.5">{label}</p>
+        {chips && chips.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1">
+            {chips.map((c) => (
+              <span
+                key={c.key}
+                className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-1.5 py-0.5 text-[10px] text-text-3"
+                title={`${c.label}: ${c.count} flow${c.count === 1 ? "" : "s"}`}
+              >
+                <span className="capitalize">{c.label}</span>
+                <span className="tabular-nums text-text-4">×{c.count}</span>
+              </span>
+            ))}
+          </div>
+        )}
       </CardBody>
     </Card>
   );
@@ -666,6 +695,11 @@ function FlowsTab({ data, groupId }: { data: DataflowReport; groupId: string }) 
 
   return (
     <div className="space-y-3">
+      <p className="text-xs text-text-3 leading-relaxed">
+        Each row is one observed request-input → sink movement the sniffer followed
+        (intra-function + bounded inter-procedural hops). A flow becomes a finding
+        only when the taint pass judges it reaches a dangerous sink unsanitized.
+      </p>
       {kinds.length > 1 && (
         <div className="flex flex-wrap items-center gap-2">
           <ListFilter size={13} className="text-text-4" />
@@ -684,11 +718,6 @@ function FlowsTab({ data, groupId }: { data: DataflowReport; groupId: string }) 
           <FlowRow key={f.id} flow={f} groupId={groupId} />
         ))}
       </div>
-      <p className="text-[10px] text-text-4">
-        Each row is one observed request-input → sink movement the sniffer followed
-        (intra-function + bounded inter-procedural hops). A flow becomes a finding
-        only when the taint pass judges it reaches a dangerous sink unsanitized.
-      </p>
     </div>
   );
 }
@@ -761,10 +790,24 @@ export default function DataflowScreen() {
               <SummaryStat
                 label="Vuln categories"
                 value={Object.keys(data!.findings_by_category ?? {}).length}
+                chips={Object.entries(data!.findings_by_category ?? {})
+                  .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+                  .map(([cat, n]) => ({
+                    key: cat,
+                    label: categoryMeta(cat).label,
+                    count: n,
+                  }))}
               />
               <SummaryStat
                 label="Sink kinds"
                 value={Object.keys(data!.flows_by_sink_kind ?? {}).length}
+                chips={Object.entries(data!.flows_by_sink_kind ?? {})
+                  .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
+                  .map(([kind, n]) => ({
+                    key: kind,
+                    label: sinkKindLabel(kind),
+                    count: n,
+                  }))}
               />
             </div>
 
