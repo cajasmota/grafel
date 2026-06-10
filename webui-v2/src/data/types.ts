@@ -2111,6 +2111,14 @@ export interface IaCRelation {
   target_resolved: boolean;
   /** Raw graph entity id of the other endpoint; shown on hover (#4495). */
   target_id: string;
+  /**
+   * Slug-prefixed entity id (`<repo>/<rawId>`) of the other endpoint WHEN that
+   * endpoint is itself a rendered IaC resource node; empty otherwise. The
+   * architecture-diagram view (#4526) joins this against IaCResource.entity_id
+   * to draw an edge between two rendered nodes. (target_id alone is unprefixed
+   * and not joinable against entity_id.)
+   */
+  target_entity_id?: string;
   /** Grant method or other edge qualifier, when set. */
   detail?: string;
 }
@@ -2131,6 +2139,13 @@ export interface IaCResource {
   logical_id?: string;
   source_file?: string;
   start_line?: number;
+  /**
+   * Module / construct / stack the resource belongs to (#4526), derived from
+   * the source-file directory (e.g. `infra/terraform/modules/network`). The
+   * architecture diagram clusters resources sharing a module into a container.
+   * Empty when no source path is known.
+   */
+  module?: string;
   /** Curated typed config props; [] when none stamped. */
   properties: IaCProperty[];
   /** Grants / event-sources / dependencies / topology / triggers; [] when none. */

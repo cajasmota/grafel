@@ -39,6 +39,8 @@ import {
   GitBranch,
   Layers,
   AlertTriangle,
+  List,
+  Network,
 } from "lucide-react";
 
 import { Badge, Card, CardBody, Pill } from "@/components/ui";
@@ -47,6 +49,7 @@ import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
 import { cn } from "@/lib/utils";
 import { useIaC } from "@/hooks/use-iac";
+import { IaCDiagram } from "@/components/iac-diagram";
 import type {
   IaCRelation,
   IaCResource,
@@ -354,10 +357,43 @@ function CategorySection({ counts }: { counts: Record<string, number> }) {
 // § Screen
 // ---------------------------------------------------------------------------
 
+type IaCView = "list" | "diagram";
+
+/** List | Diagram view toggle. */
+function ViewToggle({ view, onChange }: { view: IaCView; onChange: (v: IaCView) => void }) {
+  return (
+    <div className="inline-flex overflow-hidden rounded-md border border-border">
+      <button
+        type="button"
+        onClick={() => onChange("list")}
+        className={cn(
+          "inline-flex h-7 items-center gap-1 px-2.5 text-xs transition-colors",
+          view === "list" ? "bg-accent text-accent-text" : "bg-surface text-text-3 hover:bg-surface-2",
+        )}
+        title="List view — resources grouped by tool"
+      >
+        <List size={12} /> List
+      </button>
+      <button
+        type="button"
+        onClick={() => onChange("diagram")}
+        className={cn(
+          "inline-flex h-7 items-center gap-1 border-l border-border px-2.5 text-xs transition-colors",
+          view === "diagram" ? "bg-accent text-accent-text" : "bg-surface text-text-3 hover:bg-surface-2",
+        )}
+        title="Diagram view — the resource graph as an architecture diagram"
+      >
+        <Network size={12} /> Diagram
+      </button>
+    </div>
+  );
+}
+
 export default function IaCScreen() {
   const { groupId = "" } = useParams<{ groupId: string }>();
   const { data, isLoading, isError } = useIaC(groupId);
   const [toolFilter, setToolFilter] = useState<string>("all");
+  const [view, setView] = useState<IaCView>("list");
 
   const groups = useMemo<IaCToolGroup[]>(() => data?.groups ?? [], [data]);
 
@@ -367,6 +403,24 @@ export default function IaCScreen() {
   }, [groups, toolFilter]);
 
   const hasResources = (data?.total_resources ?? 0) > 0;
+
+  // The diagram view fills the full height itself (its own canvas + controls),
+  // so it is rendered outside the scrolling list container.
+  if (!isLoading && !isError && hasResources && view === "diagram") {
+    return (
+      <div className="flex h-full flex-col bg-bg">
+        <div className="flex items-center gap-2 border-b border-border bg-surface px-4 py-2">
+          <ViewToggle view={view} onChange={setView} />
+          <span className="text-xs text-text-4">
+            Resource graph — resources by category, relations, grouped by module.
+          </span>
+        </div>
+        <div className="min-h-0 flex-1">
+          <IaCDiagram report={data!} />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex flex-col h-full bg-bg">
@@ -382,6 +436,11 @@ export default function IaCScreen() {
           />
         ) : (
           <>
+            {/* View toggle (List | Diagram) */}
+            <div className="flex items-center gap-2">
+              <ViewToggle view={view} onChange={setView} />
+            </div>
+
             {/* Summary */}
             <div className="flex flex-wrap gap-3">
               <SummaryStat label="Resources" value={data!.total_resources} />

@@ -103,6 +103,13 @@ type IaCRelation struct {
 	// TargetID is the raw graph entity id of the other endpoint, always set so
 	// the UI can show it on hover regardless of resolution. (#4495)
 	TargetID string `json:"target_id"`
+	// TargetEntityID is the slug-prefixed entity id (`<repo>/<rawId>`) of the
+	// other endpoint WHEN that endpoint is itself a rendered IaC resource node;
+	// empty otherwise. This is the graph-joinable key the architecture-diagram
+	// view (#4526) uses to draw an edge between two rendered resource nodes —
+	// IaCResource.EntityID carries the same slug prefix, whereas TargetID does
+	// not, so the raw id alone cannot be joined client-side.
+	TargetEntityID string `json:"target_entity_id,omitempty"`
 	// Detail is the grant method (for grants) or other edge qualifier, when set.
 	Detail string `json:"detail,omitempty"`
 }
@@ -124,6 +131,12 @@ type IaCResource struct {
 	LogicalID  string `json:"logical_id,omitempty"`
 	SourceFile string `json:"source_file,omitempty"`
 	StartLine  int    `json:"start_line,omitempty"`
+	// Module is the grouping key for the architecture diagram (#4526): the
+	// module / construct / stack the resource belongs to, derived from the
+	// source-file directory (e.g. `infra/terraform/modules/network`). A
+	// modularized stack flattens to many resources sharing a Module, which the
+	// diagram renders as a grouped container. Empty when no source path is known.
+	Module string `json:"module,omitempty"`
 
 	// Properties — curated typed config props (empty when none stamped).
 	Properties []IaCProperty `json:"properties"`
@@ -288,6 +301,28 @@ func iacIsOutputEntity(kind, subtype string, props map[string]string) bool {
 	return false
 }
 
+// iacModuleOf derives the architecture-diagram grouping key (#4526) for a
+// resource from its source-file path: the containing directory, which for a
+// modularized stack is the module / construct / stack root (e.g.
+// `infra/terraform/modules/network/main.tf` → `infra/terraform/modules/network`).
+// Falls back to the repo slug when there is no directory component, and to ""
+// when no source file is known.
+func iacModuleOf(slug, sourceFile string) string {
+	sf := strings.TrimSpace(sourceFile)
+	if sf == "" {
+		return ""
+	}
+	sf = strings.ReplaceAll(sf, "\\", "/")
+	if i := strings.LastIndexByte(sf, '/'); i > 0 {
+		return sf[:i]
+	}
+	// No directory component — the file sits at the repo root.
+	if slug != "" {
+		return slug
+	}
+	return "(root)"
+}
+
 // idTail returns the last path segment of a graph entity ID (Kind:Name or
 // repo/Kind:Name), used as a readable relation target when no entity name is
 // resolvable.
@@ -450,6 +485,7 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 				LogicalID:    props["logical_id"],
 				SourceFile:   sourceFile,
 				StartLine:    startLine,
+				Module:       iacModuleOf(rp.Slug, sourceFile),
 				Properties:   cfgProps,
 				Relations:    []IaCRelation{},
 			}
@@ -484,6 +520,16 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 				return idTail(id), false
 			}
 
+			// joinableID returns the slug-prefixed entity id of the other endpoint
+			// when it is itself a collected (rendered) resource, so the diagram can
+			// draw an edge between two rendered nodes (#4526); "" otherwise.
+			joinableID := func(other *IaCResource) string {
+				if other != nil {
+					return other.EntityID
+				}
+				return ""
+			}
+
 			if fromRes != nil {
 				name, resolved := targetName(toID)
 				fromRes.Relations = append(fromRes.Relations, IaCRelation{
@@ -493,6 +539,7 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 					Target:         name,
 					TargetResolved: resolved,
 					TargetID:       toID,
+					TargetEntityID: joinableID(toRes),
 					Detail:         detail,
 				})
 			}
@@ -505,6 +552,7 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 					Target:         name,
 					TargetResolved: resolved,
 					TargetID:       fromID,
+					TargetEntityID: joinableID(fromRes),
 					Detail:         detail,
 				})
 			}
