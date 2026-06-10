@@ -22,7 +22,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import {
   Search, X, ChevronRight, ChevronLeft, Lock, ExternalLink, Copy,
   Database, Zap, Globe, TestTube, Server,
-  Layers, Box, List, Maximize2, Minimize2, FolderTree, Boxes, AlertTriangle,
+  Layers, Box, List, Maximize2, Minimize2, FolderTree, Boxes,
   Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -30,6 +30,7 @@ import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/com
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from "@/components/ui";
+import { TabCount, ScreenDescription, AgentUsage } from "@/components/ui";
 import { FlowDag } from "@/components/flow-dag";
 import { RefLine } from "@/components/RefLine";
 import { getRepoColor } from "@/lib/repo-color";
@@ -1061,7 +1062,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
             icon={<List size={14} />}
             title="Parameters"
             count={filteredParams.length}
-            infoText="Inputs the endpoint accepts — derived from path segments + handler method parameters (path, query, header, cookie, body, form)."
+            infoText="Inputs the endpoint accepts — path/query/header/cookie/form parameters plus the request body (its DTO type, expandable to the DTO's fields), derived from path segments + the handler's method parameters."
             open={openSections.parameters}
             onToggle={() => toggleSection("parameters")}
           />
@@ -1947,26 +1948,41 @@ export default function PathsScreen() {
           <TabsTrigger value="endpoints">
             Endpoints
             {totals && (
-              <span className="ml-1.5 text-text-4 text-xs tabular-nums">{totals.routes}</span>
+              <TabCount
+                value={totals.routes}
+                active={activeTab === "endpoints"}
+                label="API paths in this group"
+              />
             )}
           </TabsTrigger>
           <TabsTrigger value="orphans">
             Orphan callers
-            {orphanCount !== undefined && orphanCount > 0 ? (
-              <span
-                className="ml-1.5 inline-flex items-center gap-0.5 text-xs tabular-nums text-warning"
-                data-testid="orphan-count-badge"
-              >
-                <AlertTriangle size={11} className="shrink-0" />
-                {orphanCount}
+            {orphanCount !== undefined && (
+              <span data-testid="orphan-count-badge" className="contents">
+                <TabCount
+                  value={orphanCount}
+                  tone={orphanCount > 0 ? "warning" : "neutral"}
+                  active={activeTab === "orphans"}
+                  label="frontend calls with no matching backend handler"
+                />
               </span>
-            ) : orphanCount !== undefined ? (
-              <span className="ml-1.5 text-text-4 text-xs tabular-nums" data-testid="orphan-count-badge">
-                {orphanCount}
-              </span>
-            ) : null}
+            )}
           </TabsTrigger>
         </TabsList>
+
+        {/* Page-level plain-language description + agent banner (#4574). */}
+        <div className="px-4 pt-3 pb-2 shrink-0 bg-surface border-b border-border space-y-2">
+          <ScreenDescription>
+            Every API endpoint in this group — its HTTP verb and path, the
+            handler that serves it, how it's authenticated, the inputs it
+            accepts (path, query and request body), and the downstream
+            services, databases and side effects it triggers.
+          </ScreenDescription>
+          <AgentUsage
+            tool="archigraph_endpoints"
+            example="An agent looks up an endpoint's handler, auth, inputs and downstream before editing it."
+          />
+        </div>
 
         {/* Endpoints tab */}
         <TabsContent value="endpoints" className="flex-1 min-h-0 flex flex-col mt-0">

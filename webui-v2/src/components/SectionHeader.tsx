@@ -58,7 +58,7 @@ export function SectionHeader({
       <span className="text-text-3 shrink-0">{icon}</span>
       {title}
       {count !== undefined && (
-        <span className="ml-1 text-xs text-text-4 tabular-nums">({count})</span>
+        <span className="ml-1 text-xs text-text-3 tabular-nums">({count})</span>
       )}
 
       {infoText && (
