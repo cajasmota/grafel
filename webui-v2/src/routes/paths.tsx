@@ -33,6 +33,7 @@ import {
 import { FlowDag } from "@/components/flow-dag";
 import { RefLine } from "@/components/RefLine";
 import { getRepoColor } from "@/lib/repo-color";
+import { effectBadge } from "@/lib/effect-badge";
 import { SectionHeader } from "@/components/SectionHeader";
 import { ShapeTree, type ShapeTreeRow } from "@/components/ShapeTree";
 import { AuthSection } from "@/components/Paths/EndpointDetail/AuthSection";
@@ -605,6 +606,34 @@ function EntityRow({ entity }: { entity: PathEntity }) {
   );
 }
 
+/**
+ * EffectKindBadge — one EFFECTIVE side-effect kind (#4489), token-tinted to
+ * match the FlowDag downstream cards (shared `effectBadge`). Effects reached
+ * only via a delegated downstream call carry a "via downstream" hint so a thin
+ * controller reads "DB write (via downstream)" rather than implying the handler
+ * mutates the DB itself.
+ */
+function EffectKindBadge({ effect }: { effect: { kind: string; source: "direct" | "downstream" } }) {
+  const b = effectBadge(effect.kind);
+  const downstream = effect.source === "downstream";
+  return (
+    <span
+      className={cn(
+        "inline-flex items-center gap-1 h-[18px] px-1.5 rounded text-[10px] font-medium leading-none",
+        b.cls,
+      )}
+      title={
+        downstream
+          ? `${b.label} — performed by a delegated downstream call, not the handler directly`
+          : `${b.label} — direct effect of the handler`
+      }
+    >
+      {b.label}
+      {downstream && <span className="opacity-60 font-normal">via downstream</span>}
+    </span>
+  );
+}
+
 /** HandlerRefLine — renders a handler detail using the canonical RefLine format.
  *  Issue #1910: Defined-in section collapses from verbose card to one-line ref.
  *  Issue #1934: framework/kind chip removed from RefLine — shown in header strip.
@@ -813,6 +842,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
     handlers: rawDetail.handlers ?? [],
     inbound_fetches: rawDetail.inbound_fetches ?? [],
     side_effects: rawDetail.side_effects ?? [],
+    effective_effects: rawDetail.effective_effects ?? [],
     tests: rawDetail.tests ?? [],
     path_hash: rawDetail.path_hash ?? "",
     path: rawDetail.path ?? "",
@@ -1175,22 +1205,42 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
           )}
         </div>
 
-        {/* 7. Side effects */}
+        {/* 7. Side effects — #4489: the count + badges reflect the EFFECTIVE
+            effects (aggregated by the backend over the handler's downstream
+            CALLS), so a thin controller that delegates the DB write to a
+            service shows "DB write (via downstream)" instead of "(0)". The
+            DIRECT side-effect entity rows are still listed below when present. */}
         <div>
           <SectionHeader
             icon={<Zap size={14} />}
             title="Side effects"
-            count={detail.side_effects.length}
-            infoText="DB writes, queue publishes, file writes, or other observable mutations performed by this endpoint."
+            count={
+              (detail.effective_effects?.length ?? 0) > 0
+                ? detail.effective_effects!.length
+                : detail.side_effects.length
+            }
+            infoText="DB writes, queue publishes, file writes, or other observable mutations performed by this endpoint — effective effects aggregated transitively over the handler's downstream calls, so effects performed by a delegated service still show here (tagged 'via downstream')."
             open={openSections.sideeffects}
             onToggle={() => toggleSection("sideeffects")}
           />
           {openSections.sideeffects && (
             <div className="py-1">
-              {detail.side_effects.length === 0 ? (
+              {(detail.effective_effects?.length ?? 0) === 0 &&
+              detail.side_effects.length === 0 ? (
                 <p className="px-4 py-2 text-xs text-text-4">None</p>
               ) : (
-                detail.side_effects.map((e, i) => <EntityRow key={i} entity={e} />)
+                <>
+                  {(detail.effective_effects?.length ?? 0) > 0 && (
+                    <div className="px-4 py-2 flex flex-wrap gap-1.5">
+                      {detail.effective_effects!.map((eff) => (
+                        <EffectKindBadge key={`${eff.kind}-${eff.source}`} effect={eff} />
+                      ))}
+                    </div>
+                  )}
+                  {detail.side_effects.map((e, i) => (
+                    <EntityRow key={i} entity={e} />
+                  ))}
+                </>
               )}
             </div>
           )}
