@@ -8,7 +8,7 @@
 
 import { AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ROLE_STYLE, EDGE_STYLE } from "./style";
+import { ROLE_STYLE, EXCEPTION_STYLE, EDGE_STYLE } from "./style";
 import type { DownstreamDAGTruncation } from "@/data/types";
 
 interface FlowDagLegendProps {
@@ -31,8 +31,8 @@ export function FlowDagLegend({ branchCount, nodeCount, truncation }: FlowDagLeg
 
   return (
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 px-3 py-2 text-[10px] text-text-3 border-t border-border bg-bg-soft">
-      {/* Roles */}
-      {Object.values(ROLE_STYLE).map((rs) => (
+      {/* Roles + the exception/error node accent (#4556, red). */}
+      {[...Object.values(ROLE_STYLE), EXCEPTION_STYLE].map((rs) => (
         <span key={rs.label} className="inline-flex items-center gap-1">
           <span
             className="size-2.5 rounded-sm shrink-0"

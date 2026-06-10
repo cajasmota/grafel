@@ -9,6 +9,7 @@
 
 import type {
   DownstreamDAGEdgeKind,
+  DownstreamDAGNode,
   DownstreamDAGRole,
 } from "@/data/types";
 
@@ -36,6 +37,52 @@ export const ROLE_STYLE: Record<DownstreamDAGRole, RoleStyle> = {
 /** Fallback for an unexpected/missing role — render as a generic node. */
 export function roleStyle(role: DownstreamDAGRole | undefined): RoleStyle {
   return (role && ROLE_STYLE[role]) || ROLE_STYLE.node;
+}
+
+/**
+ * Exception/error node styling (#4556). A red tint + red ink so a node where an
+ * error is raised stands out from the neutral spine. The hue matches the red
+ * THROWS edge (--danger) so a thrown error reads consistently node→edge; the
+ * ink is a contrast-tuned red (--exception-ink) that stays legible as the pill
+ * text + border over the @22% danger wash in BOTH light and dark themes.
+ */
+export const EXCEPTION_STYLE: RoleStyle = {
+  bg: "var(--danger)",
+  ink: "var(--exception-ink)",
+  label: "Exception",
+};
+
+/**
+ * Detect whether a node represents an exception/error site so it can be painted
+ * red. Conservative, signal-based (#4556): the node's KIND is ExceptionType, OR
+ * its name carries the canonical "exception:" prefix, OR the parent reached it
+ * via a THROWS edge (it's the target of a throw). We deliberately do NOT paint
+ * every node whose name merely contains "Error"/"Exception" — that over-paints
+ * ordinary error-handling helpers. `incomingEdgeKind` is the kind of the single
+ * in-edge feeding this rendered instance (undefined for the root).
+ */
+export function isExceptionNode(
+  node: Pick<DownstreamDAGNode, "kind" | "name">,
+  incomingEdgeKind?: DownstreamDAGEdgeKind,
+): boolean {
+  return (
+    node.kind === "ExceptionType" ||
+    node.name.startsWith("exception:") ||
+    incomingEdgeKind === "THROWS"
+  );
+}
+
+/**
+ * Resolve the node body style: an exception/error node gets the red EXCEPTION
+ * palette; otherwise it falls back to its role tint. Used by the node renderer.
+ */
+export function nodeStyle(
+  node: Pick<DownstreamDAGNode, "kind" | "name" | "role">,
+  incomingEdgeKind?: DownstreamDAGEdgeKind,
+): RoleStyle {
+  return isExceptionNode(node, incomingEdgeKind)
+    ? EXCEPTION_STYLE
+    : roleStyle(node.role);
 }
 
 /** Per-edge-kind styling: stroke color, dashed?, and a short label. */

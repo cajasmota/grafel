@@ -69,6 +69,12 @@
   --pastel-9-ink:  #59659e;   /* 4.76:1 */
   --pastel-10-ink: #8c632f;   /* 4.78:1 */
 
+  /* Exception/error node ink (#4556). The danger-tinted node body washes
+     --danger @22% over surface (≈ #f9d0d0 in light); this darkened red clears
+     WCAG AA as the pill text + border accent over that wash. Hue matches the
+     red THROWS edge so a thrown error reads consistently across node + edge. */
+  --exception-ink: #b91c1c;   /* 4.9:1 over the @22% light wash */
+
   /* -- Skeleton / loading placeholders -- */
   --skeleton-base:      #e2e6ed;   /* noticeably darker than surface-2 (#f3f5f8) */
   --skeleton-highlight: #edf0f5;   /* shimmer highlight — lighter band */
@@ -214,6 +220,10 @@
   --pastel-8-ink:  #e1aabb;
   --pastel-9-ink:  #b1b8d9;
   --pastel-10-ink: #e8be93;
+
+  /* Exception/error node ink (#4556) — light red, legible on the dark
+     danger-tinted node body (--danger @22% over the dark surface). */
+  --exception-ink: #f0a8a8;
 
   /* -- Skeleton / loading placeholders -- */
   --skeleton-base:      #2a3140;   /* clearly lighter than surface (#1a1f2b) */

@@ -21,7 +21,7 @@ import { cn } from "@/lib/utils";
 import { RepoChip } from "@/lib/repo-color";
 import { effectBadge } from "@/lib/effect-badge";
 import { useSourcePeek } from "@/components/SourcePeek";
-import { roleStyle, edgeStyle } from "./style";
+import { nodeStyle, edgeStyle } from "./style";
 import type { FlowDagNodeData } from "./layout";
 
 /**
@@ -32,7 +32,9 @@ import type { FlowDagNodeData } from "./layout";
 function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps) {
   const { node, edgeKind, expanded, onToggleExpand, selected, onRoute } =
     data as FlowDagNodeData;
-  const rs = roleStyle(node.role);
+  // Exception/error nodes paint red (#4556); otherwise the role tint. The red
+  // hue matches the THROWS edge so a thrown error reads consistently node→edge.
+  const rs = nodeStyle(node, edgeKind);
   const { openSourcePeek } = useSourcePeek();
   const { groupId = "" } = useParams<{ groupId: string }>();
   const collapsed = node.collapsed_children ?? [];
