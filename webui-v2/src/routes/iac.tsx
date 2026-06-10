@@ -28,7 +28,7 @@
    empty state.
    ============================================================ */
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
 import {
   Boxes,
@@ -717,6 +717,33 @@ function CategorySection({ counts }: { counts: Record<string, number> | null | u
 
 type IaCView = "list" | "diagram";
 
+/**
+ * #4646: Diagram is the default view on first load. The user's last explicit
+ * choice persists in localStorage (`ag.iac.view`) so switching to List sticks
+ * across reloads; with no stored preference the initial view is Diagram.
+ */
+const IAC_VIEW_STORAGE_KEY = "ag.iac.view";
+
+function readStoredView(): IaCView {
+  if (typeof window === "undefined") return "diagram";
+  try {
+    const stored = window.localStorage.getItem(IAC_VIEW_STORAGE_KEY);
+    if (stored === "list" || stored === "diagram") return stored;
+  } catch {
+    // localStorage may be unavailable (private mode / disabled); fall through.
+  }
+  return "diagram";
+}
+
+function persistView(v: IaCView): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(IAC_VIEW_STORAGE_KEY, v);
+  } catch {
+    // Best-effort persistence; ignore quota/availability errors.
+  }
+}
+
 /** Shared insight banner for both List and Diagram views (#4576 / #4604). */
 function IaCInsight() {
   return (
@@ -779,7 +806,12 @@ export default function IaCScreen() {
   const { groupId = "" } = useParams<{ groupId: string }>();
   const { data, isLoading, isError } = useIaC(groupId);
   const [toolFilter, setToolFilter] = useState<string>("all");
-  const [view, setView] = useState<IaCView>("list");
+  const [view, setView] = useState<IaCView>(readStoredView);
+
+  const setAndPersistView = useCallback((v: IaCView) => {
+    persistView(v);
+    setView(v);
+  }, []);
 
   const groups = useMemo<IaCToolGroup[]>(() => data?.groups ?? [], [data]);
 
@@ -797,7 +829,7 @@ export default function IaCScreen() {
       <div className="flex h-full flex-col bg-bg">
         <div className="space-y-2 border-b border-border bg-surface px-4 py-3">
           <div className="flex items-center gap-2">
-            <ViewToggle view={view} onChange={setView} />
+            <ViewToggle view={view} onChange={setAndPersistView} />
             <span className="text-xs text-text-4">
               Resource graph — resources by category, relations, grouped by
               module.
@@ -828,7 +860,7 @@ export default function IaCScreen() {
           <>
             {/* View toggle (List | Diagram) */}
             <div className="flex items-center gap-2">
-              <ViewToggle view={view} onChange={setView} />
+              <ViewToggle view={view} onChange={setAndPersistView} />
             </div>
 
             {/* #4576: List view now carries the same insight banner
