@@ -121,6 +121,43 @@ var (
 	reRouteConstDecl = regexp.MustCompile(
 		`(?:^|[;\n])\s*(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*('[^']*'|"[^"]*")`,
 	)
+
+	// ── data-driven supertest route tables (issue #4600) ────────────────────
+	// Many contract/e2e specs do NOT spell out `request(app).get('/path')`;
+	// they declare a TABLE of route descriptors and drive supertest through a
+	// COMPUTED verb member access, e.g.
+	//
+	//	const cases = [
+	//	  { method: 'GET',    path: `${BASE}/lite` },
+	//	  { method: 'POST',   path: `${BASE}/notes/create` },
+	//	  { method: 'DELETE', path: `${BASE}/7/notes/delete` },
+	//	];
+	//	it.each(cases)('…', ({ method, path }) => {
+	//	  request(app.getHttpServer())[method.toLowerCase()](path);
+	//	});
+	//
+	// The verb-call regex (reSupertestVerbCall) cannot see `[method.toLowerCase()]`
+	// and the label carries no `VERB /route`, so these endpoints look untested
+	// even though every route is statically present in the table. We recover the
+	// (verb, route) pairs directly from the object literals: each entry that
+	// carries BOTH a `method: 'VERB'` (a real HTTP verb) and a `path: <route>`
+	// (a quoted/back-tick `/`-rooted route, with `${CONST}` folded) contributes
+	// one pair. The two keys may appear in either order, so we anchor on the verb
+	// and scan a bounded window for the path (and vice-versa is unnecessary: the
+	// path-anchored scan below covers a `path`-first ordering).
+	//
+	// Conservatism: an entry is only used when its method value is a known HTTP
+	// verb AND its path resolves to a `/`-rooted route; anything else is skipped.
+	// No edges are emitted here — the resolve pass owns endpoint matching, reusing
+	// the exact same normalization as supertest / label routes.
+	reRouteTableMethod = regexp.MustCompile(
+		`\bmethod\s*:\s*(['"` + "`" + `])(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)['"` + "`" + `]`,
+	)
+	// rePathKeyArg captures a `path: <arg>` value: a quoted/back-tick string or a
+	// bare identifier (resolved via the route-const map).
+	rePathKeyArg = regexp.MustCompile(
+		`\bpath\s*:\s*(` + "`" + `[^` + "`" + `]*` + "`" + `|'[^']*'|"[^"]*"|[A-Za-z_$][\w$]*)`,
+	)
 )
 
 // Extract emits ONE linked test_suite entity per recognised unit-under-test in
@@ -177,6 +214,14 @@ func (e *jestExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]t
 	// than driving it via supertest; fold those `VERB /route` mentions into the
 	// same e2e_route_calls bucket so the resolve pass links them to endpoints.
 	routeCalls = mergeRouteCalls(routeCalls, extractLabelRouteCalls(src))
+
+	// ── collect data-driven supertest route tables (issue #4600) ─────────────
+	// Specs that drive supertest through a computed verb member access
+	// (`request(app)[method.toLowerCase()](path)`) over a `{ method, path }`
+	// descriptor table carry neither a `.get('/path')` call nor a label route;
+	// recover the (verb, route) pairs straight from the table so the endpoints
+	// they exercise are credited.
+	routeCalls = mergeRouteCalls(routeCalls, extractRouteTableCalls(src))
 
 	// Per-spec aggregate counts folded onto the suite(s).
 	caseCount := len(tests)
@@ -419,6 +464,128 @@ func extractSupertestRouteCalls(src string) []string {
 		out = append(out, key)
 	}
 	return out
+}
+
+// extractRouteTableCalls returns the de-duplicated set of "VERB route" pairs
+// declared in data-driven supertest route tables (issue #4600). Specs that
+// drive supertest through a computed verb member access
+// (`request(app)[method.toLowerCase()](path)`) carry no `.get('/path')` call and
+// no label route, so the only static signal is the route descriptor table:
+//
+//	{ method: 'GET', path: `${BASE}/lite` }
+//
+// For each `method: 'VERB'` occurrence we scan a bounded window (the object
+// entry is small) for the nearest `path:` value and pair them. `${CONST}`
+// templates in the path fold from the local route-const map; remaining `${expr}`
+// path params are left for the resolver's structural normalizer to wildcard.
+//
+// We anchor on the verb because it is the unambiguous HTTP-method token; the
+// `path:` value may sit either before or after it within the same object entry,
+// so the window extends in BOTH directions (bounded) and the closest path-key to
+// the method-key is used.
+func extractRouteTableCalls(src string) []string {
+	consts := collectRouteConsts(src)
+	seen := make(map[string]bool)
+	var out []string
+
+	for _, m := range reRouteTableMethod.FindAllStringSubmatchIndex(src, -1) {
+		// m[4]:m[5] is the verb capture group (group 2).
+		verb := strings.ToUpper(src[m[4]:m[5]])
+
+		// Pair the method ONLY with a `path:` in the SAME object literal — a
+		// sibling entry's path must never be mis-paired (which would fabricate a
+		// (verb, route) for the wrong route). routeTableEntryBounds returns the
+		// `{ … }` enclosing this method key, treating template-literal `${…}`
+		// interpolations as opaque (their braces are not entry delimiters).
+		lo, hi := routeTableEntryBounds(src, m[0], m[1])
+		window := src[lo:hi]
+
+		var bestRoute string
+		for _, pm := range rePathKeyArg.FindAllStringSubmatchIndex(window, -1) {
+			route := normalizeRouteArg(window[pm[2]:pm[3]], consts)
+			if route != "" {
+				bestRoute = route
+				break
+			}
+		}
+		if bestRoute == "" {
+			continue
+		}
+		key := verb + " " + bestRoute
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		out = append(out, key)
+	}
+	return out
+}
+
+// routeTableEntryBounds returns [lo, hi) spanning the object literal `{ … }`
+// that immediately encloses the byte range [keyStart, keyEnd) of a `method:`
+// key, so a `path:` is only ever paired with a method in the SAME entry.
+//
+// Walking outward, a template-literal interpolation `${ … }` is NOT an object
+// delimiter: its braces are skipped so a `path: ` + "`${BASE}/x`" + ` route table
+// (whose values legitimately contain `{`/`}`) is not split mid-entry. The scan
+// is bounded to a window around the key so a malformed/un-delimited table cannot
+// run away.
+func routeTableEntryBounds(src string, keyStart, keyEnd int) (int, int) {
+	const span = 400
+	winLo := keyStart - span
+	if winLo < 0 {
+		winLo = 0
+	}
+	winHi := keyEnd + span
+	if winHi > len(src) {
+		winHi = len(src)
+	}
+
+	// Backward: find the `{` opening this entry (depth 0), skipping `${` and the
+	// closing `}` of any nested brace group.
+	lo := winLo
+	depth := 0
+	for i := keyStart - 1; i >= winLo; i-- {
+		c := src[i]
+		if c == '}' {
+			depth++
+			continue
+		}
+		if c == '{' {
+			// A `${` is a template interpolation, not an object opener: its
+			// matching `}` already incremented depth on the way back, so undo
+			// that here rather than treating this `{` as an entry opener.
+			if i > 0 && src[i-1] == '$' {
+				depth--
+				continue
+			}
+			if depth == 0 {
+				lo = i + 1
+				break
+			}
+			depth--
+		}
+	}
+
+	// Forward: find the matching `}` closing this entry (depth 0), skipping the
+	// braces of any nested `{ … }` and `${ … }` group.
+	hi := winHi
+	depth = 0
+	for i := keyEnd; i < winHi; i++ {
+		c := src[i]
+		if c == '{' {
+			depth++
+			continue
+		}
+		if c == '}' {
+			if depth == 0 {
+				hi = i
+				break
+			}
+			depth--
+		}
+	}
+	return lo, hi
 }
 
 // extractLabelRouteCalls returns the de-duplicated set of "VERB route" pairs
