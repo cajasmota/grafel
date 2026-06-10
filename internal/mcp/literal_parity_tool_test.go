@@ -213,3 +213,153 @@ func TestLiteralParity_E2E_ExplicitOverrideResolvesImplicit(t *testing.T) {
 		t.Errorf("sources = %v / %v", out["oracle_source"], out["v3_source"])
 	}
 }
+
+// drfActionMethod builds a DRF @action-decorated method entity, optionally with
+// an explicit url_path (empty → codename defaults to the bare method name).
+func drfActionMethod(id, name, urlPath string) graph.Entity {
+	props := map[string]string{"drf_action": "true"}
+	if urlPath != "" {
+		props["url_path"] = urlPath
+	}
+	return graph.Entity{
+		ID:         id,
+		Name:       name,
+		Kind:       "SCOPE.Operation",
+		Subtype:    "method",
+		Properties: props,
+	}
+}
+
+// twoGroupServerDoc is like twoGroupServer but takes whole Documents so a side
+// can carry relationships (CONTAINS) for viewset-scoped derivation.
+func twoGroupServerDoc(t *testing.T, oracleDoc, v3Doc *graph.Document) *Server {
+	t.Helper()
+	reg := &Registry{Groups: map[string]RegistryGroup{
+		"oracle": {Repos: map[string]RegistryRepo{"r": {Path: t.TempDir()}}},
+		"v3":     {Repos: map[string]RegistryRepo{"r": {Path: t.TempDir()}}},
+	}}
+	st := NewState(reg)
+	st.mu.Lock()
+	st.groups["oracle"] = &LoadedGroup{
+		Name:  "oracle",
+		Repos: map[string]*LoadedRepo{"r": {Repo: "r", Doc: oracleDoc}},
+	}
+	st.groups["v3"] = &LoadedGroup{
+		Name:  "v3",
+		Repos: map[string]*LoadedRepo{"r": {Repo: "r", Doc: v3Doc}},
+	}
+	st.mu.Unlock()
+	return &Server{State: st, Tel: NewTelemetry(0)}
+}
+
+// BUG B (#4665 part b): the DERIVATION RESOLVER yields the implicit oracle set
+// (DRF action codenames = @action method names / url_paths) and diffs it against
+// a declared v3 set — turning an otherwise-unresolved comparison into a real one.
+// Here the oracle has NO declared enum, only @action methods; v3 has a declared
+// ActionCodename enum that drifts (missing 'cancel'). Expect a real drift verdict.
+func TestLiteralParity_E2E_DerivationResolver(t *testing.T) {
+	oracleDoc := &graph.Document{Repo: "r", Entities: []graph.Entity{
+		drfActionMethod("m1", "ProposalViewSet.lite", ""),
+		drfActionMethod("m2", "ProposalViewSet.send_proposals", "send_proposals"),
+		drfActionMethod("m3", "ProposalViewSet.cancel", ""),
+	}}
+	v3Doc := &graph.Document{Repo: "r", Entities: []graph.Entity{
+		// v3 declared the codenames but DROPPED 'cancel' (membership drift).
+		enumEntity("v1", "PermissionAction",
+			`[{"key":"LITE","value":"lite"},{"key":"SEND_PROPOSALS","value":"send_proposals"}]`),
+	}}
+	s := twoGroupServerDoc(t, oracleDoc, v3Doc)
+
+	out := callLiteralParity(t, s, map[string]any{
+		"group_oracle": "oracle", "group_v3": "v3", "set": "action_codenames",
+		"oracle_derive": "drf_action_codenames", "v3_source": "v1",
+	})
+	if out["verdict"] != "drift" {
+		t.Fatalf("verdict = %v, want drift; out=%+v", out["verdict"], out)
+	}
+	// The derived oracle set has 'cancel' which v3 lacks.
+	oo, _ := out["only_in_oracle"].([]any)
+	foundCancel := false
+	for _, v := range oo {
+		if v == "cancel" {
+			foundCancel = true
+		}
+	}
+	if !foundCancel {
+		t.Errorf("expected derived oracle codename 'cancel' in only_in_oracle, got %v", out["only_in_oracle"])
+	}
+	if out["v3_source"] != "v1" {
+		t.Errorf("v3_source = %v, want v1", out["v3_source"])
+	}
+}
+
+// BUG B (#4665 part b): when BOTH sides are derived and reconciled, the verdict
+// is equivalent. Also exercises the explicit url_path override (DRF non-default).
+func TestLiteralParity_E2E_DerivationBothSidesEquivalent(t *testing.T) {
+	mk := func() *graph.Document {
+		return &graph.Document{Repo: "r", Entities: []graph.Entity{
+			drfActionMethod("a1", "VS.lite", ""),
+			drfActionMethod("a2", "VS.send", "send_proposals"),
+		}}
+	}
+	s := twoGroupServerDoc(t, mk(), mk())
+	out := callLiteralParity(t, s, map[string]any{
+		"group_oracle": "oracle", "group_v3": "v3", "set": "action_codenames",
+		"oracle_derive": "drf_action_codenames", "v3_derive": "drf_action_codenames",
+	})
+	if out["verdict"] != "equivalent" {
+		t.Fatalf("verdict = %v, want equivalent; out=%+v", out["verdict"], out)
+	}
+}
+
+// BUG B (#4665 part b): a `viewset` scope restricts the derived set to ONE
+// ViewSet's @action methods, so an unrelated ViewSet's actions don't leak in.
+func TestLiteralParity_E2E_DerivationViewsetScope(t *testing.T) {
+	oracleDoc := &graph.Document{Repo: "r",
+		Entities: []graph.Entity{
+			{ID: "vsA", Name: "ProposalViewSet", Kind: "SCOPE.Component", Subtype: "class"},
+			{ID: "vsB", Name: "DeviceViewSet", Kind: "SCOPE.Component", Subtype: "class"},
+			drfActionMethod("mA", "ProposalViewSet.lite", ""),
+			drfActionMethod("mB", "DeviceViewSet.reboot", ""), // unrelated — must be excluded
+		},
+		Relationships: []graph.Relationship{
+			{ID: "c1", FromID: "vsA", ToID: "mA", Kind: "CONTAINS"},
+			{ID: "c2", FromID: "vsB", ToID: "mB", Kind: "CONTAINS"},
+		},
+	}
+	v3Doc := &graph.Document{Repo: "r", Entities: []graph.Entity{
+		enumEntity("v1", "PermissionAction", `[{"key":"LITE","value":"lite"}]`),
+	}}
+	s := twoGroupServerDoc(t, oracleDoc, v3Doc)
+	out := callLiteralParity(t, s, map[string]any{
+		"group_oracle": "oracle", "group_v3": "v3", "set": "action_codenames",
+		"oracle_derive": "drf_action_codenames", "viewset": "ProposalViewSet",
+		"v3_source": "v1",
+	})
+	if out["verdict"] != "equivalent" {
+		t.Fatalf("verdict = %v, want equivalent (reboot must be scoped out); out=%+v", out["verdict"], out)
+	}
+}
+
+// BUG B (#4665 part b): an unknown derivation kind is a hard error (the caller
+// explicitly asked to derive), not a silent unresolved.
+func TestLiteralParity_E2E_DerivationUnknownKind(t *testing.T) {
+	s := twoGroupServerDoc(t,
+		&graph.Document{Repo: "r"},
+		&graph.Document{Repo: "r", Entities: []graph.Entity{
+			enumEntity("v1", "PermissionAction", `[{"key":"LITE","value":"lite"}]`)}},
+	)
+	req := mcpapi.CallToolRequest{}
+	req.Params.Name = "archigraph_literal_parity"
+	req.Params.Arguments = map[string]any{
+		"group_oracle": "oracle", "group_v3": "v3", "set": "action_codenames",
+		"oracle_derive": "bogus_kind", "v3_source": "v1",
+	}
+	res, err := s.handleLiteralParity(context.Background(), req)
+	if err != nil {
+		t.Fatalf("handler error: %v", err)
+	}
+	if !res.IsError {
+		t.Fatalf("expected tool error for unknown derivation kind")
+	}
+}

@@ -19,7 +19,19 @@
 //	                 | "enum:<Name>",     (required — alias or enum:<Name>)
 //	  oracle_source: "<entity_id>",       (optional — pin the oracle value-set)
 //	  v3_source:     "<entity_id>",       (optional — pin the v3 value-set)
+//	  oracle_derive: "drf_action_codenames", (optional — derive an IMPLICIT
+//	                 oracle set from graph structure instead of a declared enum)
+//	  v3_derive:     "drf_action_codenames", (optional — same, v3 side)
+//	  viewset:       "<ViewSet name>",     (optional — scope a derivation to one
+//	                 ViewSet's @action methods)
 //	)
+//
+// Resolution precedence per side: *_derive (derivation resolver, opt-in) >
+// *_source (hard pin) > auto-locate by alias. A side that can be auto-located to
+// no SEMANTIC counterpart returns verdict:"unresolved" rather than silently
+// comparing a wrong set; for sets that are IMPLICIT on one side (DRF action
+// codenames have no declared enum on the oracle) use *_derive or an explicit
+// *_source.
 //
 // Result:
 //
@@ -88,20 +100,27 @@ func (s *Server) handleLiteralParity(_ context.Context, req mcpapi.CallToolReque
 
 	oracleID := argString(req, "oracle_source", "")
 	v3ID := argString(req, "v3_source", "")
+	oracleDerive := strings.TrimSpace(argString(req, "oracle_derive", ""))
+	v3Derive := strings.TrimSpace(argString(req, "v3_derive", ""))
+	viewset := strings.TrimSpace(argString(req, "viewset", ""))
 
-	// If an explicit *_source is given it is a hard pin: a miss is a real error
-	// (the caller asked for a specific entity). Without it, auto-locate may fail
-	// to find a SEMANTIC counterpart on one side — e.g. DRF action codenames are
-	// implicit lowercased @action method names with no declared enum on the
-	// oracle. In that case we MUST NOT silently compare a mismatched set; we
-	// return verdict:"unresolved" with the missing side's *_source null and a
-	// note, so the consumer can supply an explicit oracle_source/v3_source.
-	oracleEnt, oErr := locateValueSet(lgOracle, set, oracleID)
-	if oErr != "" && oracleID != "" {
+	// Resolution precedence per side:
+	//  1. *_derive — a derivation resolver synthesises an IMPLICIT value-set from
+	//     graph structure (e.g. DRF action codenames = @action method names). This
+	//     is opt-in so it never fires silently; a miss is a hard error (the caller
+	//     explicitly asked to derive). It outranks auto-locate so an implicit side
+	//     can be paired with a declared set on the other side. (#4665 part b)
+	//  2. *_source — a hard pin to a specific declared value-set entity; a miss is
+	//     a real error (the caller asked for a specific entity).
+	//  3. auto-locate by alias / enum:<Name>. This may fail to find a SEMANTIC
+	//     counterpart on one side; we then return verdict:"unresolved" with that
+	//     side's *_source null and a note (NEVER a silent wrong-set comparison).
+	oracleEnt, oErr := resolveSide(lgOracle, set, oracleID, oracleDerive, viewset)
+	if oErr != "" && (oracleID != "" || oracleDerive != "") {
 		return mcpapi.NewToolResultError("oracle: " + oErr), nil
 	}
-	v3Ent, vErr := locateValueSet(lgV3, set, v3ID)
-	if vErr != "" && v3ID != "" {
+	v3Ent, vErr := resolveSide(lgV3, set, v3ID, v3Derive, viewset)
+	if vErr != "" && (v3ID != "" || v3Derive != "") {
 		return mcpapi.NewToolResultError("v3: " + vErr), nil
 	}
 	if oErr != "" || vErr != "" {
@@ -170,6 +189,18 @@ func unresolvedResult(set string, oracleEnt, v3Ent *graph.Entity, oErr, vErr str
 		"oracle_source/v3_source to compare. Refusing to compare a mismatched set.")
 	out["note"] = strings.Join(notes, " | ")
 	return jsonResult(out)
+}
+
+// resolveSide resolves one side's value-set with the precedence derive > pin >
+// auto-locate. derive (when non-empty) synthesises an implicit set from graph
+// structure scoped by viewset; sourceID (when non-empty) hard-pins a declared
+// entity; otherwise the set alias / enum:<Name> drives auto-locate. Returns a
+// non-empty error string on failure.
+func resolveSide(lg *LoadedGroup, set, sourceID, derive, viewset string) (*graph.Entity, string) {
+	if derive != "" {
+		return deriveValueSet(lg, derive, viewset)
+	}
+	return locateValueSet(lg, set, sourceID)
 }
 
 // locateValueSet resolves the SCOPE.Enum value-set entity for a `set` within a

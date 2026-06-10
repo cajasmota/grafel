@@ -173,6 +173,9 @@ var intentionalGaps = []intentionalGap{
 	// is insufficient.
 	{"archigraph_literal_parity", "oracle_source", "#4421 token ceiling pattern — optional oracle value-set entity pin"},
 	{"archigraph_literal_parity", "v3_source", "#4421 token ceiling pattern — optional v3 value-set entity pin"},
+	{"archigraph_literal_parity", "oracle_derive", "#4665 token ceiling pattern — optional oracle derivation resolver (e.g. drf_action_codenames)"},
+	{"archigraph_literal_parity", "v3_derive", "#4665 token ceiling pattern — optional v3 derivation resolver"},
+	{"archigraph_literal_parity", "viewset", "#4665 token ceiling pattern — optional ViewSet scope for a derivation"},
 
 	// archigraph_auth_posture_diff: optional narrowing args undeclared for token
 	// budget (#4422 / #1639 pattern). The two required args (group_oracle,

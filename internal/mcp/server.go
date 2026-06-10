@@ -611,7 +611,9 @@ func (s *Server) registerTools() {
 	// #4421 (epic #4419) — cross-group ConstantSet / SCOPE.Enum value-set
 	// parity. Diffs an oracle group's value-set against its v3-rewrite mirror
 	// keyed off members_json. Required: group_oracle, group_v3, set (alias or
-	// enum:<Name>). Optional (undeclared per #1639): oracle_source, v3_source.
+	// enum:<Name>). Optional (undeclared per #1639): oracle_source, v3_source,
+	// oracle_derive, v3_derive (derivation resolver e.g. drf_action_codenames),
+	// viewset (scope a derivation to one ViewSet).
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_literal_parity",
 		mcpapi.WithDescription("Cross-group ConstantSet/enum value-set parity diff (oracle vs v3)."),
 		mcpapi.WithString("group_oracle", mcpapi.Required()),
