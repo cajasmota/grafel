@@ -502,3 +502,84 @@ func TestComputeCoverage_TotalTestsCountsOnlyCallables(t *testing.T) {
 		t.Errorf("CoveredProduction want 1, got %d", report.CoveredProduction)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// #4510 — testable-production denominator + name-affinity attribution
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIsNonTestableFile pins the non-testable-file predicate (#4510).
+func TestIsNonTestableFile(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		path string
+		want bool
+	}{
+		// scripts / migrations / generated / config — excluded
+		{"scripts/seed.ts", true},
+		{"src/scripts/deploy.js", true},
+		{"api/migrations/0001_initial.py", true},
+		{"db/migration/V1__init.sql", true},
+		{"src/__generated__/graphql.ts", true},
+		{"gen/pb/order.go", true},
+		{"jest.config.ts", true},
+		{"vite.config.js", true},
+		{"types/order.d.ts", true},
+		{"order.pb.go", true},
+		{"order_pb2.py", true},
+		{"src/index.ts", true}, // barrel
+		{"pkg/doc.go", true},   // go package doc
+		{"node_modules/lib/x.js", true},
+		// real production — kept
+		{"orders/service.ts", false},
+		{"orders/controller.go", false},
+		{"app/use_cases/place_order.py", false},
+	}
+	for _, tc := range cases {
+		if got := isNonTestableFile(tc.path); got != tc.want {
+			t.Errorf("isNonTestableFile(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestComputeCoverage_4510_DenominatorAndAffinity is the in-pipeline fixture for
+// #4510. It mixes (a) a testable service covered by a name-affine spec with no
+// direct TESTS edge, (b) a script, (c) a migration, (d) a DTO, (e) a type-only
+// interface, (f) a config file. It asserts:
+//   - the denominator counts ONLY the two testable services (excludes b–f);
+//   - the name-affinity pass attributes the spec to its same-subtree subject.
+func TestComputeCoverage_4510_DenominatorAndAffinity(t *testing.T) {
+	t.Parallel()
+	entities := []Entity{
+		// (a) testable service, covered only by name-affinity (no TESTS edge)
+		{ID: "svc", Name: "OrderService", Kind: "Class", SourceFile: "orders/order_service.ts"},
+		// a second testable service, left UNcovered
+		{ID: "svc2", Name: "PaymentService", Kind: "Class", SourceFile: "payments/payment_service.ts"},
+		// (b) script — must NOT count
+		{ID: "scr", Name: "seedDb", Kind: "Function", SourceFile: "scripts/seed.ts"},
+		// (c) migration — must NOT count
+		{ID: "mig", Name: "up", Kind: "Function", SourceFile: "migrations/0001_init.ts"},
+		// (d) DTO — must NOT count (name suffix)
+		{ID: "dto", Name: "OrderDTO", Kind: "Class", SourceFile: "orders/order.dto.ts"},
+		// (e) type-only interface — must NOT count (kind excluded)
+		{ID: "iface", Name: "IOrder", Kind: "Interface", SourceFile: "orders/order.ts"},
+		// (f) config — must NOT count
+		{ID: "cfg", Name: "config", Kind: "Function", SourceFile: "jest.config.ts"},
+		// a spec whose normalised token matches OrderService, same subtree
+		{ID: "spec", Name: "OrderServiceSpec", Kind: "SCOPE.Operation",
+			SourceFile: "orders/__tests__/order_service.spec.ts"},
+	}
+	report := ComputeCoverage(makeDoc(entities, nil))
+
+	if report.TotalProduction != 2 {
+		t.Fatalf("TotalProduction want 2 (only OrderService+PaymentService), got %d", report.TotalProduction)
+	}
+	if report.CoveredProduction != 1 {
+		t.Errorf("CoveredProduction want 1 (name-affinity attributes OrderService), got %d", report.CoveredProduction)
+	}
+	// Confirm the covered one is OrderService (PaymentService stays uncovered).
+	for _, u := range report.UncoveredEntities {
+		if u.EntityID == "svc" {
+			t.Errorf("OrderService should be covered by name-affinity but is in uncovered list")
+		}
+	}
+}
