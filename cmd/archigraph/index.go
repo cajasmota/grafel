@@ -4047,6 +4047,15 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	if goCrossPkgCallRewrites > 0 {
 		fmt.Fprintf(os.Stderr, "resolver: go-cross-package rewrote=%d CALLS targets\n", goCrossPkgCallRewrites)
 	}
+	// #4373 — Rust cross-module/cross-crate CALLS resolution. Binds
+	// `crate::mod::Func()` / `self::`/`super::` / aliased / `Type::method`
+	// edges stamped with rust_call_pkg_dirs + call_leaf (+ rust_call_scope)
+	// to byPackageOperation / byPackageMember. Same ordering constraints as
+	// the Go pass: after BuildIndex, before the embedded-reference resolver.
+	rustCrossModCallRewrites := idx.ResolveRustCrossModuleCalls(merged)
+	if rustCrossModCallRewrites > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: rust-cross-module rewrote=%d CALLS targets\n", rustCrossModCallRewrites)
+	}
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
 	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)

@@ -2272,6 +2272,142 @@ func (idx Index) ResolveGoCrossPackageCalls(records []types.EntityRecord) int {
 	return rewrites
 }
 
+// ResolveRustCrossModuleCalls binds Rust CALLS edges that reach a function or
+// associated method in another in-crate module through a path qualifier —
+// `crate::services::order::place_order()`, `self::sibling::helper()`,
+// `super::parent::helper()`, an aliased `use ... as ord; ord::place_order()`,
+// or an associated `OrderService::new()` — to the callee's entity ID.
+//
+// Background (issue #4373): the Rust extractor historically emitted a
+// scoped-identifier call `a::b::leaf()` as a CALLS edge whose ToID was the
+// BARE leaf (`leaf`), dropping the whole `a::b` path qualifier. A bare name
+// resolves through the global byName index, which goes ambiguous the moment
+// two modules define a symbol of the same name (`place_order` in both
+// services::order and services::invoice) — so the edge is dropped and the
+// callee module looks falsely uncalled. This is the Rust analogue of the Go
+// cross-package qualifier drop fixed in #4332.
+//
+// The extractor now stamps, on each path-qualified CALLS edge:
+//   - Properties["rust_call_pkg_dirs"]: ";"-separated candidate package
+//     directories the target module's items are keyed under (the mod.rs vs
+//     file.rs layout ambiguity yields two; tried in order).
+//   - Properties["call_leaf"]: the bare callee identifier.
+//   - Properties["rust_call_scope"]: (associated calls only) the Type the leaf
+//     is a member of, so the bind goes through byPackageMember[dir][Type][leaf].
+//
+// This pass reads those and rewrites ToID to the exact callee:
+//   - free function: byPackageOperation[dir][leaf]
+//   - associated method: byPackageMember[dir][scope][leaf], with a crate-wide
+//     fallback to byMember when the type name is unique (an unqualified
+//     `Type::method` whose type lives in a sibling module).
+//
+// Conservative by construction:
+//   - Only edges carrying rust_call_pkg_dirs AND call_leaf participate.
+//   - Edges whose ToID is already a hex ID are left alone (idempotent).
+//   - A blank-string sentinel marks (dir, name) collisions; those are skipped,
+//     never guessed. The first candidate dir that yields an unambiguous hit
+//     wins; if two candidate dirs both resolve to DIFFERENT ids the edge is
+//     left alone (ambiguous layout).
+//
+// Must run AFTER BuildIndex (needs the package-scoped indexes) and BEFORE the
+// embedded-reference resolver so the rewritten hex ID is seen as resolved.
+// Returns the number of edges rewritten.
+func (idx Index) ResolveRustCrossModuleCalls(records []types.EntityRecord) int {
+	if len(idx.byPackageOperation) == 0 && len(idx.byPackageMember) == 0 {
+		return 0
+	}
+	rewrites := 0
+	for k := range records {
+		rec := &records[k]
+		for j := range rec.Relationships {
+			r := &rec.Relationships[j]
+			if r.Kind != "CALLS" || r.Properties == nil {
+				continue
+			}
+			dirsRaw := r.Properties["rust_call_pkg_dirs"]
+			leaf := r.Properties["call_leaf"]
+			if dirsRaw == "" || leaf == "" {
+				continue
+			}
+			if r.ToID == "" || isHexID(r.ToID) {
+				continue // already resolved
+			}
+			scope := r.Properties["rust_call_scope"]
+			dirs := strings.Split(dirsRaw, ";")
+
+			// Try each candidate directory; require a single unambiguous
+			// non-empty id across the candidates that resolve.
+			resolved := ""
+			conflict := false
+			for _, dir := range dirs {
+				if dir == "" {
+					continue
+				}
+				id := ""
+				if scope != "" {
+					if pkgBucket, ok := idx.byPackageMember[dir]; ok {
+						if scopeBucket, ok := pkgBucket[scope]; ok {
+							id = scopeBucket[leaf] // "" => collision sentinel
+						}
+					}
+				} else {
+					if pkgBucket, ok := idx.byPackageOperation[dir]; ok {
+						id = pkgBucket[leaf] // "" => collision sentinel or miss
+					}
+				}
+				if id == "" {
+					continue
+				}
+				if resolved == "" {
+					resolved = id
+				} else if resolved != id {
+					conflict = true
+					break
+				}
+			}
+
+			// Associated-call crate-wide fallback: an `OrderService::new()`
+			// whose type is unique in the crate but lives outside the offered
+			// candidate dirs. Bind through the unambiguous global member index.
+			if resolved == "" && !conflict && scope != "" {
+				if id := idx.lookupUniqueMember(scope, leaf); id != "" {
+					resolved = id
+				}
+			}
+
+			if conflict || resolved == "" {
+				continue
+			}
+			r.ToID = resolved
+			rewrites++
+		}
+	}
+	return rewrites
+}
+
+// lookupUniqueMember returns the entity id for scope.member if and only if it
+// is unique across the whole crate (every byMember file-bucket that defines it
+// agrees on the same id). Returns "" on miss or any disagreement (ambiguous).
+func (idx Index) lookupUniqueMember(scope, member string) string {
+	found := ""
+	for _, fileBucket := range idx.byMember {
+		scopeBucket, ok := fileBucket[scope]
+		if !ok {
+			continue
+		}
+		id, ok := scopeBucket[member]
+		if !ok || id == "" {
+			continue
+		}
+		if found == "" {
+			found = id
+		} else if found != id {
+			return "" // ambiguous across files
+		}
+	}
+	return found
+}
+
 // buildGoPkgDirIndex builds a map from Go package directory (e.g.
 // "internal/types") to the entity ID of a representative file in that package.
 // Only Go SCOPE.Component subtype="file" entities are considered. When multiple

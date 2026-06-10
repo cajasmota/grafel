@@ -53,7 +53,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	walk(file.Tree.RootNode(), file, &entities)
+	// Issue #4373 — per-file cross-module call-path resolution context, built
+	// once from the file path + `use` declarations and threaded into call
+	// extraction so cross-module CALLS carry a stamped module qualifier.
+	crossCtx := buildRustCrossCtx(file.Tree.RootNode(), file.Content, file.Path)
+	walk(file.Tree.RootNode(), file, &entities, crossCtx)
 	// Epic #3628 — error-flow topology: typed THROWS / CATCHES edges to the
 	// shared SCOPE.ExceptionType convergence node. Runs after walk so the
 	// host SCOPE.Operation entities (including impl-qualified method names)
@@ -71,7 +75,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // per function_item declared inside their declaration_list, every
 // function_item body emits CALLS edges with stub to_id, and use_declaration
 // nodes already emit IMPORTS (untouched).
-func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord, crossCtx *rustCrossCtx) {
 	if node == nil {
 		return
 	}
@@ -99,7 +103,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		rec, ok := buildComponent(node, file, "trait")
 		if !ok {
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, out)
+				walk(node.Child(int(i)), file, out, crossCtx)
 			}
 			return
 		}
@@ -109,7 +113,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		if body != nil {
 			before := len(*out)
 			for i := range body.ChildCount() {
-				walk(body.Child(int(i)), file, out)
+				walk(body.Child(int(i)), file, out, crossCtx)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
@@ -133,7 +137,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		rec, ok := buildImpl(node, file)
 		if !ok {
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, out)
+				walk(node.Child(int(i)), file, out, crossCtx)
 			}
 			return
 		}
@@ -152,13 +156,13 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 						paramTypes := collectRustParamTypes(ch, file.Content)
 						// Issue #616 — resolve self.method() and dyn-param calls.
 						fnRec.Relationships = append(fnRec.Relationships,
-							extractCallRelationships(ch.ChildByFieldName("body"), file.Content, fnRec.Name, implName, paramTypes)...)
+							extractCallRelationships(ch.ChildByFieldName("body"), file.Content, fnRec.Name, implName, paramTypes, crossCtx)...)
 						// Qualify the name with the impl type owner.
 						fnRec.Name = implName + "." + fnRec.Name
 						*out = append(*out, fnRec)
 					}
 				} else {
-					walk(ch, file, out)
+					walk(ch, file, out, crossCtx)
 				}
 			}
 			after := len(*out)
@@ -185,7 +189,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		if rec, ok := buildOperation(node, file); ok {
 			paramTypes := collectRustParamTypes(node, file.Content)
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name, "", paramTypes)...)
+				extractCallRelationships(node.ChildByFieldName("body"), file.Content, rec.Name, "", paramTypes, crossCtx)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -197,7 +201,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	}
 
 	for i := range node.ChildCount() {
-		walk(node.Child(int(i)), file, out)
+		walk(node.Child(int(i)), file, out, crossCtx)
 	}
 }
 
@@ -222,7 +226,7 @@ func findRustDeclList(node *sitter.Node) *sitter.Node {
 // "Foo"); it enables `self.method()` calls to resolve to "Foo.method".
 // paramTypes maps parameter names to their declared types so that calls
 // through typed receivers (e.g. `r: &dyn Repo`) resolve to "Repo.method".
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerName string, paramTypes map[string]string) []types.RelationshipRecord {
+func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerName string, paramTypes map[string]string, crossCtx *rustCrossCtx) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -233,7 +237,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerNa
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
-		target := rustCallTarget(call, src, ownerName, paramTypes)
+		target, pathSegs := rustCallTarget(call, src, ownerName, paramTypes)
 		if target == "" || target == callerName {
 			continue
 		}
@@ -243,10 +247,26 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerNa
 		seen[target] = true
 		// Line is 1-based: tree-sitter StartPoint().Row is 0-based.
 		callLine := strconv.Itoa(int(call.StartPoint().Row) + 1)
+		props := map[string]string{"line": callLine}
+		// Issue #4373 — stamp the resolved module/crate path qualifier so the
+		// resolver can bind a cross-module CALL to the exact callee module's
+		// entity instead of collapsing to an ambiguity-prone bare leaf. Only
+		// fires for path-qualified calls (`a::b::leaf`) where the qualifier
+		// maps to in-crate module directories; bare and receiver calls are
+		// untouched.
+		if crossCtx != nil && len(pathSegs) >= 2 {
+			if dirs, scope := crossCtx.resolveCallPath(pathSegs); len(dirs) > 0 {
+				props["rust_call_pkg_dirs"] = strings.Join(dirs, ";")
+				props["call_leaf"] = pathSegs[len(pathSegs)-1]
+				if scope != "" {
+					props["rust_call_scope"] = scope
+				}
+			}
+		}
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       target,
 			Kind:       "CALLS",
-			Properties: map[string]string{"line": callLine},
+			Properties: props,
 		})
 	}
 	return rels
@@ -259,7 +279,12 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerNa
 // Issue #616 — ownerName and paramTypes enable receiver-qualified targets:
 //   - "self.method()" inside impl Foo → "Foo.method"
 //   - "repo.find()" where repo: &dyn Repo → "Repo.find"
-func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes map[string]string) string {
+// The second return value (issue #4373) is the FULL `::`-separated path of a
+// scoped_identifier callee (e.g. ["crate","services","order","place_order"] or
+// ["OrderService","new"]), or nil for bare / receiver / macro calls. The
+// caller uses it to stamp a cross-module qualifier so the resolver can bind to
+// the exact callee module instead of the ambiguity-prone bare leaf.
+func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes map[string]string) (string, []string) {
 	switch call.Type() {
 	case "call_expression":
 		fn := call.ChildByFieldName("function")
@@ -267,14 +292,15 @@ func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes 
 			fn = call.Child(0)
 		}
 		if fn == nil {
-			return ""
+			return "", nil
 		}
 		switch fn.Type() {
 		case "identifier":
-			return string(src[fn.StartByte():fn.EndByte()])
+			return string(src[fn.StartByte():fn.EndByte()]), nil
 		case "scoped_identifier":
 			if name := fn.ChildByFieldName("name"); name != nil {
-				return string(src[name.StartByte():name.EndByte()])
+				return string(src[name.StartByte():name.EndByte()]),
+					rustScopedPathSegments(fn, src)
 			}
 		case "field_expression":
 			method := ""
@@ -282,7 +308,7 @@ func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes 
 				method = string(src[name.StartByte():name.EndByte()])
 			}
 			if method == "" {
-				return ""
+				return "", nil
 			}
 			// Issue #616 — resolve receiver type for self and typed params.
 			recv := ""
@@ -290,26 +316,27 @@ func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes 
 				recv = string(src[value.StartByte():value.EndByte()])
 			}
 			if recv == "self" && ownerName != "" {
-				return ownerName + "." + method
+				return ownerName + "." + method, nil
 			}
 			if recv != "" && len(paramTypes) > 0 {
 				if recvType, ok := paramTypes[recv]; ok && recvType != "" {
-					return recvType + "." + method
+					return recvType + "." + method, nil
 				}
 			}
-			return method
+			return method, nil
 		case "generic_function":
 			if path := fn.ChildByFieldName("function"); path != nil {
 				switch path.Type() {
 				case "identifier":
-					return string(src[path.StartByte():path.EndByte()])
+					return string(src[path.StartByte():path.EndByte()]), nil
 				case "scoped_identifier":
 					if name := path.ChildByFieldName("name"); name != nil {
-						return string(src[name.StartByte():name.EndByte()])
+						return string(src[name.StartByte():name.EndByte()]),
+							rustScopedPathSegments(path, src)
 					}
 				case "field_expression":
 					if name := path.ChildByFieldName("field"); name != nil {
-						return string(src[name.StartByte():name.EndByte()])
+						return string(src[name.StartByte():name.EndByte()]), nil
 					}
 				}
 			}
@@ -318,16 +345,34 @@ func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes 
 		if m := call.ChildByFieldName("macro"); m != nil {
 			t := m.Type()
 			if t == "identifier" {
-				return string(src[m.StartByte():m.EndByte()])
+				return string(src[m.StartByte():m.EndByte()]), nil
 			}
 			if t == "scoped_identifier" {
 				if name := m.ChildByFieldName("name"); name != nil {
-					return string(src[name.StartByte():name.EndByte()])
+					return string(src[name.StartByte():name.EndByte()]),
+						rustScopedPathSegments(m, src)
 				}
 			}
 		}
 	}
-	return ""
+	return "", nil
+}
+
+// rustScopedPathSegments returns the `::`-separated identifier segments of a
+// scoped_identifier node, in source order including the trailing name. The
+// tree-sitter Rust grammar nests scoped_identifier left-associatively:
+// `a::b::c` is scoped_identifier(path=scoped_identifier(path=a, name=b),
+// name=c). We flatten by reading the literal source text of the node and
+// splitting on `::`, which is robust to the nesting and to crate/self/super
+// path keywords (which appear as crate/self/super nodes). Turbofish generics
+// are stripped per-segment by splitRustPath. Returns nil when the path cannot
+// be cleanly segmented (e.g. contains a non-identifier element).
+func rustScopedPathSegments(node *sitter.Node, src []byte) []string {
+	raw := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
+	if raw == "" {
+		return nil
+	}
+	return splitRustPath(raw)
 }
 
 // collectRustParamTypes scans a function_item node's parameters child and
