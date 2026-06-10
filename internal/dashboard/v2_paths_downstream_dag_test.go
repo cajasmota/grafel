@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/graph"
@@ -40,11 +41,29 @@ func makeDownstreamDAGFixture() *DashGroup {
 		return graph.Relationship{FromID: from, ToID: to, Kind: kind}
 	}
 
+	// entRich is like ent but carries the per-node enrichment data
+	// (signature / subtype / docstring / effects) the flow cards surface.
+	entRich := func(id, name, kind, file, sig, subtype, doc, effects string) graph.Entity {
+		e := ent(id, name, kind, file)
+		e.Signature = sig
+		e.Subtype = subtype
+		e.Properties = map[string]string{}
+		if doc != "" {
+			e.Properties["docstring"] = doc
+		}
+		if effects != "" {
+			e.Properties["effects"] = effects
+		}
+		return e
+	}
+
 	entities := []graph.Entity{
 		epEnt("ep", "GET /inspections", "routers.ts", "GET", "/inspections"),
 		ent("handler", "InspectionController.list", "Operation", "inspection.controller.ts"),
 		ent("service", "InspectionService.list", "Operation", "inspection.service.ts"),
-		ent("repo", "InspectionRepository.find", "Operation", "inspection.repository.ts"),
+		entRich("repo", "InspectionRepository.find", "Operation", "inspection.repository.ts",
+			"find(filter: Filter, opts: FindOpts): Promise<Inspection[]>", "DataAccess",
+			"Finds inspections matching the filter.\nSecond line ignored.", "db_read,db_write"),
 		ent("pipeline", "buildPipeline", "Operation", "inspection.repository.ts"),
 		ent("lookupA", "lookupInspection", "Operation", "inspection.repository.ts"),
 		ent("lookupB", "lookupAsset", "Operation", "inspection.repository.ts"),
@@ -392,6 +411,64 @@ func TestDownstreamDAG_VerbDisambiguation(t *testing.T) {
 	}
 	if nodeByName(dag.Nodes, "InspectionController.create") == nil {
 		t.Error("POST handler must be the crossed handler")
+	}
+}
+
+// TestDownstreamDAG_NodeEnrichment asserts the per-node flow-card fields
+// (#4348/#4350) populate from the resolved entity when present (signature,
+// subtype, doc, effects on the repository node; collection on the leaves) and
+// are OMITTED — not null-spammed — on a bare node that carries none of them.
+func TestDownstreamDAG_NodeEnrichment(t *testing.T) {
+	ts := newPathsTestServer(t, makeDownstreamDAGFixture())
+	defer ts.Close()
+
+	dag := fetchDAG(t, ts, "")
+
+	// Enriched repository node: signature + subtype + doc + effects all present.
+	repo := nodeByName(dag.Nodes, "InspectionRepository.find")
+	if repo == nil {
+		t.Fatal("repository node missing")
+	}
+	if repo.Signature != "find(filter: Filter, opts: FindOpts): Promise<Inspection[]>" {
+		t.Errorf("signature: got %q", repo.Signature)
+	}
+	if repo.Subtype != "DataAccess" {
+		t.Errorf("subtype: want DataAccess, got %q", repo.Subtype)
+	}
+	// Doc is the first line only, whitespace-collapsed.
+	if repo.Doc != "Finds inspections matching the filter." {
+		t.Errorf("doc: got %q", repo.Doc)
+	}
+	if len(repo.Effects) != 2 || repo.Effects[0] != "db_read" || repo.Effects[1] != "db_write" {
+		t.Errorf("effects: want [db_read db_write], got %v", repo.Effects)
+	}
+
+	// Bare node (no signature/subtype/doc/effects): every enrichment field omitted.
+	bare := nodeByName(dag.Nodes, "InspectionService.list")
+	if bare == nil {
+		t.Fatal("service node missing")
+	}
+	if bare.Signature != "" || bare.Subtype != "" || bare.Doc != "" ||
+		len(bare.Effects) != 0 || bare.Collection != "" {
+		t.Errorf("bare node must omit all enrichment fields, got %+v", bare)
+	}
+
+	// Collection-terminal node carries its collection/table name.
+	col := nodeByName(dag.Nodes, "Inspection")
+	if col == nil {
+		t.Fatal("collection leaf missing")
+	}
+	if col.Collection != "Inspection" {
+		t.Errorf("collection: want Inspection, got %q", col.Collection)
+	}
+
+	// Enrichment fields must not appear as null/empty keys in the wire JSON of a
+	// bare node (omitempty honored). Round-trip the bare node and assert keys absent.
+	raw, _ := json.Marshal(bare)
+	for _, k := range []string{`"signature"`, `"subtype"`, `"doc"`, `"effects"`, `"collection"`} {
+		if strings.Contains(string(raw), k) {
+			t.Errorf("bare node JSON must omit %s; got %s", k, raw)
+		}
 	}
 }
 

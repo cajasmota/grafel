@@ -44,7 +44,10 @@
 package dashboard
 
 import (
+	"encoding/json"
 	"net/http"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -73,6 +76,30 @@ type v2DAGNode struct {
 	// Terminal marks a leaf the walk deliberately stops at (a joined
 	// collection). The frontend renders these as sinks.
 	Terminal bool `json:"terminal,omitempty"`
+	// --- per-node enrichment (#4348/#4350 flow cards) ---------------------
+	// Read at query-time from the already-resolved graph entity (no reindex).
+	// Each is omitted when the underlying data is absent — never null-spammed —
+	// so a card shows what it can and nothing more.
+	//
+	// Signature is the function/method signature for Operation/Handler nodes,
+	// e.g. "buildLookupJoinSpec(spec, opts): Pipeline". Sourced from
+	// graph.Entity.Signature.
+	Signature string `json:"signature,omitempty"`
+	// Subtype is the finer kind/subtype when the entity carries one more
+	// specific than Kind (e.g. a DataAccess Operation). Sourced from
+	// graph.Entity.Subtype.
+	Subtype string `json:"subtype,omitempty"`
+	// Doc is a SHORT one-line summary (truncated ~140 chars) from the entity's
+	// docstring / description / summary property, for a card subtitle.
+	Doc string `json:"doc,omitempty"`
+	// Effects are the effect kinds for the node (db_read/db_write/http_out/fs/…)
+	// so a card can badge "DB read/write". Same source as the `effects` MCP
+	// tool: the links-effects sidecar (canonical), falling back to the
+	// effect-propagation properties stamped on the entity.
+	Effects []string `json:"effects,omitempty"`
+	// Collection is the collection/table name for a collection-terminal node
+	// (role=collection / JOINS_COLLECTION target).
+	Collection string `json:"collection,omitempty"`
 	// CollapsedChildren are the low-level builder/predicate calls collapsed
 	// into this node in spine mode (eq/gte/in/$lookup helpers, …). Empty in
 	// full mode. The frontend renders an expander; expanding does NOT need a
@@ -196,6 +223,11 @@ func (s *Server) handleV2PathDownstreamDAG(w http.ResponseWriter, r *http.Reques
 	}
 
 	b := newDAGBuilder(root.repo, mode, depth, includeSemantic)
+	// Per-node effect badges read from the canonical links-effects sidecar
+	// (same source as the `effects` MCP tool), loaded once per request and
+	// looked up by prefixed entity ID. Missing sidecar is the common,
+	// non-error case — addNode falls back to entity properties.
+	b.effects = loadDAGEffectsSidecar(grp.Name)
 	b.build(root)
 
 	writeV2JSON(w, http.StatusOK, v2OK(v2DownstreamDAGResponse{
@@ -300,6 +332,11 @@ type dagBuilder struct {
 	mode            string
 	maxDepth        int
 	includeSemantic bool
+
+	// effects is the per-entity effect index loaded from the links-effects
+	// sidecar, keyed by prefixed entity ID ("<slug>::<localID>"). nil when the
+	// sidecar is absent — addNode then falls back to entity properties.
+	effects map[string][]string
 
 	rootID string
 
@@ -470,6 +507,7 @@ func (b *dagBuilder) addNode(local, role string, terminal bool) {
 		n.Kind = dashStripScopePrefix(e.Kind)
 		n.File = e.SourceFile
 		n.Line = e.StartLine
+		b.enrichNode(n, e)
 	} else {
 		// Far side of a semantic edge (e.g. Class:Inspection joined via
 		// JOINS_COLLECTION) may not be a stamped entity. Surface it with the id
@@ -477,8 +515,138 @@ func (b *dagBuilder) addNode(local, role string, terminal bool) {
 		n.Name = leafNameFromID(local)
 		n.Kind = kindFromID(local)
 	}
+	// Collection name for a collection-terminal node (the JOINS_COLLECTION
+	// data sink) — whether or not the target was a stamped entity. Lets a card
+	// label the table/collection without re-deriving from kind.
+	if terminal && role == "collection" {
+		n.Collection = n.Name
+	}
 	b.nodes[pid] = n
 	b.nodeKeys = append(b.nodeKeys, pid)
+}
+
+// enrichNode populates the per-node flow-card fields (#4348/#4350) from the
+// already-resolved graph entity. Read generically from the universal entity
+// fields/properties (NOT language-specific) so every stack benefits; each
+// field is omitted when its source is absent (no null-spam).
+func (b *dagBuilder) enrichNode(n *v2DAGNode, e *graph.Entity) {
+	// signature — universal graph.Entity.Signature (set by every extractor that
+	// carries one). Same field inspect/effective_contract surface.
+	n.Signature = strings.TrimSpace(e.Signature)
+	// subtype — universal graph.Entity.Subtype, only when it adds information
+	// beyond the (scope-stripped) kind.
+	if st := strings.TrimSpace(e.Subtype); st != "" &&
+		!strings.EqualFold(st, dashStripScopePrefix(e.Kind)) {
+		n.Subtype = st
+	}
+	// doc — first available of the conventional doc property keys, truncated to
+	// a one-line summary. These are the same keys the scoring/docgen/graphql
+	// surfaces read (docstring / description / summary).
+	n.Doc = dagDocSummary(e)
+	// effects — canonical sidecar first (keyed by prefixed id), then the
+	// effect-propagation properties stamped on the entity (in-process case).
+	// Mirrors buildEffectsPayload's source precedence in the effects MCP tool.
+	if effs := b.effects[b.pid(e.ID)]; len(effs) > 0 {
+		n.Effects = effs
+	} else if e.Properties != nil {
+		if raw := strings.TrimSpace(e.Properties[effectPropertyKeyList]); raw != "" {
+			n.Effects = splitNonEmptyComma(raw)
+		}
+	}
+}
+
+// dagDocSummary returns a short one-line doc/summary for an entity from the
+// conventional doc property keys, truncated to dagDocMaxChars. Empty when the
+// entity carries no description. Collapses internal whitespace so a multi-line
+// docstring renders as a single card subtitle.
+func dagDocSummary(e *graph.Entity) string {
+	if e.Properties == nil {
+		return ""
+	}
+	var raw string
+	for _, k := range dagDocPropertyKeys {
+		if v := strings.TrimSpace(e.Properties[k]); v != "" {
+			raw = v
+			break
+		}
+	}
+	if raw == "" {
+		return ""
+	}
+	// First non-empty line, whitespace-collapsed.
+	if nl := strings.IndexAny(raw, "\r\n"); nl >= 0 {
+		raw = raw[:nl]
+	}
+	raw = strings.Join(strings.Fields(raw), " ")
+	if len(raw) > dagDocMaxChars {
+		raw = strings.TrimSpace(raw[:dagDocMaxChars]) + "…"
+	}
+	return raw
+}
+
+// dagDocPropertyKeys are the conventional doc/summary property keys, in
+// preference order, that extractors stamp on entities (mirrors the keys read by
+// internal/mcp/scoring.go + the docgen/graphql surfaces). Read generically so
+// any language's docstring/JSDoc/description flows through.
+var dagDocPropertyKeys = []string{"docstring", "description", "summary"}
+
+// effectPropertyKeyList mirrors links.EffectPropertyKeyList ("effects"): the
+// comma-joined effect names stamped by the effect-propagation pass. Inlined to
+// keep the dashboard decoupled from internal/links (it already decodes link
+// sidecars structurally — see handlers_dataflow.go).
+const effectPropertyKeyList = "effects"
+
+const dagDocMaxChars = 140
+
+// loadDAGEffectsSidecar loads the per-entity effect index from the
+// <group>-links-effects.json sidecar — the canonical effects source the
+// `effects` MCP tool reads. Returns a map keyed by prefixed entity ID
+// ("<slug>::<localID>") → effect names. nil on any failure (a missing sidecar
+// is the common, non-error case → addNode falls back to entity properties).
+// Decoded structurally so the dashboard does not import internal/links.
+func loadDAGEffectsSidecar(group string) map[string][]string {
+	if group == "" {
+		return nil
+	}
+	home := os.Getenv("HOME")
+	if home == "" {
+		var err error
+		if home, err = os.UserHomeDir(); err != nil {
+			return nil
+		}
+	}
+	path := filepath.Join(home, ".archigraph", "groups", group+"-links-effects.json")
+	buf, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var doc struct {
+		Entries []struct {
+			EntityID string   `json:"entity_id"`
+			Effects  []string `json:"effects"`
+		} `json:"entries"`
+	}
+	if err := json.Unmarshal(buf, &doc); err != nil {
+		return nil
+	}
+	idx := make(map[string][]string, len(doc.Entries))
+	for _, e := range doc.Entries {
+		if e.EntityID != "" && len(e.Effects) > 0 {
+			idx[e.EntityID] = e.Effects
+		}
+	}
+	return idx
+}
+
+// splitNonEmptyComma splits a comma-joined list, trimming and dropping empties.
+func splitNonEmptyComma(s string) []string {
+	var out []string
+	for _, p := range strings.Split(s, ",") {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }
 
 // collapseChild folds a builder/predicate callee into its parent node's
