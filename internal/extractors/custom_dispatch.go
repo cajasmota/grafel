@@ -214,6 +214,28 @@ func RunCustomExtractors(ctx context.Context, file FileInput) (entities []types.
 // the base entities in their dispatch order (already deterministic via
 // CustomExtractorsFor's sort).
 //
+// SUPERSEDE SEMANTICS (issue #4402). A naive "custom wins, base discarded"
+// replacement silently drops two kinds of state the base node carried and the
+// custom node usually does not:
+//
+//   - QualifiedName — the module-qualified name that drives byQualifiedName
+//     resolution and cross-repo joins. Custom/framework extractors typically
+//     emit a bare Name with no QualifiedName; dropping the base one leaves the
+//     surviving entity unresolvable by qualified name (root cause behind the
+//     #4379 settings→middleware late-binding workaround).
+//   - Structural edges — relationships already attached to the base node,
+//     notably the class→field CONTAINS membership emitted by the base
+//     class-body walk (#526). Dropping these orphans every field (root cause
+//     behind the #4366 per-language CONTAINS re-emit workaround).
+//
+// supersedeBase therefore carries base-only state onto the surviving custom
+// entity: it fills the QualifiedName (and other) gaps the custom node left
+// empty WITHOUT overriding any value the custom node provided, and UNIONS the
+// base node's relationships into the survivor (re-keying base self-edges from
+// the base ID to the survivor ID and deduping). This makes the dropped-state
+// bug impossible at the merge boundary rather than patching it per-language
+// downstream.
+//
 // This function does NOT perform cross-kind dedup — that is handled downstream
 // by run-extractor's deduplicateEntities pass which runs after this merge.
 func MergeWithCustom(baseEntities, customEntities []types.EntityRecord) []types.EntityRecord {
@@ -232,10 +254,12 @@ func MergeWithCustom(baseEntities, customEntities []types.EntityRecord) []types.
 	used := make(map[int]bool, len(customEntities))
 	merged := make([]types.EntityRecord, 0, len(baseEntities)+len(customEntities))
 
-	// Replace base entities in place when a custom entity shares the Name.
+	// Replace base entities in place when a custom entity shares the Name,
+	// carrying base-only state (QualifiedName + structural edges) onto the
+	// surviving custom entity (issue #4402).
 	for _, be := range baseEntities {
 		if idx, ok := customByName[be.Name]; ok && !used[idx] {
-			merged = append(merged, customEntities[idx])
+			merged = append(merged, supersedeBase(be, customEntities[idx]))
 			used[idx] = true
 			continue
 		}
@@ -250,4 +274,140 @@ func MergeWithCustom(baseEntities, customEntities []types.EntityRecord) []types.
 		merged = append(merged, ce)
 	}
 	return merged
+}
+
+// supersedeBase returns the surviving entity for the case where custom node
+// `ce` replaces base node `be` (same Name). The custom node's identity and all
+// of its non-empty fields WIN; base-only state is carried over to fill gaps:
+//
+//   - QualifiedName is taken from base when the custom node left it empty.
+//   - A conservative set of descriptive/structural string fields (Subtype,
+//     Signature, Description, Domain, Content, Language, SourceFile) are filled
+//     from base only when the custom node left them empty — never overridden.
+//   - StartLine/EndLine are filled from base when the custom node left them 0.
+//   - Properties and Metadata maps are gap-filled key-by-key (custom keys win).
+//   - Tags from base are unioned in (deduped).
+//   - Relationships are UNIONED: base relationships survive on the merged
+//     entity, with base self-edges (FromID == base.ID) re-keyed to the survivor
+//     ID so class→field CONTAINS membership is not dropped. Duplicates (same
+//     from/to/kind) are removed.
+//
+// The custom node's ID/Kind/Name are NOT changed — supersede preserves the
+// custom extractor's chosen identity.
+func supersedeBase(be, ce types.EntityRecord) types.EntityRecord {
+	survivor := ce
+
+	// Resolve the survivor's effective ID for self-edge re-keying. Custom
+	// nodes may not have stamped an ID yet at merge time; fall back to the
+	// deterministic ComputeID so re-keying targets a stable value.
+	survivorID := survivor.ID
+	if survivorID == "" {
+		survivorID = survivor.ComputeID()
+	}
+	baseID := be.ID
+	if baseID == "" {
+		baseID = be.ComputeID()
+	}
+
+	// (1) Preserve QualifiedName — the field that drives byQualifiedName
+	// resolution and cross-repo joins (issue #4379 root cause).
+	if survivor.QualifiedName == "" {
+		survivor.QualifiedName = be.QualifiedName
+	}
+
+	// (2) Gap-fill conservative base-only descriptive/structural fields. Only
+	// fill when the custom node left the field empty — never override a value
+	// the custom extractor deliberately provided.
+	if survivor.Subtype == "" {
+		survivor.Subtype = be.Subtype
+	}
+	if survivor.Signature == "" {
+		survivor.Signature = be.Signature
+	}
+	if survivor.Description == "" {
+		survivor.Description = be.Description
+	}
+	if survivor.Domain == "" {
+		survivor.Domain = be.Domain
+	}
+	if survivor.Content == "" {
+		survivor.Content = be.Content
+	}
+	if survivor.Language == "" {
+		survivor.Language = be.Language
+	}
+	if survivor.SourceFile == "" {
+		survivor.SourceFile = be.SourceFile
+	}
+	if survivor.StartLine == 0 {
+		survivor.StartLine = be.StartLine
+	}
+	if survivor.EndLine == 0 {
+		survivor.EndLine = be.EndLine
+	}
+
+	// (3) Gap-fill Properties / Metadata maps (custom keys win).
+	if len(be.Properties) > 0 {
+		if survivor.Properties == nil {
+			survivor.Properties = make(map[string]string, len(be.Properties))
+		}
+		for k, v := range be.Properties {
+			if _, ok := survivor.Properties[k]; !ok {
+				survivor.Properties[k] = v
+			}
+		}
+	}
+	if len(be.Metadata) > 0 {
+		if survivor.Metadata == nil {
+			survivor.Metadata = make(map[string]interface{}, len(be.Metadata))
+		}
+		for k, v := range be.Metadata {
+			if _, ok := survivor.Metadata[k]; !ok {
+				survivor.Metadata[k] = v
+			}
+		}
+	}
+
+	// (4) Union Tags (dedupe).
+	if len(be.Tags) > 0 {
+		seenTag := make(map[string]bool, len(survivor.Tags)+len(be.Tags))
+		for _, t := range survivor.Tags {
+			seenTag[t] = true
+		}
+		for _, t := range be.Tags {
+			if !seenTag[t] {
+				seenTag[t] = true
+				survivor.Tags = append(survivor.Tags, t)
+			}
+		}
+	}
+
+	// (5) Union relationships. Base edges must survive on the merged entity —
+	// re-key base self-edges (FromID == baseID) to the survivor ID so
+	// structural membership (class→field CONTAINS, #526) is preserved, then
+	// dedupe against the custom node's own relationships.
+	if len(be.Relationships) > 0 {
+		type relKey struct{ from, to, kind string }
+		seen := make(map[relKey]bool, len(survivor.Relationships)+len(be.Relationships))
+		for _, r := range survivor.Relationships {
+			seen[relKey{r.FromID, r.ToID, r.Kind}] = true
+		}
+		for _, r := range be.Relationships {
+			br := r
+			if br.FromID == baseID {
+				br.FromID = survivorID
+			}
+			if br.ToID == baseID {
+				br.ToID = survivorID
+			}
+			k := relKey{br.FromID, br.ToID, br.Kind}
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			survivor.Relationships = append(survivor.Relationships, br)
+		}
+	}
+
+	return survivor
 }

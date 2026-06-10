@@ -382,6 +382,95 @@ func TestMergeWithCustomPreservesBaseOrder(t *testing.T) {
 	}
 }
 
+// TestMergeWithCustomPreservesBaseQualifiedName proves the supersede rule
+// (issue #4402): when a custom node replaces a base node of the same Name but
+// leaves QualifiedName empty, the base node's QualifiedName is carried onto the
+// survivor. A non-empty custom QualifiedName is never overridden.
+func TestMergeWithCustomPreservesBaseQualifiedName(t *testing.T) {
+	base := []types.EntityRecord{
+		{Name: "Contract", Kind: "SCOPE.Component", QualifiedName: "app.models.Contract"},
+		{Name: "Order", Kind: "SCOPE.Component", QualifiedName: "app.models.Order"},
+	}
+	custom := []types.EntityRecord{
+		{Name: "Contract", Kind: "SCOPE.Schema", Subtype: "model"},                              // empty QName -> inherit
+		{Name: "Order", Kind: "SCOPE.Schema", Subtype: "model", QualifiedName: "custom.Order"},  // explicit QName -> keep
+	}
+	got := MergeWithCustom(base, custom)
+
+	for _, e := range got {
+		switch e.Name {
+		case "Contract":
+			if e.Kind != "SCOPE.Schema" {
+				t.Errorf("Contract should keep custom Kind, got %s", e.Kind)
+			}
+			if e.QualifiedName != "app.models.Contract" {
+				t.Errorf("Contract should inherit base QualifiedName, got %q", e.QualifiedName)
+			}
+		case "Order":
+			if e.QualifiedName != "custom.Order" {
+				t.Errorf("Order custom QualifiedName must not be overridden, got %q", e.QualifiedName)
+			}
+		}
+	}
+}
+
+// TestMergeWithCustomUnionsBaseEdges proves base structural edges survive the
+// merge (issue #4402): CONTAINS membership embedded on the base node (empty
+// FromID = implicitly owned) is unioned onto the survivor, and an explicit base
+// self-edge (FromID == base ID) is re-keyed to the survivor's ID. Duplicate
+// edges already on the custom node are not double-added.
+func TestMergeWithCustomUnionsBaseEdges(t *testing.T) {
+	baseNode := types.EntityRecord{Name: "Contract", Kind: "SCOPE.Component", SourceFile: "m.py"}
+	baseID := baseNode.ComputeID()
+	baseNode.ID = baseID
+	baseNode.Relationships = []types.RelationshipRecord{
+		// Implicitly-owned membership edge (empty FromID).
+		{ToID: "Contract.status", Kind: "CONTAINS"},
+		// Explicit self-edge keyed to the base node ID — must be re-keyed.
+		{FromID: baseID, ToID: "Contract.amount", Kind: "CONTAINS"},
+	}
+	base := []types.EntityRecord{baseNode}
+
+	customNode := types.EntityRecord{Name: "Contract", Kind: "SCOPE.Schema", Subtype: "model", SourceFile: "m.py"}
+	// A duplicate of the implicit membership edge — must not be double-added.
+	customNode.Relationships = []types.RelationshipRecord{
+		{ToID: "Contract.status", Kind: "CONTAINS"},
+	}
+	custom := []types.EntityRecord{customNode}
+
+	got := MergeWithCustom(base, custom)
+	if len(got) != 1 {
+		t.Fatalf("expected 1 merged entity, got %d", len(got))
+	}
+	surv := got[0]
+	if surv.ID == "" {
+		surv.ID = surv.ComputeID()
+	}
+	survID := surv.ComputeID()
+
+	var status, amount int
+	for _, r := range surv.Relationships {
+		if r.Kind != "CONTAINS" {
+			continue
+		}
+		switch r.ToID {
+		case "Contract.status":
+			status++
+		case "Contract.amount":
+			amount++
+			if r.FromID != survID {
+				t.Errorf("explicit base self-edge not re-keyed to survivor: FromID=%q want %q", r.FromID, survID)
+			}
+		}
+	}
+	if status != 1 {
+		t.Errorf("Contract.status CONTAINS should appear exactly once (deduped), got %d", status)
+	}
+	if amount != 1 {
+		t.Errorf("Contract.amount CONTAINS (base self-edge) should survive the merge, got %d", amount)
+	}
+}
+
 // ---- helpers ----------------------------------------------------------------
 
 // errorExtractor adapts a string into an error for inline test use.
