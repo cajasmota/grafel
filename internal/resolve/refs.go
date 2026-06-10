@@ -507,6 +507,21 @@ type Index struct {
 	// than binding to the wrong overload.
 	byNamespaceMember map[string]map[string]map[string]string
 
+	// byKotlinPkgMember[package][type_name][member_name] = entity_id and
+	// byKotlinPkgFunc[package][func_name] = entity_id power the Kotlin
+	// cross-package CALLS path (issue #4375). Like C# namespaces, Kotlin
+	// `package` declarations are NOT directory-bound — a file's declared
+	// package need not match its source directory — so neither the package-dir
+	// keyed byPackageMember nor a dotted-Name index (Kotlin function entities
+	// carry a BARE Name, not `Type.method`) can disambiguate a cross-package
+	// call. These indexes key on the Kotlin package stamped on each entity
+	// (Properties["kotlin_package"]), with the declaring type from
+	// Properties["kotlin_enclosing_type"] for members. A blank-string sentinel
+	// marks collisions so the resolver leaves the edge alone rather than binding
+	// to the wrong package's same-named symbol.
+	byKotlinPkgMember map[string]map[string]map[string]string
+	byKotlinPkgFunc   map[string]map[string]string
+
 	// PlatformVariants maps a canonical platform-variant entity ID to the
 	// slice of non-canonical variant entity IDs that were merged into it
 	// during BuildIndex. Populated when byPackageOperation detects a
@@ -722,6 +737,8 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
 		byNamespaceMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string),
 		PlatformVariants:   make(map[string][]string),
 	}
@@ -1071,6 +1088,48 @@ func BuildIndex(entities []types.EntityRecord) Index {
 						} else {
 							nsScopeBucket[member] = e.ID
 						}
+					}
+				}
+			}
+		}
+
+		// Kotlin package-scoped indexes (issue #4375). Kotlin function
+		// entities carry a BARE Name (not `Type.method`), so the dotted-Name
+		// block above never populates a Kotlin member; index from the
+		// kotlin_package / kotlin_enclosing_type properties instead. A member
+		// (kotlin_enclosing_type present) lands in byKotlinPkgMember
+		// [package][Type][bareName]; a top-level function lands in
+		// byKotlinPkgFunc[package][bareName]. Blank-string sentinel marks
+		// collisions. Components (classes/objects) are not indexed here — the
+		// resolver binds calls to functions, not to type declarations.
+		if e.Properties != nil && isOperationKind(e.Kind) {
+			if pkg := e.Properties["kotlin_package"]; pkg != "" && e.Name != "" {
+				if typ := e.Properties["kotlin_enclosing_type"]; typ != "" {
+					pkgBucket := idx.byKotlinPkgMember[pkg]
+					if pkgBucket == nil {
+						pkgBucket = make(map[string]map[string]string)
+						idx.byKotlinPkgMember[pkg] = pkgBucket
+					}
+					typeBucket := pkgBucket[typ]
+					if typeBucket == nil {
+						typeBucket = make(map[string]string)
+						pkgBucket[typ] = typeBucket
+					}
+					if existing, ok := typeBucket[e.Name]; ok && existing != e.ID {
+						typeBucket[e.Name] = "" // ambiguous within (pkg, type, member)
+					} else {
+						typeBucket[e.Name] = e.ID
+					}
+				} else {
+					funcBucket := idx.byKotlinPkgFunc[pkg]
+					if funcBucket == nil {
+						funcBucket = make(map[string]string)
+						idx.byKotlinPkgFunc[pkg] = funcBucket
+					}
+					if existing, ok := funcBucket[e.Name]; ok && existing != e.ID {
+						funcBucket[e.Name] = "" // ambiguous within (pkg, func)
+					} else {
+						funcBucket[e.Name] = e.ID
 					}
 				}
 			}

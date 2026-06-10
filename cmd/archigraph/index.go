@@ -4066,6 +4066,17 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	if csharpCrossNSCallRewrites > 0 {
 		fmt.Fprintf(os.Stderr, "resolver: csharp-cross-namespace rewrote=%d CALLS targets\n", csharpCrossNSCallRewrites)
 	}
+	// #4375 — Kotlin cross-package CALLS resolution. Binds qualified
+	// `pkg.Type.method()` / imported-top-level-fn / imported-or-aliased
+	// `Type.method()` / same-package companion-member edges stamped with
+	// kotlin_call_pkg + kotlin_call_type + call_leaf to a package-keyed
+	// member/operation index (Kotlin packages are not directory-bound). Same
+	// ordering constraints as the Go/Rust/C# passes: after BuildIndex, before
+	// the embedded-reference resolver.
+	kotlinCrossPkgCallRewrites := idx.ResolveKotlinCrossPackageCalls(merged)
+	if kotlinCrossPkgCallRewrites > 0 {
+		fmt.Fprintf(os.Stderr, "resolver: kotlin-cross-package rewrote=%d CALLS targets\n", kotlinCrossPkgCallRewrites)
+	}
 	allow := resolve.ExternalAllowlist(external.IsKnownExternalPackage)
 	embStats := resolve.ReferencesEmbeddedWithAllowlist(merged, idx, allow)
 	standStats := resolve.ReferencesWithAllowlist(pass2Rels, idx, allow)
