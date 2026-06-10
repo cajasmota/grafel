@@ -1075,6 +1075,14 @@ export interface PathPostureResponse {
   endpoints: PosturePayload[];
   /** null when no DRF/pack-known ViewSet backs this path. */
   contract: EffectiveContractResult | null;
+  /**
+   * #4486 — whether the (DRF/Django-only) effective-contract feature is
+   * meaningful for this path. False for NestJS / Express / Go / GraphQL
+   * endpoints, where the UI hides the section entirely rather than rendering
+   * DRF-specific empty-state wording. Optional for backward-compat with older
+   * payloads (treated as "unknown" → fall back to framework/contract shape).
+   */
+  contract_applicable?: boolean;
 }
 
 /** One orphan caller row. */

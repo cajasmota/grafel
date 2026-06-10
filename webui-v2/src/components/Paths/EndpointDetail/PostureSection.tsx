@@ -35,7 +35,22 @@ interface PostureSectionProps {
   contractOpen: boolean;
   onTogglePosture: () => void;
   onToggleContract: () => void;
+  /**
+   * #4486 — the endpoint's framework (e.g. "drf", "django", "nestjs",
+   * "express"). Used as a fallback applicability signal when the backend
+   * `contract_applicable` flag is absent (older payloads): the effective
+   * contract is a DRF/Django-only feature, so the section is hidden for
+   * everything else rather than showing DRF-specific empty-state wording.
+   */
+  framework?: string;
 }
+
+/**
+ * #4486 — the set of endpoint frameworks for which the (DRF-only)
+ * effective-contract feature is meaningful. Mirrors the backend
+ * `contractApplicableFrameworks` set in internal/dashboard/v2_paths_posture.go.
+ */
+const CONTRACT_FRAMEWORKS = new Set(["drf", "django"]);
 
 /* ----------------------------------------------------------------
    Small presentational helpers
@@ -238,6 +253,7 @@ export function PostureSection({
   contractOpen,
   onTogglePosture,
   onToggleContract,
+  framework,
 }: PostureSectionProps) {
   // Lazy-fetch only when at least one of the two sections is open.
   const enabledHash = postureOpen || contractOpen ? pathHash : null;
@@ -247,6 +263,20 @@ export function PostureSection({
   const postureCount = endpoints.filter((e) => e.has_posture).length;
   const contract = data?.contract ?? null;
   const contractCount = (contract?.groups ?? []).reduce((n, g) => n + g.handlers.length, 0);
+
+  // #4486 — Effective contract is a DRF/Django-only feature. Hide the section
+  // entirely (rather than render DRF-specific "is it a DRF ViewSet…" wording)
+  // for NestJS / Express / Go / GraphQL endpoints. Applicability is decided by:
+  //   1. the backend `contract_applicable` flag when present (authoritative); else
+  //   2. the endpoint framework (drf/django) as a fallback for older payloads.
+  // Before the payload loads, only hide when we already know from the framework
+  // prop that this is a non-DRF endpoint, so the section never flashes DRF prose.
+  const frameworkApplicable =
+    framework === undefined ? undefined : CONTRACT_FRAMEWORKS.has(framework.toLowerCase());
+  const contractApplicable =
+    data?.contract_applicable ?? frameworkApplicable ?? true;
+  // Once we have a resolved contract it is, by definition, applicable.
+  const showContractSection = contractApplicable || contract !== null;
 
   return (
     <>
@@ -280,7 +310,10 @@ export function PostureSection({
         )}
       </div>
 
-      {/* Effective contract */}
+      {/* Effective contract — #4486: DRF/Django-only. Omitted entirely for
+          non-DRF endpoints (NestJS/Express/Go/GraphQL) so we never surface the
+          DRF-specific empty-state wording on a non-Django group. */}
+      {showContractSection && (
       <div>
         <SectionHeader
           icon={<FileSignature size={14} />}
@@ -311,6 +344,7 @@ export function PostureSection({
           </div>
         )}
       </div>
+      )}
     </>
   );
 }

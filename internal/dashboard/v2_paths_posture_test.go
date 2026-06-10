@@ -148,6 +148,9 @@ func TestPathPosture_SurfacesFacets(t *testing.T) {
 	}
 
 	// --- Effective contract assertions (reused MRO/pack-aware projection) ---
+	if !resp.ContractApplicable {
+		t.Errorf("expected ContractApplicable=true for a DRF ViewSet path")
+	}
 	if resp.Contract == nil {
 		t.Fatalf("expected non-nil effective contract for a DRF ViewSet path")
 	}
@@ -209,6 +212,43 @@ func TestPathPosture_HonestEmpty(t *testing.T) {
 	}
 	if resp.Contract != nil {
 		t.Errorf("expected nil contract for non-ViewSet endpoint, got %+v", resp.Contract)
+	}
+	if resp.ContractApplicable {
+		t.Errorf("expected ContractApplicable=false for a non-DRF endpoint")
+	}
+}
+
+// TestPathPosture_NestJSNotApplicable — #4486: a NestJS controller endpoint must
+// NOT surface the DRF-only effective contract (nor any DRF empty-state prose):
+// the contract is nil and ContractApplicable is false so the UI hides the
+// section entirely.
+func TestPathPosture_NestJSNotApplicable(t *testing.T) {
+	const path = "/api/users"
+	doc := &graph.Document{
+		Repo: "svc",
+		Entities: []graph.Entity{
+			{
+				ID:   "ep:users:get",
+				Name: "UsersController.findAll",
+				Kind: "http_endpoint",
+				Properties: map[string]string{
+					"path":      path,
+					"verb":      "GET",
+					"framework": "nestjs",
+				},
+				SourceFile: "src/users/users.controller.ts",
+				StartLine:  10,
+			},
+		},
+	}
+	srv := injectPostureGroup(t, "g-nest", doc)
+	resp := fetchPosture(t, srv, "g-nest", hashStr(path))
+
+	if resp.ContractApplicable {
+		t.Errorf("expected ContractApplicable=false for a NestJS endpoint")
+	}
+	if resp.Contract != nil {
+		t.Errorf("expected nil contract for a NestJS endpoint (no DRF prose leak), got %+v", resp.Contract)
 	}
 }
 

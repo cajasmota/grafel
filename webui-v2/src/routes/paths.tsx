@@ -1011,6 +1011,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
           contractOpen={openSections.contract}
           onTogglePosture={() => toggleSection("posture")}
           onToggleContract={() => toggleSection("contract")}
+          framework={detail.handlers[0]?.framework}
         />
 
         {/* 2. Parameters — ShapeTree subtree (#1935 Phase 1).

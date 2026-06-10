@@ -56,6 +56,44 @@ type v2PathPostureResponse struct {
 	// ViewSet, or null when no DRF/pack-known ViewSet backs this path. Note
 	// carries the honest-partial explanation when no groups resolved.
 	Contract *mcp.EffectiveContractResult `json:"contract"`
+	// ContractApplicable reports whether the effective-contract feature is
+	// meaningful for this path at all (#4486). It is a DRF/Django-only feature;
+	// for NestJS / Express / Go / GraphQL endpoints it is N/A and the UI hides
+	// the section entirely rather than rendering DRF-specific empty-state prose.
+	// True only when at least one matched endpoint is a DRF/Django framework.
+	ContractApplicable bool `json:"contract_applicable"`
+}
+
+// contractApplicableFrameworks is the set of endpoint framework keys for which
+// the effective-contract feature (DRF router-expansion + serializer/permission
+// MRO resolution) is meaningful. Everything else (nestjs/express/fastapi/flask/
+// go/graphql/…) gets a clean N/A so the dashboard never shows DRF wording on a
+// non-Django endpoint (#4486).
+var contractApplicableFrameworks = map[string]bool{
+	"drf":    true,
+	"django": true,
+}
+
+// isContractApplicableEndpoint reports whether the effective-contract feature is
+// meaningful for an endpoint entity (#4486). It is DRF/Django-only, detected by
+// EITHER the endpoint's `framework` property (drf/django) OR a DRF router-
+// expansion marker (`pattern_type=drf_router_expanded` / a `drf_view_method`
+// attribution), which router-expanded routes carry even when they leave the
+// generic `framework` prop unset.
+func isContractApplicableEndpoint(e *graph.Entity) bool {
+	if e == nil || e.Properties == nil {
+		return false
+	}
+	if contractApplicableFrameworks[strings.ToLower(e.Properties["framework"])] {
+		return true
+	}
+	if strings.Contains(strings.ToLower(e.Properties["pattern_type"]), "drf") {
+		return true
+	}
+	if e.Properties["drf_view_method"] != "" {
+		return true
+	}
+	return false
 }
 
 // handleV2PathPosture — GET /api/v2/groups/:id/paths/:hash/posture
@@ -96,6 +134,10 @@ func (s *Server) handleV2PathPosture(w http.ResponseWriter, r *http.Request) {
 	// ViewSet (deduplicated). Lower-cased leaf is the resolution key.
 	contractTargets := []string{}
 	seenTarget := map[string]bool{}
+	// contractApplicable is OR-ed across the matched endpoints: the effective
+	// contract feature is shown only when at least one endpoint is DRF/Django
+	// (#4486). Stays false for NestJS / Express / Go / GraphQL paths.
+	contractApplicable := false
 
 	for _, repo := range sortedRepos(grp) {
 		if repo.Doc == nil {
@@ -123,6 +165,11 @@ func (s *Server) handleV2PathPosture(w http.ResponseWriter, r *http.Request) {
 			}
 			if pathStr == "" {
 				pathStr = path
+			}
+
+			// Effective-contract applicability (#4486): DRF/Django-only feature.
+			if isContractApplicableEndpoint(e) {
+				contractApplicable = true
 			}
 
 			// --- Posture: assemble from the endpoint entity itself AND its
@@ -214,11 +261,19 @@ func (s *Server) handleV2PathPosture(w http.ResponseWriter, r *http.Request) {
 		contract.Groups = append(contract.Groups, res.Groups...)
 	}
 
+	// #4486: never surface the (DRF-specific) effective contract — including its
+	// "is it a DRF ViewSet…" empty-state prose — on a non-DRF/Django endpoint.
+	// Resolved groups are only kept when the path is actually DRF/Django-backed.
+	if !contractApplicable {
+		contract = nil
+	}
+
 	writeV2JSON(w, http.StatusOK, v2OK(v2PathPostureResponse{
-		PathHash:  pathHash,
-		Path:      pathStr,
-		Endpoints: postures,
-		Contract:  contract,
+		PathHash:           pathHash,
+		Path:               pathStr,
+		Endpoints:          postures,
+		Contract:           contract,
+		ContractApplicable: contractApplicable,
 	}))
 }
 
