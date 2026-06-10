@@ -156,28 +156,132 @@ func synthesizeRailsRoutes(content, routesPath string, emit emitFileFn, emitReso
 	walkRailsBlocks(content, "", "", rootDir, emit, emitResource)
 }
 
+// sinatraNamespaceOpenRe matches a sinatra-contrib `namespace` opener:
+//
+//	namespace '/api' do
+//	namespace "/v1" do
+//
+// Capture group 1 is the path fragment (string literal). Non-string-literal
+// namespaces (e.g. `namespace %r{/foo}` regex routes) are deliberately not
+// matched — those are rare and would need regex-route handling out of scope here.
+var sinatraNamespaceOpenRe = regexp.MustCompile(
+	`(?m)^\s*namespace\s+['"]([^'"\n\r]{1,200})['"]\s*do\b`,
+)
+
 // synthesizeSinatra scans a Ruby file for Sinatra verb-block registrations
-// and calls emit per (verb, canonical-path, "sinatra", "", "",
-// handlerFile=path, defLine=line-of-block). The handler is the block body
-// in the same file, so source_file/start_line attribution lands on the
-// registration line — which IS the handler line by construction.
+// and emits one inline-handler endpoint per route. Sinatra route handlers are
+// ALWAYS anonymous blocks (`get '/x' do ... end`) — there is no named handler
+// method — so every route is signalled as an inline handler (#4385). Supports
+// classic top-level routes, modular `class App < Sinatra::Base` routes, and
+// sinatra-contrib `namespace '/api' do ... end` path-prefix composition.
 func synthesizeSinatra(content, path string, emit emitFileFn) {
 	if !sinatraGateRe.MatchString(content) {
 		return
 	}
+	walkSinatraBlocks(content, "", path, emit)
+}
+
+// walkSinatraBlocks recursively emits verb routes at the current `pathPrefix`,
+// then descends into nested `namespace` blocks composing their path fragment
+// onto the prefix. Routes inside namespace blocks are stripped from the body
+// scanned at this level so they are emitted exactly once, with the correct
+// prefix, by the recursive call (mirrors walkRailsBlocks).
+func walkSinatraBlocks(content, pathPrefix, path string, emit emitFileFn) {
+	// Emit verb routes that are NOT inside a nested namespace block at this level.
+	flat := stripSinatraNamespaceBlocks(content)
+	emitSinatraVerbRoutes(flat, pathPrefix, path, emit)
+	// Recurse into each nested namespace block with the composed prefix.
+	for _, blk := range findSinatraNamespaceBlocks(content) {
+		childPrefix := joinPathFragments(pathPrefix, blk.name)
+		walkSinatraBlocks(blk.body, childPrefix, path, emit)
+	}
+}
+
+// emitSinatraVerbRoutes emits one inline-handler endpoint for each verb-block
+// route literal in content, prefixing the route with pathPrefix before
+// canonicalization.
+func emitSinatraVerbRoutes(content, pathPrefix, path string, emit emitFileFn) {
 	for _, idx := range sinatraVerbBlockRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(idx) < 6 {
 			continue
 		}
 		verb := strings.ToUpper(content[idx[2]:idx[3]])
 		raw := content[idx[4]:idx[5]]
-		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
+		full := raw
+		if pathPrefix != "" {
+			full = joinPathFragments(pathPrefix, raw)
+		}
+		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, full)
 		// def_line points at the verb block's own line; the synthetic's
 		// source_file is the registration file (which is also the
 		// handler file for Sinatra).
+		//
+		// #4385 — a Sinatra route handler is ALWAYS an anonymous block
+		// (`get '/x' do ... end`); there is no named handler method the
+		// resolver could bind to. Signal refKind=inlineHandlerRefKind (empty
+		// refName) so makeEmit synthesizes a stable `<inline VERB /path>`
+		// handler entity + a same-file IMPLEMENTS bridge, instead of leaving
+		// the endpoint a handler-less graph island. handlerFile is left empty
+		// on purpose: the block body lives in THIS file, so the same-file
+		// synthesis-time bridge is correct and must NOT be dropped as a
+		// cross-file hint (emitFile drops the bridge only when handlerFile != "").
 		defLine := lineOfOffset(content, idx[2])
-		emit(verb, canonical, "sinatra", "", "", path, defLine)
+		emit(verb, canonical, "sinatra", inlineHandlerRefKind, "", "", defLine)
 	}
+}
+
+// sinatraBlock describes one `namespace` block discovered in a Sinatra source.
+type sinatraBlock struct {
+	name      string // path fragment, e.g. "/api"
+	body      string // content between `do` and the matching `end`
+	bodyStart int    // absolute byte offset of body in the scanned content
+	bodyEnd   int    // absolute byte offset just past body
+}
+
+// findSinatraNamespaceBlocks returns every top-level `namespace '/x' do ... end`
+// block in content, pairing each opener with its matching `end` by counting
+// block tokens (reusing extractRailsBlockBody's do/end balancer).
+func findSinatraNamespaceBlocks(content string) []sinatraBlock {
+	var out []sinatraBlock
+	i := 0
+	for i < len(content) {
+		m := sinatraNamespaceOpenRe.FindStringSubmatchIndex(content[i:])
+		if m == nil {
+			break
+		}
+		name := content[i+m[2] : i+m[3]]
+		bodyStart := i + m[1]
+		body, after, ok := extractRailsBlockBody(content, bodyStart)
+		if !ok {
+			i = i + m[1]
+			continue
+		}
+		out = append(out, sinatraBlock{
+			name:      name,
+			body:      body,
+			bodyStart: bodyStart,
+			bodyEnd:   bodyStart + len(body),
+		})
+		i = after
+	}
+	return out
+}
+
+// stripSinatraNamespaceBlocks blanks out the bodies of top-level namespace
+// blocks (preserving line/offset counts) so verb routes inside them are not
+// double-emitted at the un-prefixed parent scope.
+func stripSinatraNamespaceBlocks(content string) string {
+	out := []byte(content)
+	for _, blk := range findSinatraNamespaceBlocks(content) {
+		// Blank the body in-place. Preserving newlines (blank only non-newline
+		// bytes) keeps lineOfOffset correct for sibling routes at this scope.
+		for j := blk.bodyStart; j < blk.bodyEnd && j < len(out); j++ {
+			if out[j] != '\n' && out[j] != '\r' {
+				out[j] = ' '
+			}
+		}
+	}
+	return string(out)
 }
 
 // ---------------------------------------------------------------------------
