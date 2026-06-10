@@ -2479,6 +2479,103 @@ func (idx Index) ResolveCSharpCrossNamespaceCalls(records []types.EntityRecord) 
 	return rewrites
 }
 
+// ResolveKotlinCrossPackageCalls binds Kotlin CALLS edges that reach a
+// function/method in another package through a qualifier on a navigation
+// invocation — a fully-qualified `com.app.services.OrderService.place()`, an
+// imported top-level function (`import com.app.services.placeOrder;
+// placeOrder()`), an imported/aliased type member (`import
+// com.app.services.Orders; Orders.place()`), or a same-package companion/object
+// member (`OrderService.create()`) — to the callee's entity ID.
+//
+// Background (issue #4375): the Kotlin extractor's call target is the trailing
+// simple_identifier of the navigation chain, so a multi-segment qualified call
+// collapses to the bare leaf method name (`place`). A bare name resolves through
+// the global byName index, which goes ambiguous the moment two packages define a
+// same-named function/type (`OrderService.place` in both com.app.services and
+// com.app.billing) — so the CALLS edge drops and the callee package looks
+// falsely uncalled. This is the Kotlin analogue of the Go cross-package (#4332),
+// Rust cross-module (#4373), and C# cross-namespace (#4374) qualifier drops.
+//
+// Like C# namespaces, Kotlin `package` declarations are NOT directory-bound, so
+// this pass keys on the Kotlin PACKAGE via byKotlinPkgMember[pkg][Type][leaf]
+// (members) and byKotlinPkgFunc[pkg][leaf] (top-level functions) rather than a
+// source directory. The extractor stamps, on each qualified CALLS edge:
+//   - Properties["kotlin_call_pkg"]: ";"-separated candidate packages (a
+//     fully-qualified path yields one; a `Type.method()` member call yields the
+//     imported-type / file packages, most-specific first).
+//   - Properties["kotlin_call_type"]: the declaring type (absent for a
+//     top-level-function call).
+//   - Properties["call_leaf"]: the bare callee name.
+//
+// Conservative by construction, mirroring the Go/Rust/C# passes:
+//   - Only edges carrying kotlin_call_pkg AND call_leaf participate.
+//   - Edges whose ToID is already a hex ID are left alone (idempotent).
+//   - The first candidate package that yields an unambiguous non-blank id wins;
+//     if two candidates resolve to DIFFERENT ids the edge is left alone
+//     (ambiguous). A blank-string sentinel (collision) is skipped, never guessed.
+//
+// Must run AFTER BuildIndex (needs the Kotlin package indexes) and BEFORE the
+// embedded-reference resolver so the rewritten hex ID is seen as resolved.
+// Returns the number of edges rewritten.
+func (idx Index) ResolveKotlinCrossPackageCalls(records []types.EntityRecord) int {
+	if len(idx.byKotlinPkgMember) == 0 && len(idx.byKotlinPkgFunc) == 0 {
+		return 0
+	}
+	rewrites := 0
+	for k := range records {
+		rec := &records[k]
+		for j := range rec.Relationships {
+			r := &rec.Relationships[j]
+			if r.Kind != "CALLS" || r.Properties == nil {
+				continue
+			}
+			pkgRaw := r.Properties["kotlin_call_pkg"]
+			leaf := r.Properties["call_leaf"]
+			if pkgRaw == "" || leaf == "" {
+				continue
+			}
+			if r.ToID == "" || isHexID(r.ToID) {
+				continue // already resolved
+			}
+			typ := r.Properties["kotlin_call_type"] // "" => top-level function
+			resolved := ""
+			conflict := false
+			for _, pkg := range strings.Split(pkgRaw, ";") {
+				if pkg == "" {
+					continue
+				}
+				id := ""
+				if typ != "" {
+					if pkgBucket, ok := idx.byKotlinPkgMember[pkg]; ok {
+						if typeBucket, ok := pkgBucket[typ]; ok {
+							id = typeBucket[leaf] // "" => collision sentinel or miss
+						}
+					}
+				} else {
+					if pkgBucket, ok := idx.byKotlinPkgFunc[pkg]; ok {
+						id = pkgBucket[leaf] // "" => collision sentinel or miss
+					}
+				}
+				if id == "" {
+					continue
+				}
+				if resolved == "" {
+					resolved = id
+				} else if resolved != id {
+					conflict = true
+					break
+				}
+			}
+			if conflict || resolved == "" {
+				continue
+			}
+			r.ToID = resolved
+			rewrites++
+		}
+	}
+	return rewrites
+}
+
 // lookupUniqueMember returns the entity id for scope.member if and only if it
 // is unique across the whole crate (every byMember file-bucket that defines it
 // agrees on the same id). Returns "" on miss or any disagreement (ambiguous).

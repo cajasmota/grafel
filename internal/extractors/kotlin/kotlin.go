@@ -62,7 +62,30 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
 	root := file.Tree.RootNode()
-	walk(root, file, &entities)
+	// #4375 — per-file cross-package context (package + imports). Threaded into
+	// the call extractor so a qualified `pkg.Type.method()` / imported-fn /
+	// `Type.method()` call stamps its resolved (package[, type], leaf) onto the
+	// CALLS edge for the resolver's package-keyed bind.
+	crossCtx := buildKotlinCrossCtx(root, file.Content)
+	walk(root, file, &entities, crossCtx)
+
+	// #4375 — stamp every Kotlin entity with its file's package. Kotlin is
+	// one-package-per-file, so a post-pass is exact. The resolver's
+	// package-keyed cross-package index is built from these stamps.
+	if crossCtx != nil && crossCtx.filePackage != "" {
+		for i := range entities {
+			e := &entities[i]
+			if e.Language != "kotlin" || e.Subtype == "import" || e.Subtype == "file" {
+				continue
+			}
+			if e.Properties == nil {
+				e.Properties = map[string]string{}
+			}
+			if _, ok := e.Properties["kotlin_package"]; !ok {
+				e.Properties["kotlin_package"] = crossCtx.filePackage
+			}
+		}
+	}
 
 	// Track A (analog of #641/#650/#670 for Kotlin) — REFERENCES-edge
 	// emission. Runs after every primary-pass entity is in place so the
@@ -107,7 +130,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // per function declared inside the body, and every function body is scanned
 // for call_expression / call_suffix nodes that yield CALLS edges with stub
 // to_id. Imports are still NOT emitted.
-func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx *kotlinCrossCtx) {
 	if node == nil {
 		return
 	}
@@ -126,7 +149,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		rec, ok := buildComponent(node, file, subtype)
 		if !ok {
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, out)
+				walk(node.Child(int(i)), file, out, ctx)
 			}
 			return
 		}
@@ -158,7 +181,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 					}
 					continue
 				}
-				walk(ch, file, out)
+				walk(ch, file, out, ctx)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
@@ -171,6 +194,12 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 					// when two Kotlin classes/objects in different files declare
 					// same-named functions.
 					toID = extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
+					// #4375 — stamp the enclosing type so the resolver's
+					// package-keyed member index can bind a cross-package
+					// `Type.method()` call. Only the DIRECT member is stamped:
+					// nested-class members were already stamped by the inner
+					// walk (which runs first), so we skip any already set.
+					stampKotlinEnclosingType(child, rec.Name)
 				case child.Kind == "SCOPE.Schema" && child.Subtype == "field":
 					// Issue #690 — CONTAINS for class-body properties,
 					// mirroring the Python fix from #689.
@@ -191,7 +220,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		rec, ok := buildComponent(node, file, "object")
 		if !ok {
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, out)
+				walk(node.Child(int(i)), file, out, ctx)
 			}
 			return
 		}
@@ -210,7 +239,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 					}
 					continue
 				}
-				walk(ch, file, out)
+				walk(ch, file, out, ctx)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
@@ -223,6 +252,9 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 					// when two Kotlin classes/objects in different files declare
 					// same-named functions.
 					toID = extractor.BuildOperationStructuralRef("kotlin", file.Path, child.Name)
+					// #4375 — stamp the enclosing object/companion type for the
+					// resolver's package-keyed member index (innermost wins).
+					stampKotlinEnclosingType(child, rec.Name)
 				case child.Kind == "SCOPE.Schema" && child.Subtype == "field":
 					// Issue #690 — CONTAINS for object-body properties.
 					toID = extractor.BuildSchemaFieldStructuralRef("kotlin", file.Path, child.Name)
@@ -241,7 +273,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	case "function_declaration":
 		if rec, ok := buildOperation(node, file); ok {
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(findFunctionBody(node), file.Content, rec.Name)...)
+				extractCallRelationships(findFunctionBody(node), file.Content, rec.Name, ctx)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -254,7 +286,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 	}
 
 	for i := range node.ChildCount() {
-		walk(node.Child(int(i)), file, out)
+		walk(node.Child(int(i)), file, out, ctx)
 	}
 }
 
@@ -305,7 +337,17 @@ var kotlinKeywordStop = map[string]bool{
 // simple_identifier of the call's expression. FromID is left empty so
 // buildDocument substitutes the caller's entity ID at emit time. Self-recursion
 // is dropped to match Python/Go extractor dedup semantics.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+//
+// When ctx is non-nil (issue #4375), each call is additionally probed for a
+// statically-qualified cross-package shape — a fully-qualified
+// `com.app.services.OrderService.place()`, an imported top-level function, an
+// imported/aliased type member `Orders.place()`, or a same-package
+// companion/object member `OrderService.create()`. A resolvable call carries
+// `kotlin_call_pkg` (";"-separated candidate packages, most-specific first),
+// `kotlin_call_type` (declaring type; absent for a top-level-function call), and
+// `call_leaf` (the bare callee name) so the resolver can bind it through the
+// package-keyed index instead of the ambiguous bare-name path.
+func extractCallRelationships(body *sitter.Node, src []byte, callerName string, ctx *kotlinCrossCtx) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -313,6 +355,9 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	if len(calls) == 0 {
 		return nil
 	}
+	// Instance-receiver guard inputs: names whose head segment marks an
+	// instance receiver (`order.place()`) rather than a static type qualifier.
+	localNames := kotlinLocalValueNames(body, src)
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
@@ -333,13 +378,61 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 		seen[target] = true
 		// Line is 1-based: tree-sitter StartPoint().Row is 0-based.
 		callLine := strconv.Itoa(int(call.StartPoint().Row) + 1)
+		props := map[string]string{"line": callLine}
+		// #4375 — stamp the cross-package qualifier when statically resolvable.
+		if ctx != nil {
+			if q := ctx.resolveKotlinQualifiedCall(call, src, localNames); q != nil &&
+				q.leaf == target && len(q.pkgCandidates) > 0 {
+				props["kotlin_call_pkg"] = strings.Join(q.pkgCandidates, ";")
+				props["call_leaf"] = q.leaf
+				if q.typ != "" {
+					props["kotlin_call_type"] = q.typ
+				}
+			}
+		}
 		rels = append(rels, types.RelationshipRecord{
 			ToID:       target,
 			Kind:       "CALLS",
-			Properties: map[string]string{"line": callLine},
+			Properties: props,
 		})
 	}
 	return rels
+}
+
+// stampKotlinEnclosingType records the declaring type name on a member
+// Operation entity (issue #4375) so the resolver's package-keyed member index
+// can bind a cross-package `Type.method()` call. Idempotent and innermost-wins:
+// a nested-class member already stamped by the inner walk is left untouched, so
+// the outer class does not overwrite the correct (inner) enclosing type.
+func stampKotlinEnclosingType(e *types.EntityRecord, typeName string) {
+	if e == nil || typeName == "" {
+		return
+	}
+	if e.Properties == nil {
+		e.Properties = map[string]string{}
+	}
+	if _, ok := e.Properties["kotlin_enclosing_type"]; !ok {
+		e.Properties["kotlin_enclosing_type"] = typeName
+	}
+}
+
+// kotlinLocalValueNames collects the in-scope value names declared inside a
+// function body — parameters are not reachable from the body node, so this
+// gathers `val`/`var` property_declaration and variable_declaration names. A
+// head segment matching one of these marks an INSTANCE receiver, which the
+// cross-package qualifier resolver must skip (no false static-qualifier stamp).
+func kotlinLocalValueNames(body *sitter.Node, src []byte) map[string]bool {
+	names := map[string]bool{}
+	for _, vd := range findAllNodes(body, "variable_declaration", "property_declaration") {
+		for i := 0; i < int(vd.ChildCount()); i++ {
+			ch := vd.Child(i)
+			if ch.Type() == "simple_identifier" {
+				names[string(src[ch.StartByte():ch.EndByte()])] = true
+				break
+			}
+		}
+	}
+	return names
 }
 
 // kotlinCallTarget resolves the callee name from a call_expression node.
