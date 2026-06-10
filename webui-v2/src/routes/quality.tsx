@@ -140,11 +140,6 @@ function ErrorState({ what }: { what: string }) {
 // § Explanation primitives (#4507) — per-tab headers + per-metric tooltips
 // ---------------------------------------------------------------------------
 
-/** A short header line under the tab strip explaining what the tab shows. */
-function TabHeader({ children }: { children: React.ReactNode }) {
-  return <p className="text-sm text-text-3 -mt-1 mb-1 max-w-3xl">{children}</p>;
-}
-
 /**
  * A hoverable info icon that reveals a metric definition: what it means, how
  * it's computed, and the goal. Sits next to a metric label/title.
@@ -717,11 +712,16 @@ function DependenciesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <TabHeader>
+      <ScreenDescription>
         Dependency hygiene — declared third-party packages cross-checked against
         what the code actually imports. Surfaces unused (declared, never imported)
         and phantom (imported, never declared) packages per repository.
-      </TabHeader>
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_import_cycles"
+        example="An agent checks for circular imports before splitting or moving a module."
+      />
 
       <div className="flex flex-wrap gap-3">
         <MetricStat
@@ -861,11 +861,16 @@ function AntiPatternsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <TabHeader>
+      <ScreenDescription>
         Anti-patterns — code shapes the indexer flags as likely performance or
         correctness smells. Currently surfaces N+1 query patterns: an ORM query
         executed inside a loop, which issues one query per iteration.
-      </TabHeader>
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_graph_patterns"
+        example="An agent scans for recurring anti-patterns before approving a change."
+      />
 
       <div className="flex flex-wrap gap-3">
         <MetricStat
@@ -966,11 +971,16 @@ function GodNodesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <TabHeader>
+      <ScreenDescription>
         God-nodes — high-centrality hub entities that many other things depend on
         or route through. They concentrate risk: a change here ripples widely.
         Ranked by PageRank over the dependency graph; refactor candidates.
-      </TabHeader>
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_impact_radius"
+        example="An agent measures how far a change to a hub entity ripples before touching it."
+      />
 
       <div className="flex flex-wrap gap-3">
         <MetricStat
@@ -1186,12 +1196,17 @@ function TrendsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <TabHeader>
+      <ScreenDescription>
         Trends — how each quality metric moves across successive re-indexes. A
         sparkline appears only once there's genuine multi-snapshot history;
         freshly-indexed groups show the current value with a goal until history
         builds up.
-      </TabHeader>
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_test_coverage"
+        example="An agent tracks whether test coverage is trending up or down across re-indexes."
+      />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {data.metrics.map((m) => (
           <MetricTrendCard key={m.label} m={m} />
@@ -1237,6 +1252,7 @@ export default function QualityScreen() {
               {!coverage.isLoading && coverage.data && (
                 <TabCount
                   value={Math.round(coverage.data.coverage_pct)}
+                  suffix="%"
                   tone="neutral"
                   label="percent of production entities reached by a test"
                 />

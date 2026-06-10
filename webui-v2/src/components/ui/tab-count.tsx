@@ -14,6 +14,12 @@ export interface TabCountProps {
   label: string;
   /** When true, render nothing if `value === 0`. Defaults to false. */
   hideOnZero?: boolean;
+  /**
+   * Optional unit glyph appended directly after the value (e.g. "%"), so a
+   * badge can render "18%" rather than a bare "18". Included in the
+   * aria-label for screen readers.
+   */
+  suffix?: string;
 }
 
 /**
@@ -31,6 +37,7 @@ export function TabCount({
   active = false,
   label,
   hideOnZero = false,
+  suffix,
 }: TabCountProps) {
   if (hideOnZero && value === 0) return null;
 
@@ -44,7 +51,7 @@ export function TabCount({
   return (
     <span
       title={label}
-      aria-label={`${value} ${label}`}
+      aria-label={`${value}${suffix ?? ""} ${label}`}
       className={cn(
         "ml-1.5 inline-flex items-center justify-center min-w-[18px] h-[18px] px-1.5",
         "rounded-full text-[11px] font-medium tabular-nums leading-none transition-colors",
@@ -54,6 +61,7 @@ export function TabCount({
       )}
     >
       {value}
+      {suffix}
     </span>
   );
 }

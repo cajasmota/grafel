@@ -61,6 +61,7 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
+  AgentUsage,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -752,6 +753,11 @@ export default function DataflowScreen() {
 
           <div className="flex-1 min-h-0 overflow-y-auto ag-scroll px-4 py-4 space-y-4">
             <PurposeHeader />
+
+            <AgentUsage
+              tool="archigraph_data_flows"
+              example="An agent reviewing a PR checks if user input reaches a DB/shell sink unsanitized."
+            />
 
             {/* Summary */}
             <div className="flex flex-wrap gap-3">

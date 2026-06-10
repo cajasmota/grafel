@@ -16,7 +16,16 @@ import { toast } from "sonner";
 
 import { useCandidates, useSaveHint } from "@/hooks/use-pending";
 import { usePendingStore } from "@/store/use-pending-store";
-import { Badge, Button, Tabs, TabsList, TabsTrigger, Skeleton } from "@/components/ui";
+import {
+  Badge,
+  Button,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Skeleton,
+  ScreenDescription,
+  AgentUsage,
+} from "@/components/ui";
 import { cn } from "@/lib/utils";
 
 import type {
@@ -710,6 +719,19 @@ export default function PendingScreen() {
             {totalUnresolved} unresolved
           </Badge>
         )}
+      </div>
+
+      {/* Intro */}
+      <div className="shrink-0 px-4 pt-3 space-y-2 border-b border-border-soft bg-bg">
+        <ScreenDescription>
+          Pending candidates — edits archigraph has queued but not yet applied to
+          the graph: repairs (resolving an unresolved reference) and enrichments
+          (adding inferred metadata). Review each, then accept or dismiss it.
+        </ScreenDescription>
+        <AgentUsage
+          tool="archigraph_enrichments"
+          example="An agent checks pending enrichments/repairs queued for the graph."
+        />
       </div>
 
       {/* Tab bar */}

@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { X, RotateCcw, SlidersHorizontal, Boxes } from "lucide-react";
-import { SearchInput, Pill, Kbd } from "@/components/ui";
+import { SearchInput, Pill, Kbd, ScreenDescription, AgentUsage } from "@/components/ui";
 import { useGraph } from "@/hooks/use-graph";
 import { useModuleAnalysis } from "@/hooks/use-module-analysis";
 import {
@@ -540,6 +540,22 @@ export default function GraphScreen() {
         </div>
       </div>
 
+      {/* Intro / legend header — the landing screen otherwise has no lead-in.
+          Kept compact so the canvas stays the hero. */}
+      <div className="shrink-0 border-b border-border bg-bg px-4 py-2 space-y-2">
+        <ScreenDescription>
+          The dependency graph — every indexed entity (files, classes, functions)
+          and the edges between them (imports, calls, references). Search to jump
+          to a symbol, color by repo/kind/community, or collapse to a module
+          overview. Node color encodes the active mode; faint peripheral nodes are
+          low-degree leaves, not orphans.
+        </ScreenDescription>
+        <AgentUsage
+          tool="archigraph_find"
+          example="An agent locates a symbol and its neighbors instead of grepping."
+        />
+      </div>
+
       {/* Canvas + overlays */}
       <div className="relative min-h-0 flex-1">
         {s.moduleOverviewMode ? (
@@ -716,7 +732,7 @@ export default function GraphScreen() {
                   <span className="text-text-4">·</span>
                   <span className="tabular-nums">{orphanCount.toLocaleString()} unconnected</span>
                   {hiddenLowDegreeCount > 0 ? (
-                    <span className="tabular-nums text-amber-500">
+                    <span className="tabular-nums text-warning">
                       · {hiddenLowDegreeCount.toLocaleString()} hidden
                     </span>
                   ) : null}

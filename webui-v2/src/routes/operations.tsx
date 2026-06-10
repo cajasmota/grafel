@@ -60,6 +60,8 @@ import {
   TabsTrigger,
   TooltipProvider,
   InfoLabel,
+  ScreenDescription,
+  AgentUsage,
 } from "@/components/ui";
 import {
   useSystemStatus,
@@ -1826,6 +1828,18 @@ export default function OperationsScreen() {
             Daemon control, pattern store, quality measurement, and version management.
           </p>
         </header>
+
+        <div className="mb-6 space-y-3">
+          <ScreenDescription>
+            Operations — run and inspect the daemon behind this group: system health
+            and indexing, the learned-pattern store, graph-quality measurement
+            (unresolved references, orphan audit, recall), and version updates.
+          </ScreenDescription>
+          <AgentUsage
+            tool="archigraph_repairs"
+            example="An agent reviews unresolved references and repairs before relying on the graph."
+          />
+        </div>
 
         <Tabs defaultValue="system">
           <TabsList className="mb-6">
