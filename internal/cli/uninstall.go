@@ -149,7 +149,7 @@ Idempotent: if archigraph is not installed the command exits 0.`,
 		"skip removing skills from Claude Code's skills/ directories")
 	cmd.Flags().BoolVar(&purge, "purge", false,
 		"also remove ~/.archigraph/store/ and ~/.archigraph/docs/ (user graphs and docs)")
-	cmd.Flags().BoolVar(&yes, "yes", false,
-		"skip confirmation prompt before removing the CLI binary")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false,
+		"assume yes / non-interactive: skip the binary-removal confirmation prompt (auto-enabled when stdin is not a TTY)")
 	return cmd
 }

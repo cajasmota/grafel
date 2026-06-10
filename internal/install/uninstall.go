@@ -84,10 +84,31 @@ func (o *UninstallOptions) applyDefaults() error {
 		}
 		o.StatePath = p
 	}
+	// Auto-confirm when stdin is not an interactive terminal (scripts, CI,
+	// agents). Without this, the binary-removal prompt blocks forever on a
+	// closed/piped stdin (issue #4462). An explicit --yes always wins; this
+	// only flips the default for the non-interactive case. We only apply the
+	// auto-yes when no custom ConfirmFn was injected — an explicit ConfirmFn
+	// means the caller (e.g. a test, or a wrapper) wants to drive the decision
+	// itself.
 	if o.ConfirmFn == nil {
+		if !o.Yes && !stdinIsTTY() {
+			o.Yes = true
+		}
 		o.ConfirmFn = promptConfirm
 	}
 	return nil
+}
+
+// stdinIsTTY reports whether os.Stdin is an interactive terminal. When it is
+// not (pipe, redirect, closed fd — typical of CI/agent/scripted runs), the
+// uninstall must not block on a confirmation prompt.
+func stdinIsTTY() bool {
+	fi, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	return (fi.Mode() & os.ModeCharDevice) != 0
 }
 
 // RunUninstall executes the uninstall transaction.

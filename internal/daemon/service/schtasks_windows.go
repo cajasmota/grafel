@@ -3,6 +3,7 @@
 package service
 
 import (
+	"context"
 	"encoding/csv"
 	"fmt"
 	"os"
@@ -12,15 +13,13 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/daemon/transport"
 )
 
 const (
 	// taskName is the Windows Task Scheduler task name.
 	taskName = `com.archigraph.daemon`
-
-	// socketWaitTimeout is the maximum time install will block waiting
-	// for the daemon named-pipe to become connectable after the task starts.
-	socketWaitTimeout = 5 * time.Second
 )
 
 // daemonTaskXMLTemplate is the Windows Task Scheduler XML definition for
@@ -137,98 +136,112 @@ func GenerateTaskXML(opts Options) ([]byte, error) {
 	return []byte(buf.String()), nil
 }
 
+// schtasksManager is the Windows ServiceManager implementation. It is a thin
+// adapter over schtasks / Task Scheduler; all orchestration lives in manager.go.
+type schtasksManager struct {
+	opts    Options
+	xmlPath string
+}
+
+func newServiceManager(opts Options) (ServiceManager, error) {
+	path, err := taskXMLPath()
+	if err != nil {
+		return nil, err
+	}
+	return &schtasksManager{opts: opts, xmlPath: path}, nil
+}
+
+func (m *schtasksManager) WriteUnit() error {
+	if err := os.MkdirAll(m.opts.LogDir, 0o700); err != nil {
+		return fmt.Errorf("create log dir %s: %w", m.opts.LogDir, err)
+	}
+	xml, err := GenerateTaskXML(m.opts)
+	if err != nil {
+		return fmt.Errorf("generate task XML: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(m.xmlPath), 0o755); err != nil {
+		return fmt.Errorf("create task XML dir: %w", err)
+	}
+	if err := os.WriteFile(m.xmlPath, xml, 0o644); err != nil {
+		return fmt.Errorf("write task XML %s: %w", m.xmlPath, err)
+	}
+	return nil
+}
+
+func (m *schtasksManager) IsLoaded() (bool, error) {
+	if err := exec.Command("schtasks", "/query", "/tn", taskName).Run(); err != nil {
+		return false, nil // task doesn't exist
+	}
+	return true, nil
+}
+
+func (m *schtasksManager) Unload() error {
+	stopRunningDaemon(m.opts.SocketPath)
+	// /end stops a running instance; /delete removes the registration. Both are
+	// idempotent against a missing task: "cannot find" / "does not exist" are
+	// success-to-proceed (the desired absent state is reached).
+	_ = exec.Command("schtasks", "/end", "/tn", taskName).Run()
+	out, err := exec.Command("schtasks", "/delete", "/tn", taskName, "/f").CombinedOutput()
+	if err != nil {
+		s := string(out)
+		if strings.Contains(s, "cannot find") || strings.Contains(s, "does not exist") {
+			return nil
+		}
+		return fmt.Errorf("schtasks /delete: %w\n%s", err, out)
+	}
+	return nil
+}
+
+func (m *schtasksManager) Load() error {
+	// /f forces overwrite of any existing task (callers Unload first, but /f
+	// keeps Load itself idempotent against a leftover registration).
+	if out, err := exec.Command("schtasks", "/create", "/tn", taskName, "/xml", m.xmlPath, "/f").CombinedOutput(); err != nil {
+		return fmt.Errorf("schtasks /create: %w\n%s", err, out)
+	}
+	// Start now; it would otherwise fire at next logon. A /run failure is
+	// non-fatal — the readiness poll is the real success signal, and the task
+	// will start at next logon regardless.
+	_ = exec.Command("schtasks", "/run", "/tn", taskName).Run()
+	return nil
+}
+
+func (m *schtasksManager) RemoveArtifacts() error {
+	if err := os.Remove(m.xmlPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove task XML %s: %w", m.xmlPath, err)
+	}
+	return nil
+}
+
+func (m *schtasksManager) Probe() bool {
+	conn, err := transport.DialTimeout(m.opts.SocketPath, 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func (m *schtasksManager) Status() (StatusInfo, error) { return status(m.opts) }
+
 // install is the Windows implementation of Install.
 func install(opts Options) (StatusInfo, error) {
-	xmlPath, err := taskXMLPath()
+	sm, err := newServiceManager(opts)
 	if err != nil {
 		return StatusInfo{}, err
 	}
-
-	// Idempotency: if the task exists and is running, return current status.
-	if info, serr := status(opts); serr == nil && info.Running {
-		return info, nil
+	if st, serr := sm.Status(); serr == nil && st.Running && sm.Probe() {
+		return st, nil
 	}
-
-	// Ensure log directory exists.
-	if err := os.MkdirAll(opts.LogDir, 0o700); err != nil {
-		return StatusInfo{}, fmt.Errorf("create log dir %s: %w", opts.LogDir, err)
-	}
-
-	// Render and write the task XML.
-	xml, err := GenerateTaskXML(opts)
-	if err != nil {
-		return StatusInfo{}, fmt.Errorf("generate task XML: %w", err)
-	}
-	if err := os.MkdirAll(filepath.Dir(xmlPath), 0o755); err != nil {
-		return StatusInfo{}, fmt.Errorf("create task XML dir: %w", err)
-	}
-	if err := os.WriteFile(xmlPath, xml, 0o644); err != nil {
-		return StatusInfo{}, fmt.Errorf("write task XML %s: %w", xmlPath, err)
-	}
-
-	// Stop any running daemon before creating the scheduled task, so a
-	// leftover daemon doesn't hold the named-pipe and block the new one.
-	stopRunningDaemon(opts.SocketPath)
-
-	// Register (or replace) the task.
-	// /f forces overwrite of an existing task with the same name.
-	out, err := exec.Command(
-		"schtasks",
-		"/create",
-		"/tn", taskName,
-		"/xml", xmlPath,
-		"/f",
-	).CombinedOutput()
-	if err != nil {
-		return StatusInfo{}, fmt.Errorf("schtasks /create: %w\n%s", err, out)
-	}
-
-	// Start the task immediately (it would normally fire at next logon).
-	out, err = exec.Command("schtasks", "/run", "/tn", taskName).CombinedOutput()
-	if err != nil {
-		// Non-fatal: the task is registered and will start at next logon.
-		// Return installed=true but running=false.
-		return StatusInfo{UnitFile: xmlPath, Installed: true},
-			fmt.Errorf("task registered but /run failed (will start at next logon): %w\n%s", err, out)
-	}
-
-	// Wait for the named-pipe socket to become connectable.
-	if werr := waitForSocket(opts.SocketPath, socketWaitTimeout); werr != nil {
-		return StatusInfo{UnitFile: xmlPath, Installed: true},
-			fmt.Errorf("task started but socket not ready: %w", werr)
-	}
-
-	return status(opts)
+	return ensureLoaded(context.Background(), sm, defaultReadiness, nil)
 }
 
 // uninstall is the Windows implementation of Uninstall.
 func uninstall(opts Options) error {
-	xmlPath, err := taskXMLPath()
+	sm, err := newServiceManager(opts)
 	if err != nil {
 		return err
 	}
-
-	// /f suppresses the confirmation prompt.
-	// Ignore errors — the task may not exist.
-	_ = exec.Command("schtasks", "/end", "/tn", taskName).Run()
-	out, err := exec.Command("schtasks", "/delete", "/tn", taskName, "/f").CombinedOutput()
-	if err != nil {
-		// Exit code 1 + "ERROR: The system cannot find the file specified." means
-		// the task doesn't exist — treat as success.
-		if strings.Contains(string(out), "cannot find") ||
-			strings.Contains(string(out), "does not exist") {
-			err = nil
-		}
-	}
-	if err != nil {
-		return fmt.Errorf("schtasks /delete: %w\n%s", err, out)
-	}
-
-	// Remove the staged XML file.
-	if rerr := os.Remove(xmlPath); rerr != nil && !os.IsNotExist(rerr) {
-		return fmt.Errorf("remove task XML %s: %w", xmlPath, rerr)
-	}
-	return nil
+	return teardown(sm)
 }
 
 // status is the Windows implementation of Status.

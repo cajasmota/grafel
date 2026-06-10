@@ -4,6 +4,7 @@ package service
 
 import (
 	"bytes"
+	"context"
 	"fmt"
 	"os"
 	"os/exec"
@@ -12,11 +13,12 @@ import (
 	"strings"
 	"text/template"
 	"time"
+
+	"github.com/cajasmota/archigraph/internal/daemon/transport"
 )
 
 const (
-	unitName          = "archigraph-daemon"
-	socketWaitTimeout = 5 * time.Second
+	unitName = "archigraph-daemon"
 )
 
 // unitTemplate is the systemd user unit file. Type=simple is correct
@@ -75,76 +77,114 @@ func GenerateUnit(opts Options) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// systemdManager is the Linux ServiceManager implementation. It is a thin
+// adapter over systemctl --user; all orchestration lives in manager.go.
+type systemdManager struct {
+	opts     Options
+	unitPath string
+	unitID   string
+}
+
+func newServiceManager(opts Options) (ServiceManager, error) {
+	path, err := unitPath()
+	if err != nil {
+		return nil, err
+	}
+	return &systemdManager{
+		opts:     opts,
+		unitPath: path,
+		unitID:   unitName + ".service",
+	}, nil
+}
+
+func (m *systemdManager) WriteUnit() error {
+	if err := os.MkdirAll(m.opts.LogDir, 0o700); err != nil {
+		return fmt.Errorf("create log dir %s: %w", m.opts.LogDir, err)
+	}
+	unit, err := GenerateUnit(m.opts)
+	if err != nil {
+		return fmt.Errorf("generate unit: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(m.unitPath), 0o755); err != nil {
+		return fmt.Errorf("create systemd user dir: %w", err)
+	}
+	if err := os.WriteFile(m.unitPath, unit, 0o644); err != nil {
+		return fmt.Errorf("write unit %s: %w", m.unitPath, err)
+	}
+	// Reload so systemd picks up the (re)written unit file. Non-fatal if the
+	// user systemd manager isn't reachable yet — Load surfaces real failures.
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	return nil
+}
+
+func (m *systemdManager) IsLoaded() (bool, error) {
+	// is-active exits 0 only when active; is-enabled covers loaded-but-stopped.
+	if err := exec.Command("systemctl", "--user", "is-active", "--quiet", m.unitID).Run(); err == nil {
+		return true, nil
+	}
+	out, err := exec.Command("systemctl", "--user", "is-enabled", m.unitID).Output()
+	if err != nil {
+		return false, nil
+	}
+	state := strings.TrimSpace(string(out))
+	return state == "enabled" || state == "static" || state == "linked", nil
+}
+
+func (m *systemdManager) Unload() error {
+	stopRunningDaemon(m.opts.SocketPath)
+	// disable --now stops + disables. systemctl exits non-zero when the unit is
+	// not loaded; treat that as success-to-proceed (desired state reached).
+	_ = exec.Command("systemctl", "--user", "disable", "--now", m.unitID).Run()
+	_ = exec.Command("systemctl", "--user", "reset-failed", m.unitID).Run()
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	return nil
+}
+
+func (m *systemdManager) Load() error {
+	if out, err := exec.Command("systemctl", "--user", "enable", "--now", m.unitID).CombinedOutput(); err != nil {
+		return fmt.Errorf("systemctl enable --now: %w\n%s", err, out)
+	}
+	return nil
+}
+
+func (m *systemdManager) RemoveArtifacts() error {
+	if err := os.Remove(m.unitPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("remove unit %s: %w", m.unitPath, err)
+	}
+	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
+	return nil
+}
+
+func (m *systemdManager) Probe() bool {
+	conn, err := transport.DialTimeout(m.opts.SocketPath, 200*time.Millisecond)
+	if err != nil {
+		return false
+	}
+	_ = conn.Close()
+	return true
+}
+
+func (m *systemdManager) Status() (StatusInfo, error) { return status(m.opts) }
+
 // install is the Linux implementation of Install.
 func install(opts Options) (StatusInfo, error) {
-	path, err := unitPath()
+	sm, err := newServiceManager(opts)
 	if err != nil {
 		return StatusInfo{}, err
 	}
-
-	// Idempotency check.
-	if _, err := os.Stat(path); err == nil {
-		st, sterr := status(opts)
-		if sterr == nil && st.Running {
-			return st, nil
-		}
+	if st, serr := sm.Status(); serr == nil && st.Running && sm.Probe() {
+		return st, nil
 	}
-
-	// Ensure log dir exists even though systemd handles stdout/stderr
-	// via the journal; downstream code may write there directly.
-	if err := os.MkdirAll(opts.LogDir, 0o700); err != nil {
-		return StatusInfo{}, fmt.Errorf("create log dir %s: %w", opts.LogDir, err)
-	}
-
-	unit, err := GenerateUnit(opts)
-	if err != nil {
-		return StatusInfo{}, fmt.Errorf("generate unit: %w", err)
-	}
-
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		return StatusInfo{}, fmt.Errorf("create systemd user dir: %w", err)
-	}
-
-	if err := os.WriteFile(path, unit, 0o644); err != nil {
-		return StatusInfo{}, fmt.Errorf("write unit %s: %w", path, err)
-	}
-
-	// Stop any running daemon before enabling+starting the systemd unit.
-	stopRunningDaemon(opts.SocketPath)
-
-	// Reload unit files so systemd picks up the new file.
-	if out, err := exec.Command("systemctl", "--user", "daemon-reload").CombinedOutput(); err != nil {
-		return StatusInfo{}, fmt.Errorf("systemctl daemon-reload: %w\n%s", err, out)
-	}
-
-	// Enable + start in one shot.
-	if out, err := exec.Command("systemctl", "--user", "enable", "--now", unitName+".service").CombinedOutput(); err != nil {
-		return StatusInfo{}, fmt.Errorf("systemctl enable --now: %w\n%s", err, out)
-	}
-
-	if werr := waitForSocket(opts.SocketPath, socketWaitTimeout); werr != nil {
-		return StatusInfo{UnitFile: path, Installed: true},
-			fmt.Errorf("service loaded but socket not ready: %w", werr)
-	}
-
-	return status(opts)
+	return ensureLoaded(context.Background(), sm, defaultReadiness, nil)
 }
 
 // uninstall is the Linux implementation of Uninstall.
 func uninstall(opts Options) error {
-	path, err := unitPath()
+	sm, err := newServiceManager(opts)
 	if err != nil {
 		return err
 	}
-
-	// stop + disable; ignore errors (service may not be loaded).
-	_ = exec.Command("systemctl", "--user", "disable", "--now", unitName+".service").Run()
-	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()
-
-	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("remove unit %s: %w", path, err)
-	}
-	return nil
+	return teardown(sm)
 }
 
 // status is the Linux implementation of Status.

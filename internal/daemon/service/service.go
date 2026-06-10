@@ -60,8 +60,10 @@ type StatusInfo struct {
 // On Linux it writes ~/.config/systemd/user/archigraph-daemon.service
 // and calls `systemctl --user enable --now`.
 //
-// After loading, Install waits up to 5 s for the daemon socket to
-// appear, then returns the populated StatusInfo.
+// After loading, Install polls the daemon socket for up to ~60 s (the
+// readiness budget — a cold start on a large store legitimately takes
+// >5 s) before returning the populated StatusInfo. See manager.go for the
+// platform-agnostic clear-then-load + readiness-poll orchestration.
 func Install(opts Options) (StatusInfo, error) {
 	if err := resolveOptions(&opts); err != nil {
 		return StatusInfo{}, fmt.Errorf("resolve options: %w", err)
@@ -129,20 +131,4 @@ func stopRunningDaemon(socketPath string) {
 		}
 		time.Sleep(150 * time.Millisecond)
 	}
-}
-
-// waitForSocket polls socketPath until the file appears and is
-// connectable, or deadline is exceeded. Returns nil on success.
-func waitForSocket(socketPath string, deadline time.Duration) error {
-	const pollInterval = 200 * time.Millisecond
-	end := time.Now().Add(deadline)
-	for time.Now().Before(end) {
-		conn, err := transport.DialTimeout(socketPath, 200*time.Millisecond)
-		if err == nil {
-			conn.Close()
-			return nil
-		}
-		time.Sleep(pollInterval)
-	}
-	return fmt.Errorf("transport endpoint %s did not appear within %s", socketPath, deadline)
 }

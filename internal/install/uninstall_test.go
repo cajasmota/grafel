@@ -243,6 +243,53 @@ func TestRunUninstall_ConfirmNo(t *testing.T) {
 	}
 }
 
+// TestRunUninstall_NonTTYAutoYes verifies the #4462 fix: with no --yes and no
+// injected ConfirmFn, a non-interactive stdin (as in `go test`, CI, agents)
+// auto-confirms binary removal rather than blocking on the prompt. The test
+// completing at all proves there is no hang; we also assert the binary is gone.
+func TestRunUninstall_NonTTYAutoYes(t *testing.T) {
+	env := newTestEnv(t)
+
+	if _, err := install.RunCopy(install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+	}); err != nil {
+		t.Fatalf("RunCopy: %v", err)
+	}
+
+	// Force a non-interactive stdin (a pipe is not a character device), so the
+	// test is deterministic regardless of how `go test` is invoked. With
+	// Yes:false and ConfirmFn:nil, the uninstall must auto-confirm. If the
+	// auto-yes were missing, promptConfirm would read EOF and decline (binary
+	// kept) — or block on a real terminal.
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	w.Close() // immediate EOF; this would make promptConfirm decline if reached
+	origStdin := os.Stdin
+	os.Stdin = r
+	t.Cleanup(func() { os.Stdin = origStdin; r.Close() })
+
+	result, err := install.RunUninstall(install.UninstallOptions{
+		StatePath:      env.statePath,
+		SkipDaemonStop: true,
+	})
+	if err != nil {
+		t.Fatalf("RunUninstall (non-tty auto-yes): %v", err)
+	}
+	if !result.BinaryRemoved {
+		t.Error("BinaryRemoved should be true under non-interactive stdin (auto-yes)")
+	}
+	if _, err := os.Stat(env.fakeBin); err == nil {
+		t.Error("binary should be removed under non-interactive auto-yes")
+	}
+}
+
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 func assertMCPDeregistered(t *testing.T, claudeJSON string) {
