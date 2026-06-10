@@ -88,11 +88,106 @@ var nestClassDecorators = map[string]bool{
 }
 
 // frameworkForDecorator returns the framework label for a recognised class
-// decorator: "nestjs" for the NestJS DI decorators, else "angular".
+// decorator from the decorator name alone: "nestjs" for the NestJS-only DI
+// decorators, else "angular". This is the name-only fallback used when no
+// import context is available; the ambiguous @Injectable decorator (shared by
+// Angular and NestJS) is disambiguated by frameworkForClass via import origin.
 func frameworkForDecorator(decorator string) string {
 	if nestClassDecorators[decorator] {
 		return "nestjs"
 	}
+	return "angular"
+}
+
+// nestDecoratorModulePrefixes are the dotted import-source prefixes that mark a
+// decorator as coming from NestJS (e.g. `@nestjs/common`, `@nestjs/core`,
+// `@nestjs/graphql`, `@nestjs/websockets`). importBinding.sourceModule is
+// dotted (slashes → dots), so `@nestjs/common` becomes `@nestjs.common`.
+var nestDecoratorModulePrefixes = []string{"@nestjs.", "@nestjs/"}
+
+// angularDecoratorModulePrefixes are the dotted import-source prefixes that mark
+// a decorator as coming from Angular (`@angular/core`, `@angular/common`, …).
+var angularDecoratorModulePrefixes = []string{"@angular.", "@angular/"}
+
+// hasModulePrefix reports whether the dotted import source begins with any of
+// the given prefixes (matching both the dotted `@nestjs.` and raw `@nestjs/`
+// shapes so it is robust to how the source was canonicalised).
+func hasModulePrefix(source string, prefixes []string) bool {
+	for _, p := range prefixes {
+		if strings.HasPrefix(source, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// frameworkForClass returns the framework label for a decorated class,
+// disambiguating the @Injectable decorator (shared by Angular's @angular/core
+// and NestJS's @nestjs/common) by the import origin of the decorator and the
+// file's surrounding framework markers (#4503).
+//
+// Angular and NestJS both spell a DI provider `@Injectable()` with a
+// constructor-injected providers list, so the bare decorator name is
+// insufficient: classifying every @Injectable as Angular mis-tags an entire
+// NestJS codebase as Angular (the upvate-v3 /di "121 angular" bug). The
+// disambiguation is by import-origin/markers, not the bare decorator:
+//
+//   - The NestJS-only decorators (@Controller / @Resolver / @WebSocketGateway)
+//     and the Angular-only decorators (@Component / @Directive / @Pipe /
+//     @NgModule) are unambiguous from the name; defer to frameworkForDecorator.
+//   - For @Injectable, look at where THIS decorator was imported from: a local
+//     name imported from `@nestjs/*` → nestjs; from `@angular/*` → angular.
+//   - When the decorator import is unresolved (re-exported through a barrel,
+//     aliased, etc.), fall back to file-level markers: any `@nestjs/*` import
+//     present → nestjs; any `@angular/*` import → angular.
+//   - With no markers at all, keep the historical default (angular) so genuine
+//     Angular projects without an explicit core import are unaffected.
+func (x *extractor) frameworkForClass(decorator string) string {
+	// Unambiguous decorators: name alone decides.
+	if decorator != "Injectable" {
+		return frameworkForDecorator(decorator)
+	}
+
+	// 1) Origin of the @Injectable decorator import itself.
+	if b, ok := x.importByLocal[decorator]; ok && b != nil {
+		if hasModulePrefix(b.sourceModule, nestDecoratorModulePrefixes) ||
+			hasModulePrefix(b.importPath, nestDecoratorModulePrefixes) {
+			return "nestjs"
+		}
+		if hasModulePrefix(b.sourceModule, angularDecoratorModulePrefixes) ||
+			hasModulePrefix(b.importPath, angularDecoratorModulePrefixes) {
+			return "angular"
+		}
+	}
+
+	// 2) Fall back to file-level framework markers.
+	var sawNest, sawAngular bool
+	for i := range x.imports {
+		src := x.imports[i].sourceModule
+		path := x.imports[i].importPath
+		if hasModulePrefix(src, nestDecoratorModulePrefixes) ||
+			hasModulePrefix(path, nestDecoratorModulePrefixes) {
+			sawNest = true
+		}
+		if hasModulePrefix(src, angularDecoratorModulePrefixes) ||
+			hasModulePrefix(path, angularDecoratorModulePrefixes) {
+			sawAngular = true
+		}
+	}
+	switch {
+	case sawNest && !sawAngular:
+		return "nestjs"
+	case sawAngular && !sawNest:
+		return "angular"
+	case sawNest && sawAngular:
+		// Mixed file (rare). Prefer the decorator-origin signal already tried;
+		// with neither matching, prefer nestjs only if the file has no Angular
+		// class decorators is hard to know here — default to angular to avoid
+		// regressing genuine Angular hybrids.
+		return "angular"
+	}
+
+	// 3) No framework markers: keep the historical default.
 	return "angular"
 }
 
@@ -167,7 +262,7 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 		return false
 	}
 
-	framework := frameworkForDecorator(decorator)
+	framework := x.frameworkForClass(decorator)
 	props := map[string]string{
 		"framework":          framework,
 		"angular_decorator":  decorator,
