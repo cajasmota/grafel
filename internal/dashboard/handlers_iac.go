@@ -95,6 +95,14 @@ type IaCRelation struct {
 	Direction string `json:"direction"`
 	// Target is the human-readable name (logical id) of the other endpoint.
 	Target string `json:"target"`
+	// TargetResolved is true when Target is a graph-resolved entity name, false
+	// when it is a fallback derived from the raw entity id (the endpoint was not
+	// found among the indexed entities). The UI uses this to render a friendlier
+	// label + an id tooltip instead of a meaningless hash. (#4495)
+	TargetResolved bool `json:"target_resolved"`
+	// TargetID is the raw graph entity id of the other endpoint, always set so
+	// the UI can show it on hover regardless of resolution. (#4495)
+	TargetID string `json:"target_id"`
 	// Detail is the grant method (for grants) or other edge qualifier, when set.
 	Detail string `json:"detail,omitempty"`
 }
@@ -390,6 +398,15 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 
 		// Pass 1: collect IaC resource entities (+ count outputs).
 		iterEntities(func(id, name, kind, subtype, sourceFile, language string, startLine int, props map[string]string) {
+			// Index a readable name for EVERY entity, not just collected IaC
+			// resources, so relation targets resolve to a display name even when
+			// the target endpoint is not itself rendered as a resource row
+			// (e.g. a Terraform variable, an output, or a resource excluded by
+			// the tool/category filter). #4495: without this, such targets fall
+			// back to idTail() — which surfaces a raw entity-id hash to the user.
+			if name != "" {
+				nameByID[id] = name
+			}
 			if iacIsOutputEntity(kind, subtype, props) {
 				report.TotalOutputs++
 				// outputs are counted but not rendered as standalone rows.
@@ -457,29 +474,38 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 			}
 			facet, detail := iacRelationFacet(kind, props)
 
-			targetName := func(id string) string {
+			// targetName resolves an endpoint id to a display name. resolved is
+			// false when no indexed entity name was found and we fell back to a
+			// segment of the raw id (#4495).
+			targetName := func(id string) (name string, resolved bool) {
 				if n, ok := nameByID[id]; ok && n != "" {
-					return n
+					return n, true
 				}
-				return idTail(id)
+				return idTail(id), false
 			}
 
 			if fromRes != nil {
+				name, resolved := targetName(toID)
 				fromRes.Relations = append(fromRes.Relations, IaCRelation{
-					Facet:     facet,
-					Kind:      kind,
-					Direction: "out",
-					Target:    targetName(toID),
-					Detail:    detail,
+					Facet:          facet,
+					Kind:           kind,
+					Direction:      "out",
+					Target:         name,
+					TargetResolved: resolved,
+					TargetID:       toID,
+					Detail:         detail,
 				})
 			}
 			if toRes != nil && toRes != fromRes {
+				name, resolved := targetName(fromID)
 				toRes.Relations = append(toRes.Relations, IaCRelation{
-					Facet:     facet,
-					Kind:      kind,
-					Direction: "in",
-					Target:    targetName(fromID),
-					Detail:    detail,
+					Facet:          facet,
+					Kind:           kind,
+					Direction:      "in",
+					Target:         name,
+					TargetResolved: resolved,
+					TargetID:       fromID,
+					Detail:         detail,
 				})
 			}
 

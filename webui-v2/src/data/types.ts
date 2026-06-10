@@ -2083,6 +2083,14 @@ export interface IaCRelation {
   direction: string;
   /** Human-readable name (logical id) of the other endpoint. */
   target: string;
+  /**
+   * True when `target` is a graph-resolved entity name; false when it is a
+   * fallback derived from the raw entity id (endpoint not found among indexed
+   * entities). Drives a friendlier label + id tooltip in the UI (#4495).
+   */
+  target_resolved: boolean;
+  /** Raw graph entity id of the other endpoint; shown on hover (#4495). */
+  target_id: string;
   /** Grant method or other edge qualifier, when set. */
   detail?: string;
 }

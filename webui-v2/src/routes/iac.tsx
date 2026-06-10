@@ -106,20 +106,46 @@ function relationMeta(facet: string): {
   }
 }
 
+/** Short hex hash like `483f81a80cea83a1` — an unresolved raw entity id. */
+function isRawId(s: string): boolean {
+  return /^[0-9a-f]{12,}$/i.test(s);
+}
+
 function RelationBadge({ relation }: { relation: IaCRelation }) {
   const { label, tone, Icon } = relationMeta(relation.facet);
   const arrow = relation.direction === "in" ? "←" : "→";
   const detail = relation.detail ? `.${relation.detail}` : "";
+
+  // #4495: when the backend could not resolve the endpoint to a display name
+  // (target_resolved === false), the target is a meaningless raw entity-id
+  // hash. Render a friendlier fallback — the relation kind as the label, with
+  // the raw id available on hover — instead of dumping the hash inline.
+  const unresolved =
+    relation.target_resolved === false || isRawId(relation.target);
+  const display = unresolved
+    ? relation.kind.toLowerCase().replace(/_/g, " ")
+    : relation.target;
+  const rawId = relation.target_id || relation.target;
+
   return (
     <Badge
       tone={tone}
-      className="inline-flex items-center gap-1"
-      title={`${label}${detail} ${arrow} ${relation.target} (${relation.kind})`}
+      className="inline-flex items-center gap-1 max-w-full min-w-0"
+      title={
+        unresolved
+          ? `${label}${detail} ${arrow} <unresolved ${relation.kind} target> (id ${rawId})`
+          : `${label}${detail} ${arrow} ${relation.target} (${relation.kind})`
+      }
     >
-      <Icon size={11} />
-      <span className="lowercase">{label}</span>
-      <span className="font-mono opacity-70">
-        {arrow} {relation.target}
+      <Icon size={11} className="shrink-0" />
+      <span className="lowercase shrink-0">{label}</span>
+      <span
+        className={cn(
+          "font-mono opacity-70 truncate",
+          unresolved && "italic",
+        )}
+      >
+        {arrow} {display}
       </span>
     </Badge>
   );
@@ -193,15 +219,22 @@ function ResourceRow({ resource }: { resource: IaCResource }) {
             {resource.resource_type}
           </span>
         )}
-
-        {resource.relations.length > 0 && (
-          <div className="ml-auto flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-            {resource.relations.map((rel, i) => (
-              <RelationBadge key={`${rel.facet}:${rel.target}:${i}`} relation={rel} />
-            ))}
-          </div>
-        )}
       </div>
+
+      {/* Relation facets (grants / event-sources / dependencies / topology).
+          #4495: own full-width wrapping row so chips never overflow the card
+          edge — they wrap to multiple lines and each chip truncates long
+          targets internally. */}
+      {resource.relations.length > 0 && (
+        <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+          {resource.relations.map((rel, i) => (
+            <RelationBadge
+              key={`${rel.facet}:${rel.target_id || rel.target}:${i}`}
+              relation={rel}
+            />
+          ))}
+        </div>
+      )}
 
       {/* Typed config properties */}
       {resource.properties.length > 0 && (
