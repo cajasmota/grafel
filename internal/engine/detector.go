@@ -636,6 +636,22 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// Append-only — cannot regress the surrounding pipeline's bug-rate.
 	applyPass(applyIaCSNSEdges)
 
+	// IaC-declared messaging infrastructure → Topology channels (#4496,
+	// ref epic #4493). Scans already-extracted IaC resource entities (any of
+	// Terraform/HCL, CDK, Pulumi, CloudFormation, Bicep) whose cross-tool
+	// resource_category is a messaging primitive (queue/topic/stream) and
+	// APPENDS a synthetic SCOPE.Queue / SCOPE.MessageTopic channel keyed by the
+	// canonical broker+name. Covers AWS SQS/SNS/Kinesis/MSK/EventBridge, GCP
+	// Pub/Sub, and Azure Service Bus / Event Hubs / Event Grid uniformly. The
+	// synthetic channel reuses the code-side sqs:/sns: IDs so a declared queue
+	// collapses onto any code publisher/consumer of the same name (free
+	// code-join); brokers with no code-side convention appear as a
+	// declared-but-unwired channel — surfacing IaC queues in /topology even
+	// when no SDK publisher/subscriber was detected. Runs AFTER the code-side
+	// and iac_sns passes so it dedupes against the IDs they already emit.
+	// Append-only — cannot regress the surrounding pipeline's bug-rate.
+	applyPass(applyIaCTopologyChannels)
+
 	// Kubernetes cross-resource edge synthesis (#3517 / epic #3512). The yaml
 	// extractor already extracts K8s resources + sub-resources well but emits no
 	// edges BETWEEN resources. This pass re-reads the manifest (file-scoped) and
