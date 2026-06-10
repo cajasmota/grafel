@@ -167,6 +167,13 @@ var intentionalGaps = []intentionalGap{
 	{"archigraph_payload_drift", "repo", "#2770 token ceiling pattern — optional repo substring filter"},
 	{"archigraph_payload_drift", "limit", "#2770 token ceiling pattern — optional result limit"},
 
+	// archigraph_literal_parity: optional entity-pin args undeclared for token
+	// budget (#4421 / #1639 pattern). The three required args (group_oracle,
+	// group_v3, set) ARE declared; *_source pin the value-sets when auto-locate
+	// is insufficient.
+	{"archigraph_literal_parity", "oracle_source", "#4421 token ceiling pattern — optional oracle value-set entity pin"},
+	{"archigraph_literal_parity", "v3_source", "#4421 token ceiling pattern — optional v3 value-set entity pin"},
+
 	// archigraph_endpoint_posture: scan-mode pagination undeclared for token
 	// budget (#1639 pattern). entity_id/facet/path_contains/method ARE declared.
 	{"archigraph_endpoint_posture", "limit", "#1639 token ceiling pattern — scan-mode result limit"},

@@ -603,6 +603,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_def_use",
 		"archigraph_data_flows",
 		"archigraph_template_patterns",
+		// #4421 cross-group ConstantSet / SCOPE.Enum value-set parity.
+		"archigraph_literal_parity",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -697,8 +699,9 @@ func TestToolNameSurface(t *testing.T) {
 	// rate_limit/deprecation/feature_flag/grpc-auth posture).
 	// +1 archigraph_orient (#4290 graph-orientation analysis).
 	// +1 archigraph_pr_impact (#4292 PR-scoped impact + cross-change merge-risk).
-	if got := len(allRegisteredTools); got != 59 {
-		t.Errorf("expected 59 registered tools, got %d — update this count if tools are added/removed (added archigraph_pr_impact #4292 PR-impact/merge-risk)", got)
+	// +1 archigraph_literal_parity (#4421 cross-group ConstantSet value-set parity).
+	if got := len(allRegisteredTools); got != 60 {
+		t.Errorf("expected 60 registered tools, got %d — update this count if tools are added/removed (added archigraph_literal_parity #4421 cross-group value-set parity)", got)
 	}
 }
 
@@ -3218,6 +3221,11 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_def_use":           {"group": "g"},
 		"archigraph_data_flows":        {"group": "g"},
 		"archigraph_template_patterns": {"group": "g"},
+		// #4421 cross-group ConstantSet value-set parity. Both group params
+		// point at the single test group "g"; auto-locate misses the alias in
+		// this fixture and the handler returns a graceful text error result,
+		// which still exercises the wrapper + elapsed_ms trailer.
+		"archigraph_literal_parity": {"group_oracle": "g", "group_v3": "g", "set": "page_slugs"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3262,8 +3270,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 59 {
-		t.Errorf("expected 59 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_pr_impact #4292 PR-impact/merge-risk)", len(tools))
+	if len(tools) != 60 {
+		t.Errorf("expected 60 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_literal_parity #4421 cross-group value-set parity)", len(tools))
 	}
 
 	for _, st := range tools {
