@@ -51,11 +51,34 @@
 package javascript
 
 import (
+	"fmt"
 	"path/filepath"
 	"strings"
 
+	sitter "github.com/smacker/go-tree-sitter"
+
 	"github.com/cajasmota/archigraph/internal/types"
 )
+
+// testBlockCallees is the set of test-framework block functions whose final
+// argument is a callback containing test-body code. `describe`/`suite`/
+// `context` are grouping blocks (their body holds setup/teardown + nested
+// it() blocks, handled recursively); `it`/`test`/`specify` are the leaf test
+// blocks that own the production CALLS edges.
+var testBlockCallees = map[string]bool{
+	"describe": true, "suite": true, "context": true,
+	"it": true, "test": true, "specify": true,
+}
+
+// testHookCallees is the set of setup/teardown hook functions whose callback
+// bodies commonly construct the system-under-test (`beforeEach(() => {
+// controller = new XController(svc); })`). Their bodies are scanned for
+// local-variable construction bindings that the sibling it() blocks reuse,
+// but they are not emitted as test Operations themselves.
+var testHookCallees = map[string]bool{
+	"beforeeach": true, "beforeall": true, "aftereach": true, "afterall": true,
+	"before": true, "after": true, "setup": true, "teardown": true,
+}
 
 // jsTestFileExts is the set of file extensions that may host JS/TS test
 // code under the `.test.` / `.spec.` naming convention. Mirrors
@@ -300,6 +323,243 @@ func (x *extractor) emitTestsEdgesForTestFile() {
 			ent.Relationships = append(ent.Relationships, add...)
 		}
 	}
+}
+
+// extractTestScopeOperations indexes test-framework block callbacks
+// (describe/it/test/...) in a test file as call-bearing SCOPE.Operation
+// entities, so the production calls inside them yield CALLS edges (which
+// emitTestsEdgesForTestFile then promotes to TESTS edges). Issue #4671.
+//
+// Why this pass is needed: the generic walk emits Operation entities only for
+// NAMED functions / methods / arrow-const declarations. A controller UNIT spec
+// has none of those — its bodies are anonymous callbacks passed to
+// `describe(...)` / `it(...)`. Before this pass such a spec produced ZERO
+// call-bearing entities (only the file entity + IMPORTS), so the handler call
+// `controller.getCounts(...)` was never extracted and the test→handler CALLS
+// edge never existed — the live-proven dominant cause of the ~4x coverage
+// undercount on upvate-v3.
+//
+// Each leaf test block (it/test/specify) becomes one SCOPE.Operation
+// (subtype "test") whose CALLS edges come from extractCallRelationships over
+// the callback body. Receiver typing for `<localVar>.method()` is seeded from
+// local-variable construction bindings (`const c = new XController(svc)` /
+// `module.get(XController)`) collected across the ENCLOSING describe subtree,
+// so a system-under-test constructed in a `beforeEach` hook is visible to the
+// it() blocks that call it.
+//
+// No-op for non-test files (cheap filename check).
+func (x *extractor) extractTestScopeOperations(root *sitter.Node) {
+	if root == nil || !isJSTestFile(x.filePath) {
+		return
+	}
+	// Seed an empty file-scope frame; describe blocks accumulate local-var
+	// construction bindings as we descend. Top-level (module-scope)
+	// constructions outside any describe are collected here too.
+	fileScope := &classBindings{fields: map[string]string{}}
+	x.collectModuleLevelConstructions(root, fileScope)
+	x.walkTestScope(root, fileScope)
+}
+
+// collectModuleLevelConstructions records construction bindings declared at
+// module scope (outside any describe/it block) — e.g.
+// `const controller = new XController(mockSvc);` written at the top of the
+// spec file rather than inside a beforeEach. These are visible to every test
+// block in the file.
+func (x *extractor) collectModuleLevelConstructions(root *sitter.Node, scope *classBindings) {
+	for i := 0; i < int(root.ChildCount()); i++ {
+		ch := root.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "lexical_declaration", "variable_declaration", "expression_statement":
+			x.collectLocalVarTypes(ch, scope)
+		}
+	}
+}
+
+// walkTestScope descends the CST looking for test-framework block calls.
+// inherited carries local-variable construction bindings collected from
+// enclosing describe scopes (so beforeEach-constructed instances flow down to
+// nested it() blocks). It is never mutated — each describe scope clones it and
+// adds its own hook/body constructions.
+func (x *extractor) walkTestScope(n *sitter.Node, inherited *classBindings) {
+	if n == nil {
+		return
+	}
+	if n.Type() == "call_expression" {
+		callee := strings.ToLower(x.testBlockCalleeName(n))
+		switch {
+		case testBlockCallees[callee]:
+			x.handleTestBlock(n, callee, inherited)
+			return
+		case testHookCallees[callee]:
+			// Hooks are scanned for construction bindings at the describe
+			// level (see handleTestBlock); a hook body has no nested it()
+			// blocks, so descend no further for block detection.
+			return
+		}
+	}
+	for i := 0; i < int(n.ChildCount()); i++ {
+		x.walkTestScope(n.Child(i), inherited)
+	}
+}
+
+// handleTestBlock processes a describe/it/test call. A grouping block
+// (describe/suite/context) collects local-var construction bindings from its
+// direct setup hooks + statements into a child frame, then recurses into the
+// callback body to reach nested it() blocks. A leaf test block (it/test/
+// specify) emits one SCOPE.Operation carrying the CALLS edges extracted from
+// the callback body, with receiver typing seeded by the inherited +
+// block-local construction bindings.
+func (x *extractor) handleTestBlock(call *sitter.Node, callee string, inherited *classBindings) {
+	cbBody := x.testBlockCallbackBody(call)
+	if cbBody == nil {
+		return
+	}
+	if callee == "describe" || callee == "suite" || callee == "context" {
+		// Clone the inherited frame and add this describe scope's own
+		// construction bindings: those declared directly in the describe
+		// body AND those inside its setup/teardown hooks (where the
+		// system-under-test is typically `new`-ed up).
+		scope := cloneBindings(inherited)
+		x.collectLocalVarTypes(cbBody, scope)
+		for i := 0; i < int(cbBody.ChildCount()); i++ {
+			x.collectHookConstructions(cbBody.Child(i), scope)
+		}
+		for i := 0; i < int(cbBody.ChildCount()); i++ {
+			x.walkTestScope(cbBody.Child(i), scope)
+		}
+		return
+	}
+	// Leaf test block: build the frame (inherited construction bindings +
+	// any locals declared inside this it() body) and extract the calls.
+	frame := cloneBindings(inherited)
+	name := x.testBlockName(call, callee)
+	rels := x.extractCallRelationships(cbBody, name, frame)
+	if len(rels) == 0 {
+		return
+	}
+	sig := fmt.Sprintf("%s(%q)", callee, name)
+	x.emitWithRels(name, "SCOPE.Operation", call, "test", sig, rels)
+}
+
+// cloneBindings returns a deep copy of b's field map (b may be nil).
+func cloneBindings(b *classBindings) *classBindings {
+	out := &classBindings{fields: map[string]string{}}
+	if b != nil {
+		out.className = b.className
+		for k, v := range b.fields {
+			out.fields[k] = v
+		}
+	}
+	return out
+}
+
+// collectHookConstructions records local-variable construction bindings from
+// a setup/teardown hook callback body into scope. A no-op for non-hook nodes.
+func (x *extractor) collectHookConstructions(n *sitter.Node, scope *classBindings) {
+	if n == nil {
+		return
+	}
+	// Hooks appear as `expression_statement(call_expression)` or a bare
+	// call_expression. Descend through the statement wrapper to find the call.
+	call := n
+	if call.Type() == "expression_statement" && call.ChildCount() > 0 {
+		call = call.Child(0)
+	}
+	if call == nil || call.Type() != "call_expression" {
+		return
+	}
+	if !testHookCallees[strings.ToLower(x.testBlockCalleeName(call))] {
+		return
+	}
+	if body := x.testBlockCallbackBody(call); body != nil {
+		x.collectLocalVarTypes(body, scope)
+	}
+}
+
+// testBlockCalleeName returns the callee identifier of a call_expression,
+// handling bare `it(...)` and dotted `it.each(...)` / `describe.only(...)`
+// shapes (returns the leading identifier "it" / "describe"). Returns "" when
+// the callee is not a plain-identifier shape.
+func (x *extractor) testBlockCalleeName(call *sitter.Node) string {
+	fn := call.ChildByFieldName("function")
+	if fn == nil {
+		return ""
+	}
+	switch fn.Type() {
+	case "identifier":
+		return x.nodeText(fn)
+	case "member_expression":
+		// `it.only` / `describe.skip` / `it.each` — the grouping/leaf
+		// identity is the object identifier.
+		obj := fn.ChildByFieldName("object")
+		if obj != nil && obj.Type() == "identifier" {
+			return x.nodeText(obj)
+		}
+	case "call_expression":
+		// `it.each(table)(name, cb)` — the inner call's callee is
+		// `it.each`; recurse to recover "it".
+		return x.testBlockCalleeName(fn)
+	}
+	return ""
+}
+
+// testBlockCallbackBody returns the statement_block body of the LAST
+// function/arrow argument of a test-block call. Returns nil when the final
+// argument is not a function with a block body (e.g. an it() with only a name,
+// or an arrow with an expression body — no statements to scan).
+func (x *extractor) testBlockCallbackBody(call *sitter.Node) *sitter.Node {
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return nil
+	}
+	var fn *sitter.Node
+	for i := 0; i < int(args.ChildCount()); i++ {
+		a := args.Child(i)
+		if a == nil {
+			continue
+		}
+		switch a.Type() {
+		case "arrow_function", "function_expression", "function":
+			fn = a // last function-typed arg wins
+		}
+	}
+	if fn == nil {
+		return nil
+	}
+	body := fn.ChildByFieldName("body")
+	if body == nil || body.Type() != "statement_block" {
+		return nil
+	}
+	return body
+}
+
+// testBlockName derives a stable entity name for a test block from its first
+// string-literal argument (the test description), falling back to the callee
+// when no literal description is present. The line suffix avoids collisions
+// when two it() blocks share a description.
+func (x *extractor) testBlockName(call *sitter.Node, callee string) string {
+	args := call.ChildByFieldName("arguments")
+	desc := ""
+	if args != nil {
+		for i := 0; i < int(args.ChildCount()); i++ {
+			a := args.Child(i)
+			if a == nil {
+				continue
+			}
+			if a.Type() == "string" || a.Type() == "template_string" {
+				desc = strings.Trim(x.nodeText(a), "`'\"")
+				break
+			}
+		}
+	}
+	if desc == "" {
+		desc = callee
+	}
+	line := int(call.StartPoint().Row) + 1
+	return fmt.Sprintf("%s:%s@%d", callee, desc, line)
 }
 
 // detectTestFramework returns a best-guess framework name from the file

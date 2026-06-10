@@ -411,6 +411,21 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	// mobile 0 across ~2500 test entities). emitTestsEdgesForTestFile is
 	// a no-op for non-test files (cheap filename check) so the hot path
 	// stays cheap.
+	//
+	// Issue #4671 — index test-scope callbacks (it/test/describe/beforeEach)
+	// as call-bearing SCOPE.Operation entities so the production calls made
+	// inside them (e.g. `controller.getCounts(...)` in a controller UNIT
+	// spec) are extracted at all. Without this the dominant unit-spec shape
+	// produced ZERO call-bearing entities — only the file entity with its
+	// IMPORTS — so no test→handler CALLS edge ever existed and ComputeCoverage
+	// marked the endpoint untested (the live-proven ~4x undercount). Must run
+	// BEFORE emitTestsEdgesForTestFile so the new Operations' CALLS edges get
+	// promoted to TESTS edges. No-op for non-test files.
+	func() {
+		defer func() { _ = recover() }()
+		x.extractTestScopeOperations(root)
+	}()
+
 	x.emitTestsEdgesForTestFile()
 
 	if extractErr != nil {
@@ -2359,6 +2374,14 @@ func (x *extractor) extractCallRelationships(body *sitter.Node, callerName strin
 	}
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
+
+	// Issue #4671 — local-variable receiver typing. Scan this body for
+	// `const c = new ClassName(...)` / `const c = module.get(ClassName)`
+	// bindings and merge them into a per-body frame so callTarget can
+	// resolve `c.method()` to ClassName.method (the dominant controller/
+	// service UNIT-spec shape). We clone the incoming frame to avoid
+	// mutating the shared class-field frame across sibling method bodies.
+	frame = x.frameWithLocalVarTypes(body, frame)
 
 	// Issue #2625 — build the per-body destructure-binding table so that
 	// bare callee identifiers introduced by object-pattern destructuring of
