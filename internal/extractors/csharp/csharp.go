@@ -71,7 +71,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	entities = append(entities, extractor.FileEntity(file))
 	root := file.Tree.RootNode()
 	imports := collectImportNames(root, file.Content)
-	walk(root, file, "", nil, imports, &entities)
+	// Issue #4374 — per-file cross-namespace context (namespaces, usings,
+	// aliases, `using static` types) used to bind qualified cross-namespace
+	// calls to a concrete (namespace, type, leaf) for the resolver.
+	cross := buildCrossCtx(root, file.Content)
+	walk(root, file, "", "", nil, imports, cross, &entities)
 	// Issue #3641 (epic #3625) — config-key consumption edges
 	// (Configuration["X"] / GetValue / GetConnectionString /
 	// Environment.GetEnvironmentVariable) → shared SCOPE.Config config_key nodes.
@@ -94,15 +98,36 @@ type classCtx struct {
 }
 
 // walk performs a depth-first traversal of the CST, collecting entities.
+//
+// ns carries the enclosing C# namespace (issue #4374). It is captured on
+// namespace_declaration / file_scoped_namespace_declaration and stamped onto
+// every Component/Operation/Schema entity so the resolver can build a
+// namespace-keyed member index for cross-namespace CALLS binding.
 func walk(
 	node *sitter.Node,
 	file extractor.FileInput,
 	parentType string,
+	ns string,
 	cc *classCtx,
 	imports map[string]bool,
+	cross *csharpCrossCtx,
 	out *[]types.EntityRecord,
 ) {
 	if node == nil {
+		return
+	}
+
+	switch node.Type() {
+	case "namespace_declaration", "file_scoped_namespace_declaration":
+		childNS := ns
+		if nf := node.ChildByFieldName("name"); nf != nil {
+			if v := strings.TrimSpace(nodeText(nf, file.Content)); v != "" {
+				childNS = v
+			}
+		}
+		for i := range node.ChildCount() {
+			walk(node.Child(int(i)), file, parentType, childNS, cc, imports, cross, out)
+		}
 		return
 	}
 
@@ -120,10 +145,11 @@ func walk(
 		rec, ok := buildComponent(node, file, subtype)
 		if !ok {
 			for i := range node.ChildCount() {
-				walk(node.Child(int(i)), file, parentType, cc, imports, out)
+				walk(node.Child(int(i)), file, parentType, ns, cc, imports, cross, out)
 			}
 			return
 		}
+		stampNamespace(&rec, ns)
 		classIdx := len(*out)
 		*out = append(*out, rec)
 		body := findTypeBody(node)
@@ -131,7 +157,7 @@ func walk(
 			localCtx := &classCtx{fields: collectFieldTypes(body, file.Content)}
 			before := len(*out)
 			for i := range body.ChildCount() {
-				walk(body.Child(int(i)), file, rec.Name, localCtx, imports, out)
+				walk(body.Child(int(i)), file, rec.Name, ns, localCtx, imports, cross, out)
 			}
 			after := len(*out)
 			for k := before; k < after; k++ {
@@ -151,6 +177,7 @@ func walk(
 
 	case "enum_declaration":
 		if rec, ok := buildEnumEntity(node, file); ok {
+			stampNamespace(&rec, ns)
 			*out = append(*out, rec)
 		}
 		// Value-carrying SCOPE.Enum value-set node (data-model, epic #3628).
@@ -165,10 +192,11 @@ func walk(
 			if nameNode := node.ChildByFieldName("name"); nameNode != nil {
 				selfName = nodeText(nameNode, file.Content)
 			}
+			stampNamespace(&rec, ns)
 			paramTypes := collectParamTypes(node, file.Content)
 			body := node.ChildByFieldName("body")
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(body, file.Content, selfName, cc, paramTypes, imports)...)
+				extractCallRelationships(body, file.Content, selfName, cc, paramTypes, imports, cross)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -179,10 +207,11 @@ func walk(
 			if nameNode := node.ChildByFieldName("name"); nameNode != nil {
 				selfName = nodeText(nameNode, file.Content)
 			}
+			stampNamespace(&rec, ns)
 			paramTypes := collectParamTypes(node, file.Content)
 			body := node.ChildByFieldName("body")
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(body, file.Content, selfName, cc, paramTypes, imports)...)
+				extractCallRelationships(body, file.Content, selfName, cc, paramTypes, imports, cross)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -196,10 +225,24 @@ func walk(
 
 	// Default recursion. parentType / cc do NOT propagate through
 	// unrelated nodes (e.g. method bodies) — methods nested inside a
-	// method body are emitted bare.
+	// method body are emitted bare. ns (the enclosing namespace) DOES
+	// propagate so nested types still record their namespace (#4374).
 	for i := range node.ChildCount() {
-		walk(node.Child(int(i)), file, "", nil, imports, out)
+		walk(node.Child(int(i)), file, "", ns, nil, imports, cross, out)
 	}
+}
+
+// stampNamespace records the enclosing C# namespace on an entity so the
+// resolver can build a namespace-keyed member index for cross-namespace CALLS
+// binding (#4374). No-op for the global (file-root) namespace.
+func stampNamespace(rec *types.EntityRecord, ns string) {
+	if ns == "" {
+		return
+	}
+	if rec.Properties == nil {
+		rec.Properties = map[string]string{}
+	}
+	rec.Properties["csharp_namespace"] = ns
 }
 
 // findTypeBody returns the declaration_list child of a class/interface/
@@ -499,6 +542,7 @@ func extractCallRelationships(
 	cc *classCtx,
 	paramTypes map[string]string,
 	imports map[string]bool,
+	cross *csharpCrossCtx,
 ) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
@@ -542,12 +586,28 @@ func extractCallRelationships(
 			continue
 		}
 		seen[target] = true
+		props := map[string]string{
+			"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
+		}
+		// Issue #4374 — stamp the resolved (namespace candidates, type, leaf)
+		// for a qualified cross-namespace call so the resolver can bind it via
+		// the namespace-keyed member index instead of the ambiguous global
+		// byName index. Only fires for statically type-qualified member-access
+		// invocations; bare / instance-receiver / object-creation calls are
+		// left untouched (no false stamps).
+		if cross != nil && call.Type() == "invocation_expression" {
+			if fn := call.ChildByFieldName("function"); fn != nil {
+				if b := cross.resolveQualifiedCall(fn, src, cc, merged); b != nil {
+					props["csharp_call_ns"] = strings.Join(b.nsCandidates, ";")
+					props["csharp_call_type"] = b.typ
+					props["call_leaf"] = b.leaf
+				}
+			}
+		}
 		rels = append(rels, types.RelationshipRecord{
-			ToID: target,
-			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(int(call.StartPoint().Row) + 1),
-			},
+			ToID:       target,
+			Kind:       "CALLS",
+			Properties: props,
 		})
 	}
 	return rels

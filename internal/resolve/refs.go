@@ -494,6 +494,19 @@ type Index struct {
 	// package (extremely rare in practice).
 	byPackageComponent map[string]map[string]string
 
+	// byNamespaceMember[namespace][type_name][member_name] = entity_id. Used
+	// by the C# cross-namespace CALLS path (issue #4374). C# namespaces are
+	// NOT directory-bound — a namespace may span files and directories, and a
+	// file's directory need not equal its namespace — so the package-dir keyed
+	// byPackageMember cannot disambiguate a cross-namespace call. This index
+	// keys on the C# namespace stamped on each entity
+	// (Properties["csharp_namespace"]). An entity with dotted Name
+	// "<Type>.<member>" and a csharp_namespace property is indexed under
+	// [namespace][Type][member]. A blank-string sentinel marks (namespace,
+	// type, member) collisions so the resolver leaves the edge alone rather
+	// than binding to the wrong overload.
+	byNamespaceMember map[string]map[string]map[string]string
+
 	// PlatformVariants maps a canonical platform-variant entity ID to the
 	// slice of non-canonical variant entity IDs that were merged into it
 	// during BuildIndex. Populated when byPackageOperation detects a
@@ -708,6 +721,7 @@ func BuildIndex(entities []types.EntityRecord) Index {
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
+		byNamespaceMember:  make(map[string]map[string]map[string]string),
 		byQualifiedName:    make(map[string]string),
 		PlatformVariants:   make(map[string][]string),
 	}
@@ -1031,6 +1045,32 @@ func BuildIndex(entities []types.EntityRecord) Index {
 						pkgScopeBucket[member] = "" // ambiguous within (pkg, scope, member)
 					} else {
 						pkgScopeBucket[member] = e.ID
+					}
+				}
+
+				// Namespace-scoped member index (issue #4374). C# namespaces
+				// are not directory-bound, so a cross-namespace call cannot be
+				// disambiguated by pkgDir. Index "<Type>.<member>" entities
+				// that carry a csharp_namespace property under
+				// [namespace][Type][member]. Blank-string sentinel marks
+				// (namespace, type, member) collisions.
+				if e.Properties != nil {
+					if nsName := e.Properties["csharp_namespace"]; nsName != "" {
+						nsBucket := idx.byNamespaceMember[nsName]
+						if nsBucket == nil {
+							nsBucket = make(map[string]map[string]string)
+							idx.byNamespaceMember[nsName] = nsBucket
+						}
+						nsScopeBucket := nsBucket[scope]
+						if nsScopeBucket == nil {
+							nsScopeBucket = make(map[string]string)
+							nsBucket[scope] = nsScopeBucket
+						}
+						if existing, ok := nsScopeBucket[member]; ok && existing != e.ID {
+							nsScopeBucket[member] = "" // ambiguous within (ns, type, member)
+						} else {
+							nsScopeBucket[member] = e.ID
+						}
 					}
 				}
 			}
