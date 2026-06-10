@@ -15,21 +15,38 @@
    side is the segment before "::" and the displayable label is derived
    from the local id tail.
 
-   Layout mirrors Security / Quality: full-height column, a summary stat
-   row, a kind filter, and a grouped list of source-repo → target-repo
-   call edges with repo chips + a confidence meter. Reuses the shared
-   primitives (Card, Badge, Pill, Skeleton) + RepoChip.
+   Layout mirrors Security / Quality: full-height column, a screen
+   description + agent-usage banner, a summary stat row, a kind filter, and
+   a grouped list of source → target call edges with repo chips + a
+   confidence meter. Reuses the shared primitives (Card, Badge, Pill,
+   Skeleton, ScreenDescription, AgentUsage) + RepoChip.
+
+   #4582 polish:
+     • Endpoints resolve a readable name from the id tail; bare content-hash
+       ids (no source-derived name) are flagged "unnamed" with the raw id in
+       a tooltip instead of printing an opaque hex blob.
+     • Rows are clickable — they deep-link into the graph focused on the
+       target entity (?node=<id>), and the confidence meter explains what
+       high/medium/low actually means.
+     • When the group spans a single repo (repo pairs ≤ 1) the links are
+       INTRA-repo data flows, not cross-repo, so the headings/labels adapt
+       ("Data-flow links", "within <repo>") to avoid the cross-repo mislabel.
    ============================================================ */
 
 import { useMemo, useState } from "react";
-import { useParams } from "react-router-dom";
-import { ArrowRight, GitBranch, Link2, AlertTriangle } from "lucide-react";
+import { Link, useParams } from "react-router-dom";
+import { ArrowRight, GitBranch, Link2, AlertTriangle, FileCode2 } from "lucide-react";
 
 import {
   Badge,
   Card,
   CardBody,
   Pill,
+  ScreenDescription,
+  AgentUsage,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RepoChip } from "@/lib/repo-color";
@@ -38,29 +55,71 @@ import { useGroupLinks } from "@/hooks/use-links";
 import type { CrossRepoLink } from "@/data/types";
 
 // ---------------------------------------------------------------------------
-// § Entity-id parsing — "<repo>::<localId>"; label = readable local tail.
+// § Entity-id parsing — "<repo>::<localId>".
+//
+//   The link record carries only ids (`source`/`target`), no separate
+//   name/file fields, so the readable label is derived from the id tail.
+//   A localId looks like one of:
+//     • "pkg/Type.method:hash"  → readable symbol  ("Type.method")
+//     • "GET /api/orders:hash"  → readable route   ("GET /api/orders")
+//     • "00f991b585f18f21"      → a bare content hash with no name segment
+//       (the entity has no source-derived name) → flagged as "unnamed".
+//
+//   We surface the best readable name we can, keep the raw id as a tooltip,
+//   and expose `named` so the UI can mark hash-only endpoints honestly
+//   instead of printing an opaque hex blob (#4582).
 // ---------------------------------------------------------------------------
 
-function splitEntity(id: string): { repo: string; label: string } {
-  const raw = id ?? "";
-  const sep = raw.indexOf("::");
-  if (sep === -1) {
-    return { repo: "", label: shortLabel(raw) };
-  }
-  return { repo: raw.slice(0, sep), label: shortLabel(raw.slice(sep + 2)) };
+interface Endpoint {
+  /** Repo slug (segment before "::"), or "" when unprefixed. */
+  repo: string;
+  /** Best readable label for the entity. */
+  label: string;
+  /** False when the id is a bare hash with no human-readable name segment. */
+  named: boolean;
+  /** Raw, fully-qualified id (kept for tooltips + graph deep-link). */
+  id: string;
 }
 
-/** Best-effort short, readable label from a local entity id. */
-function shortLabel(local: string): string {
-  if (!local) return "—";
-  // Local ids often look like "kind:hash" or "pkg/Type.method:hash"; keep the
-  // most meaningful trailing segment but drop a bare trailing hash.
+function splitEntity(id: string): Endpoint {
+  const raw = id ?? "";
+  const sep = raw.indexOf("::");
+  const repo = sep === -1 ? "" : raw.slice(0, sep);
+  const local = sep === -1 ? raw : raw.slice(sep + 2);
+  const { label, named } = readableLabel(local);
+  return { repo, label, named, id: raw };
+}
+
+/** A bare lowercase/upper hex blob of ≥8 chars with no other structure. */
+function isBareHash(s: string): boolean {
+  return /^[0-9a-f]{8,}$/i.test(s);
+}
+
+/**
+ * Best-effort readable label from a local entity id, plus whether a real
+ * name was found. Local ids look like "name:hash"; if the name half is itself
+ * a bare hash (or the whole id is) there is no human name to show.
+ */
+function readableLabel(local: string): { label: string; named: boolean } {
+  if (!local) return { label: "—", named: false };
+  // Whole id is a bare content hash — no name segment at all.
+  if (isBareHash(local)) {
+    return { label: `unnamed · ${shorten(local)}`, named: false };
+  }
   const parts = local.split(":");
-  // If the last segment is a hex-ish hash, prefer the segment before it.
   const last = parts[parts.length - 1] ?? local;
-  const isHashy = /^[0-9a-f]{6,}$/i.test(last);
-  const chosen = isHashy && parts.length > 1 ? parts[parts.length - 2] : last;
-  return chosen || local;
+  // Drop a trailing disambiguation hash to recover the name part.
+  const name =
+    isBareHash(last) && parts.length > 1 ? parts.slice(0, -1).join(":") : local;
+  if (!name || isBareHash(name)) {
+    return { label: `unnamed · ${shorten(local)}`, named: false };
+  }
+  return { label: name, named: true };
+}
+
+/** Compact a long hex id for inline display. */
+function shorten(s: string): string {
+  return s.length > 10 ? `${s.slice(0, 7)}…` : s;
 }
 
 // ---------------------------------------------------------------------------
@@ -85,20 +144,47 @@ function kindTone(kind: string): "accent" | "info" | "warning" | "neutral" {
 // § Confidence meter
 // ---------------------------------------------------------------------------
 
+/** Plain-language meaning of a resolution-confidence band. */
+function confidenceMeaning(value: number): string {
+  if (value >= 0.8)
+    return "High — the source call was matched to this target with strong signals (exact route/topic/type).";
+  if (value >= 0.5)
+    return "Medium — a probable match inferred from partial signals; verify before relying on it.";
+  return "Low — a weak or heuristic match; the real target may differ.";
+}
+
 function ConfidenceMeter({ value }: { value: number | undefined }) {
   if (value == null) {
-    return <span className="text-[10px] text-text-4 italic">conf —</span>;
+    return (
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="text-[10px] text-text-4 italic cursor-help">conf —</span>
+        </TooltipTrigger>
+        <TooltipContent>
+          No resolution confidence was recorded for this link.
+        </TooltipContent>
+      </Tooltip>
+    );
   }
   const pct = Math.max(0, Math.min(1, value)) * 100;
   const tone =
     value >= 0.8 ? "var(--success)" : value >= 0.5 ? "var(--warning)" : "var(--danger)";
+  const band = value >= 0.8 ? "high" : value >= 0.5 ? "medium" : "low";
   return (
-    <span className="inline-flex items-center gap-1.5 shrink-0" title={`confidence ${value.toFixed(2)}`}>
-      <span className="h-1.5 w-12 rounded-full overflow-hidden bg-surface-2 border border-border">
-        <span className="block h-full" style={{ width: `${pct}%`, background: tone }} />
-      </span>
-      <span className="text-[10px] tabular-nums text-text-4">{pct.toFixed(0)}%</span>
-    </span>
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <span className="inline-flex items-center gap-1.5 shrink-0 cursor-help">
+          <span className="h-1.5 w-12 rounded-full overflow-hidden bg-surface-2 border border-border">
+            <span className="block h-full" style={{ width: `${pct}%`, background: tone }} />
+          </span>
+          <span className="text-[10px] tabular-nums text-text-4">{pct.toFixed(0)}%</span>
+        </span>
+      </TooltipTrigger>
+      <TooltipContent>
+        <span className="block font-medium capitalize">{band} confidence ({value.toFixed(2)})</span>
+        <span className="block text-text-3">{confidenceMeaning(value)}</span>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -150,29 +236,76 @@ function ErrorState() {
 // § One link row
 // ---------------------------------------------------------------------------
 
+/** Deep-link into the graph view focused on a given entity id. */
+function graphHref(groupId: string, entityId: string): string {
+  return `/g/${groupId}/graph?node=${encodeURIComponent(entityId)}`;
+}
+
+/**
+ * One endpoint of a link: repo chip + readable name, with the raw id as a
+ * hover tooltip. Hash-only (unnamed) endpoints are visually de-emphasised and
+ * carry an explanatory tooltip instead of an opaque hex string (#4582).
+ */
+function EndpointLabel({
+  ep,
+  groupId,
+  emphasis,
+}: {
+  ep: Endpoint;
+  groupId: string;
+  emphasis: "source" | "target";
+}) {
+  const text = (
+    <span
+      className={cn(
+        "font-mono text-xs truncate",
+        ep.named
+          ? emphasis === "target"
+            ? "text-text"
+            : "text-text-2"
+          : "text-text-4 italic",
+      )}
+    >
+      {ep.label}
+    </span>
+  );
+  return (
+    <span className="flex items-center gap-1.5 min-w-0">
+      {ep.repo && <RepoChip slug={ep.repo} groupId={groupId} maxLength={18} />}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span className="min-w-0 truncate cursor-help">{text}</span>
+        </TooltipTrigger>
+        <TooltipContent>
+          <span className="block font-mono text-[11px] break-all">{ep.id || "—"}</span>
+          {!ep.named && (
+            <span className="block text-text-3 mt-0.5">
+              This entity has no source-derived name; only its content-hash id
+              is known. Open it in the graph to inspect its source.
+            </span>
+          )}
+        </TooltipContent>
+      </Tooltip>
+    </span>
+  );
+}
+
 function LinkRow({ link, groupId }: { link: CrossRepoLink; groupId: string }) {
   const src = splitEntity(link.source);
   const tgt = splitEntity(link.target);
+  // The whole row deep-links to the target entity in the graph; the source
+  // chip carries its own link so either endpoint is reachable.
+  const rowHref = graphHref(groupId, link.target || link.source);
   return (
-    <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 transition-colors">
+    <Link
+      to={rowHref}
+      title="Open the target entity in the graph"
+      className="group flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 hover:border-accent/40 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+    >
       <div className="flex items-center gap-2 min-w-0">
-        {/* Source */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          {src.repo && <RepoChip slug={src.repo} groupId={groupId} maxLength={18} />}
-          <span className="font-mono text-xs text-text-2 truncate" title={link.source}>
-            {src.label}
-          </span>
-        </div>
-
+        <EndpointLabel ep={src} groupId={groupId} emphasis="source" />
         <ArrowRight size={13} className="text-text-4 shrink-0" />
-
-        {/* Target */}
-        <div className="flex items-center gap-1.5 min-w-0">
-          {tgt.repo && <RepoChip slug={tgt.repo} groupId={groupId} maxLength={18} />}
-          <span className="font-mono text-xs text-text truncate" title={link.target}>
-            {tgt.label}
-          </span>
-        </div>
+        <EndpointLabel ep={tgt} groupId={groupId} emphasis="target" />
 
         <div className="ml-auto flex items-center gap-2 shrink-0">
           {link.method && (
@@ -184,6 +317,10 @@ function LinkRow({ link, groupId }: { link: CrossRepoLink; groupId: string }) {
             {kindLabel(link.kind)}
           </Badge>
           <ConfidenceMeter value={link.confidence} />
+          <FileCode2
+            size={13}
+            className="text-text-4 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+          />
         </div>
       </div>
       {link.channel && (
@@ -191,7 +328,7 @@ function LinkRow({ link, groupId }: { link: CrossRepoLink; groupId: string }) {
           channel: <span className="font-mono text-text-3">{link.channel}</span>
         </p>
       )}
-    </div>
+    </Link>
   );
 }
 
@@ -206,17 +343,44 @@ interface RepoPairGroup {
   links: CrossRepoLink[];
 }
 
-function RepoPairSection({ group, groupId }: { group: RepoPairGroup; groupId: string }) {
+function RepoPairSection({
+  group,
+  groupId,
+  isCrossRepo,
+}: {
+  group: RepoPairGroup;
+  groupId: string;
+  isCrossRepo: boolean;
+}) {
+  // Within a single repo (source === target) it's an intra-repo data flow,
+  // so collapse the duplicate repo chip into a clear "within" label (#4582).
+  const sameRepo = group.sourceRepo === group.targetRepo;
   return (
     <Card>
       <CardBody className="space-y-2">
         <div className="flex items-center gap-2">
           <GitBranch size={13} className="text-text-4 shrink-0" />
-          <RepoChip slug={group.sourceRepo || "(unknown)"} groupId={groupId} />
-          <ArrowRight size={12} className="text-text-4 shrink-0" />
-          <RepoChip slug={group.targetRepo || "(unknown)"} groupId={groupId} />
+          {sameRepo && !isCrossRepo ? (
+            <>
+              <span className="text-xs text-text-3">within</span>
+              <RepoChip slug={group.sourceRepo || "(unknown)"} groupId={groupId} />
+            </>
+          ) : (
+            <>
+              <RepoChip slug={group.sourceRepo || "(unknown)"} groupId={groupId} />
+              <ArrowRight size={12} className="text-text-4 shrink-0" />
+              <RepoChip slug={group.targetRepo || "(unknown)"} groupId={groupId} />
+            </>
+          )}
           <span className="ml-auto text-xs text-text-4 tabular-nums">
-            {group.links.length} {group.links.length === 1 ? "link" : "links"}
+            {group.links.length}{" "}
+            {group.links.length === 1
+              ? isCrossRepo
+                ? "link"
+                : "flow"
+              : isCrossRepo
+                ? "links"
+                : "flows"}
           </span>
         </div>
         <div className="space-y-2">
@@ -289,27 +453,58 @@ export default function LinksScreen() {
     return set.size;
   }, [links]);
 
+  // Distinct source→target repo pairs. When ≤ 1 every link lives inside a
+  // single repo, so the data is INTRA-repo data flow, not cross-repo (#4582).
+  const repoPairCount = useMemo(
+    () =>
+      new Set(
+        links.map(
+          (l) => `${splitEntity(l.source).repo}=>${splitEntity(l.target).repo}`,
+        ),
+      ).size,
+    [links],
+  );
+
+  // True cross-repo only when more than one repo is connected by ≥1 pair.
+  const isCrossRepo = repoCount > 1 && repoPairCount > 1;
+
+  // Labels adapt to the cross- vs intra-repo reality.
+  const linksLabel = isCrossRepo ? "Cross-repo links" : "Data-flow links";
+  const pairsLabel = isCrossRepo ? "Repo pairs" : "Same-repo flows";
+
   return (
     <div className="flex flex-col h-full bg-bg">
       <div className="flex-1 min-h-0 overflow-y-auto ag-scroll px-4 py-4 space-y-4">
+        <ScreenDescription>
+          This view maps the resolved calls between entities — a frontend fetch
+          landing on a backend endpoint, a publisher reaching a topic, a gRPC
+          client reaching a service. Each row is one directed link: where a
+          request originates (source) and what it reaches (target), with the
+          link kind and how confident the resolver is in the match. When the
+          group spans more than one repository these are cross-repo links;
+          when it's a single repo they're intra-repo data flows. Click a row to
+          open the target entity in the graph.
+        </ScreenDescription>
+        <AgentUsage
+          tool="archigraph_cross_links"
+          example="An agent traces how the frontend's API calls map to backend endpoints across repos."
+        />
         {isLoading ? (
           <SkeletonRows />
         ) : isError ? (
           <ErrorState />
         ) : links.length === 0 ? (
           <EmptyState
-            title="No cross-repo links resolved"
-            hint="No links between repositories were resolved for this group yet. Cross-repo links appear once a frontend fetch, gRPC call, or message publish is matched to a handler/topic in another indexed repo."
+            title="No links resolved"
+            hint="No data-flow links were resolved for this group yet. Links appear once a frontend fetch, gRPC call, or message publish is matched to a handler/topic — within a repo or across repos in the same group."
           />
         ) : (
           <>
             {/* Summary */}
             <div className="flex flex-wrap gap-3">
-              <SummaryStat label="Cross-repo links" value={links.length} />
+              <SummaryStat label={linksLabel} value={links.length} />
               <SummaryStat label="Repos connected" value={repoCount} />
-              <SummaryStat label="Repo pairs" value={
-                new Set(links.map((l) => `${splitEntity(l.source).repo}=>${splitEntity(l.target).repo}`)).size
-              } />
+              <SummaryStat label={pairsLabel} value={repoPairCount} />
             </div>
 
             {/* Kind filter */}
@@ -335,7 +530,12 @@ export default function LinksScreen() {
             ) : (
               <div className="space-y-3">
                 {groups.map((g) => (
-                  <RepoPairSection key={g.key} group={g} groupId={groupId} />
+                  <RepoPairSection
+                    key={g.key}
+                    group={g}
+                    groupId={groupId}
+                    isCrossRepo={isCrossRepo}
+                  />
                 ))}
               </div>
             )}
