@@ -182,6 +182,20 @@ type CrossRepoLink struct {
 	Confidence float64 `json:"confidence,omitempty"`
 	Channel    string  `json:"channel,omitempty"`
 	Method     string  `json:"method,omitempty"`
+
+	// Enrichment fields resolved from the source/target entities at serve time
+	// (#4596). They are NOT persisted to the on-disk links file — UnmarshalJSON
+	// ignores them — and are populated by enrichLinkEndpoints just before the
+	// /links payload is written, so the frontend can render readable names and
+	// open a real source-peek instead of only a graph deep-link fallback.
+	SourceName          string `json:"source_name,omitempty"`
+	SourceQualifiedName string `json:"source_qualified_name,omitempty"`
+	SourceFile          string `json:"source_file,omitempty"`
+	SourceLine          int    `json:"source_line,omitempty"`
+	TargetName          string `json:"target_name,omitempty"`
+	TargetQualifiedName string `json:"target_qualified_name,omitempty"`
+	TargetFile          string `json:"target_file,omitempty"`
+	TargetLine          int    `json:"target_line,omitempty"`
 }
 
 // UnmarshalJSON handles the "relation" field used by the link pass as a
@@ -546,6 +560,40 @@ func normalizeLinkEndpoints(links []CrossRepoLink, repos map[string]*DashRepo) [
 	for i, l := range links {
 		l.Source = rewrite(l.Source)
 		l.Target = rewrite(l.Target)
+		out[i] = l
+	}
+	return out
+}
+
+// enrichLinkEndpoints resolves each link's source and target entity (by its
+// prefixed "<repo>::<localId>" id) via the same findEntity lookup the rest of
+// the dashboard uses, and copies the entity's name / qualified name / source
+// file / start line onto the link (#4596). This lets the /links page render a
+// readable source name and open a real source-peek rather than only a graph
+// deep-link fallback.
+//
+// It is additive and best-effort: an endpoint that does not resolve to an
+// entity (e.g. a synthetic scope.operation node #4554 or a bare-external
+// target #4558 that has no source-derived name) simply leaves its enrichment
+// fields empty, and the frontend falls back to the graph deep-link.
+func enrichLinkEndpoints(grp *DashGroup, links []CrossRepoLink) []CrossRepoLink {
+	if grp == nil || len(links) == 0 {
+		return links
+	}
+	out := make([]CrossRepoLink, len(links))
+	for i, l := range links {
+		if _, e := findEntity(grp, l.Source); e != nil {
+			l.SourceName = e.Name
+			l.SourceQualifiedName = e.QualifiedName
+			l.SourceFile = e.SourceFile
+			l.SourceLine = e.StartLine
+		}
+		if _, e := findEntity(grp, l.Target); e != nil {
+			l.TargetName = e.Name
+			l.TargetQualifiedName = e.QualifiedName
+			l.TargetFile = e.SourceFile
+			l.TargetLine = e.StartLine
+		}
 		out[i] = l
 	}
 	return out
