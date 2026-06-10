@@ -25,10 +25,7 @@ export { Tabs, TabsList, TabsTrigger, TabsContent } from "./tabs";
 export { Skeleton } from "./skeleton";
 export { TabCount } from "./tab-count";
 export type { TabCountProps } from "./tab-count";
-export { ScreenDescription, DefTerm } from "./screen-description";
-export type {
-  ScreenDescriptionProps,
-  ScreenDescriptionTerm,
-} from "./screen-description";
-export { AgentUsage } from "./agent-usage";
-export type { AgentUsageProps } from "./agent-usage";
+export { DefTerm } from "./screen-description";
+export type { ScreenDescriptionTerm } from "./screen-description";
+export { InsightBanner } from "./insight-banner";
+export type { InsightBannerProps, InsightBannerAgent } from "./insight-banner";

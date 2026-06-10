@@ -60,8 +60,7 @@ import {
   TabsTrigger,
   TooltipProvider,
   InfoLabel,
-  ScreenDescription,
-  AgentUsage,
+  InsightBanner,
 } from "@/components/ui";
 import {
   useSystemStatus,
@@ -1830,14 +1829,21 @@ export default function OperationsScreen() {
         </header>
 
         <div className="mb-6 space-y-3">
-          <ScreenDescription>
-            Operations — run and inspect the daemon behind this group: system health
-            and indexing, the learned-pattern store, graph-quality measurement
-            (unresolved references, orphan audit, recall), and version updates.
-          </ScreenDescription>
-          <AgentUsage
-            tool="archigraph_repairs"
-            example="An agent reviews unresolved references and repairs before relying on the graph."
+          <InsightBanner
+            storageKey="operations"
+            human={
+              <>
+                Operations — run and inspect the daemon behind this group:
+                system health and indexing, the learned-pattern store,
+                graph-quality measurement (unresolved references, orphan audit,
+                recall), and version updates.
+              </>
+            }
+            agent={{
+              tool: "archigraph_repairs",
+              example:
+                "Before trusting the graph to answer 'who calls this?', an agent calls archigraph_repairs to review unresolved references and pending fixes — if a key dynamic-dispatch edge is still unresolved it pauses and asks for a re-index rather than reporting an incomplete caller list as complete.",
+            }}
           />
         </div>
 

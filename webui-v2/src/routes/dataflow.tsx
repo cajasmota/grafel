@@ -46,7 +46,6 @@ import {
   Crosshair,
   Target,
   ListFilter,
-  Info,
 } from "lucide-react";
 
 import {
@@ -61,7 +60,7 @@ import {
   Tooltip,
   TooltipTrigger,
   TooltipContent,
-  AgentUsage,
+  InsightBanner,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -339,50 +338,43 @@ function DefTerm({ term, def }: { term: string; def: React.ReactNode }) {
   );
 }
 
-function PurposeHeader() {
+function TaintHuman() {
   return (
-    <Card>
-      <CardBody className="py-3 flex gap-3">
-        <Info size={16} className="text-text-4 shrink-0 mt-0.5" />
-        <div className="space-y-1.5 min-w-0">
-          <p className="text-md font-medium text-text">Taint &amp; data-flow analysis</p>
-          <p className="text-sm text-text-3 leading-relaxed">
-            This view traces how untrusted data (typically{" "}
-            <DefTerm
-              term="request input"
-              def="A taint source — data entering the system from outside, e.g. an HTTP request body, query param, or header."
-            />
-            ) moves through the code until it reaches a{" "}
-            <DefTerm
-              term="sensitive sink"
-              def="An operation where untrusted data is dangerous — a SQL query, OS command, filesystem path, template render, or outbound HTTP call (a DB_WRITE is one such sink kind)."
-            />
-            . Each path carries a{" "}
-            <DefTerm
-              term="confidence"
-              def="How sure the analyzer is that the data actually reaches the sink along the traced path. Higher = stronger evidence."
-            />{" "}
-            score.
-          </p>
-          <p className="text-sm text-text-3 leading-relaxed">
-            <span className="text-text-2 font-medium">Findings</span> are flows the
-            taint pass judged risky — an unsanitized source→sink path, tagged with a{" "}
-            <DefTerm
-              term="vuln category"
-              def="The class of vulnerability the path resembles: SQL injection, command injection, path traversal, SSRF, XSS, etc."
-            />
-            .{" "}
-            <span className="text-text-2 font-medium">Flows</span> are every traced
-            source→sink data movement, grouped by{" "}
-            <DefTerm
-              term="sink kind"
-              def="What kind of operation the data lands in (sql, db_write, command, fs, http, template, …). Findings are the subset of flows that are exploitable."
-            />
-            .
-          </p>
-        </div>
-      </CardBody>
-    </Card>
+    <div className="space-y-1.5">
+      <p className="leading-relaxed">
+        Traces how untrusted data (typically{" "}
+        <DefTerm
+          term="request input"
+          def="A taint source — data entering the system from outside, e.g. an HTTP request body, query param, or header."
+        />
+        ) moves through the code until it reaches a{" "}
+        <DefTerm
+          term="sensitive sink"
+          def="An operation where untrusted data is dangerous — a SQL query, OS command, filesystem path, template render, or outbound HTTP call (a DB_WRITE is one such sink kind)."
+        />
+        , each path carrying a{" "}
+        <DefTerm
+          term="confidence"
+          def="How sure the analyzer is that the data actually reaches the sink along the traced path. Higher = stronger evidence."
+        />{" "}
+        score.
+      </p>
+      <p className="leading-relaxed">
+        <span className="font-medium text-text-2">Findings</span> are the risky
+        subset — unsanitized source→sink paths tagged with a{" "}
+        <DefTerm
+          term="vuln category"
+          def="The class of vulnerability the path resembles: SQL injection, command injection, path traversal, SSRF, XSS, etc."
+        />
+        ; <span className="font-medium text-text-2">Flows</span> are every traced
+        movement, grouped by{" "}
+        <DefTerm
+          term="sink kind"
+          def="What kind of operation the data lands in (sql, db_write, command, fs, http, template, …). Findings are the subset of flows that are exploitable."
+        />
+        .
+      </p>
+    </div>
   );
 }
 
@@ -752,11 +744,14 @@ export default function DataflowScreen() {
           </div>
 
           <div className="flex-1 min-h-0 overflow-y-auto ag-scroll px-4 py-4 space-y-4">
-            <PurposeHeader />
-
-            <AgentUsage
-              tool="archigraph_data_flows"
-              example="An agent reviewing a PR checks if user input reaches a DB/shell sink unsanitized."
+            <InsightBanner
+              storageKey="dataflow"
+              human={<TaintHuman />}
+              agent={{
+                tool: "archigraph_data_flows",
+                example:
+                  "Reviewing a PR that builds a SQL string from a request param, an agent calls archigraph_data_flows to confirm the param reaches the query sink with no sanitizer in between, then blocks the merge and points at the exact source→sink hop as a SQL-injection finding.",
+              }}
             />
 
             {/* Summary */}

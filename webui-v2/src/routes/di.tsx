@@ -54,8 +54,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
   TooltipContent,
-  ScreenDescription,
-  AgentUsage,
+  InsightBanner,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -452,15 +451,21 @@ function DIBody({ data }: { data: DIReport }) {
 
   return (
     <div className="flex-1 min-h-0 overflow-y-auto ag-scroll px-4 py-4 space-y-4">
-      <ScreenDescription>
-        Dependency injection — which providers (services, tokens) get injected
-        into which consumers (controllers, services, handlers). Each row is a real
-        INJECTED_INTO edge, so you can see what wires into what across frameworks.
-      </ScreenDescription>
-
-      <AgentUsage
-        tool="archigraph_neighbors"
-        example="An agent finds every consumer of a provider before changing its interface."
+      <InsightBanner
+        storageKey="di"
+        human={
+          <>
+            Dependency injection — which providers (services, tokens) get
+            injected into which consumers (controllers, services, handlers).
+            Each row is a real INJECTED_INTO edge, so you can see what wires into
+            what across frameworks.
+          </>
+        }
+        agent={{
+          tool: "archigraph_neighbors",
+          example:
+            "About to change a method signature on PaymentService, an agent calls archigraph_neighbors to list every controller and service it's injected into, then updates all call sites in one pass instead of discovering broken consumers at runtime.",
+        }}
       />
 
       {/* Summary */}

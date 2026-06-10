@@ -30,7 +30,7 @@ import { Badge, Tabs, TabsList, TabsTrigger, TabsContent, Skeleton } from "@/com
 import {
   Dialog, DialogContent, DialogTitle, DialogDescription,
 } from "@/components/ui";
-import { TabCount, ScreenDescription, AgentUsage } from "@/components/ui";
+import { TabCount, InsightBanner } from "@/components/ui";
 import { FlowDag } from "@/components/flow-dag";
 import { RefLine } from "@/components/RefLine";
 import { getRepoColor } from "@/lib/repo-color";
@@ -1972,15 +1972,21 @@ export default function PathsScreen() {
 
         {/* Page-level plain-language description + agent banner (#4574). */}
         <div className="px-4 pt-3 pb-2 shrink-0 bg-surface border-b border-border space-y-2">
-          <ScreenDescription>
-            Every API endpoint in this group — its HTTP verb and path, the
-            handler that serves it, how it's authenticated, the inputs it
-            accepts (path, query and request body), and the downstream
-            services, databases and side effects it triggers.
-          </ScreenDescription>
-          <AgentUsage
-            tool="archigraph_endpoints"
-            example="An agent looks up an endpoint's handler, auth, inputs and downstream before editing it."
+          <InsightBanner
+            storageKey="paths"
+            human={
+              <>
+                Every API endpoint in this group — its HTTP verb and path, the
+                handler that serves it, how it's authenticated, the inputs it
+                accepts (path, query and request body), and the downstream
+                services, databases and side effects it triggers.
+              </>
+            }
+            agent={{
+              tool: "archigraph_endpoints",
+              example:
+                "Asked to add a field to the POST /orders payload, an agent calls archigraph_endpoints to find the exact handler, confirm it's auth-protected, see the current request-body shape and which database writes it triggers, then edits the right function without grepping for the route.",
+            }}
           />
         </div>
 

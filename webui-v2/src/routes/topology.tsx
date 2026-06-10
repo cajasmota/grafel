@@ -27,7 +27,7 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { SearchInput } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { TabCount, ScreenDescription, AgentUsage } from "@/components/ui";
+import { TabCount, InsightBanner } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
@@ -1932,15 +1932,24 @@ export default function TopologyScreen() {
 
         {/* Plain-language intro + agent-usage banner */}
         <div className="px-4 pt-3 pb-1 border-b border-border shrink-0 space-y-2">
-          <ScreenDescription>
-            This is your <strong className="text-text-2">messaging topology</strong> — a map of who
-            publishes and who subscribes across your message queues and topics. Use it to see which
-            services send messages to a channel, which ones receive them, and where a channel has a
-            publisher but no subscriber (or vice-versa) so messages may be dropped.
-          </ScreenDescription>
-          <AgentUsage
-            tool="archigraph_topology"
-            example="An agent maps who publishes/subscribes to a queue before changing a message schema."
+          <InsightBanner
+            storageKey="topology"
+            human={
+              <>
+                This is your{" "}
+                <strong className="text-text-2">messaging topology</strong> — a
+                map of who publishes and who subscribes across your message
+                queues and topics. Use it to see which services send messages to
+                a channel, which ones receive them, and where a channel has a
+                publisher but no subscriber (or vice-versa) so messages may be
+                dropped.
+              </>
+            }
+            agent={{
+              tool: "archigraph_topology",
+              example:
+                "Before changing the schema of the `order.created` event, an agent calls archigraph_topology to enumerate every subscriber, so it updates all consumers in lockstep — and flags the orphaned topic that has a publisher but no subscriber as a likely dropped-message bug.",
+            }}
           />
         </div>
 

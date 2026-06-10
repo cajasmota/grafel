@@ -51,8 +51,8 @@ import {
   Card,
   CardBody,
   Pill,
-  ScreenDescription,
-  AgentUsage,
+  InsightBanner,
+  DefTerm,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -717,35 +717,30 @@ function CategorySection({ counts }: { counts: Record<string, number> | null | u
 
 type IaCView = "list" | "diagram";
 
-/** Shared plain-language description for both List and Diagram views (#4576). */
-function IaCDescription() {
+/** Shared insight banner for both List and Diagram views (#4576 / #4604). */
+function IaCInsight() {
   return (
-    <ScreenDescription
-      terms={[
-        {
-          term: "resource category",
-          def: "A cross-tool join key (function, datastore, queue, secret, network…) that normalizes each tool's native resource type into one shared vocabulary.",
-        },
-        {
-          term: "interpolation reference",
-          def: "A Terraform expression reference (local.*, var.*, module.*, data.*) — a value lookup, not a real resource-to-resource dependency.",
-        },
-      ]}
-    >
-      Your infrastructure-as-code defined across Terraform/OpenTofu, AWS CDK,
-      Pulumi, CloudFormation/SAM, Serverless Framework, and Bicep — every
-      resource, its config, and how resources wire to each other (IAM grants,
-      event sources, dependencies, and stack/module topology).
-    </ScreenDescription>
-  );
-}
-
-/** Shared agent-usage banner for both views. */
-function IaCAgentUsage() {
-  return (
-    <AgentUsage
-      tool="archigraph_topology"
-      example="An agent checks which infra a service depends on before changing a Terraform module."
+    <InsightBanner
+      storageKey="iac"
+      human={
+        <>
+          Your infrastructure-as-code defined across Terraform/OpenTofu, AWS
+          CDK, Pulumi, CloudFormation/SAM, Serverless Framework, and Bicep —
+          every resource, its config, and how resources wire to each other (IAM
+          grants, event sources, dependencies, and stack/module topology). Each
+          resource is normalized into a shared{" "}
+          <DefTerm
+            term="resource category"
+            def="A cross-tool join key (function, datastore, queue, secret, network…) that normalizes each tool's native resource type into one shared vocabulary."
+          />
+          .
+        </>
+      }
+      agent={{
+        tool: "archigraph_topology",
+        example:
+          "Before editing a Terraform module that defines a Lambda, an agent calls archigraph_topology to see which queues, datastores and IAM grants that function depends on across stacks — so it doesn't remove a network or secret another service still wires into.",
+      }}
     />
   );
 }
@@ -808,8 +803,7 @@ export default function IaCScreen() {
               module.
             </span>
           </div>
-          <IaCDescription />
-          <IaCAgentUsage />
+          <IaCInsight />
         </div>
         <div className="min-h-0 flex-1">
           <IaCDiagram report={data!} />
@@ -837,10 +831,9 @@ export default function IaCScreen() {
               <ViewToggle view={view} onChange={setView} />
             </div>
 
-            {/* #4576: List view now carries the same description + agent banner
+            {/* #4576: List view now carries the same insight banner
                 the Diagram view does. */}
-            <IaCDescription />
-            <IaCAgentUsage />
+            <IaCInsight />
 
             {/* Summary */}
             <div className="flex flex-wrap gap-3">

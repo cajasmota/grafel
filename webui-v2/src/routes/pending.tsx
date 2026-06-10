@@ -23,8 +23,7 @@ import {
   TabsList,
   TabsTrigger,
   Skeleton,
-  ScreenDescription,
-  AgentUsage,
+  InsightBanner,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 
@@ -723,14 +722,21 @@ export default function PendingScreen() {
 
       {/* Intro */}
       <div className="shrink-0 px-4 pt-3 space-y-2 border-b border-border-soft bg-bg">
-        <ScreenDescription>
-          Pending candidates — edits archigraph has queued but not yet applied to
-          the graph: repairs (resolving an unresolved reference) and enrichments
-          (adding inferred metadata). Review each, then accept or dismiss it.
-        </ScreenDescription>
-        <AgentUsage
-          tool="archigraph_enrichments"
-          example="An agent checks pending enrichments/repairs queued for the graph."
+        <InsightBanner
+          storageKey="pending"
+          human={
+            <>
+              Pending candidates — edits archigraph has queued but not yet
+              applied to the graph: repairs (resolving an unresolved reference)
+              and enrichments (adding inferred metadata). Review each, then
+              accept or dismiss it.
+            </>
+          }
+          agent={{
+            tool: "archigraph_enrichments",
+            example:
+              "After an index run, an agent calls archigraph_enrichments to see the queued metadata and repair candidates, auto-accepts the unambiguous ones (a single obvious URL→endpoint match), and leaves the ambiguous dynamic-dispatch repairs flagged for a human to confirm.",
+          }}
         />
       </div>
 

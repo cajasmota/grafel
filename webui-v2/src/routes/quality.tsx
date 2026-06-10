@@ -57,8 +57,8 @@ import {
   TooltipTrigger,
   TooltipContent,
   TabCount,
-  ScreenDescription,
-  AgentUsage,
+  InsightBanner,
+  DefTerm,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -544,22 +544,24 @@ function CoverageTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <ScreenDescription
-        terms={[
-          {
-            term: "TESTS edge",
-            def: "A graph edge linking a test entity to the production entity it exercises. Coverage here is reachability over these edges, not executed-line coverage.",
-          },
-        ]}
-      >
-        Structural test coverage — which production entities (functions, classes,
-        endpoints) are reached by a test via a TESTS edge. This is graph reachability,
-        not line coverage.
-      </ScreenDescription>
-
-      <AgentUsage
-        tool="archigraph_test_coverage"
-        example="An agent lists untested endpoints before writing tests."
+      <InsightBanner
+        storageKey="quality.coverage"
+        human={
+          <>
+            Structural test coverage — which production entities (functions,
+            classes, endpoints) are reached by a test via a{" "}
+            <DefTerm
+              term="TESTS edge"
+              def="A graph edge linking a test entity to the production entity it exercises. Coverage here is reachability over these edges, not executed-line coverage."
+            />
+            . This is graph reachability, not line coverage.
+          </>
+        }
+        agent={{
+          tool: "archigraph_test_coverage",
+          example:
+            "Before writing tests for a payments module, an agent calls archigraph_test_coverage to list production endpoints with no inbound TESTS edge, then generates tests targeting exactly those gaps instead of duplicating existing ones.",
+        }}
       />
 
       <CoverageGauge
@@ -712,15 +714,21 @@ function DependenciesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <ScreenDescription>
-        Dependency hygiene — declared third-party packages cross-checked against
-        what the code actually imports. Surfaces unused (declared, never imported)
-        and phantom (imported, never declared) packages per repository.
-      </ScreenDescription>
-
-      <AgentUsage
-        tool="archigraph_import_cycles"
-        example="An agent checks for circular imports before splitting or moving a module."
+      <InsightBanner
+        storageKey="quality.deps"
+        human={
+          <>
+            Dependency hygiene — declared third-party packages cross-checked
+            against what the code actually imports. Surfaces unused (declared,
+            never imported) and phantom (imported, never declared) packages per
+            repository.
+          </>
+        }
+        agent={{
+          tool: "archigraph_import_cycles",
+          example:
+            "Before splitting a large module, an agent calls archigraph_import_cycles to confirm the move won't introduce a circular import, and cross-references phantom packages so it adds the right dependency to package.json instead of guessing.",
+        }}
       />
 
       <div className="flex flex-wrap gap-3">
@@ -861,15 +869,20 @@ function AntiPatternsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <ScreenDescription>
-        Anti-patterns — code shapes the indexer flags as likely performance or
-        correctness smells. Currently surfaces N+1 query patterns: an ORM query
-        executed inside a loop, which issues one query per iteration.
-      </ScreenDescription>
-
-      <AgentUsage
-        tool="archigraph_graph_patterns"
-        example="An agent scans for recurring anti-patterns before approving a change."
+      <InsightBanner
+        storageKey="quality.antipatterns"
+        human={
+          <>
+            Anti-patterns — code shapes the indexer flags as likely performance
+            or correctness smells. Currently surfaces N+1 query patterns: an ORM
+            query executed inside a loop, which issues one query per iteration.
+          </>
+        }
+        agent={{
+          tool: "archigraph_graph_patterns",
+          example:
+            "Reviewing a PR that adds a loop over orders, an agent calls archigraph_graph_patterns to detect a new N+1 query it introduced, then suggests a bulk prefetch or select_related fix before approving.",
+        }}
       />
 
       <div className="flex flex-wrap gap-3">
@@ -971,15 +984,21 @@ function GodNodesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <ScreenDescription>
-        God-nodes — high-centrality hub entities that many other things depend on
-        or route through. They concentrate risk: a change here ripples widely.
-        Ranked by PageRank over the dependency graph; refactor candidates.
-      </ScreenDescription>
-
-      <AgentUsage
-        tool="archigraph_impact_radius"
-        example="An agent measures how far a change to a hub entity ripples before touching it."
+      <InsightBanner
+        storageKey="quality.godnodes"
+        human={
+          <>
+            God-nodes — high-centrality hub entities that many other things
+            depend on or route through. They concentrate risk: a change here
+            ripples widely. Ranked by PageRank over the dependency graph;
+            refactor candidates.
+          </>
+        }
+        agent={{
+          tool: "archigraph_impact_radius",
+          example:
+            "Before refactoring a high-PageRank service class, an agent calls archigraph_impact_radius to enumerate every downstream caller and route, then scopes the change set and flags the blast radius for human review rather than editing blind.",
+        }}
       />
 
       <div className="flex flex-wrap gap-3">
@@ -1196,16 +1215,21 @@ function TrendsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
-      <ScreenDescription>
-        Trends — how each quality metric moves across successive re-indexes. A
-        sparkline appears only once there's genuine multi-snapshot history;
-        freshly-indexed groups show the current value with a goal until history
-        builds up.
-      </ScreenDescription>
-
-      <AgentUsage
-        tool="archigraph_test_coverage"
-        example="An agent tracks whether test coverage is trending up or down across re-indexes."
+      <InsightBanner
+        storageKey="quality.trends"
+        human={
+          <>
+            Trends — how each quality metric moves across successive re-indexes.
+            A sparkline appears only once there's genuine multi-snapshot history;
+            freshly-indexed groups show the current value with a goal until
+            history builds up.
+          </>
+        }
+        agent={{
+          tool: "archigraph_test_coverage",
+          example:
+            "Running in CI after each index, an agent calls archigraph_test_coverage across snapshots to detect that coverage dropped 4% on the last merge, then opens a follow-up issue naming the newly-uncovered entities responsible for the regression.",
+        }}
       />
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         {data.metrics.map((m) => (

@@ -15,7 +15,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, lazy, Suspense } from "react";
 import { useParams, useSearchParams } from "react-router-dom";
 import { X, RotateCcw, SlidersHorizontal, Boxes } from "lucide-react";
-import { SearchInput, Pill, Kbd, ScreenDescription, AgentUsage } from "@/components/ui";
+import { SearchInput, Pill, Kbd, InsightBanner } from "@/components/ui";
 import { useGraph } from "@/hooks/use-graph";
 import { useModuleAnalysis } from "@/hooks/use-module-analysis";
 import {
@@ -555,16 +555,23 @@ export default function GraphScreen() {
       {/* Intro / legend header — the landing screen otherwise has no lead-in.
           Kept compact so the canvas stays the hero. */}
       <div className="shrink-0 border-b border-border bg-bg px-4 py-2 space-y-2">
-        <ScreenDescription>
-          The dependency graph — every indexed entity (files, classes, functions)
-          and the edges between them (imports, calls, references). Search to jump
-          to a symbol, color by repo/kind/community, or collapse to a module
-          overview. Node color encodes the active mode; faint peripheral nodes are
-          low-degree leaves, not orphans.
-        </ScreenDescription>
-        <AgentUsage
-          tool="archigraph_find"
-          example="An agent locates a symbol and its neighbors instead of grepping."
+        <InsightBanner
+          storageKey="graph"
+          human={
+            <>
+              The dependency graph — every indexed entity (files, classes,
+              functions) and the edges between them (imports, calls,
+              references). Search to jump to a symbol, color by
+              repo/kind/community, or collapse to a module overview. Node color
+              encodes the active mode; faint peripheral nodes are low-degree
+              leaves, not orphans.
+            </>
+          }
+          agent={{
+            tool: "archigraph_find",
+            example:
+              "Asked to fix a bug in `placeOrder`, an agent calls archigraph_find to jump straight to its definition and one-hop neighbors — the callers, the services it invokes, the file it lives in — instead of grepping the repo for a name that appears in dozens of comments and strings.",
+          }}
         />
       </div>
 

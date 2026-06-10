@@ -36,6 +36,7 @@ import type {
 import { cn } from "@/lib/utils";
 import { RepoChip as SharedRepoChip } from "@/lib/repo-color";
 import { Skeleton } from "@/components/ui/skeleton";
+import { InsightBanner } from "@/components/ui";
 import { FlowDag as SharedFlowDag } from "@/components/flow-dag";
 import { useSourcePeek } from "@/components/SourcePeek";
 import { flowToDagPayload } from "@/lib/flow-to-dag";
@@ -1716,6 +1717,27 @@ export default function FlowsScreen() {
             </span>
           </button>
         ))}
+      </div>
+
+      {/* Insight banner (#4604) */}
+      <div className="flex-none px-5 pt-3">
+        <InsightBanner
+          storageKey="flows"
+          human={
+            <>
+              End-to-end process flows — each one traces a request from an entry
+              point (an HTTP route, a queue consumer, a job) through every
+              handler, service and side effect it touches, across repositories
+              when the path is cross-stack. Dead-ends and truncated flows
+              highlight where a trace stops short of completing.
+            </>
+          }
+          agent={{
+            tool: "archigraph_traces",
+            example:
+              "Asked 'what happens when a user submits the checkout form?', an agent calls archigraph_traces from the POST /checkout entry point to walk the whole flow — validation, the payment-service call, the order DB write, the confirmation-email publish — and explains the end-to-end path instead of reading each file blind.",
+          }}
+        />
       </div>
 
       {/* Workspace grid */}
