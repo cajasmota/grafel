@@ -88,6 +88,84 @@ router.get('/ping', (req, res) => res.send('pong'));`
 }
 
 // ---------------------------------------------------------------------------
+// Field-membership sub-entities (issue #4606)
+// ---------------------------------------------------------------------------
+
+// fieldChild returns the SCOPE.Schema/field sub-entity named "<Class>.<field>".
+func fieldChild(ents []types.EntityRecord, qualified string) *types.EntityRecord {
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "field" && e.Name == qualified {
+			return e
+		}
+	}
+	return nil
+}
+
+// A class-validator request `@Body` DTO must expand to per-field member
+// sub-entities (with CONTAINS edges + a parseable Signature) so the dashboard
+// /shape resolver can render them — parity with response Schema fields.
+func TestClassValidatorDTO_FieldMembers(t *testing.T) {
+	src := `import { IsString, IsInt, IsOptional } from 'class-validator';
+export class CreateNoteBody {
+  @IsString()
+  title: string;
+
+  @IsInt()
+  @IsOptional()
+  priority?: number;
+}`
+	ents := extractFull(t, "custom_js_validation_schema", fi("note.dto.ts", "typescript", src))
+
+	se := schemaEntity(ents, "CreateNoteBody")
+	if se == nil {
+		t.Fatal("expected SCOPE.Schema CreateNoteBody")
+	}
+	// Scalar-prop bag preserved (back-compat).
+	wantField(t, se, "title", "string")
+	// TS annotation `priority?: number` is authoritative over the @IsInt decorator.
+	wantField(t, se, "priority", "number")
+
+	// Field sub-entities exist.
+	titleChild := fieldChild(ents, "CreateNoteBody.title")
+	if titleChild == nil {
+		t.Fatal("expected field sub-entity CreateNoteBody.title")
+	}
+	if titleChild.Signature == "" {
+		t.Fatal("field sub-entity must carry a Signature for the shape resolver")
+	}
+	priorityChild := fieldChild(ents, "CreateNoteBody.priority")
+	if priorityChild == nil {
+		t.Fatal("expected field sub-entity CreateNoteBody.priority")
+	}
+	if priorityChild.Properties["optional"] != "true" {
+		t.Errorf("priority should be optional, props=%v", priorityChild.Properties)
+	}
+
+	// CONTAINS membership edges bind each field to the owner.
+	if !hasContainsTo(ents, titleChild.ID, titleChild.Name) {
+		t.Error("expected CONTAINS edge to CreateNoteBody.title")
+	}
+	if !hasContainsTo(ents, priorityChild.ID, priorityChild.Name) {
+		t.Error("expected CONTAINS edge to CreateNoteBody.priority")
+	}
+}
+
+// A zod object schema also gets field sub-entities (general parity).
+func TestZodSchema_FieldMembers(t *testing.T) {
+	src := `const CreateUser = z.object({ name: z.string(), age: z.number() });
+router.post('/users', (req, res) => { CreateUser.parse(req.body); res.json({}); });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("u.ts", "typescript", src))
+	nameChild := fieldChild(ents, "CreateUser.name")
+	if nameChild == nil {
+		t.Fatal("expected field sub-entity CreateUser.name")
+	}
+	if !hasContainsTo(ents, nameChild.ID, nameChild.Name) {
+		t.Error("expected CONTAINS edge to CreateUser.name")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Joi
 // ---------------------------------------------------------------------------
 

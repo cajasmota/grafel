@@ -1178,6 +1178,18 @@ func (s *Server) handleV2PathDetail(w http.ResponseWriter, r *http.Request) {
 				Desc:     describeJavaParam(jp),
 				Verbs:    []string{h.Verb},
 			}
+			// Issue #4606 — resolve object-valued params (a `@Body` DTO or a
+			// `@Query` object DTO such as InspectionCountsQuery) to their in-group
+			// class entity so the ShapeTree renders an expand chevron and can
+			// request the field subtree. Scalar params (string/number/…) fall
+			// through unresolved and render as plain leaf rows.
+			resolveParamType := unwrapElementType(jp.Type)
+			if target := findClassEntityByName(grp, resolveParamType); target != nil {
+				if slug, _ := findRepoForEntity(grp, target.ID); slug != "" {
+					row.TypeEntityID = dashPrefixedID(slug, target.ID)
+					row.HasChildren = classHasFieldChildren(grp, target)
+				}
+			}
 			params = append(params, row)
 			emitted[key] = len(params) - 1
 		}

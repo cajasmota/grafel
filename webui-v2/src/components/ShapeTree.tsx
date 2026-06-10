@@ -173,11 +173,18 @@ function ShapeTreeNode({
           {row.required && <span className="text-danger ml-0.5">*</span>}
         </span>
 
-        {/* Col 4 — type chip, 200px, monospaced */}
+        {/* Col 4 — type chip, 200px, monospaced. Expandable object types are
+            rendered as an accented, underlined "link" so the field-expansion
+            affordance is discoverable even before the chevron is noticed (#4606). */}
         <span
-          className="shrink-0 font-mono text-text-3 overflow-hidden text-ellipsis whitespace-nowrap mr-2"
+          className={cn(
+            "shrink-0 font-mono overflow-hidden text-ellipsis whitespace-nowrap mr-2",
+            expandable
+              ? "text-accent underline decoration-dotted underline-offset-2"
+              : "text-text-3",
+          )}
           style={{ width: 200 }}
-          title={row.type}
+          title={expandable ? `${row.type} — click to expand fields` : row.type}
         >
           {row.type}
         </span>
