@@ -111,19 +111,24 @@ type ModuleCoverage struct {
 // Kind / file helpers
 // ─────────────────────────────────────────────────────────────────────────────
 
-// coverageEntityKinds is the set of entity kinds that count as "production
-// entities" for coverage purposes.
+// coverageEntityKinds is the set of entity kinds that count as "testable
+// production entities" for coverage purposes — behaviour-bearing code that a
+// unit/integration test could reasonably exercise.
 //
 // "SCOPE.Operation" is the canonical kind emitted by every language extractor
 // for functions and methods (Go, Python, JS/TS, Java, Rust, Ruby, …). The
 // bare "Function" / "Method" keys are kept for forward compatibility with any
 // third-party or future extractors that emit those kinds directly.
+//
+// NOTE on Interface (#4510): a bare `Interface` declaration is a type-only
+// contract with no executable body, so it is NOT testable production code and
+// is deliberately excluded from this set. Concrete behaviour-bearing kinds
+// (Class, Struct, Function, Method, http endpoints) remain in scope.
 var coverageEntityKinds = map[string]bool{
 	"SCOPE.Operation":          true, // canonical: all language extractors
 	"Function":                 true, // compat / future
 	"Method":                   true, // compat / future
 	"Class":                    true,
-	"Interface":                true,
 	"Struct":                   true,
 	"http_endpoint":            true,
 	"http_endpoint_definition": true,
@@ -194,9 +199,136 @@ func isTestFile(path string) bool {
 	return false
 }
 
-// isProductionEntity returns true when e is a production entity in scope.
+// nonTestablePathSegments are normalised path segments that mark a file as
+// NON-testable production code. These hold operational glue, schema mutations,
+// generated artefacts, and build/config plumbing — none of which a unit or
+// integration test meaningfully covers, yet all of which inflated the coverage
+// denominator (#4510: `scripts` alone contributed 0/86 on upvate-v3).
+//
+// Matching is on slash-normalised, lower-cased "/seg/" substrings so the
+// predicate is language- and layout-agnostic (Go, Python, JS/TS, Java, …).
+var nonTestablePathSegments = []string{
+	"/scripts/",       // one-off operational/CLI scripts
+	"/script/",        // singular variant
+	"/migrations/",    // DB schema mutations (Django, Alembic, TypeORM, Rails, …)
+	"/migration/",     // singular variant
+	"/__generated__/", // codegen output (GraphQL, protobuf, …)
+	"/generated/",     // codegen output
+	"/.generated/",    // codegen output
+	"/gen/",           // codegen output (Go, protobuf, …)
+	"/node_modules/",  // vendored deps
+	"/vendor/",        // vendored deps (Go, PHP)
+	"/dist/",          // build output
+	"/build/",         // build output
+}
+
+// nonTestableFileSuffixes mark individual files (by base name) that carry no
+// testable behaviour: config files, barrel/index re-exports, type-only
+// declaration files, and generated stubs. Matched case-insensitively against
+// the file base name.
+//
+// Barrel/index files (`index.ts`, `index.js`, Go `doc.go`) only re-export or
+// document; testing them is not meaningful and they padded the denominator.
+var nonTestableFileSuffixes = []string{
+	".config.ts", ".config.js", ".config.mjs", ".config.cjs",
+	".config.json", ".config.yaml", ".config.yml",
+	".d.ts",   // TypeScript type-only declarations
+	".pb.go",  // protobuf generated Go
+	"_pb2.py", // protobuf generated Python
+	".g.dart", // generated Dart
+	".generated.ts", ".generated.js",
+}
+
+// nonTestableBaseNames are exact base names that are non-testable: barrel
+// re-export files and package documentation files.
+var nonTestableBaseNames = map[string]bool{
+	"index.ts":  true, // barrel re-export
+	"index.js":  true, // barrel re-export
+	"index.tsx": true, // barrel re-export
+	"index.jsx": true, // barrel re-export
+	"doc.go":    true, // Go package doc, no behaviour
+	"mod.rs":    true, // Rust module barrel (re-exports only)
+}
+
+// isNonTestableFile returns true when path denotes a file that holds no
+// testable production behaviour (scripts, migrations, generated code, config,
+// barrel/index re-exports, type-only declarations). See nonTestablePathSegments
+// and nonTestableFileSuffixes for the precise rules (#4510).
+func isNonTestableFile(path string) bool {
+	if path == "" {
+		return false
+	}
+	slashed := "/" + filepath.ToSlash(strings.ToLower(path))
+	for _, seg := range nonTestablePathSegments {
+		if strings.Contains(slashed, seg) {
+			return true
+		}
+	}
+	base := strings.ToLower(filepath.Base(path))
+	if nonTestableBaseNames[base] {
+		return true
+	}
+	for _, suf := range nonTestableFileSuffixes {
+		if strings.HasSuffix(base, suf) {
+			return true
+		}
+	}
+	return false
+}
+
+// nonTestableNameSuffixes flag entities whose role is data-shape or
+// cross-cutting annotation rather than behaviour: DTOs, plain data/value
+// objects, decorators, and type-only enums. These are excluded from the
+// testable denominator even when they live in otherwise-testable files (#4510).
+//
+// Matching is case-insensitive on the entity Name suffix. The list is kept
+// conservative to avoid excluding real services that happen to end in a noun.
+var nonTestableNameSuffixes = []string{
+	"dto",       // Data Transfer Object
+	"dtos",      // pluralised barrel
+	"decorator", // cross-cutting annotation, not behaviour
+}
+
+// isNonTestableEntity returns true when an in-scope-kind entity should still be
+// excluded from the testable production denominator because of its role
+// (DTO/decorator/type-only) or because it lives in a non-testable file.
+//
+// This is the single principled definition of "NOT testable production code"
+// (#4510). It is intentionally kind-/path-/name-driven (no language-specific
+// hacks) so it generalises across every extractor.
+func isNonTestableEntity(e *Entity) bool {
+	if isNonTestableFile(e.SourceFile) {
+		return true
+	}
+	// Subtype-driven exclusions: extractors tag DTOs/decorators/type-only
+	// entities via Subtype on several languages. Treat the well-known data /
+	// annotation subtypes as non-testable.
+	switch strings.ToLower(e.Subtype) {
+	case "dto", "decorator", "annotation", "type_alias", "typealias", "enum_member":
+		return true
+	}
+	lname := strings.ToLower(e.Name)
+	for _, suf := range nonTestableNameSuffixes {
+		if strings.HasSuffix(lname, suf) {
+			return true
+		}
+	}
+	return false
+}
+
+// isProductionEntity returns true when e is a TESTABLE production entity in
+// scope: a non-test, behaviour-bearing entity (service, controller, repository,
+// use-case, function/method with a body, concrete class/struct, http endpoint)
+// that is NOT excluded by isNonTestableEntity.
+//
+// The predicate is the denominator for the coverage percentage. Tightening it
+// (#4510) removes scripts, migrations, generated code, config, barrel/index
+// files, DTOs, decorators and type-only declarations that previously inflated
+// the denominator and dragged coverage down on well-tested repos.
 func isProductionEntity(e *Entity) bool {
-	return coverageEntityKinds[e.Kind] && !isTestFile(e.SourceFile)
+	return coverageEntityKinds[e.Kind] &&
+		!isTestFile(e.SourceFile) &&
+		!isNonTestableEntity(e)
 }
 
 // isTestEntity returns true when e is a test entity.  Only Function and
@@ -371,6 +503,117 @@ func ComputeEntityCoverage(doc *Document, entityID string) (*EntityCoverageResul
 	return result, true
 }
 
+// normalizeSubjectToken lowercases a name and strips the common test/subject
+// affixes and separators so that a test name and its subject collapse to the
+// same token. Examples:
+//
+//	"TestOrderService"   → "orderservice"
+//	"order_service_test" → "orderservice"
+//	"OrderServiceSpec"   → "orderservice"
+//	"OrderService"       → "orderservice"
+func normalizeSubjectToken(name string) string {
+	s := strings.ToLower(name)
+	// Drop separators.
+	s = strings.NewReplacer("_", "", "-", "", ".", "", " ", "").Replace(s)
+	// Strip leading test affixes.
+	for _, p := range []string{"test", "it", "describe", "should"} {
+		s = strings.TrimPrefix(s, p)
+	}
+	// Strip trailing test/spec affixes (repeat to peel e.g. "spec" then "test").
+	for changed := true; changed; {
+		changed = false
+		for _, suf := range []string{"test", "tests", "spec", "specs", "it"} {
+			if len(s) > len(suf) && strings.HasSuffix(s, suf) {
+				s = strings.TrimSuffix(s, suf)
+				changed = true
+			}
+		}
+	}
+	return s
+}
+
+// attributeByNameAffinity marks still-uncovered production entities as covered
+// when a test entity's normalised name token matches the subject's normalised
+// name token (#4510). It mutates covered in place and returns the number of
+// subjects newly attributed.
+//
+// To stay conservative and avoid false attributions:
+//   - only subjects with a token length ≥ 4 are eligible (skip tiny/ambiguous
+//     names like "do", "run");
+//   - a test only attributes subjects that share at least one path segment
+//     (same directory subtree) OR an exact full-token match, so an unrelated
+//     `OrderService` test in another bounded context does not credit a
+//     same-named class elsewhere.
+func attributeByNameAffinity(
+	entByID map[string]*Entity,
+	testIDs, prodIDs map[string]bool,
+	covered map[string]int,
+) int {
+	// Build subject token → []prodID index for uncovered subjects only.
+	type subj struct {
+		id  string
+		dir string
+	}
+	subjByToken := make(map[string][]subj)
+	for id := range prodIDs {
+		if covered[id] > 0 {
+			continue
+		}
+		e := entByID[id]
+		tok := normalizeSubjectToken(e.Name)
+		if len(tok) < 4 {
+			continue
+		}
+		subjByToken[tok] = append(subjByToken[tok], subj{id: id, dir: dirOf(e.SourceFile)})
+	}
+	if len(subjByToken) == 0 {
+		return 0
+	}
+
+	attributed := 0
+	for tid := range testIDs {
+		te := entByID[tid]
+		ttok := normalizeSubjectToken(te.Name)
+		if len(ttok) < 4 {
+			continue
+		}
+		cands, ok := subjByToken[ttok]
+		if !ok {
+			continue
+		}
+		tdir := dirOf(te.SourceFile)
+		for _, c := range cands {
+			if covered[c.id] > 0 {
+				continue // already attributed by a previous test
+			}
+			// Same-subtree affinity: the test and subject share a directory
+			// prefix in either direction (tests often sit in a sibling
+			// __tests__/ or tests/ dir under the same feature root).
+			if !sharesDirSubtree(tdir, c.dir) {
+				continue
+			}
+			covered[c.id]++
+			attributed++
+		}
+	}
+	return attributed
+}
+
+// sharesDirSubtree returns true when a and b are in the same directory subtree
+// (one is a prefix of the other, segment-aligned) or share the same parent.
+// Empty directories (repo root) only match each other.
+func sharesDirSubtree(a, b string) bool {
+	if a == b {
+		return true
+	}
+	if a == "" || b == "" {
+		return false
+	}
+	as := a + "/"
+	bs := b + "/"
+	return strings.HasPrefix(as, bs) || strings.HasPrefix(bs, as)
+}
+
 // ComputeCoverage analyses doc and returns a CoverageReport.
 //
 // It runs in two phases:
@@ -442,6 +685,18 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 				report.TotalTestsEdges++
 			}
 		}
+	}
+
+	// ── phase 3: name-affinity attribution (#4510) ────────────────────────────
+	// Many tests link (via TESTS/CALLS) to a handler or helper but never reach
+	// the testable subject that shares their name — e2e/contract specs are the
+	// worst offenders (#4487). Where a test entity's name clearly references a
+	// still-uncovered subject (e.g. `TestOrderService` → `OrderService`,
+	// `order_service_test` → `OrderService`, `OrderService.spec` → `OrderService`),
+	// attribute coverage. This reuses already-extracted test names — it does NOT
+	// redo linkage extraction — so it is a cheap, conservative boost.
+	if affinity := attributeByNameAffinity(entByID, testIDs, prodIDs, covered); affinity > 0 {
+		report.TotalTestsEdges += affinity
 	}
 
 	// ── compute totals ────────────────────────────────────────────────────────
