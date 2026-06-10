@@ -29,7 +29,7 @@ import {
   type EdgeTypes,
 } from "@xyflow/react";
 import "@xyflow/react/dist/style.css";
-import { ArrowRight, ArrowDown, Unlink } from "lucide-react";
+import { ArrowRight, ArrowDown, Unlink, Boxes, Layers } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { IaCReport } from "@/data/types";
 import {
@@ -39,6 +39,7 @@ import {
   IAC_EDGE_TYPE,
   MAX_DIAGRAM_NODES,
   type IaCDiagramDirection,
+  type IaCGroupMode,
 } from "./layout";
 import { IaCNode } from "./IaCNode";
 import { IaCGroupNode } from "./IaCGroupNode";
@@ -69,10 +70,11 @@ interface IaCDiagramProps {
 
 function IaCDiagramInner({ report, className }: IaCDiagramProps) {
   const [direction, setDirection] = useState<IaCDiagramDirection>("LR");
+  const [groupMode, setGroupMode] = useState<IaCGroupMode>("module");
 
   const { nodes, edges, capped, unresolvedEdges } = useMemo(
-    () => layoutIaCDiagram(report, direction),
-    [report, direction],
+    () => layoutIaCDiagram(report, direction, groupMode),
+    [report, direction, groupMode],
   );
 
   const moduleCount = useMemo(
@@ -110,10 +112,36 @@ function IaCDiagramInner({ report, className }: IaCDiagramProps) {
           </button>
         </div>
 
+        {/* Grouping toggle: module containers vs cloud-tier containers (#4625). */}
+        <div className="inline-flex overflow-hidden rounded-md border border-border">
+          <button
+            type="button"
+            onClick={() => setGroupMode("module")}
+            className={cn(
+              "inline-flex h-7 items-center gap-1 px-2 text-xs transition-colors",
+              groupMode === "module" ? "bg-accent text-accent-text" : "bg-surface text-text-3 hover:bg-surface-2",
+            )}
+            title="Group resources by module / stack"
+          >
+            <Boxes size={12} /> Module
+          </button>
+          <button
+            type="button"
+            onClick={() => setGroupMode("tier")}
+            className={cn(
+              "inline-flex h-7 items-center gap-1 border-l border-border px-2 text-xs transition-colors",
+              groupMode === "tier" ? "bg-accent text-accent-text" : "bg-surface text-text-3 hover:bg-surface-2",
+            )}
+            title="Group resources by cloud tier (Compute / Messaging / Observability / IAM)"
+          >
+            <Layers size={12} /> Tier
+          </button>
+        </div>
+
         <span className="text-xs text-text-4 tabular-nums">
           {resourceCount} {resourceCount === 1 ? "resource" : "resources"}
           {" · "}
-          {moduleCount} {moduleCount === 1 ? "module" : "modules"}
+          {moduleCount} {groupMode === "tier" ? (moduleCount === 1 ? "tier" : "tiers") : moduleCount === 1 ? "module" : "modules"}
         </span>
 
         {capped && (

@@ -334,3 +334,112 @@ func TestCorpus_TerraformAwsVpc_RelationshipCounts(t *testing.T) {
 		t.Errorf("expected >= 5 CALLS edges in vpc corpus, got %d", len(calls))
 	}
 }
+
+// ----------------------------------------------------------------
+// Issue #4625 — cross-module output references → semantic USES edges
+// ----------------------------------------------------------------
+
+// crossModuleUSES collects USES edges tagged dataflow=cross_module.
+func crossModuleUSES(records []types.EntityRecord) []types.RelationshipRecord {
+	var out []types.RelationshipRecord
+	for _, rel := range collectRels(records, "USES") {
+		if rel.Properties["dataflow"] == "cross_module" {
+			out = append(out, rel)
+		}
+	}
+	return out
+}
+
+// TestCrossModule_ConsumesQueueURL is the headline #4625 fixture: a worker ECS
+// service consumes another module's queue_url output. Before the fix the only
+// edge was a bare CALLS to module.dispatch_queue (output name + semantics lost,
+// surfaced as an unresolved relation). After: a semantic USES edge carrying the
+// referenced output and the derived "consumes" verb, bound to the same-file
+// module block so it resolves.
+func TestCrossModule_ConsumesQueueURL(t *testing.T) {
+	src := `
+module "dispatch_queue" {
+  source = "./modules/sqs"
+  name   = "dispatch"
+}
+
+resource "aws_ecs_service" "worker" {
+  name = "worker"
+  environment {
+    queue_url = module.dispatch_queue.queue_url
+  }
+}
+`
+	records, err := extractHCL(src, "main.tf")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	uses := crossModuleUSES(records)
+	if len(uses) != 1 {
+		t.Fatalf("expected exactly 1 cross-module USES edge, got %d: %+v", len(uses), uses)
+	}
+	rel := uses[0]
+	wantTo := extractor.BuildOperationStructuralRef("hcl", "main.tf", "module.dispatch_queue")
+	if rel.ToID != wantTo {
+		t.Errorf("ToID = %q, want %q", rel.ToID, wantTo)
+	}
+	if got := rel.Properties["module_output"]; got != "queue_url" {
+		t.Errorf("module_output = %q, want queue_url", got)
+	}
+	if got := rel.Properties["semantic"]; got != "consumes" {
+		t.Errorf("semantic = %q, want consumes", got)
+	}
+}
+
+// TestCrossModule_SemanticVariants asserts the semantic-label derivation for the
+// cloud-architecture verbs #4625 renders.
+func TestCrossModule_SemanticVariants(t *testing.T) {
+	cases := []struct {
+		name string
+		src  string
+		want string
+	}{
+		{
+			name: "redrive",
+			src: `
+module "dlq" { source = "./dlq" }
+resource "aws_sqs_queue" "main" {
+  redrive_policy = module.dlq.queue_arn
+}`,
+			want: "redrive",
+		},
+		{
+			name: "logs-to",
+			src: `
+module "logs" { source = "./logs" }
+resource "aws_ecs_task_definition" "task" {
+  log_group = module.logs.log_group_name
+}`,
+			want: "logs-to",
+		},
+		{
+			name: "assumes",
+			src: `
+module "iam" { source = "./iam" }
+resource "aws_ecs_task_definition" "task" {
+  execution_role_arn = module.iam.role_arn
+}`,
+			want: "assumes",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			records, err := extractHCL(tc.src, "main.tf")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			uses := crossModuleUSES(records)
+			if len(uses) != 1 {
+				t.Fatalf("expected 1 cross-module USES edge, got %d: %+v", len(uses), uses)
+			}
+			if got := uses[0].Properties["semantic"]; got != tc.want {
+				t.Errorf("semantic = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

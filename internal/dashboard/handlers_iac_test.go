@@ -22,6 +22,10 @@ func TestIaCToolForEntity(t *testing.T) {
 			nil, "terraform", true},
 		{"hcl resource alias", "SCOPE.Component", "resource", "hcl",
 			nil, "terraform", true},
+		{"terraform module block renders (#4625)", "SCOPE.Component", "module", "terraform",
+			nil, "terraform", true},
+		{"hcl module block renders (#4625)", "SCOPE.Component", "module", "hcl",
+			nil, "terraform", true},
 		{"terraform provider block is not a resource", "SCOPE.Component", "provider", "terraform",
 			nil, "", false},
 		{"plain component (non-iac)", "SCOPE.Component", "resource", "go",
@@ -48,6 +52,7 @@ func TestIaCResourceTypeOf(t *testing.T) {
 		{"cdk construct_type", "DataBucket", map[string]string{"construct_type": "s3.Bucket"}, "s3.Bucket"},
 		{"cfn resource_type", "MyTable", map[string]string{"resource_type": "AWS::DynamoDB::Table"}, "AWS::DynamoDB::Table"},
 		{"terraform name-encoded", "aws_db_instance.main", nil, "aws_db_instance"},
+		{"terraform module (#4625)", "module.dispatch_queue", nil, "module"},
 		{"no type", "thing", nil, ""},
 	}
 	for _, c := range cases {
@@ -75,6 +80,10 @@ func TestIaCCategoryOf(t *testing.T) {
 	if got := iacCategoryOf("", nil); got != "" {
 		t.Fatalf("empty category = %q, want empty", got)
 	}
+	// #4625 — a Terraform module instance is its own diagram category.
+	if got := iacCategoryOf("module", nil); got != "module" {
+		t.Fatalf("module category = %q, want module", got)
+	}
 }
 
 func TestIaCRelationFacet(t *testing.T) {
@@ -92,6 +101,16 @@ func TestIaCRelationFacet(t *testing.T) {
 		{"contains topology", "CONTAINS", nil, "topology", ""},
 		{"sam trigger", "TRIGGERS", map[string]string{"trigger": "Api"}, "trigger", "Api"},
 		{"serves route", "SERVES", map[string]string{"http_method": "GET", "route_path": "/x"}, "trigger", "GET"},
+		// #4625 — cross-module output ref carries a derived semantic verb as the facet.
+		{"cross-module consumes", "USES",
+			map[string]string{"dataflow": "cross_module", "semantic": "consumes", "module_output": "queue_url"},
+			"consumes", "queue_url"},
+		{"cross-module redrive", "USES",
+			map[string]string{"dataflow": "cross_module", "semantic": "redrive", "module_output": "queue_arn"},
+			"redrive", "queue_arn"},
+		{"cross-module generic falls back to dependency", "USES",
+			map[string]string{"dataflow": "cross_module", "semantic": "dependency", "module_output": "id"},
+			"dependency", "id"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

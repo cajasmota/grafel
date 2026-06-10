@@ -21,6 +21,7 @@ import {
   Zap,
   Boxes,
   KeyRound,
+  Package,
   type LucideIcon,
 } from "lucide-react";
 
@@ -50,6 +51,8 @@ const STYLES: Record<string, Omit<CategoryStyle, "key">> = {
   network: { label: "Network", Icon: Network, color: "var(--success)", tint: "var(--success-bg, rgba(63,185,80,0.12))" },
   compute: { label: "Compute", Icon: Cpu, color: "var(--success)", tint: "var(--success-bg, rgba(63,185,80,0.12))" },
   storage: { label: "Storage", Icon: HardDrive, color: "var(--success)", tint: "var(--success-bg, rgba(63,185,80,0.12))" },
+  // #4625 — a Terraform module instance rendered as a child-stack aggregate node.
+  module: { label: "Module", Icon: Package, color: "var(--accent)", tint: "var(--accent-bg, rgba(124,108,255,0.14))" },
 };
 
 const FALLBACK: Omit<CategoryStyle, "key"> = {
