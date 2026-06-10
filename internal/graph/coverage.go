@@ -357,8 +357,30 @@ func isProductionEntity(e *Entity) bool {
 // isTestEntity returns true when e is a test entity.  Only Function and
 // Method entities inside test files are counted — not every symbol extracted
 // from a test file (see testEntityKinds for rationale).
+//
+// EXCEPTION — one-per-file test_suite markers (#4628). Every non-JS test
+// framework (pytest, testify/ginkgo/gomega/httptest, junit5, rspec) emits its
+// one-suite-per-file node with Kind="SCOPE.Pattern" Subtype="test_suite"
+// (the Jest extractor uses Kind="SCOPE.Operation" instead, so JS suites already
+// pass the testEntityKinds gate). A SCOPE.Pattern is NOT in testEntityKinds, so
+// before this fix those suites were classified as NEITHER production NOR test:
+// they were never counted in TotalTests, and — fatally for coverage — their
+// CALLS edges to the production handlers they exercise were dropped by the
+// phase-2 CALLS attribution (which only walks entities classified as tests).
+// That suppressed coverage across the whole Python/Go/Java/Ruby surface (the
+// upvate-v3 18% symptom): a DRF handler reached only via a pytest suite's CALLS
+// edge stayed uncovered, and so did the http_endpoint it backs. A test_suite is
+// a single deliberate one-per-file node (not the per-symbol inflation #1410
+// guarded against), so counting it is granular-safe.
 func isTestEntity(e *Entity) bool {
-	return isTestFile(e.SourceFile) && testEntityKinds[e.Kind]
+	if !isTestFile(e.SourceFile) {
+		return false
+	}
+	if testEntityKinds[e.Kind] {
+		return true
+	}
+	// One-per-file suite marker emitted by the non-JS test extractors.
+	return e.Subtype == "test_suite" || e.Kind == "test_suite"
 }
 
 // entitySeverity classifies the coverage importance of a production entity.
