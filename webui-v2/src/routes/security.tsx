@@ -42,6 +42,10 @@ import {
   TabsList,
   TabsTrigger,
   TabsContent,
+  TabCount,
+  ScreenDescription,
+  AgentUsage,
+  DefTerm,
 } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
@@ -89,6 +93,52 @@ const SEVERITY_FILTERS: { value: "all" | SecuritySeverity; label: string }[] = [
   { value: "warn", label: "Medium" },
   { value: "info", label: "Low" },
 ];
+
+// ---------------------------------------------------------------------------
+// § Public-by-design detection (#4571)
+//
+// The backend collapses every auth signal — including explicit @Public /
+// AllowAny / permitAll exemptions — into a single verdict, but the
+// auth-coverage wire shape (AuthEndpointFinding) does NOT yet carry a public
+// flag: an intentionally-public route arrives as has_auth=false with no
+// evidence, indistinguishable from a route that simply forgot its guard.
+// Until the backend surfaces an explicit `public`/`auth_required=false` flag
+// (follow-up: backend public-flag on AuthEndpointFinding), we degrade
+// gracefully on the client by recognising two signals:
+//
+//   1. An explicit public guard stamp echoed in auth_evidence
+//      (@Public / AllowAny / permitAll / public).
+//   2. A small allow-list of canonically-public route names
+//      (login / register / reset-password / …) that are public by design.
+//
+// Such routes get a neutral "public by design" badge instead of High-danger
+// copy, and are demoted out of High severity so they stop dominating the
+// ranked list. This is a heuristic safety net — a real backend flag would be
+// cleaner and is tracked as a follow-up.
+// ---------------------------------------------------------------------------
+
+const PUBLIC_EVIDENCE_RE = /@?public|allow\s*any|allowany|permit\s*all|permitall/i;
+
+/** Canonically-public route name/path fragments (auth bootstrap, health). */
+const PUBLIC_ROUTE_RE =
+  /(^|[^a-z])(login|signin|sign-in|logout|register|signup|sign-up|reset[-_]?password|forgot[-_]?password|password[-_]?reset|oauth|callback|webhook|health|healthz|readyz|liveness|ping|public)([^a-z]|$)/i;
+
+/** True when an uncovered endpoint looks intentionally public, not a gap. */
+function isPublicByDesign(f: AuthEndpointFinding): boolean {
+  if (f.has_auth) return false;
+  if (f.auth_evidence && PUBLIC_EVIDENCE_RE.test(f.auth_evidence)) return true;
+  const target = `${f.path ?? ""} ${f.name ?? ""}`;
+  return PUBLIC_ROUTE_RE.test(target);
+}
+
+/**
+ * Effective per-row severity after public-by-design demotion. A route that is
+ * public by design is never a High finding — its "missing auth" is intentional
+ * — so we floor it at "info" for both the badge and the severity filter/count.
+ */
+function effectiveSeverity(f: AuthEndpointFinding): SecuritySeverity {
+  return isPublicByDesign(f) ? "info" : f.severity;
+}
 
 // ---------------------------------------------------------------------------
 // § Shared state shells (loading / empty / error) — mirror Topology idioms
@@ -259,6 +309,7 @@ function AuthFindingRow({
   f: AuthEndpointFinding;
   multiRepo: boolean;
 }) {
+  const publicByDesign = isPublicByDesign(f);
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 transition-colors">
       {/* Primary line: fixed-width columns so rows align like a table.
@@ -267,7 +318,13 @@ function AuthFindingRow({
         {f.has_auth ? (
           <Lock size={13} className="text-success shrink-0" />
         ) : (
-          <Unlock size={13} className="text-danger shrink-0" />
+          <Unlock
+            size={13}
+            className={cn(
+              "shrink-0",
+              publicByDesign ? "text-text-4" : "text-danger",
+            )}
+          />
         )}
         {f.method ? (
           <span className="text-[10px] font-mono uppercase text-center px-1.5 py-0.5 rounded bg-surface-2 text-text-3 border border-border">
@@ -280,7 +337,7 @@ function AuthFindingRow({
           {f.path || f.name}
         </span>
         <div className="flex items-center gap-1.5 shrink-0 justify-end">
-          {f.sensitive_op && (
+          {f.sensitive_op && !publicByDesign && (
             <Badge tone="danger" className="shrink-0">
               sensitive
             </Badge>
@@ -290,7 +347,17 @@ function AuthFindingRow({
               IDOR
             </Badge>
           )}
-          <SeverityBadge severity={f.severity} />
+          {publicByDesign ? (
+            <Badge
+              tone="neutral"
+              className="shrink-0"
+              title="No auth guard — but this route looks public by design (auth bootstrap / health / explicit @Public). Treated as informational, not a High finding."
+            >
+              public by design
+            </Badge>
+          ) : (
+            <SeverityBadge severity={f.severity} />
+          )}
         </div>
       </div>
       {/* Secondary line: [repo (multi-repo only)] [source-file ref] aligned
@@ -314,10 +381,16 @@ function AuthFindingRow({
           <span className="font-mono text-xs text-text-3 truncate">{f.name}</span>
         )}
       </div>
-      {!f.has_auth && (f.sensitive_op || f.idor_risk) && (
+      {!f.has_auth && !publicByDesign && (f.sensitive_op || f.idor_risk) && (
         <p className="text-[11px] text-danger/90">
           {f.sensitive_op && "Sensitive operation with no detected auth policy. "}
           {f.idor_risk && "User-scoped path param — possible IDOR."}
+        </p>
+      )}
+      {!f.has_auth && publicByDesign && (
+        <p className="text-[11px] text-text-4">
+          Public by design — no auth guard expected
+          {f.idor_risk ? "; review the user-scoped path param even so." : "."}
         </p>
       )}
       {f.has_auth && f.auth_evidence && (
@@ -344,10 +417,24 @@ function AuthCoverageTab({ groupId }: { groupId: string }) {
   }
 
   const allFindings = data.findings ?? [];
+  // Severity here is the *effective* severity: routes that look public by
+  // design (#4571) are demoted out of High so they neither dominate the list
+  // nor inflate the High count. publicCount is surfaced separately below.
   const findings =
     severity === "all"
       ? allFindings
-      : allFindings.filter((f) => f.severity === severity);
+      : allFindings.filter((f) => effectiveSeverity(f) === severity);
+
+  const publicCount = allFindings.filter(isPublicByDesign).length;
+  const errorCount = allFindings.filter(
+    (f) => effectiveSeverity(f) === "error",
+  ).length;
+  const warnCount = allFindings.filter(
+    (f) => effectiveSeverity(f) === "warn",
+  ).length;
+  // Everything not effective-High / -Medium is informational (covered routes +
+  // demoted public-by-design routes + genuinely low findings).
+  const infoCount = allFindings.length - errorCount - warnCount;
 
   // Repo badge is redundant for a single-repo group — gate on >1 repo,
   // matching the convention used elsewhere in the dashboard (#4500).
@@ -355,6 +442,33 @@ function AuthCoverageTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <ScreenDescription
+        terms={[
+          {
+            term: "auth coverage",
+            def: "The share of HTTP endpoints that have a detected authentication guard (decorator, middleware, or security config) protecting them.",
+          },
+          {
+            term: "public by design",
+            def: "An endpoint with no auth guard that is intentionally open — e.g. login, register, password-reset, health checks, or an explicit @Public/AllowAny exemption.",
+          },
+        ]}
+      >
+        Which HTTP endpoints are protected by an{" "}
+        <DefTerm
+          term="auth guard"
+          def="A decorator, middleware, interceptor, or framework security rule that requires the caller to be authenticated before the handler runs."
+        />{" "}
+        and which are exposed without one. Routes that are{" "}
+        <em>public by design</em> are flagged as informational rather than High
+        so genuine gaps stand out.
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_auth_coverage"
+        example="An agent verifies a new endpoint has an auth guard before merging."
+      />
+
       <CoverageGauge
         covered={data.covered_count}
         uncovered={data.uncovered_count}
@@ -363,9 +477,12 @@ function AuthCoverageTab({ groupId }: { groupId: string }) {
       />
 
       <div className="flex flex-wrap gap-3">
-        <CountStat label="High severity" value={data.error_count} tone="danger" />
-        <CountStat label="Medium severity" value={data.warn_count} tone="warning" />
-        <CountStat label="Low / covered" value={data.info_count} tone="info" />
+        <CountStat label="High severity" value={errorCount} tone="danger" />
+        <CountStat label="Medium severity" value={warnCount} tone="warning" />
+        <CountStat label="Low / covered" value={infoCount} tone="info" />
+        {publicCount > 0 && (
+          <CountStat label="Public by design" value={publicCount} />
+        )}
       </div>
 
       <div className="flex items-center justify-between gap-3">
@@ -479,6 +596,29 @@ function SecretsTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <ScreenDescription
+        terms={[
+          {
+            term: "hardcoded credential",
+            def: "A password, API key, token, or private key written directly into source code instead of being injected from a secrets store at runtime.",
+          },
+          {
+            term: "secrets management",
+            def: "An integration with a dedicated secrets store (Vault, AWS Secrets Manager, …) — the recommended way to supply credentials.",
+          },
+        ]}
+      >
+        Credentials found in the codebase: both <em>hardcoded</em> secrets that
+        should be removed and detected <em>secrets-management</em> integrations
+        that are doing the right thing. Each row links to the exact source
+        location.
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_secrets"
+        example="An agent blocks a PR that introduces a hardcoded API key."
+      />
+
       <div className="flex flex-wrap gap-3">
         <CountStat label="High severity" value={data.error_count} tone="danger" />
         <CountStat label="Medium severity" value={data.warn_count} tone="warning" />
@@ -527,10 +667,50 @@ function SecretsTab({ groupId }: { groupId: string }) {
 // § Import-cycles tab
 // ---------------------------------------------------------------------------
 
-/** Best-effort short name from a graph entity id ("repo::local:hash"). */
+/** Looks like an opaque content hash (long hex / base-ish blob, no separators). */
+function looksLikeHash(s: string): boolean {
+  return /^[0-9a-f]{8,}$/i.test(s) || (/^[A-Za-z0-9_-]{16,}$/.test(s) && !/[./\\]/.test(s));
+}
+
+/**
+ * Best-effort human-readable member name from a graph entity id
+ * ("repo::local:hash") for the import-cycle list (#4580).
+ *
+ * Module ids encode a path-like "local" segment before an opaque hash tail.
+ * The previous implementation always returned the bare hash, which is
+ * meaningless to a reader. We now strip the repo prefix and any trailing
+ * hash, then surface the last one or two path segments (a recognisable
+ * module/file name); only if nothing readable remains do we fall back to a
+ * short hash. The full id is always kept as the row's tooltip.
+ */
 function shortMember(id: string): string {
-  const tail = (id ?? "").split("::").pop() ?? id;
-  return tail.split(":").pop() || id;
+  if (!id) return id;
+  // Drop the "repo::" prefix if present.
+  const afterRepo = id.includes("::") ? id.slice(id.indexOf("::") + 2) : id;
+  // Split the local part on ":"; drop a trailing opaque hash segment.
+  const segs = afterRepo.split(":").filter(Boolean);
+  while (segs.length > 1 && looksLikeHash(segs[segs.length - 1])) {
+    segs.pop();
+  }
+  const local = segs.join(":") || afterRepo;
+
+  // Derive a readable name from path-like structure (slashes or dots).
+  const pathParts = local.split(/[/\\]/).filter(Boolean);
+  let name = pathParts.length ? pathParts[pathParts.length - 1] : local;
+  // Strip a file extension for a cleaner module label.
+  name = name.replace(/\.(ts|tsx|js|jsx|py|go|java|kt|rb|rs|cs|cpp|c|h)$/i, "");
+
+  if (name && !looksLikeHash(name)) {
+    // Prefix the parent dir for disambiguation when it adds signal.
+    if (pathParts.length > 1) {
+      const parent = pathParts[pathParts.length - 2];
+      if (parent && !looksLikeHash(parent)) return `${parent}/${name}`;
+    }
+    return name;
+  }
+  // Nothing readable — fall back to a short hash so the chip isn't empty.
+  const tail = afterRepo.split(/[:/\\]/).pop() || id;
+  return tail.length > 10 ? `${tail.slice(0, 8)}…` : tail;
 }
 
 function CycleFindingRow({ c }: { c: CycleFinding }) {
@@ -595,6 +775,29 @@ function CyclesTab({ groupId }: { groupId: string }) {
 
   return (
     <div className="space-y-4">
+      <ScreenDescription
+        terms={[
+          {
+            term: "import cycle",
+            def: "A group of modules that depend on each other in a loop (A imports B imports C imports A), so none can be built, tested, or reasoned about in isolation.",
+          },
+          {
+            term: "extraction point",
+            def: "The weakest edge in the cycle — the dependency most cheaply broken (e.g. by moving a shared type to its own module) to untangle the loop.",
+          },
+        ]}
+      >
+        Circular import dependencies between modules. Cycles make code harder to
+        test and refactor; each finding lists the modules in the loop and a
+        suggested <em>extraction point</em> to break it. Severity scales with
+        the number of modules involved.
+      </ScreenDescription>
+
+      <AgentUsage
+        tool="archigraph_import_cycles"
+        example="An agent proposes where to split a module to break a newly-introduced import cycle."
+      />
+
       <div className="flex flex-wrap gap-3">
         <CountStat label="High (>5)" value={data.error_count} tone="danger" />
         <CountStat label="Medium (3-5)" value={data.warn_count} tone="warning" />
@@ -649,25 +852,46 @@ export default function SecurityScreen() {
         {/* Tab strip */}
         <div className="border-b border-border shrink-0 px-4">
           <TabsList className="border-0">
+            {/* Counts mean different things per tab, so each TabCount carries
+                an explicit label (its tooltip + aria-label) and all three use
+                the same hideOnZero zero-handling for consistency (#4572). */}
             <TabsTrigger value="auth">
               <ShieldAlert size={14} className="mr-1.5" />
               Auth coverage
               {!auth.isLoading && auth.data && (
-                <Pill className="ml-1.5">{auth.data.uncovered_count}</Pill>
+                <TabCount
+                  value={auth.data.uncovered_count}
+                  tone="warning"
+                  active={tab === "auth"}
+                  label="endpoints with no detected auth guard"
+                  hideOnZero
+                />
               )}
             </TabsTrigger>
             <TabsTrigger value="secrets">
               <KeyRound size={14} className="mr-1.5" />
               Secrets
-              {!secrets.isLoading && secrets.data && secrets.data.total_findings > 0 && (
-                <Pill className="ml-1.5">{secrets.data.total_findings}</Pill>
+              {!secrets.isLoading && secrets.data && (
+                <TabCount
+                  value={secrets.data.total_findings}
+                  tone="warning"
+                  active={tab === "secrets"}
+                  label="secret findings (hardcoded + secrets-management)"
+                  hideOnZero
+                />
               )}
             </TabsTrigger>
             <TabsTrigger value="cycles">
               <RefreshCw size={14} className="mr-1.5" />
               Import cycles
-              {!cycles.isLoading && cycles.data && cycles.data.total_cycles > 0 && (
-                <Pill className="ml-1.5">{cycles.data.total_cycles}</Pill>
+              {!cycles.isLoading && cycles.data && (
+                <TabCount
+                  value={cycles.data.total_cycles}
+                  tone="warning"
+                  active={tab === "cycles"}
+                  label="circular import dependencies detected"
+                  hideOnZero
+                />
               )}
             </TabsTrigger>
           </TabsList>
