@@ -387,9 +387,21 @@ export default function GraphScreen() {
   }, [s.expandedModule, data]);
 
   // Once data arrives, if a node was deep-linked, focus its ego-graph.
+  // #4605 — only focus when the deep-linked id actually resolves to a RENDERED
+  // node. A synthetic / unknown `?node=<id>` (e.g. a Links-row sink node like
+  // `repo::sink:src/...::this.x.create@22`) is NOT in the node set, so an ego
+  // focus would yield an EMPTY sub-graph → cosmos sizes its textures 0×0 → regl
+  // crashes with `invalid texture shape`. For an unresolved id we leave the FULL
+  // graph rendered and clear the dangling selection instead of focusing nothing.
   useEffect(() => {
-    if (data && s.selectedNodeId && !s.focusNodeIds) {
+    if (!data || !s.selectedNodeId || s.focusNodeIds) return;
+    const resolves = nodes.some((n) => n.id === s.selectedNodeId);
+    if (resolves) {
       focusEgo(s.selectedNodeId);
+    } else {
+      // Unresolved deep-link target — drop it so the full graph shows cleanly and
+      // the ?node= param doesn't keep re-triggering a degenerate focus.
+      s.setSelectedNode(null);
     }
     // Only trigger when data first becomes available.
     // eslint-disable-next-line react-hooks/exhaustive-deps

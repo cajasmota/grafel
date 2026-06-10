@@ -47,6 +47,7 @@ import {
   JARVIS_GLOW,
 } from "@/lib/graph-colors";
 import { saveLayout, loadLayout, isDegenerateLayout, isLayoutHealthy } from "@/lib/graph-layout-cache";
+import { isRenderableGraph } from "@/lib/graph-render-guard";
 import {
   autoBasePx,
   type ColorMode,
@@ -333,6 +334,16 @@ function GraphCanvasInner(
   }, [nodes]);
 
   const nodeIds = useMemo(() => nodes.map((n) => n.id), [nodes]);
+
+  // #4605 — can this node set be fed to the WebGL engine at all? An EMPTY graph
+  // (0 points) makes cosmos size its point/cluster textures as 0×0, and regl
+  // throws `(regl) invalid texture shape` from `clusterTexture`/`by.create`,
+  // tripping the app error boundary. This happens on a deep-link to a SYNTHETIC /
+  // unresolved `?node=<id>` whose ego filter yields no nodes. When false we skip
+  // every engine data-push / `create()` and render a graceful empty-state below.
+  const renderable = useMemo(() => isRenderableGraph(nodes.length, edges.length), [nodes.length, edges.length]);
+  const renderableRef = useRef(renderable);
+  renderableRef.current = renderable;
 
   const repoToIdx = useMemo(() => {
     const repos = Array.from(new Set(nodes.map((n) => n.repo ?? ""))).sort();
@@ -1076,6 +1087,9 @@ function GraphCanvasInner(
   const kickFreshSettle = useCallback(() => {
     const g = graphRef.current;
     if (!g) return;
+    // #4605 — don't seed/start the engine on an empty graph (0-sized texture →
+    // regl `invalid texture shape`). The empty-state overlay is shown instead.
+    if (!renderableRef.current) return;
     const p = packedRef.current;
     hasSettledRef.current = false;
     didAutoStartRef.current = true;
@@ -1241,7 +1255,15 @@ function GraphCanvasInner(
     // baked by retired force defaults is a guaranteed MISS. On any reject we run
     // the EXACT same fresh settle the Reset button runs (kickFreshSettle) so the
     // reload converges to the good spread — reload === Reset.
-    if (saved && isLayoutHealthy(saved.positions, nodeIds.length * 2)) {
+    // #4605 — if we mounted onto an EMPTY graph (deep-link to an unresolved
+    // `?node=<id>`), do NOT seed or settle the engine: a 0-point buffer sizes the
+    // textures 0×0 and regl throws `invalid texture shape`. The empty-state
+    // overlay is rendered instead; the data-push effect re-seeds + settles if/when
+    // a renderable node set arrives (e.g. on focus exit). The cleanup below still
+    // registers so the engine is destroyed on unmount.
+    if (!renderableRef.current) {
+      // fall through to register cleanup; skip only the seed/settle.
+    } else if (saved && isLayoutHealthy(saved.positions, nodeIds.length * 2)) {
       requestAnimationFrame(() => {
         const gg = graphRef.current;
         if (!gg) return;
@@ -1275,6 +1297,10 @@ function GraphCanvasInner(
   useEffect(() => {
     const g = graphRef.current;
     if (!g) return;
+    // #4605 — an EMPTY node set sizes cosmos's point/cluster textures as 0×0 and
+    // regl throws `invalid texture shape` from `create()`. Never push a zero-point
+    // buffer; the empty-state overlay (below) is shown instead.
+    if (!renderable) return;
     const prev = g.getPointPositions();
     if (hasSettledRef.current && prev.length === packed.positions.length) {
       // Fix #1562: re-pin the settled geometry, but sanitize first so a diverged
@@ -1306,12 +1332,13 @@ function GraphCanvasInner(
     }
     if (hasSettledRef.current) g.pause();
     scheduleLabels();
-  }, [packed, packPointColors, linkData, packLinkColors, packLinkWidths, group, nodeIds, scheduleLabels]);
+  }, [renderable, packed, packPointColors, linkData, packLinkColors, packLinkWidths, group, nodeIds, scheduleLabels]);
 
   // ── recolor on theme / colorMode ────────────────────────────────────────────
   useEffect(() => {
     const g = graphRef.current;
     if (!g) return;
+    if (!renderable) return; // #4605 — no engine writes on an empty graph
     g.setPointColors(packPointColors());
     g.setLinkColors(packLinkColors());
     g.setLinkWidths(packLinkWidths());
@@ -1319,12 +1346,13 @@ function GraphCanvasInner(
     g.render();
     g.create();
     if (hasSettledRef.current) g.pause();
-  }, [packPointColors, packLinkColors, packLinkWidths, isDark]);
+  }, [renderable, packPointColors, packLinkColors, packLinkWidths, isDark]);
 
   // ── live render/sim config ──────────────────────────────────────────────────
   useEffect(() => {
     const g = graphRef.current;
     if (!g) return;
+    if (!renderable) return; // #4605 — no engine writes on an empty graph
     g.setConfig({
       pointOpacity: render.pointOpacity,
       // Fix #1607: do NOT set pointSizeScale here — the zoom-driven updater owns it
@@ -1347,7 +1375,7 @@ function GraphCanvasInner(
     g.setLinkWidths(packLinkWidths());
     g.render();
     if (hasSettledRef.current) g.pause();
-  }, [render, simulation, packLinkColors, packLinkWidths]);
+  }, [renderable, render, simulation, packLinkColors, packLinkWidths]);
 
   // ── re-layout request (Reset / re-layout) ───────────────────────────────────
   // Fix #1581: this IS the canonical fresh-settle now; it (and first load) both
@@ -1369,6 +1397,7 @@ function GraphCanvasInner(
     prevGroupRef.current = group;
     const g = graphRef.current;
     if (!g) return;
+    if (!renderable) return; // #4605 — empty ego set → empty-state, no settle
     hasSettledRef.current = false;
     didAutoStartRef.current = true;
     mountTimeRef.current = Date.now();
@@ -1384,7 +1413,7 @@ function GraphCanvasInner(
       return;
     }
     kickFreshSettleRef.current();
-  }, [group, packed, nodeIds]);
+  }, [renderable, group, packed, nodeIds]);
 
   // ── re-cluster on group-by change ───────────────────────────────────────────
   const prevGroupByRef = useRef(groupBy);
@@ -1504,6 +1533,7 @@ function GraphCanvasInner(
   useEffect(() => {
     const g = graphRef.current;
     if (!g) return;
+    if (!renderableRef.current) return; // #4605 — no glow writes on an empty graph
 
     // Cancel any in-flight glow loop (a new epoch supersedes the previous pulse).
     if (glowRafRef.current !== null) {
@@ -1808,6 +1838,21 @@ function GraphCanvasInner(
   return (
     <div className={`relative h-full w-full ${className}`} role="img" aria-label="Dependency graph">
       <div ref={containerRef} className="h-full w-full" />
+      {/* #4605 — graceful empty-state when a deep-linked / focused node resolves to
+          NO renderable nodes (synthetic or unknown id). We never feed this empty
+          set to the WebGL engine (which would crash with `invalid texture shape`);
+          we show this instead. */}
+      {!renderable && (
+        <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center">
+          <div className="pointer-events-auto max-w-sm rounded-lg border border-border bg-bg/80 px-6 py-5 text-center backdrop-blur">
+            <div className="text-sm font-medium text-fg">Nothing to render for this node</div>
+            <p className="mt-1 text-xs text-fg-muted">
+              This node could not be resolved in the current graph, or it has no
+              connections to display. Clear the selection or pick another node.
+            </p>
+          </div>
+        </div>
+      )}
       <div ref={labelLayerRef} aria-hidden className="pointer-events-none absolute inset-0 z-10" />
       {/* vignette for perceived depth */}
       <div
