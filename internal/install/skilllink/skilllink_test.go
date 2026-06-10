@@ -122,6 +122,55 @@ func TestDiscoverSkillsDir(t *testing.T) {
 			t.Errorf("should return empty with empty HOME + no skills layout; got %q", result)
 		}
 	})
+
+	// #4459: a bad/typo'd --skills-source-dir must NOT short-circuit discovery.
+	// A valid sibling layout should still be found via fall-through.
+	t.Run("bad explicit flag falls through to a valid sibling layout", func(t *testing.T) {
+		dir := t.TempDir()
+		skillsDir := filepath.Join(dir, "skills")
+		if err := os.MkdirAll(skillsDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		binPath := filepath.Join(dir, "archigraph")
+		result := DiscoverSkillsDir(binPath, "/nonexistent/typo/skills")
+		if result != skillsDir {
+			t.Errorf("expected fall-through to sibling %q, got %q", skillsDir, result)
+		}
+	})
+}
+
+// TestDiscoverSkillsDirVerbose_ReportsAllAttemptedPaths verifies that when
+// discovery fails, the returned attempted-paths list names EVERY candidate that
+// was probed (#4459) — including the explicit flag, sibling, one-up, env var,
+// and ancestor walk — so the caller can build a non-misleading error instead of
+// blaming the cwd.
+func TestDiscoverSkillsDirVerbose_ReportsAllAttemptedPaths(t *testing.T) {
+	envSkills := "/nonexistent/env/skills"
+	t.Setenv("ARCHIGRAPH_SKILLS_DIR", envSkills)
+
+	dir := t.TempDir()
+	binPath := filepath.Join(dir, "deep", "build", "archigraph")
+	explicit := "/nonexistent/flag/skills"
+
+	result, attempted := DiscoverSkillsDirVerbose(binPath, explicit)
+	if result != "" {
+		t.Fatalf("expected discovery to fail, got %q", result)
+	}
+
+	joined := strings.Join(attempted, "\n")
+	for _, want := range []string{
+		"--skills-source-dir",
+		explicit,
+		"sibling",
+		"one-up",
+		"ARCHIGRAPH_SKILLS_DIR",
+		envSkills,
+		"ancestor",
+	} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("attempted-paths list missing %q; got:\n%s", want, joined)
+		}
+	}
 }
 
 // TestClaudeSkillsDirForConfig table-drives the path-derivation helper.

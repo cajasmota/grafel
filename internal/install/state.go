@@ -83,6 +83,13 @@ type State struct {
 	// Populated after step 2 completes.
 	Skills map[string]SkillRecord `json:"skills,omitempty"`
 
+	// SkillsSkipped is true when step 2 (skills copy) was intentionally
+	// skipped because no skills source directory could be discovered (e.g. a
+	// brand-new binary-only install with no repo checkout). The install still
+	// succeeds and the daemon is installed; doctor reports this as advisory,
+	// not as a broken install.
+	SkillsSkipped bool `json:"skills_skipped,omitempty"`
+
 	// MCP holds the MCP registration state.
 	// Populated after step 3 completes.
 	MCP MCPRecord `json:"mcp,omitempty"`
