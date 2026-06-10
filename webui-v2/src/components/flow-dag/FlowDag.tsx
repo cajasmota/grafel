@@ -7,7 +7,7 @@
    GET /api/v2/groups/:id/paths/:hash/downstream-dag (#4349).
 
    Controls:
-     - H/V toggle        → dagre rankdir LR (horizontal) / TB (vertical).
+     - H/V toggle        → tidy-tree main axis LR (horizontal) / TB (vertical).
      - depth stepper     → refetches with &depth= (clamped server-side to 1..24).
      - spine / full      → refetches with mode=spine (default; collapses
                            builder/predicate noise) / mode=full (every node).
@@ -198,7 +198,7 @@ function FlowDagInner({
     <div className={cn("flex flex-col h-full min-h-0", className)}>
       {/* Controls bar */}
       <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border bg-surface">
-        {/* H/V toggle → dagre rankdir */}
+        {/* H/V toggle → tidy-tree main axis */}
         <div className="inline-flex rounded-md border border-border overflow-hidden">
           <button
             type="button"

@@ -205,6 +205,130 @@ describe("nodeModule + moduleBand (#4557)", () => {
   });
 });
 
+describe("layoutTree subtree contiguity (#4622)", () => {
+  const NODE_W = 268;
+  const NODE_H = 76;
+
+  /** Center of an instance along the CROSS axis (the one packed by the tidy tree). */
+  function crossCenters(
+    rf: ReturnType<typeof layoutTree>["nodes"],
+    direction: "LR" | "TB",
+  ): Map<string, number> {
+    const m = new Map<string, number>();
+    for (const node of rf) {
+      // cross axis is y for LR (depth→x), x for TB (depth→y).
+      const center =
+        direction === "LR"
+          ? node.position.y + NODE_H / 2
+          : node.position.x + NODE_W / 2;
+      m.set(node.id, center);
+    }
+    return m;
+  }
+
+  /** [min,max] cross-band of an instance's whole subtree (itself + descendants). */
+  function subtreeBand(
+    instances: ReturnType<typeof unfoldTree>["instances"],
+    centers: Map<string, number>,
+    rootId: string,
+    halfExtent: number,
+  ): [number, number] {
+    const ids = new Set<string>([rootId]);
+    // path-keyed ids: a descendant id starts with "<rootId>/".
+    for (const inst of instances) {
+      if (inst.id === rootId || inst.id.startsWith(rootId + "/")) ids.add(inst.id);
+    }
+    let min = Infinity;
+    let max = -Infinity;
+    for (const id of ids) {
+      const c = centers.get(id)!;
+      min = Math.min(min, c - halfExtent);
+      max = Math.max(max, c + halfExtent);
+    }
+    return [min, max];
+  }
+
+  it("keeps each child's subtree in a contiguous band that does not overlap a sibling's (LR)", () => {
+    // a has two branches: a/b → {a/b/d, a/b/e → a/b/e/f}, and a/c → a/c/g.
+    // The bug: a/b's first child sits in a/c's vertical band. Assert disjoint.
+    const { instances } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c"), n("d"), n("e"), n("f"), n("g")],
+      [
+        e("a", "b"),
+        e("a", "c"),
+        e("b", "d"),
+        e("b", "e"),
+        e("e", "f"),
+        e("c", "g"),
+      ],
+    );
+    const { nodes: rf } = layoutTree(instances, "LR", new Set(), () => {});
+    const centers = crossCenters(rf, "LR");
+    const half = NODE_H / 2;
+    const bandB = subtreeBand(instances, centers, "a/b", half);
+    const bandC = subtreeBand(instances, centers, "a/c", half);
+    // The two sibling subtrees occupy disjoint cross-axis bands.
+    const disjoint = bandB[1] <= bandC[0] || bandC[1] <= bandB[0];
+    expect(disjoint).toBe(true);
+
+    // Every descendant of a/b lies within a/b's band (subtree is contiguous and
+    // doesn't leak into the sibling).
+    for (const inst of instances) {
+      if (inst.id === "a/b" || inst.id.startsWith("a/b/")) {
+        const c = centers.get(inst.id)!;
+        expect(c).toBeGreaterThanOrEqual(bandB[0]);
+        expect(c).toBeLessThanOrEqual(bandB[1]);
+        // …and is NOT inside the sibling's band.
+        const inSibling = c >= bandC[0] && c <= bandC[1];
+        expect(inSibling).toBe(false);
+      }
+    }
+  });
+
+  it("centers a parent over its children's cross span (LR)", () => {
+    const { instances } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c"), n("d")],
+      [e("a", "b"), e("b", "c"), e("b", "d")],
+    );
+    const { nodes: rf } = layoutTree(instances, "LR", new Set(), () => {});
+    const centers = crossCenters(rf, "LR");
+    const parent = centers.get("a/b")!;
+    const c1 = centers.get("a/b/c")!;
+    const c2 = centers.get("a/b/d")!;
+    expect(parent).toBeCloseTo((c1 + c2) / 2, 5);
+  });
+
+  it("enforces subtree contiguity on the cross axis for TB too", () => {
+    const { instances } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c"), n("d"), n("e")],
+      [e("a", "b"), e("a", "c"), e("b", "d"), e("c", "e")],
+    );
+    const { nodes: rf } = layoutTree(instances, "TB", new Set(), () => {});
+    const centers = crossCenters(rf, "TB");
+    const half = NODE_W / 2;
+    const bandB = subtreeBand(instances, centers, "a/b", half);
+    const bandC = subtreeBand(instances, centers, "a/c", half);
+    const disjoint = bandB[1] <= bandC[0] || bandC[1] <= bandB[0];
+    expect(disjoint).toBe(true);
+  });
+
+  it("ranks each node along the main axis by its tree depth (LR→x)", () => {
+    const { instances } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c")],
+      [e("a", "b"), e("b", "c")],
+    );
+    const { nodes: rf } = layoutTree(instances, "LR", new Set(), () => {});
+    const x = new Map(rf.map((node) => [node.id, node.position.x]));
+    // deeper nodes are strictly further along the main (x) axis.
+    expect(x.get("a")!).toBeLessThan(x.get("a/b")!);
+    expect(x.get("a/b")!).toBeLessThan(x.get("a/b/c")!);
+  });
+});
+
 describe("layoutTree leaf vs truncated (#4561)", () => {
   it("marks a real leaf isLeaf and a depth-cut branch truncatedHere", () => {
     // DAG: a → b → c. Unfold with maxNodes=2 cuts c, so b is childless-but-cut.

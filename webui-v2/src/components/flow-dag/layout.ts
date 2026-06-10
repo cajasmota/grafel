@@ -1,12 +1,12 @@
 /* ============================================================
-   components/flow-dag/layout.ts — pure-tree unfold + dagre layout for <FlowDag>.
+   components/flow-dag/layout.ts — pure-tree unfold + tidy-tree layout for <FlowDag>.
 
    The daemon ships a deduped DAG (each node id once; a convergence node carries
    >1 in-edge). The renderer UNFOLDS that DAG into a pure TREE (#4479): starting
    at `root_id` we walk the edges and DUPLICATE any node reached via more than
    one path, so every rendered instance has exactly ONE incoming edge and may
-   have many outgoing. The result lays out cleanly under dagre with no fan-in /
-   crossing edges.
+   have many outgoing. The result lays out cleanly as a tidy tree with no
+   fan-in / crossing edges.
 
    Each instance is keyed by its path ("<parentInstanceId>/<nodeId>") and carries
    the ORIGINAL node's data (name/kind/role/file/… ) for the detail panel and the
@@ -15,11 +15,12 @@
    cycle, which shouldn't occur in a DAG — can never infinitely expand or hang the
    browser. When a cap fires we stop expanding and surface honest truncation.
 
-   The H/V toggle maps directly onto dagre's `rankdir`: "LR" (horizontal,
-   left→right) or "TB" (vertical, top→bottom).
+   The H/V toggle chooses which screen axis is the tree's MAIN (depth) axis:
+   "LR" (horizontal, depth→x, left→right) or "TB" (vertical, depth→y,
+   top→bottom). The cross axis is packed by a subtree-contiguous tidy layout
+   (#4622) so each branch reads as one cluster.
    ============================================================ */
 
-import dagre from "dagre";
 import type { Edge, Node } from "@xyflow/react";
 import { Position } from "@xyflow/react";
 import type {
@@ -29,7 +30,7 @@ import type {
 } from "@/data/types";
 import { nodeModule, type NodeModule } from "./style";
 
-/** Orientation toggle → dagre rankdir. */
+/** Orientation toggle → which screen axis is the tree's main (depth) axis. */
 export type FlowDagDirection = "LR" | "TB";
 
 /** Data carried on each React Flow node, consumed by the custom node renderer. */
@@ -108,13 +109,13 @@ export interface UnfoldResult {
   hasOutEdge: Set<string>;
 }
 
-// Node box sizing fed to dagre. Kept generous so labels + repo chip fit; the
-// custom node renderer uses min-width/height matching these so edges dock
-// cleanly. Expanded nodes grow downward in the DOM but we keep the dagre box
-// fixed — the inline rows overlay rather than reflow the graph.
+// Node box sizing fed to the tidy-tree pack. Kept generous so labels + repo
+// chip fit; the custom node renderer uses min-width/height matching these so
+// edges dock cleanly. Expanded nodes grow downward in the DOM but we keep the
+// layout box fixed — the inline rows overlay rather than reflow the graph.
 // Widened for #4481: long names now wrap to ~2 lines and the card surfaces
 // signature / file:line / effect badges, so the box is roomier. Height is the
-// dagre rank box (edges dock to it); the card itself grows downward in the DOM
+// layout rank box (edges dock to it); the card itself grows downward in the DOM
 // for the inline expander/extra rows without reflowing the graph.
 const NODE_W = 268;
 const NODE_H = 76;
@@ -222,11 +223,114 @@ export function unfoldTree(
   return { instances, capped, hasOutEdge };
 }
 
+/* ============================================================
+   Tidy-tree positioning (#4622).
+
+   dagre's per-rank ordering minimizes edge crossings but does NOT keep a
+   subtree's nodes in a contiguous cross-axis band: a deep child of branch A
+   can be placed inside the cross-axis span of sibling branch B, so the branch
+   reads as belonging to the wrong cluster. We replace dagre's coordinate
+   assignment with a classic Reingold–Tilford-style tidy tree where, by
+   construction, every subtree occupies a CONTIGUOUS cross-axis band and
+   sibling subtrees are separated by a clear gap. The result: clicking a node
+   highlights a branch that is one visually-contiguous cluster.
+
+   Main axis  = tree depth (rank). depth d → main = MARGIN + d * (NODE_main + RANK_GAP).
+   Cross axis = packed leaf order. Leaves are placed left→right at a fixed
+                cross-step; each internal node is centered over its children.
+                A larger gap is inserted BETWEEN sibling subtrees than between
+                adjacent leaves of the same parent, so branches separate.
+   ============================================================ */
+
+/** Spacing constants for the tidy-tree packing (px, pre-orientation). */
+const RANK_GAP_LR = 90; // gap between depth columns, horizontal
+const RANK_GAP_TB = 70; // gap between depth rows, vertical
+const SIBLING_LEAF_GAP_LR = 28; // cross gap between adjacent leaves (same parent), horizontal
+const SIBLING_LEAF_GAP_TB = 48; // …vertical
+// Extra cross-axis separation inserted between DISTINCT sibling subtrees, so a
+// branch reads as one cluster with a clear lane between it and its neighbor.
+const BRANCH_GAP_LR = 40;
+const BRANCH_GAP_TB = 56;
+const MARGIN = 16;
+
+interface TidyNode {
+  inst: TreeInstance;
+  children: TidyNode[];
+  depth: number;
+  /** Cross-axis center (in cross px), assigned by the tidy pass. */
+  cross: number;
+}
+
+/**
+ * Lay the unfolded tree out as a tidy tree, returning the cross-axis center for
+ * every instance id. Guarantees: a node's subtree spans a contiguous cross-axis
+ * band, and two sibling subtrees' bands never overlap (separated by a branch
+ * gap). Pure function of the tree shape + spacing → deterministic.
+ */
+function tidyTreeCross(
+  instances: TreeInstance[],
+  crossStep: number,
+  branchGap: number,
+): Map<string, number> {
+  const byId = new Map<string, TidyNode>();
+  const roots: TidyNode[] = [];
+  for (const inst of instances) {
+    byId.set(inst.id, { inst, children: [], depth: 0, cross: 0 });
+  }
+  for (const inst of instances) {
+    const node = byId.get(inst.id)!;
+    if (inst.parentId != null && byId.has(inst.parentId)) {
+      const parent = byId.get(inst.parentId)!;
+      node.depth = parent.depth + 1;
+      parent.children.push(node);
+    } else {
+      roots.push(node);
+    }
+  }
+
+  // Cursor in cross px; advances as we place leaves so each subtree gets its own
+  // contiguous span. `place` returns the subtree's center.
+  let cursor = 0;
+  const cross = new Map<string, number>();
+
+  function place(node: TidyNode): number {
+    if (node.children.length === 0) {
+      const c = cursor;
+      cursor += crossStep;
+      node.cross = c;
+      cross.set(node.inst.id, c);
+      return c;
+    }
+    const childCenters: number[] = [];
+    node.children.forEach((child, i) => {
+      if (i > 0) cursor += branchGap; // clear lane BETWEEN sibling subtrees
+      childCenters.push(place(child));
+    });
+    // Center the parent over the span of its children → subtree stays contiguous
+    // and a parent never drifts into a sibling branch's band.
+    const c = (childCenters[0] + childCenters[childCenters.length - 1]) / 2;
+    node.cross = c;
+    cross.set(node.inst.id, c);
+    return c;
+  }
+
+  for (const root of roots) {
+    if (cross.size > 0) cursor += branchGap; // separate disjoint roots too
+    place(root);
+  }
+  return cross;
+}
+
 /**
  * Build positioned React Flow nodes + edges from the unfolded tree.
  *
+ * Positioning is a tidy-tree pack (#4622): depth maps to the main axis and a
+ * subtree-contiguous tidy layout maps to the cross axis, so each branch is one
+ * visually-contiguous cluster. `direction` chooses which screen axis is main:
+ * "LR" (horizontal, depth→x) or "TB" (vertical, depth→y).
+ *
  * @param instances  unfolded tree instances (from unfoldTree)
- * @param direction  "LR" (horizontal) | "TB" (vertical) → dagre rankdir
+ * @param direction  "LR" (horizontal) | "TB" (vertical)
  * @param expanded   set of INSTANCE ids whose collapsed_children show inline
  * @param onToggle   inline-expand toggle handler (keyed by instance id)
  */
@@ -243,31 +347,43 @@ export function layoutTree(
   for (const inst of instances) {
     if (inst.parentId != null) renderedParents.add(inst.parentId);
   }
-  const g = new dagre.graphlib.Graph();
-  g.setGraph({
-    rankdir: direction,
-    // Roomy spacing so branchy trees don't overlap; tighter on the cross axis.
-    nodesep: direction === "LR" ? 28 : 48,
-    ranksep: direction === "LR" ? 90 : 70,
-    marginx: 16,
-    marginy: 16,
-  });
-  g.setDefaultEdgeLabel(() => ({}));
 
+  // Depth of each instance (along the main axis), derived from the parent chain.
+  // instances are emitted parent-before-child (BFS), so a single forward pass
+  // resolves depths.
+  const depthById = new Map<string, number>();
   for (const inst of instances) {
-    g.setNode(inst.id, { width: NODE_W, height: NODE_H });
-  }
-  for (const inst of instances) {
-    if (inst.parentId != null) g.setEdge(inst.parentId, inst.id);
+    if (inst.parentId == null) {
+      depthById.set(inst.id, 0);
+    } else {
+      depthById.set(inst.id, (depthById.get(inst.parentId) ?? 0) + 1);
+    }
   }
 
-  dagre.layout(g);
+  const isLR = direction === "LR";
+  // Main-axis step (between depth columns/rows): node extent along main + gap.
+  const mainNode = isLR ? NODE_W : NODE_H;
+  const rankGap = isLR ? RANK_GAP_LR : RANK_GAP_TB;
+  const mainStep = mainNode + rankGap;
+  // Cross-axis step (between adjacent same-parent leaves): node cross extent + gap.
+  const crossNode = isLR ? NODE_H : NODE_W;
+  const leafGap = isLR ? SIBLING_LEAF_GAP_LR : SIBLING_LEAF_GAP_TB;
+  const crossStep = crossNode + leafGap;
+  const branchGap = isLR ? BRANCH_GAP_LR : BRANCH_GAP_TB;
 
-  const sourcePos = direction === "LR" ? Position.Right : Position.Bottom;
-  const targetPos = direction === "LR" ? Position.Left : Position.Top;
+  const crossById = tidyTreeCross(instances, crossStep, branchGap);
+
+  const sourcePos = isLR ? Position.Right : Position.Bottom;
+  const targetPos = isLR ? Position.Left : Position.Top;
 
   const rfNodes: FlowDagNode[] = instances.map((inst) => {
-    const pos = g.node(inst.id);
+    const depth = depthById.get(inst.id) ?? 0;
+    const crossCenter = crossById.get(inst.id) ?? 0;
+    // Center coordinates along each axis, then convert to top-left for RF.
+    const mainCenter = MARGIN + depth * mainStep + mainNode / 2;
+    const x = isLR ? mainCenter : MARGIN + crossCenter + crossNode / 2;
+    const y = isLR ? MARGIN + crossCenter + crossNode / 2 : mainCenter;
+    const pos = { x, y };
     // #4561: this instance emitted no children here.
     const childlessHere = !renderedParents.has(inst.id);
     // The source node has downstream edges in the DAG.
@@ -280,8 +396,8 @@ export function layoutTree(
     return {
       id: inst.id,
       type: NODE_TYPE,
-      // dagre centers nodes; React Flow positions by top-left corner.
-      position: { x: (pos?.x ?? 0) - NODE_W / 2, y: (pos?.y ?? 0) - NODE_H / 2 },
+      // pos is the node center; React Flow positions by top-left corner.
+      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
       data: {
         node: inst.node,
         edgeKind: inst.edgeKind,
