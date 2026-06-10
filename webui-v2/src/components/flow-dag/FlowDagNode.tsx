@@ -102,14 +102,17 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
         dimmed ? "opacity-25" : "opacity-100",
       )}
       style={{
-        // Role/taxonomy tint as a soft background wash; the ink as the border.
-        // External nodes read fainter so they recede from the resolved spine.
+        // Role/taxonomy tint as a soft background wash (#4566). The border is a
+        // more INTENSE shade of the card's OWN bucket hue (#4617): the bucket's
+        // solid pastel token (rs.border) deepened toward its dark anchor so the
+        // outline reads as a saturated version of the background, never a
+        // generic neutral/brown frame. External nodes stay muted.
         background: `color-mix(in srgb, ${rs.bg} ${external ? 12 : 22}%, var(--surface))`,
         borderColor: selected || onRoute === true
           ? "var(--accent)"
           : external
             ? "color-mix(in srgb, var(--text-4) 45%, transparent)"
-            : `color-mix(in srgb, ${rs.ink} 55%, transparent)`,
+            : `color-mix(in srgb, ${rs.border} 72%, var(--text))`,
         // #4557: a left module color-band groups same-module nodes visually.
         borderLeft: band ? `3px solid ${band.color}` : undefined,
         // Selected / route-lit (#4479) → accent ring; a genuine terminal
@@ -117,7 +120,7 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
         boxShadow: selected || onRoute === true
           ? "0 0 0 2px var(--accent)"
           : terminalCap || node.terminal
-            ? `0 0 0 2px color-mix(in srgb, ${rs.ink} 45%, transparent)`
+            ? `0 0 0 2px color-mix(in srgb, ${rs.border} 60%, var(--text))`
             : undefined,
       }}
     >
@@ -126,10 +129,14 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
       <Handle type="source" position={sourcePosition ?? Position.Right} className="!bg-text-4" />
 
       <div className="px-2.5 py-2">
-        {/* Header row: role pill · incoming-edge pill · terminal marker · repo */}
-        <div className="flex items-center gap-1.5">
+        {/* Header row: role pill · incoming-edge pill · terminal marker · repo.
+            #4619: the row clips to the card width (overflow-hidden + min-w-0)
+            and the role pill is allowed to truncate, so the right-aligned repo
+            chip is always pulled INSIDE the card instead of bleeding past its
+            right edge. */}
+        <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
           <span
-            className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-semibold uppercase tracking-wide leading-none shrink-0"
+            className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-semibold uppercase tracking-wide leading-none min-w-0 truncate"
             style={{
               background: `color-mix(in srgb, ${rs.bg} 38%, transparent)`,
               color: rs.ink,
@@ -139,7 +146,7 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
           </span>
           {edgeLabel && (
             <span
-              className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-medium lowercase leading-none shrink-0 text-text-3 bg-surface-2"
+              className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-medium lowercase leading-none min-w-0 truncate text-text-3 bg-surface-2"
               title={`incoming relationship: ${edgeLabel}`}
             >
               {edgeLabel}

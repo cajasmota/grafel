@@ -57,8 +57,10 @@ export function FlowDagLegend({ branchCount, nodeCount, truncation }: FlowDagLeg
           <span
             className="size-2.5 rounded-sm shrink-0"
             style={{
+              // Match the card (#4617): swatch border is an intense shade of
+              // the bucket's OWN hue, not a neutral/brown frame.
               background: `color-mix(in srgb, ${rs.bg} 35%, var(--surface))`,
-              border: `1px solid color-mix(in srgb, ${rs.ink} 55%, transparent)`,
+              border: `1px solid color-mix(in srgb, ${rs.border} 72%, var(--text))`,
             }}
           />
           {rs.label}

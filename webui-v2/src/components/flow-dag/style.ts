@@ -47,8 +47,15 @@ export type NodeBucket =
 export interface RoleStyle {
   /** CSS background for the node body. */
   bg: string;
-  /** CSS foreground (border + accent) for the node. */
+  /** CSS foreground (text/accent) for the node. */
   ink: string;
+  /**
+   * CSS border color for the node card — derived from the SAME bucket color
+   * family as `bg`, but more intense/saturated (the solid pastel token rather
+   * than the washed @22% bg) so the outline reads as a darker shade of the
+   * card's own hue instead of a generic neutral/brown frame (#4617).
+   */
+  border: string;
   label: string;
 }
 
@@ -61,17 +68,17 @@ export interface RoleStyle {
  * fallback.
  */
 export const NODE_BUCKET_STYLE: Record<NodeBucket, RoleStyle> = {
-  endpoint: { bg: "var(--pastel-2)", ink: "var(--pastel-2-ink)", label: "Endpoint" },
-  handler: { bg: "var(--pastel-1)", ink: "var(--pastel-1-ink)", label: "Handler" },
-  service: { bg: "var(--pastel-5)", ink: "var(--pastel-5-ink)", label: "Service / logic" },
-  repository: { bg: "var(--pastel-4)", ink: "var(--pastel-4-ink)", label: "Repository / data" },
-  schema: { bg: "var(--pastel-6)", ink: "var(--pastel-6-ink)", label: "DTO / schema" },
-  function: { bg: "var(--pastel-7)", ink: "var(--pastel-7-ink)", label: "Function" },
-  exception: { bg: "var(--danger)", ink: "var(--exception-ink)", label: "Exception" },
-  external: { bg: "var(--text-4)", ink: "var(--text-3)", label: "External / library" },
-  terminal: { bg: "var(--pastel-8)", ink: "var(--pastel-8-ink)", label: "Return / finish" },
-  collection: { bg: "var(--pastel-3)", ink: "var(--pastel-3-ink)", label: "Collection" },
-  node: { bg: "var(--pastel-5)", ink: "var(--pastel-5-ink)", label: "Node" },
+  endpoint: { bg: "var(--pastel-2)", ink: "var(--pastel-2-ink)", border: "var(--pastel-2)", label: "Endpoint" },
+  handler: { bg: "var(--pastel-1)", ink: "var(--pastel-1-ink)", border: "var(--pastel-1)", label: "Handler" },
+  service: { bg: "var(--pastel-5)", ink: "var(--pastel-5-ink)", border: "var(--pastel-5)", label: "Service / logic" },
+  repository: { bg: "var(--pastel-4)", ink: "var(--pastel-4-ink)", border: "var(--pastel-4)", label: "Repository / data" },
+  schema: { bg: "var(--pastel-6)", ink: "var(--pastel-6-ink)", border: "var(--pastel-6)", label: "DTO / schema" },
+  function: { bg: "var(--pastel-7)", ink: "var(--pastel-7-ink)", border: "var(--pastel-7)", label: "Function" },
+  exception: { bg: "var(--danger)", ink: "var(--exception-ink)", border: "var(--danger)", label: "Exception" },
+  external: { bg: "var(--text-4)", ink: "var(--text-3)", border: "var(--text-4)", label: "External / library" },
+  terminal: { bg: "var(--pastel-8)", ink: "var(--pastel-8-ink)", border: "var(--pastel-8)", label: "Return / finish" },
+  collection: { bg: "var(--pastel-3)", ink: "var(--pastel-3-ink)", border: "var(--pastel-3)", label: "Collection" },
+  node: { bg: "var(--pastel-5)", ink: "var(--pastel-5-ink)", border: "var(--pastel-5)", label: "Node" },
 };
 
 /**
