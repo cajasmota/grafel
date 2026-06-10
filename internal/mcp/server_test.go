@@ -607,6 +607,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_literal_parity",
 		// #4422 cross-group auth-posture parity (oracle vs v3).
 		"archigraph_auth_posture_diff",
+		// #4425 cross-group stub detector (effects-contrast heuristic).
+		"archigraph_stub_detector",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -703,8 +705,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_pr_impact (#4292 PR-scoped impact + cross-change merge-risk).
 	// +1 archigraph_literal_parity (#4421 cross-group ConstantSet value-set parity).
 	// +1 archigraph_auth_posture_diff (#4422 cross-group auth-posture parity).
-	if got := len(allRegisteredTools); got != 61 {
-		t.Errorf("expected 61 registered tools, got %d — update this count if tools are added/removed (added archigraph_auth_posture_diff #4422 cross-group auth-posture parity)", got)
+	// +1 archigraph_stub_detector (#4425 cross-group stub effects-contrast heuristic).
+	if got := len(allRegisteredTools); got != 62 {
+		t.Errorf("expected 62 registered tools, got %d — update this count if tools are added/removed (added archigraph_stub_detector #4425 cross-group stub detector)", got)
 	}
 }
 
@@ -3234,6 +3237,11 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		// fixture and the handler returns an empty-records result, still
 		// exercising the wrapper + elapsed_ms trailer.
 		"archigraph_auth_posture_diff": {"group_oracle": "g", "group_v3": "g"},
+		// #4425 cross-group stub detector. Both group params point at the single
+		// test group "g"; with no endpoint definitions in this fixture the handler
+		// returns an empty-results payload, still exercising the wrapper +
+		// elapsed_ms trailer.
+		"archigraph_stub_detector": {"group_v3": "g", "group_oracle": "g"},
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3278,8 +3286,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 61 {
-		t.Errorf("expected 61 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_auth_posture_diff #4422 cross-group auth-posture parity)", len(tools))
+	if len(tools) != 62 {
+		t.Errorf("expected 62 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_stub_detector #4425 cross-group stub detector)", len(tools))
 	}
 
 	for _, st := range tools {

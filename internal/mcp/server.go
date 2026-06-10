@@ -76,7 +76,7 @@ PICK A TOOL BY INTENT
 - Find code: find (semantic "where is X?"); search_entities (substring); get_source (by id|qname|label); inspect (entity + calls/called_by).
 - Navigate: neighbors (in|out|both); trace / find_paths (path between nodes); subgraph (N-hop); impact_radius (blast-radius); traces (process flows).
 - HTTP: endpoints; effective_contract (per-verb); endpoint_posture (auth/rate_limit); cross_links, payload_drift (cross-repo).
-- Cross-group parity: literal_parity (oracle vs v3 ConstantSet/enum value-set diff).
+- Cross-group parity: literal_parity (oracle vs v3 ConstantSet/enum value-set diff); stub_detector (v3 looks-implemented but oracle computes).
 - Effects/security: effects (db/http/fs/mutation); data_flows; security_findings (taint); auth_coverage; secrets.
 - Structure: dead_code; import_cycles / quality_cycles; clusters; module_analysis; stats.`
 
@@ -630,6 +630,17 @@ func (s *Server) registerTools() {
 		mcpapi.WithString("group_oracle", mcpapi.Required()),
 		mcpapi.WithString("group_v3", mcpapi.Required()),
 	), s.wrap("archigraph_auth_posture_diff", s.handleAuthPostureDiff))
+
+	// #4425 (epic #4419) — cross-group stub detector. Flags v3-rewrite
+	// endpoints that look implemented but return canned values where the
+	// oracle computes, via the cross-graph effects contrast (v3 pure WHILE
+	// oracle has db/http effects). Required: group_v3, group_oracle.
+	// Optional (undeclared per #1639): endpoint (single-endpoint filter).
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_stub_detector",
+		mcpapi.WithDescription("Cross-group stub detector: v3 pure where oracle computes (effects)."),
+		mcpapi.WithString("group_v3", mcpapi.Required()),
+		mcpapi.WithString("group_oracle", mcpapi.Required()),
+	), s.wrap("archigraph_stub_detector", s.handleStubDetector))
 
 	// #2772 — Phase 2B taint flow / security findings. Returns
 	// SecurityFinding records emitted by the taint-flow pass:

@@ -181,6 +181,11 @@ var intentionalGaps = []intentionalGap{
 	{"archigraph_auth_posture_diff", "endpoint", "#4422 token ceiling pattern — optional endpoint substring filter"},
 	{"archigraph_auth_posture_diff", "format", "#4422 token ceiling pattern — optional terse|full output"},
 
+	// archigraph_stub_detector: optional single-endpoint filter undeclared for
+	// token budget (#4425 / #1639 pattern). The two required args (group_v3,
+	// group_oracle) ARE declared; endpoint narrows to one "VERB /path".
+	{"archigraph_stub_detector", "endpoint", "#4425 token ceiling pattern — optional single-endpoint filter"},
+
 	// archigraph_endpoint_posture: scan-mode pagination undeclared for token
 	// budget (#1639 pattern). entity_id/facet/path_contains/method ARE declared.
 	{"archigraph_endpoint_posture", "limit", "#1639 token ceiling pattern — scan-mode result limit"},

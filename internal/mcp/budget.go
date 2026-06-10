@@ -51,4 +51,16 @@ package mcp
 //     bump line (consistent with the literal_parity precedent). The
 //     fold-into-a-bundle rule continues to stand for any further SINGLE-group
 //     additions.
-const TokenCeiling = 7500
+//   - 7500 → 8000: PR for #4425 (epic #4419 F) — adds
+//     archigraph_stub_detector, the cross-group stub heuristic that flags v3-
+//     rewrite endpoints which look implemented but return canned values where
+//     the oracle computes, via the cross-graph effects contrast (v3 pure WHILE
+//     the linked oracle counterpart has db/http effects). Like literal_parity
+//     it is a distinct cross-GROUP capability (two required group params +
+//     a per-endpoint cross-graph join), not a filter on a single-group tool,
+//     so it cannot fold into an action-dispatch bundle without muddying that
+//     bundle's group contract. Its two required string args (group_v3,
+//     group_oracle) plus a tight ≤80-char description push the handshake past
+//     the prior ceiling; +500 restores headroom. The fold-into-a-bundle rule
+//     still stands for any further SINGLE-group additions.
+const TokenCeiling = 8000
