@@ -39,6 +39,18 @@ type AuthEndpointFinding struct {
 	Path         string `json:"path,omitempty"`
 	HasAuth      bool   `json:"has_auth"`
 	AuthEvidence string `json:"auth_evidence,omitempty"`
+	// Public is the AUTHORITATIVE "unauthenticated BY DESIGN" signal (#4595).
+	// It is true ONLY when the engine auth-posture resolution produced an
+	// explicit public verdict — an @Public / publicProcedure decorator, a DRF
+	// AllowAny / permission_classes=[], a Spring permitAll / @PermitAll, a
+	// NestJS @Public(), a gRPC/tRPC public interceptor, or @AllowAnonymous.
+	// When false AND HasAuth is false, the route has NO guard signal at all
+	// (a genuinely-forgotten guard). The frontend MUST prefer this flag over
+	// any route-name heuristic to tell "public on purpose" from "missing auth".
+	Public bool `json:"public,omitempty"`
+	// PublicReason names the detected public mechanism (e.g. "auth_method=decorator",
+	// "permission_class=AllowAny") so the UI can explain WHY a route is public.
+	PublicReason string `json:"public_reason,omitempty"`
 	Severity     string `json:"severity"` // "error" | "warn" | "info"
 	SensitiveOp  bool   `json:"sensitive_op,omitempty"`
 	IDORRisk     bool   `json:"idor_risk,omitempty"`
@@ -265,6 +277,53 @@ func determineEndpointAuth(e *graph.Entity, byFile map[string][]string, taggedID
 	return false, ""
 }
 
+// resolveEndpointPublic reports whether an endpoint is unauthenticated BY DESIGN
+// (#4595) — distinct from a genuinely-forgotten guard. It reads ONLY the
+// authoritative auth-posture signals the engine resolvers already stamp; it does
+// NOT use route-name allowlists. Returns (public, reason).
+//
+// The signal is framework-general because every auth resolver writes the same
+// contract (see engine stampAuthPolicy / grpcJavaPolicyProps / java_annotation_routes
+// / django_drf_actions):
+//
+//   - Explicit-public verdict — JS/TS @Public()/publicProcedure, Spring permitAll/
+//     @PermitAll, gRPC/tRPC public interceptors, HotChocolate @AllowAnonymous:
+//     auth_required=="false" (only stamped when a resolver matched a real
+//     mechanism, i.e. auth_method != "unknown"). auth_method names the mechanism.
+//   - DRF AllowAny / permission_classes=[AllowAny]: by DRF semantics the resolver
+//     deliberately does NOT set auth_required, but records AllowAny in the
+//     middleware chain. So auth_required is unset AND a permission/middleware
+//     symbol of AllowAny (or an empty explicit permission set) is present.
+//
+// A genuinely-unguarded endpoint has NO auth_required=="false" and NO public
+// permission symbol — it simply has no posture, so this returns (false, "").
+func resolveEndpointPublic(props map[string]string) (bool, string) {
+	// 1. Decisive explicit-public verdict from the reconciled posture.
+	if props["auth_required"] == "false" {
+		if m := props["auth_method"]; m != "" && m != "unknown" {
+			return true, "auth_method=" + m
+		}
+		return true, "auth_required=false"
+	}
+	// 2. DRF AllowAny: auth_required stays unset, but AllowAny is recorded in
+	//    the middleware/permission chain. Never treat an actually-authenticated
+	//    route (auth_required=="true") as public.
+	if props["auth_required"] != "true" {
+		names := props["middleware_names"]
+		for _, sym := range strings.Split(names, ",") {
+			if strings.EqualFold(strings.TrimSpace(sym), "AllowAny") {
+				return true, "permission_class=AllowAny"
+			}
+		}
+		// Explicit empty permission set (permission_classes=[]) — DRF treats an
+		// empty list as "no permission required", an intentional public opt-out.
+		if props["auth_permission_set"] == "empty" {
+			return true, "permission_classes=[]"
+		}
+	}
+	return false, ""
+}
+
 func isSensitiveEndpoint(name, path string) bool {
 	combined := strings.ToLower(name + " " + path)
 	for _, t := range sensitiveTerms {
@@ -389,6 +448,14 @@ func (s *Server) handleSecurityAuthCoverage(w http.ResponseWriter, r *http.Reque
 			}
 
 			hasAuth, evidence := determineEndpointAuth(e, byFile, taggedIDs)
+			// #4595 — authoritative "public by design" signal so the dashboard can
+			// distinguish an intentionally-unauthenticated route (@Public / AllowAny
+			// / permitAll) from a forgotten guard. Only meaningful when !hasAuth.
+			var isPublic bool
+			var publicReason string
+			if !hasAuth {
+				isPublic, publicReason = resolveEndpointPublic(props)
+			}
 			epath := props["path"]
 			method := props["verb"]
 			sensitiveOp := isSensitiveEndpoint(name, epath)
@@ -430,6 +497,8 @@ func (s *Server) handleSecurityAuthCoverage(w http.ResponseWriter, r *http.Reque
 				Path:         epath,
 				HasAuth:      hasAuth,
 				AuthEvidence: evidence,
+				Public:       isPublic,
+				PublicReason: publicReason,
 				Severity:     severity,
 				SensitiveOp:  sensitiveOp,
 				IDORRisk:     idorRisk,
