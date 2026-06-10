@@ -144,7 +144,13 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 		return nil, err
 	}
 
-	// ── guard: refuse to run over a partial/corrupt install ─────────────────
+	// ── guard: refuse to run over a corrupt install, auto-recover a partial ──
+	// A previous install may have rolled back and left PartialInstall=true.
+	// #4461: re-running `archigraph install` must just work — the transaction
+	// below is fully idempotent (skills/MCP are re-applied, daemon re-started),
+	// so a stale partial state is treated as "resume/redo" with a warning rather
+	// than a hard error that forces --force or uninstall. We still hard-fail on
+	// an UNREADABLE state file (genuine corruption), which --force can bypass.
 	if !opts.Force {
 		if err := guardPartialInstall(opts.StatePath); err != nil {
 			return nil, err
@@ -196,55 +202,84 @@ func RunCopy(opts CopyOptions) (*CopyResult, error) {
 	// ─────────────────────────────────────────────────────────────────────────
 	// Step 2: Skills copy
 	// ─────────────────────────────────────────────────────────────────────────
-	skillsDir := skilllink.DiscoverSkillsDir(opts.BinPath, opts.SkillsSourceDir)
-	if skillsDir == "" {
-		rollback(2)
-		cwd := opts.WorkingDir
-		if cwd == "" {
-			cwd, _ = os.Getwd()
-		}
-		return nil, fmt.Errorf("no skills/ directory found at %s; pass --skills-source-dir <path-to-archigraph-repo>/skills", cwd)
-	}
+	skillsDir, attemptedSkillPaths := skilllink.DiscoverSkillsDirVerbose(opts.BinPath, opts.SkillsSourceDir)
 
+	// Claude config dirs are needed both for the skills copy destinations and
+	// for MCP registration in step 3.  Detect them up front so a missing skills
+	// source can degrade gracefully without also tripping over config detection.
 	claudeDirs := mcpreg.DetectClaudeConfigDirs(opts.ClaudeConfigDirs)
-	if len(claudeDirs) == 0 {
-		rollback(2)
-		return nil, fmt.Errorf("step 2 – no Claude Code config directories detected")
-	}
 
-	// Copy skills into EVERY detected Claude config dir's skills/ subdir so
-	// users running multiple Claude profiles (~/.claude, ~/.claude-personal,
-	// etc.) see the skills in all of them.  The SkillRecord/Files manifest
-	// is identical regardless of how many destinations receive a copy.
-	skillRecords := map[string]SkillRecord{}
-	installedSet := map[string]bool{}
-	for _, cfgPath := range claudeDirs {
-		skillsDestDir := skilllink.ClaudeSkillsDirForConfig(cfgPath)
-		if skillsDestDir == "" {
-			fmt.Fprintf(os.Stderr,
-				"archigraph install: cannot derive skills dir for %s; skipping\n",
-				cfgPath)
-			continue
+	switch {
+	case skillsDir == "":
+		// #4460: graceful-degrade. A brand-new binary-only install (no repo
+		// checkout, no --skills-source-dir) has no skills source to copy from.
+		// Rather than HARD-FAIL + rollback (which bricks the whole install and
+		// prevents the daemon from being installed), WARN + CONTINUE and record
+		// skills_skipped in state. The error message (#4459) now names EVERY
+		// path actually probed instead of the misleading cwd.
+		state.SkillsSkipped = true
+		fmt.Fprintf(os.Stderr,
+			"archigraph install: step 2 warning – no skills/ directory found; skipping skills copy (daemon + MCP will still be installed).\n")
+		if len(attemptedSkillPaths) > 0 {
+			fmt.Fprintf(os.Stderr, "  Paths checked:\n")
+			for _, p := range attemptedSkillPaths {
+				fmt.Fprintf(os.Stderr, "    %s\n", p)
+			}
 		}
-		recs, installed, err := copySkills(skillsDir, skillsDestDir, opts.DryRun)
-		if err != nil {
-			rollback(2)
-			return nil, fmt.Errorf("step 2 – copy skills into %s: %w", skillsDestDir, err)
+		fmt.Fprintf(os.Stderr,
+			"  To install skills, pass --skills-source-dir <path-to-archigraph-repo>/skills or set ARCHIGRAPH_SKILLS_DIR.\n")
+
+	case len(claudeDirs) == 0:
+		// A skills source exists but there is nowhere to copy it. This is a real
+		// problem (Claude Code not detected), so keep failing — but with the same
+		// graceful, informative phrasing rather than a rollback-and-die.
+		state.SkillsSkipped = true
+		fmt.Fprintf(os.Stderr,
+			"archigraph install: step 2 warning – no Claude Code config directories detected; skipping skills copy.\n")
+
+	default:
+		// Copy skills into EVERY detected Claude config dir's skills/ subdir so
+		// users running multiple Claude profiles (~/.claude, ~/.claude-personal,
+		// etc.) see the skills in all of them.  The SkillRecord/Files manifest
+		// is identical regardless of how many destinations receive a copy.
+		skillRecords := map[string]SkillRecord{}
+		installedSet := map[string]bool{}
+		for _, cfgPath := range claudeDirs {
+			skillsDestDir := skilllink.ClaudeSkillsDirForConfig(cfgPath)
+			if skillsDestDir == "" {
+				fmt.Fprintf(os.Stderr,
+					"archigraph install: cannot derive skills dir for %s; skipping\n",
+					cfgPath)
+				continue
+			}
+			recs, installed, err := copySkills(skillsDir, skillsDestDir, opts.DryRun)
+			if err != nil {
+				rollback(2)
+				return nil, fmt.Errorf("step 2 – copy skills into %s: %w", skillsDestDir, err)
+			}
+			for name, rec := range recs {
+				skillRecords[name] = rec
+			}
+			for _, name := range installed {
+				installedSet[name] = true
+			}
 		}
-		for name, rec := range recs {
-			skillRecords[name] = rec
-		}
-		for _, name := range installed {
-			installedSet[name] = true
-		}
-	}
-	state.Skills = skillRecords
-	for _, name := range skilllink.SkillNames {
-		if installedSet[name] {
-			result.SkillsInstalled = append(result.SkillsInstalled, name)
+		state.Skills = skillRecords
+		for _, name := range skilllink.SkillNames {
+			if installedSet[name] {
+				result.SkillsInstalled = append(result.SkillsInstalled, name)
+			}
 		}
 	}
 	completedSteps = append(completedSteps, 2)
+
+	// MCP registration (step 3) still requires at least one Claude config dir.
+	// If skills were skipped purely because none were found, surface that here
+	// as the genuine blocker.
+	if len(claudeDirs) == 0 {
+		rollback(2)
+		return nil, fmt.Errorf("step 3 – no Claude Code config directories detected")
+	}
 
 	// ─────────────────────────────────────────────────────────────────────────
 	// Step 3: MCP registration
@@ -381,9 +416,18 @@ func (o *CopyOptions) applyDefaults() error {
 	return nil
 }
 
-// guardPartialInstall returns an error if install.json exists and
-// describes a partial/corrupt install. This prevents users from running
-// `archigraph install` twice and ending up with half-applied state.
+// guardPartialInstall inspects install.json and decides whether `install` may
+// proceed without --force.
+//
+// It returns an error ONLY when the state file exists but is unreadable
+// (genuine corruption) — that case still requires --force or a clean
+// uninstall+install.
+//
+// #4461: a *readable* state that merely records a prior PARTIAL install
+// (PartialInstall=true, set on a rollback) is NOT a blocker. The install
+// transaction is idempotent, so re-running it simply resumes/redoes the work.
+// We emit a one-line advisory and let the caller continue; the fresh State
+// written at the end of a successful run clears the partial flag automatically.
 func guardPartialInstall(statePath string) error {
 	st, err := ReadState(statePath)
 	if err != nil {
@@ -397,9 +441,12 @@ func guardPartialInstall(statePath string) error {
 		return nil
 	}
 	if st.PartialInstall {
-		return fmt.Errorf(
-			"a partial install was detected (rolled back from step %d); run `archigraph install --force` to retry or `archigraph uninstall && archigraph install` to start clean",
+		// Auto-recover: warn and proceed. The idempotent transaction below will
+		// re-apply every step and persist a clean (non-partial) state on success.
+		fmt.Fprintf(os.Stderr,
+			"archigraph install: recovering from a previous partial install (rolled back from step %d); retrying automatically.\n",
 			st.RollbackFromStep)
+		return nil
 	}
 	return nil
 }

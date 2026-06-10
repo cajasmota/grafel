@@ -176,9 +176,10 @@ func TestRunDev_Idempotent(t *testing.T) {
 	}
 }
 
-// TestRunDev_PartialInstallGuard verifies that running `archigraph install --dev`
-// when a partial install is recorded returns an error unless --force is set.
-func TestRunDev_PartialInstallGuard(t *testing.T) {
+// TestRunDev_PartialInstallAutoRecovers verifies that running `archigraph install --dev`
+// when a partial install is recorded auto-recovers (idempotent retry) WITHOUT
+// requiring --force (#4461 — the partial-install guard is shared with COPY mode).
+func TestRunDev_PartialInstallAutoRecovers(t *testing.T) {
 	env := newDevTestEnv(t)
 
 	// Write a fake partial state.
@@ -190,18 +191,19 @@ func TestRunDev_PartialInstallGuard(t *testing.T) {
 	}
 
 	opts := defaultDevOpts(env)
-	opts.Force = false
+	opts.Force = false // explicitly NO --force
 
-	_, err := install.RunDev(opts)
-	if err == nil {
-		t.Fatal("expected RunDev to refuse when PartialInstall=true and Force=false")
+	if _, err := install.RunDev(opts); err != nil {
+		t.Fatalf("expected partial-install retry to auto-recover without --force, got: %v", err)
 	}
 
-	// With --force it should proceed.
-	opts.Force = true
-	_, err = install.RunDev(opts)
+	// State must be clean after a successful recovery.
+	state, err := install.ReadState(env.statePath)
 	if err != nil {
-		t.Fatalf("RunDev with --force: %v", err)
+		t.Fatalf("read state after recovery: %v", err)
+	}
+	if state.PartialInstall {
+		t.Error("expected PartialInstall=false after successful auto-recovery")
 	}
 }
 

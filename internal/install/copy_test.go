@@ -6,7 +6,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"strings"
 	"testing"
 	"time"
 
@@ -194,12 +193,13 @@ func TestRunCopy_RollbackOnStep4Failure(t *testing.T) {
 	}
 }
 
-// TestRunCopy_PartialInstallGuard verifies that running install when a
-// partial install is already recorded returns an error unless --force is set.
-func TestRunCopy_PartialInstallGuard(t *testing.T) {
+// TestRunCopy_PartialInstallAutoRecovers verifies that running install when a
+// partial install is already recorded auto-recovers (idempotent retry) WITHOUT
+// requiring --force, and that the resulting state is no longer partial (#4461).
+func TestRunCopy_PartialInstallAutoRecovers(t *testing.T) {
 	env := newTestEnv(t)
 
-	// Write a fake partial state.
+	// Write a fake partial state (as would be left after a rolled-back install).
 	partial := install.NewState(install.ModeCopy)
 	partial.PartialInstall = true
 	partial.RollbackFromStep = 4
@@ -214,19 +214,55 @@ func TestRunCopy_PartialInstallGuard(t *testing.T) {
 		StatePath:         env.statePath,
 		WorkingDir:        env.gitRepo,
 		SkipDaemonRestart: true,
-		Force:             false, // no --force
+		Force:             false, // explicitly NO --force
 	}
 
-	_, err := install.RunCopy(opts)
-	if err == nil {
-		t.Fatal("expected RunCopy to refuse when PartialInstall=true and Force=false")
+	// A plain second install must just work.
+	if _, err := install.RunCopy(opts); err != nil {
+		t.Fatalf("expected partial-install retry to auto-recover without --force, got: %v", err)
+	}
+
+	// The persisted state must now be clean (partial flag cleared).
+	state, err := install.ReadState(env.statePath)
+	if err != nil {
+		t.Fatalf("read state after recovery: %v", err)
+	}
+	if state.PartialInstall {
+		t.Error("expected PartialInstall=false after successful auto-recovery")
+	}
+	if state.RollbackFromStep != 0 {
+		t.Errorf("expected RollbackFromStep=0 after recovery, got %d", state.RollbackFromStep)
+	}
+}
+
+// TestRunCopy_UnreadableStateStillBlocks verifies that a genuinely corrupt
+// (unreadable) install.json still hard-fails without --force (#4461 keeps the
+// corruption guard; only the partial-install soft-block was relaxed).
+func TestRunCopy_UnreadableStateStillBlocks(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Write garbage that cannot be parsed as JSON.
+	if err := os.WriteFile(env.statePath, []byte("{not json"), 0o600); err != nil {
+		t.Fatalf("write corrupt state: %v", err)
+	}
+
+	opts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+		Force:             false,
+	}
+	if _, err := install.RunCopy(opts); err == nil {
+		t.Fatal("expected RunCopy to refuse over an unreadable install.json without --force")
 	}
 
 	// With --force it should proceed.
 	opts.Force = true
-	_, err = install.RunCopy(opts)
-	if err != nil {
-		t.Fatalf("RunCopy with --force: %v", err)
+	if _, err := install.RunCopy(opts); err != nil {
+		t.Fatalf("RunCopy with --force over corrupt state: %v", err)
 	}
 }
 
@@ -382,36 +418,75 @@ func assertGitignoreEntry(t *testing.T, repoRoot string) {
 	t.Errorf(".gitignore does not contain /.archigraph/; content: %q", string(data))
 }
 
-// TestRunCopy_MissingSkillsDirectory verifies that when the skills directory
-// cannot be discovered, the error message includes the current working directory
-// and suggests using --skills-source-dir.
-func TestRunCopy_MissingSkillsDirectory(t *testing.T) {
+// TestRunCopy_MissingSkillsDirectory_GracefulDegrade verifies that when the
+// skills directory cannot be discovered, RunCopy WARNS and CONTINUES rather
+// than hard-failing (#4460): the install still succeeds, the daemon/MCP steps
+// proceed, and the persisted state records SkillsSkipped=true. The daemon must
+// be installable from a brand-new binary-only checkout with no skills source.
+func TestRunCopy_MissingSkillsDirectory_GracefulDegrade(t *testing.T) {
 	env := newTestEnv(t)
 
+	// Ensure the env-var discovery path can't accidentally satisfy discovery.
+	t.Setenv("ARCHIGRAPH_SKILLS_DIR", "")
+
+	// Place the binary in an isolated dir with NO skills/ anywhere on its
+	// sibling/one-up/ancestor path, so discovery genuinely fails (a brand-new
+	// binary-only install). env.fakeBin lives next to env.skillsSourceDir and
+	// would be found via the sibling/ancestor walk.
+	isoBinDir := filepath.Join(t.TempDir(), "iso", "bin")
+	if err := os.MkdirAll(isoBinDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	isoBin := filepath.Join(isoBinDir, "archigraph")
+	if err := os.WriteFile(isoBin, []byte("#!/bin/sh\necho iso"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Track whether the (mocked) daemon restart still runs — it must, proving
+	// the install did not abort at step 2.
+	restartCalled := false
+
 	opts := install.CopyOptions{
-		BinPath:           env.fakeBin,
-		SkillsSourceDir:   "/nonexistent/skills",
-		ClaudeConfigDirs:  []string{env.claudeJSON},
-		StatePath:         env.statePath,
-		WorkingDir:        env.gitRepo,
-		SkipDaemonRestart: true,
+		BinPath:          isoBin,
+		SkillsSourceDir:  "/nonexistent/skills",
+		ClaudeConfigDirs: []string{env.claudeJSON},
+		StatePath:        env.statePath,
+		WorkingDir:       env.gitRepo,
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			restartCalled = true
+			return "test-daemon-v0", nil
+		},
 	}
 
-	_, err := install.RunCopy(opts)
-	if err == nil {
-		t.Fatal("expected RunCopy to fail when skills directory is missing")
+	result, err := install.RunCopy(opts)
+	if err != nil {
+		t.Fatalf("expected graceful degrade (no error) when skills dir missing, got: %v", err)
+	}
+	if len(result.SkillsInstalled) != 0 {
+		t.Errorf("expected no skills installed, got %v", result.SkillsInstalled)
+	}
+	if !restartCalled {
+		t.Error("expected daemon restart (step 4) to run after skills were skipped")
+	}
+	if result.DaemonVersion != "test-daemon-v0" {
+		t.Errorf("expected daemon to be installed, got version %q", result.DaemonVersion)
 	}
 
-	errMsg := err.Error()
-	// Check that the error message includes the actionable hints.
-	if !strings.Contains(errMsg, "no skills/ directory found") {
-		t.Errorf("error should mention missing skills directory; got: %s", errMsg)
+	// MCP must still be registered.
+	if len(result.MCPPaths) == 0 {
+		t.Error("expected MCP registration to proceed even though skills were skipped")
 	}
-	if !strings.Contains(errMsg, "--skills-source-dir") {
-		t.Errorf("error should suggest --skills-source-dir flag; got: %s", errMsg)
+
+	// State must record the skip.
+	state, err := install.ReadState(env.statePath)
+	if err != nil {
+		t.Fatalf("read state: %v", err)
 	}
-	if !strings.Contains(errMsg, "/skills") {
-		t.Errorf("error should show path suffix /skills; got: %s", errMsg)
+	if !state.SkillsSkipped {
+		t.Error("expected state.SkillsSkipped=true after graceful skills skip")
+	}
+	if state.PartialInstall {
+		t.Error("expected a graceful skills-skip to NOT mark the install partial")
 	}
 }
 

@@ -133,36 +133,64 @@ func PruneOrphanSkillSymlinks(out io.Writer, skillsSubdir string) {
 //
 // Returns "" if none of the locations exist, which signals the caller to
 // error or skip the step.
+//
+// DiscoverSkillsDir is a thin wrapper over DiscoverSkillsDirVerbose that
+// discards the list of attempted paths.
 func DiscoverSkillsDir(binPath, skillsSourceDir string) string {
-	// Explicit override from flag or config.
-	if skillsSourceDir != "" {
-		if info, err := os.Stat(skillsSourceDir); err == nil && info.IsDir() {
-			return skillsSourceDir
+	dir, _ := DiscoverSkillsDirVerbose(binPath, skillsSourceDir)
+	return dir
+}
+
+// DiscoverSkillsDirVerbose behaves like DiscoverSkillsDir but also returns the
+// ordered list of every candidate path it actually checked. When discovery
+// fails (returns ""), the attempted list lets the caller build an accurate,
+// non-misleading error that names exactly the paths that were probed — rather
+// than conflating the failure with the process's current working directory.
+//
+// Unlike the previous implementation, an explicit --skills-source-dir that
+// does not resolve to a directory no longer short-circuits discovery: we record
+// the failed explicit path and fall through to the remaining heuristics, so a
+// stale/typo'd flag never masks a perfectly valid sibling/env/ancestor dir.
+func DiscoverSkillsDirVerbose(binPath, skillsSourceDir string) (string, []string) {
+	var attempted []string
+	check := func(label, path string) (string, bool) {
+		if path == "" {
+			return "", false
 		}
-		// Don't fall through if the user explicitly set it but it doesn't exist.
-		return ""
+		attempted = append(attempted, fmt.Sprintf("%s: %s", label, path))
+		if info, err := os.Stat(path); err == nil && info.IsDir() {
+			return path, true
+		}
+		return "", false
+	}
+
+	// Explicit override from flag or config. We no longer early-return on a
+	// stat failure: record the attempt and continue so a bad flag can't mask a
+	// valid auto-discovered location.
+	if skillsSourceDir != "" {
+		if p, ok := check("--skills-source-dir", skillsSourceDir); ok {
+			return p, attempted
+		}
 	}
 
 	if binPath != "" {
 		binDir := filepath.Dir(binPath)
 
 		// Try sibling: $(dirname binPath)/skills — produced by `go build` in repo root.
-		sibling := filepath.Join(binDir, "skills")
-		if info, err := os.Stat(sibling); err == nil && info.IsDir() {
-			return sibling
+		if p, ok := check("sibling", filepath.Join(binDir, "skills")); ok {
+			return p, attempted
 		}
 
 		// Try one-up: $(dirname binPath)/../skills — shipped bin/ layout.
-		oneUp := filepath.Join(binDir, "..", "skills")
-		if info, err := os.Stat(oneUp); err == nil && info.IsDir() {
-			return oneUp
+		if p, ok := check("one-up", filepath.Join(binDir, "..", "skills")); ok {
+			return p, attempted
 		}
 	}
 
 	// Try env var override (useful in CI or special deployments).
 	if envPath := os.Getenv("ARCHIGRAPH_SKILLS_DIR"); envPath != "" {
-		if info, err := os.Stat(envPath); err == nil && info.IsDir() {
-			return envPath
+		if p, ok := check("ARCHIGRAPH_SKILLS_DIR", envPath); ok {
+			return p, attempted
 		}
 	}
 
@@ -178,14 +206,13 @@ func DiscoverSkillsDir(binPath, skillsSourceDir string) string {
 				break
 			}
 			dir = parent
-			candidate := filepath.Join(dir, "skills")
-			if info, err := os.Stat(candidate); err == nil && info.IsDir() {
-				return candidate
+			if p, ok := check("ancestor", filepath.Join(dir, "skills")); ok {
+				return p, attempted
 			}
 		}
 	}
 
-	return ""
+	return "", attempted
 }
 
 // InstallSkillsInClaudeConfigs symlinks the archigraph skills into every

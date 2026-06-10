@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -244,14 +245,41 @@ func TestDoctorCLITamper(t *testing.T) {
 	if len(cli.Drift) == 0 {
 		t.Error("cli check should report drift")
 	}
-	// Must report as Critical.
-	if cli.Severity != install.SeverityCritical {
-		t.Errorf("cli severity = %q, want critical", cli.Severity)
+	// #4463: a SHA-only drift is a Warning, not Critical — the daemon is still
+	// usable, so it must not read as a broken install. (The overall report.OK in
+	// this test env is independently false because no daemon is running on the
+	// probe port; the CLI severity is what matters here.)
+	if cli.Severity != install.SeverityWarning {
+		t.Errorf("cli severity = %q, want warning", cli.Severity)
+	}
+}
+
+// TestDoctorMissingCLIRecordCritical: an install.json with no CLI record (a
+// genuine partial/corrupt install) must still be Critical (#4463 keeps Critical
+// for the missing-record case; only SHA drift was downgraded).
+func TestDoctorMissingCLIRecordCritical(t *testing.T) {
+	env := newDoctorTestEnv(t)
+
+	// Blank out the CLI record in install.json.
+	state, err := install.ReadState(env.statePath)
+	if err != nil || state == nil {
+		t.Fatalf("read state: %v", err)
+	}
+	state.CLI = install.CLIRecord{}
+	if err := install.WriteState(env.statePath, state); err != nil {
+		t.Fatalf("write state: %v", err)
 	}
 
-	// Overall report must be not-OK.
+	report := runDoctor(t, env, 1)
+	cli := findCheck(report, "cli")
+	if cli == nil {
+		t.Fatal("cli check missing")
+	}
+	if cli.Severity != install.SeverityCritical {
+		t.Errorf("cli severity = %q, want critical for missing CLI record", cli.Severity)
+	}
 	if report.OK {
-		t.Error("report.OK should be false after CLI tamper")
+		t.Error("report.OK should be false when CLI record is missing")
 	}
 }
 
@@ -540,6 +568,14 @@ func TestDoctorQuickMode_Tampered(t *testing.T) {
 	lines := countNonEmptyLines(output)
 	if lines > 1 {
 		t.Errorf("quick-doctor printed %d lines, want 1: %q", lines, output)
+	}
+	// #4463: the wording must not read as "broken". The old "reinstall
+	// recommended" phrasing alarmed users on every status/rebuild.
+	if strings.Contains(output, "reinstall recommended") {
+		t.Errorf("quick-doctor SHA-drift wording should be non-alarming, got: %q", output)
+	}
+	if !strings.Contains(output, "still usable") {
+		t.Errorf("quick-doctor SHA-drift message should reassure the daemon is usable, got: %q", output)
 	}
 }
 

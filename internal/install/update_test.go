@@ -1,10 +1,12 @@
 package install_test
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/archigraph/internal/install"
 )
@@ -129,14 +131,20 @@ func TestRunUpdate_RollbackOnInstallFailure(t *testing.T) {
 	}
 
 	opts := install.UpdateOptions{
-		BinPath:   env.fakeBin,
-		StatePath: env.statePath,
-		// Force skills discovery to fail so RunCopy returns an error.
-		SkillsSourceDir:   "/nonexistent-skills-dir",
-		ClaudeConfigDirs:  []string{env.claudeJSON},
-		WorkingDir:        env.gitRepo,
-		SkipDaemonRestart: true,
-		Tag:               "v0.0.1-fail",
+		BinPath:          env.fakeBin,
+		StatePath:        env.statePath,
+		SkillsSourceDir:  env.skillsSourceDir,
+		ClaudeConfigDirs: []string{env.claudeJSON},
+		WorkingDir:       env.gitRepo,
+		// Force the re-install (RunCopy) to fail at the daemon-restart step so
+		// the binary rollback path is exercised. (Skills discovery now
+		// gracefully degrades — #4460 — so it can no longer be used to force a
+		// hard install failure.)
+		SkipDaemonRestart: false,
+		RestartDaemon: func(_ string, _ int, _ time.Duration) (string, error) {
+			return "", fmt.Errorf("forced daemon restart failure for test")
+		},
+		Tag: "v0.0.1-fail",
 		DownloadBinary: func(_ *http.Client, _, _, _, destPath string) error {
 			// Download a different binary.
 			return os.WriteFile(destPath, []byte("#!/bin/sh\necho different"), 0o755)

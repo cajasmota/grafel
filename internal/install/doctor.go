@@ -258,9 +258,14 @@ func checkCLI(state *State) CheckResult {
 	}
 
 	if actual != state.CLI.SHA256 {
+		// #4463: a SHA drift alone is NOT a broken install — the daemon stays
+		// fully usable (status.go already treats this as a non-blocking note).
+		// It typically means the binary was rebuilt/upgraded in place since the
+		// last `install`. Surface it as a Warning (exit-zero advisory), reserving
+		// Critical for unreadable/missing install.json and unhashable binaries.
 		cr.OK = false
-		cr.Severity = SeverityCritical
-		cr.Drift = []string{fmt.Sprintf("sha256 mismatch: binary=%s install=%s", actual[:16], state.CLI.SHA256[:16])}
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf("sha256 mismatch: binary=%s install=%s (daemon still usable; re-run 'archigraph install' to refresh)", actual[:16], state.CLI.SHA256[:16])}
 	}
 	return cr
 }
@@ -755,7 +760,7 @@ func RunQuickDoctor(opts QuickOptions) error {
 	if state.CLI.Path != "" && state.CLI.SHA256 != "" && !isInGitWorktree() {
 		actual, shaErr := sha256File(state.CLI.Path)
 		if shaErr == nil && actual != state.CLI.SHA256 {
-			warnings = append(warnings, "binary SHA mismatch (reinstall recommended)")
+			warnings = append(warnings, "binary updated since last install (daemon still usable)")
 		}
 	}
 
