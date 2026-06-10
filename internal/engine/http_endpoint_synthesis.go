@@ -2174,12 +2174,129 @@ var flaskRouteRe = regexp.MustCompile(`@\w+\.route\s*\(\s*["']([^"'\n\r]+)["']([
 // accepted because both are idiomatic in the wild.
 var flaskMethodsArgRe = regexp.MustCompile(`methods\s*=\s*[\[\(]([^\]\)]+)[\]\)]`)
 
+// ---------------------------------------------------------------------------
+// #4383 — PROGRAMMATIC route registration (Python)
+//
+// The decorator forms above only cover `@app.route`/`@app.get` on a named
+// `def`. A second, equally idiomatic registration shape passes the handler as
+// a VALUE to a registration METHOD:
+//
+//	Flask:     app.add_url_rule('/users', view_func=list_users)
+//	           app.add_url_rule('/users', 'users', UserView.as_view('users'))
+//	           bp.add_url_rule('/x', view_func=lambda: ...)
+//	FastAPI:   app.add_api_route('/items', get_items, methods=['GET'])
+//	           router.add_api_route('/items', get_items)
+//	Starlette: app.add_route('/x', handler)
+//	           Route('/x', endpoint=handler)  (already handled in synthesizeStarlette)
+//
+// These were NOT extracted at all before this fix, so the endpoint was missing
+// entirely (not merely handler-less). We model the handler shape-agnostically,
+// mirroring #4324 / #4319:
+//   - a NAMED function/class reference (`list_users`, `UserView.as_view('users')`)
+//     → resolve to that named symbol via refKind="SCOPE.Operation" so the
+//       synthesis-time named bridge (#4319) links the endpoint to the real
+//       handler def.
+//   - an inline `lambda` → refKind=inlineHandlerRefKind so makeEmit synthesizes a
+//     stable inline-handler stand-in + bridge (#4324) instead of an island.
+//
+// pyProgrammaticHandlerRef classifies the raw handler-argument text and returns
+// the (refKind, refName, isLambda) triple the emit path expects.
+
+// pyLambdaArgRe detects a `lambda ...:` handler value.
+var pyLambdaArgRe = regexp.MustCompile(`^\s*lambda\b`)
+
+// pyAsViewRe captures `SomeView.as_view('name')` / `SomeView.as_view("name")`
+// (Flask class-based views) and keeps the VIEW CLASS name as the handler symbol.
+var pyAsViewRe = regexp.MustCompile(`^\s*([A-Za-z_][\w.]*)\.as_view\s*\(`)
+
+// pyNamedRefRe captures a bare dotted identifier handler value
+// (`list_users`, `views.get_items`) with no trailing call — a function or
+// callable passed by reference.
+var pyNamedRefRe = regexp.MustCompile(`^\s*([A-Za-z_][\w.]*)\s*$`)
+
+// pyProgrammaticHandlerRef classifies a programmatic-route handler argument.
+// Returns the refKind/refName makeEmit expects:
+//   - lambda            → (inlineHandlerRefKind, "")
+//   - Cls.as_view(...)  → ("SCOPE.Operation", "Cls")  (resolve to the view class)
+//   - named/dotted ref  → ("SCOPE.Operation", "<lastSegment>")
+//   - anything else     → (inlineHandlerRefKind, "")   (callable expression with
+//     no addressable symbol — model as inline, never drop the endpoint)
+func pyProgrammaticHandlerRef(raw string) (refKind, refName string) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" || pyLambdaArgRe.MatchString(raw) {
+		return inlineHandlerRefKind, ""
+	}
+	if m := pyAsViewRe.FindStringSubmatch(raw); len(m) >= 2 {
+		name := m[1]
+		if i := strings.LastIndexByte(name, '.'); i >= 0 {
+			name = name[i+1:]
+		}
+		// refKind "Controller" mirrors the proven Flask/FastAPI DECORATOR
+		// convention: it survives ResolveHTTPEndpointHandlers when the handler
+		// def lives in another module (live pipeline) via the Controller
+		// keep-path, and still fires the #4319 same-file structural bridge
+		// (which covers refKind ∈ {Controller, View, SCOPE.Operation}).
+		return "Controller", name
+	}
+	if m := pyNamedRefRe.FindStringSubmatch(raw); len(m) >= 2 {
+		name := m[1]
+		if i := strings.LastIndexByte(name, '.'); i >= 0 {
+			name = name[i+1:]
+		}
+		return "Controller", name
+	}
+	// Callable expression we cannot resolve to a symbol (e.g. `make_handler()`).
+	return inlineHandlerRefKind, ""
+}
+
+// flaskAddURLRuleRe captures `<recv>.add_url_rule(<path>, <rest>)`. Group 1 is
+// the path literal; group 2 is the remainder of the call args (which may carry
+// a positional endpoint name, a `view_func=` kwarg and/or a `methods=` kwarg).
+// One level of nested parens is tolerated so `view_func=UserView.as_view('x')`
+// or `methods=['GET']` does not abort the match early.
+var flaskAddURLRuleRe = regexp.MustCompile(
+	`\b\w+\.add_url_rule\s*\(\s*["']([^"'\n\r]+)["']((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
+)
+
+// flaskViewFuncKwargRe captures the `view_func=<value>` handler argument.
+var flaskViewFuncKwargRe = regexp.MustCompile(`view_func\s*=\s*(lambda\b[^,)]*|[A-Za-z_][\w.]*\s*(?:\.as_view\s*\([^)]*\))?)`)
+
+// fastapiAddAPIRouteRe captures `<recv>.add_api_route(<path>, <rest>)`.
+// Group 1 = path literal, group 2 = remaining args (positional/`endpoint=`
+// handler plus optional `methods=`). One level of nested parens tolerated.
+var fastapiAddAPIRouteRe = regexp.MustCompile(
+	`\b\w+\.add_api_route\s*\(\s*["']([^"'\n\r]+)["']((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
+)
+
+// fastapiEndpointKwargRe captures the `endpoint=<value>` handler argument of an
+// add_api_route call.
+var fastapiEndpointKwargRe = regexp.MustCompile(`endpoint\s*=\s*(lambda\b[^,)]*|[A-Za-z_][\w.]*)`)
+
+// starletteAddRouteRe captures `<recv>.add_route(<path>, <handler>, ...)`.
+// Group 1 = path literal, group 2 = remaining args (positional/`endpoint=`
+// handler plus optional `methods=`).
+var starletteAddRouteRe = regexp.MustCompile(
+	`\b\w+\.add_route\s*\(\s*["']([^"'\n\r]+)["']((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
+)
+
+// pyFirstPositionalArgRe captures the first positional argument value at the
+// start of an args tail (i.e. immediately after the leading comma that follows
+// the path literal), so long as it is NOT a `kwarg=` assignment. Used to pull
+// the handler out of `add_api_route('/x', get_items, ...)` /
+// `add_route('/x', handler)` / `add_url_rule('/x', 'name', Cls.as_view(...))`.
+var pyFirstPositionalArgRe = regexp.MustCompile(`^\s*,\s*(lambda\b[^,)]*|["'][^"'\n\r]*["']|[A-Za-z_][\w.]*\s*(?:\.as_view\s*\([^)]*\))?)`)
+
 func synthesizeFlask(content string, emit emitDefFn) {
 	if !strings.Contains(content, ".route(") && !strings.Contains(content, ".get(") &&
 		!strings.Contains(content, ".post(") && !strings.Contains(content, ".put(") &&
-		!strings.Contains(content, ".patch(") && !strings.Contains(content, ".delete(") {
+		!strings.Contains(content, ".patch(") && !strings.Contains(content, ".delete(") &&
+		!strings.Contains(content, ".add_url_rule(") {
 		return
 	}
+	// #4383 — programmatic registration: app.add_url_rule('/x', view_func=...)
+	// or app.add_url_rule('/x', 'endpoint', UserView.as_view('x')). Works for
+	// blueprint receivers (bp.add_url_rule) identically.
+	synthesizeFlaskAddURLRule(content, emit)
 	// Shorthand verbs first — they have an unambiguous verb. Use the
 	// SubmatchIndex variant so we can derive the 1-based line of the
 	// handler `def` (capture group 3) for issue #2678 attribution.
@@ -2211,6 +2328,72 @@ func synthesizeFlask(content string, emit emitDefFn) {
 		}
 		for _, verb := range methods {
 			emit(verb, canonical, "flask", "Controller", handler, defLine)
+		}
+	}
+}
+
+// synthesizeFlaskAddURLRule extracts programmatic Flask route registration
+// via `add_url_rule` (#4383). The handler may arrive three ways:
+//
+//	app.add_url_rule('/users', view_func=list_users)            (kwarg, named)
+//	app.add_url_rule('/users', 'users', UserView.as_view('u'))  (positional CBV)
+//	app.add_url_rule('/x', view_func=lambda: ...)               (kwarg, lambda)
+//
+// Verb list comes from a `methods=[...]` kwarg; Flask defaults to GET.
+func synthesizeFlaskAddURLRule(content string, emit emitDefFn) {
+	if !strings.Contains(content, ".add_url_rule(") {
+		return
+	}
+	for _, idx := range flaskAddURLRuleRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
+			continue
+		}
+		raw := content[idx[2]:idx[3]]
+		tail := content[idx[4]:idx[5]]
+
+		// Handler: prefer an explicit `view_func=` kwarg; otherwise the third
+		// positional arg (after the path and the endpoint-name string) — skip the
+		// endpoint-name string literal to reach the callable.
+		handlerArg := ""
+		if vm := flaskViewFuncKwargRe.FindStringSubmatch(tail); len(vm) >= 2 {
+			handlerArg = vm[1]
+		} else {
+			rest := tail
+			for {
+				pm := pyFirstPositionalArgRe.FindStringSubmatch(rest)
+				if len(pm) < 2 {
+					break
+				}
+				cand := strings.TrimSpace(pm[1])
+				// Skip the endpoint-NAME string literal positional arg. rest then
+				// already begins at the comma preceding the NEXT positional, so the
+				// leading-comma anchor stays primed without re-prepending one.
+				if strings.HasPrefix(cand, `"`) || strings.HasPrefix(cand, `'`) {
+					loc := pyFirstPositionalArgRe.FindStringIndex(rest)
+					rest = rest[loc[1]:]
+					continue
+				}
+				handlerArg = cand
+				break
+			}
+		}
+
+		refKind, refName := pyProgrammaticHandlerRef(handlerArg)
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFlask, raw)
+
+		methods := parseFlaskMethods(tail)
+		if len(methods) == 0 {
+			methods = []string{"GET"}
+		}
+		defLine := 0
+		if refName != "" {
+			defLine = findPyDefLine(content, refName)
+		}
+		if defLine == 0 {
+			defLine = lineOfOffset(content, idx[0])
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "flask", refKind, refName, defLine)
 		}
 	}
 }
@@ -2252,9 +2435,13 @@ var fastapiVerbDecoratorRe = regexp.MustCompile(`@(?:app|router|api|\w+_router)\
 
 func synthesizeFastAPI(content string, emit emitDefFn) {
 	if !strings.Contains(content, "FastAPI") && !strings.Contains(content, "APIRouter") &&
-		!strings.Contains(content, "@app.") && !strings.Contains(content, "@router.") {
+		!strings.Contains(content, "@app.") && !strings.Contains(content, "@router.") &&
+		!strings.Contains(content, ".add_api_route(") {
 		return
 	}
+	// #4383 — programmatic registration: app.add_api_route('/items', get_items,
+	// methods=['GET']) / router.add_api_route(...).
+	synthesizeFastAPIAddRoute(content, emit)
 	// SubmatchIndex variant so the 1-based line of the handler `def`
 	// (capture group 3) can be recovered for issue #2678 attribution.
 	for _, idx := range fastapiVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
@@ -2267,6 +2454,53 @@ func synthesizeFastAPI(content string, emit emitDefFn) {
 		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, raw)
 		defLine := lineOfOffset(content, idx[6])
 		emit(verb, canonical, "fastapi", "Controller", handler, defLine)
+	}
+}
+
+// synthesizeFastAPIAddRoute extracts programmatic FastAPI route registration
+// via `add_api_route` (#4383):
+//
+//	app.add_api_route('/items', get_items, methods=['GET'])
+//	router.add_api_route('/items', get_items)          (defaults to GET)
+//	app.add_api_route('/x', endpoint=handler)          (kwarg form)
+//	app.add_api_route('/x', lambda: ...)               (inline)
+//
+// FastAPI's add_api_route defaults to GET when `methods=` is omitted.
+func synthesizeFastAPIAddRoute(content string, emit emitDefFn) {
+	if !strings.Contains(content, ".add_api_route(") {
+		return
+	}
+	for _, idx := range fastapiAddAPIRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
+			continue
+		}
+		raw := content[idx[2]:idx[3]]
+		tail := content[idx[4]:idx[5]]
+
+		handlerArg := ""
+		if em := fastapiEndpointKwargRe.FindStringSubmatch(tail); len(em) >= 2 {
+			handlerArg = em[1]
+		} else if pm := pyFirstPositionalArgRe.FindStringSubmatch(tail); len(pm) >= 2 {
+			handlerArg = pm[1]
+		}
+
+		refKind, refName := pyProgrammaticHandlerRef(handlerArg)
+		canonical := httproutes.Canonicalize(httproutes.FrameworkFastAPI, raw)
+
+		methods := parseFlaskMethods(tail) // same methods=[...] shape
+		if len(methods) == 0 {
+			methods = []string{"GET"}
+		}
+		defLine := 0
+		if refName != "" {
+			defLine = findPyDefLine(content, refName)
+		}
+		if defLine == 0 {
+			defLine = lineOfOffset(content, idx[0])
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "fastapi", refKind, refName, defLine)
+		}
 	}
 }
 
@@ -2329,6 +2563,8 @@ var starletteMountRe = regexp.MustCompile(
 )
 
 func synthesizeStarlette(content string, emit emitDefFn) {
+	// #4383 — programmatic registration: app.add_route('/x', handler).
+	synthesizeStarletteAddRoute(content, emit)
 	if !strings.Contains(content, "Route(") {
 		return
 	}
@@ -2356,9 +2592,22 @@ func synthesizeStarlette(content string, emit emitDefFn) {
 			// positional argument (no `endpoint=` kwarg).
 			handler = pm[1]
 		}
+		// #4383 — `Route("/x", endpoint=lambda ...: ...)` has no addressable
+		// handler symbol. The identifier regexes above capture the bare word
+		// `lambda` as if it were a handler name; treat it (and an empty handler)
+		// as inline so the endpoint is bridged to a synthesized stand-in rather
+		// than left a graph island.
+		if handler == "lambda" {
+			handler = ""
+		}
 		// Keep only the final dotted segment as the entity name.
 		if i := strings.LastIndexByte(handler, '.'); i >= 0 {
 			handler = handler[i+1:]
+		}
+
+		refKind := "SCOPE.Operation"
+		if handler == "" {
+			refKind = inlineHandlerRefKind
 		}
 
 		methods := parseStarletteMethods(tail)
@@ -2388,10 +2637,67 @@ func synthesizeStarlette(content string, emit emitDefFn) {
 		}
 
 		for _, verb := range methods {
-			emit(verb, canonical, "starlette", "SCOPE.Operation", handler, defLine)
+			emit(verb, canonical, "starlette", refKind, handler, defLine)
 		}
 	}
 }
+
+// synthesizeStarletteAddRoute extracts programmatic Starlette route
+// registration via `app.add_route('/x', handler)` / `app.add_route('/x',
+// handler, methods=['POST'])` (#4383). Handler is the first positional /
+// `endpoint=` arg; verb list from `methods=`, default GET.
+func synthesizeStarletteAddRoute(content string, emit emitDefFn) {
+	if !strings.Contains(content, ".add_route(") {
+		return
+	}
+	for _, idx := range starletteAddRouteRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
+			continue
+		}
+		raw := content[idx[2]:idx[3]]
+		tail := content[idx[4]:idx[5]]
+
+		// Skip the aiohttp `<recv>.router.add_route("GET", "/path", h)` form —
+		// there the FIRST string literal is the VERB, not the path. That shape
+		// is handled by synthesizeAiohttp; detect it by a leading quoted-verb
+		// second argument (path would then be a string, not an identifier).
+		if starletteAddRouteVerbFirst.MatchString(content[idx[0]:idx[1]]) {
+			continue
+		}
+
+		handlerArg := ""
+		if em := fastapiEndpointKwargRe.FindStringSubmatch(tail); len(em) >= 2 {
+			handlerArg = em[1]
+		} else if pm := pyFirstPositionalArgRe.FindStringSubmatch(tail); len(pm) >= 2 {
+			handlerArg = pm[1]
+		}
+
+		refKind, refName := pyProgrammaticHandlerRef(handlerArg)
+		canonical := httproutes.Canonicalize(httproutes.FrameworkStarlette, raw)
+
+		methods := parseStarletteMethods(tail)
+		if len(methods) == 0 {
+			methods = []string{"GET"}
+		}
+		defLine := 0
+		if refName != "" {
+			defLine = findPyDefLine(content, refName)
+		}
+		if defLine == 0 {
+			defLine = lineOfOffset(content, idx[0])
+		}
+		for _, verb := range methods {
+			emit(verb, canonical, "starlette", refKind, refName, defLine)
+		}
+	}
+}
+
+// starletteAddRouteVerbFirst matches the aiohttp-style
+// `.add_route("GET", "/path", ...)` shape (a quoted HTTP verb as the FIRST
+// argument), which synthesizeAiohttp owns — used to skip it here.
+var starletteAddRouteVerbFirst = regexp.MustCompile(
+	`\.add_route\s*\(\s*["'](?i:GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS)["']\s*,\s*["']`,
+)
 
 // parseStarletteMethods returns the verbs declared in a `methods=[...]`
 // kwarg inside a Route(...) call. Mirrors parseFlaskMethods; kept separate
