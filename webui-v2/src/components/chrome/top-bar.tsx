@@ -19,6 +19,7 @@ import { RefSelector } from "@/components/chrome/ref-selector";
 import { useRefState } from "@/lib/use-ref-state";
 import { ModeBadge } from "@/components/Topbar/ModeBadge";
 import { InsightButton } from "@/components/chrome/insight-button";
+import { ScopeSelector } from "@/components/chrome/scope-selector";
 
 export interface TopBarProps {
   group: string;
@@ -45,6 +46,10 @@ export function TopBar({ group, surfaceLabel }: TopBarProps) {
         <span className="font-mono text-text-2">{group}</span>
         <ChevronRight size={12} className="text-text-4" />
         <span className="font-medium text-text">{surfaceLabel}</span>
+
+        {/* #4637: repo/module scope selector. Renders only when the group has
+            >1 repo or a monorepo with multiple modules; filters every screen. */}
+        <ScopeSelector groupId={resolvedGroupId} />
 
         {/* #4655: glowing per-screen Insights button. Hidden until the active
             screen/tab registers an insight via useSetInsight. */}

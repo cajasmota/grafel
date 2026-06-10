@@ -50,6 +50,7 @@ import type { InsightValue } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
+import { useScope } from "@/lib/scope-context";
 import { cn } from "@/lib/utils";
 import {
   useAuthCoverage,
@@ -403,6 +404,7 @@ function AuthFindingRow({
 function AuthCoverageTab({ groupId }: { groupId: string }) {
   const { data, isLoading, isError } = useAuthCoverage(groupId);
   const [severity, setSeverity] = useState<"all" | SecuritySeverity>("all");
+  const { matchesScope } = useScope();
 
   if (isLoading) return <SkeletonRows />;
   if (isError) return <ErrorState what="auth coverage" />;
@@ -416,7 +418,9 @@ function AuthCoverageTab({ groupId }: { groupId: string }) {
     );
   }
 
-  const allFindings = data.findings ?? [];
+  // #4637: honor the active repo/module scope. Findings carry a `repo`, so
+  // repo scope filters precisely; module scope degrades to repo-level.
+  const allFindings = (data.findings ?? []).filter((f) => matchesScope(f.repo));
   // Severity here is the *effective* severity: routes that look public by
   // design (#4571) are demoted out of High so they neither dominate the list
   // nor inflate the High count. publicCount is surfaced separately below.
@@ -546,6 +550,7 @@ function SecretFindingRow({
 function SecretsTab({ groupId }: { groupId: string }) {
   const { data, isLoading, isError } = useSecrets(groupId);
   const [severity, setSeverity] = useState<"all" | SecuritySeverity>("all");
+  const { matchesScope } = useScope();
 
   if (isLoading) return <SkeletonRows />;
   if (isError) return <ErrorState what="secrets report" />;
@@ -559,13 +564,14 @@ function SecretsTab({ groupId }: { groupId: string }) {
     );
   }
 
-  const allFindings = data.findings ?? [];
+  // #4637: scope the listed secret findings to the active repo/module.
+  const allFindings = (data.findings ?? []).filter((f) => matchesScope(f.repo));
   const findings =
     severity === "all"
       ? allFindings
       : allFindings.filter((f) => f.severity === severity);
 
-  const multiRepo = new Set(data.findings.map((f) => f.repo)).size > 1;
+  const multiRepo = new Set(allFindings.map((f) => f.repo)).size > 1;
 
   return (
     <div className="space-y-4">
@@ -704,6 +710,7 @@ function CycleFindingRow({ c }: { c: CycleFinding }) {
 function CyclesTab({ groupId }: { groupId: string }) {
   const { data, isLoading, isError } = useSecurityCycles(groupId);
   const [severity, setSeverity] = useState<"all" | SecuritySeverity>("all");
+  const { matchesScope } = useScope();
 
   if (isLoading) return <SkeletonRows />;
   if (isError) return <ErrorState what="import cycles" />;
@@ -717,7 +724,8 @@ function CyclesTab({ groupId }: { groupId: string }) {
     );
   }
 
-  const allFindings = data.findings ?? [];
+  // #4637: scope import cycles to the active repo/module (cycles carry a repo).
+  const allFindings = (data.findings ?? []).filter((c) => matchesScope(c.repo));
   const findings =
     severity === "all"
       ? allFindings

@@ -12,6 +12,7 @@ import { TopBar } from "@/components/chrome/top-bar";
 import { CommandPalette } from "@/components/chrome/command-palette";
 import { SourcePeekProvider } from "@/components/SourcePeek";
 import { InsightProvider } from "@/components/ui";
+import { ScopeProvider } from "@/lib/scope-context";
 
 interface RouteHandle {
   surfaceLabel?: string;
@@ -26,6 +27,7 @@ export function AppShell() {
   return (
     <SourcePeekProvider>
       <InsightProvider>
+        <ScopeProvider>
         <div className="flex h-full w-full">
           <NavRail />
           <div className="flex flex-col flex-1 min-w-0">
@@ -36,6 +38,7 @@ export function AppShell() {
           </div>
           <CommandPalette />
         </div>
+        </ScopeProvider>
       </InsightProvider>
     </SourcePeekProvider>
   );

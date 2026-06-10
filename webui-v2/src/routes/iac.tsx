@@ -58,6 +58,7 @@ import type { InsightValue } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
+import { useScope } from "@/lib/scope-context";
 import { cn } from "@/lib/utils";
 import { useIaC } from "@/hooks/use-iac";
 import { IaCDiagram } from "@/components/iac-diagram";
@@ -847,6 +848,53 @@ function scopeReportToEnv(report: IaCReport, env: string): IaCReport {
   };
 }
 
+/**
+ * Scope an IaCReport to the active repo/module (#4637): keep only resources
+ * whose repo matches the predicate, recomputing per-tool grouping + totals so
+ * the diagram and stat row read as that scope's infrastructure. The predicate
+ * is the shared `matchesScope` (ALL ⇒ everything passes, so this is a no-op).
+ */
+function scopeReportToRepo(
+  report: IaCReport,
+  keep: (repo: string | undefined) => boolean,
+): IaCReport {
+  const groups: IaCToolGroup[] = [];
+  const countsByCategory: Record<string, number> = {};
+  let totalResources = 0;
+  let withProps = 0;
+  let grants = 0;
+  let eventSources = 0;
+  let dependencies = 0;
+
+  for (const g of report.groups) {
+    const kept = (g.resources ?? []).filter((r) => keep(r.repo));
+    if (kept.length === 0) continue;
+    groups.push({ tool: g.tool, count: kept.length, resources: kept });
+    for (const r of kept) {
+      totalResources++;
+      if ((r.properties?.length ?? 0) > 0) withProps++;
+      if (r.category) countsByCategory[r.category] = (countsByCategory[r.category] ?? 0) + 1;
+      for (const rel of r.relations ?? []) {
+        if (rel.direction !== "out") continue;
+        if (rel.facet === "grant") grants++;
+        else if (rel.facet === "event_source") eventSources++;
+        else if (rel.facet === "dependency") dependencies++;
+      }
+    }
+  }
+
+  return {
+    ...report,
+    groups,
+    counts_by_category: countsByCategory,
+    total_resources: totalResources,
+    with_props_count: withProps,
+    total_grants: grants,
+    total_event_sources: eventSources,
+    total_dependencies: dependencies,
+  };
+}
+
 /** Env tabs (#4657): All + one tab per detected environment. */
 function EnvTabs({
   envs,
@@ -910,6 +958,7 @@ export default function IaCScreen() {
   const [toolFilter, setToolFilter] = useState<string>("all");
   const [view, setView] = useState<IaCView>(readStoredView);
   const [env, setEnv] = useState<string>(ALL_ENVS);
+  const { matchesScope } = useScope();
 
   // #4655: register the page insight with the breadcrumb Insights button. The
   // topology framing applies to both List and Diagram and every env tab, so a
@@ -933,9 +982,14 @@ export default function IaCScreen() {
 
   // The report scoped to the selected env (All ⇒ unchanged). Drives both the
   // diagram and the list/stat surfaces so the whole screen reads as that env.
+  // Compose repo/module scope (#4637) with the env scope (#4657): repo-scope
+  // first so env recomputation runs over the surviving repo's resources.
   const scoped = useMemo<IaCReport | undefined>(
-    () => (data ? scopeReportToEnv(data, env) : undefined),
-    [data, env],
+    () =>
+      data
+        ? scopeReportToEnv(scopeReportToRepo(data, (repo) => matchesScope(repo)), env)
+        : undefined,
+    [data, env, matchesScope],
   );
 
   const groups = useMemo<IaCToolGroup[]>(() => scoped?.groups ?? [], [scoped]);

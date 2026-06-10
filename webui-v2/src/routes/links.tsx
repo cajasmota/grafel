@@ -52,6 +52,7 @@ import {
 import type { InsightValue } from "@/components/ui";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RepoChip } from "@/lib/repo-color";
+import { useScope } from "@/lib/scope-context";
 import { cn } from "@/lib/utils";
 import { useGroupLinks } from "@/hooks/use-links";
 import type { CrossRepoLink } from "@/data/types";
@@ -438,6 +439,7 @@ export default function LinksScreen() {
   useSetInsight(LINKS_INSIGHT);
   const { groupId = "" } = useParams<{ groupId: string }>();
   const { data, isLoading, isError } = useGroupLinks(groupId);
+  const { matchesScope } = useScope();
   const [kindFilter, setKindFilter] = useState<string>("all");
   // Data-flow detail panel selection (#4648). Holds the clicked link; `open`
   // drives the drawer so closing keeps the last link mounted for the exit
@@ -445,7 +447,18 @@ export default function LinksScreen() {
   const [selected, setSelected] = useState<CrossRepoLink | null>(null);
   const [panelOpen, setPanelOpen] = useState(false);
 
-  const links = useMemo(() => data?.links ?? [], [data]);
+  // #4637: scope cross-repo links to the active repo/module. A link is kept
+  // when EITHER endpoint lives in the scoped repo, so a repo's inbound and
+  // outbound edges both remain visible when you focus it.
+  const links = useMemo(
+    () =>
+      (data?.links ?? []).filter((l) => {
+        const s = splitEntity(l.source).repo;
+        const t = splitEntity(l.target).repo;
+        return matchesScope(s) || matchesScope(t);
+      }),
+    [data, matchesScope],
+  );
 
   // Distinct kinds for the filter strip.
   const kinds = useMemo(() => {
