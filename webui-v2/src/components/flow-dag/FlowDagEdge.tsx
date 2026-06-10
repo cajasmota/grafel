@@ -27,8 +27,11 @@ function FlowDagEdgeImpl({
   markerEnd,
   data,
 }: EdgeProps) {
-  const kind = (data as FlowDagEdgeData | undefined)?.kind ?? "CALLS";
+  const ed = data as FlowDagEdgeData | undefined;
+  const kind = ed?.kind ?? "CALLS";
   const es = edgeStyle(kind);
+  // Click-to-highlight (#4479): off-route edges dim; on-route edges stay full.
+  const dimmed = ed?.onRoute === false;
 
   const [path, labelX, labelY] = getBezierPath({
     sourceX,
@@ -48,6 +51,8 @@ function FlowDagEdgeImpl({
           stroke: es.stroke,
           strokeWidth: kind === "CALLS" ? 1.5 : 1.75,
           strokeDasharray: es.dash,
+          opacity: dimmed ? 0.18 : 1,
+          transition: "opacity 150ms",
         }}
       />
       {/* Only the non-spine semantic edges carry a label, to keep CALLS clean. */}
@@ -60,6 +65,7 @@ function FlowDagEdgeImpl({
               background: "var(--surface)",
               color: es.stroke,
               border: `1px solid color-mix(in srgb, ${es.stroke} 45%, transparent)`,
+              opacity: dimmed ? 0.18 : 1,
             }}
           >
             {es.label}

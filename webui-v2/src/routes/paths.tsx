@@ -22,7 +22,7 @@ import { useParams, useSearchParams } from "react-router-dom";
 import {
   Search, X, ChevronRight, ChevronLeft, Lock, ExternalLink, Copy,
   Database, Zap, Globe, TestTube, Server,
-  Layers, Box, List, Maximize2, FolderTree, Boxes, AlertTriangle,
+  Layers, Box, List, Maximize2, Minimize2, FolderTree, Boxes, AlertTriangle,
   Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -744,6 +744,9 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
   // endpoint. The verb passed disambiguates a multi-verb path hash (falls back
   // to the first verb when the list filter is "all").
   const [dagOpen, setDagOpen] = useState(false);
+  // Fullscreen / maximize toggle for the downstream-flow modal (#4479). Persists
+  // within the session so re-opening the modal keeps the user's last choice.
+  const [dagMaximized, setDagMaximized] = useState(false);
   const dagVerb = verbFilter !== "all" ? verbFilter : detail.verbs[0];
 
   // Filter verb-scoped data
@@ -1117,7 +1120,14 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
           open so the DAG fetch is lazy; reuses the house Dialog primitive. */}
       <Dialog open={dagOpen} onOpenChange={setDagOpen}>
         <DialogContent
-          className="max-w-[min(1100px,94vw)] w-full h-[82vh] p-0 flex flex-col overflow-hidden"
+          className={cn(
+            "p-0 flex flex-col overflow-hidden",
+            // Maximize (#4479): fill the viewport so the diagram has max room;
+            // otherwise the windowed size.
+            dagMaximized
+              ? "max-w-none w-screen h-screen rounded-none border-0"
+              : "max-w-[min(1100px,94vw)] w-full h-[82vh]",
+          )}
         >
           <div className="px-5 pt-4 pb-3 border-b border-border shrink-0">
             <DialogTitle className="flex items-center gap-2">
@@ -1125,8 +1135,19 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
               Downstream flow
             </DialogTitle>
             <DialogDescription>
-              {detail.path} — the endpoint's downstream as a branching DAG.
+              {detail.path} — the endpoint's downstream as a branching tree.
             </DialogDescription>
+            {/* Maximize / restore toggle (#4479). Sits left of the Dialog's own
+                close button (which is absolute-positioned top-right). */}
+            <button
+              type="button"
+              onClick={() => setDagMaximized((m) => !m)}
+              className="absolute right-12 top-4 text-text-3 hover:text-text rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--accent-ring)]"
+              title={dagMaximized ? "Restore" : "Maximize"}
+            >
+              {dagMaximized ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+              <span className="sr-only">{dagMaximized ? "Restore" : "Maximize"}</span>
+            </button>
           </div>
           <div className="flex-1 min-h-0">
             {dagOpen && (

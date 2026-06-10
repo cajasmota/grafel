@@ -20,28 +20,30 @@ import type { FlowDagNodeData } from "./layout";
  * nodes get a doubled ring so collection sinks read as endpoints of the walk.
  * The collapsed-children count badge expands an inline list on click.
  */
-function FlowDagNodeImpl({ data, sourcePosition, targetPosition }: NodeProps) {
-  const { node, expanded, onToggleExpand, selected } = data as FlowDagNodeData;
+function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps) {
+  const { node, expanded, onToggleExpand, selected, onRoute } = data as FlowDagNodeData;
   const rs = roleStyle(node.role);
   const collapsed = node.collapsed_children ?? [];
   const hasCollapsed = collapsed.length > 0;
+  // Click-to-highlight (#4479): when a route is active, off-route nodes dim.
+  const dimmed = onRoute === false;
 
   return (
     <div
       className={cn(
-        "rounded-lg border bg-surface shadow-[var(--shadow-2)] text-left",
-        "min-w-[220px] max-w-[220px]",
-        selected && "cursor-pointer",
+        "rounded-lg border bg-surface shadow-[var(--shadow-2)] text-left cursor-pointer",
+        "min-w-[220px] max-w-[220px] transition-opacity",
+        dimmed ? "opacity-25" : "opacity-100",
       )}
       style={{
         // Role tint as a soft background wash; the ink as the border.
         background: `color-mix(in srgb, ${rs.bg} 22%, var(--surface))`,
-        borderColor: selected
+        borderColor: selected || onRoute === true
           ? "var(--accent)"
           : `color-mix(in srgb, ${rs.ink} 55%, transparent)`,
-        // Selected node gets an accent ring; otherwise terminal sinks get a
-        // heavier outline ring.
-        boxShadow: selected
+        // Selected node, or a node lit on the highlighted route (#4479), gets an
+        // accent ring; otherwise terminal sinks get a heavier outline ring.
+        boxShadow: selected || onRoute === true
           ? "0 0 0 2px var(--accent)"
           : node.terminal
             ? `0 0 0 2px color-mix(in srgb, ${rs.ink} 45%, transparent)`
@@ -81,7 +83,8 @@ function FlowDagNodeImpl({ data, sourcePosition, targetPosition }: NodeProps) {
             type="button"
             onClick={(e) => {
               e.stopPropagation();
-              onToggleExpand(node.id);
+              // Keyed by INSTANCE id so duplicated instances expand independently.
+              onToggleExpand(id);
             }}
             className={cn(
               "mt-1.5 inline-flex items-center gap-1 h-[18px] px-1.5 rounded",

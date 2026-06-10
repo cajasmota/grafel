@@ -44,12 +44,15 @@ import { cn } from "@/lib/utils";
 import { useDownstreamDAG } from "@/hooks/use-paths";
 import type { DownstreamDAGNode, DownstreamDAGResponse } from "@/data/types";
 import {
-  layoutDAG,
+  unfoldTree,
+  layoutTree,
+  MAX_TREE_NODES,
   FLOW_DAG_NODE_TYPE,
   FLOW_DAG_EDGE_TYPE,
   type FlowDagDirection,
   type FlowDagNodeData,
 } from "./layout";
+import { routeInstanceIds } from "./route";
 import { FlowDagNode } from "./FlowDagNode";
 import { FlowDagEdge } from "./FlowDagEdge";
 import { FlowDagLegend } from "./FlowDagLegend";
@@ -99,6 +102,9 @@ function FlowDagInner({
   const [depth, setDepth] = useState<number>(payload?.depth ?? DEPTH_DEFAULT);
   const [direction, setDirection] = useState<FlowDagDirection>("LR");
   const [expanded, setExpanded] = useState<Set<string>>(() => new Set());
+  // Click-to-highlight (#4479): the focused instance id whose route is lit, or
+  // null for the normal (everything-visible) view.
+  const [routeFocus, setRouteFocus] = useState<string | null>(null);
 
   // Only fetch when no payload was injected.
   const query = useDownstreamDAG(
@@ -121,24 +127,63 @@ function FlowDagInner({
     });
   }, []);
 
+  // Unfold the deduped DAG into a pure tree (#4479). Memoized off the payload +
+  // depth; instances are path-keyed so a node reached via N paths duplicates.
+  const unfold = useMemo(() => {
+    if (!data) return null;
+    return unfoldTree(data.root_id, data.nodes, data.edges, MAX_TREE_NODES);
+  }, [data]);
+
+  // The route highlight set: ancestors + the focus + its whole forward subtree.
+  const routeSet = useMemo(() => {
+    if (!unfold || routeFocus == null) return null;
+    return routeInstanceIds(unfold.instances, routeFocus);
+  }, [unfold, routeFocus]);
+
   const { nodes, edges } = useMemo(() => {
-    if (!data) return { nodes: [], edges: [] };
-    const laid = layoutDAG(data.nodes, data.edges, direction, expanded, onToggleExpand);
-    // Stamp the selected flag so the node renderer can highlight the active
-    // node when the caller drives selection (Flows step inspector, #4354).
-    if (selectedNodeId != null) {
-      for (const n of laid.nodes) n.data.selected = n.id === selectedNodeId;
+    if (!unfold) return { nodes: [], edges: [] };
+    const laid = layoutTree(unfold.instances, direction, expanded, onToggleExpand);
+    for (const n of laid.nodes) {
+      // Selection is driven by the ORIGINAL node id so the caller's contract
+      // (Flows step inspector, #4354) is unchanged across the tree unfold; all
+      // instances of a selected node light up.
+      if (selectedNodeId != null) {
+        n.data.selected = (n.data as FlowDagNodeData).node.id === selectedNodeId;
+      }
+      if (routeSet) n.data.onRoute = routeSet.has(n.id);
+    }
+    if (routeSet) {
+      for (const e of laid.edges) {
+        // An edge is on the route iff BOTH its endpoints are (the tree's single
+        // in-edge per node makes this exact).
+        e.data = { ...e.data, kind: e.data?.kind ?? "CALLS", onRoute: routeSet.has(e.source) && routeSet.has(e.target) };
+      }
     }
     return laid;
-  }, [data, direction, expanded, onToggleExpand, selectedNodeId]);
+  }, [unfold, direction, expanded, onToggleExpand, selectedNodeId, routeSet]);
 
   const handleNodeClick = useCallback(
     (_: React.MouseEvent, n: RFNode) => {
-      if (!onNodeClick) return;
-      onNodeClick((n.data as FlowDagNodeData).node);
+      // Toggle the route highlight: same instance again clears it (#4479).
+      setRouteFocus((prev) => (prev === n.id ? null : n.id));
+      // Preserve the caller's detail/selection behavior — pass the original node.
+      onNodeClick?.((n.data as FlowDagNodeData).node);
     },
     [onNodeClick],
   );
+
+  // Clicking the empty canvas clears the route highlight (#4479).
+  const handlePaneClick = useCallback(() => setRouteFocus(null), []);
+
+  // Effective truncation: OR the payload's flags with our node-cap clip so the
+  // legend stays honest when the pure-tree unfold itself hits the cap.
+  const effectiveTruncation = useMemo(() => {
+    if (!data) return undefined;
+    return {
+      ...data.truncation,
+      node_truncated: data.truncation.node_truncated || (unfold?.capped ?? false),
+    };
+  }, [data, unfold]);
 
   const setDepthClamped = (n: number) =>
     setDepth(Math.max(DEPTH_MIN, Math.min(DEPTH_MAX, n)));
@@ -257,7 +302,8 @@ function FlowDagInner({
             edges={edges}
             nodeTypes={nodeTypes}
             edgeTypes={edgeTypes}
-            onNodeClick={onNodeClick ? handleNodeClick : undefined}
+            onNodeClick={handleNodeClick}
+            onPaneClick={handlePaneClick}
             fitView
             // The graph is a read-only visualization; disable interaction edits.
             nodesDraggable={false}
@@ -275,12 +321,13 @@ function FlowDagInner({
         )}
       </div>
 
-      {/* Legend + truncation/branch stats */}
-      {data && (
+      {/* Legend + truncation/branch stats. Node count reflects the unfolded
+          tree (instances), not the deduped payload, so it matches what's drawn. */}
+      {data && effectiveTruncation && (
         <FlowDagLegend
           branchCount={data.branch_count}
-          nodeCount={data.nodes.length}
-          truncation={data.truncation}
+          nodeCount={unfold?.instances.length ?? data.nodes.length}
+          truncation={effectiveTruncation}
         />
       )}
     </div>
