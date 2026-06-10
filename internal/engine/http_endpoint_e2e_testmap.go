@@ -58,9 +58,20 @@ import (
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
-// testSuiteKind is the entity Kind the Jest extractor stamps on the one
-// suite-per-spec node (see internal/custom/javascript/jest.go).
+// testSuiteKind is the canonical test_suite marker. The Jest extractor and the
+// Python pytest/unittest extractor both label their one-suite-per-file node
+// with this string, but they put it in DIFFERENT fields: Jest emits
+// Kind="SCOPE.Operation" Subtype="test_suite" and the Python extractor emits
+// Kind="SCOPE.Pattern" Subtype="test_suite". Resolve-side hand-built fixtures
+// set it directly as Kind. isTestSuiteEntity accepts any of these so the pass
+// fires on live extractor output (#4351/#4369).
 const testSuiteKind = "test_suite"
+
+// isTestSuiteEntity reports whether e is a one-per-file test suite node,
+// matching the marker in EITHER Kind or Subtype (see testSuiteKind).
+func isTestSuiteEntity(e *types.EntityRecord) bool {
+	return e.Kind == testSuiteKind || e.Subtype == testSuiteKind
+}
 
 // linkE2ERouteTestsToEndpoints walks every test_suite carrying an
 // `e2e_route_calls` property and emits a TESTS edge to each
@@ -75,7 +86,7 @@ func linkE2ERouteTestsToEndpoints(
 	emitted := 0
 	for i := range merged {
 		s := &merged[i]
-		if s.Kind != testSuiteKind || s.Properties == nil {
+		if !isTestSuiteEntity(s) || s.Properties == nil {
 			continue
 		}
 		raw := s.Properties["e2e_route_calls"]

@@ -92,6 +92,27 @@ var (
 	ptCeleryCallRe = regexp.MustCompile(
 		`(?m)\b(\w+)\.(delay|apply_async|apply)\s*\(`)
 
+	// ptTestClientCallRe captures an HTTP test-client route-by-string call inside
+	// a Python API test, across every supported framework's test client (#4369):
+	//
+	//	DRF/Django:        self.client.post('/api/v1/inspections/123/items', data)
+	//	                   APIClient().get('/x/1')  /  client.get('/x/1')
+	//	FastAPI/Starlette: client.post('/inspections/123/items', json=...)  # TestClient
+	//	Flask:             self.client.get('/x/1')  /  test_client().post('/x')
+	//	httpx/requests:    client.get(f'/inspections/{id}')  /  requests.get('/x/1')
+	//
+	// Group 1 = HTTP verb. Group 2 = the route literal (single/double quoted,
+	// optionally an f-string — the leading `f`/`r`/`b` prefix is consumed before
+	// the quote). Absolute URLs and `{expr}`-interpolated routes are normalised /
+	// filtered downstream (a route that does not start with `/` after
+	// normalisation is dropped by the resolver — conservative). The receiver must
+	// be a recognised test-client token (client, test_client, session, ac,
+	// async_client) or an HTTP library module (requests, httpx) so unrelated
+	// `.get(...)` calls (cache.get, logger.get) never produce phantom routes.
+	// An optional `self.`/`app.`/`cls.` attribute prefix is tolerated.
+	ptTestClientCallRe = regexp.MustCompile(
+		`(?:\b(?:self|app|cls)\s*\.\s*)?\b(?:client|test_client|session|ac|async_client|requests|httpx)\s*\.\s*(get|post|put|patch|delete|head|options)\s*\(\s*[rbf]?["']([^"'\n\r]+)["']`)
+
 	// importedSymbolsRe captures names bound by `from X import a, b, c`,
 	// `from X import (\n a,\n b,\n)` (parenthesized multi-line), and `import x`
 	// so the TESTS resolver can reference-gate subjects.
@@ -251,8 +272,78 @@ func (e *PytestExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		})
 	}
 
+	// HTTP route-by-string test calls (#4369): capture every test-client route
+	// call (DRF/Django Client, FastAPI/Starlette TestClient, Flask test_client,
+	// httpx/requests) and stamp the `VERB route` pairs onto this suite's
+	// `e2e_route_calls` property. The resolve pass
+	// (engine.linkE2ERouteTestsToEndpoints, shared with the NestJS/supertest
+	// path from #4351) matches each (verb, route) against the cross-file
+	// http_endpoint_definition index and emits a TESTS edge to each uniquely
+	// matched endpoint — a finer-grained, complementary edge to the
+	// ViewSet-class TESTS edge that engine.ApplyTestsMultiHopViaHTTP (#2549)
+	// already produces. Resolution is deferred to resolve-time because only
+	// there is the merged endpoint index available (the route is usually defined
+	// in a urls.py / router far from the test file), making it merge-stable.
+	if routeCalls := collectPyTestRouteCalls(source); len(routeCalls) > 0 {
+		ent.Properties["e2e_route_calls"] = strings.Join(routeCalls, "\n")
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", 1))
 	return []types.EntityRecord{ent}, nil
+}
+
+// collectPyTestRouteCalls extracts every HTTP test-client route-by-string call
+// in a Python test file and returns de-duplicated `VERB route` lines (the exact
+// shape the shared resolve pass consumes — see #4369 and the NestJS sibling
+// #4351). The route is normalised to a path: an absolute URL has its
+// scheme+authority stripped, a query string / fragment is dropped, and
+// repeated slashes are collapsed. Concrete path params (`/x/123`) and template
+// params left by an f-string (`/x/{id}`) are preserved verbatim — the resolver
+// treats `{id}`/`<int:id>` definition segments as wildcards. Routes that do not
+// resolve to a leading-slash path (e.g. an f-string whose FIRST segment is an
+// interpolated base URL like `f"{BASE}/x"`) are dropped here, keeping the pass
+// conservative.
+func collectPyTestRouteCalls(source string) []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, m := range ptTestClientCallRe.FindAllStringSubmatch(source, -1) {
+		verb := strings.ToUpper(m[1])
+		route := normalisePyTestRoute(m[2])
+		if route == "" || !strings.HasPrefix(route, "/") {
+			continue
+		}
+		line := verb + " " + route
+		if seen[line] {
+			continue
+		}
+		seen[line] = true
+		out = append(out, line)
+	}
+	return out
+}
+
+// normalisePyTestRoute reduces a raw route literal to a path: strips a
+// scheme+authority prefix (http://testserver/x → /x), drops a query/fragment,
+// and collapses repeated slashes. Casing and path-param placeholders are left
+// untouched (the resolver compares literals case-insensitively and wildcards
+// `{id}`/`<int:id>` segments). Returns "" when no path remains.
+func normalisePyTestRoute(raw string) string {
+	p := strings.TrimSpace(raw)
+	if i := strings.Index(p, "://"); i >= 0 {
+		rest := p[i+3:]
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			p = rest[slash:]
+		} else {
+			return ""
+		}
+	}
+	if q := strings.IndexAny(p, "?#"); q >= 0 {
+		p = p[:q]
+	}
+	for strings.Contains(p, "//") {
+		p = strings.ReplaceAll(p, "//", "/")
+	}
+	return p
 }
 
 // hasUnittestBase reports whether any detected test class extends a unittest /
