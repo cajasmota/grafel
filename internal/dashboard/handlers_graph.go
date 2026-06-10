@@ -810,5 +810,9 @@ func (s *Server) handleGroupLinks(w http.ResponseWriter, r *http.Request) {
 	if links == nil {
 		links = []CrossRepoLink{}
 	}
+	// Resolve each link's source/target entity so the /links page can render
+	// readable names and open a real source-peek (#4596). Additive and
+	// best-effort: unresolved endpoints leave the enrichment fields empty.
+	links = enrichLinkEndpoints(grp, links)
 	writeJSON(w, http.StatusOK, map[string]any{"links": links})
 }
