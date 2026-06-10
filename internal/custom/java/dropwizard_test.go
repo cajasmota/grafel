@@ -745,12 +745,8 @@ class UserResourceTest {
 		FilePath:  "UserResourceTest.java",
 	})
 
-	testCount := 0
-	for _, e := range r.Entities {
-		if e.Properties["test_annotation"] == "Test" {
-			testCount++
-		}
-	}
+	// #4359: per-@Test orphan nodes folded into the suite's test_method_count.
+	testCount := suiteTestMethodCount(r)
 	if testCount < 2 {
 		t.Errorf("[#3087 tests_linkage] expected >= 2 @Test entities for dropwizard, got %d", testCount)
 	}

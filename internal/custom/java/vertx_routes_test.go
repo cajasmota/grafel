@@ -615,12 +615,8 @@ class AppTest {
 	if len(r.Entities) == 0 {
 		t.Errorf("[#3086 tests_linkage] expected JUnit5 entities for framework=vertx, got none")
 	}
-	testCount := 0
-	for _, e := range r.Entities {
-		if e.Properties["test_annotation"] == "Test" {
-			testCount++
-		}
-	}
+	// #4359: per-@Test orphan nodes folded into the suite's test_method_count.
+	testCount := suiteTestMethodCount(r)
 	if testCount < 2 {
 		t.Errorf("[#3086 tests_linkage] expected >= 2 @Test entities for vertx, got %d", testCount)
 	}

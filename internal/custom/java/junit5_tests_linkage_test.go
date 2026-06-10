@@ -17,6 +17,36 @@ import (
 //
 // Cite: internal/custom/java/junit5.go
 
+// suiteTestMethodCount returns the folded test_method_count carried on the
+// single test_suite entity (#4359 collapsed the per-@Test orphan nodes into
+// this count). Returns 0 when no suite entity was emitted.
+func suiteTestMethodCount(r PatternResult) int {
+	for _, e := range r.Entities {
+		if e.Subtype == "test_suite" {
+			n := 0
+			for _, c := range stringifyProp(e.Properties["test_method_count"]) {
+				if c < '0' || c > '9' {
+					return 0
+				}
+				n = n*10 + int(c-'0')
+			}
+			return n
+		}
+	}
+	return 0
+}
+
+// suiteHasTestAnnotation reports whether the folded suite's test_annotations
+// list contains the given JUnit/TestNG annotation (e.g. "Test").
+func suiteHasTestAnnotation(r PatternResult, ann string) bool {
+	for _, e := range r.Entities {
+		if e.Subtype == "test_suite" {
+			return strings.Contains(stringifyProp(e.Properties["test_annotations"]), ann)
+		}
+	}
+	return false
+}
+
 const junit5TestSource = `
 package com.example;
 

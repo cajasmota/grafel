@@ -212,6 +212,14 @@ var frameworkMarkers = []frameworkMarker{
 	// Scheduling / testing / validation.
 	{"quartz", "org.quartz"},
 	{"junit5", "org.junit.jupiter"},
+	// Plain JUnit 4 and TestNG test classes with no other framework signal
+	// (#4359). `org.junit.Test` is the JUnit 4 import (jupiter has its own
+	// marker above); `org.testng` covers TestNG. The @Test annotation alone is
+	// also a candidate signal because some test files import statically.
+	{"junit4", "org.junit.Test"},
+	{"junit4", "org.junit.Before"},
+	{"junit4", "org.junit.runner.RunWith"},
+	{"testng", "org.testng"},
 	{"bean_validation", "jakarta.validation"},
 	{"bean_validation", "javax.validation"},
 	{"bean_validation", "@Valid"},

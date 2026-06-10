@@ -422,14 +422,16 @@ public class UserServiceTest {
 }
 `
 	r := ExtractJUnit5(PatternContext{Source: source, Language: "java", Framework: "junit5", FilePath: "UserServiceTest.java"})
+	// #4359: one folded test_suite entity carrying the test-method count, not a
+	// per-method orphan node.
 	found := false
 	for _, e := range r.Entities {
-		if e.Name == "shouldCreateUser" && e.Provenance == "INFERRED_FROM_JUNIT5_TEST" {
+		if e.Subtype == "test_suite" && e.Properties["test_method_count"] == "1" {
 			found = true
 		}
 	}
 	if !found {
-		t.Error("expected test method entity")
+		t.Error("expected folded test_suite entity with test_method_count=1 (#4359)")
 	}
 }
 
@@ -444,14 +446,17 @@ public class OrderTest {
 }
 `
 	r := ExtractJUnit5(PatternContext{Source: source, Language: "java", Framework: "junit5", FilePath: "OrderTest.java"})
+	// #4359: @Nested count is folded onto the single suite entity, not a per-
+	// nested-class orphan node.
 	hasNested := false
 	for _, e := range r.Entities {
-		if e.Kind == "SCOPE.Component" && e.Provenance == "INFERRED_FROM_JUNIT5_NESTED" {
+		if e.Subtype == "test_suite" && e.Properties["nested_count"] == "1" &&
+			strings.Contains(stringifyProp(e.Properties["nested_classes"]), "WhenCreating") {
 			hasNested = true
 		}
 	}
 	if !hasNested {
-		t.Error("expected nested class entity")
+		t.Error("expected folded nested_count=1 / nested_classes contains WhenCreating (#4359)")
 	}
 }
 
@@ -463,14 +468,16 @@ public class ServiceTest {
 }
 `
 	r := ExtractJUnit5(PatternContext{Source: source, Language: "java", Framework: "junit5", FilePath: "ServiceTest.java"})
+	// #4359: @ExtendWith class folded onto the suite's extensions property.
 	hasExtension := false
 	for _, e := range r.Entities {
-		if e.Provenance == "INFERRED_FROM_JUNIT5_EXTENSION" {
+		if e.Subtype == "test_suite" &&
+			strings.Contains(stringifyProp(e.Properties["extensions"]), "MockitoExtension") {
 			hasExtension = true
 		}
 	}
 	if !hasExtension {
-		t.Error("expected extension entity")
+		t.Error("expected folded extensions property to contain MockitoExtension (#4359)")
 	}
 }
 
@@ -484,14 +491,15 @@ public class SetupTest {
 }
 `
 	r := ExtractJUnit5(PatternContext{Source: source, Language: "java", Framework: "junit5", FilePath: "SetupTest.java"})
+	// #4359: lifecycle count folded onto the suite entity, not a per-method node.
 	hasLifecycle := false
 	for _, e := range r.Entities {
-		if e.Provenance == "INFERRED_FROM_JUNIT5_LIFECYCLE" {
+		if e.Subtype == "test_suite" && e.Properties["lifecycle_count"] == "1" {
 			hasLifecycle = true
 		}
 	}
 	if !hasLifecycle {
-		t.Error("expected lifecycle method entity")
+		t.Error("expected folded lifecycle_count=1 (#4359)")
 	}
 }
 
@@ -2043,13 +2051,9 @@ class OrderServiceTest {
 		FilePath:  "OrderServiceTest.java",
 	})
 
-	hasTestMethod := false
-	for _, e := range r.Entities {
-		if e.Properties["test_annotation"] == "Test" {
-			hasTestMethod = true
-			break
-		}
-	}
+	// #4359: the per-@Test orphan nodes are folded into the single suite's
+	// test_annotations list; assert the @Test annotation is recorded there.
+	hasTestMethod := suiteHasTestAnnotation(r, "Test")
 	if !hasTestMethod {
 		t.Errorf("[#2996 jakarta-ee tests_linkage] expected @Test entity from JUnit5 extractor for jakarta_ee framework")
 	}
@@ -2077,13 +2081,9 @@ class ProductResourceTest {
 		FilePath:  "ProductResourceTest.java",
 	})
 
-	hasTestMethod := false
-	for _, e := range r.Entities {
-		if e.Properties["test_annotation"] == "Test" {
-			hasTestMethod = true
-			break
-		}
-	}
+	// #4359: the per-@Test orphan nodes are folded into the single suite's
+	// test_annotations list; assert the @Test annotation is recorded there.
+	hasTestMethod := suiteHasTestAnnotation(r, "Test")
 	if !hasTestMethod {
 		t.Errorf("[#2996 microprofile tests_linkage] expected @Test entity from JUnit5 extractor for microprofile framework")
 	}
@@ -2125,27 +2125,17 @@ class UserServiceTest {
 		FilePath:  "UserServiceTest.java",
 	})
 
-	hasTestMethod := false
-	for _, e := range r.Entities {
-		if e.Properties["test_annotation"] == "Test" {
-			hasTestMethod = true
-			break
-		}
-	}
+	// #4359: the per-@Test orphan nodes are folded into the single suite's
+	// test_annotations list; assert the @Test annotation is recorded there.
+	hasTestMethod := suiteHasTestAnnotation(r, "Test")
 	if !hasTestMethod {
 		t.Errorf("[#2991 spring-boot tests_linkage] expected @Test entity from JUnit5 extractor for spring_boot framework")
 	}
 
-	// Verify OWNS edge from class → test method
-	hasOwns := false
-	for _, rel := range r.Relationships {
-		if rel.RelationshipType == "OWNS" {
-			hasOwns = true
-			break
-		}
-	}
-	if !hasOwns {
-		t.Errorf("[#2991 spring-boot tests_linkage] expected OWNS relationship from test class to test method")
+	// #4359: both @Test methods are folded onto the single suite entity
+	// (replacing the former per-method OWNS edges).
+	if n := suiteTestMethodCount(r); n != 2 {
+		t.Errorf("[#2991 spring-boot tests_linkage] expected suite test_method_count=2, got %d", n)
 	}
 }
 
@@ -2249,13 +2239,9 @@ class OrderHandlerTest {
 		FilePath:  "OrderHandlerTest.java",
 	})
 
-	hasTestMethod := false
-	for _, e := range r.Entities {
-		if e.Properties["test_annotation"] == "Test" {
-			hasTestMethod = true
-			break
-		}
-	}
+	// #4359: the per-@Test orphan nodes are folded into the single suite's
+	// test_annotations list; assert the @Test annotation is recorded there.
+	hasTestMethod := suiteHasTestAnnotation(r, "Test")
 	if !hasTestMethod {
 		t.Errorf("[#2991 spring-webflux tests_linkage] expected @Test entity from JUnit5 extractor for spring_webflux framework")
 	}
@@ -2455,15 +2441,12 @@ public class OrderResourceTest {
 		FilePath:  "OrderResourceTest.java",
 	})
 
-	var testMethods []SecondaryEntity
-	for _, e := range r.Entities {
-		if e.Provenance == "INFERRED_FROM_JUNIT5_TEST" {
-			testMethods = append(testMethods, e)
-		}
-	}
-	if len(testMethods) < 2 {
+	// #4359: the per-@Test orphan nodes are folded into the single suite's
+	// test_method_count; assert >=2 methods were recorded there.
+	testMethodCount := suiteTestMethodCount(r)
+	if testMethodCount < 2 {
 		t.Errorf("[#2995 quarkus tests_linkage] expected >=2 @Test entities for @QuarkusTest class, got %d: %v",
-			len(testMethods), entityNames(r.Entities))
+			testMethodCount, entityNames(r.Entities))
 	}
 }
 
@@ -2629,15 +2612,12 @@ public class UserControllerTest {
 		FilePath:  "UserControllerTest.java",
 	})
 
-	var testMethods []SecondaryEntity
-	for _, e := range r.Entities {
-		if e.Provenance == "INFERRED_FROM_JUNIT5_TEST" {
-			testMethods = append(testMethods, e)
-		}
-	}
-	if len(testMethods) < 2 {
+	// #4359: the per-@Test orphan nodes are folded into the single suite's
+	// test_method_count; assert >=2 methods were recorded there.
+	testMethodCount := suiteTestMethodCount(r)
+	if testMethodCount < 2 {
 		t.Errorf("[#2995 micronaut tests_linkage] expected >=2 @Test entities for @MicronautTest class, got %d: %v",
-			len(testMethods), entityNames(r.Entities))
+			testMethodCount, entityNames(r.Entities))
 	}
 }
 
@@ -3240,15 +3220,12 @@ public class InvoiceResourceTest {
 		FilePath:  "InvoiceResourceTest.java",
 	})
 
-	var testMethods []SecondaryEntity
-	for _, e := range r.Entities {
-		if e.Provenance == "INFERRED_FROM_JUNIT5_TEST" {
-			testMethods = append(testMethods, e)
-		}
-	}
-	if len(testMethods) < 2 {
+	// #4359: the per-@Test orphan nodes are folded into the single suite's
+	// test_method_count; assert >=2 methods were recorded there.
+	testMethodCount := suiteTestMethodCount(r)
+	if testMethodCount < 2 {
 		t.Errorf("[#2995 jaxrs tests_linkage] expected >=2 @Test entities for JAX-RS test class, got %d: %v",
-			len(testMethods), entityNames(r.Entities))
+			testMethodCount, entityNames(r.Entities))
 	}
 }
 
@@ -4495,12 +4472,8 @@ class OrderResourceTest {
 		FilePath:  "OrderResourceTest.java",
 	})
 
-	testCount := 0
-	for _, e := range r.Entities {
-		if e.Properties["test_annotation"] == "Test" {
-			testCount++
-		}
-	}
+	// #4359: per-@Test orphan nodes folded into the suite's test_method_count.
+	testCount := suiteTestMethodCount(r)
 	if testCount < 2 {
 		t.Errorf("[#3088 tests_linkage] expected >= 2 @Test entities for helidon, got %d", testCount)
 	}

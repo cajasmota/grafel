@@ -2,19 +2,72 @@ package java
 
 import (
 	"regexp"
+	"sort"
 	"strings"
 )
 
-// JUnit 5 custom extractor: test methods, nested classes, lifecycle, extensions.
-// Ported from: junit5_extractor.py
+// JUnit (4 + 5) / TestNG custom extractor.
+//
+// ISSUE #4359 — orphan collapse + TESTS edge (the Java analog of the Jest #4343
+// and Go #4358 fixes).
+//
+// Previously this extractor emitted a FIRST-CLASS entity per @Test method
+// (SCOPE.Operation), per @BeforeEach/@AfterEach/@BeforeAll/@AfterAll lifecycle
+// method (SCOPE.Operation), per @Nested class (SCOPE.Component), and per
+// @ExtendWith extension (SCOPE.Pattern). The OWNS / DEPENDS_ON edges all hung
+// off a synthetic `scope:component:junit5_test_class:…` ref that was never
+// materialised as a real entity, and NO edge ever pointed at the production
+// class under test. On a real Java codebase those per-method / per-lifecycle
+// nodes dominate the orphan ring, exactly mirroring the Jest/Vitest and
+// testify/ginkgo orphan rings collapsed by #4343 / #4358.
+//
+// Root-cause fix at extraction (not a downstream repair pass), mirroring the
+// SHAPE of #4343 / #4358:
+//
+//   - Emit exactly ONE test_suite entity per test-class file. The per-@Test /
+//     per-lifecycle / per-@Nested / per-@ExtendWith / per-assertion nodes are
+//     NO LONGER emitted as standalone entities; their counts are folded into
+//     properties (test_method_count, lifecycle_count, nested_count,
+//     extension_count, assertion_count, plus test_annotations / extensions /
+//     nested_classes lists) so no information is lost while the orphan blast
+//     radius collapses from O(methods+lifecycle+nested+extensions) to at most
+//     one node per file.
+//
+//   - Synthesize a TESTS edge from the file's test_suite to the production
+//     symbol under test, resolved Java-idiomatically (see resolveJavaTestSubject):
+//     OrderServiceTest / TestOrderService / OrderServiceTests / OrderServiceIT
+//     → OrderService, gated on the SUT type actually being referenced in the
+//     file (@InjectMocks / @Autowired field of the SUT type, `new OrderService(`,
+//     or a declared field/variable of that type). The edge ToID is the
+//     `Class:<Subject>` structural ref the cross-file resolver binds by name
+//     (the same ref neo4j.go already emits for Java classes).
+//
+//   - The suite entity name is namespaced (`junit_suite:<base>`) so it never
+//     collides with the production symbol of the same name in the resolver's
+//     by-name index (which would blank both as ambiguous and re-orphan the
+//     test, exactly as in #4343).
+//
+// Reuses the existing SCOPE.Pattern kind + test_suite subtype and the TESTS
+// relationship kind — no new producer Kind.
+//
+// Coverage: JUnit 5 (@Test/@ParameterizedTest/@RepeatedTest, jupiter lifecycle),
+// JUnit 4 (@Test + @Before/@After/@BeforeClass/@AfterClass, @RunWith), and
+// TestNG (@Test + @BeforeMethod/@AfterMethod/@BeforeClass/@AfterClass and
+// @BeforeSuite/@AfterSuite). Mockito @InjectMocks and `new SUT(...)` SUT
+// inference are fully covered; @Autowired-field SUT inference is covered for the
+// common single-field case.
 
-// junit5Frameworks lists all framework identifiers for which the JUnit 5
+// junit5Frameworks lists all framework identifiers for which the JUnit/TestNG
 // extractor is active. Jakarta EE and MicroProfile projects typically use
 // JUnit 5 (via Arquillian or plain JUnit) as their test runner — enabling
 // tests_linkage for those records (#2996).
 var junit5Frameworks = map[string]bool{
 	"junit5": true, "junit-jupiter": true, "junit_jupiter": true,
 	"junit_5": true, "junit 5": true,
+	// Plain JUnit 4 and TestNG test classes with no other framework signal
+	// (#4359) — added so pure JUnit4/TestNG suites are linked, not dropped.
+	"junit4": true, "junit-4": true, "junit_4": true, "junit": true,
+	"testng": true, "test_ng": true, "test-ng": true,
 	// Jakarta EE and MicroProfile use JUnit 5 for tests_linkage (#2996).
 	"jakarta_ee": true, "jakarta-ee": true, "jakartaee": true,
 	"microprofile": true, "eclipse-microprofile": true,
@@ -42,34 +95,40 @@ var junit5Frameworks = map[string]bool{
 }
 
 var (
+	// @Test (JUnit 4/5/TestNG) / @ParameterizedTest / @RepeatedTest — counts
+	// the test methods. A @Test annotation may carry args (TestNG's
+	// @Test(groups=…) / JUnit5 @Test on a method with throws clause), hence the
+	// optional (...) group and tolerant modifier/return-type run before void.
 	j5TestMethodRE = regexp.MustCompile(
 		`(?s)@(Test|ParameterizedTest|RepeatedTest)\b(?:\s*\([^)]*\))?` +
 			`(?:\s*@\w+(?:\s*\([^)]*\))?\s*)*\s*(?:public\s+|protected\s+|package\s+|private\s+)?(?:\w+\s+)*` +
-			`void\s+(\w+)\s*\(`)
+			`(?:void|\w+(?:<[^>]*>)?)\s+(\w+)\s*\(`)
+	// Lifecycle methods across JUnit 5 (BeforeAll/BeforeEach/AfterAll/AfterEach),
+	// JUnit 4 (Before/After/BeforeClass/AfterClass) and TestNG
+	// (BeforeMethod/AfterMethod/BeforeClass/AfterClass/BeforeSuite/AfterSuite/
+	// BeforeTest/AfterTest).
 	j5LifecycleRE = regexp.MustCompile(
-		`(?s)@(BeforeAll|BeforeEach|AfterAll|AfterEach)\b(?:\s*\([^)]*\))?` +
+		`(?s)@(BeforeAll|BeforeEach|AfterAll|AfterEach|BeforeClass|AfterClass|Before|After|BeforeMethod|AfterMethod|BeforeSuite|AfterSuite|BeforeTest|AfterTest)\b(?:\s*\([^)]*\))?` +
 			`(?:\s*@\w+(?:\s*\([^)]*\))?\s*)*\s*(?:public\s+|protected\s+|static\s+|private\s+)*` +
 			`void\s+(\w+)\s*\(`)
 	j5NestedClassRE = regexp.MustCompile(
 		`(?s)@Nested\b(?:\s*@\w+(?:\s*\([^)]*\))?\s*)*\s*` +
 			`(?:(?:public|protected|private|static|inner)\s+)*class\s+(\w+)`)
 	j5ExtendWithRE = regexp.MustCompile(
-		`(?s)@ExtendWith\s*\(\s*(?:\{([^}]*)\}|([^)]+))\s*\)`)
-	j5DisplayNameRE = regexp.MustCompile(
-		`@DisplayName\s*\(\s*\"([^\"]*)\"\s*\)`)
+		`(?s)@(?:ExtendWith|RunWith)\s*\(\s*(?:\{([^}]*)\}|([^)]+))\s*\)`)
 	j5DisabledRE = regexp.MustCompile(
-		`@Disabled\b(?:\s*\(\s*\"[^\"]*\"\s*\))?`)
-	j5TagRE = regexp.MustCompile(
-		`@Tag\s*\(\s*\"([^\"]*)\"\s*\)`)
-	j5RepeatedCountRE = regexp.MustCompile(
-		`@RepeatedTest\s*\(\s*(?:value\s*=\s*)?(\d+)`)
-	j5ValueSourceRE  = regexp.MustCompile(`@ValueSource\s*\([^)]*\)`)
-	j5CsvSourceRE    = regexp.MustCompile(`@CsvSource\s*\([^)]*\)`)
-	j5MethodSourceRE = regexp.MustCompile(`@MethodSource\s*\(\s*\"([^\"]*)\"\s*\)`)
-	j5ClassExtRE     = regexp.MustCompile(`(\w+)\.class`)
+		`@(?:Disabled|Ignore)\b(?:\s*\(\s*\"[^\"]*\"\s*\))?`)
+	j5ClassExtRE = regexp.MustCompile(`(\w+)\.class`)
+
+	// assertEquals(...) / assertThat(...) / assertTrue(...) / assertNull(...) /
+	// fail(...) — JUnit/Hamcrest/AssertJ/TestNG assertion calls. Folded as a
+	// count only (the per-assertion orphan nodes are the worst offender).
+	j5AssertionRE = regexp.MustCompile(
+		`(?m)\b(assert\w*|fail|verify|expectThrows|assertThrows)\s*\(`)
 )
 
-// ExtractJUnit5 runs the JUnit 5 extractor.
+// ExtractJUnit5 runs the JUnit / TestNG extractor, emitting exactly one
+// test_suite entity per test-class file (#4359).
 func ExtractJUnit5(ctx PatternContext) PatternResult {
 	var result PatternResult
 	if ctx.Language != "java" || !junit5Frameworks[ctx.Framework] {
@@ -78,218 +137,209 @@ func ExtractJUnit5(ctx PatternContext) PatternResult {
 
 	source := ctx.Source
 	fp := ctx.FilePath
-	seenRefs := make(map[string]bool)
-	seenRels := make(map[relKey]bool)
 
-	// Find outer class
-	outerClassMatch := classDeclRE.FindStringSubmatchIndex(source)
-	var outerClassName, outerClassRef string
-	if outerClassMatch != nil {
-		outerClassName = source[outerClassMatch[2]:outerClassMatch[3]]
-		outerClassRef = "scope:component:junit5_test_class:" + fp + ":" + outerClassName
+	// ── per-file signal collection (folded onto the single suite entity) ────
+	testMethods := j5TestMethodRE.FindAllStringSubmatch(source, -1)
+	lifecycleMethods := j5LifecycleRE.FindAllStringSubmatch(source, -1)
+	nestedMatches := j5NestedClassRE.FindAllStringSubmatch(source, -1)
+	assertionCount := len(j5AssertionRE.FindAllStringIndex(source, -1))
+
+	// Collect distinct test annotations + extension class names + nested names.
+	testAnnotations := map[string]bool{}
+	for _, m := range testMethods {
+		testAnnotations[m[1]] = true
 	}
-
-	// Nested classes with body spans
-	type nestedInfo struct {
-		name      string
-		ref       string
-		bodyStart int
-		bodyEnd   int
-	}
-	var nestedRecords []nestedInfo
-	for _, m := range j5NestedClassRE.FindAllStringSubmatchIndex(source, -1) {
-		className := source[m[2]:m[3]]
-		ref := "scope:component:junit5_nested:" + fp + ":" + className
-		if seenRefs[ref] {
-			continue
-		}
-		seenRefs[ref] = true
-
-		props := map[string]any{"framework": "junit5"}
-		// Check @DisplayName
-		window := source[max(0, m[0]-400):m[0]]
-		if dn := j5DisplayNameRE.FindStringSubmatch(window); dn != nil {
-			props["display_name"] = dn[1]
-		}
-
-		result.Entities = append(result.Entities, SecondaryEntity{
-			Name: className, Kind: "SCOPE.Component", SourceFile: fp,
-			LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
-			Provenance: "INFERRED_FROM_JUNIT5_NESTED", Ref: ref,
-			Properties: props,
-		})
-
-		// Compute body span
-		bodyOpen := strings.Index(source[m[1]:], "{")
-		bodyStart := -1
-		bodyEnd := -1
-		if bodyOpen >= 0 {
-			bodyStart = m[1] + bodyOpen
-			depth := 0
-			for i := bodyStart; i < len(source); i++ {
-				if source[i] == '{' {
-					depth++
-				} else if source[i] == '}' {
-					depth--
-					if depth == 0 {
-						bodyEnd = i
-						break
-					}
-				}
-			}
-		}
-		nestedRecords = append(nestedRecords, nestedInfo{className, ref, bodyStart, bodyEnd})
-	}
-
-	owningRef := func(offset int) string {
-		var bestRef string
-		bestStart := -1
-		for _, nr := range nestedRecords {
-			if nr.bodyStart >= 0 && nr.bodyEnd >= 0 &&
-				nr.bodyStart < offset && offset < nr.bodyEnd &&
-				nr.bodyStart > bestStart {
-				bestRef = nr.ref
-				bestStart = nr.bodyStart
-			}
-		}
-		if bestRef != "" {
-			return bestRef
-		}
-		return outerClassRef
-	}
-
-	// Test methods
-	for _, m := range j5TestMethodRE.FindAllStringSubmatchIndex(source, -1) {
-		ann := source[m[2]:m[3]]
-		methodName := source[m[4]:m[5]]
-
-		oRef := owningRef(m[0])
-		ownerLabel := outerClassName
-		if oRef != "" {
-			parts := strings.Split(oRef, ":")
-			ownerLabel = parts[len(parts)-1]
-		}
-
-		ref := "scope:operation:junit5_test:" + fp + ":" + ownerLabel + "." + methodName
-		if seenRefs[ref] {
-			continue
-		}
-		seenRefs[ref] = true
-
-		props := map[string]any{"framework": "junit5", "test_annotation": ann}
-
-		// Metadata from annotation windows
-		winBefore := source[max(0, m[0]-400):m[0]]
-		if dn := j5DisplayNameRE.FindStringSubmatch(winBefore); dn != nil {
-			props["display_name"] = dn[1]
-		}
-		if j5DisabledRE.MatchString(winBefore) {
-			props["disabled"] = true
-		}
-		for _, tag := range j5TagRE.FindAllStringSubmatch(winBefore, -1) {
-			if props["tags"] == nil {
-				props["tags"] = []string{}
-			}
-			props["tags"] = append(props["tags"].([]string), tag[1])
-		}
-
-		if ann == "ParameterizedTest" {
-			props["parameterized"] = true
-			winAfter := source[m[0]:min(m[0]+300, len(source))]
-			if j5ValueSourceRE.MatchString(winAfter) {
-				props["source_type"] = "ValueSource"
-			} else if j5CsvSourceRE.MatchString(winAfter) {
-				props["source_type"] = "CsvSource"
-			} else if ms := j5MethodSourceRE.FindStringSubmatch(winAfter); ms != nil {
-				props["source_type"] = "MethodSource"
-				props["method_source"] = ms[1]
-			}
-		}
-		if ann == "RepeatedTest" {
-			props["repeated"] = true
-			winAfter := source[m[0]:min(m[0]+300, len(source))]
-			if rc := j5RepeatedCountRE.FindStringSubmatch(winAfter); rc != nil {
-				props["repeat_count"] = rc[1]
-			}
-		}
-
-		result.Entities = append(result.Entities, SecondaryEntity{
-			Name: methodName, Kind: "SCOPE.Operation", Subtype: "function",
-			SourceFile: fp,
-			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
-			Provenance: "INFERRED_FROM_JUNIT5_TEST", Ref: ref,
-			Properties: props,
-		})
-
-		if oRef != "" {
-			addRel(&result, seenRels, Relationship{
-				SourceRef: oRef, TargetRef: ref, RelationshipType: "OWNS",
-			})
-		}
-	}
-
-	// Lifecycle methods
-	for _, m := range j5LifecycleRE.FindAllStringSubmatchIndex(source, -1) {
-		ann := source[m[2]:m[3]]
-		methodName := source[m[4]:m[5]]
-		oRef := owningRef(m[0])
-		ownerLabel := outerClassName
-		if oRef != "" {
-			parts := strings.Split(oRef, ":")
-			ownerLabel = parts[len(parts)-1]
-		}
-
-		ref := "scope:operation:junit5_lifecycle:" + fp + ":" + ownerLabel + "." + methodName + "." + strings.ToLower(ann)
-		if seenRefs[ref] {
-			continue
-		}
-		seenRefs[ref] = true
-
-		result.Entities = append(result.Entities, SecondaryEntity{
-			Name: methodName, Kind: "SCOPE.Operation", Subtype: "function",
-			SourceFile: fp,
-			LineStart:  lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
-			Provenance: "INFERRED_FROM_JUNIT5_LIFECYCLE", Ref: ref,
-			Properties: map[string]any{
-				"framework": "junit5", "lifecycle_annotation": ann,
-			},
-		})
-		if oRef != "" {
-			addRel(&result, seenRels, Relationship{
-				SourceRef: oRef, TargetRef: ref, RelationshipType: "OWNS",
-			})
-		}
-	}
-
-	// @ExtendWith
-	for _, m := range j5ExtendWithRE.FindAllStringSubmatchIndex(source, -1) {
-		raw := ""
-		if m[2] >= 0 {
-			raw = source[m[2]:m[3]]
-		} else if m[4] >= 0 {
-			raw = source[m[4]:m[5]]
+	extensions := map[string]bool{}
+	for _, m := range j5ExtendWithRE.FindAllStringSubmatch(source, -1) {
+		raw := m[1]
+		if raw == "" {
+			raw = m[2]
 		}
 		for _, ext := range j5ClassExtRE.FindAllStringSubmatch(raw, -1) {
-			extName := ext[1]
-			ref := "scope:pattern:junit5_extension:" + fp + ":" + extName
-			if addEntity(&result, seenRefs, SecondaryEntity{
-				Name: extName, Kind: "SCOPE.Pattern", SourceFile: fp,
-				LineStart: lineOf(source, m[0]), LineEnd: lineOf(source, m[0]),
-				Provenance: "INFERRED_FROM_JUNIT5_EXTENSION", Ref: ref,
-				Properties: map[string]any{
-					"framework": "junit5", "extension_class": extName,
-				},
-			}) {
-				if outerClassRef != "" {
-					addRel(&result, seenRels, Relationship{
-						SourceRef: outerClassRef, TargetRef: ref,
-						RelationshipType: "DEPENDS_ON",
-						Properties:       map[string]string{"kind": "junit5_extension"},
-					})
-				}
+			extensions[ext[1]] = true
+		}
+	}
+	nestedClasses := map[string]bool{}
+	for _, m := range nestedMatches {
+		nestedClasses[m[1]] = true
+	}
+
+	// Nothing JUnit/TestNG-shaped to model → emit nothing, so non-test Java
+	// files that merely happen to flow through a junit5Frameworks token (e.g. a
+	// spring_boot production class) never mint an empty suite.
+	if len(testMethods) == 0 && len(lifecycleMethods) == 0 && len(nestedMatches) == 0 {
+		return result
+	}
+
+	// Outer class line (for the suite entity's source line).
+	line := 1
+	if m := classDeclRE.FindStringIndex(source); m != nil {
+		line = lineOf(source, m[0])
+	}
+
+	// ── one linked test_suite per file ──────────────────────────────────────
+	outerClassName := ""
+	if m := classDeclRE.FindStringSubmatch(source); m != nil {
+		outerClassName = m[1]
+	}
+	suiteRef := "scope:pattern:junit5_suite:" + fp + ":" + junitBaseName(fp)
+	props := map[string]any{
+		"framework":         "junit5",
+		"test_method_count": itoa(len(testMethods)),
+		"lifecycle_count":   itoa(len(lifecycleMethods)),
+		"nested_count":      itoa(len(nestedMatches)),
+		"extension_count":   itoa(len(extensions)),
+		"assertion_count":   itoa(assertionCount),
+	}
+	if outerClassName != "" {
+		props["test_class"] = outerClassName
+	}
+	if len(testAnnotations) > 0 {
+		props["test_annotations"] = strings.Join(sortedKeys(testAnnotations), ",")
+	}
+	if len(extensions) > 0 {
+		props["extensions"] = strings.Join(sortedKeys(extensions), ",")
+	}
+	if len(nestedClasses) > 0 {
+		props["nested_classes"] = strings.Join(sortedKeys(nestedClasses), ",")
+	}
+	if j5DisabledRE.MatchString(source) {
+		props["has_disabled"] = true
+	}
+
+	suite := SecondaryEntity{
+		Name:       junitBaseName(fp),
+		Kind:       "SCOPE.Pattern",
+		Subtype:    "test_suite",
+		SourceFile: fp,
+		LineStart:  line, LineEnd: line,
+		Provenance: "INFERRED_FROM_JUNIT5_TEST",
+		Ref:        suiteRef,
+		Properties: props,
+	}
+
+	// ── TESTS edge to the production class under test (name affinity + ref) ──
+	if subject := resolveJavaTestSubject(source, outerClassName); subject != "" {
+		suite.Properties["tests_target"] = subject
+		result.Relationships = append(result.Relationships, Relationship{
+			SourceRef:        suiteRef,
+			TargetRef:        "Class:" + subject,
+			RelationshipType: "TESTS",
+			Properties: map[string]string{
+				"framework":    "junit5",
+				"match_source": "java_test_name_affinity",
+				"target_type":  subject,
+			},
+		})
+	}
+
+	result.Entities = append(result.Entities, suite)
+	return result
+}
+
+// junitBaseName derives a human/file label from a Java test file path, e.g.
+// `src/test/java/com/x/OrderServiceTest.java` → `OrderServiceTest`. Falls back
+// to the outer-class style base when the path has no separators.
+func junitBaseName(path string) string {
+	p := path
+	if i := strings.LastIndexAny(p, "/\\"); i >= 0 {
+		p = p[i+1:]
+	}
+	return strings.TrimSuffix(p, ".java")
+}
+
+// sortedKeys returns the keys of a set in deterministic order (so folded list
+// properties are stable across runs and don't churn the graph).
+func sortedKeys(m map[string]bool) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+var javaIdentRE = regexp.MustCompile(`^[A-Z][A-Za-z0-9_]*$`)
+
+// subjectFromTestClassName derives the production-class name a Java test class
+// affinity-maps to, by stripping the conventional Test / Tests / IT / ITCase /
+// TestCase suffix or the leading Test prefix:
+//
+//	OrderServiceTest      → OrderService
+//	OrderServiceTests     → OrderService
+//	OrderServiceIT        → OrderService   (Failsafe integration test)
+//	OrderServiceITCase    → OrderService
+//	OrderServiceTestCase  → OrderService
+//	TestOrderService      → OrderService   (TestNG/legacy prefix convention)
+//
+// Returns "" when nothing plausible remains.
+func subjectFromTestClassName(cls string) string {
+	if cls == "" {
+		return ""
+	}
+	// Suffix conventions, longest-first so "ITCase"/"TestCase" win over "IT".
+	for _, suf := range []string{"ITCase", "TestCase", "Tests", "Test", "IT"} {
+		if strings.HasSuffix(cls, suf) && len(cls) > len(suf) {
+			base := cls[:len(cls)-len(suf)]
+			if javaIdentRE.MatchString(base) {
+				return base
 			}
 		}
 	}
+	// Leading "Test" prefix (TestOrderService → OrderService).
+	if strings.HasPrefix(cls, "Test") && len(cls) > len("Test") {
+		base := cls[len("Test"):]
+		if javaIdentRE.MatchString(base) {
+			return base
+		}
+	}
+	return ""
+}
 
-	return result
+var (
+	// @InjectMocks OrderService subject;  /  @Autowired OrderService subject;
+	// Captures the injected field's *type*, which (for a single such field) is
+	// the strongest SUT signal Mockito/Spring give us.
+	reJavaInjectField = regexp.MustCompile(
+		`@(?:InjectMocks|Autowired)\b(?:\s*\([^)]*\))?\s+(?:private\s+|public\s+|protected\s+|final\s+)*([A-Z][A-Za-z0-9_]*)\b`)
+	// new OrderService(...) — direct construction of the SUT in the test body.
+	reJavaNew = regexp.MustCompile(`\bnew\s+([A-Z][A-Za-z0-9_]*)\s*\(`)
+)
+
+// referencedJavaTypes returns the set of class names that are referenced in the
+// test file via the high-confidence SUT signals: @InjectMocks / @Autowired
+// field types and `new X(` construction. Only names in this set are eligible to
+// become a TESTS subject, keeping the edge pointed at an in-repo production
+// entity rather than a fixture/util/JDK type.
+func referencedJavaTypes(src string) map[string]bool {
+	out := map[string]bool{}
+	for _, m := range reJavaInjectField.FindAllStringSubmatch(src, -1) {
+		if javaIdentRE.MatchString(m[1]) && !primitiveTypes[m[1]] {
+			out[m[1]] = true
+		}
+	}
+	for _, m := range reJavaNew.FindAllStringSubmatch(src, -1) {
+		if javaIdentRE.MatchString(m[1]) && !primitiveTypes[m[1]] {
+			out[m[1]] = true
+		}
+	}
+	return out
+}
+
+// resolveJavaTestSubject determines the unique production class under test for a
+// Java test-class file. A subject is emitted ONLY when it is both (a) derivable
+// by name affinity from the test class name, AND (b) actually referenced
+// (@InjectMocks / @Autowired / `new X(`) in the file. Requiring BOTH keeps the
+// TESTS edge conservative and unique — name affinity alone would over-link a
+// renamed/wrapper class, and a referenced type alone would link a collaborator
+// or fixture. Returns "" when no confident unique subject exists.
+func resolveJavaTestSubject(src, testClassName string) string {
+	subject := subjectFromTestClassName(testClassName)
+	if subject == "" {
+		return ""
+	}
+	if referencedJavaTypes(src)[subject] {
+		return subject
+	}
+	return ""
 }
