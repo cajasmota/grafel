@@ -992,6 +992,18 @@ export interface PathDetail {
     grpc: PathEntity[];
   };
   side_effects: PathEntity[];
+  /**
+   * #4489 — the endpoint's EFFECTIVE side-effect kinds, aggregated by the
+   * backend (#4524) over the handler's downstream CALLS (transitively, capped).
+   * A thin controller that delegates the DB write to a downstream service has
+   * no DIRECT side-effect edge — its `side_effects` (the entity list above) is
+   * empty — but `effective_effects` still surfaces `{kind:"db_write",
+   * source:"downstream"}` so the panel shows "DB write (via downstream)" rather
+   * than "(0)". `source` distinguishes a sink on the handler itself ("direct")
+   * from one reached only via a delegated callee ("downstream"). Omitted /
+   * empty when the endpoint genuinely has no effects.
+   */
+  effective_effects?: { kind: string; source: "direct" | "downstream" }[];
   tests: PathEntity[];
 }
 

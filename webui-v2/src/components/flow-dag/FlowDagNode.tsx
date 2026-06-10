@@ -19,30 +19,10 @@ import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { ChevronRight, ChevronDown, CircleDot } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { RepoChip } from "@/lib/repo-color";
+import { effectBadge } from "@/lib/effect-badge";
 import { useSourcePeek } from "@/components/SourcePeek";
 import { roleStyle, edgeStyle } from "./style";
 import type { FlowDagNodeData } from "./layout";
-
-/** Effect kind → short badge label + tone. Anything else falls through generic. */
-const EFFECT_BADGE: Record<string, { label: string; cls: string }> = {
-  db_read: { label: "DB read", cls: "text-info bg-info-soft" },
-  db_write: { label: "DB write", cls: "text-warning bg-warning-soft" },
-  http_out: { label: "HTTP", cls: "text-accent-strong bg-accent-soft" },
-  fs: { label: "FS", cls: "text-text-3 bg-surface-2" },
-  fs_read: { label: "FS read", cls: "text-text-3 bg-surface-2" },
-  fs_write: { label: "FS write", cls: "text-text-3 bg-surface-2" },
-  queue: { label: "Queue", cls: "text-accent-strong bg-accent-soft" },
-};
-
-function effectBadge(effect: string): { label: string; cls: string } {
-  return (
-    EFFECT_BADGE[effect] ?? {
-      // Humanize an unknown effect key (db_read → "db read") rather than drop it.
-      label: effect.replace(/_/g, " "),
-      cls: "text-text-3 bg-surface-2",
-    }
-  );
-}
 
 /**
  * FlowDagNode — one DAG node. Color + label come from the role; terminal
