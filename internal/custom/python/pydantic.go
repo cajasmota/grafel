@@ -56,6 +56,12 @@ var (
 	// model_config = ConfigDict(...) (v2) or `class Config:` inner class (v1).
 	pydModelConfigRe = regexp.MustCompile(`(?m)^[ \t]+model_config\s*=\s*ConfigDict\s*\(([^)]*)\)`)
 	pydConfigClassRe = regexp.MustCompile(`(?m)^[ \t]+class\s+Config\s*:`)
+
+	// pydModelClassRe matches a Pydantic model class header — a class whose base
+	// list includes BaseModel / BaseSettings (directly or as a known alias).
+	// Issue #4613: each model's annotated fields become CONTAINS field members.
+	pydModelClassRe = regexp.MustCompile(
+		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*\b(?:BaseModel|BaseSettings)\b[^)]*\)\s*:`)
 )
 
 // pydConstraintKeys are the Field() keyword constraints we surface. Order is
@@ -189,8 +195,57 @@ func (e *PydanticExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		out = append(out, configEntity("v1", "Config", body, file.Path, line))
 	}
 
+	// 5. Field-as-member sub-entities (issue #4613). Each `class X(BaseModel)`
+	// model's annotated fields become `SCOPE.Schema`/field child entities with a
+	// CONTAINS edge from the model — parity with the JS/TS class-validator DTO
+	// field members (#4635) so cross-framework request/response FIELD-level diffs
+	// work. The owner class node itself is emitted by the base Python extractor;
+	// here we hang the CONTAINS membership off a lightweight owner carrier so the
+	// edge binds to the real class via the `Class:<name>` byName fallback.
+	for _, idx := range allMatchesIndex(pydModelClassRe, source) {
+		className := source[idx[2]:idx[3]]
+		line := lineOf(source, idx[0])
+		body := pydModelBody(source, idx[0])
+		fields := extractPydanticModelFields(body)
+		if len(fields) == 0 {
+			continue
+		}
+		// Each field child carries its own CONTAINS edge (FromID `Class:<name>`
+		// resolves to the base-extractor model node). We do NOT emit a class-named
+		// carrier entity (issue #1501 discipline).
+		out = append(out, emitPyDTOFieldMembers(className, fields, "pydantic", file.Path, line, nil)...)
+	}
+
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
+}
+
+// pydModelBody returns the indented body of a Pydantic model class starting at
+// the class header byte offset, up to the first dedent. Mirrors the Django
+// extractClassBody scan but is local to keep the pydantic extractor standalone.
+func pydModelBody(source string, classStart int) string {
+	lines := strings.Split(source[classStart:], "\n")
+	if len(lines) == 0 {
+		return ""
+	}
+	classIndent := len(lines[0]) - len(strings.TrimLeft(lines[0], " \t"))
+	var body []string
+	for i, ln := range lines {
+		if i == 0 {
+			continue
+		}
+		stripped := strings.TrimSpace(ln)
+		if stripped == "" {
+			body = append(body, ln)
+			continue
+		}
+		indent := len(ln) - len(strings.TrimLeft(ln, " \t"))
+		if indent <= classIndent {
+			break
+		}
+		body = append(body, ln)
+	}
+	return strings.Join(body, "\n")
 }
 
 // configEntity builds the model-config / coercion pattern entity from a config

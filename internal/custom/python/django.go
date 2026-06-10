@@ -386,6 +386,40 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 					referencesClassEdge(className+"."+attr, callee, "drf", attr))
 			}
 		}
+
+		// (c) Issue #4613 — FIELD-as-member sub-entities. Mirror the JS/TS DTO
+		// field-membership model (#4635): each explicitly-declared serializer
+		// field becomes a `SCOPE.Schema`/field child carrying name/type/optional/
+		// validators, so request/response DRF FIELD-level diffs are no longer
+		// limited. The CONTAINS edges from (a) already bind these names to the
+		// owner; here we emit the child entities those edges point at.
+		explicitFields := extractDRFSerializerFields(body)
+		out = append(out, emitPyDTOFieldMembers(
+			className, explicitFields, "drf", file.Path, line, nil)...)
+
+		// (d) ModelSerializer Meta.fields. `fields = [...]` → emit the enumerated
+		// names as field members (type unknown — model-derived). `fields =
+		// "__all__"` → mark the serializer as model-derived/unenumerated with a
+		// flag rather than silently emitting nothing.
+		meta := extractDRFMetaFields(body)
+		switch {
+		case meta.isAll:
+			serEnt.Properties["fields_source"] = "model_all"
+			serEnt.Properties["fields_unenumerated"] = "true"
+		case len(meta.names) > 0:
+			serEnt.Properties["fields_source"] = "meta_list"
+			var metaFields []pyDTOField
+			for _, fn := range meta.names {
+				if seenSerMember[fn] {
+					continue // already emitted as an explicit field
+				}
+				metaFields = append(metaFields, pyDTOField{name: fn, typ: "unknown"})
+				serEnt.Relationships = append(serEnt.Relationships,
+					containsFieldEdge(className, className+"."+fn, fn, "drf"))
+			}
+			out = append(out, emitPyDTOFieldMembers(
+				className, metaFields, "drf", file.Path, line, nil)...)
+		}
 		out = append(out, serEnt)
 	}
 

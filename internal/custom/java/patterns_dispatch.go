@@ -95,6 +95,7 @@ var allPatternExtractors = []patternFn{
 	ExtractSpringBoot,
 	ExtractSpringDIDeepen,
 	ExtractSpringDIGraph,
+	ExtractSpringDTOFields,
 	ExtractSpringEcosystem,
 	ExtractSpringGlobalWiring,
 	ExtractSpringGraphQL,
