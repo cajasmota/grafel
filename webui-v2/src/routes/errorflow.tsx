@@ -327,7 +327,7 @@ function ExceptionCard({
           </span>
         </div>
 
-        {exc.throwers.length > 0 && (
+        {(exc.throwers?.length ?? 0) > 0 && (
           <SiteList
             label="Thrown by"
             sites={exc.throwers}
@@ -335,7 +335,7 @@ function ExceptionCard({
             direction="throw"
           />
         )}
-        {exc.catchers.length > 0 && (
+        {(exc.catchers?.length ?? 0) > 0 && (
           <SiteList
             label="Caught by"
             sites={exc.catchers}
@@ -364,13 +364,14 @@ function ErrorFlowBody({
   const [filter, setFilter] = useState<FilterMode>("all");
 
   const filtered = useMemo(() => {
+    const exceptions = data.exceptions ?? [];
     switch (filter) {
       case "uncaught":
-        return data.exceptions.filter((e) => e.uncaught);
+        return exceptions.filter((e) => e.uncaught);
       case "caught":
-        return data.exceptions.filter((e) => !e.uncaught);
+        return exceptions.filter((e) => !e.uncaught);
       default:
-        return data.exceptions;
+        return exceptions;
     }
   }, [data.exceptions, filter]);
 

@@ -670,7 +670,7 @@ export default function PendingScreen() {
   }, [filtered, groupBy, tab]);
 
   const totalUnresolved =
-    (data?.repairs.length ?? 0) + (data?.enrichments.length ?? 0);
+    (data?.repairs?.length ?? 0) + (data?.enrichments?.length ?? 0);
   const focusedItem = focusedId
     ? allItems.find((i) => i.id === focusedId) ?? null
     : null;
@@ -726,7 +726,7 @@ export default function PendingScreen() {
                 tone={tab === "repairs" ? "accent" : "neutral"}
                 className="text-[10px] h-4 px-1.5"
               >
-                {data?.repairs.length ?? 0}
+                {data?.repairs?.length ?? 0}
               </Badge>
             </TabsTrigger>
             <TabsTrigger value="enrichments" className="gap-1.5">
@@ -736,7 +736,7 @@ export default function PendingScreen() {
                 tone={tab === "enrichments" ? "accent" : "neutral"}
                 className="text-[10px] h-4 px-1.5"
               >
-                {data?.enrichments.length ?? 0}
+                {data?.enrichments?.length ?? 0}
               </Badge>
             </TabsTrigger>
           </TabsList>

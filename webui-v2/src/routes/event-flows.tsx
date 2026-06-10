@@ -192,10 +192,10 @@ function ChainDetail({ detail }: { detail: EventFlowDetailResponse }) {
       </header>
 
       <div className="flex flex-col gap-2">
-        {detail.steps.map((step, idx) => (
+        {(detail.steps ?? []).map((step, idx) => (
           <div key={`${step.entity_id}-${idx}`} className="flex flex-col gap-2">
             <StepNode step={step} />
-            {idx < detail.steps.length - 1 && (
+            {idx < (detail.steps ?? []).length - 1 && (
               <div className="ml-3.5 h-3 w-px bg-border" aria-hidden />
             )}
           </div>

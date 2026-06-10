@@ -343,10 +343,11 @@ function AuthCoverageTab({ groupId }: { groupId: string }) {
     );
   }
 
+  const allFindings = data.findings ?? [];
   const findings =
     severity === "all"
-      ? data.findings
-      : data.findings.filter((f) => f.severity === severity);
+      ? allFindings
+      : allFindings.filter((f) => f.severity === severity);
 
   // Repo badge is redundant for a single-repo group — gate on >1 repo,
   // matching the convention used elsewhere in the dashboard (#4500).
@@ -468,10 +469,11 @@ function SecretsTab({ groupId }: { groupId: string }) {
     );
   }
 
+  const allFindings = data.findings ?? [];
   const findings =
     severity === "all"
-      ? data.findings
-      : data.findings.filter((f) => f.severity === severity);
+      ? allFindings
+      : allFindings.filter((f) => f.severity === severity);
 
   const multiRepo = new Set(data.findings.map((f) => f.repo)).size > 1;
 
@@ -483,11 +485,11 @@ function SecretsTab({ groupId }: { groupId: string }) {
         <CountStat label="Low / info" value={data.info_count} tone="info" />
       </div>
 
-      {Object.keys(data.by_category).length > 0 && (
+      {Object.keys(data.by_category ?? {}).length > 0 && (
         <Card>
           <CardBody className="flex flex-wrap items-center gap-2 py-3">
             <span className="text-xs text-text-4 mr-1">By category:</span>
-            {Object.entries(data.by_category).map(([cat, count]) => (
+            {Object.entries(data.by_category ?? {}).map(([cat, count]) => (
               <Badge key={cat} tone="neutral">
                 {cat.replace(/_/g, " ")} · {count}
               </Badge>
@@ -545,7 +547,7 @@ function CycleFindingRow({ c }: { c: CycleFinding }) {
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-1.5">
-        {c.members.map((m, i) => (
+        {(c.members ?? []).map((m, i) => (
           <span key={m} className="flex items-center gap-1.5">
             {i > 0 && <span className="text-text-4 select-none">→</span>}
             <span
@@ -585,10 +587,11 @@ function CyclesTab({ groupId }: { groupId: string }) {
     );
   }
 
+  const allFindings = data.findings ?? [];
   const findings =
     severity === "all"
-      ? data.findings
-      : data.findings.filter((c) => c.severity === severity);
+      ? allFindings
+      : allFindings.filter((c) => c.severity === severity);
 
   return (
     <div className="space-y-4">

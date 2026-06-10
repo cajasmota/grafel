@@ -506,10 +506,11 @@ function CoverageTab({ groupId }: { groupId: string }) {
     );
   }
 
+  const uncoveredEntities = data.uncovered_entities ?? [];
   const uncovered =
     severity === "all"
-      ? data.uncovered_entities
-      : data.uncovered_entities.filter((u) => u.severity === severity);
+      ? uncoveredEntities
+      : uncoveredEntities.filter((u) => u.severity === severity);
 
   return (
     <div className="space-y-4">
@@ -526,7 +527,7 @@ function CoverageTab({ groupId }: { groupId: string }) {
         totalTests={data.total_tests}
       />
 
-      {data.by_directory.length > 0 && (
+      {(data.by_directory?.length ?? 0) > 0 && (
         <Card>
           <CardHeader className="flex items-center justify-between gap-2">
             <CardTitle className="flex items-center gap-1.5">
@@ -619,10 +620,11 @@ function RepoDepCard({
   rep: RepoDepSummary;
   statusFilter: "all" | PackageEntry["status"];
 }) {
+  const packages = rep.packages ?? [];
   const pkgs =
     statusFilter === "all"
-      ? rep.packages
-      : rep.packages.filter((p) => p.status === statusFilter);
+      ? packages
+      : packages.filter((p) => p.status === statusFilter);
   return (
     <Card>
       <CardHeader className="flex items-center justify-between gap-2">
@@ -654,7 +656,7 @@ function DependenciesTab({ groupId }: { groupId: string }) {
 
   if (isLoading) return <SkeletonRows />;
   if (isError) return <ErrorState what="dependency hygiene" />;
-  const repoSlugs = data ? Object.keys(data.by_repo).sort() : [];
+  const repoSlugs = data ? Object.keys(data.by_repo ?? {}).sort() : [];
   if (!data || data.summary.declared === 0) {
     return (
       <EmptyState
@@ -844,11 +846,11 @@ function AntiPatternsTab({ groupId }: { groupId: string }) {
         />
       </div>
 
-      {Object.keys(data.by_orm).length > 0 && (
+      {Object.keys(data.by_orm ?? {}).length > 0 && (
         <Card>
           <CardBody className="flex flex-wrap items-center gap-2 py-3">
             <span className="text-xs text-text-4 mr-1">By ORM:</span>
-            {Object.entries(data.by_orm).map(([orm, count]) => (
+            {Object.entries(data.by_orm ?? {}).map(([orm, count]) => (
               <Badge key={orm} tone="neutral">
                 {orm} · {count}
               </Badge>
@@ -858,7 +860,7 @@ function AntiPatternsTab({ groupId }: { groupId: string }) {
       )}
 
       <div className="space-y-2">
-        {data.findings.map((f) => (
+        {(data.findings ?? []).map((f) => (
           <NPlusOneRow key={f.query_entity_id} f={f} />
         ))}
       </div>
@@ -1124,7 +1126,7 @@ function TrendsTab({ groupId }: { groupId: string }) {
 
   if (isLoading) return <SkeletonRows />;
   if (isError) return <ErrorState what="quality trends" />;
-  if (!data || data.metrics.length === 0) {
+  if (!data || (data.metrics?.length ?? 0) === 0) {
     return (
       <EmptyState
         icon={<TrendingUp size={32} className="text-text-4" />}

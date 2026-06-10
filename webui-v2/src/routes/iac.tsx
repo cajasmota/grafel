@@ -228,7 +228,7 @@ function ResourceRow({ resource }: { resource: IaCResource }) {
           #4495: own full-width wrapping row so chips never overflow the card
           edge — they wrap to multiple lines and each chip truncates long
           targets internally. */}
-      {resource.relations.length > 0 && (
+      {(resource.relations?.length ?? 0) > 0 && (
         <div className="flex flex-wrap items-center gap-1.5 min-w-0">
           {resource.relations.map((rel, i) => (
             <RelationBadge
@@ -240,7 +240,7 @@ function ResourceRow({ resource }: { resource: IaCResource }) {
       )}
 
       {/* Typed config properties */}
-      {resource.properties.length > 0 && (
+      {(resource.properties?.length ?? 0) > 0 && (
         <div className="flex flex-wrap gap-1.5">
           {resource.properties.map((p) => (
             <span
@@ -279,11 +279,12 @@ function ToolSection({
   group: IaCToolGroup;
   groupId: string;
 }) {
+  const resources = group.resources ?? [];
   const repos = useMemo(() => {
     const set = new Set<string>();
-    for (const r of group.resources) if (r.repo) set.add(r.repo);
+    for (const r of resources) if (r.repo) set.add(r.repo);
     return Array.from(set);
-  }, [group.resources]);
+  }, [resources]);
 
   return (
     <Card>
@@ -301,7 +302,7 @@ function ToolSection({
           </span>
         </div>
         <div className="space-y-2">
-          {group.resources.map((r) => (
+          {resources.map((r) => (
             <ResourceRow key={r.entity_id} resource={r} />
           ))}
         </div>
@@ -314,10 +315,10 @@ function ToolSection({
 // § Category roll-up (context)
 // ---------------------------------------------------------------------------
 
-function CategorySection({ counts }: { counts: Record<string, number> }) {
+function CategorySection({ counts }: { counts: Record<string, number> | null | undefined }) {
   const entries = useMemo(
     () =>
-      Object.entries(counts).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
+      Object.entries(counts ?? {}).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])),
     [counts],
   );
   if (entries.length === 0) return null;
@@ -456,7 +457,7 @@ export default function IaCScreen() {
               <Pill active={toolFilter === "all"} onClick={() => setToolFilter("all")}>
                 All
               </Pill>
-              {data!.tools.map((t) => (
+              {(data!.tools ?? []).map((t) => (
                 <Pill
                   key={t}
                   active={toolFilter === t}

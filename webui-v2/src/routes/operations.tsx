@@ -282,7 +282,7 @@ function LogsPanel({ onClose }: { onClose: () => void }) {
               <Loader2 size={14} className="animate-spin mr-2" />
               Loading logs…
             </div>
-          ) : !data || data.lines.length === 0 ? (
+          ) : !data || (data.lines?.length ?? 0) === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-sm text-text-3 gap-1">
               <SquareTerminal size={20} className="text-text-4" />
               No log entries found.
@@ -1074,6 +1074,7 @@ function UnresolvedReferencesPane({ groupId }: { groupId: string }) {
 
   const hasRun = !!data?.has_run;
   const refs = data?.references;
+  const reasons = refs?.reasons ?? [];
   const resolvedPct = refs && refs.total > 0 ? Math.round(refs.resolved_rate * 100) : null;
   const resolvedColor =
     resolvedPct == null
@@ -1178,7 +1179,7 @@ function UnresolvedReferencesPane({ groupId }: { groupId: string }) {
                   refs.resolved_rate * 100,
                 )}%)`}
               />
-              {refs.reasons.map((r, i) => (
+              {reasons.map((r, i) => (
                 <div
                   key={r.reason}
                   className={cn("h-full", reasonColor(i))}
@@ -1191,7 +1192,7 @@ function UnresolvedReferencesPane({ groupId }: { groupId: string }) {
               <span className="flex items-center gap-1">
                 <span className="size-2 rounded-full bg-success" /> Resolved
               </span>
-              {refs.reasons.map((r, i) => (
+              {reasons.map((r, i) => (
                 <span key={r.reason} className="flex items-center gap-1">
                   <span className={cn("size-2 rounded-full", reasonColor(i))} /> {r.label}
                 </span>
@@ -1200,13 +1201,13 @@ function UnresolvedReferencesPane({ groupId }: { groupId: string }) {
           </div>
 
           {/* Unresolved by reason */}
-          {refs.reasons.length > 0 ? (
+          {reasons.length > 0 ? (
             <Section
               title="Unresolved references"
               sub="What stops archigraph from linking the rest of your code's references — the reasons that drive Fidelity below 100%."
             >
               <div className="space-y-2.5">
-                {refs.reasons.map((r, i) => (
+                {reasons.map((r, i) => (
                   <div
                     key={r.reason}
                     className="rounded-lg border border-border-soft bg-surface-2 p-3"

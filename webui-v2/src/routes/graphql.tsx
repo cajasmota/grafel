@@ -179,7 +179,7 @@ function ResolverRow({ resolver }: { resolver: GraphQLResolver }) {
 
         <div className="ml-auto flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
           {/* Effects */}
-          {resolver.effects.length > 0 ? (
+          {(resolver.effects?.length ?? 0) > 0 ? (
             resolver.effects.map((e) => <EffectBadge key={e.name} effect={e} />)
           ) : (
             <span
@@ -240,11 +240,12 @@ function TypeSection({
 }) {
   // Distinct repos in this type group (resolvers can span repos for the same
   // root name, e.g. "Query").
+  const resolvers = group.resolvers ?? [];
   const repos = useMemo(() => {
     const set = new Set<string>();
-    for (const r of group.resolvers) if (r.repo) set.add(r.repo);
+    for (const r of resolvers) if (r.repo) set.add(r.repo);
     return Array.from(set);
-  }, [group.resolvers]);
+  }, [resolvers]);
 
   return (
     <Card>
@@ -258,12 +259,12 @@ function TypeSection({
             <RepoChip key={slug} slug={slug} groupId={groupId} maxLength={18} />
           ))}
           <span className="ml-auto text-xs text-text-4 tabular-nums">
-            {group.resolvers.length}{" "}
-            {group.resolvers.length === 1 ? "resolver" : "resolvers"}
+            {resolvers.length}{" "}
+            {resolvers.length === 1 ? "resolver" : "resolvers"}
           </span>
         </div>
         <div className="space-y-2">
-          {group.resolvers.map((r) => (
+          {resolvers.map((r) => (
             <ResolverRow key={r.entity_id} resolver={r} />
           ))}
         </div>
@@ -289,8 +290,12 @@ function schemaKindTone(kind: string): "accent" | "info" | "warning" | "neutral"
   }
 }
 
-function SchemaTypesSection({ types }: { types: GraphQLSchemaType[] }) {
-  if (types.length === 0) return null;
+function SchemaTypesSection({ types }: { types: GraphQLSchemaType[] | null | undefined }) {
+  // Backend slice fields marshal to JSON `null` when empty (no `omitempty`),
+  // so coalesce before any .length / .map to avoid white-screening on a group
+  // that has no GraphQL data.
+  const list = types ?? [];
+  if (list.length === 0) return null;
   return (
     <Card>
       <CardBody className="space-y-2">
@@ -298,11 +303,11 @@ function SchemaTypesSection({ types }: { types: GraphQLSchemaType[] }) {
           <Database size={13} className="text-text-4 shrink-0" />
           <span className="text-sm font-medium text-text">Schema types (SDL)</span>
           <span className="ml-auto text-xs text-text-4 tabular-nums">
-            {types.length}
+            {list.length}
           </span>
         </div>
         <div className="flex flex-wrap gap-1.5">
-          {types.map((t) => (
+          {list.map((t) => (
             <Badge
               key={`${t.repo}:${t.name}:${t.kind}`}
               tone={schemaKindTone(t.kind)}
@@ -317,7 +322,7 @@ function SchemaTypesSection({ types }: { types: GraphQLSchemaType[] }) {
         </div>
         <p className="text-[10px] text-text-4">
           SDL definitions extracted from schema files across{" "}
-          {new Set(types.map((t) => t.repo)).size} repo(s).
+          {new Set(list.map((t) => t.repo)).size} repo(s).
         </p>
       </CardBody>
     </Card>
@@ -342,7 +347,7 @@ export default function GraphQLScreen() {
     return groups
       .map((g) => ({
         ...g,
-        resolvers: g.resolvers.filter((r) => r.operation === opFilter),
+        resolvers: (g.resolvers ?? []).filter((r) => r.operation === opFilter),
       }))
       .filter((g) => g.resolvers.length > 0);
   }, [groups, opFilter]);
@@ -380,7 +385,7 @@ export default function GraphQLScreen() {
             </div>
 
             {/* Frameworks */}
-            {data!.frameworks.length > 0 && (
+            {(data!.frameworks?.length ?? 0) > 0 && (
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs text-text-4">Frameworks:</span>
                 {data!.frameworks.map((fw) => (

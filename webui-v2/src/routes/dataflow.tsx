@@ -398,7 +398,7 @@ function FindingRow({
 }) {
   const [open, setOpen] = useState(false);
   const { label, tone } = categoryMeta(finding.category);
-  const hasPath = finding.path.length > 2; // more than just [source, sink]
+  const hasPath = (finding.path?.length ?? 0) > 2; // more than just [source, sink]
 
   return (
     <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-border bg-surface hover:bg-surface-2 transition-colors">
@@ -589,19 +589,18 @@ function FindingsTab({
 
   const categories = useMemo(
     () =>
-      Object.entries(data.findings_by_category).sort(
+      Object.entries(data.findings_by_category ?? {}).sort(
         (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
       ),
     [data.findings_by_category],
   );
 
-  const filtered = useMemo(
-    () =>
-      category === "all"
-        ? data.findings
-        : data.findings.filter((f) => f.category === category),
-    [data.findings, category],
-  );
+  const filtered = useMemo(() => {
+    const findings = data.findings ?? [];
+    return category === "all"
+      ? findings
+      : findings.filter((f) => f.category === category);
+  }, [data.findings, category]);
 
   if (data.total_findings === 0) {
     return (
@@ -650,19 +649,18 @@ function FlowsTab({ data, groupId }: { data: DataflowReport; groupId: string }) 
 
   const kinds = useMemo(
     () =>
-      Object.entries(data.flows_by_sink_kind).sort(
+      Object.entries(data.flows_by_sink_kind ?? {}).sort(
         (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
       ),
     [data.flows_by_sink_kind],
   );
 
-  const filtered = useMemo(
-    () =>
-      sinkKind === "all"
-        ? data.flows
-        : data.flows.filter((f) => f.sink_kind === sinkKind),
-    [data.flows, sinkKind],
-  );
+  const filtered = useMemo(() => {
+    const flows = data.flows ?? [];
+    return sinkKind === "all"
+      ? flows
+      : flows.filter((f) => f.sink_kind === sinkKind);
+  }, [data.flows, sinkKind]);
 
   if (data.total_flows === 0) {
     return (
@@ -761,11 +759,11 @@ export default function DataflowScreen() {
               <SummaryStat label="Flows" value={data!.total_flows} />
               <SummaryStat
                 label="Vuln categories"
-                value={Object.keys(data!.findings_by_category).length}
+                value={Object.keys(data!.findings_by_category ?? {}).length}
               />
               <SummaryStat
                 label="Sink kinds"
-                value={Object.keys(data!.flows_by_sink_kind).length}
+                value={Object.keys(data!.flows_by_sink_kind ?? {}).length}
               />
             </div>
 

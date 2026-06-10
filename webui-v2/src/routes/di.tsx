@@ -130,17 +130,18 @@ const TOKEN_KEYWORDS = new Set(["repository", "model", "datasource", "connection
 
 function tokenInfo(provider: DIProvider): { isToken: boolean; concreteCount: number } {
   const name = (provider.name || "").toLowerCase();
+  const consumers = provider.consumers ?? [];
   const qualifiers = new Set(
-    provider.consumers.map((c) => (c.qualifier || "").trim()).filter(Boolean),
+    consumers.map((c) => (c.qualifier || "").trim()).filter(Boolean),
   );
   const byKeyword = TOKEN_KEYWORDS.has(name);
   // A token category shows many consumers disambiguated by distinct qualifiers
   // (the concrete entity each injection targets).
-  const byFanOut = provider.consumers.length >= 8 && qualifiers.size >= 4;
+  const byFanOut = consumers.length >= 8 && qualifiers.size >= 4;
   const isToken = byKeyword || byFanOut;
   // Concrete providers behind the token = distinct qualifiers (each names the
   // concrete repository/model); fall back to consumer count when unqualified.
-  const concreteCount = qualifiers.size > 0 ? qualifiers.size : provider.consumers.length;
+  const concreteCount = qualifiers.size > 0 ? qualifiers.size : consumers.length;
   return { isToken, concreteCount };
 }
 
@@ -316,8 +317,9 @@ function ProviderCard({
   multiRepo: boolean;
 }) {
   const [open, setOpen] = useState(false);
-  const many = provider.consumers.length > COLLAPSE_AT;
-  const shown = many && !open ? provider.consumers.slice(0, COLLAPSE_AT) : provider.consumers;
+  const consumers = provider.consumers ?? [];
+  const many = consumers.length > COLLAPSE_AT;
+  const shown = many && !open ? consumers.slice(0, COLLAPSE_AT) : consumers;
   const { isToken, concreteCount } = tokenInfo(provider);
 
   return (
@@ -347,16 +349,16 @@ function ProviderCard({
                   </span>
                 </TooltipTrigger>
                 <TooltipContent className="max-w-xs">
-                  {`"${provider.name}" is a DI injection-token category (e.g. TypeORM @InjectRepository / Mongoose @InjectModel), not a single provider. Its ${provider.consumers.length} consumers each inject one of ${concreteCount} concrete ${provider.name.toLowerCase()}${concreteCount === 1 ? "" : "s"} via a per-injection qualifier — that is why the fan-out is so wide.`}
+                  {`"${provider.name}" is a DI injection-token category (e.g. TypeORM @InjectRepository / Mongoose @InjectModel), not a single provider. Its ${consumers.length} consumers each inject one of ${concreteCount} concrete ${provider.name.toLowerCase()}${concreteCount === 1 ? "" : "s"} via a per-injection qualifier — that is why the fan-out is so wide.`}
                 </TooltipContent>
               </Tooltip>
             </TooltipProvider>
           )}
           <span
             className="ml-auto text-[11px] text-text-4 tabular-nums shrink-0"
-            title={`injected into ${provider.consumers.length} consumer(s)`}
+            title={`injected into ${consumers.length} consumer(s)`}
           >
-            {provider.consumers.length} consumer{provider.consumers.length === 1 ? "" : "s"}
+            {consumers.length} consumer{consumers.length === 1 ? "" : "s"}
           </span>
         </div>
         <EntityRefLine
@@ -382,8 +384,8 @@ function ProviderCard({
             <ChevronRight size={12} className={cn("transition-transform", open && "rotate-90")} />
             {open
               ? "Show fewer"
-              : `Show ${provider.consumers.length - COLLAPSE_AT} more consumer${
-                  provider.consumers.length - COLLAPSE_AT === 1 ? "" : "s"
+              : `Show ${consumers.length - COLLAPSE_AT} more consumer${
+                  consumers.length - COLLAPSE_AT === 1 ? "" : "s"
                 }`}
           </button>
         )}
@@ -401,7 +403,7 @@ function providerMatches(provider: DIProvider, q: string): boolean {
   if (!q) return true;
   const hay = (s?: string) => (s || "").toLowerCase().includes(q);
   if (hay(provider.name) || hay(provider.source_file)) return true;
-  return provider.consumers.some(
+  return (provider.consumers ?? []).some(
     (c) => hay(c.name) || hay(c.source_file) || hay(c.qualifier),
   );
 }
@@ -411,33 +413,35 @@ function DIBody({ data }: { data: DIReport }) {
   const [query, setQuery] = useState("");
   const searchRef = useRef<HTMLInputElement>(null);
 
+  const allGroups = data.groups ?? [];
+
   // Single-repo groups drop the repo chip entirely (#4504), matching other
   // views' convention; multi-repo keeps a single right-anchored chip.
   const multiRepo = useMemo(() => {
     const repos = new Set<string>();
-    for (const g of data.groups)
-      for (const p of g.providers) {
+    for (const g of allGroups)
+      for (const p of g.providers ?? []) {
         if (p.repo) repos.add(p.repo);
-        for (const c of p.consumers) if (c.repo) repos.add(c.repo);
+        for (const c of p.consumers ?? []) if (c.repo) repos.add(c.repo);
       }
     return repos.size > 1;
-  }, [data.groups]);
+  }, [allGroups]);
 
   const q = query.trim().toLowerCase();
 
   const filteredGroups = useMemo(() => {
     const byFw =
       framework === "all"
-        ? data.groups
-        : data.groups.filter((g) => g.framework === framework);
+        ? allGroups
+        : allGroups.filter((g) => g.framework === framework);
     if (!q) return byFw;
     return byFw
       .map((g) => {
-        const providers = g.providers.filter((p) => providerMatches(p, q));
+        const providers = (g.providers ?? []).filter((p) => providerMatches(p, q));
         return { ...g, providers, count: providers.length };
       })
       .filter((g) => g.providers.length > 0);
-  }, [data.groups, framework, q]);
+  }, [allGroups, framework, q]);
 
   const shownProviderCount = useMemo(
     () => filteredGroups.reduce((n, g) => n + g.providers.length, 0),
@@ -451,7 +455,7 @@ function DIBody({ data }: { data: DIReport }) {
         <SummaryStat label="Providers" value={data.total_providers} />
         <SummaryStat label="Consumers" value={data.total_consumers} />
         <SummaryStat label="Injections" value={data.total_injections} />
-        <SummaryStat label="Frameworks" value={data.frameworks.length} />
+        <SummaryStat label="Frameworks" value={(data.frameworks ?? []).length} />
       </div>
 
       {/* Search */}
@@ -472,13 +476,13 @@ function DIBody({ data }: { data: DIReport }) {
       </div>
 
       {/* Framework filter */}
-      {data.groups.length > 1 && (
+      {allGroups.length > 1 && (
         <div className="flex flex-wrap items-center gap-2">
           <ListFilter size={13} className="text-text-4" />
           <Pill active={framework === "all"} onClick={() => setFramework("all")}>
             All ({data.total_providers})
           </Pill>
-          {data.groups.map((g) => (
+          {allGroups.map((g) => (
             <Pill
               key={g.framework || "—"}
               active={framework === g.framework}
@@ -510,7 +514,7 @@ function DIBody({ data }: { data: DIReport }) {
                 </span>
               </div>
               <div className="space-y-2">
-                {g.providers.map((p) => (
+                {(g.providers ?? []).map((p) => (
                   <ProviderCard
                     key={`${g.framework}:${p.entity_id}`}
                     provider={p}

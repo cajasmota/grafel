@@ -197,9 +197,10 @@ export default function GraphScreen() {
   // Edge-kind filter applied client-side (kinds are cheap to filter locally).
   const kindFilteredEdges = useMemo(() => {
     if (!data) return [];
+    const edges = data.edges ?? [];
     // Fast path: every selectable kind enabled → no filtering needed.
-    if (s.enabledEdgeKinds.size === ALL_EDGE_KINDS.length) return data.edges;
-    return data.edges.filter((e) => s.enabledEdgeKinds.has(e.kind as EdgeKind));
+    if (s.enabledEdgeKinds.size === ALL_EDGE_KINDS.length) return edges;
+    return edges.filter((e) => s.enabledEdgeKinds.has(e.kind as EdgeKind));
   }, [data, s.enabledEdgeKinds]);
 
   const allNodes = data?.nodes ?? [];

@@ -880,21 +880,29 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
   const [dagMaximized, setDagMaximized] = useState(false);
   const dagVerb = verbFilter !== "all" ? verbFilter : detail.verbs[0];
 
-  // Filter verb-scoped data
+  // Filter verb-scoped data. Backend slice fields can arrive as JSON null, so
+  // coalesce before filtering/mapping.
+  const parameters = detail.parameters ?? [];
+  const responseShapes = detail.response_shapes ?? [];
+  const handlers = detail.handlers ?? [];
+  const inboundFetches = detail.inbound_fetches ?? [];
+  const sideEffects = detail.side_effects ?? [];
+  const tests = detail.tests ?? [];
+
   const filteredParams =
     verbFilter === "all"
-      ? detail.parameters
-      : detail.parameters.filter((p) => !p.verbs || p.verbs.includes(verbFilter as HttpVerb));
+      ? parameters
+      : parameters.filter((p) => !p.verbs || p.verbs.includes(verbFilter as HttpVerb));
 
   const filteredShapes =
     verbFilter === "all"
-      ? detail.response_shapes
-      : detail.response_shapes.filter((s) => s.verb === verbFilter);
+      ? responseShapes
+      : responseShapes.filter((s) => s.verb === verbFilter);
 
   const filteredHandlers =
     verbFilter === "all"
-      ? detail.handlers
-      : detail.handlers.filter((h) => h.verb === verbFilter);
+      ? handlers
+      : handlers.filter((h) => h.verb === verbFilter);
 
   const totalDownstream =
     (detail.outbound.db?.length ?? 0) +
@@ -1133,17 +1141,17 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
           <SectionHeader
             icon={<Box size={14} />}
             title="Called by"
-            count={detail.inbound_fetches.length}
+            count={inboundFetches.length}
             infoText="Inbound HTTP calls — code in OTHER repos that fetches this endpoint via http_endpoint_call edges."
             open={openSections.calledby}
             onToggle={() => toggleSection("calledby")}
           />
           {openSections.calledby && (
             <div className="py-1">
-              {detail.inbound_fetches.length === 0 ? (
+              {inboundFetches.length === 0 ? (
                 <p className="px-4 py-2 text-xs text-text-4">None</p>
               ) : (
-                detail.inbound_fetches.map((e, i) => <EntityRow key={i} entity={e} />)
+                inboundFetches.map((e, i) => <EntityRow key={i} entity={e} />)
               )}
             </div>
           )}
@@ -1217,7 +1225,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
             count={
               (detail.effective_effects?.length ?? 0) > 0
                 ? detail.effective_effects!.length
-                : detail.side_effects.length
+                : sideEffects.length
             }
             infoText="DB writes, queue publishes, file writes, or other observable mutations performed by this endpoint — effective effects aggregated transitively over the handler's downstream calls, so effects performed by a delegated service still show here (tagged 'via downstream')."
             open={openSections.sideeffects}
@@ -1226,7 +1234,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
           {openSections.sideeffects && (
             <div className="py-1">
               {(detail.effective_effects?.length ?? 0) === 0 &&
-              detail.side_effects.length === 0 ? (
+              sideEffects.length === 0 ? (
                 <p className="px-4 py-2 text-xs text-text-4">None</p>
               ) : (
                 <>
@@ -1237,7 +1245,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
                       ))}
                     </div>
                   )}
-                  {detail.side_effects.map((e, i) => (
+                  {sideEffects.map((e, i) => (
                     <EntityRow key={i} entity={e} />
                   ))}
                 </>
@@ -1251,17 +1259,17 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
           <SectionHeader
             icon={<TestTube size={14} />}
             title="Tests"
-            count={detail.tests.length}
+            count={tests.length}
             infoText="Test cases that exercise this endpoint, found via REFERENCES edges from test files."
             open={openSections.tests}
             onToggle={() => toggleSection("tests")}
           />
           {openSections.tests && (
             <div className="py-1">
-              {detail.tests.length === 0 ? (
+              {tests.length === 0 ? (
                 <p className="px-4 py-2 text-xs text-text-4">None</p>
               ) : (
-                detail.tests.map((e, i) => <EntityRow key={i} entity={e} />)
+                tests.map((e, i) => <EntityRow key={i} entity={e} />)
               )}
             </div>
           )}
