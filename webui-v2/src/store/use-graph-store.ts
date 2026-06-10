@@ -284,6 +284,16 @@ interface GraphState {
   enabledEdgeKinds: Set<EdgeKind>;
   activeRepos: Set<string> | null; // null = all
   lod: LodLevel;
+  /**
+   * #4467 — minimum RENDERED degree a node must have to be shown. Computed from
+   * the currently rendered edge set (after the edge-kind filter), so it respects
+   * the user's edge-kind toggles and stays honest. 0 = show everything (default),
+   * 1 = hide true zero-edge orphans, 2 = also hide degree-1 leaf nodes. Hiding is
+   * always surfaced in the low-degree badge so it's explicit + reversible. This
+   * DE-EMPHASIS/hide is purely a readability aid; the underlying missing-edge
+   * extraction bugs are fixed separately.
+   */
+  minDegree: number;
 
   // View knobs
   colorMode: ColorMode;
@@ -331,6 +341,8 @@ interface GraphState {
   toggleRepo: (repo: string) => void;
   clearRepos: () => void;
   setLod: (lod: LodLevel) => void;
+  /** #4467 — set the min-degree threshold (clamped to 0..2). */
+  setMinDegree: (d: number) => void;
   setColorMode: (m: ColorMode) => void;
   setGroupBy: (m: GroupByMode) => void;
   /**
@@ -380,6 +392,10 @@ export const useGraphStore = create<GraphState>((set) => ({
   // tiers via the LOD control.
   lod: "high",
 
+  // #4467 — show everything by default; low-degree nodes are de-emphasized
+  // (smaller + dimmer) rather than hidden, so the default view is honest.
+  minDegree: 0,
+
   colorMode: "repo",
   groupBy: "repo",
   groupingTouched: false,
@@ -420,6 +436,7 @@ export const useGraphStore = create<GraphState>((set) => ({
     }),
   clearRepos: () => set({ activeRepos: null }),
   setLod: (lod) => set({ lod }),
+  setMinDegree: (d) => set({ minDegree: Math.max(0, Math.min(2, Math.round(d))) }),
   setColorMode: (colorMode) => set({ colorMode, groupingTouched: true }),
   setGroupBy: (groupBy) => set({ groupBy, groupingTouched: true }),
   applyMonorepoDefaults: (isMonorepo) =>
@@ -464,6 +481,8 @@ export const useGraphStore = create<GraphState>((set) => ({
       activeRepos: null,
       // Fix #1599: clearing filters returns to the full-graph default (HIGH).
       lod: "high",
+      // #4467 — clearing filters returns to "show everything".
+      minDegree: 0,
     }),
   resetView: () =>
     set({

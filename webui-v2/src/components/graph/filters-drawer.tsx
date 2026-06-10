@@ -38,6 +38,16 @@ const EDGE_KIND_GROUPS: { title: string; kinds: EdgeKind[] }[] = [
 
 const LODS: LodLevel[] = ["low", "mid", "high"];
 
+// #4467 — min-degree quick toggles. 0 = show all (default), 1 = hide true
+// zero-edge orphans, 2 = also hide degree-1 leaves (DTO members / types / config
+// that read as a misleading "orphan ring"). Always reversible; hiding is also
+// surfaced in the on-canvas low-degree badge.
+const MIN_DEGREES: { value: number; label: string; hint: string }[] = [
+  { value: 0, label: "All", hint: "Show every node (default)" },
+  { value: 1, label: "≥1", hint: "Hide unconnected (zero-edge) nodes" },
+  { value: 2, label: "≥2", hint: "Also hide degree-1 leaf nodes" },
+];
+
 export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
   const filtersOpen = useGraphStore((s) => s.filtersOpen);
   const setFiltersOpen = useGraphStore((s) => s.setFiltersOpen);
@@ -47,6 +57,8 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
   const toggleRepo = useGraphStore((s) => s.toggleRepo);
   const lod = useGraphStore((s) => s.lod);
   const setLod = useGraphStore((s) => s.setLod);
+  const minDegree = useGraphStore((s) => s.minDegree);
+  const setMinDegree = useGraphStore((s) => s.setMinDegree);
   const clearAllFilters = useGraphStore((s) => s.clearAllFilters);
 
   return (
@@ -145,6 +157,36 @@ export function FiltersDrawer({ repos }: { repos: GraphRepo[] }) {
                 </button>
               ))}
             </div>
+          </section>
+
+          <section>
+            <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-text-3">
+              Min degree
+            </h4>
+            <div className="grid grid-cols-3 gap-1">
+              {MIN_DEGREES.map((m) => (
+                <button
+                  key={m.value}
+                  onClick={() => setMinDegree(m.value)}
+                  aria-pressed={minDegree === m.value}
+                  title={m.hint}
+                  className={`h-7 rounded-md border text-xs font-medium transition-colors ${
+                    minDegree === m.value
+                      ? "border-transparent bg-accent-soft text-accent-strong"
+                      : "border-border bg-surface text-text-2 hover:bg-surface-2"
+                  }`}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+            <p className="mt-1.5 text-xs text-text-3">
+              {minDegree === 0
+                ? "Showing all nodes. Low-degree nodes are de-emphasized, not hidden."
+                : minDegree === 1
+                  ? "Hiding unconnected (zero-edge) nodes."
+                  : "Hiding unconnected + degree-1 leaf nodes."}
+            </p>
           </section>
 
           <TuningPanels />

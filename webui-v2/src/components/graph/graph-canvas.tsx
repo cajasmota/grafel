@@ -377,6 +377,24 @@ function GraphCanvasInner(
     [sortedDegrees],
   );
 
+  // #4467 — RENDERED degree + a single "primary neighbor" per node, derived from
+  // the CURRENT edge set (after the edge-kind filter). Rendered degree drives the
+  // low-degree de-emphasis (opacity) honestly w.r.t. the user's edge-kind toggles;
+  // primaryNeighbor lets us SEED a degree-1 node next to its one neighbor so the
+  // force layout settles it adjacent instead of flinging it to the orphan rim.
+  const renderedDegree = useMemo(() => {
+    const deg = new Map<string, number>();
+    const primary = new Map<string, string>();
+    for (const e of edges) {
+      deg.set(e.source, (deg.get(e.source) ?? 0) + 1);
+      deg.set(e.target, (deg.get(e.target) ?? 0) + 1);
+      // First-seen neighbor is the "primary" anchor for a would-be leaf.
+      if (!primary.has(e.source)) primary.set(e.source, e.target);
+      if (!primary.has(e.target)) primary.set(e.target, e.source);
+    }
+    return { deg, primary };
+  }, [edges]);
+
   // ── packed buffers ──────────────────────────────────────────────────────────
   const packed = useMemo(() => {
     const count = nodes.length;
@@ -458,6 +476,29 @@ function GraphCanvasInner(
         : (Math.random() - 0.5) * 1600;
     });
 
+    // #4467 — ANCHOR low-degree leaves next to their single neighbor. After the
+    // group-center seeding above, re-seed any node with rendered degree ≤ 1 right
+    // on top of its primary neighbor's seed (plus a tiny jitter). The strong
+    // link-spring then keeps that leaf tucked beside its parent instead of letting
+    // global repulsion fling it to the periphery — which is what made degree-1
+    // DTO/type/config nodes read as a misleading "orphan ring." A true zero-degree
+    // node (no primary neighbor) is left at its group-center seed. Runs in a second
+    // pass so every potential anchor already has a base position.
+    for (let i = 0; i < count; i++) {
+      const n = nodes[i];
+      if ((renderedDegree.deg.get(n.id) ?? 0) > 1) continue;
+      const nbId = renderedDegree.primary.get(n.id);
+      if (nbId === undefined) continue; // true orphan — keep its group-center seed
+      const j = idToIdx.get(nbId);
+      if (j === undefined) continue;
+      // Tight jitter so coincident leaves don't fully overlap, but stay glued to
+      // the neighbor (well inside the link-spring's rest distance).
+      const a = Math.random() * 2 * Math.PI;
+      const r = Math.random() * 24;
+      positions[i * 2] = positions[j * 2] + r * Math.cos(a);
+      positions[i * 2 + 1] = positions[j * 2 + 1] + r * Math.sin(a);
+    }
+
     // Fix #1607: the largest base-px size in the buffer (a hub). The zoom-driven
     // size updater uses this to set pointSizeScale so the LARGEST node is exactly
     // capped at render.maxPointSize px when zoomed in — preventing any blob.
@@ -466,9 +507,15 @@ function GraphCanvasInner(
     if (maxSizePx <= 0) maxSizePx = 1;
 
     return { positions, sizes, clusters, clusterStrength, maxSizePx };
-  }, [nodes, repoToIdx, groupCenters, groupBy, nodeSizing]);
+  }, [nodes, repoToIdx, groupCenters, groupBy, nodeSizing, renderedDegree, idToIdx]);
 
   // Node colors — re-read pastel scale from tokens.css so theme flows through.
+  // #4467 — ALSO encode rendered degree into per-node OPACITY: degree-1 leaves
+  // (DTO members, types, config) fade back so they recede instead of dominating
+  // the view as a bright "orphan ring," while well-connected structure stays at
+  // full opacity. The size buffer already boosts hubs (degBoost); opacity is the
+  // complementary lever that DIMS the low end. Uses the rendered degree (after the
+  // edge-kind filter) so it's consistent with the min-degree filter + badge.
   const packPointColors = useCallback((): Float32Array => {
     const { fill } = readPastelScale();
     const count = nodes.length;
@@ -486,10 +533,16 @@ function GraphCanvasInner(
       } else {
         rgba = pastelAt(fill, (repoToIdx.get(n.repo ?? "") ?? 0) + 1);
       }
-      writeNormalizedRGBA(out, i, rgba);
+      // #4467 — degree-based opacity, clamped to a gentle band so low-degree nodes
+      // recede but never vanish: deg 0 → 0.45×, deg 1 → ~0.6×, deg ≥ 6 → 1.0×.
+      // Multiplies the palette alpha (the global pointOpacity is applied on top by
+      // cosmos), so coloring is unchanged — only the perceived emphasis shifts.
+      const rdeg = renderedDegree.deg.get(n.id) ?? 0;
+      const degAlpha = Math.min(1, 0.45 + 0.55 * (Math.log10(rdeg + 1) / Math.log10(7)));
+      writeNormalizedRGBA(out, i, [rgba[0], rgba[1], rgba[2], rgba[3] * degAlpha]);
     }
     return out;
-  }, [nodes, colorMode, repoToIdx, moduleToIdx, degreePercentile]);
+  }, [nodes, colorMode, repoToIdx, moduleToIdx, degreePercentile, renderedDegree]);
 
   // Links — packed [src,tgt] + an edge CLASS per link (#1564-2):
   //   2 = cross-repo (bridge), 1 = cross-module (same repo, diff module),

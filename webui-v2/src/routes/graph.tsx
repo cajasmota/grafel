@@ -210,27 +210,71 @@ export default function GraphScreen() {
   // incident edges, so cosmos.gl never sees a 15k-edge star that freezes the
   // layout. Computed from the rendered edges (not the daemon `degree`) so it
   // respects the user's edge-kind toggles. No-op on normal graphs.
-  const { nodes, edges, prunedHubCount } = useMemo(() => {
-    const incident = new Map<string, number>();
-    for (const e of kindFilteredEdges) {
-      incident.set(e.source, (incident.get(e.source) ?? 0) + 1);
-      incident.set(e.target, (incident.get(e.target) ?? 0) + 1);
-    }
-    const prunedIds = new Set<string>();
-    for (const n of allNodes) {
-      if ((incident.get(n.id) ?? 0) > HUB_DEGREE_CAP) prunedIds.add(n.id);
-    }
-    if (prunedIds.size === 0) {
-      return { nodes: allNodes, edges: kindFilteredEdges, prunedHubCount: 0 };
-    }
-    return {
-      nodes: allNodes.filter((n) => !prunedIds.has(n.id)),
-      edges: kindFilteredEdges.filter(
-        (e) => !prunedIds.has(e.source) && !prunedIds.has(e.target),
-      ),
-      prunedHubCount: prunedIds.size,
-    };
-  }, [allNodes, kindFilteredEdges]);
+  const { nodes, edges, prunedHubCount, lowDegreeCount, orphanCount, hiddenLowDegreeCount } =
+    useMemo(() => {
+      const incident = new Map<string, number>();
+      for (const e of kindFilteredEdges) {
+        incident.set(e.source, (incident.get(e.source) ?? 0) + 1);
+        incident.set(e.target, (incident.get(e.target) ?? 0) + 1);
+      }
+      const prunedIds = new Set<string>();
+      for (const n of allNodes) {
+        if ((incident.get(n.id) ?? 0) > HUB_DEGREE_CAP) prunedIds.add(n.id);
+      }
+      // Nodes surviving the super-hub prune (the candidate render set).
+      const hubKept = prunedIds.size
+        ? allNodes.filter((n) => !prunedIds.has(n.id))
+        : allNodes;
+      const hubKeptEdges = prunedIds.size
+        ? kindFilteredEdges.filter(
+            (e) => !prunedIds.has(e.source) && !prunedIds.has(e.target),
+          )
+        : kindFilteredEdges;
+
+      // #4467 — count true orphans (rendered degree 0) and degree-1 leaves so the
+      // badge can report HOW MANY low-degree nodes exist, and apply the honest
+      // min-degree filter on top. Degree is the RENDERED degree (respects the
+      // edge-kind toggles), consistent with the canvas opacity de-emphasis.
+      let orphans = 0;
+      let leaves = 0;
+      for (const n of hubKept) {
+        const d = incident.get(n.id) ?? 0;
+        if (d === 0) orphans++;
+        else if (d === 1) leaves++;
+      }
+      const lowDegree = orphans + leaves;
+
+      // Apply the min-degree filter (default 0 = show everything). Hiding is always
+      // surfaced in the badge, so it stays explicit + reversible.
+      const minD = s.minDegree;
+      if (minD <= 0 && prunedIds.size === 0) {
+        return {
+          nodes: allNodes,
+          edges: kindFilteredEdges,
+          prunedHubCount: 0,
+          lowDegreeCount: lowDegree,
+          orphanCount: orphans,
+          hiddenLowDegreeCount: 0,
+        };
+      }
+      const keptNodes =
+        minD <= 0
+          ? hubKept
+          : hubKept.filter((n) => (incident.get(n.id) ?? 0) >= minD);
+      const keptIds = new Set(keptNodes.map((n) => n.id));
+      const keptEdges =
+        minD <= 0
+          ? hubKeptEdges
+          : hubKeptEdges.filter((e) => keptIds.has(e.source) && keptIds.has(e.target));
+      return {
+        nodes: keptNodes,
+        edges: keptEdges,
+        prunedHubCount: prunedIds.size,
+        lowDegreeCount: lowDegree,
+        orphanCount: orphans,
+        hiddenLowDegreeCount: hubKept.length - keptNodes.length,
+      };
+    }, [allNodes, kindFilteredEdges, s.minDegree]);
 
   // ── monorepo-aware default coloring/grouping (Fix #1532-1) ───────────────────
   // A monorepo is a single repo split into many modules. Repo grouping there is
@@ -406,7 +450,8 @@ export default function GraphScreen() {
     const isDefaultOn = STRUCTURAL_EDGE_KINDS.includes(k);
     return acc + (s.enabledEdgeKinds.has(k) === isDefaultOn ? 0 : 1);
   }, 0);
-  const activeFilterCount = (s.activeRepos?.size ?? 0) + edgeKindDeviations;
+  const activeFilterCount =
+    (s.activeRepos?.size ?? 0) + edgeKindDeviations + (s.minDegree > 0 ? 1 : 0);
 
   return (
     <div className="relative flex h-full flex-col">
@@ -653,8 +698,36 @@ export default function GraphScreen() {
               </div>
             ) : null}
 
-            <div className="pointer-events-none absolute bottom-3 left-3 z-20 rounded-md border border-border bg-surface/80 px-2 py-1 font-mono text-xs text-text-3 backdrop-blur-sm">
-              LOD: {lodLabel}
+            <div className="absolute bottom-3 left-3 z-20 flex flex-col items-start gap-1.5">
+              <div className="pointer-events-none rounded-md border border-border bg-surface/80 px-2 py-1 font-mono text-xs text-text-3 backdrop-blur-sm">
+                LOD: {lodLabel}
+              </div>
+              {/* #4467 — honest low-degree badge. The force layout pushes degree-1
+                  nodes to the periphery, which reads as a misleading "orphan ring";
+                  in reality almost all are degree-1 leaves (a single CONTAINS edge),
+                  not true orphans. This badge names the real counts and offers an
+                  explicit, reversible show/hide so nothing is ever silently dropped. */}
+              {lowDegreeCount > 0 ? (
+                <div className="flex items-center gap-1.5 rounded-md border border-border bg-surface/80 px-2 py-1 text-xs text-text-3 backdrop-blur-sm">
+                  <span className="tabular-nums">
+                    {(lowDegreeCount - orphanCount).toLocaleString()} low-degree
+                  </span>
+                  <span className="text-text-4">·</span>
+                  <span className="tabular-nums">{orphanCount.toLocaleString()} unconnected</span>
+                  {hiddenLowDegreeCount > 0 ? (
+                    <span className="tabular-nums text-amber-500">
+                      · {hiddenLowDegreeCount.toLocaleString()} hidden
+                    </span>
+                  ) : null}
+                  <button
+                    onClick={() => s.setMinDegree(s.minDegree > 0 ? 0 : 1)}
+                    className="ml-0.5 rounded border border-border bg-surface px-1.5 py-0.5 text-[0.7rem] font-medium text-text-2 hover:bg-surface-2"
+                    title="Toggle hiding of low-degree / unconnected nodes"
+                  >
+                    {s.minDegree > 0 ? "show" : "hide"}
+                  </button>
+                </div>
+              ) : null}
             </div>
 
             <div className="pointer-events-none absolute bottom-3 right-3 z-20 flex items-center gap-2 text-xs text-text-4">
