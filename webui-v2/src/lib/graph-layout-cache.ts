@@ -43,8 +43,19 @@ const PREFIX = "archigraph.v2.layout";
  * rendered collapsed on every reload. Keeping this in lock-step with DEFAULTS_VERSION
  * guarantees all v4 caches are a guaranteed miss; first load re-settles with current
  * forces (== Reset). Reload === Reset by construction.
+ *
+ * Fix #4492: bump to 6 — #4470 (low-degree leaf ANCHORING — seeding any rendered-
+ * degree-≤1 node on top of its single neighbor instead of in its group-center blob)
+ * changed the INITIAL-POSITION SEEDING and therefore the SETTLED GEOMETRY for the
+ * same node set, but neither version stamp was bumped. So a returning user's v5
+ * cached layout (baked WITHOUT the anchoring) still passed isLayoutHealthy and was
+ * PINNED STATIC on load (the doSettle cache path) — the force sim never ran, so the
+ * graph showed the old un-anchored layout and only "exploded" into the new spread
+ * after a manual Reset (which routes through kickFreshSettle). Bumping makes every
+ * v5 layout a guaranteed miss → first load runs the unified fresh settle. Reload ===
+ * Reset by construction. (Kept in lock-step with DEFAULTS_VERSION = 6.)
  */
-export const LAYOUT_VERSION = 5;
+export const LAYOUT_VERSION = 6;
 
 function fnv1a32(s: string): string {
   let h = 0x811c9dc5 >>> 0;

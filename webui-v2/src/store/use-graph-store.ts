@@ -208,7 +208,16 @@ const DEFAULT_ENABLED_EDGE_KINDS: EdgeKind[] = STRUCTURAL_EDGE_KINDS;
 // retuned). A stored v4 sizing/render blob (baseSize 90, pointSizeScale 0.22,
 // scalePointsOnZoom true) would be catastrophically wrong under the new model, so
 // discard it and adopt the new code defaults on next load — no manual Reset.
-const DEFAULTS_VERSION = 5;
+// Fix #4492: bump to 6 in LOCK-STEP with graph-layout-cache.LAYOUT_VERSION. #4470
+// changed the initial-position SEEDING (low-degree leaf anchoring), altering the
+// settled geometry for the same node set; the layout cache is scoped by
+// LAYOUT_VERSION (kept equal to this constant), so a v5→v6 bump invalidates every
+// pre-anchoring cached layout. Without it, a returning user's stale v5 layout was
+// pinned static on first load (sim never ran) and only Reset re-settled — the
+// "graph needs a manual Reset to lay out" bug. No DEFAULT_SIMULATION/sizing value
+// changed here, so persisted tuning is unaffected; this bump exists purely to keep
+// the two version stamps in lock-step per the documented protocol.
+const DEFAULTS_VERSION = 6;
 const VERSION_KEY = "ag.v2.graph.defaultsVersion";
 
 function readStoredVersion(): number {
