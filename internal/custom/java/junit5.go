@@ -125,6 +125,67 @@ var (
 	// count only (the per-assertion orphan nodes are the worst offender).
 	j5AssertionRE = regexp.MustCompile(
 		`(?m)\b(assert\w*|fail|verify|expectThrows|assertThrows)\s*\(`)
+
+	// ── Spring integration-test route-by-string capture (#4370) ──────────────
+	// Spring integration tests drive the app through HTTP by passing the route
+	// as a STRING to a test client, but no edge ever connected that route string
+	// to the http_endpoint_definition it exercises. These four patterns capture
+	// (verb, route) pairs that the shared resolve pass
+	// (engine.linkE2ERouteTestsToEndpoints, #4351/#4369) then matches against the
+	// cross-file endpoint index. Route templates carry Spring `{id}` placeholders
+	// and concrete ids alike — the resolver wildcards both.
+
+	// MockMvc: mockMvc.perform(post("/api/v1/inspections/123/items").content(...))
+	// The verb comes from the statically-imported MockMvcRequestBuilders factory
+	// (get/post/put/delete/patch), the route from its first string argument. The
+	// factory call sits inside perform(...) so we anchor on `perform(` to avoid
+	// capturing an unrelated `post(` helper. The route literal is the first
+	// argument; any UriComponentsBuilder / variable arg (non-quoted) is skipped
+	// downstream (route must start with `/`).
+	j5MockMvcRE = regexp.MustCompile(
+		`\.perform\s*\(\s*(get|post|put|delete|patch)\s*\(\s*"([^"\n\r]+)"`)
+
+	// WebTestClient: webTestClient.post().uri("/inspections/{id}", id).exchange()
+	// The verb is the method invoked on the client BEFORE `.uri(...)`; the route
+	// is the first string argument to `.uri(...)`. We capture the verb and route
+	// in one pass: `.<verb>()` immediately (allowing whitespace/newlines)
+	// followed by `.uri("...")`.
+	j5WebTestClientRE = regexp.MustCompile(
+		`(?s)\.(get|post|put|delete|patch)\s*\(\s*\)\s*\.uri\s*\(\s*"([^"\n\r]+)"`)
+
+	// TestRestTemplate / RestTemplate: restTemplate.getForEntity("/x/1", ...),
+	// postForObject(...), exchange("/x", HttpMethod.POST, ...), etc. The verb is
+	// encoded in the method NAME (getForEntity → GET, postForObject → POST). The
+	// route is the first string argument. `exchange(...)` carries the verb as an
+	// HttpMethod.* argument and is handled separately (j5RestTemplateExchangeRE).
+	j5RestTemplateRE = regexp.MustCompile(
+		`\b(getForObject|getForEntity|postForObject|postForEntity|postForLocation|put|delete|patchForObject)\s*\(\s*"([^"\n\r]+)"`)
+
+	// TestRestTemplate.exchange("/x/1", HttpMethod.POST, ...) — verb is the
+	// HttpMethod.* enum, which may appear as the 2nd (route-first) argument.
+	j5RestTemplateExchangeRE = regexp.MustCompile(
+		`\bexchange\s*\(\s*"([^"\n\r]+)"\s*,\s*HttpMethod\.(GET|POST|PUT|DELETE|PATCH)\b`)
+
+	// REST Assured: given()...when().post("/x") / .get("/x"). The verb is the
+	// terminal method, the route its first string argument. REST Assured's verb
+	// methods (get/post/put/delete/patch) are the same tokens as MockMvc's
+	// factory, but here they are invoked as a fluent terminal AFTER `when()` or
+	// directly on the request spec, with the route as the FIRST string arg. To
+	// avoid colliding with the MockMvc factory form (which is inside perform(...))
+	// we require the call NOT be the argument of perform — handled by capturing
+	// REST Assured separately and de-duplicating (verb,route) pairs across all
+	// patterns. We anchor on a `.` receiver so a bare static `post("/x")` (the
+	// MockMvc factory) is not double-counted as REST Assured.
+	j5RestAssuredRE = regexp.MustCompile(
+		`\.(get|post|put|delete|patch)\s*\(\s*"(/[^"\n\r]*)"\s*\)`)
+
+	// j5RestTemplateVerb maps a RestTemplate convenience-method name to its HTTP
+	// verb.
+	j5RestTemplateVerb = map[string]string{
+		"getForObject": "GET", "getForEntity": "GET",
+		"postForObject": "POST", "postForEntity": "POST", "postForLocation": "POST",
+		"put": "PUT", "delete": "DELETE", "patchForObject": "PATCH",
+	}
 )
 
 // ExtractJUnit5 runs the JUnit / TestNG extractor, emitting exactly one
@@ -216,6 +277,20 @@ func ExtractJUnit5(ctx PatternContext) PatternResult {
 		Provenance: "INFERRED_FROM_JUNIT5_TEST",
 		Ref:        suiteRef,
 		Properties: props,
+	}
+
+	// ── Spring route-by-string test calls (#4370) ───────────────────────────
+	// Capture every MockMvc / WebTestClient / TestRestTemplate / REST Assured
+	// route-by-string call and stamp the `VERB route` pairs onto THIS suite's
+	// `e2e_route_calls` property — the exact shape the shared resolve pass
+	// (engine.linkE2ERouteTestsToEndpoints, #4351/#4369) consumes to emit a
+	// finer-grained TESTS edge to the specific http_endpoint_definition the test
+	// exercises (complementing the SUT-class TESTS edge below). Resolution is
+	// deferred to resolve-time because only there is the cross-file endpoint
+	// index available — the @RestController defining the route lives in a
+	// different file than the test (merge-stable).
+	if routeCalls := collectSpringTestRouteCalls(source); len(routeCalls) > 0 {
+		suite.Properties["e2e_route_calls"] = strings.Join(routeCalls, "\n")
 	}
 
 	// ── TESTS edge to the production class under test (name affinity + ref) ──
@@ -342,4 +417,84 @@ func resolveJavaTestSubject(src, testClassName string) string {
 		return subject
 	}
 	return ""
+}
+
+// collectSpringTestRouteCalls extracts every Spring integration-test
+// route-by-string call from a JUnit/TestNG test file and returns de-duplicated
+// `VERB route` lines — the exact shape the shared resolve pass consumes
+// (engine.linkE2ERouteTestsToEndpoints, #4351/#4369). Four Spring test clients
+// are covered (#4370):
+//
+//	MockMvc:         mockMvc.perform(post("/api/v1/inspections/123/items")...)
+//	WebTestClient:   webTestClient.post().uri("/inspections/{id}", id).exchange()
+//	TestRestTemplate: restTemplate.getForEntity("/x/1", ...) / postForObject(...)
+//	                 restTemplate.exchange("/x", HttpMethod.POST, ...)
+//	REST Assured:    given().when().post("/x")
+//
+// The route is normalised to a path (scheme+authority and query/fragment
+// stripped, repeated slashes collapsed); Spring `{id}` templates and concrete
+// ids are preserved verbatim (the resolver wildcards `{id}`/`:id`/`<int:id>`
+// segments and tolerates the servlet context / `/api/vN` mount prefix). A route
+// that does not resolve to a leading-slash path (e.g. a UriComponentsBuilder- or
+// variable-built URL the regex never captured) is dropped — conservative,
+// matching the no-fabrication posture of the resolver.
+func collectSpringTestRouteCalls(source string) []string {
+	var out []string
+	seen := map[string]bool{}
+	add := func(verb, rawRoute string) {
+		route := normaliseSpringTestRoute(rawRoute)
+		if route == "" || !strings.HasPrefix(route, "/") {
+			return
+		}
+		line := strings.ToUpper(verb) + " " + route
+		if seen[line] {
+			return
+		}
+		seen[line] = true
+		out = append(out, line)
+	}
+
+	for _, m := range j5MockMvcRE.FindAllStringSubmatch(source, -1) {
+		add(m[1], m[2])
+	}
+	for _, m := range j5WebTestClientRE.FindAllStringSubmatch(source, -1) {
+		add(m[1], m[2])
+	}
+	for _, m := range j5RestTemplateRE.FindAllStringSubmatch(source, -1) {
+		if verb, ok := j5RestTemplateVerb[m[1]]; ok {
+			add(verb, m[2])
+		}
+	}
+	for _, m := range j5RestTemplateExchangeRE.FindAllStringSubmatch(source, -1) {
+		add(m[2], m[1]) // group 2 = HttpMethod verb, group 1 = route
+	}
+	for _, m := range j5RestAssuredRE.FindAllStringSubmatch(source, -1) {
+		add(m[1], m[2])
+	}
+	return out
+}
+
+// normaliseSpringTestRoute reduces a raw route literal to a path: strips a
+// scheme+authority prefix (http://localhost:8080/x → /x), drops a query string
+// / fragment, and collapses repeated slashes. Casing and path-param
+// placeholders ({id}) are left untouched (the resolver compares literals
+// case-insensitively and wildcards template segments). Returns "" when no path
+// remains.
+func normaliseSpringTestRoute(raw string) string {
+	p := strings.TrimSpace(raw)
+	if i := strings.Index(p, "://"); i >= 0 {
+		rest := p[i+3:]
+		if slash := strings.IndexByte(rest, '/'); slash >= 0 {
+			p = rest[slash:]
+		} else {
+			return ""
+		}
+	}
+	if q := strings.IndexAny(p, "?#"); q >= 0 {
+		p = p[:q]
+	}
+	for strings.Contains(p, "//") {
+		p = strings.ReplaceAll(p, "//", "/")
+	}
+	return p
 }
