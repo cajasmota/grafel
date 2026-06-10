@@ -342,6 +342,14 @@ func walk(
 				*out = append(*out, vs)
 			}
 		}
+		// #4430 — index constant COLLECTIONS (static-final Map.of/ImmutableMap
+		// maps & arrays, interface constant groups) as queryable SCOPE.Enum
+		// value-sets, the Java arm of the #4420/#4429 cross-language model.
+		if tn := childFieldText(node, "name", file.Content); tn != "" {
+			if body := node.ChildByFieldName("body"); body != nil {
+				*out = append(*out, buildJavaConstCollections(tn, body, file)...)
+			}
+		}
 		rec, ok := buildComponent(node, file, subtype, pkgName)
 		if ok {
 			// Issue #1996 — emit EXTENDS / IMPLEMENTS edges so the docgen
