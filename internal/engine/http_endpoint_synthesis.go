@@ -1887,25 +1887,101 @@ func synthesizeAkkaHTTP(content string, emit emitFn) {
 // Spring WebFlux (Java) — functional DSL routing (#3080)
 // ---------------------------------------------------------------------------
 
-// webFluxChainedSynthRe captures chained .GET("/path", ...) / .POST("/path", ...)
+// webFluxChainedSynthRe captures chained .GET("/path", handler) / .POST(...)
 // method calls in a RouterFunctions.route() builder chain. These are always
-// uppercase method names used as direct DSL verbs on the RequestPredicates API.
+// uppercase method names used as direct DSL verbs on the RouterFunctions API.
+//
+// Capture groups:
+//
+//	1: HTTP verb
+//	2: path string
+//	3: the handler argument (everything after the `"path",` up to the next
+//	   top-level `)`, `.`, or end-of-statement). #4384 — captured so a lambda
+//	   (`req -> ...`) can be synthesised as an inline handler and a method
+//	   reference (`this::create`, `handler::create`) can be resolved to the
+//	   named method, mirroring the JS #4324 / Go #4382 inline-handler fix.
+//
+// The handler group is OPTIONAL (`(?:...)?`) because the single-argument
+// predicate-builder shape `.GET("/path")` (handler supplied separately) also
+// occurs; an empty group 3 simply yields no handler signal.
 var webFluxChainedSynthRe = regexp.MustCompile(
-	`\.\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(\s*"([^"]+)"`)
+	`\.\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(\s*"([^"]+)"\s*(?:,\s*([^,)][^)]*?))?\s*\)`)
 
 // webFluxPredicateSynthRe captures the two-argument overload:
 //
 //	RouterFunctions.route(RequestPredicates.GET("/path"), handler)
-var webFluxPredicateSynthRe = regexp.MustCompile(
-	`\bRequestPredicates\s*\.\s*(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(\s*"([^"]+)"`)
-
-// synthesizeSpringWebFlux scans a Java file for Spring WebFlux functional-DSL
-// route registrations and emits one http_endpoint_definition per (verb, path)
-// pair.
+//	RouterFunctions.route(GET("/path"), handler)            (static import)
+//	...andRoute(GET("/path"), handler)
 //
-// Two forms are detected:
-//  1. Chained builder: RouterFunctions.route().GET("/path", handler)
-//  2. Static predicate: RouterFunctions.route(RequestPredicates.GET("/path"), handler)
+// Capture groups:
+//
+//	1: HTTP verb
+//	2: path string
+//	3: the handler argument (after the predicate's closing paren + comma, up
+//	   to the enclosing route(...) / andRoute(...) close paren). #4384.
+var webFluxPredicateSynthRe = regexp.MustCompile(
+	`(?:RequestPredicates\s*\.\s*)?\b(GET|POST|PUT|DELETE|PATCH|HEAD|OPTIONS)\s*\(\s*"([^"]+)"\s*\)\s*(?:,\s*([^,)][^)]*?))?\s*\)`)
+
+// webFluxNestRe captures `.nest(path("/prefix"), ...)` / `RouterFunctions
+// .nest(RequestPredicates.path("/prefix"), ...)` calls so the nested prefix can
+// be composed onto the routes declared inside the nest builder. #4384.
+//
+// Capture group 1: the nested path prefix string.
+var webFluxNestRe = regexp.MustCompile(
+	`\.\s*nest\s*\(\s*(?:RequestPredicates\s*\.\s*)?path\s*\(\s*"([^"]+)"`)
+
+// webFluxMethodRefHandler matches a Java method reference used as a functional
+// route handler — `this::create`, `handler::getUser`, `OrderHandler::list`,
+// `co.example.Handler::list`. The captured method name (group 1) is the bare
+// method symbol the endpoint resolves to. #4384.
+var webFluxMethodRefHandler = regexp.MustCompile(
+	`(?:[\w.$]+\s*::\s*)([\w$]+)\s*$`)
+
+// webFluxLambdaHandler matches a Java lambda used as a functional route handler
+// — `req -> ...`, `request -> ...`, `(req) -> ...`, `(ServerRequest r) -> ...`.
+// A lambda has no addressable symbol, so the endpoint gets a synthesised inline
+// handler (#4324 mechanism). #4384.
+var webFluxLambdaHandler = regexp.MustCompile(`->`)
+
+// classifyWebFluxHandler inspects the raw handler-argument text captured from a
+// functional-DSL route registration and returns the (refKind, refName) pair
+// makeEmit needs:
+//
+//   - method reference (`this::create`)  → ("SCOPE.Operation", "create") so the
+//     synthesis-time structural bridge resolves it to the named, same-file
+//     handler method (no inline stand-in — it is a real symbol).
+//   - lambda (`req -> ...`)              → (inlineHandlerRefKind, "") so makeEmit
+//     synthesises a merge-stable inline handler node + bridge.
+//   - unknown / absent                  → (inlineHandlerRefKind, "") — a
+//     functional route ALWAYS has a handler, so model it as inline rather than
+//     leaving the endpoint a handler-less graph island.
+func classifyWebFluxHandler(rawHandler string) (refKind, refName string) {
+	h := strings.TrimSpace(rawHandler)
+	if h == "" {
+		return inlineHandlerRefKind, ""
+	}
+	// Method reference takes precedence: `this::create` contains no `->`.
+	if m := webFluxMethodRefHandler.FindStringSubmatch(h); m != nil &&
+		!webFluxLambdaHandler.MatchString(h) {
+		return "SCOPE.Operation", m[1]
+	}
+	// Anything else with a `->` is a lambda; default everything else to inline.
+	return inlineHandlerRefKind, ""
+}
+
+// synthesizeSpringWebFlux scans a Java file for Spring WebFlux / WebMvc.fn
+// functional-DSL route registrations and emits one http_endpoint_definition per
+// (verb, path) pair, WITH a handler linkage (#4384):
+//
+//   - lambda handler (`req -> ...`)            → inline-handler synth + bridge
+//   - method-ref handler (`this::create`)      → bridge to the named method
+//
+// Forms detected:
+//  1. Chained builder:   RouterFunctions.route().GET("/path", handler)
+//  2. Static predicate:  RouterFunctions.route(GET("/path"), handler)
+//     ...andRoute(GET("/path"), handler)
+//  3. Nested prefix:     .nest(path("/api"), builder -> builder.GET("/x", h))
+//     — the "/api" prefix is composed onto every route inside the nest.
 //
 // Spring WebFlux uses `{param}` curly-brace path parameters (same as Spring
 // MVC), so FrameworkSpring is passed to Canonicalize.
@@ -1922,39 +1998,156 @@ func synthesizeSpringWebFlux(content string, emit emitFn) {
 		return
 	}
 
+	// Compute the nest prefix that applies at each byte offset. A `.nest(
+	// path("/prefix"), ...)` composes its prefix onto every route registered
+	// inside its builder lambda. We approximate the builder scope with the
+	// brace span that follows the nest call; routes whose offset falls inside
+	// that span get the prefix prepended. Multiple/sibling nests are handled
+	// independently and nested nests compose (longest enclosing span wins per
+	// level). This is a deliberately conservative static approximation — when a
+	// route is not inside any nest span it gets no prefix.
+	prefixAt := webFluxNestPrefixIndex(content)
+
 	seen := make(map[string]bool)
 
-	// Form 1: chained .GET/.POST/... verbs.
-	for _, m := range webFluxChainedSynthRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 3 {
-			continue
-		}
-		verb := m[1]
-		rawPath := m[2]
-		key := verb + ":" + rawPath
+	emitRoute := func(verb, rawPath, rawHandler string, offset int) {
+		fullPath := prefixAt(offset) + rawPath
+		key := verb + ":" + fullPath
 		if seen[key] {
-			continue
+			return
 		}
 		seen[key] = true
-		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, rawPath)
-		emit(verb, canonical, "spring_webflux", "Route", "")
+		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, fullPath)
+		refKind, refName := classifyWebFluxHandler(rawHandler)
+		emit(verb, canonical, "spring_webflux", refKind, refName)
 	}
 
-	// Form 2: RequestPredicates.GET("/path") — deduplicate against form 1.
-	for _, m := range webFluxPredicateSynthRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 3 {
+	// Form 2 FIRST: the predicate overload `route(GET("/p"), handler)` —
+	// its inner `GET("/p")` would also match the chained regex (form 1), so we
+	// claim it here first to capture the trailing handler argument, then
+	// dedup form 1 against it via `seen`.
+	for _, idx := range webFluxPredicateSynthRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
 			continue
 		}
-		verb := m[1]
-		rawPath := m[2]
-		key := verb + ":" + rawPath
-		if seen[key] {
-			continue
+		verb := content[idx[2]:idx[3]]
+		rawPath := content[idx[4]:idx[5]]
+		handler := ""
+		if idx[6] >= 0 {
+			handler = content[idx[6]:idx[7]]
 		}
-		seen[key] = true
-		canonical := httproutes.Canonicalize(httproutes.FrameworkSpring, rawPath)
-		emit(verb, canonical, "spring_webflux", "Route", "")
+		emitRoute(verb, rawPath, handler, idx[0])
 	}
+
+	// Form 1: chained .GET/.POST/... verbs with a handler argument.
+	for _, idx := range webFluxChainedSynthRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 6 {
+			continue
+		}
+		verb := content[idx[2]:idx[3]]
+		rawPath := content[idx[4]:idx[5]]
+		handler := ""
+		if idx[6] >= 0 {
+			handler = content[idx[6]:idx[7]]
+		}
+		emitRoute(verb, rawPath, handler, idx[0])
+	}
+}
+
+// webFluxNestPrefixIndex returns a function mapping a byte offset in content to
+// the composed `.nest(path("/prefix"), ...)` prefix that applies there. Each
+// nest call's scope is approximated by the balanced-brace `{...}` or balanced-
+// paren builder span that follows it; offsets inside that span inherit the
+// prefix, and enclosing nests compose (outer prefix + inner prefix). #4384.
+func webFluxNestPrefixIndex(content string) func(offset int) string {
+	type span struct {
+		start, end int
+		prefix     string
+	}
+	var spans []span
+	for _, idx := range webFluxNestRe.FindAllStringSubmatchIndex(content, -1) {
+		if len(idx) < 4 {
+			continue
+		}
+		prefix := content[idx[2]:idx[3]]
+		// Find the builder body that follows this nest call. Spring's nest
+		// builder is `builder -> { ... }` (block) or `builder -> builder...`
+		// (single expr). We scope to the balanced-paren span of the nest(...)
+		// call itself — every route registered as an argument of this nest
+		// lives within it. Start the balance at the nest's opening paren.
+		open := strings.IndexByte(content[idx[0]:], '(')
+		if open < 0 {
+			continue
+		}
+		start := idx[0] + open
+		end := matchBalancedParen(content, start)
+		if end <= start {
+			continue
+		}
+		spans = append(spans, span{start: start, end: end, prefix: prefix})
+	}
+	if len(spans) == 0 {
+		return func(int) string { return "" }
+	}
+	return func(offset int) string {
+		var composed string
+		// Compose all enclosing spans, outermost first (smallest start).
+		// Collect enclosing prefixes, then order by start ascending.
+		var enclosing []span
+		for _, s := range spans {
+			if offset > s.start && offset < s.end {
+				enclosing = append(enclosing, s)
+			}
+		}
+		// Sort by start ascending (outer → inner) so prefixes compose in order.
+		for i := 0; i < len(enclosing); i++ {
+			for j := i + 1; j < len(enclosing); j++ {
+				if enclosing[j].start < enclosing[i].start {
+					enclosing[i], enclosing[j] = enclosing[j], enclosing[i]
+				}
+			}
+		}
+		for _, s := range enclosing {
+			composed += s.prefix
+		}
+		return composed
+	}
+}
+
+// matchBalancedParen returns the offset just past the `)` that balances the `(`
+// at position open in content, or -1 if unbalanced. String literals are skipped
+// so a `)` inside a "..." does not throw off the count.
+func matchBalancedParen(content string, open int) int {
+	if open >= len(content) || content[open] != '(' {
+		return -1
+	}
+	depth := 0
+	inStr := false
+	for i := open; i < len(content); i++ {
+		c := content[i]
+		if inStr {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '(':
+			depth++
+		case ')':
+			depth--
+			if depth == 0 {
+				return i + 1
+			}
+		}
+	}
+	return -1
 }
 
 // ---------------------------------------------------------------------------
