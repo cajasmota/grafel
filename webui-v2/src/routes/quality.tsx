@@ -39,6 +39,7 @@ import {
   ChevronRight,
   Folder,
   FolderOpen,
+  FileCode2,
 } from "lucide-react";
 
 import {
@@ -70,6 +71,7 @@ import {
 import type {
   UncoveredEntity,
   DirCoverage,
+  FileCoverage,
   PackageEntry,
   RepoDepSummary,
   NPlusOneFinding,
@@ -322,44 +324,91 @@ interface CovTreeNode {
   depth: number;
   covered: number;
   total: number;
+  /** True when this node is a source file (deepest leaf), not a directory. */
+  isFile: boolean;
   children: CovTreeNode[];
 }
 
 /**
- * Build a nested folder tree from the flat per-directory coverage list.
- * Each leaf dir's covered/total counts are added to every ancestor so parent
- * folders report rolled-up aggregates. Intermediate folders that the backend
- * never emitted directly are synthesised so the hierarchy is complete.
+ * Build a nested folder tree from the flat per-file coverage list (falling
+ * back to the per-directory list when no files are available).
+ *
+ * Files are the deepest leaves: a file like `src/modules/aoc/aoc.controller.ts`
+ * nests under each of its directory segments, with the basename as a file leaf.
+ * Each file's covered/total counts roll up into every ancestor directory so
+ * folders report aggregates that match the backend's directory rollups.
+ * Intermediate folders the backend never emitted directly are synthesised so
+ * the hierarchy is complete.
  */
-function buildCoverageTree(dirs: DirCoverage[]): CovTreeNode[] {
-  const root: CovTreeNode = { name: "", path: "", depth: -1, covered: 0, total: 0, children: [] };
+function buildCoverageTree(dirs: DirCoverage[], files: FileCoverage[]): CovTreeNode[] {
+  const root: CovTreeNode = {
+    name: "",
+    path: "",
+    depth: -1,
+    covered: 0,
+    total: 0,
+    isFile: false,
+    children: [],
+  };
 
   const childByPath = new Map<string, CovTreeNode>();
-  const ensureChild = (parent: CovTreeNode, name: string): CovTreeNode => {
+  const ensureChild = (parent: CovTreeNode, name: string, isFile: boolean): CovTreeNode => {
     const path = parent.path ? `${parent.path}/${name}` : name;
     let node = childByPath.get(path);
     if (!node) {
-      node = { name, path, depth: parent.depth + 1, covered: 0, total: 0, children: [] };
+      node = {
+        name,
+        path,
+        depth: parent.depth + 1,
+        covered: 0,
+        total: 0,
+        isFile,
+        children: [],
+      };
       childByPath.set(path, node);
       parent.children.push(node);
     }
     return node;
   };
 
-  for (const d of dirs) {
-    const segments = (d.dir || "(root)").split("/").filter(Boolean);
-    if (segments.length === 0) segments.push("(root)");
-    let cursor = root;
-    for (const seg of segments) {
-      cursor = ensureChild(cursor, seg);
-      // Roll the leaf's counts up into this ancestor (and the leaf itself).
-      cursor.covered += d.covered;
-      cursor.total += d.total;
+  if (files.length > 0) {
+    // File-level tree: walk directory segments, then add the file basename as a
+    // leaf. Roll each file's counts up into every ancestor directory.
+    for (const f of files) {
+      const fileSegs = (f.file || "").split("/").filter(Boolean);
+      if (fileSegs.length === 0) continue;
+      const base = fileSegs[fileSegs.length - 1];
+      const dirSegs = fileSegs.slice(0, -1);
+      let cursor = root;
+      for (const seg of dirSegs) {
+        cursor = ensureChild(cursor, seg, false);
+        cursor.covered += f.covered;
+        cursor.total += f.total;
+      }
+      const fileNode = ensureChild(cursor, base, true);
+      fileNode.covered += f.covered;
+      fileNode.total += f.total;
+    }
+  } else {
+    // Fallback: directory-only tree (legacy payloads without by_file).
+    for (const d of dirs) {
+      const segments = (d.dir || "(root)").split("/").filter(Boolean);
+      if (segments.length === 0) segments.push("(root)");
+      let cursor = root;
+      for (const seg of segments) {
+        cursor = ensureChild(cursor, seg, false);
+        cursor.covered += d.covered;
+        cursor.total += d.total;
+      }
     }
   }
 
   const sortRec = (nodes: CovTreeNode[]) => {
-    nodes.sort((a, b) => a.name.localeCompare(b.name));
+    // Directories before files, then alphabetical.
+    nodes.sort((a, b) => {
+      if (a.isFile !== b.isFile) return a.isFile ? 1 : -1;
+      return a.name.localeCompare(b.name);
+    });
     nodes.forEach((n) => sortRec(n.children));
   };
   sortRec(root.children);
@@ -401,7 +450,9 @@ function CovTreeRow({
           ) : null}
         </span>
         <span className="shrink-0 text-text-4">
-          {hasChildren ? (
+          {node.isFile ? (
+            <FileCode2 size={13} className="text-text-3" />
+          ) : hasChildren ? (
             isOpen ? (
               <FolderOpen size={13} className="text-accent" />
             ) : (
@@ -435,8 +486,8 @@ function CovTreeRow({
   );
 }
 
-function CoverageTree({ dirs }: { dirs: DirCoverage[] }) {
-  const tree = useMemo(() => buildCoverageTree(dirs), [dirs]);
+function CoverageTree({ dirs, files }: { dirs: DirCoverage[]; files: FileCoverage[] }) {
+  const tree = useMemo(() => buildCoverageTree(dirs, files), [dirs, files]);
   // Default: top level expanded, deeper collapsed.
   const [expanded, setExpanded] = useState<Set<string>>(
     () => new Set(tree.map((n) => n.path)),
@@ -539,9 +590,10 @@ function CoverageTab({ groupId }: { groupId: string }) {
               <MetricInfo
                 hint={
                   <>
-                    Coverage rolled up into a folder tree. Each folder aggregates the
-                    covered ÷ total entity counts of everything beneath it; expand a
-                    folder to drill into subdirectories. Bar color: red &lt;50%, amber
+                    Coverage rolled up into a folder tree, drilling directory →
+                    file. Each folder aggregates the covered ÷ total entity counts
+                    of everything beneath it; expand a folder to reach its
+                    subdirectories and source files. Bar color: red &lt;50%, amber
                     50–80%, green 80%+.
                   </>
                 }
@@ -550,7 +602,7 @@ function CoverageTab({ groupId }: { groupId: string }) {
             <span className="text-[11px] text-text-4">expand to drill in</span>
           </CardHeader>
           <CardBody className="space-y-1.5">
-            <CoverageTree dirs={data.by_directory} />
+            <CoverageTree dirs={data.by_directory} files={data.by_file ?? []} />
           </CardBody>
         </Card>
       )}

@@ -68,6 +68,12 @@ type CoverageReport struct {
 	// directory path. Only directories with ≥1 production entity are included.
 	ByDirectory []DirCoverage `json:"by_directory"`
 
+	// ByFile contains per-file coverage statistics, sorted by file path. Only
+	// files with ≥1 production entity are included. Directory rollups in
+	// ByDirectory are sums of the files sharing their directory, so the
+	// frontend can nest files under their directory using the path segments.
+	ByFile []FileCoverage `json:"by_file"`
+
 	// ByModule contains per-module (Properties["module"]) coverage statistics.
 	// Only populated when entities carry the "module" property.
 	ByModule []ModuleCoverage `json:"by_module"`
@@ -99,6 +105,17 @@ type UncoveredEntity struct {
 
 // DirCoverage is per-directory coverage statistics.
 type DirCoverage struct {
+	Dir         string  `json:"dir"`
+	Total       int     `json:"total"`
+	Covered     int     `json:"covered"`
+	CoveragePct float64 `json:"coverage_pct"`
+}
+
+// FileCoverage is per-file coverage statistics. File is the full source path
+// (forward-slash normalised); Dir is its parent directory (matching the keys
+// in ByDirectory) so the frontend can nest files under directories.
+type FileCoverage struct {
+	File        string  `json:"file"`
 	Dir         string  `json:"dir"`
 	Total       int     `json:"total"`
 	Covered     int     `json:"covered"`
@@ -894,9 +911,16 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 		return report.UncoveredEntities[i].Name < report.UncoveredEntities[j].Name
 	})
 
-	// ── per-directory breakdown ───────────────────────────────────────────────
-	type dirStat struct{ total, covered int }
-	dirStats := make(map[string]*dirStat)
+	// ── per-directory & per-file breakdown ────────────────────────────────────
+	// Files are the deepest grouping; directory rollups are the sums of the
+	// files that live under them.
+	type covStat struct{ total, covered int }
+	dirStats := make(map[string]*covStat)
+	type fileStat struct {
+		dir            string
+		total, covered int
+	}
+	fileStats := make(map[string]*fileStat)
 
 	for id, e := range entByID {
 		if !prodIDs[id] {
@@ -904,11 +928,19 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 		}
 		d := dirOf(e.SourceFile)
 		if _, ok := dirStats[d]; !ok {
-			dirStats[d] = &dirStat{}
+			dirStats[d] = &covStat{}
 		}
 		dirStats[d].total++
+
+		f := filepath.ToSlash(e.SourceFile)
+		if _, ok := fileStats[f]; !ok {
+			fileStats[f] = &fileStat{dir: d}
+		}
+		fileStats[f].total++
+
 		if covered[id] > 0 {
 			dirStats[d].covered++
+			fileStats[f].covered++
 		}
 	}
 
@@ -922,6 +954,19 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 	}
 	sort.Slice(report.ByDirectory, func(i, j int) bool {
 		return report.ByDirectory[i].Dir < report.ByDirectory[j].Dir
+	})
+
+	for f, s := range fileStats {
+		report.ByFile = append(report.ByFile, FileCoverage{
+			File:        f,
+			Dir:         s.dir,
+			Total:       s.total,
+			Covered:     s.covered,
+			CoveragePct: pct(s.covered, s.total),
+		})
+	}
+	sort.Slice(report.ByFile, func(i, j int) bool {
+		return report.ByFile[i].File < report.ByFile[j].File
 	})
 
 	// ── per-module breakdown ──────────────────────────────────────────────────

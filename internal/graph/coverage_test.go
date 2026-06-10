@@ -275,6 +275,66 @@ func TestComputeCoverage_ByDirectory(t *testing.T) {
 	}
 }
 
+// TestComputeCoverage_ByFile checks per-file aggregation (the deepest tier)
+// and that directory rollups equal the sum of their files (#4552).
+func TestComputeCoverage_ByFile(t *testing.T) {
+	t.Parallel()
+	entities := []Entity{
+		{ID: "p1", Name: "Foo", Kind: "Function", SourceFile: "pkg/foo/foo.go"},
+		{ID: "p2", Name: "Foo2", Kind: "Function", SourceFile: "pkg/foo/foo.go"},
+		{ID: "p3", Name: "Bar", Kind: "Function", SourceFile: "pkg/foo/bar.go"},
+		{ID: "p4", Name: "Baz", Kind: "Function", SourceFile: "pkg/baz/baz.go"},
+		{ID: "t1", Name: "TestFoo", Kind: "Function", SourceFile: "pkg/foo/foo_test.go"},
+	}
+	rels := []Relationship{
+		{ID: "r1", FromID: "t1", ToID: "p1", Kind: "TESTS"},
+	}
+	report := ComputeCoverage(makeDoc(entities, rels))
+
+	fileMap := make(map[string]FileCoverage)
+	for _, f := range report.ByFile {
+		fileMap[f.File] = f
+	}
+	fooFile := fileMap["pkg/foo/foo.go"]
+	if fooFile.Total != 2 || fooFile.Covered != 1 {
+		t.Errorf("pkg/foo/foo.go want total=2 covered=1, got total=%d covered=%d",
+			fooFile.Total, fooFile.Covered)
+	}
+	if fooFile.Dir != "pkg/foo" {
+		t.Errorf("pkg/foo/foo.go dir want pkg/foo, got %q", fooFile.Dir)
+	}
+	barFile := fileMap["pkg/foo/bar.go"]
+	if barFile.Total != 1 || barFile.Covered != 0 {
+		t.Errorf("pkg/foo/bar.go want total=1 covered=0, got total=%d covered=%d",
+			barFile.Total, barFile.Covered)
+	}
+	bazFile := fileMap["pkg/baz/baz.go"]
+	if bazFile.Total != 1 || bazFile.Covered != 0 {
+		t.Errorf("pkg/baz/baz.go want total=1 covered=0, got total=%d covered=%d",
+			bazFile.Total, bazFile.Covered)
+	}
+
+	// Directory rollups must equal the sum of their files.
+	dirMap := make(map[string]DirCoverage)
+	for _, d := range report.ByDirectory {
+		dirMap[d.Dir] = d
+	}
+	fileSum := make(map[string]struct{ total, covered int })
+	for _, f := range report.ByFile {
+		s := fileSum[f.Dir]
+		s.total += f.Total
+		s.covered += f.Covered
+		fileSum[f.Dir] = s
+	}
+	for dir, d := range dirMap {
+		s := fileSum[dir]
+		if d.Total != s.total || d.Covered != s.covered {
+			t.Errorf("dir %q rollup want total=%d covered=%d (file sum), got total=%d covered=%d",
+				dir, s.total, s.covered, d.Total, d.Covered)
+		}
+	}
+}
+
 // TestComputeCoverage_ByModule checks per-module aggregation.
 func TestComputeCoverage_ByModule(t *testing.T) {
 	t.Parallel()

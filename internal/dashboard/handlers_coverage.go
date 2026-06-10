@@ -46,7 +46,11 @@ type GroupCoverageReport struct {
 	// the ?limit query parameter (default 200).
 	UncoveredEntities []graph.UncoveredEntity `json:"uncovered_entities"`
 	ByDirectory       []graph.DirCoverage     `json:"by_directory"`
-	ByModule          []graph.ModuleCoverage  `json:"by_module"`
+	// ByFile is the per-file breakdown (deepest grouping). Directory rollups in
+	// ByDirectory are sums of their files; the frontend nests files under their
+	// directory using the shared path segments.
+	ByFile   []graph.FileCoverage   `json:"by_file"`
+	ByModule []graph.ModuleCoverage `json:"by_module"`
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -90,8 +94,13 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	// Accumulate per-directory and per-module maps for aggregation.
 	type dirAccum struct{ total, covered int }
 	type modAccum struct{ total, covered int }
+	type fileAccum struct {
+		dir            string
+		total, covered int
+	}
 	dirAcc := make(map[string]*dirAccum)
 	modAcc := make(map[string]*modAccum)
+	fileAcc := make(map[string]*fileAccum)
 
 	// S8 (#2159): use the cached group to avoid per-request LoadGraphFromDir.
 	cachedGrpCov, _ := s.graphs.GetGroupCached(groupName)
@@ -136,6 +145,15 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 			}
 			dirAcc[d.Dir].total += d.Total
 			dirAcc[d.Dir].covered += d.Covered
+		}
+
+		// Merge per-file stats.
+		for _, f := range report.ByFile {
+			if _, ok := fileAcc[f.File]; !ok {
+				fileAcc[f.File] = &fileAccum{dir: f.Dir}
+			}
+			fileAcc[f.File].total += f.Total
+			fileAcc[f.File].covered += f.Covered
 		}
 
 		// Merge per-module stats.
@@ -201,6 +219,27 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Slice(result.ByDirectory, func(i, j int) bool {
 		return result.ByDirectory[i].Dir < result.ByDirectory[j].Dir
+	})
+
+	// ── build ByFile with the same optional dir prefix filter ─────────────────
+	for f, acc := range fileAcc {
+		if filterDir != "" && !strings.HasPrefix(acc.dir, filterDir) {
+			continue
+		}
+		covPct := 0.0
+		if acc.total > 0 {
+			covPct = 100.0 * float64(acc.covered) / float64(acc.total)
+		}
+		result.ByFile = append(result.ByFile, graph.FileCoverage{
+			File:        f,
+			Dir:         acc.dir,
+			Total:       acc.total,
+			Covered:     acc.covered,
+			CoveragePct: covPct,
+		})
+	}
+	sort.Slice(result.ByFile, func(i, j int) bool {
+		return result.ByFile[i].File < result.ByFile[j].File
 	})
 
 	// ── build ByModule with optional name filter ──────────────────────────────
