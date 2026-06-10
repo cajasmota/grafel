@@ -153,6 +153,7 @@ func buildGoEnumValueSet(constDecl *sitter.Node, src []byte, filePath string, na
 		members = append(members, extractor.EnumMember{
 			Name:  name,
 			Value: goConstSpecLiteral(spec, src),
+			Line:  int(spec.StartPoint().Row) + 1,
 		})
 	}
 

@@ -136,6 +136,13 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	// a same-file named type (data-model, epic #3628).
 	records = append(records, extractGoEnums(root, file.Content, file.Path)...)
 
+	// Additional Go constant-COLLECTION value-sets the same-file-named-type path
+	// above deliberately skips: untyped/foreign-typed grouped const blocks and
+	// package-level const maps (`var X = map[string]string{...}`). #4426.
+	records = append(records,
+		extractGoConstantSets(root, file.Content, file.Path,
+			collectNamedTypes(root, file.Content))...)
+
 	// ----------------------------------------------------------------
 	// 3. Import relationships — emitted as standalone SCOPE.Component
 	//    EntityRecord entries (one per import path). Not fanned out to
