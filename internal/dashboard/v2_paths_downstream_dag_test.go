@@ -472,6 +472,142 @@ func TestDownstreamDAG_NodeEnrichment(t *testing.T) {
 	}
 }
 
+// makeExternalDAGFixture extends the base shape with three call targets off the
+// service so we can assert external classification (#4598):
+//
+//	service --CALLS--> Repository.save                 (in-repo: NOT external)
+//	service --CALLS--> ext:typeorm  (Kind=External)    (resolved external placeholder)
+//	service --CALLS--> getRepository  (unstamped, props source_module=typeorm)
+//	                                                   (unresolved external → recovered name + pkg)
+//	service --CALLS--> save  (unstamped, name matches in-repo Repository.save's leaf? no)
+//
+// The in-repo "Repository.save" is a real entity; an unstamped CALLS to a name
+// that matches an in-repo definition must NOT be flagged external (resolution
+// gap, surfaced not mislabeled).
+func makeExternalDAGFixture() *DashGroup {
+	grp := makeDownstreamDAGFixture()
+	doc := grp.Repos["api"].Doc
+
+	doc.Entities = append(doc.Entities,
+		// Resolved external placeholder (as internal/external.Synthesize emits).
+		graph.Entity{ID: "ext:typeorm", Name: "typeorm", QualifiedName: "typeorm",
+			Kind: "SCOPE.External", Subtype: "package",
+			Metadata: map[string]interface{}{"is_external": true}},
+		// In-repo definition whose leaf name a later unstamped call will match.
+		graph.Entity{ID: "saveImpl", Name: "persistThing", Kind: "Operation",
+			SourceFile: "thing.repository.ts", StartLine: 3},
+	)
+	doc.Relationships = append(doc.Relationships,
+		// in-repo CALLS — must NOT be external.
+		graph.Relationship{FromID: "service", ToID: "saveImpl", Kind: "CALLS"},
+		// resolved external placeholder CALLS — external=true, package=typeorm.
+		graph.Relationship{FromID: "service", ToID: "ext:typeorm", Kind: "CALLS"},
+		// unstamped external CALLS carrying the package on the edge — external,
+		// name recovered from the id leaf, package from source_module.
+		graph.Relationship{FromID: "service", ToID: "createConnection", Kind: "CALLS",
+			Properties: map[string]string{"source_module": "typeorm"}},
+		// unstamped CALLS whose name matches an in-repo definition — false
+		// external: must stay non-external (resolution gap).
+		graph.Relationship{FromID: "service", ToID: "persistThing", Kind: "CALLS"},
+	)
+	return grp
+}
+
+// TestDownstreamDAG_ExternalClassification asserts #4598: external library
+// calls are flagged external=true with a package; in-repo calls are NOT; an
+// unstamped callee whose name matches an in-repo definition is a resolution
+// gap, not external.
+func TestDownstreamDAG_ExternalClassification(t *testing.T) {
+	ts := newPathsTestServer(t, makeExternalDAGFixture())
+	defer ts.Close()
+
+	dag := fetchDAG(t, ts, "depth=24")
+
+	// Resolved external placeholder: external + package.
+	ext := nodeByName(dag.Nodes, "typeorm")
+	if ext == nil {
+		t.Fatalf("external placeholder node missing; nodes=%v", nodeNames(dag.Nodes))
+	}
+	if !ext.External {
+		t.Error("resolved external placeholder must be external=true")
+	}
+	if ext.Package != "typeorm" {
+		t.Errorf("external package: want typeorm, got %q", ext.Package)
+	}
+
+	// Unstamped external callee with package on the edge: external + recovered
+	// name + package.
+	conn := nodeByName(dag.Nodes, "createConnection")
+	if conn == nil {
+		t.Fatalf("unstamped external callee missing; nodes=%v", nodeNames(dag.Nodes))
+	}
+	if !conn.External {
+		t.Error("unstamped external callee must be external=true")
+	}
+	if conn.Package != "typeorm" {
+		t.Errorf("unstamped external package: want typeorm, got %q", conn.Package)
+	}
+	if conn.Kind != "external" {
+		t.Errorf("unstamped external kind: want external, got %q", conn.Kind)
+	}
+
+	// In-repo call: must NOT be external and must have no package.
+	repo := nodeByName(dag.Nodes, "persistThing")
+	if repo == nil {
+		t.Fatalf("in-repo callee missing; nodes=%v", nodeNames(dag.Nodes))
+	}
+	if repo.External {
+		t.Error("in-repo call must NOT be external (false-external)")
+	}
+	if repo.Package != "" {
+		t.Errorf("in-repo call must have no package, got %q", repo.Package)
+	}
+
+	// The in-repo InspectionRepository.find node (resolved entity) is not external.
+	find := nodeByName(dag.Nodes, "InspectionRepository.find")
+	if find == nil {
+		t.Fatal("repository node missing")
+	}
+	if find.External {
+		t.Error("resolved in-repo entity must NOT be external")
+	}
+
+	// Resolution-gap node is surfaced honestly as "unresolved", not "external".
+	if repo.Kind != "unresolved" {
+		t.Errorf("false-external node kind: want unresolved, got %q", repo.Kind)
+	}
+
+	// Wire JSON of the in-repo node must omit the external/package keys
+	// (omitempty) — match on the key token with its colon to avoid colliding
+	// with an "external" value elsewhere.
+	raw, _ := json.Marshal(repo)
+	for _, k := range []string{`"external":`, `"package":`} {
+		if strings.Contains(string(raw), k) {
+			t.Errorf("in-repo node JSON must omit %s; got %s", k, raw)
+		}
+	}
+}
+
+// TestPackageRoot asserts the package-root reduction across the common module
+// path shapes the UI displays.
+func TestPackageRoot(t *testing.T) {
+	cases := map[string]string{
+		"typeorm":            "typeorm",
+		"@nestjs/common":     "@nestjs/common",
+		"@nestjs/common/foo": "@nestjs/common",
+		"node:fs":            "node:fs",
+		"django.db.models":   "django",
+		"lodash/fp":          "lodash",
+		"typeorm:getRepo":    "typeorm",
+		"":                   "",
+	}
+	for in, want := range cases {
+		if got := packageRoot(in); got != want {
+			t.Errorf("packageRoot(%q): want %q, got %q", in, want, got)
+		}
+	}
+}
+
 func nodeNames(nodes []v2DAGNode) []string {
 	out := make([]string, 0, len(nodes))
 	for _, n := range nodes {

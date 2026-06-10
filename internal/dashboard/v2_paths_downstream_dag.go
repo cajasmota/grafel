@@ -45,6 +45,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -100,6 +101,18 @@ type v2DAGNode struct {
 	// Collection is the collection/table name for a collection-terminal node
 	// (role=collection / JOINS_COLLECTION target).
 	Collection string `json:"collection,omitempty"`
+	// External marks a node whose call target is NOT an in-repo entity: a
+	// third-party dependency, a language builtin/stdlib symbol, or an
+	// unindexed reference. The frontend (#4597) badges these as origin-
+	// external and degrades gracefully when absent. A node is External ONLY
+	// when it is genuinely not an in-repo definition — a name that DOES match
+	// an in-repo entity is a resolution gap, not external, and is left
+	// non-external (and logged) rather than mislabeled.
+	External bool `json:"external,omitempty"`
+	// Package is the originating dependency/package for an External node when
+	// resolvable (e.g. "typeorm", "@nestjs/common", "node:fs"), so the UI can
+	// show provenance. Empty when the package can't be determined.
+	Package string `json:"package,omitempty"`
 	// CollapsedChildren are the low-level builder/predicate calls collapsed
 	// into this node in spine mode (eq/gte/in/$lookup helpers, …). Empty in
 	// full mode. The frontend renders an expander; expanding does NOT need a
@@ -328,6 +341,7 @@ func candLess(a, b *dagRoot) bool {
 type dagBuilder struct {
 	repo            *DashRepo
 	byID            map[string]*graph.Entity
+	byName          map[string]bool // lower-cased in-repo entity names (false-external check)
 	out             map[string][]dagOutEdge
 	mode            string
 	maxDepth        int
@@ -352,12 +366,18 @@ type dagBuilder struct {
 type dagOutEdge struct {
 	to   string // local (un-prefixed) target id
 	kind string
+	// props carries the originating relationship's Properties so the node
+	// builder can recover a label for an unstamped external callee whose name
+	// was dropped from the id (chained/computed calls: the resolver may stamp
+	// the raw callee text under "dynamic_target" / "callee" / "imported_name").
+	props map[string]string
 }
 
 func newDAGBuilder(repo *DashRepo, mode string, maxDepth int, includeSemantic bool) *dagBuilder {
 	b := &dagBuilder{
 		repo:            repo,
 		byID:            make(map[string]*graph.Entity, len(repo.Doc.Entities)),
+		byName:          make(map[string]bool, len(repo.Doc.Entities)),
 		out:             make(map[string][]dagOutEdge),
 		mode:            mode,
 		maxDepth:        maxDepth,
@@ -368,6 +388,14 @@ func newDAGBuilder(repo *DashRepo, mode string, maxDepth int, includeSemantic bo
 	for i := range repo.Doc.Entities {
 		e := &repo.Doc.Entities[i]
 		b.byID[e.ID] = e
+		// Index in-repo definition names (NOT external placeholders) for the
+		// false-external check: if a dropped/unstamped callee name matches one
+		// of these, it's a resolution gap, not a genuine external.
+		if !isExternalEntity(e) {
+			if nm := strings.ToLower(strings.TrimSpace(e.Name)); nm != "" {
+				b.byName[nm] = true
+			}
+		}
 	}
 	// Build the forward adjacency over the kinds the DAG cares about:
 	// CALLS (the spine) + the handler-continuation reversal of
@@ -388,18 +416,18 @@ func newDAGBuilder(repo *DashRepo, mode string, maxDepth int, includeSemantic bo
 			if r.FromID == r.ToID {
 				continue
 			}
-			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: "CALLS"})
+			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: "CALLS", props: r.Properties})
 		case r.Kind == "IMPLEMENTS" && defKinds[r.ToID]:
 			// reverse: definition --(handler continuation)--> handler.
 			if r.FromID == r.ToID {
 				continue
 			}
-			b.out[r.ToID] = append(b.out[r.ToID], dagOutEdge{to: r.FromID, kind: handlerContEdgeKind})
+			b.out[r.ToID] = append(b.out[r.ToID], dagOutEdge{to: r.FromID, kind: handlerContEdgeKind, props: r.Properties})
 		case includeSemantic && isDAGSemanticKind(r.Kind):
 			if r.FromID == r.ToID {
 				continue
 			}
-			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: strings.ToUpper(r.Kind)})
+			b.out[r.FromID] = append(b.out[r.FromID], dagOutEdge{to: r.ToID, kind: strings.ToUpper(r.Kind), props: r.Properties})
 		}
 	}
 	// Deterministic adjacency ordering: by (kind, target). Stable so the BFS
@@ -425,7 +453,7 @@ const handlerContEdgeKind = "HANDLER_CONTINUATION"
 // dedupe, spine-collapse, and the depth/fan-out/node caps.
 func (b *dagBuilder) build(root *dagRoot) {
 	b.rootID = b.pid(root.ent.ID)
-	b.addNode(root.ent.ID, "endpoint", false)
+	b.addNode(root.ent.ID, "endpoint", false, dagOutEdge{})
 
 	type frontierItem struct {
 		local string
@@ -469,7 +497,7 @@ func (b *dagBuilder) build(root *dagRoot) {
 
 			role := b.roleFor(e.to, e.kind)
 			terminal := b.isTerminal(e.to)
-			b.addNode(e.to, role, terminal)
+			b.addNode(e.to, role, terminal, e)
 			b.addEdge(curPID, b.pid(e.to), e.kind)
 
 			if len(b.nodes) >= dagMaxNodes {
@@ -490,8 +518,11 @@ func (b *dagBuilder) build(root *dagRoot) {
 // pid returns the repo-prefixed id for a local entity id.
 func (b *dagBuilder) pid(local string) string { return dashPrefixedID(b.repo.Slug, local) }
 
-// addNode inserts (or, on convergence, leaves) a node for local id.
-func (b *dagBuilder) addNode(local, role string, terminal bool) {
+// addNode inserts (or, on convergence, leaves) a node for local id. `via` is
+// the edge that reached this node (zero-valued for the root) — its kind and
+// properties drive external classification and name recovery for unstamped
+// callees.
+func (b *dagBuilder) addNode(local, role string, terminal bool, via dagOutEdge) {
 	pid := b.pid(local)
 	if _, ok := b.nodes[pid]; ok {
 		return
@@ -508,12 +539,36 @@ func (b *dagBuilder) addNode(local, role string, terminal bool) {
 		n.File = e.SourceFile
 		n.Line = e.StartLine
 		b.enrichNode(n, e)
+		// A resolved entity may itself be a synthesised external placeholder
+		// (ext:<pkg>, Kind=External, metadata is_external). Stamp external +
+		// package so the UI badges provenance even though it IS a graph entity.
+		if isExternalEntity(e) {
+			n.External = true
+			n.Package = externalPackageOf(e)
+		}
 	} else {
-		// Far side of a semantic edge (e.g. Class:Inspection joined via
-		// JOINS_COLLECTION) may not be a stamped entity. Surface it with the id
-		// as the name so the leaf still renders (mirrors the #4288 fallback).
-		n.Name = leafNameFromID(local)
+		// Far side of an edge whose target isn't a stamped entity. Two cases:
+		//   (a) a semantic-edge leaf (Class:Inspection via JOINS_COLLECTION) —
+		//       a kinded id, NOT external; surface it by id (the #4288 fallback).
+		//   (b) an unresolved CALLS callee — a dependency / builtin / unindexed
+		//       symbol, OR a dropped chained/computed callee. These are external
+		//       UNLESS the recovered name matches an in-repo definition (then
+		//       it's a resolution gap, not external — surfaced, not mislabeled).
+		name := recoverExternalName(local, via)
+		n.Name = name
 		n.Kind = kindFromID(local)
+		if via.kind == "CALLS" && !b.isInRepoName(name) {
+			n.External = true
+			n.Kind = "external"
+			n.Package = packageFromEdge(local, via)
+		} else if via.kind == "CALLS" && b.isInRepoName(name) {
+			// False-external: the callee resolves by name to an in-repo
+			// definition the graph failed to bind. Surface (don't mark
+			// external) so the resolution gap is visible, not hidden. Label
+			// the kind "unresolved" rather than the misleading "external".
+			n.Kind = "unresolved"
+			dagLogResolutionGap(b.repo.Slug, local, name)
+		}
 	}
 	// Collection name for a collection-terminal node (the JOINS_COLLECTION
 	// data sink) — whether or not the target was a stamped entity. Lets a card
@@ -874,6 +929,144 @@ func isBuilderMethodName(name string) bool {
 		n = n[sc+2:]
 	}
 	return builderMethodNames[strings.ToLower(n)]
+}
+
+// ---------------------------------------------------------------------------
+// External classification + callee-name recovery (#4598)
+// ---------------------------------------------------------------------------
+
+// isExternalEntity reports whether a resolved graph entity is a synthesised
+// external placeholder: a third-party package / builtin / unindexed reference.
+// Recognised by any of the canonical signals the external synthesiser stamps
+// (internal/external.Synthesize): Kind=External, an "ext:" id prefix, or the
+// is_external metadata flag. Kept signal-driven (not name-driven) so it never
+// false-positives on an in-repo symbol that merely looks library-ish.
+func isExternalEntity(e *graph.Entity) bool {
+	if e == nil {
+		return false
+	}
+	if strings.EqualFold(dashStripScopePrefix(e.Kind), "External") {
+		return true
+	}
+	if strings.HasPrefix(e.ID, "ext:") {
+		return true
+	}
+	if e.Metadata != nil {
+		if v, ok := e.Metadata["is_external"].(bool); ok && v {
+			return true
+		}
+	}
+	return false
+}
+
+// externalPackageOf derives the originating package for a resolved external
+// placeholder entity. The synthesiser stores the canonical package as the
+// entity Name / QualifiedName and ids it as "ext:<canonical>" (canonical is
+// "typeorm", "@nestjs/common", "node:fs", or a dotted/colon "pkg.sub" form).
+// We return the package root, preferring an explicit source_module property
+// when present, else the ext-id payload, else the Name.
+func externalPackageOf(e *graph.Entity) string {
+	if e == nil {
+		return ""
+	}
+	if e.Properties != nil {
+		if m := strings.TrimSpace(e.Properties["source_module"]); m != "" {
+			return packageRoot(m)
+		}
+	}
+	if strings.HasPrefix(e.ID, "ext:") {
+		if p := packageRoot(e.ID[len("ext:"):]); p != "" {
+			return p
+		}
+	}
+	if e.QualifiedName != "" {
+		return packageRoot(e.QualifiedName)
+	}
+	return packageRoot(e.Name)
+}
+
+// packageFromEdge derives a package for an UNSTAMPED external callee from the
+// reaching CALLS edge's properties (source_module / receiver_package / a
+// pkg-shaped dynamic_target) or, failing that, the target id payload.
+func packageFromEdge(local string, via dagOutEdge) string {
+	if via.props != nil {
+		// "receiver_package" mirrors javascript.PropReceiverPackage; inlined to
+		// keep the dashboard decoupled from the extractor packages.
+		for _, k := range []string{"source_module", "receiver_package"} {
+			if v := strings.TrimSpace(via.props[k]); v != "" {
+				return packageRoot(v)
+			}
+		}
+	}
+	if strings.HasPrefix(local, "ext:") {
+		return packageRoot(local[len("ext:"):])
+	}
+	return ""
+}
+
+// packageRoot reduces a module/import path to its package root for UI display:
+// keeps a scoped npm package whole ("@nestjs/common" → "@nestjs/common"),
+// keeps a "node:fs" prefix whole, and otherwise takes the first path/dot
+// segment ("django.db.models" → "django", "lodash/fp" → "lodash").
+func packageRoot(s string) string {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return ""
+	}
+	if strings.HasPrefix(s, "@") { // scoped npm: @scope/pkg
+		parts := strings.SplitN(s, "/", 3)
+		if len(parts) >= 2 {
+			return parts[0] + "/" + parts[1]
+		}
+		return s
+	}
+	if strings.HasPrefix(s, "node:") {
+		return s
+	}
+	// First of '/' or '.' segment.
+	if i := strings.IndexAny(s, "/."); i > 0 {
+		return s[:i]
+	}
+	// A colon "pkg:leaf" canonical → keep the package half.
+	if i := strings.IndexByte(s, ':'); i > 0 {
+		return s[:i]
+	}
+	return s
+}
+
+// recoverExternalName recovers a display label for an unstamped callee node
+// whose name may have been dropped from the id (chained/computed calls). It
+// prefers the id-derived leaf; when that is empty it falls back to a raw
+// callee text the resolver may have parked on the reaching edge
+// (dynamic_target / callee / imported_name). Genuinely unrecoverable → "".
+func recoverExternalName(local string, via dagOutEdge) string {
+	if nm := leafNameFromID(local); nm != "" {
+		return nm
+	}
+	if via.props != nil {
+		for _, k := range []string{"dynamic_target", "callee", "imported_name", "target_name"} {
+			if v := strings.TrimSpace(via.props[k]); v != "" {
+				return leafNameFromID(v)
+			}
+		}
+	}
+	return ""
+}
+
+// isInRepoName reports whether a recovered callee name matches an in-repo
+// (non-external) definition — the false-external guard. Empty never matches.
+func (b *dagBuilder) isInRepoName(name string) bool {
+	if name == "" {
+		return false
+	}
+	return b.byName[strings.ToLower(strings.TrimSpace(name))]
+}
+
+// dagLogResolutionGap surfaces a callee that LOOKS external (no stamped entity)
+// but whose name matches an in-repo definition — a binding/resolution gap, not
+// a genuine external. Logged (not mislabeled) so the gap is visible.
+func dagLogResolutionGap(repo, local, name string) {
+	log.Printf("downstream-dag: resolution gap (not external): repo=%s callee_id=%q name=%q matches in-repo definition", repo, local, name)
 }
 
 // leafNameFromID derives a human label for an unstamped semantic-edge target id
