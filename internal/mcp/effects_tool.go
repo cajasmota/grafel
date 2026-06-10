@@ -38,6 +38,7 @@ import (
 
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/links"
+	"github.com/cajasmota/archigraph/internal/substrate"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
@@ -119,23 +120,29 @@ func (s *Server) handleEffects(_ context.Context, req mcpapi.CallToolRequest) (*
 	// pass; entity.Properties are only populated during an in-process run.
 	sidecar, _ := loadEffectsSidecar(groupName)
 
+	// #4423 — opt-in branches facet. Only computed when include=branches so
+	// the default effects payload stays byte-identical (no regression).
+	wantBranches := includeWants(req, "branches")
+
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
 		if r, ok := lg.Repos[rprefix]; ok && r.Doc != nil {
 			if e, ok := r.LabelIndex.ByID[local]; ok {
-				return jsonResult(buildEffectsPayload(r.Repo, e, sidecar)), nil
+				out := buildEffectsPayload(r.Repo, e, sidecar)
+				attachBranchesFacet(out, r, e, wantBranches)
+				return jsonResult(out), nil
 			}
 		}
 	}
 	// Collect every label/qname/id match across the considered repos.
 	type matchPair struct {
 		ent  *graph.Entity
-		repo string
+		repo *LoadedRepo
 	}
 	var matches []matchPair
 	for _, r := range repos {
 		for _, hit := range r.LabelIndex.LookupAll(key) {
-			matches = append(matches, matchPair{ent: hit, repo: r.Repo})
+			matches = append(matches, matchPair{ent: hit, repo: r})
 		}
 	}
 	if len(matches) == 0 {
@@ -145,10 +152,10 @@ func (s *Server) handleEffects(_ context.Context, req mcpapi.CallToolRequest) (*
 		out := make([]map[string]any, 0, len(matches))
 		for _, m := range matches {
 			out = append(out, map[string]any{
-				"id":             prefixedID(m.repo, m.ent.ID),
+				"id":             prefixedID(m.repo.Repo, m.ent.ID),
 				"qualified_name": m.ent.QualifiedName,
 				"label":          m.ent.Name,
-				"repo":           m.repo,
+				"repo":           m.repo.Repo,
 				"source_file":    m.ent.SourceFile,
 			})
 		}
@@ -159,7 +166,108 @@ func (s *Server) handleEffects(_ context.Context, req mcpapi.CallToolRequest) (*
 			"how_to_choose": "Re-call archigraph_effects with the prefixed id field (e.g. \"repo:1234abcd\").",
 		}), nil
 	}
-	return jsonResult(buildEffectsPayload(matches[0].repo, matches[0].ent, sidecar)), nil
+	out := buildEffectsPayload(matches[0].repo.Repo, matches[0].ent, sidecar)
+	attachBranchesFacet(out, matches[0].repo, matches[0].ent, wantBranches)
+	return jsonResult(out), nil
+}
+
+// includeWants reports whether the comma/space-separated `include` argument
+// requests facet. Accepts repeated facets ("branches,foo") and a bare match.
+func includeWants(req mcpapi.CallToolRequest, facet string) bool {
+	raw := argString(req, "include", "")
+	if raw == "" {
+		return false
+	}
+	for _, part := range strings.FieldsFunc(raw, func(r rune) bool { return r == ',' || r == ' ' }) {
+		if strings.EqualFold(strings.TrimSpace(part), facet) {
+			return true
+		}
+	}
+	return false
+}
+
+// attachBranchesFacet computes and attaches the #4423 `branches` facet to an
+// effects payload when requested. It reads the resolved function's source
+// window (StartLine..EndLine) from disk, selects the per-language branch
+// analyzer, and enumerates the function's except/early-return/env-gate/guard
+// branches. No-op when not requested (default output unchanged), when the
+// language has no registered analyzer (honest-partial), or when the source is
+// unreadable.
+func attachBranchesFacet(out map[string]any, lr *LoadedRepo, e *graph.Entity, want bool) {
+	if !want || out == nil || lr == nil || e == nil {
+		return
+	}
+	lang := substrate.LanguageForPath(e.SourceFile)
+	analyzer := substrate.BranchAnalyzerFor(lang)
+	if analyzer == nil {
+		// Honest-partial: tell the caller the facet is unsupported for this
+		// language rather than silently implying the function is branchless.
+		out["branches_supported"] = false
+		out["branches_note"] = fmt.Sprintf(
+			"branch classification not yet implemented for language %q (epic #4419); supported: %v",
+			lang, substrate.BranchLanguages())
+		return
+	}
+	start, end := branchSourceSpan(e)
+	if start <= 0 {
+		return
+	}
+	abs := e.SourceFile
+	if !filepath.IsAbs(abs) && lr.Path != "" {
+		abs = filepath.Join(lr.Path, e.SourceFile)
+	}
+	src, err := readRawSourceWindow(abs, start, end)
+	if err != nil || src == "" {
+		return
+	}
+	facets := analyzer(src, start)
+	out["branches_supported"] = true
+	out["branches"] = branchFacetsToJSON(facets)
+}
+
+// branchSourceSpan returns the [start,end] line window for an entity's body,
+// applying the same degenerate-span fallback handleGetNodeSource uses so a
+// synthetic end<=start entity still yields a usable window.
+func branchSourceSpan(e *graph.Entity) (int, int) {
+	start := e.StartLine
+	end := e.EndLine
+	if start <= 0 {
+		return 0, 0
+	}
+	if end <= start {
+		end = start + 400 // generous body fallback; analyzer self-bounds by indent
+	}
+	return start, end
+}
+
+// branchFacetsToJSON converts analyzer facets to the public JSON shape.
+func branchFacetsToJSON(facets []substrate.BranchFacet) []map[string]any {
+	out := make([]map[string]any, 0, len(facets))
+	for _, f := range facets {
+		m := map[string]any{
+			"kind":      string(f.Kind),
+			"condition": f.Condition,
+			"outcome":   string(f.Outcome),
+			"line":      f.Line,
+		}
+		if f.EnvVar != "" {
+			m["env_var"] = f.EnvVar
+		}
+		if f.Returns != nil {
+			r := map[string]any{}
+			if f.Returns.Status != "" {
+				r["status"] = f.Returns.Status
+			}
+			if f.Returns.Shape != "" {
+				r["shape"] = f.Returns.Shape
+			}
+			if len(r) > 0 {
+				m["returns"] = r
+			}
+		}
+		out = append(out, m)
+	}
+	return out
 }
 
 // buildEffectsPayload constructs the JSON-serialisable response body

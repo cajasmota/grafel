@@ -204,6 +204,7 @@ var sharedHelpers = map[string]bool{
 	"FromRequest":            true, // PaginationOpts.FromRequest — all its keys are declared
 	"emitActivity":           true,
 	"argMinConfidence":       true, // #2769 Phase 1C — shared min_confidence reader
+	"includeWants":           true, // #4423 — shared opt-in facet reader (include declared on archigraph_effects)
 }
 
 // argFuncNames is the set of arg-reader function names to match in the AST.
