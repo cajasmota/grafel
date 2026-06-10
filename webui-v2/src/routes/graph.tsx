@@ -141,6 +141,25 @@ export default function GraphScreen() {
   // (not the initial null) once mount completes.
   const liveCanvasHandle = canvasReady > 0 ? canvasRef.current : null;
 
+  // #4643 — "glowing N of M": the canvas reports how many nodes it actually
+  // glowed (capped to the in-view ≤200) vs how many the step matched. When the
+  // step is capped we surface it in the activity panel so a huge result set
+  // reads as a deliberate sample, not a bug. Cleared shortly after the glow.
+  const [glowCap, setGlowCap] = useState<{ shown: number; matched: number } | null>(null);
+  const glowCapTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const onGlowCap = useCallback((shown: number, matched: number) => {
+    if (glowCapTimerRef.current) clearTimeout(glowCapTimerRef.current);
+    setGlowCap(matched > shown ? { shown, matched } : null);
+    // Auto-clear after the glow decays so a stale "N of M" doesn't linger.
+    glowCapTimerRef.current = setTimeout(() => setGlowCap(null), 2200);
+  }, []);
+  useEffect(
+    () => () => {
+      if (glowCapTimerRef.current) clearTimeout(glowCapTimerRef.current);
+    },
+    [],
+  );
+
   // ── ?node= deep-link: restore on mount, persist on selection change ──────────
   // On first render, if the URL carries ?node=<id>, apply it as the selected
   // node. focusEgo is called in a separate data-ready effect below.
@@ -684,6 +703,7 @@ export default function GraphScreen() {
                 onSettled={() => {}}
                 highlightedNodeIds={jarvis.enabled ? jarvis.highlightedNodeIds : undefined}
                 highlightEpoch={jarvis.epoch}
+                onGlowCap={onGlowCap}
               />
             </Suspense>
 
@@ -718,6 +738,7 @@ export default function GraphScreen() {
               onToggle={jarvis.setEnabled}
               onReplay={jarvis.replay}
               onClear={jarvis.clearActivityLog}
+              glowCap={glowCap}
               replayController={replay.controller}
               replaySnapshot={replay.snapshot}
               replaySteps={replay.steps}

@@ -61,6 +61,15 @@ import {
 // creates a new identity each render.
 const EMPTY_HIGHLIGHT: ReadonlySet<string> = new Set();
 
+// #4643 — FREEZE FIX. A replay/glow step can carry a huge result set (the
+// reported repro matched 17,939 nodes). Glowing/dimming all of them in one
+// synchronous pass on a 12.8k-node WebGL canvas blocks the main thread. We
+// CAP the glow+dim set to the nodes actually RENDERED/in-view, never more than
+// GLOW_CAP, and the recolor only ever rewrites these ≤GLOW_CAP indices per
+// frame (the base buffers are written once, off the hot path). The same bounded
+// set drives the dim-focus selection so both stay non-blocking.
+const GLOW_CAP = 200;
+
 const SPACE_SIZE = 32768;
 // Fix #1532-3 / #1548-2: a small padding makes the settled graph FILL the
 // canvas instead of floating small in the middle. A touch more than 0.04 so
@@ -234,6 +243,13 @@ export interface GraphCanvasProps {
    * queries each re-pulse even if the node set overlaps.
    */
   highlightEpoch?: number;
+  /**
+   * #4643 — reports how many nodes were actually glowed vs how many the step
+   * matched, after the in-view/GLOW_CAP cap. Lets the panel render
+   * "glowing N of M" when a large result set is sampled. `shown === matched`
+   * means nothing was capped.
+   */
+  onGlowCap?: (shown: number, matched: number) => void;
   className?: string;
 }
 
@@ -290,6 +306,7 @@ function GraphCanvasInner(
     onSettled,
     highlightedNodeIds,
     highlightEpoch = 0,
+    onGlowCap,
     className = "",
   }: GraphCanvasProps,
   ref: React.Ref<GraphCanvasHandle>,
@@ -1503,6 +1520,21 @@ function GraphCanvasInner(
       return;
     }
 
+    // #4643 — replay/glow dim-focus. When a replay step (or a per-row replay)
+    // is active and the user isn't hovering, dim everything except the step's
+    // CAPPED node set (+ neighbors) — same spotlight mechanism as hover, driven
+    // by replayFocusIdxRef. This is cleared (set emptied) when the glow ends.
+    const replayFocus = replayFocusIdxRef.current;
+    if (replayFocus.size > 0) {
+      g.selectPointsByIndices(Array.from(replayFocus));
+      g.setConfig({
+        pointGreyoutOpacity: isDark ? 0.08 : 0.1,
+        linkGreyoutOpacity: 0,
+      });
+      g.render();
+      return;
+    }
+
     // Fix #1580: not hovering → restore the default link greyout so the
     // repo/community selection (and the un-hovered full graph) shows links again.
     const restoredLinkGreyout = render.linkOpacity * 0.5;
@@ -1538,6 +1570,12 @@ function GraphCanvasInner(
     render.linkOpacity,
   ]);
 
+  // #4643 — live ref so the glow rAF effect (mount-stable, epoch-keyed deps)
+  // can re-apply the selection/dim-focus without taking applySelection as a dep
+  // (which would re-run the glow effect on every hover change).
+  const applySelectionRef = useRef(applySelection);
+  applySelectionRef.current = applySelection;
+
   useEffect(() => {
     applySelection();
   }, [applySelection]);
@@ -1564,6 +1602,15 @@ function GraphCanvasInner(
   // endpoints are in the highlighted node set (resolved against linkData.links,
   // which is index-based and parallel to the packed link color buffer).
   const glowRafRef = useRef<number | null>(null);
+  // #4643 — the CAPPED, in-view node-index set that the current glow is driving.
+  // Shared with the dim-focus selection (applySelection) so both the glow and
+  // the "dim everything else" behaviour operate on the SAME bounded set. Empty
+  // = no replay focus active.
+  const replayFocusIdxRef = useRef<Set<number>>(new Set());
+  // #4643 — live ref to the cap reporter so the epoch-keyed glow effect can
+  // report "glowing N of M" without taking onGlowCap as a dep.
+  const onGlowCapRef = useRef(onGlowCap);
+  onGlowCapRef.current = onGlowCap;
   // Stable empty fallback so an undefined prop doesn't thrash the effect deps.
   const highlightSet = highlightedNodeIds ?? EMPTY_HIGHLIGHT;
   useEffect(() => {
@@ -1577,11 +1624,53 @@ function GraphCanvasInner(
       glowRafRef.current = null;
     }
 
-    // Resolve the affected NODE indices.
-    const nodeIdxs: number[] = [];
+    // #4643 — Resolve the affected NODE indices, but CAP to the nodes actually
+    // RENDERED / in-view (≤ GLOW_CAP). Without this a step with ~18k matches
+    // would build an 18k-index list and rewrite all of them every rAF frame →
+    // synchronous main-thread hang. We project each candidate to screen space
+    // and keep only those inside the viewport, stopping once we hit the cap.
+    // `matchedTotal` is tracked so the caller can render "glowing N of M".
+    const w = containerRef.current?.clientWidth ?? 0;
+    const h = containerRef.current?.clientHeight ?? 0;
+    const positions = g.getPointPositions();
+    const haveViewport = w > 0 && h > 0 && !!positions && positions.length > 0;
+
+    let matchedTotal = 0;
+    const inView: number[] = [];
+    const overflow: number[] = []; // resolved-but-offscreen, used only if no in-view hits
     for (const id of highlightSet) {
       const i = idToIdx.get(id);
-      if (i !== undefined) nodeIdxs.push(i);
+      if (i === undefined) continue;
+      matchedTotal++;
+      // Once both buckets are full there's nothing more to collect — but keep
+      // looping (cheap map lookups only) so matchedTotal reflects the true M for
+      // the "glowing N of M" badge. The expensive projection below is skipped.
+      if (inView.length >= GLOW_CAP) continue;
+      if (!haveViewport) {
+        inView.push(i);
+        continue;
+      }
+      // Both the in-view target and the offscreen fallback are full → skip the
+      // (relatively costly) screen projection; just keep counting matchedTotal.
+      if (overflow.length >= GLOW_CAP) continue;
+      const px = positions![i * 2];
+      const py = positions![i * 2 + 1];
+      if (px === undefined || py === undefined) continue;
+      const [sx, sy] = g.spaceToScreenPosition([px, py]);
+      if (sx >= -50 && sy >= -50 && sx <= w + 50 && sy <= h + 50) {
+        inView.push(i);
+      } else if (overflow.length < GLOW_CAP) {
+        overflow.push(i);
+      }
+    }
+    // If nothing matched is currently on-screen (e.g. the result is off in a
+    // far cluster), fall back to a capped sample of the resolved matches so the
+    // glow is never silently empty — still bounded by GLOW_CAP.
+    const nodeIdxs: number[] = inView.length > 0 ? inView : overflow.slice(0, GLOW_CAP);
+    if (matchedTotal > nodeIdxs.length) {
+      onGlowCapRef.current?.(nodeIdxs.length, matchedTotal);
+    } else {
+      onGlowCapRef.current?.(nodeIdxs.length, nodeIdxs.length);
     }
 
     // Resolve the affected EDGE (link) indices: an edge glows when both its
@@ -1597,13 +1686,35 @@ function GraphCanvasInner(
     }
 
     // Nothing to glow (decay finished, or no entity in the current view) →
-    // restore the base buffers so any prior pulse is fully cleared, then stop.
+    // restore the base buffers so any prior pulse is fully cleared, then drop
+    // the dim-focus (restore full opacity via the normal selection state).
     if (nodeIdxs.length === 0) {
       g.setPointColors(packPointColors());
       g.setPointSizes(packed.sizes);
       g.setLinkColors(packLinkColors());
       g.render();
+      if (replayFocusIdxRef.current.size > 0) {
+        replayFocusIdxRef.current = new Set();
+        applySelectionRef.current?.();
+      }
       return;
+    }
+
+    // #4643 — DIM non-step nodes during the glow. Reuse the hover-spotlight
+    // mechanism (cosmos.gl selectPointsByIndices + pointGreyoutOpacity) but
+    // drive it from the CAPPED step set (+ immediate neighbors) instead of the
+    // hovered node. Everything outside this bounded set dims; the step's nodes
+    // and their neighbors stay bright so the glow stands out of the hairball.
+    // Restored to the normal selection state when the glow ends (above / below).
+    {
+      const focus = new Set<number>(nodeIdxs);
+      for (const i of nodeIdxs) {
+        const nbs = neighborIdx.get(i);
+        if (!nbs) continue;
+        for (const nb of nbs) focus.add(nb);
+      }
+      replayFocusIdxRef.current = focus;
+      applySelectionRef.current?.();
     }
 
     // Snapshot the BASE buffers once; each frame we re-derive from these so the
@@ -1670,12 +1781,17 @@ function GraphCanvasInner(
       if (t < 1) {
         glowRafRef.current = requestAnimationFrame(frame);
       } else {
-        // Pulse done → restore the exact base buffers (clean slate).
+        // Pulse done → restore the exact base buffers (clean slate) and drop
+        // the dim-focus so the full graph returns to normal opacity.
         gg.setPointColors(baseColors);
         gg.setPointSizes(baseSizes);
         gg.setLinkColors(baseLinkColors);
         gg.render();
         glowRafRef.current = null;
+        if (replayFocusIdxRef.current.size > 0) {
+          replayFocusIdxRef.current = new Set();
+          applySelectionRef.current?.();
+        }
       }
     };
     glowRafRef.current = requestAnimationFrame(frame);
@@ -1685,6 +1801,11 @@ function GraphCanvasInner(
         cancelAnimationFrame(glowRafRef.current);
         glowRafRef.current = null;
       }
+      // #4643 — a new epoch supersedes this glow; the next effect run reasserts
+      // the focus set from its own (capped) nodes, and a final empty highlight
+      // (decay → EMPTY) restores opacity. We intentionally do NOT clear the
+      // dim-focus here so consecutive replay steps stay dimmed continuously
+      // instead of flashing back to full opacity between steps.
     };
     // Re-run on each fresh highlight (epoch) — NOT on every set identity churn.
     // packPointColors/packLinkColors/packed are stable between data/theme pushes;

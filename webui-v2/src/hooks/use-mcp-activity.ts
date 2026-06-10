@@ -8,14 +8,17 @@
    GET /api/mcp-activity/stream SSE endpoint via the Vite /api proxy.
 
    Lifecycle:
-     • On mount, fetches the last HISTORY_LIMIT events from
-       /api/mcp-activity/history and seeds the activity list (these are
-       marked `isHistory: true` so the UI can render them muted). (#1930)
+     • #4643 — the activity list NO LONGER persists across reloads and is NOT
+       seeded from /history. On mount it starts EMPTY and fills purely from the
+       LIVE SSE event stream, so the panel always reflects what is happening NOW
+       (a reload no longer resurrects the same stale ~11 events). The replay
+       controls operate on this live-captured session.
      • Opens an EventSource when `enabled` is true (default).
-     • Reconnects on errors/close with a bounded, capped backoff (1s→2s→5s),
-       re-seeding from /history (de-duped) so a daemon RESTART self-heals
-       instead of freezing the panel. (Browser-native ES auto-reconnect does
-       NOT recover once the connection lands in CLOSED.)
+     • Reconnects on errors/close with a bounded, capped backoff (1s→2s→5s) so a
+       daemon RESTART self-heals instead of freezing the panel. (Browser-native
+       ES auto-reconnect does NOT recover once the connection lands in CLOSED.)
+       Reconnect does NOT re-seed history — events that arrived while we were
+       disconnected are simply missed (the live feed is the source of truth).
      • Closes + cleans up on unmount or when toggled off (no EventSource leaks).
      • Exposes the last event, a rolling log (last MAX_LOG), and a count.
 
@@ -37,7 +40,11 @@ export interface MCPActivityEvent {
   returned_edge_ids?: string[];
   agent_id?: string;
   timestamp: number;
-  /** True for events seeded from /api/mcp-activity/history on mount (#1930). */
+  /**
+   * #4643 — RETAINED for type back-compat (the overlay still reads it) but is
+   * never set now that history-seeding is removed: every event in the log is a
+   * live, this-session capture. Always undefined/false.
+   */
   isHistory?: boolean;
 }
 
@@ -60,14 +67,11 @@ export interface UseMCPActivityReturn extends MCPActivityState {
 // ── Constants ─────────────────────────────────────────────────────────────────
 
 const SSE_URL = "/api/mcp-activity/stream";
-const HISTORY_URL = "/api/mcp-activity/history";
 // #1932: bumped from 50 → 100. Replay-all walks the whole panel and the spec
 // calls for "50+ activity entries stay smooth". With the generic flow engine
 // driving the comet, 100 entries (a few hundred flattened steps) is fine on
 // a typical laptop.
 const MAX_LOG = 100;
-// #1930: how many historical events to seed on mount.
-const HISTORY_LIMIT = 20;
 
 const INITIAL_STATE: MCPActivityState = {
   connected: false,
@@ -104,22 +108,19 @@ function eventKey(e: MCPActivityEvent): string {
 export function useMCPActivity(enabled = true): UseMCPActivityReturn {
   const [state, setState] = useState<MCPActivityState>(INITIAL_STATE);
   const esRef = useRef<EventSource | null>(null);
-  // Track the timestamp of the last history event seeded so live events
-  // arriving before subscribeAt don't double-count with history.
-  const subscribeAtRef = useRef<number>(0);
 
   const clear = useCallback(() => setState(INITIAL_STATE), []);
 
   // ── Single effect owns the whole connection lifecycle ──────────────────────
-  // History seed (#1930) + SSE subscription + ROBUST RECONNECT. Previously the
-  // browser-native EventSource auto-reconnect was relied on, but when the daemon
-  // RESTARTS the connection moves to CLOSED and is never re-opened — the panel
-  // freezes (e.g. stuck at "9/9") and silently drops every new event. We now
-  // manage reconnection explicitly with a bounded, capped backoff so any
-  // transient drop (or daemon restart) self-heals. On every (re)connect we
-  // re-seed from /history and de-dupe against the existing log so no rows are
-  // missed and none are duplicated. The 100-event cap (MAX_LOG) is enforced on
-  // BOTH the seed and the live-append paths.
+  // LIVE SSE subscription + ROBUST RECONNECT. Previously the browser-native
+  // EventSource auto-reconnect was relied on, but when the daemon RESTARTS the
+  // connection moves to CLOSED and is never re-opened — the panel freezes (e.g.
+  // stuck at "9/9") and silently drops every new event. We manage reconnection
+  // explicitly with a bounded, capped backoff so any transient drop (or daemon
+  // restart) self-heals. #4643 — the log is NOT seeded from /history: it starts
+  // empty on mount and fills purely from the live feed, so a reload no longer
+  // resurrects stale events. The 100-event cap (MAX_LOG) is enforced on the
+  // live-append path.
   useEffect(() => {
     if (!enabled) {
       setState((prev) => ({ ...prev, connected: false }));
@@ -134,7 +135,7 @@ export function useMCPActivity(enabled = true): UseMCPActivityReturn {
     // #4319 — guard against a backoff-reset busy-loop. If the daemon emits the
     // `connected` event and then the stream drops again immediately (a flapping
     // server), resetting reconnectAttempt to 0 on every `connected` would pin
-    // the backoff at its 1s floor and hammer fetch(/history) + EventSource every
+    // the backoff at its 1s floor and hammer EventSource every
     // ~1s forever. We only reset the backoff once a connection has proven STABLE
     // (stayed open past STABLE_MS), so a flapping daemon decays to the 5s cap
     // instead of a tight reconnect storm.
@@ -178,41 +179,10 @@ export function useMCPActivity(enabled = true): UseMCPActivityReturn {
       }, delay);
     };
 
-    // Re-seed the log from /history, de-duping against whatever is already
-    // present (live events received before the seed resolved are preserved).
-    // History entries keep `isHistory: true` for the muted "before this session"
-    // rendering; live entries already in the log keep their identity.
-    const seedFromHistory = () => {
-      fetch(`${HISTORY_URL}?limit=${HISTORY_LIMIT}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((body: { events?: MCPActivityEvent[] } | null) => {
-          if (cancelled || !body?.events?.length) return;
-          const historyEvents: MCPActivityEvent[] = body.events.map((e) => ({
-            ...e,
-            isHistory: true,
-          }));
-          setState((prev) => {
-            const seen = new Set(prev.eventLog.map(eventKey));
-            const fresh = historyEvents.filter((e) => !seen.has(eventKey(e)));
-            if (fresh.length === 0) return prev;
-            // History is older than anything live, so it goes BEFORE the
-            // existing log; newest kept if we exceed the cap.
-            const log = [...fresh, ...prev.eventLog].slice(-MAX_LOG);
-            return { ...prev, eventLog: log };
-          });
-        })
-        .catch(() => {
-          // History fetch failing is non-fatal — the SSE stream still works.
-        });
-    };
-
     const connect = () => {
       if (cancelled) return;
       closeES();
-      subscribeAtRef.current = Date.now();
-      // Re-seed on first connect AND on every reconnect, so a daemon restart
-      // backfills anything emitted while we were disconnected.
-      seedFromHistory();
+      // #4643 — no history seed: the log fills purely from the live SSE feed.
 
       const conn = new EventSource(SSE_URL);
       es = conn;

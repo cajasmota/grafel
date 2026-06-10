@@ -126,6 +126,12 @@ export interface MCPActivityOverlayProps {
   onReplay: (event: MCPActivityEvent) => void;
   /** Empty the activity log + reset count/replay position to 0. */
   onClear: () => void;
+  /**
+   * #4643 — when the most-recent glow step was CAPPED (matched more nodes than
+   * were glowed/in-view), this carries {shown, matched} so the panel can render
+   * "glowing N of M". null when nothing was capped.
+   */
+  glowCap?: { shown: number; matched: number } | null;
 
   // ── #1932 replay-all wiring ───────────────────────────────────────────────
   /** The shared step-engine controller (null when there's < 2 steps). */
@@ -151,6 +157,7 @@ export const MCPActivityOverlay = memo(function MCPActivityOverlay({
   onToggle,
   onReplay,
   onClear,
+  glowCap,
   replayController,
   replaySnapshot,
   replaySteps,
@@ -259,6 +266,18 @@ export const MCPActivityOverlay = memo(function MCPActivityOverlay({
                   aria-live="polite"
                 >
                   replay {replaySnapshot.paused ? "paused" : "running"}
+                </span>
+              ) : null}
+              {/* #4643 — surface the in-view glow cap so a huge result set reads
+                  as a deliberate sample ("glowing 200 of 17939"), not a freeze. */}
+              {glowCap ? (
+                <span
+                  className="ml-1 rounded bg-text-4/15 px-1.5 py-px text-[10px] font-medium text-text-3"
+                  aria-live="polite"
+                  title={`Capped to the ${glowCap.shown} in-view nodes of ${glowCap.matched} matched, to keep the canvas responsive`}
+                  data-testid="mcp-glow-cap"
+                >
+                  glowing {glowCap.shown.toLocaleString()} of {glowCap.matched.toLocaleString()}
                 </span>
               ) : null}
             </span>
