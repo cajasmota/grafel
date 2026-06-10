@@ -127,7 +127,26 @@ type httpResolveKey struct{ kind, name, sourceFile string }
 // helpers such as firstAppCandidate (#3426) can take it by value.
 type httpResolveNameKey struct{ kind, name string }
 
+// ResolveHTTPEndpointHandlers is the repoTag-less entry point retained for the
+// existing call sites and the engine test corpus. It delegates with an empty
+// repoTag, in which case the e2e route-test pass emits its TESTS edges as
+// `Kind:Name` stubs (resolved later by resolve.References). Prefer
+// ResolveHTTPEndpointHandlersWithRepo from the production pipeline so the e2e
+// pass can mint each endpoint's unique entity ID directly and resolve
+// same-Name endpoint collisions (#4651).
 func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
+	return ResolveHTTPEndpointHandlersWithRepo(merged, "")
+}
+
+// ResolveHTTPEndpointHandlersWithRepo is ResolveHTTPEndpointHandlers with the
+// caller's repoTag threaded through to the e2e route-test linker (#4651). When
+// repoTag is non-empty the linker emits each TESTS edge with the matched
+// http_endpoint_definition's deterministic entity ID (graph.EntityID over the
+// def's Kind/Name/SourceFile) instead of an ambiguous `Kind:Name` stub — so a
+// route whose synthesized endpoint Name collides across modules (upvate-v3 has
+// many same-named handlers/routes, e.g. `getCounts`) still credits the correct,
+// per-file endpoint as covered rather than dangling on an ambiguous name.
+func ResolveHTTPEndpointHandlersWithRepo(merged []types.EntityRecord, repoTag string) ([]types.EntityRecord, ResolveHTTPEndpointStats) {
 	var stats ResolveHTTPEndpointStats
 
 	// (kind, name, sourceFile) → index into `merged`.
@@ -627,7 +646,7 @@ func ResolveHTTPEndpointHandlers(merged []types.EntityRecord) ([]types.EntityRec
 	// TESTS edge from the suite to each uniquely-matched endpoint. Runs at
 	// resolve-time (merge-stable, cross-file index available) and is
 	// conservative — only unique verb+route matches produce an edge.
-	stats.E2ERouteTestEdges = linkE2ERouteTestsToEndpoints(merged, definitionByPath, defIndices)
+	stats.E2ERouteTestEdges = linkE2ERouteTestsToEndpoints(merged, definitionByPath, defIndices, repoTag)
 
 	// Issue #1999 — DTO ↔ Handler bidirectional REFERENCES edges.
 	//

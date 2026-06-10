@@ -55,6 +55,7 @@ package engine
 import (
 	"strings"
 
+	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/types"
 )
 
@@ -82,6 +83,7 @@ func linkE2ERouteTestsToEndpoints(
 	merged []types.EntityRecord,
 	definitionByPath map[string][]int,
 	defIndices []int,
+	repoTag string,
 ) int {
 	emitted := 0
 	for i := range merged {
@@ -101,7 +103,7 @@ func linkE2ERouteTestsToEndpoints(
 			if !ok {
 				continue
 			}
-			defIdx, matched := resolveRouteTestToDefinition(verb, route, merged, definitionByPath, defIndices)
+			defIdx, matched := resolveRouteTestToDefinition(verb, route, s, merged, definitionByPath, defIndices)
 			if !matched || linked[defIdx] {
 				continue
 			}
@@ -109,7 +111,7 @@ func linkE2ERouteTestsToEndpoints(
 			def := &merged[defIdx]
 			s.Relationships = append(s.Relationships, types.RelationshipRecord{
 				FromID: s.Kind + ":" + s.Name,
-				ToID:   def.Kind + ":" + def.Name,
+				ToID:   e2eEndpointToID(def, repoTag),
 				Kind:   string(types.RelationshipKindTests),
 				Properties: map[string]string{
 					"framework":    propOr(s, "framework", "jest"),
@@ -123,6 +125,30 @@ func linkE2ERouteTestsToEndpoints(
 		}
 	}
 	return emitted
+}
+
+// e2eEndpointToID returns the TESTS-edge ToID for a matched endpoint definition.
+//
+// #4651 — upvate-v3 (NestJS) has many same-named handlers/routes across modules
+// (`create`, `update`, `getCounts`, `list`, …). When two
+// http_endpoint_definition entities synthesize the SAME endpoint Name (because
+// the route shape collides, or the controller-prefix segment is lost), a
+// `Kind:Name` stub ToID is AMBIGUOUS at resolve time: resolve.BuildIndex blanks
+// the colliding name in byName/byQualifiedName, so resolve.References can't bind
+// the edge → it dangles and BOTH endpoints read uncovered.
+//
+// When a repoTag is available we sidestep the name index entirely: each
+// definition's deterministic entity ID (graph.EntityID over Kind+Name+
+// SourceFile, the SAME formula cmd/archigraph stampEntityIDs uses) is unique per
+// SOURCE FILE even when the Name collides across modules. Emitting the hex ID
+// directly makes resolve.rewriteOne short-circuit on its isHexID fast path,
+// crediting the CORRECT per-file endpoint as covered. With no repoTag (engine
+// test corpus / legacy callers) we fall back to the historical `Kind:Name` stub.
+func e2eEndpointToID(def *types.EntityRecord, repoTag string) string {
+	if repoTag != "" {
+		return graph.EntityID(repoTag, def.Kind, def.Name, def.SourceFile)
+	}
+	return def.Kind + ":" + def.Name
 }
 
 // splitVerbRoute parses a "VERB route" line into its parts. Returns ok=false
@@ -152,6 +178,7 @@ func splitVerbRoute(line string) (verb, route string, ok bool) {
 // ambiguous or empty results return matched=false.
 func resolveRouteTestToDefinition(
 	verb, route string,
+	suite *types.EntityRecord,
 	merged []types.EntityRecord,
 	definitionByPath map[string][]int,
 	defIndices []int,
@@ -172,7 +199,18 @@ func resolveRouteTestToDefinition(
 		}
 	}
 	if len(tier1) > 1 {
-		// Ambiguous on the structural key — do not guess.
+		// #4651 — multiple definitions share the SAME normalized route key
+		// (upvate-v3 synthesizes colliding endpoint Names across modules, e.g.
+		// two `getCounts` handlers whose routes fold to the same shape). The
+		// bare route can't pick one, but the SPEC carries module/file affinity:
+		// `test/inspections.e2e-spec.ts` belongs with
+		// `src/inspections/inspections.controller.ts`, not the proposals one.
+		// Break the tie by source-file/module token overlap; only resolve when
+		// EXACTLY ONE candidate maximally matches (no guessing on a tie).
+		if idx, ok := disambiguateByModuleAffinity(suite, tier1, merged); ok {
+			return idx, true
+		}
+		// Still ambiguous — do not guess.
 		return 0, false
 	}
 
@@ -196,6 +234,90 @@ func resolveRouteTestToDefinition(
 		return tier2, true
 	}
 	return 0, false
+}
+
+// disambiguateByModuleAffinity picks, among same-route candidate definitions,
+// the one whose SOURCE FILE shares the most path/module tokens with the spec's
+// own source file (#4651). The NestJS convention co-locates a module's e2e spec
+// and its controller under a shared module token (`inspections`, `proposals`,
+// …), so the spec file path is a reliable discriminator when the synthesized
+// endpoint Name collides. Returns (idx, true) only when a SINGLE candidate has
+// the strictly-highest non-zero affinity score; a tie or all-zero leaves the
+// caller to skip (no guessing).
+func disambiguateByModuleAffinity(suite *types.EntityRecord, candidates map[int]bool, merged []types.EntityRecord) (int, bool) {
+	if suite == nil || suite.SourceFile == "" {
+		return 0, false
+	}
+	specToks := pathModuleTokens(suite.SourceFile)
+	if len(specToks) == 0 {
+		return 0, false
+	}
+	bestIdx := -1
+	bestScore := 0
+	tie := false
+	for idx := range candidates {
+		score := tokenOverlap(specToks, pathModuleTokens(merged[idx].SourceFile))
+		switch {
+		case score > bestScore:
+			bestScore, bestIdx, tie = score, idx, false
+		case score == bestScore && bestScore > 0:
+			tie = true
+		}
+	}
+	if bestScore == 0 || tie {
+		return 0, false
+	}
+	return bestIdx, true
+}
+
+// pathModuleTokens extracts the lowercased path/module identifier tokens from a
+// source-file path, dropping directory noise (`src`, `test`, `tests`, `e2e`,
+// `spec`, file extensions) and splitting compound segments on the conventional
+// separators so `test/inspections.e2e-spec.ts` and
+// `src/inspections/inspections.controller.ts` both yield the `inspections`
+// token. Returns a set (deduped) of meaningful tokens.
+func pathModuleTokens(p string) map[string]bool {
+	out := map[string]bool{}
+	if p == "" {
+		return out
+	}
+	// Normalize separators and strip a query/extension tail per segment.
+	for _, seg := range strings.FieldsFunc(p, func(r rune) bool {
+		return r == '/' || r == '\\' || r == '.' || r == '-' || r == '_'
+	}) {
+		seg = strings.ToLower(strings.TrimSpace(seg))
+		if seg == "" || pathModuleNoiseToken[seg] {
+			continue
+		}
+		out[seg] = true
+	}
+	return out
+}
+
+// pathModuleNoiseToken is the set of path tokens that carry no module identity
+// and must not contribute to affinity scoring (scaffolding dirs, test-suffix
+// markers, common file extensions).
+var pathModuleNoiseToken = map[string]bool{
+	"src": true, "app": true, "test": true, "tests": true, "e2e": true,
+	"spec": true, "specs": true, "controller": true, "controllers": true,
+	"module": true, "modules": true, "ts": true, "js": true, "tsx": true,
+	"jsx": true, "mjs": true, "cjs": true, "index": true,
+}
+
+// tokenOverlap counts how many tokens the two token sets share.
+func tokenOverlap(a, b map[string]bool) int {
+	// Iterate the smaller set for cheapness.
+	small, large := a, b
+	if len(b) < len(a) {
+		small, large = b, a
+	}
+	n := 0
+	for t := range small {
+		if large[t] {
+			n++
+		}
+	}
+	return n
 }
 
 // matchConcreteRouteToDefinition reports whether a CONCRETE test route (e.g.

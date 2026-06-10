@@ -3870,7 +3870,7 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 	// synthetics are dropped here — keeping them would leave orphan
 	// http_endpoint nodes in the graph and inflate bug-rate.
 	var httpEndpointStats engine.ResolveHTTPEndpointStats
-	merged, httpEndpointStats = engine.ResolveHTTPEndpointHandlers(merged)
+	merged, httpEndpointStats = engine.ResolveHTTPEndpointHandlersWithRepo(merged, i.repoTag)
 	if httpEndpointStats.DTOHandlerEdgesEmitted > 0 || httpEndpointStats.DTOHandlerEdgesUnresolved > 0 {
 		// #1999 — log the DTO↔Handler bidirectional edge counters
 		// independently of the main http-endpoint stats line so the
