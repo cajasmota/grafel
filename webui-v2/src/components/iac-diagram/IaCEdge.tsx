@@ -34,6 +34,20 @@ export function facetStyle(facet: string): FacetStyle {
       return { stroke: "var(--info)", dash: "2 3", label: "topology" };
     case "output":
       return { stroke: "var(--text-4)", dash: "2 3", label: "output" };
+    // #4625 — cross-module semantic verbs. A consuming resource → another
+    // module's output, labelled with its cloud-architecture meaning.
+    case "consumes":
+      return { stroke: "var(--accent)", label: "consumes" };
+    case "redrive":
+      return { stroke: "var(--warning)", dash: "5 3", label: "redrive" };
+    case "logs-to":
+      return { stroke: "var(--info)", dash: "1 3", label: "logs-to" };
+    case "assumes":
+      return { stroke: "var(--danger)", dash: "4 2", label: "assumes" };
+    case "grants":
+      return { stroke: "var(--danger)", dash: "5 3", label: "grants" };
+    case "reads":
+      return { stroke: "var(--text-3)", label: "reads" };
     default:
       return { stroke: "var(--text-4)", label: "depends" };
   }

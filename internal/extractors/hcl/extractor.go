@@ -236,6 +236,11 @@ func extractResourceBlock(n *sitter.Node, src []byte, path, lang string, start, 
 		// Issue #387 — interpolation cross-references → CALLS edges.
 		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
 		out[0].Relationships = append(out[0].Relationships, calls...)
+		// Issue #4625 — cross-module output references (module.<m>.<out>) →
+		// semantic USES edges (consumes / redrive / logs-to / assumes / …),
+		// so a resource consuming another module's output is no longer an
+		// unresolved relation + a disconnected diagram box.
+		out[0].Relationships = append(out[0].Relationships, extractCrossModuleRefs(body, src, path, lang, selfRef)...)
 		// Issue #3527 — iteration meta-args (for_each / count).
 		applyIterationMeta(&out[0], body, src, path, lang, selfRef)
 		// Issue #3527 — terraform_remote_state cross-stack deps.
@@ -292,6 +297,8 @@ func extractDataBlock(n *sitter.Node, src []byte, path, lang string, start, end 
 		// Issue #387 — interpolation cross-references → CALLS edges.
 		calls := extractCalls(body, src, path, lang, selfRef, selfRef)
 		out[0].Relationships = append(out[0].Relationships, calls...)
+		// Issue #4625 — cross-module output references → semantic USES edges.
+		out[0].Relationships = append(out[0].Relationships, extractCrossModuleRefs(body, src, path, lang, selfRef)...)
 		// Issue #3527 — iteration meta-args (for_each / count).
 		applyIterationMeta(&out[0], body, src, path, lang, selfRef)
 		// Issue #3527 — dynamic "x" {} nested blocks as child entities.

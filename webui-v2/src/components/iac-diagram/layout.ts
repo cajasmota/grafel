@@ -28,6 +28,43 @@ import type { IaCReport, IaCResource } from "@/data/types";
 
 export type IaCDiagramDirection = "LR" | "TB";
 
+/**
+ * Grouping mode for the diagram's container boxes (#4625):
+ *   - "module" — group by the Terraform module / construct / stack directory.
+ *   - "tier"   — group by cloud architecture tier (Compute / Messaging /
+ *                Observability / Security & IAM / Data / Network / Other),
+ *                derived from resource_category, so the diagram reads as a
+ *                layered cloud-architecture view regardless of module layout.
+ */
+export type IaCGroupMode = "module" | "tier";
+
+/**
+ * cloudTier maps a resource_category to a coarse cloud-architecture tier used by
+ * the "tier" grouping mode. Categories that don't map fall to "Other".
+ */
+export function cloudTier(category?: string): string {
+  switch ((category || "").toLowerCase()) {
+    case "compute":
+    case "function":
+    case "module":
+      return "Compute";
+    case "queue":
+    case "topic":
+    case "stream":
+      return "Messaging";
+    case "datastore":
+    case "cache":
+    case "storage":
+      return "Data";
+    case "network":
+      return "Network";
+    case "secret":
+      return "Security & IAM";
+    default:
+      return "Other";
+  }
+}
+
 export const IAC_NODE_TYPE = "iacResource";
 export const IAC_GROUP_TYPE = "iacModule";
 export const IAC_EDGE_TYPE = "iacRelation";
@@ -101,6 +138,7 @@ function shortModuleLabel(module: string): string {
 export function layoutIaCDiagram(
   report: IaCReport | undefined,
   direction: IaCDiagramDirection,
+  groupMode: IaCGroupMode = "module",
 ): IaCLayoutResult {
   const all = flattenResources(report);
   const capped = all.length > MAX_DIAGRAM_NODES;
@@ -114,9 +152,12 @@ export function layoutIaCDiagram(
   const byEntityId = new Map<string, IaCResource>();
   for (const r of resources) byEntityId.set(r.entity_id, r);
 
-  // Assign each resource a module bucket. "" module → a synthetic "(ungrouped)"
-  // bucket so every node still has a parent container (keeps layout uniform).
-  const moduleOf = (r: IaCResource) => r.module || "(ungrouped)";
+  // Assign each resource a container bucket. In "module" mode that is the
+  // module/stack directory ("" → "(ungrouped)"); in "tier" mode it is the cloud
+  // architecture tier derived from resource_category (#4625). Either way every
+  // node gets a parent container so the compound layout stays uniform.
+  const moduleOf = (r: IaCResource) =>
+    groupMode === "tier" ? cloudTier(r.category) : r.module || "(ungrouped)";
   const modules = new Map<string, IaCResource[]>();
   for (const r of resources) {
     const m = moduleOf(r);
@@ -214,7 +255,12 @@ export function layoutIaCDiagram(
     const groupId = `group:${module}`;
     const groupData: IaCGroupData = {
       module,
-      shortLabel: module === "(ungrouped)" ? "ungrouped" : shortModuleLabel(module),
+      shortLabel:
+        module === "(ungrouped)"
+          ? "ungrouped"
+          : groupMode === "tier"
+            ? module
+            : shortModuleLabel(module),
       count: members.length,
     };
     nodes.push({

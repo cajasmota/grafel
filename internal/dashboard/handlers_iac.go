@@ -218,9 +218,17 @@ func iacToolForEntity(kind, subtype, language string, props map[string]string) (
 	if t := strings.TrimSpace(props["iac_tool"]); t != "" {
 		return t, true
 	}
-	if kind == "SCOPE.Component" && subtype == "resource" &&
+	if kind == "SCOPE.Component" &&
 		(language == "terraform" || language == "hcl") {
-		return "terraform", true
+		// Issue #4625 — render `module` instances as diagram nodes too, not just
+		// `resource` blocks. A resource that consumes another module's output
+		// (module.<m>.<out>) draws a cross-module USES edge whose target is the
+		// module block; without rendering the module node that edge would surface
+		// only as an unresolved relation + a disconnected box. Modules are the
+		// natural cloud-architecture aggregate node for the child stack.
+		if subtype == "resource" || subtype == "module" {
+			return "terraform", true
+		}
 	}
 	return "", false
 }
@@ -234,6 +242,11 @@ func iacResourceTypeOf(name string, props map[string]string) string {
 	}
 	if t := strings.TrimSpace(props["resource_type"]); t != "" {
 		return t
+	}
+	// Issue #4625 — a module instance is named `module.<name>`; report its
+	// type as "module" so the diagram can render it as a child-stack aggregate.
+	if strings.HasPrefix(name, "module.") {
+		return "module"
 	}
 	// Terraform self-ref form: `aws_db_instance.main`.
 	if i := strings.IndexByte(name, '.'); i > 0 {
@@ -253,6 +266,11 @@ func iacCategoryOf(resourceType string, props map[string]string) string {
 	if c := strings.TrimSpace(props["resource_scope"]); c != "" {
 		return c
 	}
+	// Issue #4625 — a Terraform module instance is its own diagram category so
+	// the cloud-tier grouping can place child-stack aggregates distinctly.
+	if resourceType == "module" {
+		return "module"
+	}
 	if resourceType != "" {
 		return types.IaCResourceCategory(resourceType)
 	}
@@ -268,6 +286,17 @@ func iacRelationFacet(kind string, props map[string]string) (facet, detail strin
 		return "grant", props["grant"]
 	case reason == "event_source":
 		return "event_source", ""
+	}
+	// Issue #4625 — cross-module output reference (module.<m>.<out>) carries a
+	// derived semantic verb (consumes / redrive / logs-to / assumes / grants /
+	// reads). Surface it as the facet so the diagram renders the edge with its
+	// cloud-architecture meaning; the consumed output is the detail.
+	if props["dataflow"] == "cross_module" {
+		if sem := strings.TrimSpace(props["semantic"]); sem != "" && sem != "dependency" {
+			detail := strings.TrimSpace(props["module_output"])
+			return sem, detail
+		}
+		return "dependency", strings.TrimSpace(props["module_output"])
 	}
 	switch kind {
 	case "TRIGGERS", "SERVES", "ROUTES_TO", "SUBSCRIBES_TO":
