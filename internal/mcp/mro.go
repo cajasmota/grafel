@@ -127,6 +127,18 @@ func resolveMember(lr *LoadedRepo, e *graph.Entity) memberResolution {
 		return res
 	}
 
+	// #4465 — never run a TYPE DEFINITION through inherited-member resolution.
+	// A class/interface/struct/enum/type-alias entity carries a dotted qualified
+	// name (e.g. "src.modules.permits.dto.request.permit-list.query.dto.
+	// PermitListQueryDto"), which classifyMember would otherwise split into
+	// member=PermitListQueryDto / owning=<file-module>, then fail the EXTENDS
+	// walk and emit `inherited:true, resolved:false` noise on what is actually a
+	// definition, not an inherited member. A definition is explicit by
+	// construction — its body IS its source.
+	if isDefinitionEntity(e) {
+		return memberResolution{Provenance: provExplicit}
+	}
+
 	member, owningName, isBodyless := classifyMember(e)
 	if member == "" || owningName == "" {
 		// Not a recognisable inherited member — treat as explicit (caller keeps
@@ -432,6 +444,35 @@ func findClassEntity(lr *LoadedRepo, name string) *graph.Entity {
 		}
 	}
 	return fallback
+}
+
+// isDefinitionEntity reports whether e is itself a TYPE DEFINITION — a
+// class/interface/struct/enum/type-alias declaration — as opposed to a member
+// of one. Definitions must be excluded from inherited-member resolution (#4465):
+// they are explicit by construction (their own span is their body) and feeding
+// them through classifyMember mis-reads their dotted qualified name as
+// member=<TypeName> / owning=<file-module>, producing false
+// `inherited:true, resolved:false` noise.
+//
+// A definition is recognised by EITHER:
+//   - a definition subtype (class/struct/interface/enum/type/type_alias), OR
+//   - the SCOPE.Component class-kind WITHOUT a member subtype (method/function)
+//     — TS class definitions are emitted as SCOPE.Component. We intentionally do
+//     NOT treat a bare SCOPE.Schema as a definition here: a SCOPE.Schema can be
+//     either a DTO/model definition or a standalone field/member, and that
+//     ambiguity is the separate member-emission-shape issue (follow-up). Schema
+//     definitions are still protected because they carry a definition subtype.
+func isDefinitionEntity(e *graph.Entity) bool {
+	switch e.Subtype {
+	case "class", "struct", "interface", "enum", "type", "type_alias":
+		return true
+	case "method", "function", "field":
+		// An explicit member subtype is never a standalone definition.
+		return false
+	}
+	// SCOPE.Component is the class-kind for TS/JS class definitions. With no
+	// member subtype above, treat it as a definition.
+	return e.Kind == "SCOPE.Component"
 }
 
 // isClassEntity reports whether e is a class/struct/component declaration that
