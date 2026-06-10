@@ -42,6 +42,9 @@ import {
   Card,
   Input,
   InfoLabel,
+  Tooltip,
+  TooltipTrigger,
+  TooltipContent,
   Dialog,
   DialogContent,
   DialogTitle,
@@ -187,10 +190,51 @@ function Section({
 
 const HEALTH_CONFIG = {
   healthy: { label: "Healthy", color: "var(--success)" },
-  warning: { label: "Needs review", color: "var(--warning)" },
-  degraded: { label: "Critical", color: "var(--danger)" },
+  warning: { label: "Needs attention", color: "var(--warning)" },
+  // <0.90 fidelity. Keep the (danger) color, but use calmer wording — a bare
+  // "Critical" reads like the tool is broken, when a low score is usually just
+  // a fresh/large codebase mid-resolution. Always paired with the explainer.
+  degraded: { label: "Low fidelity", color: "var(--danger)" },
   unindexed: { label: "Not indexed", color: "var(--text-4)" },
 } as const;
+
+/**
+ * Plain-language explainer for what "Fidelity" means and how the status tiers
+ * are derived. Reused on both the header status badge and the Fidelity metric
+ * so the red/amber state never appears without context. Rendered as rich
+ * tooltip content (the Tooltip / InfoLabel `hint` accepts a ReactNode).
+ */
+function FidelityExplainer() {
+  return (
+    <div className="space-y-1.5 text-text-2">
+      <p>
+        <span className="font-medium text-text">Fidelity</span> measures how
+        completely the resolver linked your codebase&apos;s imports and
+        references — i.e. graph quality. It&apos;s roughly{" "}
+        <span className="font-mono">100% − unresolved-reference rate</span>{" "}
+        (unresolved imports/references and orphaned entities).
+      </p>
+      <ul className="space-y-0.5">
+        <li>
+          <span className="inline-block size-2 rounded-full align-middle mr-1.5" style={{ background: "var(--success)" }} />
+          Healthy — ≥ 97%
+        </li>
+        <li>
+          <span className="inline-block size-2 rounded-full align-middle mr-1.5" style={{ background: "var(--warning)" }} />
+          Needs attention — ≥ 90%
+        </li>
+        <li>
+          <span className="inline-block size-2 rounded-full align-middle mr-1.5" style={{ background: "var(--danger)" }} />
+          Low fidelity — &lt; 90%
+        </li>
+      </ul>
+      <p className="text-text-3">
+        A lower score is expected for a fresh or large codebase that&apos;s
+        still mid-resolution — it climbs as more references are linked.
+      </p>
+    </div>
+  );
+}
 
 function HeaderCard({ group, onRebuild }: { group: SettingsGroup; onRebuild: () => void }) {
   const h = HEALTH_CONFIG[group.health];
@@ -207,18 +251,39 @@ function HeaderCard({ group, onRebuild }: { group: SettingsGroup; onRebuild: () 
         <div className="flex items-center gap-2 min-w-0">
           <span className="size-2.5 rounded-full shrink-0" style={{ background: h.color }} aria-label={h.label} />
           <h1 className="font-mono text-xl font-semibold text-text truncate">{group.name}</h1>
-          <span
-            className="text-xs px-2 py-0.5 rounded-full border text-text-2"
-            style={{ borderColor: h.color, color: h.color, background: `color-mix(in srgb, ${h.color} 10%, transparent)` }}
-          >
-            {h.label}
-          </span>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span
+                className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full border text-text-2 cursor-help"
+                style={{ borderColor: h.color, color: h.color, background: `color-mix(in srgb, ${h.color} 10%, transparent)` }}
+              >
+                {h.label}
+                <Info size={11} className="opacity-70" />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent className="max-w-sm">
+              <FidelityExplainer />
+            </TooltipContent>
+          </Tooltip>
         </div>
         <Button variant="secondary" size="sm" onClick={onRebuild} className="shrink-0">
           <RefreshCw size={12} />
           Rebuild group
         </Button>
       </div>
+
+      {/* Always pair a non-healthy status with a plain-language caption so the
+          badge color never reads as "the tool is broken". */}
+      {(group.health === "degraded" || group.health === "warning") && group.indexedAt != null && (
+        <p className="mt-3 flex items-start gap-1.5 text-xs text-text-3">
+          <Info size={12} className="mt-px shrink-0 text-text-4" />
+          <span>
+            Fidelity is {Math.round(group.fidelity * 100)}% — the resolver
+            hasn&apos;t linked every import &amp; reference yet. This is normal
+            for a fresh or large codebase and climbs as indexing completes.
+          </span>
+        </p>
+      )}
 
       <dl className="mt-4 grid grid-cols-4 gap-4">
         {[
@@ -239,7 +304,7 @@ function HeaderCard({ group, onRebuild }: { group: SettingsGroup; onRebuild: () 
           {
             key: "fidelity",
             label: "Fidelity",
-            hint: "Confidence that the graph matches your codebase. Drops when entities go stale.",
+            hint: <FidelityExplainer />,
             value: group.indexedAt != null ? `${Math.round(group.fidelity * 100)}%` : "—",
             mono: true,
             style: group.indexedAt ? { color: fidelityColor(group.fidelity) } : undefined,
