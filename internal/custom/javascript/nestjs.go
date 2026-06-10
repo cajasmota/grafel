@@ -313,6 +313,38 @@ func (e *nestjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 					break
 				}
 			}
+			// #4464 — emit an ACCEPTS_INPUT graph EDGE from the handler to each
+			// whole-DTO request param so request DTOs (and, via #4328 CONTAINS,
+			// their fields) stop floating as orphan degree-1 nodes. The @Body DTO
+			// already gets its ACCEPTS_INPUT above (reNestBodyParam), so this pass
+			// covers the @Query/@Param/@Headers whole-object DTOs that previously
+			// had NO inbound edge (the upvate-v3 PermitListQueryDto orphan-ring
+			// root cause). Conservative: only whole-object DTOs (no quoted
+			// binding key — a `@Query('id')`/`@Param('id')` selects a single
+			// primitive field, not the DTO) whose unwrapped type resolves to a
+			// real user type. The `Class:<dto>` stub is bound merge-stably by the
+			// central name resolver post-merge (same mechanism as @Body / the
+			// FastAPI/Flask req-resp DTO edges), so the edge survives merge.
+			for _, p := range params {
+				if p.In == "body" {
+					continue // already emitted via reNestBodyParam above
+				}
+				if p.QuotedKey {
+					continue // single-field selector, not a whole DTO
+				}
+				dto := nestUnwrapType(p.Type)
+				if dto == "" {
+					continue // primitive / built-in — honest-partial, no edge
+				}
+				ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+					ToID: "Class:" + dto,
+					Kind: string(types.RelationshipKindAcceptsInput),
+					Properties: map[string]string{
+						"framework": "nestjs", "match_source": "param_decorator", "dto_type": dto,
+						"param_in": p.In,
+					},
+				})
+			}
 		}
 
 		if rm := reNestReturnType.FindStringSubmatch(src[closeOff+1 : min(closeOff+200, len(src))]); rm != nil {

@@ -43,6 +43,12 @@ type nestParam struct {
 	Required     bool     `json:"required"`
 	DefaultValue string   `json:"default_value,omitempty"`
 	Annotations  []string `json:"annotations,omitempty"`
+	// QuotedKey is true when the decorator had a quoted binding key
+	// (e.g. `@Query('id')`), meaning the param selects a single field rather
+	// than the whole DTO object. Not serialized — used only to gate the
+	// #4464 handler→DTO ACCEPTS_INPUT edge (a keyed param is a primitive
+	// field, not a DTO type). json:"-" keeps the dashboard wire shape stable.
+	QuotedKey bool `json:"-"`
 }
 
 var (
@@ -108,6 +114,7 @@ func extractNestHandlerParams(paramsBlock string) []nestParam {
 			Name:        name,
 			In:          in,
 			Annotations: []string{"@" + dec},
+			QuotedKey:   key != "",
 		}
 		// Type: prefer the user DTO (unwrapped); fall back to the raw TS type
 		// for primitives so the row still shows `number`/`string`.
