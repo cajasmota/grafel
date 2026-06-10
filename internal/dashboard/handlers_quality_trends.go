@@ -52,9 +52,20 @@ type MetricTrend struct {
 
 // QualityTrendsReply is the wire shape for GET /api/quality/trends/{group}.
 type QualityTrendsReply struct {
-	Group   string        `json:"group"`
-	Days    int           `json:"days"`
+	Group string `json:"group"`
+	Days  int    `json:"days"`
+	// Metrics holds one series per trackable metric. It is only populated
+	// when a real trend exists (≥2 recorded snapshots in the window).
 	Metrics []MetricTrend `json:"metrics"`
+	// HasHistory is true only when a genuine time series exists — i.e. there
+	// are at least two recorded snapshots so a trend can be drawn. A freshly
+	// indexed group (zero or one snapshot) reports false, and the frontend
+	// shows an honest "no trend data yet" empty-state instead of a fabricated
+	// or single-point line.
+	HasHistory bool `json:"has_history"`
+	// PointCount is the number of real snapshots in the requested window.
+	// 0 = never recorded, 1 = freshly indexed (no trend yet), ≥2 = real trend.
+	PointCount int `json:"point_count"`
 }
 
 // handleQualityTrends serves GET /api/quality/trends/{group}?days=N.
@@ -104,8 +115,20 @@ func (s *Server) handleQualityTrends(w http.ResponseWriter, r *http.Request) {
 // buildTrendsReply constructs the full trends payload from a slice of
 // HealthEntry values. The caller must pass entries sorted oldest-first.
 func buildTrendsReply(group string, days int, entries []quality.HealthEntry) QualityTrendsReply {
-	if len(entries) == 0 {
-		return QualityTrendsReply{Group: group, Days: days, Metrics: []MetricTrend{}}
+	// A trend requires at least two recorded snapshots. With zero or one
+	// snapshot there is no honest time series to draw, so we return an empty
+	// payload with has_history=false rather than emitting single-point series
+	// (which the UI would render as "insufficient history" cards) or any
+	// synthetic/fabricated line. The frontend renders its honest empty-state
+	// off has_history / an empty metrics list.
+	if len(entries) < 2 {
+		return QualityTrendsReply{
+			Group:      group,
+			Days:       days,
+			Metrics:    []MetricTrend{},
+			HasHistory: false,
+			PointCount: len(entries),
+		}
 	}
 
 	// Build per-metric point lists. We always emit the core metrics
@@ -235,7 +258,13 @@ func buildTrendsReply(group string, days int, entries []quality.HealthEntry) Qua
 		metrics = []MetricTrend{}
 	}
 
-	return QualityTrendsReply{Group: group, Days: days, Metrics: metrics}
+	return QualityTrendsReply{
+		Group:      group,
+		Days:       days,
+		Metrics:    metrics,
+		HasHistory: true,
+		PointCount: len(entries),
+	}
 }
 
 // refDelta returns (latest − reference) for a metric, where reference is
