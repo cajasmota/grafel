@@ -11,7 +11,8 @@ import (
 )
 
 // TestBuildTrendsReply_empty verifies that an empty entry slice yields
-// an empty metrics slice (not nil) so the frontend can handle it uniformly.
+// an empty metrics slice (not nil) so the frontend can handle it uniformly,
+// and reports has_history=false / point_count=0 (no fabricated series).
 func TestBuildTrendsReply_empty(t *testing.T) {
 	reply := buildTrendsReply("mygroup", 30, nil)
 	if reply.Group != "mygroup" {
@@ -19,6 +20,53 @@ func TestBuildTrendsReply_empty(t *testing.T) {
 	}
 	if len(reply.Metrics) != 0 {
 		t.Errorf("expected 0 metrics for empty input, got %d", len(reply.Metrics))
+	}
+	if reply.HasHistory {
+		t.Errorf("has_history: got true, want false for 0 snapshots")
+	}
+	if reply.PointCount != 0 {
+		t.Errorf("point_count: got %d, want 0", reply.PointCount)
+	}
+}
+
+// TestBuildTrendsReply_singleSnapshot verifies the freshly-indexed case: a
+// single recorded snapshot is NOT a trend, so we emit zero metrics and report
+// has_history=false / point_count=1. This is the honest empty-state that
+// replaces the previously confusing single-point "insufficient history" cards
+// (and any fabricated sawtooth). Ticket #4506.
+func TestBuildTrendsReply_singleSnapshot(t *testing.T) {
+	now := time.Now().UTC()
+	covPct := 65.0
+	cycles := 3
+	secrets := 2
+	entries := []quality.HealthEntry{
+		{
+			Timestamp:     now,
+			Group:         "g",
+			TotalEntities: 500,
+			OrphanRate:    10.0,
+			BugRate:       2.0,
+			HealthScore:   88.0,
+			CoveragePct:   &covPct,
+			Cycles:        &cycles,
+			Secrets:       &secrets,
+		},
+	}
+
+	reply := buildTrendsReply("g", 30, entries)
+
+	if len(reply.Metrics) != 0 {
+		t.Errorf("expected 0 metrics for a single snapshot (no trend), got %d", len(reply.Metrics))
+	}
+	if reply.HasHistory {
+		t.Errorf("has_history: got true, want false for a single snapshot")
+	}
+	if reply.PointCount != 1 {
+		t.Errorf("point_count: got %d, want 1", reply.PointCount)
+	}
+	// Must never be nil so the frontend can iterate uniformly.
+	if reply.Metrics == nil {
+		t.Error("Metrics must be a non-nil empty slice")
 	}
 }
 
@@ -46,6 +94,14 @@ func TestBuildTrendsReply_coreMetrics(t *testing.T) {
 	}
 
 	reply := buildTrendsReply("g", 30, entries)
+
+	// Two real snapshots → a genuine trend.
+	if !reply.HasHistory {
+		t.Errorf("has_history: got false, want true for 2 snapshots")
+	}
+	if reply.PointCount != 2 {
+		t.Errorf("point_count: got %d, want 2", reply.PointCount)
+	}
 
 	// At minimum the three core metrics must be present.
 	if len(reply.Metrics) < 3 {
@@ -78,11 +134,26 @@ func TestBuildTrendsReply_coreMetrics(t *testing.T) {
 // (coverage, cycles, secrets) are included only when data exists.
 func TestBuildTrendsReply_extendedMetrics(t *testing.T) {
 	now := time.Now().UTC()
+	covPct0 := 60.0
+	cycles0 := 4
+	secrets0 := 3
 	covPct := 65.0
 	cycles := 3
 	secrets := 2
 
+	// Need ≥2 snapshots for a real trend to be emitted.
 	entries := []quality.HealthEntry{
+		{
+			Timestamp:     now.Add(-48 * time.Hour),
+			Group:         "g",
+			TotalEntities: 480,
+			OrphanRate:    11.0,
+			BugRate:       2.5,
+			HealthScore:   86.5,
+			CoveragePct:   &covPct0,
+			Cycles:        &cycles0,
+			Secrets:       &secrets0,
+		},
 		{
 			Timestamp:     now.Add(-24 * time.Hour),
 			Group:         "g",
@@ -126,7 +197,17 @@ func TestBuildTrendsReply_extendedMetrics(t *testing.T) {
 // included in the reply when all entries have nil for that metric.
 func TestBuildTrendsReply_sparseMetricExcluded(t *testing.T) {
 	now := time.Now().UTC()
+	// Two snapshots so a trend is emitted, but with no extended metrics.
 	entries := []quality.HealthEntry{
+		{
+			Timestamp:     now.Add(-24 * time.Hour),
+			Group:         "g",
+			TotalEntities: 480,
+			OrphanRate:    11.0,
+			BugRate:       2.5,
+			HealthScore:   86.5,
+			// CoveragePct, Cycles, Secrets all nil → should be excluded.
+		},
 		{
 			Timestamp:     now,
 			Group:         "g",
