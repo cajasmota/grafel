@@ -75,6 +75,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		entities = append(entities, extractor.FileEntity(file))
 	}
 	walkNode(file.Tree.RootNode(), file, nil, &entities)
+	// #4432 — index Scala constant collections / enumerations (object const
+	// groups, `val X = Map(...)`, Scala 3 `enum`, sealed-trait + case-object
+	// enumerations) as searchable SCOPE.Enum value-sets carrying structured
+	// members_json. Runs independently of the structural walk above.
+	emitConstantSets(file.Tree.RootNode(), file, &entities)
 	// Epic #3628 — error-flow topology: THROWS / CATCHES edges from functions
 	// to shared SCOPE.ExceptionType convergence nodes. Runs after the main
 	// walk so the SCOPE.Operation host entities exist for FromName attachment.
