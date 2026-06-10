@@ -276,6 +276,15 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		// class-decorated), so they are recognised in a dedicated program-level
 		// pass (guard_interceptor_recognition).
 		x.angularFunctionalGuards(root)
+		// Issue #4378 — Angular global DI wiring. @NgModule({ providers: [...] })
+		// and standalone bootstrapApplication(App, { providers: [...] }) bind
+		// cross-cutting providers (HTTP_INTERCEPTORS, APP_INITIALIZER,
+		// ErrorHandler, custom tokens, functional interceptors) app-wide. Emit
+		// module/app → bound-class USES edges marked global so the otherwise-
+		// orphan classes are connected and resolve through the symbol table
+		// (generalises the NestJS global-DI fix #4329). Runs after walk so the
+		// @NgModule entity already exists.
+		x.angularGlobalProviders(root)
 		// Issue #742 — snapshot length before collectImports so we can
 		// identify which entities were added by it (the import-placeholder
 		// SCOPE.Component/import entities). After collectImports we call
