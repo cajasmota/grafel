@@ -1,18 +1,18 @@
 // Package agenthooks installs OPT-IN agent-host hooks that actively
 // reinforce the "query the graph, don't grep your way around it" standing
-// directive (#4238) at the moment a structural grep is about to run.
+// directive (#4238, #4276) at the moment a structural grep is about to run.
 //
-// Scope — CLAUDE CODE ONLY.
+// The package is a PER-HOST registry (see host.go): each supported agent host
+// declares whether it exposes a real pre-tool / pre-shell hook surface and, if
+// so, installs a host-native hook that runs the SHARED advisory nudge script
+// (nudge.go). Hosts without a hook surface are honest, documented no-ops — the
+// cross-host rules block (internal/install/rulesfiles) carries the guidance for
+// them. This complements — does not replace — the rules-block directive.
 //
-// Unlike the cross-host rules block written by internal/install/rulesfiles
-// (which every IDE coding agent reads as project context), this package
-// targets a mechanism that ONLY Claude Code exposes: a PreToolUse hook.
-// A PreToolUse hook is a JSON entry in `.claude/settings.json` with a
-// `matcher` (which tool it fires on) and a `command` (a shell command that
-// receives the tool call as JSON on stdin and may emit advisory output).
-// Other agent hosts (Cursor, Windsurf, Codex, Continue, Zed, …) have no
-// equivalent surface, so this installer is explicitly Claude-Code-only and
-// COMPLEMENTS — does not replace — the cross-host rules-block directive.
+// This file is the CLAUDE CODE host. Claude Code's pre-tool surface is a
+// PreToolUse hook: a JSON entry in `.claude/settings.json` with a `matcher`
+// (which tool it fires on) and a `command` (a shell command that receives the
+// tool call as JSON on stdin and may emit advisory output).
 //
 // Design constraints (all enforced here and in the embedded nudge script):
 //
@@ -44,6 +44,22 @@ import (
 	"path/filepath"
 )
 
+// claudeCodeHost is the Claude Code implementation of Host. Its pre-tool
+// surface is the `.claude/settings.json` PreToolUse hook.
+type claudeCodeHost struct{}
+
+func (claudeCodeHost) Name() string         { return "Claude Code" }
+func (claudeCodeHost) SupportsHook() bool   { return true }
+func (claudeCodeHost) NoHookReason() string { return "" }
+
+func (claudeCodeHost) InstallHook(repoRoot string) (string, error) {
+	return installClaudeCode(repoRoot)
+}
+func (claudeCodeHost) UninstallHook(repoRoot string) error { return uninstallClaudeCode(repoRoot) }
+func (claudeCodeHost) IsHookInstalled(repoRoot string) bool {
+	return claudeCodeInstalled(repoRoot)
+}
+
 // Marker is the stable identifier embedded in the managed PreToolUse hook
 // command so install/update/uninstall can find exactly our entry among any
 // other user-authored hooks. Bumping the trailing version causes an older
@@ -66,14 +82,14 @@ var SettingsRelPath = filepath.Join(".claude", "settings.json")
 // keeps the settings.json entry small and lets users read/audit it.
 var NudgeScriptRelPath = filepath.Join(".claude", "archigraph-grep-nudge.sh")
 
-// Install upserts the marker-identified PreToolUse nudge hook into the
-// project's .claude/settings.json (creating the file and the nudge script
+// installClaudeCode upserts the marker-identified PreToolUse nudge hook into
+// the project's .claude/settings.json (creating the file and the nudge script
 // if absent) and returns the absolute settings path that was touched.
 //
 // It is safe to call repeatedly: an existing managed entry is replaced in
 // place, all other settings and unmanaged hooks are preserved, and the
 // nudge script is rewritten to the current version.
-func Install(repoRoot string) (string, error) {
+func installClaudeCode(repoRoot string) (string, error) {
 	settingsPath := filepath.Join(repoRoot, SettingsRelPath)
 	scriptPath := filepath.Join(repoRoot, NudgeScriptRelPath)
 
@@ -97,11 +113,11 @@ func Install(repoRoot string) (string, error) {
 	return settingsPath, nil
 }
 
-// Uninstall removes the marker-identified managed PreToolUse entry and
-// deletes the nudge script, leaving every other setting and any unmanaged
+// uninstallClaudeCode removes the marker-identified managed PreToolUse entry
+// and deletes the nudge script, leaving every other setting and any unmanaged
 // hooks untouched. It is idempotent: a missing file or missing entry is a
 // no-op.
-func Uninstall(repoRoot string) error {
+func uninstallClaudeCode(repoRoot string) error {
 	settingsPath := filepath.Join(repoRoot, SettingsRelPath)
 	scriptPath := filepath.Join(repoRoot, NudgeScriptRelPath)
 	_ = os.Remove(scriptPath)
@@ -119,9 +135,9 @@ func Uninstall(repoRoot string) error {
 	return writeSettings(settingsPath, doc)
 }
 
-// IsInstalled reports whether the project's .claude/settings.json already
-// contains the marker-identified managed PreToolUse entry.
-func IsInstalled(repoRoot string) bool {
+// claudeCodeInstalled reports whether the project's .claude/settings.json
+// already contains the marker-identified managed PreToolUse entry.
+func claudeCodeInstalled(repoRoot string) bool {
 	settingsPath := filepath.Join(repoRoot, SettingsRelPath)
 	doc, err := readSettings(settingsPath)
 	if err != nil {

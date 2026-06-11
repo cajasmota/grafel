@@ -49,14 +49,14 @@ func managedCount(doc map[string]any) int {
 // (a) fresh .claude/settings.json gets the marker-wrapped PreToolUse entry.
 func TestInstall_Fresh(t *testing.T) {
 	root := t.TempDir()
-	path, err := Install(root)
+	path, err := installClaudeCode(root)
 	if err != nil {
 		t.Fatalf("Install: %v", err)
 	}
 	if path != filepath.Join(root, SettingsRelPath) {
 		t.Fatalf("unexpected settings path: %s", path)
 	}
-	if !IsInstalled(root) {
+	if !claudeCodeInstalled(root) {
 		t.Fatal("IsInstalled = false after Install")
 	}
 	doc := readDoc(t, root)
@@ -113,7 +113,7 @@ func TestInstall_Idempotent(t *testing.T) {
 	}
 
 	for i := 0; i < 3; i++ {
-		if _, err := Install(root); err != nil {
+		if _, err := installClaudeCode(root); err != nil {
 			t.Fatalf("Install #%d: %v", i, err)
 		}
 	}
@@ -151,7 +151,7 @@ func TestInstall_Idempotent(t *testing.T) {
 // (c) an existing managed block is replaced in place (not appended).
 func TestInstall_ReplacesExistingManaged(t *testing.T) {
 	root := t.TempDir()
-	if _, err := Install(root); err != nil {
+	if _, err := installClaudeCode(root); err != nil {
 		t.Fatal(err)
 	}
 
@@ -169,7 +169,7 @@ func TestInstall_ReplacesExistingManaged(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := Install(root); err != nil {
+	if _, err := installClaudeCode(root); err != nil {
 		t.Fatal(err)
 	}
 	doc2 := readDoc(t, root)
@@ -199,13 +199,13 @@ func TestUninstall(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, SettingsRelPath), seed, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := Install(root); err != nil {
+	if _, err := installClaudeCode(root); err != nil {
 		t.Fatal(err)
 	}
-	if err := Uninstall(root); err != nil {
+	if err := uninstallClaudeCode(root); err != nil {
 		t.Fatalf("Uninstall: %v", err)
 	}
-	if IsInstalled(root) {
+	if claudeCodeInstalled(root) {
 		t.Fatal("still installed after Uninstall")
 	}
 	if _, err := os.Stat(filepath.Join(root, NudgeScriptRelPath)); !os.IsNotExist(err) {
@@ -221,7 +221,7 @@ func TestUninstall(t *testing.T) {
 		t.Fatalf("user hook not preserved on uninstall: %v", pre)
 	}
 	// Idempotent second uninstall.
-	if err := Uninstall(root); err != nil {
+	if err := uninstallClaudeCode(root); err != nil {
 		t.Fatalf("second Uninstall: %v", err)
 	}
 }
