@@ -110,6 +110,17 @@ var customPrefixForLanguage = map[string]string{
 // so it no-ops on Lighthouse (custom_php_) GraphQL schemas and vice-versa.
 var extraCustomPrefixesForLanguage = map[string][]string{
 	"graphql": {"custom_js_"},
+	// lua's PRIMARY prefix is the bare `lua_` namespace used by its framework
+	// extractors (lua_routing, lua_middleware, lua_kong, …). The coverage-linkage
+	// tail extractor (#4749) however registered under the canonical
+	// `custom_lua_tests_route_e2e` key — matching every other language's
+	// `custom_<lang>_` convention — which does NOT share the `lua_` prefix
+	// (`custom_lua_…` starts with "custom", not "lua"). Without this extra
+	// prefix CustomExtractorsFor("lua") silently never returned the e2e
+	// extractor in production (only its direct-registration unit test passed).
+	// Dispatch both namespaces so the legacy lua_* framework extractors AND the
+	// custom_lua_* tail extractor are picked up.
+	"lua": {"custom_lua_"},
 }
 
 // CustomExtractorsFor returns all registered custom/framework extractors
