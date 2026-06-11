@@ -22,10 +22,15 @@
    site reimplementing the expansion logic.
    ============================================================ */
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { ChevronRight, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useShape } from "@/hooks/use-paths";
+import {
+  indentForDepth,
+  fieldTypeLabel,
+  fieldOptionality,
+} from "@/lib/shape-tree-indent";
 
 /**
  * A top-level row consumed by ShapeTree. Both PathParameter and
@@ -233,28 +238,30 @@ function NestedFieldRows({
   );
   if (isLoading) {
     return (
-      <div className="py-1 text-text-4" style={{ paddingLeft: depth * 16 + 16 }}>
-        loading…
-      </div>
+      <TreeGuide depth={depth}>
+        <div className="py-1 px-2 text-text-4">loading…</div>
+      </TreeGuide>
     );
   }
   if (isError) {
     return (
-      <div className="py-1 text-danger" style={{ paddingLeft: depth * 16 + 16 }}>
-        Failed to load: {(error as Error)?.message ?? "unknown"}
-      </div>
+      <TreeGuide depth={depth}>
+        <div className="py-1 px-2 text-danger">
+          Failed to load: {(error as Error)?.message ?? "unknown"}
+        </div>
+      </TreeGuide>
     );
   }
   const rows = data?.rows ?? [];
   if (rows.length === 0) {
     return (
-      <div className="py-1 text-text-4" style={{ paddingLeft: depth * 16 + 16 }}>
-        (no fields)
-      </div>
+      <TreeGuide depth={depth}>
+        <div className="py-1 px-2 text-text-4">(no fields)</div>
+      </TreeGuide>
     );
   }
   return (
-    <div>
+    <TreeGuide depth={depth}>
       {rows.map((field) => (
         <NestedFieldRow
           key={field.name}
@@ -263,6 +270,24 @@ function NestedFieldRows({
           depth={depth}
         />
       ))}
+    </TreeGuide>
+  );
+}
+
+/**
+ * Indents one nesting level and draws the vertical tree-guide rail so a
+ * field list reads as a hierarchy under its parent row rather than as a
+ * flat, left-aligned block (#4858). The left border is the rail; each
+ * child row paints its own horizontal "elbow" connector.
+ */
+function TreeGuide({ depth, children }: { depth: number; children: ReactNode }) {
+  return (
+    <div
+      data-testid="shape-tree-guide"
+      className="border-l border-border-soft"
+      style={{ marginLeft: indentForDepth(depth) + 4 }}
+    >
+      {children}
     </div>
   );
 }
@@ -278,11 +303,16 @@ function NestedFieldRow({
 }) {
   const [open, setOpen] = useState(false);
   const expandable = field.has_children;
+  const optional = !!field.nullable;
   return (
     <div>
       <div
+        data-testid={`shape-field-${field.name}`}
+        data-depth={depth}
         className={cn(
-          "flex items-start gap-2 py-1 border-b border-border-soft last:border-0",
+          "flex items-center gap-2 py-1 pl-3 pr-2 border-b border-border-soft last:border-0 min-w-0",
+          // horizontal elbow connecting the rail to the row content
+          "before:content-[''] before:w-2 before:h-px before:bg-border-soft before:shrink-0 before:-ml-3",
           expandable && "cursor-pointer hover:bg-surface-2/40",
         )}
         onClick={() => expandable && setOpen((v) => !v)}
@@ -295,16 +325,36 @@ function NestedFieldRow({
             setOpen((v) => !v);
           }
         }}
-        style={{ paddingLeft: depth * 16 }}
       >
         <ExpandGlyph expandable={expandable} open={open} />
-        <span className="font-mono text-text shrink-0">
-          {field.name}
-          {field.nullable && <span className="text-text-4 ml-0.5">?</span>}
+        <span className="font-mono text-text shrink-0">{field.name}</span>
+        <span
+          className={cn(
+            "font-mono shrink-0",
+            expandable
+              ? "text-accent underline decoration-dotted underline-offset-2"
+              : "text-text-3",
+          )}
+          title={expandable ? `${field.type} — click to expand fields` : field.type}
+        >
+          {fieldTypeLabel(field.type, field.nullable)}
         </span>
-        <span className="font-mono text-text-3 shrink-0">{field.type}</span>
+        <span
+          data-testid={`shape-field-optionality-${field.name}`}
+          className={cn(
+            "inline-flex items-center px-1 py-0.5 rounded-sm text-[10px] font-medium font-sans shrink-0",
+            optional
+              ? "bg-surface-2 text-text-4 border border-border"
+              : "bg-[var(--success-soft)] text-[var(--success)] border border-[var(--success-soft)]",
+          )}
+          title={fieldOptionality(field.nullable)}
+        >
+          {optional ? "optional" : "required"}
+        </span>
         {field.annotations && field.annotations.length > 0 && (
-          <span className="text-text-4 truncate">{field.annotations.join(" ")}</span>
+          <span className="text-text-4 truncate font-mono text-[11px]">
+            {field.annotations.join(" ")}
+          </span>
         )}
       </div>
       {open && expandable && (
