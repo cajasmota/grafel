@@ -180,6 +180,8 @@ Dashboard:
 Export:
   export graphml [--group --ref --out file]   Export the group graph to GraphML (XML)
   export cypher  [--group --ref --out file]   Export the group graph to Neo4j Cypher
+  export svg     [--group --ref --out --top-N] Export a static SVG of the group graph
+  export html    [--group --ref --out --top-N] Export a self-contained HTML graph viewer
 
 Quality:
   quality <fixture-dir>                       Measure extraction recall vs a golden fixture

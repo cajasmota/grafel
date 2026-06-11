@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"os"
+	"sort"
 
 	"github.com/spf13/cobra"
 
@@ -16,28 +17,37 @@ import (
 //
 // It loads a group's indexed graph (the same load path used by feedback,
 // doctor and links: per-repo StateDir → graph.LoadGraphFromDir) and writes a
-// static interchange file. Two formats are supported in this PR:
+// static interchange file. Four formats are supported:
 //
 //	archigraph export graphml [--group g --ref r --out file.graphml]
 //	archigraph export cypher  [--group g --ref r --out file.cypher]
+//	archigraph export svg     [--group g --ref r --out file.svg  --top-N 500]
+//	archigraph export html    [--group g --ref r --out file.html --top-N 500]
 //
-// The self-contained HTML/SVG export described in #4291 is a deferred
-// follow-up.
+// The merged document is sorted into a canonical node/edge order before
+// serialization so every format is reproducible (same input → identical bytes).
 func newExportCmd() *cobra.Command {
 	var group string
 	var refFlag string
 	var outPath string
+	var topN int
 
 	cmd := &cobra.Command{
-		Use:   "export <graphml|cypher>",
-		Short: "Export the group graph to a static file (GraphML or Cypher)",
+		Use:   "export <graphml|cypher|svg|html>",
+		Short: "Export the group graph to a static file (GraphML, Cypher, SVG, or HTML)",
 		Long: `export serializes a group's indexed code graph to a static file for
-offline analysis or visualization.
+offline analysis, visualization, or sharing.
 
 Formats:
   graphml   GraphML 1.0 XML (<graphml>/<graph>/<node>/<edge>) — opens in
             Gephi, yEd, Cytoscape, etc.
   cypher    Neo4j Cypher CREATE statements — load into a Neo4j database.
+  svg       Self-contained static SVG (deterministic grid layout).
+  html      Self-contained single HTML file (inline SVG + filterable node
+            table; opens in any browser with no server).
+
+For svg/html, --top-N caps the rendering to the N highest-degree nodes
+(default 500) so huge graphs stay legible; pass --top-N 0 to disable the cap.
 
 The graph is loaded from the indexed store for the resolved group and ref;
 run 'archigraph index' first if no graph exists.`,
@@ -45,9 +55,9 @@ run 'archigraph index' first if no graph exists.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			format := args[0]
 			switch format {
-			case "graphml", "cypher":
+			case "graphml", "cypher", "svg", "html":
 			default:
-				return fmt.Errorf("export: unknown format %q (want: graphml | cypher)", format)
+				return fmt.Errorf("export: unknown format %q (want: graphml | cypher | svg | html)", format)
 			}
 
 			// Resolve ref the same way as the other read-only commands.
@@ -60,32 +70,33 @@ run 'archigraph index' first if no graph exists.`,
 			if err != nil {
 				return err
 			}
+			// Canonicalize node/edge order so output is reproducible regardless
+			// of per-repo load order or graph.fb iteration order.
+			sortDocumentForExport(doc)
 
 			// Resolve destination writer.
 			out := cmd.OutOrStdout()
-			var w *os.File
+			w := out
+			var f *os.File
 			if outPath != "" && outPath != "-" {
-				w, err = os.Create(outPath)
+				f, err = os.Create(outPath)
 				if err != nil {
 					return fmt.Errorf("export: create %s: %w", outPath, err)
 				}
-				defer w.Close()
+				defer f.Close()
+				w = f
 			}
 
 			var werr error
 			switch format {
 			case "graphml":
-				if w != nil {
-					werr = export.WriteGraphML(w, doc)
-				} else {
-					werr = export.WriteGraphML(out, doc)
-				}
+				werr = export.WriteGraphML(w, doc)
 			case "cypher":
-				if w != nil {
-					werr = export.WriteCypher(w, doc)
-				} else {
-					werr = export.WriteCypher(out, doc)
-				}
+				werr = export.WriteCypher(w, doc)
+			case "svg":
+				werr = export.WriteSVG(w, doc, topN)
+			case "html":
+				werr = export.WriteHTML(w, doc, topN)
 			}
 			if werr != nil {
 				return fmt.Errorf("export: write %s: %w", format, werr)
@@ -102,7 +113,29 @@ run 'archigraph index' first if no graph exists.`,
 	cmd.Flags().StringVar(&group, "group", "", "group to export (default: infer from current directory)")
 	cmd.Flags().StringVar(&refFlag, "ref", "", refFlagUsage)
 	cmd.Flags().StringVar(&outPath, "out", "", "output file (default: stdout; '-' is stdout)")
+	cmd.Flags().IntVar(&topN, "top-N", export.DefaultTopN, "for svg/html: cap to the N highest-degree nodes (0 = no cap)")
 	return cmd
+}
+
+// sortDocumentForExport sorts a merged document into a canonical, stable order
+// so every export format produces byte-identical output for the same input.
+// Entities are sorted by id; relationships by (from, to, kind). It mutates doc
+// in place. This mirrors cmd/archigraph's sortDocumentForEmission but lives in
+// the cli package to keep the export command self-contained.
+func sortDocumentForExport(doc *graph.Document) {
+	sort.SliceStable(doc.Entities, func(i, j int) bool {
+		return doc.Entities[i].ID < doc.Entities[j].ID
+	})
+	sort.SliceStable(doc.Relationships, func(i, j int) bool {
+		a, b := &doc.Relationships[i], &doc.Relationships[j]
+		if a.FromID != b.FromID {
+			return a.FromID < b.FromID
+		}
+		if a.ToID != b.ToID {
+			return a.ToID < b.ToID
+		}
+		return a.Kind < b.Kind
+	})
 }
 
 // loadGroupGraphForExport resolves the group, loads every repo's indexed graph

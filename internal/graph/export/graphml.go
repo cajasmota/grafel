@@ -3,9 +3,10 @@
 // visualization. The serializers hold no global state and never read the
 // network or filesystem — callers own the io.Writer.
 //
-// Scope (issue #4291): GraphML (XML, GraphML 1.0 namespace) and Cypher
-// (Neo4j CREATE statements). The self-contained HTML/SVG export is a
-// deferred follow-up.
+// Scope (issue #4291): GraphML (XML, GraphML 1.0 namespace), Cypher (Neo4j
+// CREATE statements), a deterministic static SVG, and a self-contained,
+// dependency-free HTML viewer (embeds the graph JSON + an inline SVG + a tiny
+// filter script).
 package export
 
 import (
