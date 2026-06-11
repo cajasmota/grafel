@@ -7,6 +7,8 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+
+	"github.com/cajasmota/archigraph/internal/process"
 )
 
 // ErrAlreadyRunning is returned by AcquirePIDFile when another daemon
@@ -23,7 +25,7 @@ var ErrAlreadyRunning = errors.New("daemon already running")
 // daemon, and pid+syscall.Kill(pid,0) is portable across darwin/linux
 // without a new dependency.
 func AcquirePIDFile(path string) (release func(), err error) {
-	if existing, ok := readPID(path); ok && pidAlive(existing) {
+	if existing, ok := readPID(path); ok && pidIsLiveDaemon(existing) {
 		return nil, fmt.Errorf("%w (pid %d)", ErrAlreadyRunning, existing)
 	}
 	pid := os.Getpid()
@@ -59,6 +61,39 @@ func readPID(path string) (int, bool) {
 		return 0, false
 	}
 	return pid, true
+}
+
+// pidIsLiveDaemon reports whether the pid recorded in a pidfile names a
+// process we should honor as "the daemon is already running".
+//
+// This is the issue #4549 fix for the stale-pidfile false-positive: after a
+// daemon dies (SIGKILL, crash, or a defer that never ran), its pidfile still
+// names the dead pid. A bare kill(pid,0) liveness probe then returns true the
+// moment that pid is RECYCLED by any unrelated process, so `start`/`restart`
+// wrongly reports "daemon already running (pid X)" and bails, leaving NO
+// daemon. We therefore require two conditions:
+//
+//  1. The pid is alive (kill(pid,0) succeeds), AND
+//  2. The live pid is actually an archigraph process (name match), which
+//     defeats pid reuse.
+//
+// On platforms where process enumeration is unavailable (process.ErrUnsupported,
+// currently Windows), we cannot verify the name, so we fall back to the bare
+// liveness probe to preserve prior behavior rather than wrongly declaring a
+// live owner stale. A transient scan error is treated the same way (fail
+// safe toward "honor the live pid").
+func pidIsLiveDaemon(pid int) bool {
+	if !pidAlive(pid) {
+		return false
+	}
+	isArchigraph, err := process.PidIsArchigraph(pid)
+	if err != nil {
+		// Cannot determine the process name (unsupported platform or a
+		// transient enumeration failure). The pid is alive, so honor it as
+		// the owner — the same conservative behavior as before this fix.
+		return true
+	}
+	return isArchigraph
 }
 
 // pidAlive returns true when a process with the given pid exists and

@@ -82,3 +82,49 @@ type Info struct {
 	// Exe is the full path to the executable, if readable.
 	Exe string
 }
+
+// ErrUnsupported is returned by introspection helpers on platforms where
+// process enumeration is not implemented (currently Windows). Callers
+// should treat it as "cannot determine" and fall back to a coarser check
+// rather than assuming the negative.
+var ErrUnsupported = errUnsupported{}
+
+type errUnsupported struct{}
+
+func (errUnsupported) Error() string {
+	return "process introspection unsupported on " + runtime.GOOS
+}
+
+// PidIsArchigraph reports whether the live process with the given pid is an
+// archigraph binary. It is the PID-reuse-safe companion to a bare
+// kill(pid,0) liveness probe: after a daemon dies, its pid can be recycled
+// by an unrelated process, and honoring a stale pidfile purely because
+// "some process with that pid is alive" produces the false "daemon already
+// running" wedge in issue #4549.
+//
+// Returns:
+//   - (true,  nil)            — pid is live AND its command name/exe matches "archigraph".
+//   - (false, nil)            — pid is not a live archigraph process (dead, or a different program).
+//   - (false, ErrUnsupported) — this platform cannot enumerate processes; caller must
+//     fall back to a coarser liveness check and NOT treat the pid as definitively foreign.
+func PidIsArchigraph(pid int) (bool, error) {
+	if pid <= 0 {
+		return false, nil
+	}
+	procs, err := FindByName("archigraph")
+	if err != nil {
+		// Distinguish "platform can't enumerate" from a transient scan error.
+		// Both surface as an error so the caller can decide how to degrade,
+		// but we normalize the unsupported-platform case to ErrUnsupported.
+		if _, ok := err.(errUnsupported); ok {
+			return false, ErrUnsupported
+		}
+		return false, err
+	}
+	for _, p := range procs {
+		if p.PID == pid {
+			return true, nil
+		}
+	}
+	return false, nil
+}

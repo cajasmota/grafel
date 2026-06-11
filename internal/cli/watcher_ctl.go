@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strconv"
+	"strings"
+	"syscall"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -69,18 +71,109 @@ func newRestartCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "restart",
 		Short: "Restart the daemon (MCP, indexer, dashboard, watchers)",
+		Long: `Restart the archigraph daemon as a single idempotent operation.
+
+restart stops the running daemon gracefully, verifies the process is actually
+dead (escalating to SIGKILL if needed), clears any stale pidfile/socket left by
+a crash or hard kill, then starts a fresh daemon. It is safe to run whether the
+daemon is currently up or down.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := runDaemonStop(cmd.OutOrStdout()); err != nil &&
-				!errors.Is(err, client.ErrDaemonNotRunning) {
-				return err
-			}
-			// Brief pause so the previous daemon releases the socket
-			// before we try to bind it again. 200ms is enough on
-			// darwin and linux; if the socket is still busy the
-			// daemon's own listen() returns a clear error.
-			time.Sleep(200 * time.Millisecond)
-			return runDaemonStart(cmd.OutOrStdout())
+			return runDaemonRestart(cmd.OutOrStdout())
 		},
+	}
+}
+
+// runDaemonRestart is the idempotent stop→verify-dead→cleanup→start sequence
+// for issue #4549. It is correct from BOTH an up and a down starting state:
+//
+//   - Up:   request graceful stop, wait for the process to actually exit
+//           (polling the recorded pid), SIGKILL if it overstays, then start.
+//   - Down: stop is a no-op (ErrDaemonNotRunning is swallowed), stale pidfile
+//           and socket are cleared, then start.
+//
+// The critical bug it fixes: the previous restart did a blind 200 ms sleep and
+// relied on `start`'s dial probe, so a daemon that ignored SIGTERM, or a stale
+// pidfile naming a dead/recycled pid, could wedge the next start. We now treat
+// "the old daemon is gone and its on-disk artifacts are clean" as an explicit
+// precondition of start.
+func runDaemonRestart(out io.Writer) error {
+	layout, err := daemon.DefaultLayout()
+	if err != nil {
+		return err
+	}
+
+	// Record the pid BEFORE asking the daemon to stop, so we can confirm that
+	// exact process exits (rather than racing a freshly-spawned one).
+	oldPID := daemon.ReadPIDFile(layout.PIDPath)
+
+	if err := runDaemonStop(out); err != nil && !errors.Is(err, client.ErrDaemonNotRunning) {
+		return err
+	}
+
+	// Wait for the old process to actually exit, then SIGKILL if it overstays.
+	if oldPID > 0 {
+		if waitForExit(oldPID, 5*time.Second) {
+			// graceful exit
+		} else if pidStillAlive(oldPID) {
+			fmt.Fprintf(out, "  daemon (pid %d) did not exit gracefully; sending SIGKILL\n", oldPID)
+			_ = forceKill(oldPID)
+			if !waitForExit(oldPID, 3*time.Second) {
+				return fmt.Errorf("daemon (pid %d) survived SIGKILL; not starting a second instance", oldPID)
+			}
+		}
+	}
+
+	// Clear stale on-disk artifacts so start cannot see a phantom owner. Only
+	// remove the pidfile if it no longer names a live archigraph daemon — we
+	// must never delete a pidfile owned by a daemon a concurrent caller just
+	// started.
+	cleanStaleArtifacts(out, layout)
+
+	return runDaemonStart(out)
+}
+
+// waitForExit polls until pid is gone or the timeout elapses. Returns true if
+// the process exited within the window.
+func waitForExit(pid int, timeout time.Duration) bool {
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if !pidStillAlive(pid) {
+			return true
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	return !pidStillAlive(pid)
+}
+
+// forceKill forcibly terminates pid (no-op-safe if the pid is already gone).
+// os.Process.Kill maps to SIGKILL on unix and TerminateProcess on Windows, so
+// this is the cross-platform escalation path when SIGTERM was ignored.
+func forceKill(pid int) error {
+	if pid <= 0 {
+		return nil
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return err
+	}
+	return p.Kill()
+}
+
+// cleanStaleArtifacts removes a stale pidfile and socket left by a crashed or
+// hard-killed daemon. It is conservative: the pidfile is only removed if it no
+// longer names a live archigraph process (so a concurrently-started daemon is
+// never disturbed). The socket file is removed unconditionally on unix — a
+// fresh daemon re-creates it on listen, and a live daemon holding the same
+// path keeps its open fd regardless of the directory entry. On Windows the
+// socket path is a named pipe (not a filesystem object) and removal is a no-op.
+func cleanStaleArtifacts(out io.Writer, layout daemon.Layout) {
+	if pid := daemon.ReadPIDFile(layout.PIDPath); pid > 0 && !pidStillAlive(pid) {
+		if err := os.Remove(layout.PIDPath); err == nil {
+			fmt.Fprintf(out, "  cleared stale pidfile (pid %d was dead)\n", pid)
+		}
+	}
+	if isUnixSocketPath(layout.SocketPath) {
+		_ = os.Remove(layout.SocketPath)
 	}
 }
 
@@ -166,18 +259,82 @@ func runDaemonStartOpts(out io.Writer, maxRSSBudgetMB int64, noAutoCleanup bool)
 	// Don't wait — we want the child to outlive us.
 	go func() { _ = cmd.Wait() }()
 
-	// Poll for readiness up to 5 seconds. The daemon binds its socket
-	// before logging "ready"; once dial succeeds we're done.
-	deadline := time.Now().Add(5 * time.Second)
+	// Poll for readiness up to the startup-readiness budget. The daemon binds
+	// its socket only AFTER its first startup index pass, which on a large
+	// store legitimately takes far longer than the old 5 s cliff (issue #4549
+	// observed ~82 s). Failing at 5 s reported a false failure while a healthy
+	// daemon was still indexing, triggering rollback/retry churn. We now wait
+	// up to startupReadinessBudget() and emit progress so the user can see the
+	// daemon is coming up rather than wedged. If the child PROCESS exits before
+	// the socket appears, we bail early with the log path — that's a real
+	// failure, not a slow start.
+	budget := startupReadinessBudget()
+	deadline := time.Now().Add(budget)
+	lastProgress := time.Now()
 	for time.Now().Before(deadline) {
 		if c, err := client.DialPath(layout.SocketPath); err == nil {
 			_ = c.Close()
 			fmt.Fprintln(out, "daemon started")
 			return nil
 		}
+		// If the spawned process has already died, stop waiting — a dead
+		// child will never open the socket, so the full budget is wasted.
+		if cmd.Process != nil && !pidStillAlive(cmd.Process.Pid) {
+			return fmt.Errorf("daemon process exited before becoming ready "+
+				"(check %s)", layout.LogPath)
+		}
+		if now := time.Now(); now.Sub(lastProgress) >= 5*time.Second {
+			remaining := time.Until(deadline).Round(time.Second)
+			fmt.Fprintf(out, "  waiting for daemon socket… (initial index may be running; %s remaining)\n", remaining)
+			lastProgress = now
+		}
 		time.Sleep(100 * time.Millisecond)
 	}
-	return errors.New("daemon failed to become ready within 5s (check ~/.archigraph/logs/daemon.log)")
+	return fmt.Errorf("daemon failed to become ready within %s (check %s)", budget, layout.LogPath)
+}
+
+// startupReadinessDefault is the time `archigraph start` waits for the daemon
+// socket to appear. It must cover the daemon's first startup index pass, which
+// on large stores runs well past a minute (issue #4549 observed ~82 s before
+// the socket was ready). It is deliberately generous: a slow-but-healthy start
+// must NOT be reported as a failure.
+const startupReadinessDefault = 120 * time.Second
+
+// startupReadinessBudget returns the readiness budget for `archigraph start`,
+// overridable via ARCHIGRAPH_START_READINESS (a Go duration, e.g. "180s" or
+// "3m") so operators on very large stores can extend it without a rebuild.
+// Invalid or non-positive values fall back to the default.
+func startupReadinessBudget() time.Duration {
+	if v := os.Getenv("ARCHIGRAPH_START_READINESS"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return startupReadinessDefault
+}
+
+// isUnixSocketPath reports whether path is a filesystem unix-domain socket
+// (as opposed to a Windows named pipe). Named pipes use the reserved
+// `\\.\pipe\` prefix and are NOT filesystem objects, so os.Remove must not be
+// attempted on them. This check is value-based (no syscalls) so it is correct
+// regardless of the host OS — relevant because the socket path is recorded in
+// the layout and may be inspected cross-platform.
+func isUnixSocketPath(path string) bool {
+	return !strings.HasPrefix(path, `\\.\pipe\`)
+}
+
+// pidStillAlive reports whether the process with the given pid is still
+// running. Used by the start readiness loop to bail out early when the
+// spawned daemon dies instead of waiting out the whole budget.
+func pidStillAlive(pid int) bool {
+	if pid <= 0 {
+		return false
+	}
+	p, err := os.FindProcess(pid)
+	if err != nil {
+		return false
+	}
+	return p.Signal(syscall.Signal(0)) == nil
 }
 
 func runDaemonStop(out io.Writer) error {

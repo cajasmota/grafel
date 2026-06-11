@@ -12,7 +12,7 @@ import (
 // the Windows Management Instrumentation (WMI) API or tasklist.exe
 // instead; this is tracked as a future improvement.
 func FindByName(_ string) ([]Info, error) {
-	return nil, fmt.Errorf("process.FindByName: unsupported platform %s", runtime.GOOS)
+	return nil, ErrUnsupported
 }
 
 // Kill sends a termination signal to the given PID.
