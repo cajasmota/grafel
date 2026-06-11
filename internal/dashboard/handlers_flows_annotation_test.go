@@ -54,6 +54,50 @@ func TestClassifyStepKind_DBQuery(t *testing.T) {
 	}
 }
 
+// TestClassifyStepKind_MongoPipelineBuilderTerminal is the #4337 regression: a
+// FUNCTIONAL Mongo aggregation-pipeline builder terminal (a SCOPE.DataAccess
+// node reached via a JOINS_COLLECTION $lookup edge) must classify as db_query —
+// the data-access terminal kind — NOT `render`. Before the fix it fell through
+// to the entity-kind substring matchers and was mis-kinded `render`.
+func TestClassifyStepKind_MongoPipelineBuilderTerminal(t *testing.T) {
+	got := classifyStepKind("SCOPE.DataAccess", map[string]bool{"JOINS_COLLECTION": true}, nil, false)
+	if got != StepKindDBQuery {
+		t.Errorf("Mongo $lookup pipeline-builder terminal: want %q, got %q", StepKindDBQuery, got)
+	}
+}
+
+// TestClassifyStepKind_DataAccessKindUnresolvedJoin covers the honest-unresolved
+// case: a SCOPE.DataAccess stage whose `from:` collection is non-static, so no
+// JOINS_COLLECTION edge is emitted. It must still classify as db_query by KIND,
+// never `render`.
+func TestClassifyStepKind_DataAccessKindUnresolvedJoin(t *testing.T) {
+	got := classifyStepKind("SCOPE.DataAccess", map[string]bool{}, nil, false)
+	if got != StepKindDBQuery {
+		t.Errorf("DataAccess terminal (no edge): want %q, got %q", StepKindDBQuery, got)
+	}
+}
+
+// TestClassifyStepKind_AccessesTableBuilderTerminal generalises #4337 to the SQL
+// fluent-builder family (knex / TypeORM QueryBuilder), whose data-access
+// terminal carries an ACCESSES_TABLE edge rather than an imperative read edge.
+func TestClassifyStepKind_AccessesTableBuilderTerminal(t *testing.T) {
+	got := classifyStepKind("SCOPE.DataAccess", map[string]bool{"ACCESSES_TABLE": true}, nil, false)
+	if got != StepKindDBQuery {
+		t.Errorf("ACCESSES_TABLE builder terminal: want %q, got %q", StepKindDBQuery, got)
+	}
+}
+
+// TestClassifyStepKind_GenuineRenderUnaffected is the #4337 regression guard: an
+// actual UI render terminal (a Component/View entity with no data-access edge or
+// kind) must STILL classify as render — the fix must not over-reach.
+func TestClassifyStepKind_GenuineRenderUnaffected(t *testing.T) {
+	for _, k := range []string{"SCOPE.View", "SCOPE.Component", "ReactComponent", "Widget"} {
+		if got := classifyStepKind(k, map[string]bool{}, nil, false); got != StepKindRender {
+			t.Errorf("genuine render terminal %q: want %q, got %q", k, StepKindRender, got)
+		}
+	}
+}
+
 func TestClassifyStepKind_MessagePublish(t *testing.T) {
 	got := classifyStepKind("Function", map[string]bool{"PUBLISHES_TO": true}, nil, false)
 	if got != StepKindMessagePublish {

@@ -89,7 +89,25 @@ func classifyStepKind(entityKind string, outEdgeKinds map[string]bool, inEdgeKin
 	}
 
 	// ── DB query ─────────────────────────────────────────────────────────────
-	if outEdgeKinds["READS_FROM"] || outEdgeKinds["QUERIES"] {
+	// READS_FROM/QUERIES are the imperative ORM read edges (Model.find()).
+	// JOINS_COLLECTION (Mongo $lookup) and ACCESSES_TABLE are the data-access
+	// topology edges emitted for FUNCTIONAL / fluent query-builder terminals —
+	// a Mongo aggregation-pipeline builder (`mongo<…>().lookupOne(...).…`, #4320),
+	// and the SQL builder family (knex/TypeORM) — whose terminal node carries no
+	// imperative read edge. Without these, that terminal fell through to the
+	// entity-kind substring matchers below and was mis-kinded `render` when the
+	// builder/factory entity Kind happened to contain a view-ish token (#4337).
+	if outEdgeKinds["READS_FROM"] || outEdgeKinds["QUERIES"] ||
+		outEdgeKinds["JOINS_COLLECTION"] || outEdgeKinds["ACCESSES_TABLE"] {
+		return StepKindDBQuery
+	}
+	// A SCOPE.DataAccess terminal is a data-access node even when its join
+	// target is honestly unresolved (a non-static `from:` collection emits the
+	// stage node but no JOINS_COLLECTION edge, #4320). Classify it as a DB query
+	// step BY KIND — and, critically, BEFORE the render/test/validation entity-
+	// kind substring matchers — so a query-builder terminal is never mis-kinded
+	// `render`. Mirrors the db_query kind used for an imperative Model.find().
+	if containsAny(entityKind, "DataAccess") {
 		return StepKindDBQuery
 	}
 

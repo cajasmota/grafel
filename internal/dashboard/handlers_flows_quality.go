@@ -25,6 +25,14 @@ var usefulSinkEdgeKinds = map[string]bool{
 	"PUBLISHES":    true,
 	"WS_EMITS":     true,
 	"STREAMS_TO":   true,
+	// DB reads / query-builder data access — a read-only flow that terminates
+	// at a data-access node (e.g. a functional Mongo aggregation-pipeline builder
+	// reached via JOINS_COLLECTION, or an ORM read via QUERIES/READS_FROM, or a
+	// SQL builder via ACCESSES_TABLE, #4337) IS a useful sink, not a dead end.
+	"READS_FROM":       true,
+	"QUERIES":          true,
+	"JOINS_COLLECTION": true,
+	"ACCESSES_TABLE":   true,
 	// Test assertions
 	"ASSERTS": true,
 	// State mutation
@@ -39,6 +47,10 @@ var usefulSinkKindSubstrings = []string{
 	"Test",
 	"Assert",
 	"Render",
+	// A SCOPE.DataAccess terminal (functional query-builder pipeline with a
+	// non-static / unresolved join target carries no out-edge) is a useful data
+	// sink by KIND (#4337).
+	"DataAccess",
 }
 
 // flowStepKey identifies a step entity by repo slug and local entity ID.
