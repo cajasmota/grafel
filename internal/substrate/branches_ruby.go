@@ -224,6 +224,113 @@ func endBlockBody(lines []string, headerIdx int) []string {
 	return body
 }
 
+// rubyClampDefHeaderRe matches a method-definition header (`def name` / `def
+// self.name` / `def name(args)`), ignoring leading indentation. It anchors the
+// method whose body bodyEndRuby clamps to. (Distinct from payload_shapes_ruby's
+// rubyDefHeaderRe, which is multi-line/`(?m)` and capture-oriented; this one is
+// a cheap per-line predicate.)
+var rubyClampDefHeaderRe = regexp.MustCompile(`^\s*def\s`)
+
+// rubyOneLineDefRe matches a single-line `def`…`end` (`def foo; bar; end` /
+// `def foo = expr`), which opens and closes its body on the same line and
+// therefore has no separate clamp boundary. An endless method (`def foo = x`,
+// Ruby 3.0+) likewise needs no `end`.
+var (
+	rubyOneLineDefEndRe = regexp.MustCompile(`^\s*def\b.*;\s*end\b`)
+	rubyEndlessDefRe    = regexp.MustCompile(`^\s*def\s+[^;]*=`)
+	rubyBeginCommentRe  = regexp.MustCompile(`^=begin\b`)
+	rubyEndCommentRe    = regexp.MustCompile(`^=end\b`)
+)
+
+// bodyEndRuby returns the exclusive line index at which the method whose `def`
+// header is the first `def` line of `lines` ends — the line just AFTER the
+// `end` that closes the method's own `def` block. It is the `end`-delimited
+// analogue of bodyEndPython / braceBodyEnd: it stops a branch walk from
+// bleeding into the sibling `def`s that follow when the effects tool padded the
+// source window because the entity's EndLine was missing/zero (#4488/#4666).
+//
+// Walk model: locate the method header (first `def` line), then walk forward
+// tracking `end`-closed nesting depth. Every block opener
+// (`def`/`do`/`if`/`unless`/`case`/`begin`/`while`/`until`/`for`/`module`/
+// `class`) that is NOT a trailing/postfix modifier (`x if y`, `return z unless
+// w`) increments depth via the same rubyOpensBlock/rubyIsModifierLine helpers
+// the branch analyzer uses; a standalone `end` decrements it. When depth
+// returns to 0 the method's `def` has closed; the boundary is the next line.
+//
+// Conservatism (matches braceBodyEnd's contract — never clamp too SHORT, which
+// would silently drop real branches; the bug being fixed is clamping too LONG):
+//   - No `def` in the window → whole window.
+//   - A single-line `def …; end` or an endless method (`def f = expr`) → whole
+//     window (no separate body to clamp; over-inclusion is harmless because the
+//     window for such a method is already tight or the sibling is the next def).
+//   - `=begin`/`=end` block comments are skipped so a stray `end` or `def`
+//     keyword inside documentation never moves the boundary.
+//   - The `def` block never closes within the window (truncated/ambiguous) →
+//     whole window. Honest over-inclusion beats truncation.
+func bodyEndRuby(lines []string) int {
+	headerIdx := -1
+	inComment := false
+	for i, ln := range lines {
+		trimmed := strings.TrimSpace(ln)
+		if rubyBeginCommentRe.MatchString(trimmed) {
+			inComment = true
+			continue
+		}
+		if inComment {
+			if rubyEndCommentRe.MatchString(trimmed) {
+				inComment = false
+			}
+			continue
+		}
+		if rubyClampDefHeaderRe.MatchString(ln) {
+			// One-line or endless method: no separate `end` body to clamp.
+			if rubyOneLineDefEndRe.MatchString(ln) || rubyEndlessDefRe.MatchString(ln) {
+				return len(lines)
+			}
+			headerIdx = i
+			break
+		}
+	}
+	if headerIdx < 0 {
+		return len(lines) // no method header — honest over-inclusion
+	}
+	depth := 1 // the `def` header opens the first level
+	inComment = false
+	for j := headerIdx + 1; j < len(lines); j++ {
+		ln := lines[j]
+		trimmed := strings.TrimSpace(ln)
+		if trimmed == "" {
+			continue
+		}
+		if rubyBeginCommentRe.MatchString(trimmed) {
+			inComment = true
+			continue
+		}
+		if inComment {
+			if rubyEndCommentRe.MatchString(trimmed) {
+				inComment = false
+			}
+			continue
+		}
+		if rubyEndRe.MatchString(ln) {
+			depth--
+			if depth == 0 {
+				return j + 1 // `def` closes on line j; boundary is the next line
+			}
+			continue
+		}
+		// A one-line `def …; end` nested in the body opens AND closes on the
+		// same line — net-zero depth change, so skip it as an opener.
+		if rubyOneLineDefEndRe.MatchString(ln) {
+			continue
+		}
+		if rubyOpensBlock(ln) && !rubyIsModifierLine(ln) {
+			depth++
+		}
+	}
+	return len(lines) // never closed within the window — over-include
+}
+
 // rubyClauseKw reports whether a trimmed line begins an in-block clause keyword
 // (elsif/else/ensure/when) that does not open a new `end`-scoped level.
 func rubyClauseKw(trimmed string) bool {

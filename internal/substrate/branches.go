@@ -152,9 +152,9 @@ func init() { RegisterBranchAnalyzer("python", analyzeBranchesPython) }
 
 // braceLangs is the set of brace-delimited languages whose function body is
 // bounded by a balanced `{`…`}` block. ClampToFunctionBody uses braceBodyEnd
-// for these; Python uses bodyEndPython. Languages absent here (e.g. ruby,
-// which is `end`-delimited) are not clamped at the source level yet — see
-// ClampToFunctionBody and the #4666 follow-up.
+// for these; Python uses bodyEndPython and ruby (`end`-delimited) uses
+// bodyEndRuby. Languages absent from every family are not clamped at the source
+// level yet — see ClampToFunctionBody.
 var braceLangs = map[string]bool{
 	"jsts": true, "java": true, "go": true, "php": true,
 	"csharp": true, "kotlin": true, "scala": true, "rust": true,
@@ -175,8 +175,10 @@ var braceLangs = map[string]bool{
 // Behaviour by language family:
 //   - Python: clamp to the dedent boundary (bodyEndPython).
 //   - Brace languages: clamp to the matching `}` of the header's own block.
-//   - Anything else (e.g. ruby `end`-delimited): returned unchanged — honest
-//     no-op until a body-end detector is implemented for it (#4666 follow-up).
+//   - Ruby (`end`-delimited): clamp to the `end` closing the method's `def`
+//     (bodyEndRuby).
+//   - Anything else: returned unchanged — honest no-op until a body-end
+//     detector is implemented for it.
 //
 // It is idempotent and safe on an already-tight window: an exact single-method
 // body has no trailing sibling, so the boundary is len(lines) and the source is
@@ -192,6 +194,8 @@ func ClampToFunctionBody(src, lang string) string {
 		end = bodyEndPython(lines)
 	case braceLangs[lang]:
 		end = braceBodyEnd(lines)
+	case lang == "ruby":
+		end = bodyEndRuby(lines)
 	default:
 		return src // no body-end detector for this language yet
 	}
