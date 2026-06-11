@@ -869,11 +869,19 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
     path: rawDetail.path ?? "",
     outbound: rawDetail.outbound ?? {},
   } as PathDetail;
-  // Default to the verb selected in the list row (from URL), fall back to "all".
-  const [verbFilter] = useState<string>(() => {
+  // #4813 — resolve the active verb from the selected list row / `verb` URL
+  // param. The path-detail query is keyed by path-hash ONLY, so the same
+  // `detail` (and this same DetailPane instance) is reused across verbs of one
+  // path. A frozen `useState(() => …)` initializer captured only the verb that
+  // was selected on first mount, so clicking POST after viewing GET kept
+  // showing GET's contract. Derive it reactively instead so the header,
+  // Parameters, Response, Defined-in, Posture and downstream-DAG verb all track
+  // the CURRENTLY selected verb. Falls back to "all" only for legacy hash-only
+  // deep-links (no verb) or a verb the payload doesn't actually expose.
+  const verbFilter = useMemo<string>(() => {
     if (initialVerb && (rawDetail.verbs ?? []).includes(initialVerb as HttpVerb)) return initialVerb;
     return "all";
-  });
+  }, [initialVerb, rawDetail.verbs]);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     description: true,
     auth: true,
@@ -2276,7 +2284,16 @@ export default function PathsScreen() {
                   <p className="text-sm text-text-3">Route detail not found.</p>
                 </div>
               ) : (
-                <DetailPane detail={detail} initialVerb={selectedVerb} groupId={groupId} />
+                <DetailPane
+                  // #4813 — key on (hash, verb) so switching verbs of the same
+                  // path remounts the pane with fresh per-verb child state
+                  // (status-code tab, ShapeTree expand state) rather than
+                  // reusing the previously-selected verb's view.
+                  key={`${selectedHash}:${selectedVerb ?? "all"}`}
+                  detail={detail}
+                  initialVerb={selectedVerb}
+                  groupId={groupId}
+                />
               )}
             </div>
           </div>
