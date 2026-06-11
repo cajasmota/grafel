@@ -87,10 +87,10 @@ func NewRegistry() *Registry {
 		flaskResolver{},   // #4540 — decorators / before_request
 		laravelResolver{}, // #4541 — middleware / Gates / Policies
 		aspnetResolver{},  // #4542 — [Authorize] / [AllowAnonymous] / policies
-		// Stubs — registry members so the shape is fixed; each returns
-		// ok=false until its follow-up ticket lands. NOT flagship-only.
-		stubResolver{name: "go-middleware"}, // ref #4419 — middleware chains
-		stubResolver{name: "phoenix"},       // ref #4419 — plugs
+		// Implemented (framework auth-resolver wave #4543/#4544) — the LAST two
+		// framework stubs, completing the all-framework resolver set (#4419).
+		goMiddlewareResolver{}, // #4543 — Gin/Echo/Chi/net-http middleware chains
+		phoenixResolver{},      // #4544 — Phoenix plug pipelines / pipe_through
 	}}
 }
 

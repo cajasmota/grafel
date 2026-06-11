@@ -243,12 +243,12 @@ func TestRegistry_NestRequireActionDecoratorFallback(t *testing.T) {
 	}
 }
 
-func TestRegistry_StubsRegisteredButDecline(t *testing.T) {
+func TestRegistry_AllFrameworksRegistered(t *testing.T) {
 	reg := NewRegistry()
 	fws := reg.Frameworks()
-	// spring-security (#4708), fastapi (#4709), express (#4710), and now rails
-	// (#4538), flask (#4540), laravel (#4541), aspnet (#4542) are implemented
-	// members; only go-middleware and phoenix stay stubs.
+	// With go-middleware (#4543) and phoenix (#4544) landed, the all-framework
+	// resolver set is COMPLETE — no stubs remain. Every registered framework has
+	// a real resolver.
 	want := []string{"aspnet", "django-drf", "express", "fastapi", "flask", "go-middleware", "laravel", "nestjs", "phoenix", "rails", "spring-security"}
 	if len(fws) != len(want) {
 		t.Fatalf("frameworks=%v, want %v", fws, want)
@@ -258,10 +258,11 @@ func TestRegistry_StubsRegisteredButDecline(t *testing.T) {
 			t.Fatalf("frameworks=%v, want %v", fws, want)
 		}
 	}
-	// A still-unimplemented framework (phoenix plug) signal → unknown / no resolver.
-	p, fw := reg.Resolve(Signal{Props: map[string]string{"phoenix_plug": "EnsureAuth"}})
+	// A signal that matches NO framework's signature → unknown / no resolver
+	// (the diff core reports an honest kind_mismatch rather than false-equivalent).
+	p, fw := reg.Resolve(Signal{Props: map[string]string{"totally_unrelated_prop": "xyz"}})
 	if fw != "" || p.Kind != KindUnknown {
-		t.Fatalf("unimplemented framework resolved as %s/%s, want unknown/none", fw, p.Kind)
+		t.Fatalf("unrecognised signal resolved as %s/%s, want unknown/none", fw, p.Kind)
 	}
 }
 
@@ -931,5 +932,191 @@ func TestAspnet_E2E_PublicVsOracleAuthenticated_Looser(t *testing.T) {
 	}})
 	if d := Diff(v3, oracle); d.Verdict != VerdictLooser {
 		t.Fatalf("verdict=%s detail=%s, want looser ([AllowAnonymous] opened an authenticated endpoint)", d.Verdict, d.Detail)
+	}
+}
+
+// --- #4543: Go HTTP middleware chains (Gin/Echo/Chi/net-http) ----------------
+
+// (A) PROTECTED: a route under `r.Use(AuthMiddleware())` → authenticated.
+func TestGo_RouterUseAuthMiddleware_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{
+		Props: map[string]string{"framework": "gin"},
+		Source: "r := gin.Default()\n" +
+			"r.Use(AuthMiddleware())\n" +
+			"r.GET(\"/me\", profileHandler)",
+	})
+	if fw != "go-middleware" {
+		t.Fatalf("framework=%s, want go-middleware", fw)
+	}
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (r.Use(AuthMiddleware()))", p.Kind)
+	}
+}
+
+// (A2) Echo group-level JWT middleware → authenticated; Chi inline route auth.
+func TestGo_EchoGroupAndChiRoute_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	echo, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "echo"},
+		Source: "g := e.Group(\"/api\")\ng.Use(middleware.JWT(secret))\ng.GET(\"/x\", h)"})
+	if echo.Kind != KindAuthenticated {
+		t.Fatalf("echo: got %s, want authenticated (g.Use(middleware.JWT))", echo.Kind)
+	}
+	chi, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "chi"},
+		Source: "r.Group(func(r chi.Router){\n  r.Use(AuthCtx)\n  r.Get(\"/p\", h)\n})"})
+	if chi.Kind != KindAuthenticated {
+		t.Fatalf("chi: got %s, want authenticated (r.Use(AuthCtx))", chi.Kind)
+	}
+	inline, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "gin"},
+		Source: "r.GET(\"/x\", AuthRequired(), handler)"})
+	if inline.Kind != KindAuthenticated {
+		t.Fatalf("inline: got %s, want authenticated (AuthRequired())", inline.Kind)
+	}
+}
+
+// (B) ROLE: RequireRole("admin") → role; RequireRole("superuser") → superuser.
+func TestGo_RequireRole_RoleAndSuperuser(t *testing.T) {
+	reg := NewRegistry()
+	role, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "gin"},
+		Source: "r.GET(\"/admin\", RequireRole(\"admin\"), h)"})
+	if role.Kind != KindRole || role.Literal != "admin" {
+		t.Fatalf("got %s/%q, want role/admin (RequireRole)", role.Kind, role.Literal)
+	}
+	su, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "chi"},
+		Source: "r.Use(RequireRole(\"superuser\"))"})
+	if su.Kind != KindSuperuser {
+		t.Fatalf("got %s, want superuser (RequireRole(superuser))", su.Kind)
+	}
+	perm, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "echo"},
+		Source: "e.GET(\"/export\", RequirePermission(\"export_clients\"), h)"})
+	if perm.Kind != KindAction || perm.Literal != "export_clients" {
+		t.Fatalf("got %s/%q, want action/export_clients (RequirePermission)", perm.Kind, perm.Literal)
+	}
+}
+
+// (C) NO-AUTH GROUP: a route reaching no auth-ish middleware → unknown (HONEST
+// under-claim, never false-public on a name-heuristic).
+func TestGo_NoAuthMiddleware_Unknown(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "gin"},
+		Source: "pub := r.Group(\"/public\")\npub.Use(Logger())\npub.GET(\"/health\", healthHandler)"})
+	if p.Kind != KindUnknown {
+		t.Fatalf("got %s, want unknown (no auth middleware; name-heuristic under-claim)", p.Kind)
+	}
+}
+
+// (C2) EXPLICIT PUBLIC: auth_required=false / a Public middleware → public.
+func TestGo_ExplicitPublic_Public(t *testing.T) {
+	reg := NewRegistry()
+	byProp, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "gin", "auth_required": "false"}})
+	if byProp.Kind != KindPublic {
+		t.Fatalf("got %s, want public (auth_required=false)", byProp.Kind)
+	}
+	byMw, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "chi"},
+		Source: "r.Group(func(r chi.Router){\n  r.Use(AllowAnonymous)\n  r.Get(\"/open\", h)\n})"})
+	if byMw.Kind != KindPublic {
+		t.Fatalf("got %s, want public (AllowAnonymous middleware)", byMw.Kind)
+	}
+}
+
+// (D) E2E: a Go authenticated route vs a Django page oracle is LOOSER.
+func TestGo_E2E_AuthenticatedVsOraclePage_Looser(t *testing.T) {
+	reg := NewRegistry()
+	oracle, _ := reg.Resolve(Signal{
+		Props: map[string]string{"has_get_permissions": "true"}, Source: clientViewSetGetPerms, Action: "approve",
+	}) // → page client_admin
+	v3, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "gin"},
+		Source: "r.Use(AuthMiddleware())\nr.GET(\"/clients\", h)"})
+	if d := Diff(v3, oracle); d.Verdict != VerdictLooser {
+		t.Fatalf("verdict=%s detail=%s, want looser (Go authenticated vs oracle page)", d.Verdict, d.Detail)
+	}
+}
+
+// --- #4544: Phoenix plug pipelines / pipe_through ----------------------------
+
+const phoenixRouterAuth = `
+pipeline :browser do
+  plug :fetch_session
+end
+pipeline :auth do
+  plug :require_authenticated_user
+end
+scope "/dashboard", MyAppWeb do
+  pipe_through [:browser, :auth]
+  get "/", DashboardController, :index
+end
+`
+
+const phoenixRouterPublic = `
+pipeline :browser do
+  plug :fetch_session
+end
+scope "/", MyAppWeb do
+  pipe_through :browser
+  get "/", PageController, :index
+end
+`
+
+// (A) PROTECTED: a route in a scope `pipe_through [:auth]` whose pipeline plugs
+// `:require_authenticated_user` → authenticated.
+func TestPhoenix_PipeThroughAuth_Authenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "phoenix"},
+		Source: phoenixRouterAuth,
+	})
+	if fw != "phoenix" {
+		t.Fatalf("framework=%s, want phoenix", fw)
+	}
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (pipe_through [:auth] → require_authenticated_user)", p.Kind)
+	}
+}
+
+// (B) PUBLIC: a scope piping through only :browser (no auth pipeline) → public.
+func TestPhoenix_PublicScope_Public(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{
+		Props:  map[string]string{"framework": "phoenix"},
+		Source: phoenixRouterPublic,
+	})
+	if p.Kind != KindPublic {
+		t.Fatalf("got %s, want public (pipe_through :browser only, no auth pipeline)", p.Kind)
+	}
+}
+
+// (C) ROLE: a `:require_admin` plug → superuser; `plug :require_role, :editor` → role.
+func TestPhoenix_RolePlugs(t *testing.T) {
+	reg := NewRegistry()
+	admin, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "phoenix"},
+		Source: "pipeline :admin do\n  plug :require_admin\nend\nscope \"/a\" do\n  pipe_through [:auth, :admin]\n  get \"/\", C, :i\nend"})
+	if admin.Kind != KindSuperuser {
+		t.Fatalf("got %s, want superuser (plug :require_admin)", admin.Kind)
+	}
+	role, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "phoenix", "auth_plugs": "plug :require_role, :editor"}})
+	if role.Kind != KindRole || role.Literal != "editor" {
+		t.Fatalf("got %s/%q, want role/editor (plug :require_role, :editor)", role.Kind, role.Literal)
+	}
+}
+
+// (C2) Guardian.Plug.EnsureAuthenticated → authenticated.
+func TestPhoenix_GuardianEnsureAuthenticated(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "phoenix"},
+		Source: "pipeline :auth do\n  plug Guardian.Plug.EnsureAuthenticated\nend\nscope \"/s\" do\n  pipe_through [:auth]\n  get \"/\", C, :i\nend"})
+	if p.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (Guardian.Plug.EnsureAuthenticated)", p.Kind)
+	}
+}
+
+// (D) E2E: a Phoenix public scope vs a Django authenticated oracle is LOOSER.
+func TestPhoenix_E2E_PublicVsOracleAuthenticated_Looser(t *testing.T) {
+	reg := NewRegistry()
+	oracle, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "has_permission_classes": "true", "permission_classes": "IsAuthenticated",
+	}})
+	v3, _ := reg.Resolve(Signal{Props: map[string]string{"framework": "phoenix"}, Source: phoenixRouterPublic})
+	if d := Diff(v3, oracle); d.Verdict != VerdictLooser {
+		t.Fatalf("verdict=%s detail=%s, want looser (Phoenix public scope vs oracle authenticated)", d.Verdict, d.Detail)
 	}
 }
