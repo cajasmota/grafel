@@ -225,6 +225,100 @@ public class A
 	}
 }
 
+// TestCSharp_CallsImplicitVarNewReceiver (#4685): an implicitly-typed
+// `var c = new XController(svc)` local binds `c` to XController from its
+// object-creation initialiser so `c.GetCounts()` resolves to the class method
+// — the xUnit/NUnit unit-test idiom. Mirrors Java #4717 newExprClassName.
+func TestCSharp_CallsImplicitVarNewReceiver(t *testing.T) {
+	src := `
+public class XController { public void GetCounts() {} }
+public class T
+{
+    public void Fact() {
+        var c = new XController(svc);
+        c.GetCounts();
+    }
+}
+`
+	ents := runCSharp(t, src)
+	if !csHasRel(ents, "T.Fact", "SCOPE.Operation", "CALLS", "XController.GetCounts") {
+		e := csFind(ents, "T.Fact", "SCOPE.Operation")
+		var rels []types.RelationshipRecord
+		if e != nil {
+			rels = e.Relationships
+		}
+		t.Errorf("expected CALLS Fact→XController.GetCounts from `var c = new XController(...)`; got rels=%+v", rels)
+	}
+}
+
+// TestCSharp_CallsTargetTypedNewReceiver (#4685): target-typed `new(...)`
+// paired with an explicit declared type still types the local.
+func TestCSharp_CallsTargetTypedNewReceiver(t *testing.T) {
+	src := `
+public class XController { public void GetCounts() {} }
+public class T
+{
+    public void Fact() {
+        XController c = new(svc);
+        c.GetCounts();
+    }
+}
+`
+	ents := runCSharp(t, src)
+	if !csHasRel(ents, "T.Fact", "SCOPE.Operation", "CALLS", "XController.GetCounts") {
+		t.Errorf("expected CALLS Fact→XController.GetCounts from target-typed `new(...)`")
+	}
+}
+
+// TestCSharp_CallsDIGetRequiredServiceReceiver (#4685): a DI service-resolution
+// `var c = sp.GetRequiredService<XController>()` binds `c` to the generic type
+// argument — the WebApplicationFactory/IServiceProvider idiom.
+func TestCSharp_CallsDIGetRequiredServiceReceiver(t *testing.T) {
+	src := `
+public class XController { public void GetCounts() {} }
+public class T
+{
+    public void Fact() {
+        var c = _factory.Services.GetRequiredService<XController>();
+        c.GetCounts();
+    }
+}
+`
+	ents := runCSharp(t, src)
+	if !csHasRel(ents, "T.Fact", "SCOPE.Operation", "CALLS", "XController.GetCounts") {
+		e := csFind(ents, "T.Fact", "SCOPE.Operation")
+		var rels []types.RelationshipRecord
+		if e != nil {
+			rels = e.Relationships
+		}
+		t.Errorf("expected CALLS Fact→XController.GetCounts from GetRequiredService<T>(); got rels=%+v", rels)
+	}
+}
+
+// TestCSharp_FactoryReturningInterfaceReceiverStaysBare (#4685, NEGATIVE): a
+// `var svc = factory.Create()` whose RHS is a plain method call (factory /
+// DI-returning-interface) must NOT fabricate a receiver type; the call resolves
+// to its bare leaf.
+func TestCSharp_FactoryReturningInterfaceReceiverStaysBare(t *testing.T) {
+	src := `
+public class T
+{
+    public void Fact() {
+        var svc = factory.Create();
+        svc.DoThing();
+    }
+}
+`
+	ents := runCSharp(t, src)
+	if !csHasRel(ents, "T.Fact", "SCOPE.Operation", "CALLS", "DoThing") {
+		t.Errorf("expected bare CALLS Fact→DoThing for factory-returning receiver")
+	}
+	// And must NOT have fabricated a dotted target off the variable name.
+	if csHasRel(ents, "T.Fact", "SCOPE.Operation", "CALLS", "var.DoThing") {
+		t.Errorf("must not emit fabricated CALLS Fact→var.DoThing")
+	}
+}
+
 // TestCSharp_ImportsCarryProperties (#368): IMPORTS edges carry the
 // metadata the cross-file resolver consumes (mirroring Java #120 /
 // Python #93). For `using X.Y;` we expect:

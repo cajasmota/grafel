@@ -845,8 +845,19 @@ func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
 		if vd == nil {
 			continue
 		}
-		typ := leafTypeName(vd.ChildByFieldName("type"), src)
-		if typ == "" {
+		// The declared type. For an implicitly-typed `var` declaration the
+		// leaf is "var" (or ""), which carries no usable type; in that case we
+		// infer the type CONSERVATIVELY from the right-hand-side initialiser
+		// per declarator (see inferImplicitLocalType). #4685 (mirrors Java
+		// #4717 `newExprClassName`): only `new ClassName(...)` and
+		// target-typed `new(...)` (paired with an explicit declared type, which
+		// the non-var path already handles) bind; a factory / method-call /
+		// DI-returning-interface RHS (`var s = factory.Create();`) stays
+		// UNTYPED so the call resolves to its bare leaf rather than a fabricated
+		// receiver type.
+		declType := leafTypeName(vd.ChildByFieldName("type"), src)
+		implicit := isImplicitVarType(declType)
+		if declType == "" && !implicit {
 			continue
 		}
 		for i := 0; i < int(vd.ChildCount()); i++ {
@@ -866,6 +877,13 @@ func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
 			}
 			if name == "" {
 				continue
+			}
+			typ := declType
+			if implicit {
+				typ = inferImplicitLocalType(ch, src)
+				if typ == "" {
+					continue
+				}
 			}
 			out[name] = typ
 		}
@@ -896,6 +914,132 @@ func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
 		}
 	}
 	return out
+}
+
+// isImplicitVarType reports whether a declared-type leaf is the implicitly
+// typed `var` keyword. tree-sitter-c-sharp models `var x = …` with an
+// `implicit_type` node whose text is "var"; leafTypeName's last-resort branch
+// returns the raw "var" token for it. We treat that as "no static declared
+// type" and fall back to RHS inference (#4685).
+func isImplicitVarType(declType string) bool {
+	return declType == "var"
+}
+
+// inferImplicitLocalType returns the leaf class name a `var` local is bound to
+// when, and ONLY when, its initialiser is an object-creation expression —
+// `var c = new XController(svc)` → "XController". This mirrors the conservatism
+// of Java #4717 `newExprClassName`: a factory/method-call/DI RHS that returns
+// an interface (`var s = factory.Create();`, `var svc = sp.GetRequiredService<…>()`)
+// yields "" so the receiver stays bare and no fabricated dotted target is
+// emitted. Target-typed `new(...)` is handled on the explicit-declared-type
+// path (the declared type is concrete there), so it is intentionally NOT
+// inferred here (an implicit `var x = new();` does not type-check in C#).
+func inferImplicitLocalType(declarator *sitter.Node, src []byte) string {
+	if declarator == nil {
+		return ""
+	}
+	// The declarator's value child is the initialiser expression. tree-sitter
+	// exposes it as the named child following the `=`; scan named children for
+	// the (single) object_creation_expression or a DI service-resolution call.
+	for i := 0; i < int(declarator.NamedChildCount()); i++ {
+		ch := declarator.NamedChild(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "object_creation_expression":
+			typ := ch.ChildByFieldName("type")
+			if typ == nil {
+				// Fall back to the first identifier/generic_name child.
+				for j := 0; j < int(ch.NamedChildCount()); j++ {
+					c := ch.NamedChild(j)
+					if c != nil && (c.Type() == "identifier" || c.Type() == "generic_name" || c.Type() == "qualified_name") {
+						typ = c
+						break
+					}
+				}
+			}
+			if leaf := leafTypeName(typ, src); leaf != "" && leaf != "var" {
+				return leaf
+			}
+		case "invocation_expression":
+			if leaf := diServiceTypeArg(ch, src); leaf != "" {
+				return leaf
+			}
+		}
+	}
+	return ""
+}
+
+// diServiceTypeArgMethods is the set of .NET dependency-injection resolution
+// methods whose single generic type argument IS the resolved service type.
+// `sp.GetRequiredService<XController>()` / `_factory.Services.GetService<T>()`
+// — the WebApplicationFactory + IServiceProvider idiom (#4685 gap 2). We bind
+// the local to the type argument so a follow-up `c.Method()` resolves to that
+// class. This is fully static (the type argument is a compile-time token), so
+// it is sound; non-DI generic calls don't match the method-name allow-list and
+// stay bare.
+var diServiceTypeArgMethods = map[string]bool{
+	"GetRequiredService": true,
+	"GetService":         true,
+	"GetServices":        true,
+	"GetKeyedService":         true,
+	"GetRequiredKeyedService": true,
+}
+
+// diServiceTypeArg returns the leaf type argument of a DI service-resolution
+// invocation (`...GetRequiredService<XController>()`), or "" when the call is
+// not a recognised single-type-argument resolution method. The method name is
+// taken from the invocation's function node: either a bare `generic_name`
+// (`GetRequiredService<T>()`) or a `member_access_expression` whose `name` is a
+// `generic_name` (`sp.GetRequiredService<T>()`).
+func diServiceTypeArg(call *sitter.Node, src []byte) string {
+	fn := call.ChildByFieldName("function")
+	if fn == nil {
+		return ""
+	}
+	var gen *sitter.Node
+	switch fn.Type() {
+	case "generic_name":
+		gen = fn
+	case "member_access_expression":
+		if name := fn.ChildByFieldName("name"); name != nil && name.Type() == "generic_name" {
+			gen = name
+		}
+	}
+	if gen == nil {
+		return ""
+	}
+	// Method name is the leading identifier of the generic_name.
+	var methodName string
+	for i := 0; i < int(gen.NamedChildCount()); i++ {
+		c := gen.NamedChild(i)
+		if c != nil && c.Type() == "identifier" {
+			methodName = string(src[c.StartByte():c.EndByte()])
+			break
+		}
+	}
+	if !diServiceTypeArgMethods[methodName] {
+		return ""
+	}
+	// Single type argument → its leaf is the service type.
+	tal := findChildByType(gen, "type_argument_list")
+	if tal == nil {
+		return ""
+	}
+	var args []*sitter.Node
+	for i := 0; i < int(tal.NamedChildCount()); i++ {
+		if c := tal.NamedChild(i); c != nil {
+			args = append(args, c)
+		}
+	}
+	if len(args) != 1 {
+		return "" // multiple/zero type args — ambiguous, stay bare
+	}
+	if leaf := leafTypeName(args[0], src); leaf != "" && leaf != "var" {
+		return leaf
+	}
+	return ""
 }
 
 // leafTypeName returns the leaf type identifier of a C# type node,
