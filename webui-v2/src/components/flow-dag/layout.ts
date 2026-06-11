@@ -28,6 +28,12 @@ import type {
   DownstreamDAGEdgeKind,
   DownstreamDAGNode,
 } from "@/data/types";
+import {
+  layoutWithElk,
+  type ElkDirection,
+  type ElkLayoutEdge,
+  type ElkLayoutNode,
+} from "@/lib/elk-layout";
 import { nodeModule, type NodeModule } from "./style";
 
 /** Orientation toggle → which screen axis is the tree's main (depth) axis. */
@@ -344,10 +350,88 @@ function tidyTreeCross(
   return cross;
 }
 
+/** Handle (source/target) positions for the two orientations. */
+function handlePositions(direction: FlowDagDirection): {
+  source: Position;
+  target: Position;
+} {
+  return direction === "LR"
+    ? { source: Position.Right, target: Position.Left }
+    : { source: Position.Bottom, target: Position.Top };
+}
+
 /**
- * Build positioned React Flow nodes + edges from the unfolded tree.
+ * buildFlowDagNode constructs ONE React Flow node from an unfolded instance —
+ * its data payload (kind/role/badges/leaf-vs-truncated/module), sizing, and
+ * handle positions — but WITHOUT a final layout position (placed at 0,0). Both
+ * the tidy-tree and the ELK backends call this so the rendered DATA is byte-for-
+ * byte identical regardless of engine; only the `position` differs afterwards.
  *
- * Positioning is a tidy-tree pack (#4622): depth maps to the main axis and a
+ * The terminal-vs-truncated logic (#4561) lives here so it never drifts between
+ * engines: a genuine leaf gets the end-cap, a depth/cap-cut branch keeps its
+ * bucket + a 'more downstream' affordance.
+ */
+function buildFlowDagNode(
+  inst: TreeInstance,
+  ctx: {
+    renderedParents: Set<string>;
+    hasOutEdge?: Set<string>;
+    expanded: Set<string>;
+    onToggle: (instanceId: string) => void;
+    handles: { source: Position; target: Position };
+  },
+): FlowDagNode {
+  // #4561: this instance emitted no children here.
+  const childlessHere = !ctx.renderedParents.has(inst.id);
+  // The source node has downstream edges in the DAG.
+  const sourceHasChildren = ctx.hasOutEdge?.has(inst.node.id) ?? false;
+  // A genuine terminal: the backend marked it terminal, OR it's childless AND
+  // the source node truly has no out-edges (a real leaf / return).
+  const isLeaf = childlessHere && (inst.node.terminal === true || !sourceHasChildren);
+  // Cut by the depth/node cap: childless HERE but the source DID have children.
+  const truncatedHere = childlessHere && sourceHasChildren && inst.node.terminal !== true;
+  return {
+    id: inst.id,
+    type: NODE_TYPE,
+    position: { x: 0, y: 0 },
+    data: {
+      node: inst.node,
+      edgeKind: inst.edgeKind,
+      expanded: ctx.expanded.has(inst.id),
+      onToggleExpand: ctx.onToggle,
+      isLeaf,
+      truncatedHere,
+      module: nodeModule(inst.node),
+    },
+    sourcePosition: ctx.handles.source,
+    targetPosition: ctx.handles.target,
+    width: NODE_W,
+    height: NODE_H,
+  };
+}
+
+/** The tree's single in-edge per non-root instance → one React Flow edge each. */
+function buildFlowDagEdges(instances: TreeInstance[]): FlowDagEdge[] {
+  return instances
+    .filter((inst) => inst.parentId != null)
+    .map((inst) => ({
+      // One edge per non-root instance (the tree's single in-edge). The
+      // instance id is unique, so the edge id is too.
+      id: `e__${inst.id}`,
+      source: inst.parentId!,
+      target: inst.id,
+      type: EDGE_TYPE,
+      data: { kind: inst.edgeKind ?? "CALLS" },
+    }));
+}
+
+/**
+ * Build positioned React Flow nodes + edges from the unfolded tree, using the
+ * legacy tidy-tree pack (#4622). This is the synchronous fallback backend, kept
+ * behind the `VITE_FLOWDAG_LAYOUT_ENGINE=dagre` flag (see `defaultFlowDagEngine`)
+ * for a visual revert; the ELK backend (`layoutTreeElk`) is the default.
+ *
+ * Positioning is a tidy-tree pack: depth maps to the main axis and a
  * subtree-contiguous tidy layout maps to the cross axis, so each branch is one
  * visually-contiguous cluster. `direction` chooses which screen axis is main:
  * "LR" (horizontal, depth→x) or "TB" (vertical, depth→y).
@@ -395,61 +479,165 @@ export function layoutTree(
   const branchGap = isLR ? BRANCH_GAP_LR : BRANCH_GAP_TB;
 
   const crossById = tidyTreeCross(instances, crossStep, branchGap);
-
-  const sourcePos = isLR ? Position.Right : Position.Bottom;
-  const targetPos = isLR ? Position.Left : Position.Top;
+  const handles = handlePositions(direction);
 
   const rfNodes: FlowDagNode[] = instances.map((inst) => {
+    const node = buildFlowDagNode(inst, {
+      renderedParents,
+      hasOutEdge,
+      expanded,
+      onToggle,
+      handles,
+    });
     const depth = depthById.get(inst.id) ?? 0;
     const crossCenter = crossById.get(inst.id) ?? 0;
     // Center coordinates along each axis, then convert to top-left for RF.
     const mainCenter = MARGIN + depth * mainStep + mainNode / 2;
     const x = isLR ? mainCenter : MARGIN + crossCenter + crossNode / 2;
     const y = isLR ? MARGIN + crossCenter + crossNode / 2 : mainCenter;
-    const pos = { x, y };
-    // #4561: this instance emitted no children here.
-    const childlessHere = !renderedParents.has(inst.id);
-    // The source node has downstream edges in the DAG.
-    const sourceHasChildren = hasOutEdge?.has(inst.node.id) ?? false;
-    // A genuine terminal: the backend marked it terminal, OR it's childless AND
-    // the source node truly has no out-edges (a real leaf / return).
-    const isLeaf = childlessHere && (inst.node.terminal === true || !sourceHasChildren);
-    // Cut by the depth/node cap: childless HERE but the source DID have children.
-    const truncatedHere = childlessHere && sourceHasChildren && inst.node.terminal !== true;
-    return {
-      id: inst.id,
-      type: NODE_TYPE,
-      // pos is the node center; React Flow positions by top-left corner.
-      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
-      data: {
-        node: inst.node,
-        edgeKind: inst.edgeKind,
-        expanded: expanded.has(inst.id),
-        onToggleExpand: onToggle,
-        isLeaf,
-        truncatedHere,
-        module: nodeModule(inst.node),
-      },
-      sourcePosition: sourcePos,
-      targetPosition: targetPos,
-      width: NODE_W,
-      height: NODE_H,
-    };
+    // (x, y) is the node center; React Flow positions by top-left corner.
+    node.position = { x: x - NODE_W / 2, y: y - NODE_H / 2 };
+    return node;
   });
 
-  const rfEdges: FlowDagEdge[] = instances
-    .filter((inst) => inst.parentId != null)
-    .map((inst) => ({
-      // One edge per non-root instance (the tree's single in-edge). The
-      // instance id is unique, so the edge id is too.
-      id: `e__${inst.id}`,
-      source: inst.parentId!,
-      target: inst.id,
-      type: EDGE_TYPE,
-      data: { kind: inst.edgeKind ?? "CALLS" },
-    }));
+  return { nodes: rfNodes, edges: buildFlowDagEdges(instances) };
+}
+
+/* ============================================================
+   ELK backend (default) — shared elkjs layered layout via lib/elk-layout.ts.
+
+   Part of the elkjs adoption epic (#4824/#4827). The unfolded pure tree is a
+   layered DAG, so we run ELK's `layered` algorithm with orthogonal edge routing
+   for clean right-angle connectors. Direction follows the H/V toggle: "LR" →
+   RIGHT (depth left→right), "TB" → DOWN (depth top→bottom). The tree has no
+   compound containment (every instance is a root-level node), so we pass a flat
+   node list and a `lane` = tree depth to keep the layered ranks pinned to tree
+   depth (so the layout reads strictly outward from the endpoint, matching the
+   tidy-tree's main-axis semantics).
+
+   The DATA on each node/edge is built by the same `buildFlowDagNode` /
+   `buildFlowDagEdges` helpers the tidy-tree backend uses, so the displayed
+   graph is identical across engines — only the positions differ.
+
+   `shape` is a forward hook for the flowchart view (#4819): a future flowchart
+   mode can pass different node dimensions/spacing without touching this call.
+   ============================================================ */
+
+/** Per-engine knobs the ELK backend exposes so a future flowchart mode (#4819)
+ *  can pass different node shapes/spacing without forking the layout call. */
+export interface FlowDagElkShape {
+  /** Layout box width fed to ELK (defaults to the card NODE_W). */
+  nodeWidth?: number;
+  /** Layout box height fed to ELK (defaults to the card NODE_H). */
+  nodeHeight?: number;
+  /** Spacing between siblings within a layer. */
+  nodeSpacing?: number;
+  /** Spacing between depth layers (ranks). */
+  layerSpacing?: number;
+}
+
+function elkDirection(direction: FlowDagDirection): ElkDirection {
+  return direction === "LR" ? "RIGHT" : "DOWN";
+}
+
+/**
+ * layoutTreeElk lays the unfolded tree out with ELK's layered algorithm via the
+ * shared helper, returning the same positioned React Flow nodes/edges the
+ * tidy-tree backend would — just with ELK's coordinates. Async (ELK layout is
+ * Promise-based); call from an effect and store the result.
+ *
+ * @param instances  unfolded tree instances (from unfoldTree)
+ * @param direction  "LR" (horizontal → RIGHT) | "TB" (vertical → DOWN)
+ * @param expanded   set of INSTANCE ids whose collapsed_children show inline
+ * @param onToggle   inline-expand toggle handler (keyed by instance id)
+ * @param hasOutEdge source ids with ≥1 out-edge (leaf-vs-truncated, #4561)
+ * @param shape      optional node-shape/spacing overrides (flowchart-ready, #4819)
+ */
+export async function layoutTreeElk(
+  instances: TreeInstance[],
+  direction: FlowDagDirection,
+  expanded: Set<string>,
+  onToggle: (instanceId: string) => void,
+  hasOutEdge?: Set<string>,
+  shape?: FlowDagElkShape,
+): Promise<{ nodes: FlowDagNode[]; edges: FlowDagEdge[] }> {
+  const renderedParents = new Set<string>();
+  for (const inst of instances) {
+    if (inst.parentId != null) renderedParents.add(inst.parentId);
+  }
+  const handles = handlePositions(direction);
+
+  const rfNodes = instances.map((inst) =>
+    buildFlowDagNode(inst, {
+      renderedParents,
+      hasOutEdge,
+      expanded,
+      onToggle,
+      handles,
+    }),
+  );
+  const rfEdges = buildFlowDagEdges(instances);
+
+  if (rfNodes.length === 0) return { nodes: rfNodes, edges: rfEdges };
+
+  // Tree depth per instance → layered rank lane, so the layout reads strictly
+  // outward from the endpoint (matching the tidy-tree's main-axis semantics).
+  const depthById = new Map<string, number>();
+  for (const inst of instances) {
+    depthById.set(
+      inst.id,
+      inst.parentId == null ? 0 : (depthById.get(inst.parentId) ?? 0) + 1,
+    );
+  }
+
+  const w = shape?.nodeWidth ?? NODE_W;
+  const h = shape?.nodeHeight ?? NODE_H;
+
+  // Flat node list — the unfolded tree has no compound containment.
+  const elkNodes: ElkLayoutNode[] = instances.map((inst) => ({
+    id: inst.id,
+    width: w,
+    height: h,
+    lane: depthById.get(inst.id) ?? 0,
+  }));
+  const elkEdges: ElkLayoutEdge[] = rfEdges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+  }));
+
+  const positions = await layoutWithElk(elkNodes, elkEdges, {
+    direction: elkDirection(direction),
+    algorithm: "layered",
+    edgeRouting: "ORTHOGONAL",
+    nodeSpacing: shape?.nodeSpacing ?? 28,
+    layerSpacing: shape?.layerSpacing ?? 90,
+    defaultNodeWidth: w,
+    defaultNodeHeight: h,
+  });
+
+  // ELK positions are top-left already (flat graph → parent-relative == absolute).
+  for (const node of rfNodes) {
+    const p = positions.get(node.id);
+    if (p) node.position = { x: p.x, y: p.y };
+  }
 
   return { nodes: rfNodes, edges: rfEdges };
+}
+
+/**
+ * Layout engine selection. Defaults to ELK (#4827); set the env flag
+ * `VITE_FLOWDAG_LAYOUT_ENGINE=dagre` to use the legacy tidy-tree fallback for a
+ * visual revert. (The fallback is the classic tidy-tree pack, historically a
+ * dagre replacement — the flag name mirrors `VITE_CT_LAYOUT_ENGINE`.)
+ */
+export type FlowDagLayoutEngine = "elk" | "dagre";
+export function defaultFlowDagEngine(): FlowDagLayoutEngine {
+  const env =
+    typeof import.meta !== "undefined"
+      ? (import.meta as { env?: Record<string, string | undefined> }).env
+      : undefined;
+  return env?.VITE_FLOWDAG_LAYOUT_ENGINE === "dagre" ? "dagre" : "elk";
 }
 
 export const FLOW_DAG_NODE_TYPE = NODE_TYPE;

@@ -4,7 +4,7 @@
  * Run with: npx vitest run src/components/flow-dag/layout.test.ts
  */
 import { describe, it, expect } from "vitest";
-import { unfoldTree, layoutTree } from "./layout";
+import { unfoldTree, layoutTree, layoutTreeElk } from "./layout";
 import { routeInstanceIds } from "./route";
 import {
   nodeBucket,
@@ -326,6 +326,70 @@ describe("layoutTree subtree contiguity (#4622)", () => {
     // deeper nodes are strictly further along the main (x) axis.
     expect(x.get("a")!).toBeLessThan(x.get("a/b")!);
     expect(x.get("a/b")!).toBeLessThan(x.get("a/b/c")!);
+  });
+});
+
+describe("layoutTreeElk (#4827)", () => {
+  it("emits the SAME node ids, edge ids, and data as the tidy-tree backend", async () => {
+    const nodes = [n("a"), n("b"), n("c"), n("d")];
+    const edges = [e("a", "b"), e("a", "c"), e("b", "d")];
+    const { instances, hasOutEdge } = unfoldTree("a", nodes, edges);
+
+    const tidy = layoutTree(instances, "LR", new Set(), () => {}, hasOutEdge);
+    const elk = await layoutTreeElk(instances, "LR", new Set(), () => {}, hasOutEdge);
+
+    // Same instances + edges (engine swap only changes positions).
+    expect(elk.nodes.map((x) => x.id).sort()).toEqual(
+      tidy.nodes.map((x) => x.id).sort(),
+    );
+    expect(elk.edges.map((x) => x.id).sort()).toEqual(
+      tidy.edges.map((x) => x.id).sort(),
+    );
+
+    // Same leaf-vs-truncated + module data per node (the displayed payload).
+    const tidyById = new Map(tidy.nodes.map((x) => [x.id, x.data]));
+    for (const node of elk.nodes) {
+      const td = tidyById.get(node.id)!;
+      expect(node.data.isLeaf).toBe(td.isLeaf);
+      expect(node.data.truncatedHere).toBe(td.truncatedHere);
+      expect(node.data.module?.key).toBe(td.module?.key);
+      expect(node.data.edgeKind).toBe(td.edgeKind);
+    }
+  });
+
+  it("produces finite positions and ranks depth along the main axis (LR→x)", async () => {
+    const { instances, hasOutEdge } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c")],
+      [e("a", "b"), e("b", "c")],
+    );
+    const { nodes: rf } = await layoutTreeElk(instances, "LR", new Set(), () => {}, hasOutEdge);
+    for (const node of rf) {
+      expect(Number.isFinite(node.position.x)).toBe(true);
+      expect(Number.isFinite(node.position.y)).toBe(true);
+    }
+    const x = new Map(rf.map((node) => [node.id, node.position.x]));
+    // Deeper nodes are strictly further along the main (x) axis under "layered".
+    expect(x.get("a")!).toBeLessThan(x.get("a/b")!);
+    expect(x.get("a/b")!).toBeLessThan(x.get("a/b/c")!);
+  });
+
+  it("ranks depth along y for the vertical (TB→DOWN) orientation", async () => {
+    const { instances, hasOutEdge } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c")],
+      [e("a", "b"), e("b", "c")],
+    );
+    const { nodes: rf } = await layoutTreeElk(instances, "TB", new Set(), () => {}, hasOutEdge);
+    const y = new Map(rf.map((node) => [node.id, node.position.y]));
+    expect(y.get("a")!).toBeLessThan(y.get("a/b")!);
+    expect(y.get("a/b")!).toBeLessThan(y.get("a/b/c")!);
+  });
+
+  it("returns empty for an empty instance list", async () => {
+    const { nodes, edges } = await layoutTreeElk([], "LR", new Set(), () => {});
+    expect(nodes).toEqual([]);
+    expect(edges).toEqual([]);
   });
 });
 

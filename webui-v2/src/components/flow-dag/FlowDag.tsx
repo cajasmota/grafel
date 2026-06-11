@@ -6,8 +6,16 @@
    JOINS_COLLECTION / THROWS / VALIDATES side-branches). Backed by
    GET /api/v2/groups/:id/paths/:hash/downstream-dag (#4349).
 
+   Layout engine (#4827): the default backend is ELK's `layered` algorithm with
+   orthogonal edge routing, via the shared `layoutWithElk` helper
+   (lib/elk-layout.ts) — cleaner right-angle connectors and a flowchart-ready
+   layout call. The legacy tidy-tree pack (Reingold–Tilford) is KEPT as a
+   synchronous fallback behind `VITE_FLOWDAG_LAYOUT_ENGINE=dagre` for a visual
+   revert. The node/edge DATA is built by the same helpers for both engines, so
+   only positions differ.
+
    Controls:
-     - H/V toggle        → tidy-tree main axis LR (horizontal) / TB (vertical).
+     - H/V toggle        → layout main axis LR (horizontal) / TB (vertical).
      - depth stepper     → refetches with &depth= (clamped server-side to 1..24).
      - spine / full      → refetches with mode=spine (default; collapses
                            builder/predicate noise) / mode=full (every node).
@@ -63,10 +71,14 @@ import type { DownstreamDAGNode, DownstreamDAGResponse } from "@/data/types";
 import {
   unfoldTree,
   layoutTree,
+  layoutTreeElk,
+  defaultFlowDagEngine,
   MAX_TREE_NODES,
   FLOW_DAG_NODE_TYPE,
   FLOW_DAG_EDGE_TYPE,
   type FlowDagDirection,
+  type FlowDagNode as FlowDagRFNode,
+  type FlowDagEdge as FlowDagRFEdge,
   type FlowDagNodeData,
   type FlowDagEdgeData,
 } from "./layout";
@@ -402,33 +414,96 @@ function FlowDagInner({
     return routeInstanceIds(unfold.instances, routeFocus);
   }, [unfold, routeFocus]);
 
-  const { nodes: baseNodes, edges: baseEdges } = useMemo(() => {
-    if (!unfold) return { nodes: [], edges: [] };
-    const laid = layoutTree(
+  // Layout engine: ELK (default, async layered routing) or the legacy tidy-tree
+  // fallback (sync). Stable for the component lifetime — flip via the env flag
+  // VITE_FLOWDAG_LAYOUT_ENGINE=dagre (#4827).
+  const engine = useMemo(() => defaultFlowDagEngine(), []);
+
+  // Positioned-but-undecorated layout. The tidy-tree backend is synchronous; the
+  // ELK backend is async (last-write-wins) so we run it in an effect and surface
+  // a `layingOut` flag for the loading state. Selection / route highlighting is
+  // applied ON TOP of this result in the memo below, so re-layout only happens
+  // when the actual layout inputs (tree shape / direction / inline-expand) change
+  // — not on every hover/selection.
+  const EMPTY = useMemo<{ nodes: FlowDagRFNode[]; edges: FlowDagRFEdge[] }>(
+    () => ({ nodes: [], edges: [] }),
+    [],
+  );
+
+  const tidyLaid = useMemo(() => {
+    if (engine !== "dagre" || !unfold) return EMPTY;
+    return layoutTree(
       unfold.instances,
       direction,
       expanded,
       onToggleExpand,
       unfold.hasOutEdge,
     );
-    for (const n of laid.nodes) {
+  }, [engine, unfold, direction, expanded, onToggleExpand, EMPTY]);
+
+  const [elkLaid, setElkLaid] = useState<{ nodes: FlowDagRFNode[]; edges: FlowDagRFEdge[] }>(EMPTY);
+  const [elkLaidOut, setElkLaidOut] = useState(false);
+  const elkRunId = useRef(0);
+  useEffect(() => {
+    if (engine !== "elk") return;
+    if (!unfold) {
+      setElkLaid(EMPTY);
+      setElkLaidOut(true);
+      return;
+    }
+    const myRun = ++elkRunId.current;
+    let cancelled = false;
+    setElkLaidOut(false);
+    layoutTreeElk(
+      unfold.instances,
+      direction,
+      expanded,
+      onToggleExpand,
+      unfold.hasOutEdge,
+    )
+      .then((res) => {
+        if (cancelled || myRun !== elkRunId.current) return;
+        setElkLaid(res);
+        setElkLaidOut(true);
+      })
+      .catch(() => {
+        if (cancelled || myRun !== elkRunId.current) return;
+        // Fall back to the tidy-tree on ELK failure so the canvas still renders.
+        setElkLaid(
+          layoutTree(unfold.instances, direction, expanded, onToggleExpand, unfold.hasOutEdge),
+        );
+        setElkLaidOut(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [engine, unfold, direction, expanded, onToggleExpand, EMPTY]);
+
+  const laidOut = engine === "dagre" ? tidyLaid : elkLaid;
+  // True while ELK is still computing its first layout for the current inputs.
+  const layingOut = engine === "elk" && !!unfold && !elkLaidOut;
+
+  // Apply selection + route highlighting on top of the positioned layout. This
+  // is engine-agnostic and cheap (no re-layout) — a fresh shallow copy per node
+  // so React Flow sees the data change.
+  const { nodes: baseNodes, edges: baseEdges } = useMemo(() => {
+    const nodes = laidOut.nodes.map((n) => {
+      const data: FlowDagNodeData = { ...(n.data as FlowDagNodeData) };
       // Selection is driven by the ORIGINAL node id so the caller's contract
       // (Flows step inspector, #4354) is unchanged across the tree unfold; all
       // instances of a selected node light up.
-      if (selectedNodeId != null) {
-        n.data.selected = (n.data as FlowDagNodeData).node.id === selectedNodeId;
-      }
-      if (routeSet) n.data.onRoute = routeSet.has(n.id);
-    }
-    if (routeSet) {
-      for (const e of laid.edges) {
-        // An edge is on the route iff BOTH its endpoints are (the tree's single
-        // in-edge per node makes this exact).
-        e.data = { ...e.data, kind: e.data?.kind ?? "CALLS", onRoute: routeSet.has(e.source) && routeSet.has(e.target) };
-      }
-    }
-    return laid;
-  }, [unfold, direction, expanded, onToggleExpand, selectedNodeId, routeSet]);
+      data.selected = selectedNodeId != null ? data.node.id === selectedNodeId : undefined;
+      data.onRoute = routeSet ? routeSet.has(n.id) : undefined;
+      return { ...n, data };
+    });
+    const edges = laidOut.edges.map((e) => {
+      // An edge is on the route iff BOTH its endpoints are (the tree's single
+      // in-edge per node makes this exact).
+      const onRoute = routeSet ? routeSet.has(e.source) && routeSet.has(e.target) : undefined;
+      return { ...e, data: { ...e.data, kind: e.data?.kind ?? "CALLS", onRoute } as FlowDagEdgeData };
+    });
+    return { nodes, edges };
+  }, [laidOut, selectedNodeId, routeSet]);
 
   // ── Step-replay (#4362) ──────────────────────────────────────────────────
   // The replay walks the laid-out tree in topological order. baseEdges are
@@ -618,10 +693,11 @@ function FlowDagInner({
           </button>
         </div>
 
-        {/* Fetch status */}
-        {isLoading && (
+        {/* Fetch / layout status */}
+        {(isLoading || layingOut) && (
           <span className="inline-flex items-center gap-1 text-xs text-text-4">
-            <Loader2 size={12} className="animate-spin" /> loading…
+            <Loader2 size={12} className="animate-spin" />
+            {isLoading ? "loading…" : "laying out…"}
           </span>
         )}
 
