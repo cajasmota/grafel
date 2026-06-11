@@ -179,7 +179,34 @@ export function isDegenerateLayout(positions: Float32Array): boolean {
   // ball trips it and the caller re-settles (matching Reset). The absolute floor
   // (60) catches the fully-collapsed case on tiny graphs.
   const minHealthySpan = Math.max(60, Math.sqrt(n) * 6);
-  return span < minHealthySpan;
+  if (span < minHealthySpan) return true;
+
+  // Fix #4844: the span check alone is a MAX-DIMENSION test, so it is fooled by a
+  // dense HAIRBALL on a large graph. On upvate-v3 (~14k rendered nodes) a collapsed
+  // cache can still span a couple thousand units along its WIDEST axis — clearing
+  // minHealthySpan (sqrt(14233)×6 ≈ 716) — while packing all 14k nodes into a small
+  // box, rendering as the reported hairball. Reload PINNED that cache (the doSettle
+  // cache path, no sim) while Reset re-ran kickFreshSettle and spread it, so reload
+  // ≠ Reset. Add a DENSITY (area-per-node) gate so a too-dense bbox also trips as
+  // degenerate. We compute the EXPECTED span of a healthy settle from the same law
+  // the span floor uses (a real ~584-span/3000-node settle ≈ sqrt(n)×~10), square it
+  // for the expected area, and require the cached layout to occupy at least a small
+  // FRACTION of that area per node. A genuinely spread layout sits well above this
+  // fraction (a good spread is at/above the expected area), while a hairball — many
+  // nodes mushed into a small box — falls far below it, so it re-settles to match
+  // Reset. The fraction is deliberately conservative (a real spread is never
+  // rejected) and the gate only engages on non-trivially sized graphs; small graphs
+  // are already covered by the span floor above.
+  const area = spanX * spanY;
+  // Expected healthy bbox area for n nodes ≈ (sqrt(n) × 10)² = n × 100, i.e. ~100 sq
+  // units of bbox per node at the reference settle. Require ≥ 25% of that (~25 sq
+  // units/node) — far below any real spread, but a dense hairball (area/node in the
+  // single digits to low tens) trips it.
+  const HEALTHY_AREA_PER_NODE = 100;
+  const MIN_AREA_FRACTION = 0.25;
+  if (n >= 500 && area < n * HEALTHY_AREA_PER_NODE * MIN_AREA_FRACTION) return true;
+
+  return false;
 }
 
 /**
