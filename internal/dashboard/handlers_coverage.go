@@ -39,9 +39,15 @@ type GroupCoverageReport struct {
 	TotalProduction   int     `json:"total_production"`
 	CoveredProduction int     `json:"covered_production"`
 	CoveragePct       float64 `json:"coverage_pct"`
-	TotalTests        int     `json:"total_tests"`
-	TotalTestsEdges   int     `json:"total_tests_edges"`
-	Repos             int     `json:"repos"`
+	// ContractCoveredOnly / ContractCoveredPct expose the secondary
+	// contract-covered band (#4662): endpoints whose shape is asserted by an
+	// offline contract spec but which no test executes. They are NEVER folded
+	// into CoveredProduction/CoveragePct, which stay pure reach-coverage.
+	ContractCoveredOnly int     `json:"contract_covered_only"`
+	ContractCoveredPct  float64 `json:"contract_covered_pct"`
+	TotalTests          int     `json:"total_tests"`
+	TotalTestsEdges     int     `json:"total_tests_edges"`
+	Repos               int     `json:"repos"`
 	// UncoveredEntities is sorted by severity (high first) and capped by
 	// the ?limit query parameter (default 200).
 	UncoveredEntities []graph.UncoveredEntity `json:"uncovered_entities"`
@@ -113,11 +119,11 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	result := GroupCoverageReport{Group: groupName}
 
 	// Accumulate per-directory and per-module maps for aggregation.
-	type dirAccum struct{ total, covered int }
+	type dirAccum struct{ total, covered, contractOnly int }
 	type modAccum struct{ total, covered int }
 	type fileAccum struct {
-		dir            string
-		total, covered int
+		dir                          string
+		total, covered, contractOnly int
 	}
 	dirAcc := make(map[string]*dirAccum)
 	modAcc := make(map[string]*modAccum)
@@ -147,6 +153,7 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 		result.Repos++
 		result.TotalProduction += report.TotalProduction
 		result.CoveredProduction += report.CoveredProduction
+		result.ContractCoveredOnly += report.ContractCoveredOnly
 		result.TotalTests += report.TotalTests
 		result.TotalTestsEdges += report.TotalTestsEdges
 
@@ -166,6 +173,7 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 			}
 			dirAcc[d.Dir].total += d.Total
 			dirAcc[d.Dir].covered += d.Covered
+			dirAcc[d.Dir].contractOnly += d.ContractOnly
 		}
 
 		// Merge per-file stats.
@@ -175,6 +183,7 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 			}
 			fileAcc[f.File].total += f.Total
 			fileAcc[f.File].covered += f.Covered
+			fileAcc[f.File].contractOnly += f.ContractOnly
 		}
 
 		// Merge per-module stats.
@@ -188,8 +197,12 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// ── compute group-level coverage % ───────────────────────────────────────
+	// CoveragePct stays pure reach-coverage; ContractCoveredPct is the union
+	// band (reach + contract-covered-only) the UI renders behind it (#4662).
 	if result.TotalProduction > 0 {
 		result.CoveragePct = 100.0 * float64(result.CoveredProduction) / float64(result.TotalProduction)
+		result.ContractCoveredPct = 100.0 *
+			float64(result.CoveredProduction+result.ContractCoveredOnly) / float64(result.TotalProduction)
 	}
 
 	// ── apply severity filter and cap UncoveredEntities ──────────────────────
@@ -271,10 +284,11 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 			covPct = 100.0 * float64(acc.covered) / float64(acc.total)
 		}
 		result.ByDirectory = append(result.ByDirectory, graph.DirCoverage{
-			Dir:         d,
-			Total:       acc.total,
-			Covered:     acc.covered,
-			CoveragePct: covPct,
+			Dir:          d,
+			Total:        acc.total,
+			Covered:      acc.covered,
+			ContractOnly: acc.contractOnly,
+			CoveragePct:  covPct,
 		})
 	}
 	sort.Slice(result.ByDirectory, func(i, j int) bool {
@@ -291,11 +305,12 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 			covPct = 100.0 * float64(acc.covered) / float64(acc.total)
 		}
 		result.ByFile = append(result.ByFile, graph.FileCoverage{
-			File:        f,
-			Dir:         acc.dir,
-			Total:       acc.total,
-			Covered:     acc.covered,
-			CoveragePct: covPct,
+			File:         f,
+			Dir:          acc.dir,
+			Total:        acc.total,
+			Covered:      acc.covered,
+			ContractOnly: acc.contractOnly,
+			CoveragePct:  covPct,
 		})
 	}
 	sort.Slice(result.ByFile, func(i, j int) bool {

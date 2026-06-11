@@ -40,6 +40,7 @@ import {
   Folder,
   FolderOpen,
   FileCode2,
+  FileText,
   Box,
   Braces,
   Hexagon,
@@ -246,17 +247,71 @@ function CoverageBar({ pct }: { pct: number }) {
   );
 }
 
+/**
+ * TwoBandCoverageBar renders REACH coverage (executed by a test) as the solid
+ * primary band and, behind it, the CONTRACT-covered-only slice (shape-asserted
+ * offline but never executed) as a hatched secondary band (#4662). The two are
+ * honestly distinct: reach is the headline %, contract-only is the extra slice
+ * an offline contract spec asserts the shape of without calling the handler.
+ */
+function TwoBandCoverageBar({
+  reachPct,
+  contractPct,
+}: {
+  reachPct: number;
+  contractPct: number;
+}) {
+  const tone =
+    reachPct >= 80 ? "bg-success" : reachPct >= 50 ? "bg-warning" : "bg-danger";
+  // The contract band is the extra width beyond reach (the union minus reach),
+  // clamped so the two never exceed 100%.
+  const reachW = Math.min(reachPct, 100);
+  const contractW = Math.max(0, Math.min(contractPct, 100) - reachW);
+  return (
+    <div
+      className="relative h-2 w-full rounded-full overflow-hidden bg-surface-2 border border-border"
+      role="img"
+      aria-label={`${reachPct.toFixed(0)}% reach-covered, ${contractPct.toFixed(0)}% including contract-covered`}
+    >
+      {/* secondary contract-covered band (hatched, behind, starts after reach) */}
+      {contractW > 0 && (
+        <div
+          className="absolute inset-y-0 bg-info/40"
+          style={{
+            left: `${reachW}%`,
+            width: `${contractW}%`,
+            backgroundImage:
+              "repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.25) 3px, rgba(255,255,255,0.25) 6px)",
+          }}
+        />
+      )}
+      {/* primary reach band (solid) */}
+      <div
+        className={cn("absolute inset-y-0 left-0 transition-all", tone)}
+        style={{ width: `${reachW}%` }}
+      />
+    </div>
+  );
+}
+
 function CoverageGauge({
   covered,
   total,
   pct,
   totalTests,
+  contractOnly,
+  contractPct,
 }: {
   covered: number;
   total: number;
   pct: number;
   totalTests: number;
+  /** Endpoints shape-asserted by an offline contract spec but not executed (#4662). */
+  contractOnly: number;
+  /** Union (reach + contract-only) % — drives the secondary band (#4662). */
+  contractPct: number;
 }) {
+  const trulyUncovered = Math.max(0, total - covered - contractOnly);
   return (
     <Card>
       <CardHeader className="flex items-center justify-between">
@@ -265,10 +320,17 @@ function CoverageGauge({
           <MetricInfo
             hint={
               <>
-                <strong>Test coverage</strong> = % of production entities reached
-                by at least one TESTS edge (covered ÷ production entities). Measures
-                how much of the indexed code a test exercises structurally, not
+                <strong>Reach coverage</strong> = % of production entities a test
+                actually <em>executes</em> (a test CALLS the handler), covered ÷
+                production entities. This is the headline figure — structural, not
                 line coverage. Goal 80%+.
+                <br />
+                <br />
+                <strong>Contract-covered</strong> (hatched band) = endpoints whose
+                shape an <em>offline contract spec asserts</em> but{" "}
+                <em>no test calls</em>. These are not dangerously untested; they
+                are shape-verified offline. The band is shown behind reach so the
+                gap between "executed" and "shape-asserted" is honest and visible.
               </>
             }
           />
@@ -278,13 +340,22 @@ function CoverageGauge({
         </span>
       </CardHeader>
       <CardBody className="space-y-3">
-        <CoverageBar pct={pct} />
+        <TwoBandCoverageBar reachPct={pct} contractPct={contractPct} />
         <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-md">
           <span className="flex items-center gap-1.5 text-text-2">
             <CheckCircle2 size={13} className="text-success" />
-            {covered} covered
+            {covered} reach-covered
           </span>
-          <span className="text-text-2">{total - covered} uncovered</span>
+          {contractOnly > 0 && (
+            <span
+              className="flex items-center gap-1.5 text-text-2"
+              title="An offline contract spec asserts these endpoints' shape, but no test calls them."
+            >
+              <FileText size={13} className="text-info" />
+              {contractOnly} contract-covered ({contractPct.toFixed(1)}% incl.)
+            </span>
+          )}
+          <span className="text-text-2">{trulyUncovered} uncovered</span>
           <span className="text-text-4">· {total} production entities</span>
           <span className="text-text-4">· {totalTests} tests</span>
         </div>
@@ -488,6 +559,15 @@ function UncoveredLeafRow({
       <span className="font-mono text-xs text-text-2 truncate min-w-0 flex-1" title={u.name}>
         {u.name}
       </span>
+      {u.state === "contract-only" && (
+        <span
+          className="shrink-0 inline-flex items-center gap-0.5 rounded px-1 py-px text-[9px] font-medium uppercase tracking-wide text-info bg-info/10"
+          title="An offline contract spec asserts this endpoint's shape, but no test calls it."
+        >
+          <FileText size={9} />
+          contract
+        </span>
+      )}
       <span
         className={cn("h-1.5 w-1.5 rounded-full shrink-0", COV_SEVERITY_DOT[u.severity] ?? "bg-text-4")}
         title={`${u.severity} severity`}
@@ -672,6 +752,16 @@ function UncoveredRow({ u, repo }: { u: UncoveredEntity; repo: string }) {
           {u.name}
         </span>
         <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          {u.state === "contract-only" && (
+            <Badge
+              tone="info"
+              className="shrink-0 inline-flex items-center gap-0.5"
+              title="An offline contract spec asserts this endpoint's shape, but no test calls it."
+            >
+              <FileText size={11} />
+              contract-covered
+            </Badge>
+          )}
           <Badge tone="neutral" className="shrink-0">
             {u.kind}
           </Badge>
@@ -754,6 +844,8 @@ function CoverageTab({ groupId }: { groupId: string }) {
         total={data.total_production}
         pct={data.coverage_pct}
         totalTests={data.total_tests}
+        contractOnly={data.contract_covered_only ?? 0}
+        contractPct={data.contract_covered_pct ?? data.coverage_pct}
       />
 
       {(data.by_directory?.length ?? 0) > 0 && (
@@ -1395,19 +1487,23 @@ const QUALITY_INSIGHTS: Record<QualityTab, InsightValue> = {
     storageKey: "quality.coverage",
     human: (
       <>
-        Structural test coverage — which production entities (functions,
-        classes, endpoints) are reached by a test via a{" "}
+        Structural test coverage in two honest bands. The headline{" "}
+        <strong>reach coverage</strong> = which production entities a test
+        actually executes (a test CALLS the handler) via a{" "}
         <DefTerm
-          term="TESTS edge"
-          def="A graph edge linking a test entity to the production entity it exercises. Coverage here is reachability over these edges, not executed-line coverage."
+          term="TESTS/CALLS edge"
+          def="A graph edge linking a test entity to the production entity it executes. Reach coverage is reachability over these edges, not executed-line coverage."
         />
-        . This is graph reachability, not line coverage.
+        . The secondary <strong>contract-covered</strong> band marks endpoints
+        whose shape an offline contract spec asserts but which no test calls —
+        shape-verified, not dangerously untested. This is graph reachability,
+        not line coverage.
       </>
     ),
     agent: {
       tool: "archigraph_test_coverage",
       example:
-        "Before writing tests for a payments module, an agent calls archigraph_test_coverage to list production endpoints with no inbound TESTS edge, then generates tests targeting exactly those gaps instead of duplicating existing ones.",
+        "Before writing tests for a payments module, an agent calls archigraph_test_coverage to list endpoints with no reach-coverage, distinguishes the contract-covered-only ones (shape already asserted offline) from the truly uncovered, and generates execution tests targeting exactly the real gaps instead of duplicating existing contract specs.",
     },
   },
   dependencies: {

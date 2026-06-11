@@ -1834,6 +1834,15 @@ export interface UncoveredEntity {
   repo?: string;
   /** "high" | "medium" | "low". */
   severity: string;
+  /**
+   * Coverage state (#4662). For entities in the (not-reach-covered) uncovered
+   * list this is either:
+   *   "contract-only" — an offline contract spec asserts this endpoint's shape,
+   *                     but no test calls it. NOT dangerously untested.
+   *   "uncovered"     — neither reach-covered nor contract-covered.
+   * Reach-covered entities never appear here. Absent on older backends.
+   */
+  state?: "reach" | "contract-only" | "uncovered";
 }
 
 /** Per-directory coverage statistics. */
@@ -1841,6 +1850,8 @@ export interface DirCoverage {
   dir: string;
   total: number;
   covered: number;
+  /** Entities that are contract-covered-only (shape-asserted, not executed) (#4662). */
+  contract_only?: number;
   coverage_pct: number;
 }
 
@@ -1850,6 +1861,8 @@ export interface FileCoverage {
   dir: string;
   total: number;
   covered: number;
+  /** Entities that are contract-covered-only (shape-asserted, not executed) (#4662). */
+  contract_only?: number;
   coverage_pct: number;
 }
 
@@ -1879,6 +1892,15 @@ export interface GroupCoverageReport {
   total_production: number;
   covered_production: number;
   coverage_pct: number;
+  /**
+   * Secondary contract-covered band (#4662). `contract_covered_only` counts
+   * endpoints whose shape an offline contract spec asserts but which no test
+   * executes; `contract_covered_pct` is the union (reach + contract-only) band.
+   * Neither is folded into `coverage_pct`, which stays pure reach-coverage.
+   * Absent on older backends.
+   */
+  contract_covered_only?: number;
+  contract_covered_pct?: number;
   total_tests: number;
   total_tests_edges: number;
   repos: number;

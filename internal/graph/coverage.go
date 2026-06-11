@@ -52,7 +52,26 @@ type CoverageReport struct {
 	CoveredProduction int `json:"covered_production"`
 	// CoveragePct is CoveredProduction/TotalProduction*100 (0 when no
 	// production entities exist).
+	//
+	// NOTE (#4662): this is the REACH-coverage % — production entities a test
+	// actually executes (CALLS the handler / executing TESTS edge / endpoint
+	// credited via a reached handler). It deliberately does NOT include
+	// contract-covered-only endpoints (see ContractCoveredOnly), so the headline
+	// figure stays honest about what is structurally exercised by a test.
 	CoveragePct float64 `json:"coverage_pct"`
+
+	// ContractCoveredOnly is the count of production endpoints that are NOT
+	// reach-covered but ARE contract-covered: an OFFLINE contract spec references
+	// the endpoint's route (asserts its shape) without any test executing the
+	// handler (#4662). These read as "contract-covered" rather than "untested".
+	//
+	// This is a SEPARATE, secondary band — it is never added into
+	// CoveredProduction / CoveragePct (which remain pure reach-coverage).
+	ContractCoveredOnly int `json:"contract_covered_only"`
+	// ContractCoveredPct is (CoveredProduction+ContractCoveredOnly)/TotalProduction
+	// *100 — the union band the UI renders behind the reach-coverage bar so the
+	// gap between "executed by a test" and "shape-asserted offline" is visible.
+	ContractCoveredPct float64 `json:"contract_covered_pct"`
 
 	// TotalTests is the number of test entities found.
 	TotalTests int `json:"total_tests"`
@@ -101,25 +120,52 @@ type UncoveredEntity struct {
 	Repo string `json:"repo,omitempty"`
 	// Severity is "high" | "medium" | "low".
 	Severity string `json:"severity"`
+	// State is the coverage state of this entity (#4662). For entities in this
+	// (not-reach-covered) list it is either:
+	//
+	//	"contract-only" — an offline contract spec asserts the endpoint's shape
+	//	                  but no test executes the handler. NOT dangerously
+	//	                  untested; severity is downgraded accordingly.
+	//	"uncovered"     — neither reach-covered nor contract-covered.
+	//
+	// (Reach-covered entities never appear in this list, so the value is never
+	// "reach" here; the three-state vocabulary is reach | contract-only |
+	// uncovered, and "reach" lives on the covered side of the report.)
+	State string `json:"state"`
 }
+
+// Coverage-state string constants (#4662). The full three-state vocabulary is
+// reach | contract-only | uncovered; only the latter two appear in
+// UncoveredEntity.State (reach-covered entities are not listed as uncovered).
+const (
+	CoverageStateReach        = "reach"
+	CoverageStateContractOnly = "contract-only"
+	CoverageStateUncovered    = "uncovered"
+)
 
 // DirCoverage is per-directory coverage statistics.
 type DirCoverage struct {
-	Dir         string  `json:"dir"`
-	Total       int     `json:"total"`
-	Covered     int     `json:"covered"`
-	CoveragePct float64 `json:"coverage_pct"`
+	Dir     string `json:"dir"`
+	Total   int    `json:"total"`
+	Covered int    `json:"covered"`
+	// ContractOnly is the count of entities in this directory that are
+	// contract-covered-only (shape-asserted offline, not reach-covered) (#4662).
+	ContractOnly int     `json:"contract_only"`
+	CoveragePct  float64 `json:"coverage_pct"`
 }
 
 // FileCoverage is per-file coverage statistics. File is the full source path
 // (forward-slash normalised); Dir is its parent directory (matching the keys
 // in ByDirectory) so the frontend can nest files under directories.
 type FileCoverage struct {
-	File        string  `json:"file"`
-	Dir         string  `json:"dir"`
-	Total       int     `json:"total"`
-	Covered     int     `json:"covered"`
-	CoveragePct float64 `json:"coverage_pct"`
+	File    string `json:"file"`
+	Dir     string `json:"dir"`
+	Total   int    `json:"total"`
+	Covered int    `json:"covered"`
+	// ContractOnly is the count of entities in this file that are
+	// contract-covered-only (shape-asserted offline, not reach-covered) (#4662).
+	ContractOnly int     `json:"contract_only"`
+	CoveragePct  float64 `json:"coverage_pct"`
 }
 
 // ModuleCoverage is per-module coverage statistics.
@@ -173,6 +219,57 @@ var testEntityKinds = map[string]bool{
 	"SCOPE.Operation": true, // canonical: all language extractors
 	"Function":        true, // compat / future
 	"Method":          true, // compat / future
+}
+
+// contractSpecPathSegments are slash-normalised path segments that mark a test
+// file as an OFFLINE CONTRACT spec — a spec that asserts an endpoint's
+// request/response SHAPE against an oracle/fixture but does NOT invoke the
+// handler (no CALLS/execution edge). These are the dominant test mechanism on
+// contract-first backends (upvate-v3: test/contract/*.contract.spec.ts) and the
+// reason a large slice of endpoints read "untested" under pure reach-coverage
+// even though their shape is asserted (#4662, follow-on to #4671).
+var contractSpecPathSegments = []string{
+	"/contract/",  // test/contract/… (NestJS, generic)
+	"/contracts/", // pluralised variant
+	"/pact/",      // Pact consumer/provider contract tests
+	"/pacts/",     // pluralised variant
+}
+
+// contractSpecNameInfixes are case-insensitive base-name infixes that mark a
+// contract spec regardless of directory (`*.contract.spec.ts`, `*.pact.test.ts`,
+// `foo.contract.test.js`, …). Matched on the lower-cased base name.
+var contractSpecNameInfixes = []string{
+	".contract.spec.", ".contract.test.",
+	".pact.spec.", ".pact.test.",
+	".contract.", // e.g. foo.contract.ts when it is itself a spec dir resident
+}
+
+// isContractSpecFile reports whether path is an OFFLINE contract spec file — a
+// test file (it must already satisfy isTestFile for the caller's purposes) that
+// asserts endpoint shapes against an oracle and does not execute the handler.
+//
+// Detection is path-/name-driven and framework-agnostic: a `/contract/`-style
+// directory segment OR a `*.contract.spec.*` / `*.pact.*` base-name infix. It is
+// intentionally conservative — a plain `foo.spec.ts` is NOT a contract spec; the
+// "contract"/"pact" marker must be explicit, so we never mistake an executing
+// unit/e2e spec for an offline contract spec (#4662).
+func isContractSpecFile(path string) bool {
+	if path == "" {
+		return false
+	}
+	slashed := "/" + filepath.ToSlash(strings.ToLower(path))
+	for _, seg := range contractSpecPathSegments {
+		if strings.Contains(slashed, seg) {
+			return true
+		}
+	}
+	base := strings.ToLower(filepath.Base(path))
+	for _, infix := range contractSpecNameInfixes {
+		if strings.Contains(base, infix) {
+			return true
+		}
+	}
+	return false
 }
 
 // isTestFile returns true when the source file path matches a recognised test
@@ -435,6 +532,7 @@ func pct(covered, total int) float64 {
 
 const kindTests = "TESTS"
 const kindCalls = "CALLS"
+const kindReferences = "REFERENCES"
 
 // handlerEndpointEdgeKinds are the producer-side edge kinds that link a backend
 // handler (controller method / view function / Operation) to its
@@ -520,6 +618,57 @@ func creditEndpointsViaHandlers(
 	return credited
 }
 
+// creditContractRefViaHandlers propagates a contract route-reference one hop
+// along the handler↔endpoint edge (IMPLEMENTS/ROUTES_TO/SERVES, either
+// direction), so that whichever side a contract spec references — the synthetic
+// http_endpoint_definition (via a route-literal match) OR the backing handler
+// method (via a describe-label) — the OTHER side is also marked
+// contract-referenced. This mirrors creditEndpointsViaHandlers but for the
+// contractRef map, and is framework-agnostic (#4662).
+//
+// Unlike the reach-coverage hop it is unconditional on the partner's reach
+// state: contract coverage and reach coverage are orthogonal bands, and the
+// final contract-covered-only set subtracts reach-covered entities afterwards.
+// It mutates contractRef in place.
+func creditContractRefViaHandlers(
+	entByID map[string]*Entity,
+	rels []Relationship,
+	prodIDs map[string]bool,
+	contractRef map[string]int,
+) {
+	for i := range rels {
+		r := &rels[i]
+		if !handlerEndpointEdgeKinds[strings.ToUpper(r.Kind)] {
+			continue
+		}
+		from := entByID[r.FromID]
+		to := entByID[r.ToID]
+		if from == nil || to == nil {
+			continue
+		}
+		var defID, handlerID string
+		switch {
+		case isEndpointKind(to.Kind) && !isEndpointKind(from.Kind):
+			defID, handlerID = to.ID, from.ID
+		case isEndpointKind(from.Kind) && !isEndpointKind(to.Kind):
+			defID, handlerID = from.ID, to.ID
+		default:
+			continue
+		}
+		// Propagate a reference from whichever side has one to the other, as
+		// long as both sit in the production denominator.
+		if !prodIDs[defID] || !prodIDs[handlerID] {
+			continue
+		}
+		if contractRef[handlerID] > 0 && contractRef[defID] == 0 {
+			contractRef[defID]++
+		}
+		if contractRef[defID] > 0 && contractRef[handlerID] == 0 {
+			contractRef[handlerID]++
+		}
+	}
+}
+
 // endpointHandlerIDs returns the handler entity IDs that back the
 // http_endpoint_definition defID, resolving the handler↔definition edge in
 // both directions (IMPLEMENTS/ROUTES_TO/SERVES). Framework-agnostic; used by the
@@ -560,6 +709,13 @@ type EntityCoverageResult struct {
 	Tested           bool     `json:"tested"`
 	CoveringTests    []string `json:"covering_tests"`
 	CoverageFraction float64  `json:"coverage_fraction"`
+	// State is the three-state coverage classification (#4662):
+	// "reach" (a test executes it), "contract-only" (an offline contract spec
+	// asserts its shape but nothing executes it), or "uncovered".
+	State string `json:"state"`
+	// ContractCovered is true when a contract spec references this entity's
+	// route (shape-asserted) regardless of reach state.
+	ContractCovered bool `json:"contract_covered"`
 }
 
 // ComputeEntityCoverage returns coverage details for a single entity ID within
@@ -587,6 +743,7 @@ func ComputeEntityCoverage(doc *Document, entityID string) (*EntityCoverageResul
 	// ── index all entities needed for the two-phase algorithm ─────────────────
 	prodIDs := make(map[string]bool)
 	testIDs := make(map[string]bool)
+	contractTestIDs := make(map[string]bool) // contract-spec test entities (#4662)
 	for i := range doc.Entities {
 		e := &doc.Entities[i]
 		switch {
@@ -594,6 +751,9 @@ func ComputeEntityCoverage(doc *Document, entityID string) (*EntityCoverageResul
 			prodIDs[e.ID] = true
 		case isTestEntity(e):
 			testIDs[e.ID] = true
+			if isContractSpecFile(e.SourceFile) {
+				contractTestIDs[e.ID] = true
+			}
 		}
 	}
 
@@ -604,6 +764,7 @@ func ComputeEntityCoverage(doc *Document, entityID string) (*EntityCoverageResul
 		SourceFile: target.SourceFile,
 		StartLine:  target.StartLine,
 		Severity:   entitySeverity(target),
+		State:      CoverageStateUncovered,
 	}
 
 	if !prodIDs[entityID] {
@@ -616,13 +777,25 @@ func ComputeEntityCoverage(doc *Document, entityID string) (*EntityCoverageResul
 	coveringSet := make(map[string]bool)
 	// testCallsTo: sets of production entity IDs each test entity calls.
 	testCallsToTarget := make(map[string]bool) // test entity IDs that CALL entityID
+	// contractRefSeen: a contract spec references this entity's route without
+	// executing it (#4662) — the contract-covered signal, separate from reach.
+	contractRefSeen := false
 
 	for i := range doc.Relationships {
 		rel := &doc.Relationships[i]
 		switch strings.ToUpper(rel.Kind) {
 		case kindTests:
 			if rel.ToID == entityID && testIDs[rel.FromID] {
+				if contractTestIDs[rel.FromID] {
+					// Offline contract spec: shape reference, not a reach signal.
+					contractRefSeen = true
+					continue
+				}
 				coveringSet[rel.FromID] = true
+			}
+		case kindReferences:
+			if rel.ToID == entityID && contractTestIDs[rel.FromID] {
+				contractRefSeen = true
 			}
 		case kindCalls:
 			if rel.ToID == entityID && testIDs[rel.FromID] {
@@ -655,7 +828,15 @@ func ComputeEntityCoverage(doc *Document, entityID string) (*EntityCoverageResul
 				switch strings.ToUpper(rel.Kind) {
 				case kindTests:
 					if rel.ToID == hID && testIDs[rel.FromID] {
+						if contractTestIDs[rel.FromID] {
+							contractRefSeen = true
+							continue
+						}
 						coveringSet[rel.FromID] = true
+					}
+				case kindReferences:
+					if rel.ToID == hID && contractTestIDs[rel.FromID] {
+						contractRefSeen = true
 					}
 				case kindCalls:
 					if rel.ToID == hID && testIDs[rel.FromID] {
@@ -682,6 +863,15 @@ func ComputeEntityCoverage(doc *Document, entityID string) (*EntityCoverageResul
 	result.Tested = tested
 	result.CoveringTests = coveringTests
 	result.CoverageFraction = fraction
+	result.ContractCovered = contractRefSeen
+	switch {
+	case tested:
+		result.State = CoverageStateReach
+	case contractRefSeen:
+		result.State = CoverageStateContractOnly
+	default:
+		result.State = CoverageStateUncovered
+	}
 	return result, true
 }
 
@@ -822,8 +1012,9 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 	}
 
 	// Classify entities.
-	prodIDs := make(map[string]bool) // production entity IDs
-	testIDs := make(map[string]bool) // test entity IDs
+	prodIDs := make(map[string]bool)         // production entity IDs
+	testIDs := make(map[string]bool)         // test entity IDs (all)
+	contractTestIDs := make(map[string]bool) // test entities that live in an OFFLINE contract spec (#4662)
 
 	for id, e := range entByID {
 		switch {
@@ -831,14 +1022,25 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 			prodIDs[id] = true
 		case isTestEntity(e):
 			testIDs[id] = true
+			if isContractSpecFile(e.SourceFile) {
+				contractTestIDs[id] = true
+			}
 		}
 	}
 	report.TotalProduction = len(prodIDs)
 	report.TotalTests = len(testIDs)
 
 	// ── phase 1: collect TESTS edges ─────────────────────────────────────────
-	// covered maps production-entity-ID → count of TESTS inbound.
+	// covered maps production-entity-ID → count of REACH-coverage signals
+	// (a test that actually executes the entity). To keep the headline %
+	// honest (#4671/#4662), a TESTS edge that originates from an OFFLINE
+	// contract spec is NOT a reach signal — it is a route REFERENCE (shape
+	// assertion) only. Those feed contractRef instead, never covered.
 	covered := make(map[string]int, len(prodIDs))
+	// contractRef maps production-entity-ID → count of contract-spec route
+	// references (TESTS or REFERENCES edges from a contract-spec test entity)
+	// with NO execution. Used to compute the contract-covered-only band (#4662).
+	contractRef := make(map[string]int, len(prodIDs))
 	// testCallsTo: per test-entity-ID, the set of CALLS target IDs.
 	testCallsTo := make(map[string][]string)
 
@@ -846,9 +1048,25 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 		rel := &doc.Relationships[i]
 		switch strings.ToUpper(rel.Kind) {
 		case kindTests:
-			if prodIDs[rel.ToID] {
-				covered[rel.ToID]++
-				report.TotalTestsEdges++
+			if !prodIDs[rel.ToID] {
+				continue
+			}
+			if contractTestIDs[rel.FromID] {
+				// Offline contract spec asserting the endpoint's shape via a
+				// route reference (route-literal / describe('VERB /route') label
+				// match). NOT a reach signal — record it as a contract reference.
+				contractRef[rel.ToID]++
+				continue
+			}
+			covered[rel.ToID]++
+			report.TotalTestsEdges++
+		case kindReferences:
+			// A REFERENCES edge from a contract-spec test entity to a production
+			// endpoint/handler is the explicit route-reference form (some
+			// extractors record the route literal as REFERENCES rather than
+			// TESTS). It is a shape assertion, never an execution (#4662).
+			if prodIDs[rel.ToID] && contractTestIDs[rel.FromID] {
+				contractRef[rel.ToID]++
 			}
 		case kindCalls:
 			if testIDs[rel.FromID] {
@@ -893,9 +1111,29 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 		report.TotalTestsEdges += ep
 	}
 
+	// ── phase 5: contract-covered band (#4662) ───────────────────────────────
+	// Propagate contract references one hop along the handler↔endpoint edge so
+	// a contract spec that references the handler method credits the endpoint it
+	// backs (and vice versa) — mirroring the reach-coverage endpoint hop. This
+	// uses the SAME edge kinds (IMPLEMENTS/ROUTES_TO/SERVES) and never touches
+	// `covered`, so the reach-coverage % is unaffected.
+	creditContractRefViaHandlers(entByID, doc.Relationships, prodIDs, contractRef)
+
+	// contractCoveredOnly: production entities that are NOT reach-covered but
+	// DO carry a contract route-reference. This is the honest second band — the
+	// endpoint's shape is asserted offline though no test executes it.
+	contractCoveredOnly := make(map[string]bool)
+	for id := range contractRef {
+		if covered[id] == 0 && prodIDs[id] {
+			contractCoveredOnly[id] = true
+		}
+	}
+
 	// ── compute totals ────────────────────────────────────────────────────────
 	report.CoveredProduction = len(covered)
 	report.CoveragePct = pct(report.CoveredProduction, report.TotalProduction)
+	report.ContractCoveredOnly = len(contractCoveredOnly)
+	report.ContractCoveredPct = pct(report.CoveredProduction+report.ContractCoveredOnly, report.TotalProduction)
 
 	// ── build uncovered list ──────────────────────────────────────────────────
 	for id := range prodIDs {
@@ -907,6 +1145,18 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 		if e.Properties != nil {
 			mod = e.Properties["module"]
 		}
+		// State + severity: a contract-covered-only entity is shape-asserted
+		// offline, so it is NOT dangerously untested — downgrade a "high"
+		// (endpoint) severity to "medium" and tag the state so the UI renders it
+		// in the contract band rather than the alarming uncovered band (#4662).
+		sev := entitySeverity(e)
+		state := CoverageStateUncovered
+		if contractCoveredOnly[id] {
+			state = CoverageStateContractOnly
+			if sev == "high" {
+				sev = "medium"
+			}
+		}
 		report.UncoveredEntities = append(report.UncoveredEntities, UncoveredEntity{
 			EntityID:   id,
 			Name:       e.Name,
@@ -915,7 +1165,8 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 			StartLine:  e.StartLine,
 			Language:   e.Language,
 			Module:     mod,
-			Severity:   entitySeverity(e),
+			Severity:   sev,
+			State:      state,
 		})
 	}
 
@@ -936,11 +1187,11 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 	// ── per-directory & per-file breakdown ────────────────────────────────────
 	// Files are the deepest grouping; directory rollups are the sums of the
 	// files that live under them.
-	type covStat struct{ total, covered int }
+	type covStat struct{ total, covered, contractOnly int }
 	dirStats := make(map[string]*covStat)
 	type fileStat struct {
-		dir            string
-		total, covered int
+		dir                          string
+		total, covered, contractOnly int
 	}
 	fileStats := make(map[string]*fileStat)
 
@@ -960,18 +1211,23 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 		}
 		fileStats[f].total++
 
-		if covered[id] > 0 {
+		switch {
+		case covered[id] > 0:
 			dirStats[d].covered++
 			fileStats[f].covered++
+		case contractCoveredOnly[id]:
+			dirStats[d].contractOnly++
+			fileStats[f].contractOnly++
 		}
 	}
 
 	for d, s := range dirStats {
 		report.ByDirectory = append(report.ByDirectory, DirCoverage{
-			Dir:         d,
-			Total:       s.total,
-			Covered:     s.covered,
-			CoveragePct: pct(s.covered, s.total),
+			Dir:          d,
+			Total:        s.total,
+			Covered:      s.covered,
+			ContractOnly: s.contractOnly,
+			CoveragePct:  pct(s.covered, s.total),
 		})
 	}
 	sort.Slice(report.ByDirectory, func(i, j int) bool {
@@ -980,11 +1236,12 @@ func ComputeCoverage(doc *Document) *CoverageReport {
 
 	for f, s := range fileStats {
 		report.ByFile = append(report.ByFile, FileCoverage{
-			File:        f,
-			Dir:         s.dir,
-			Total:       s.total,
-			Covered:     s.covered,
-			CoveragePct: pct(s.covered, s.total),
+			File:         f,
+			Dir:          s.dir,
+			Total:        s.total,
+			Covered:      s.covered,
+			ContractOnly: s.contractOnly,
+			CoveragePct:  pct(s.covered, s.total),
 		})
 	}
 	sort.Slice(report.ByFile, func(i, j int) bool {

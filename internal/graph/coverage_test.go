@@ -742,3 +742,149 @@ func TestComputeCoverage_EndpointCreditedViaRoutesTo(t *testing.T) {
 		t.Errorf("CoveredProduction want 2 (handler + endpoint via ROUTES_TO), got %d", report.CoveredProduction)
 	}
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Contract-covered band (#4662)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// TestIsContractSpecFile covers the offline-contract-spec detection: directory
+// segments (/contract/, /pact/) and base-name infixes (*.contract.spec.*,
+// *.pact.*), while plain specs are NOT contract specs.
+func TestIsContractSpecFile(t *testing.T) {
+	t.Parallel()
+	cases := []struct {
+		path string
+		want bool
+	}{
+		{"test/contract/proposals.contract.spec.ts", true},
+		{"src/clients/clients.contract.spec.ts", true},
+		{"test/contract/foo.spec.ts", true},     // dir segment
+		{"api/pact/consumer.pact.test.ts", true}, // pact dir + infix
+		{"src/user.contract.test.js", true},
+		// Plain specs / unit specs are NOT contract specs.
+		{"src/app.controller.spec.ts", false},
+		{"src/user.test.ts", false},
+		{"handler_test.go", false},
+		{"", false},
+	}
+	for _, tc := range cases {
+		if got := isContractSpecFile(tc.path); got != tc.want {
+			t.Errorf("isContractSpecFile(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
+// TestComputeCoverage_ThreeStateBands is the headline #4662 fixture mirroring the
+// live upvate-v3 shape. Three endpoints:
+//
+//	epReach   — a UNIT spec CALLS its handler        → reach-covered
+//	epCon     — only an OFFLINE contract spec TESTS  → contract-covered-only
+//	epNone    — neither                              → uncovered
+//
+// Asserts: reach % counts only epReach's handler+endpoint, contract band counts
+// epCon (handler+endpoint) separately, and the contract endpoint is NOT folded
+// into the reach %.
+func TestComputeCoverage_ThreeStateBands(t *testing.T) {
+	t.Parallel()
+	entities := []Entity{
+		// Reach-covered endpoint: handler executed by a unit spec.
+		{ID: "hReach", Name: "getReach", Kind: "SCOPE.Operation", SourceFile: "src/reach.controller.ts", StartLine: 10},
+		{ID: "epReach", Name: "GET /reach", Kind: "http_endpoint_definition", SourceFile: "src/reach.controller.ts", StartLine: 10},
+		{ID: "unitSpec", Name: "ReachController", Kind: "SCOPE.Operation", SourceFile: "src/reach.controller.spec.ts"},
+
+		// Contract-covered-only endpoint: handler referenced by an OFFLINE
+		// contract spec via a route-reference TESTS edge (no execution).
+		{ID: "hCon", Name: "getCounts", Kind: "SCOPE.Operation", SourceFile: "src/proposal.controller.ts", StartLine: 90},
+		{ID: "epCon", Name: "GET /proposals/get_counts", Kind: "http_endpoint_definition", SourceFile: "src/proposal.controller.ts", StartLine: 90},
+		{ID: "contractSpec", Name: "GET /proposals/get_counts", Kind: "SCOPE.Operation", SourceFile: "test/contract/proposals.contract.spec.ts"},
+
+		// Uncovered endpoint: nothing references it.
+		{ID: "hNone", Name: "getNone", Kind: "SCOPE.Operation", SourceFile: "src/none.controller.ts", StartLine: 5},
+		{ID: "epNone", Name: "GET /none", Kind: "http_endpoint_definition", SourceFile: "src/none.controller.ts", StartLine: 5},
+	}
+	rels := []Relationship{
+		{ID: "i1", FromID: "hReach", ToID: "epReach", Kind: "IMPLEMENTS"},
+		{ID: "i2", FromID: "hCon", ToID: "epCon", Kind: "IMPLEMENTS"},
+		{ID: "i3", FromID: "hNone", ToID: "epNone", Kind: "IMPLEMENTS"},
+		// Unit spec EXECUTES the reach handler (CALLS).
+		{ID: "c1", FromID: "unitSpec", ToID: "hReach", Kind: "CALLS"},
+		// Contract spec REFERENCES the route (TESTS, route-literal match) — no CALLS.
+		{ID: "t1", FromID: "contractSpec", ToID: "hCon", Kind: "TESTS"},
+	}
+	report := ComputeCoverage(makeDoc(entities, rels))
+
+	// 6 production entities (3 handlers + 3 endpoints).
+	if report.TotalProduction != 6 {
+		t.Fatalf("TotalProduction want 6, got %d", report.TotalProduction)
+	}
+	// Reach: hReach + epReach only (contract endpoint NOT folded in).
+	if report.CoveredProduction != 2 {
+		t.Errorf("CoveredProduction (reach) want 2, got %d", report.CoveredProduction)
+	}
+	// Contract-only band: hCon + epCon (via handler hop).
+	if report.ContractCoveredOnly != 2 {
+		t.Errorf("ContractCoveredOnly want 2 (handler+endpoint), got %d", report.ContractCoveredOnly)
+	}
+	// Reach % must NOT include the contract endpoints.
+	wantReach := pct(2, 6)
+	if report.CoveragePct != wantReach {
+		t.Errorf("CoveragePct want %.2f (reach only), got %.2f", wantReach, report.CoveragePct)
+	}
+	// Union band = reach + contract-only.
+	wantUnion := pct(4, 6)
+	if report.ContractCoveredPct != wantUnion {
+		t.Errorf("ContractCoveredPct want %.2f, got %.2f", wantUnion, report.ContractCoveredPct)
+	}
+
+	// State assertions per entity in the uncovered list.
+	stateByID := map[string]string{}
+	for _, u := range report.UncoveredEntities {
+		stateByID[u.EntityID] = u.State
+	}
+	if stateByID["epCon"] != CoverageStateContractOnly {
+		t.Errorf("epCon state want %q, got %q", CoverageStateContractOnly, stateByID["epCon"])
+	}
+	if stateByID["hCon"] != CoverageStateContractOnly {
+		t.Errorf("hCon state want %q, got %q", CoverageStateContractOnly, stateByID["hCon"])
+	}
+	if stateByID["epNone"] != CoverageStateUncovered {
+		t.Errorf("epNone state want %q, got %q", CoverageStateUncovered, stateByID["epNone"])
+	}
+	// Reach-covered entities must NOT appear in the uncovered list at all.
+	if _, listed := stateByID["epReach"]; listed {
+		t.Errorf("epReach is reach-covered and must not be in the uncovered list")
+	}
+
+	// Single-entity path must agree on the three states.
+	doc := makeDoc(entities, rels)
+	if r, _ := ComputeEntityCoverage(doc, "epReach"); r.State != CoverageStateReach || !r.Tested {
+		t.Errorf("ComputeEntityCoverage(epReach) want reach/tested, got state=%q tested=%v", r.State, r.Tested)
+	}
+	if r, _ := ComputeEntityCoverage(doc, "epCon"); r.State != CoverageStateContractOnly || r.Tested || !r.ContractCovered {
+		t.Errorf("ComputeEntityCoverage(epCon) want contract-only/!tested/contractCovered, got state=%q tested=%v contract=%v", r.State, r.Tested, r.ContractCovered)
+	}
+	if r, _ := ComputeEntityCoverage(doc, "epNone"); r.State != CoverageStateUncovered || r.ContractCovered {
+		t.Errorf("ComputeEntityCoverage(epNone) want uncovered/!contractCovered, got state=%q contract=%v", r.State, r.ContractCovered)
+	}
+}
+
+// TestComputeCoverage_ContractSpecNeverInflatesReach guards the honesty rule:
+// an endpoint reachable ONLY by an offline contract spec must NOT count toward
+// the reach % even though a TESTS edge exists (the #4671/#4662 distinction).
+func TestComputeCoverage_ContractSpecNeverInflatesReach(t *testing.T) {
+	t.Parallel()
+	entities := []Entity{
+		{ID: "h", Name: "getCounts", Kind: "SCOPE.Operation", SourceFile: "src/p.controller.ts", StartLine: 1},
+		{ID: "spec", Name: "GET /counts", Kind: "SCOPE.Operation", SourceFile: "test/contract/p.contract.spec.ts"},
+	}
+	rels := []Relationship{
+		{ID: "t1", FromID: "spec", ToID: "h", Kind: "TESTS"},
+	}
+	report := ComputeCoverage(makeDoc(entities, rels))
+	if report.CoveredProduction != 0 {
+		t.Errorf("reach CoveredProduction want 0 (contract spec only), got %d", report.CoveredProduction)
+	}
+	if report.ContractCoveredOnly != 1 {
+		t.Errorf("ContractCoveredOnly want 1, got %d", report.ContractCoveredOnly)
+	}
+}
