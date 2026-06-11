@@ -242,7 +242,7 @@ func BuildControlFlowGraph(lang, funcSource string, startLine int) *ControlFlowG
 // hasBlockDetector reports whether a language family has a block detector wired
 // (so a branchless function is reported Supported=true, not "unsupported").
 func hasBlockDetector(lang string) bool {
-	return lang == "python" || braceLangs[lang]
+	return lang == "python" || lang == "ruby" || braceLangs[lang] || braceCFGLangs[lang]
 }
 
 func sortBlocks(blocks []blockHeader) []blockHeader {

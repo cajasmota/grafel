@@ -106,6 +106,88 @@ func TestEffectContextsJSTS(t *testing.T) {
 	}
 }
 
+// assertEffectCtxCondLoop is the shared effect-context contract for the
+// multi-language generalization (#4830): the source has a top-level db_read, a
+// db_write guarded by a conditional, and an http_out inside a loop. It proves
+// conditional/loop attribution works for the newly-validated families.
+func assertEffectCtxCondLoop(t *testing.T, lang, src string) {
+	t.Helper()
+	ctxs, cx := EffectContextsFor(lang, src, 100)
+	if cx.Cyclomatic < 3 {
+		t.Errorf("%s: cyclomatic = %d; want >= 3", lang, cx.Cyclomatic)
+	}
+	var sawCondWrite, sawLoopHTTP, sawUncondRead bool
+	for _, c := range ctxs {
+		switch c.Effect {
+		case "db_read":
+			if !c.Conditional {
+				sawUncondRead = true
+			}
+		case "db_write":
+			if c.Conditional && c.Condition != "" {
+				sawCondWrite = true
+			}
+		case "http_out":
+			if c.InLoop {
+				sawLoopHTTP = true
+			}
+		}
+	}
+	if !sawUncondRead {
+		t.Errorf("%s: expected an unconditional (top-level) db_read; got %+v", lang, ctxs)
+	}
+	if !sawCondWrite {
+		t.Errorf("%s: expected a conditional db_write carrying a condition; got %+v", lang, ctxs)
+	}
+	if !sawLoopHTTP {
+		t.Errorf("%s: expected an http_out inside a loop (fan-out); got %+v", lang, ctxs)
+	}
+}
+
+// TestEffectContextsGo — Go no-paren `if force {` + `for rows.Next() {`.
+func TestEffectContextsGo(t *testing.T) {
+	assertEffectCtxCondLoop(t, "go", `func Sync(ctx context.Context, force bool) error {
+	rows, _ := db.Query(ctx, "SELECT * FROM contacts")
+	if force {
+		db.Exec(ctx, "INSERT INTO log VALUES (1)")
+	}
+	for rows.Next() {
+		http.Post("https://api.example.com/notify", "application/json", nil)
+	}
+	return nil
+}
+`)
+}
+
+// TestEffectContextsRuby — Ruby `end`-delimited `if … end` + `.each do … end`.
+func TestEffectContextsRuby(t *testing.T) {
+	assertEffectCtxCondLoop(t, "ruby", `def sync(force)
+  rows = Contact.where(active: true)
+  if force
+    Contact.create(name: "x")
+  end
+  rows.each do |row|
+    Net::HTTP.post(URI("https://api.example.com/notify"), "")
+  end
+  nil
+end
+`)
+}
+
+// TestEffectContextsSwift — Swift no-paren `if force {` + `for row in rows {`.
+func TestEffectContextsSwift(t *testing.T) {
+	assertEffectCtxCondLoop(t, "swift", `func sync(force: Bool) {
+    let rows = try! context.fetch(request)
+    if force {
+        context.insert(Log())
+    }
+    for row in rows {
+        URLSession.shared.dataTask(with: url).resume()
+    }
+}
+`)
+}
+
 // TestComputeFunctionComplexity covers the bare counter: a branchless function
 // is complexity 1; decision points each add one.
 func TestComputeFunctionComplexity(t *testing.T) {

@@ -157,13 +157,24 @@ func enclosingBlocks(src, lang string, startLine int) []blockHeader {
 	switch {
 	case lang == "python":
 		return pythonBlocks(src, startLine)
-	case braceLangs[lang]:
-		return braceBlocks(src, startLine)
+	case lang == "ruby":
+		return rubyBlocks(src, startLine)
+	case braceLangs[lang] || braceCFGLangs[lang]:
+		return braceBlocks(src, lang, startLine)
 	default:
 		// No block detector for this family yet — effects are still reported,
 		// just without conditional/loop attribution (honest-partial).
 		return nil
 	}
+}
+
+// braceCFGLangs is the set of brace-delimited languages that are NOT in the
+// ClampToFunctionBody braceLangs set (so their function body is not source-level
+// clamped) but DO have a validated control-flow / effect-context block detector.
+// Swift's `{}`-delimited bodies are classified the same way as the braceLangs
+// family for control-flow purposes (#4830).
+var braceCFGLangs = map[string]bool{
+	"swift": true,
 }
 
 var (
@@ -215,28 +226,193 @@ func pythonBlocks(src string, startLine int) []blockHeader {
 	return out
 }
 
+// --- ruby (`end`-delimited) block discovery -------------------------------
+
 var (
-	braceIfRe     = regexp.MustCompile(`^\s*(?:\}\s*else\s+)?if\s*\(`)
-	braceElseRe   = regexp.MustCompile(`^\s*\}?\s*else\b`)
-	braceCatchRe  = regexp.MustCompile(`^\s*\}?\s*catch\b`)
-	braceTryRe    = regexp.MustCompile(`^\s*try\b`)
-	braceSwitchRe = regexp.MustCompile(`^\s*switch\s*\(`)
-	braceForRe    = regexp.MustCompile(`^\s*for\s*[(\s]`)
-	braceWhileRe  = regexp.MustCompile(`^\s*}?\s*while\s*\(`)
-	braceForEachRe = regexp.MustCompile(`\.\s*for[Ee]ach\s*\(`)
+	// rubyCondBlockRe — a leading-keyword conditional block: `if`, `unless`,
+	// `case`, `begin`. (Trailing-modifier `x if y` is NOT a block; it has code
+	// before the keyword and is excluded by isRubyModifierLine.)
+	rubyCondBlockRe = regexp.MustCompile(`^\s*(if|unless|case|begin)\b(.*?)\s*(?:then)?\s*$`)
+	// rubyLoopBlockRe — keyword loop forms: `while`/`until`/`for … in …`.
+	rubyLoopBlockRe = regexp.MustCompile(`^\s*(while|until|for)\b(.*?)\s*(?:do)?\s*$`)
+	// rubyDoBlockRe — an iterator block tail `…each do |x|` / `…do` opening a
+	// `do…end` block (a loop / fan-out over a collection).
+	rubyDoBlockRe = regexp.MustCompile(`\bdo\b(\s*\|[^|]*\|)?\s*$`)
+	// rubyElsifRe — `elsif`/`else`/`rescue`/`ensure`/`when` continuation clauses
+	// (do not open a new `end`-block).
+	rubyElsifRe    = regexp.MustCompile(`^\s*(elsif|else|rescue|ensure|when)\b`)
+	rubyDefBlockRe = regexp.MustCompile(`^\s*(def|class|module)\b`)
 )
+
+// rubyBlocks scopes Ruby `end`-delimited conditional/loop blocks by keyword
+// depth: an opener (`if`/`unless`/`case`/`begin`/`while`/`until`/`for`, or a
+// trailing `do`) increments depth, an `end` decrements it; the block runs from
+// its header to the matching `end`. Iterator `do…end` (and `.each do`) blocks
+// are treated as loops (a fan-out / N+1 signal), mirroring the brace-family
+// `.forEach`. Modifier guards (`return x if y`) are not blocks and are skipped.
+func rubyBlocks(src string, startLine int) []blockHeader {
+	lines := strings.Split(src, "\n")
+	var out []blockHeader
+	for i, raw := range lines {
+		scan := strings.TrimSpace(raw)
+		if scan == "" {
+			continue
+		}
+		var cond string
+		var isLoop bool
+		switch {
+		case rubyLoopBlockRe.MatchString(raw):
+			m := rubyLoopBlockRe.FindStringSubmatch(raw)
+			cond = strings.TrimSpace(m[1] + " " + strings.TrimSpace(m[2]))
+			isLoop = true
+		case rubyDoBlockRe.MatchString(raw) && !rubyCondBlockRe.MatchString(raw):
+			// `collection.each do |x|` — iterator block (loop).
+			cond = strings.TrimSpace(rubyDoBlockRe.ReplaceAllString(scan, ""))
+			if cond == "" {
+				cond = "do"
+			}
+			isLoop = true
+		case rubyCondBlockRe.MatchString(raw) && !isRubyModifierLine(raw):
+			m := rubyCondBlockRe.FindStringSubmatch(raw)
+			cond = strings.TrimSpace(m[1] + " " + strings.TrimSpace(m[2]))
+		default:
+			continue
+		}
+		end := rubyBlockSpanEnd(lines, i)
+		out = append(out, blockHeader{
+			condition: cond,
+			startLine: startLine + i,
+			endLine:   startLine + end,
+			isLoop:    isLoop,
+		})
+	}
+	return out
+}
+
+// isRubyModifierLine reports whether a line is a trailing-modifier guard
+// (`return x if cond`) rather than a block opener — i.e. there is code before
+// the leading conditional keyword.
+func isRubyModifierLine(raw string) bool {
+	trimmed := strings.TrimSpace(raw)
+	for _, kw := range []string{"if", "unless", "case", "begin"} {
+		if strings.HasPrefix(trimmed, kw+" ") || trimmed == kw {
+			return false
+		}
+	}
+	return true
+}
+
+// rubyBlockSpanEnd returns the exclusive line index of the matching `end` for
+// the Ruby block whose header is lines[headerIdx], tracking keyword-open /
+// `end`-close depth. Inline modifier guards do not open a block.
+func rubyBlockSpanEnd(lines []string, headerIdx int) int {
+	depth := 0
+	for j := headerIdx; j < len(lines); j++ {
+		if strings.TrimSpace(lines[j]) == "" {
+			continue
+		}
+		if j == headerIdx {
+			depth++
+		} else if rubyElsifRe.MatchString(lines[j]) {
+			// continuation clause — no depth change
+		} else if (rubyCondBlockRe.MatchString(lines[j]) && !isRubyModifierLine(lines[j])) ||
+			rubyLoopBlockRe.MatchString(lines[j]) ||
+			rubyDefBlockRe.MatchString(lines[j]) ||
+			rubyDoBlockRe.MatchString(lines[j]) {
+			depth++
+		}
+		if rubyEndRe.MatchString(lines[j]) {
+			depth--
+			if depth <= 0 {
+				return j + 1
+			}
+		}
+	}
+	return len(lines)
+}
+
+var (
+	// Paren-form headers — the C/Java family always parenthesises conditions.
+	braceIfRe      = regexp.MustCompile(`^\s*(?:\}\s*else\s+)?if\s*\(`)
+	braceElseRe    = regexp.MustCompile(`^\s*\}?\s*else\b`)
+	braceElseIfRe  = regexp.MustCompile(`^\s*\}?\s*else\s*if\b`)
+	braceCatchRe   = regexp.MustCompile(`^\s*\}?\s*catch\b`)
+	braceTryRe     = regexp.MustCompile(`^\s*try\b`)
+	braceSwitchRe  = regexp.MustCompile(`^\s*switch\s*\(`)
+	braceForRe     = regexp.MustCompile(`^\s*for\s*[(\s]`)
+	braceWhileRe   = regexp.MustCompile(`^\s*}?\s*while\s*\(`)
+	braceForEachRe = regexp.MustCompile(`\.\s*for[Ee]ach\s*\(`)
+	// foreachStmtRe — the statement-form `foreach (…)` loop header used by C#
+	// and PHP (distinct from the `.forEach(` method-call form above).
+	foreachStmtRe = regexp.MustCompile(`^\s*foreach\s*\(`)
+
+	// PHP-specific keyword forms (`elseif`, `foreach`).
+	phpElseIfRe  = regexp.MustCompile(`^\s*\}?\s*else\s*if\b`)
+	phpForEachRe = regexp.MustCompile(`^\s*foreach\s*\(`)
+
+	// No-paren / keyword-condition forms used by Go, Rust, Kotlin, Scala and
+	// Swift, where a header reads `if cond {`, `for x := range … {`, `for {`,
+	// `match x {`, `when {`, `loop {`, `guard … else {`. The trailing `{`
+	// anchors them so a plain `if (…)` paren form is still preferred.
+	noParenIfRe     = regexp.MustCompile(`^\s*(?:\}\s*)?if\b`)
+	noParenElseIfRe = regexp.MustCompile(`^\s*\}?\s*else\s+if\b`)
+	noParenForRe    = regexp.MustCompile(`^\s*for\b`)
+	noParenWhileRe  = regexp.MustCompile(`^\s*\}?\s*while\b`)
+	goSwitchRe      = regexp.MustCompile(`^\s*(?:\w+\s*:?=\s*)?switch\b`)
+	goSelectRe      = regexp.MustCompile(`^\s*select\s*\{`)
+	rustMatchRe     = regexp.MustCompile(`^\s*(?:\w+\s*=\s*)?match\b`)
+	rustLoopRe      = regexp.MustCompile(`^\s*(?:'\w+:\s*)?loop\b`)
+	kotlinWhenRe    = regexp.MustCompile(`^\s*(?:\w+\s*=\s*)?when\b`)
+	scalaMatchRe    = regexp.MustCompile(`\bmatch\s*\{`) // scala infix `expr match {`
+	swiftGuardRe    = regexp.MustCompile(`^\s*guard\b`)
+	swiftSwitchRe   = regexp.MustCompile(`^\s*switch\b`) // swift no-paren `switch x {`
+)
+
+// braceDialect captures the per-language header forms that differ from the
+// C/Java baseline (no-paren conditions, keyword loops/matches, etc.).
+type braceDialect struct {
+	noParen bool // accept `if cond {`, `for cond {`, `while cond {` (Go/Rust/Kotlin/Scala/Swift)
+	php     bool // accept `foreach`, `elseif`
+	goExtra bool // accept `switch`/`select` (Go)
+	rust    bool // accept `match`, `loop`
+	kotlin  bool // accept `when`
+	scala   bool // accept `match`
+	swift   bool // accept `guard`, `switch` (no-paren)
+}
+
+func braceDialectFor(lang string) braceDialect {
+	switch lang {
+	case "go":
+		return braceDialect{noParen: true, goExtra: true}
+	case "rust":
+		return braceDialect{noParen: true, rust: true}
+	case "kotlin":
+		return braceDialect{noParen: true, kotlin: true}
+	case "scala":
+		return braceDialect{noParen: true, scala: true}
+	case "swift":
+		return braceDialect{noParen: true, swift: true}
+	case "php":
+		return braceDialect{php: true}
+	default: // jsts, java, csharp — C/Java baseline (paren conditions)
+		return braceDialect{}
+	}
+}
 
 // braceBlocks scopes brace-delimited conditional/loop blocks. For each header
 // line it finds the `{` that opens the block (K&R same-line or Allman next
-// line) and tracks depth to the matching `}`, recording the absolute span.
-func braceBlocks(src string, startLine int) []blockHeader {
+// line) and tracks depth to the matching `}`, recording the absolute span. The
+// dialect for `lang` decides which header forms are recognised (no-paren
+// conditions for Go/Rust/Kotlin/Scala/Swift, `foreach`/`elseif` for PHP, etc.).
+func braceBlocks(src, lang string, startLine int) []blockHeader {
+	dia := braceDialectFor(lang)
 	lines := strings.Split(src, "\n")
 	var out []blockHeader
 	for i, raw := range lines {
 		if strings.TrimSpace(raw) == "" {
 			continue
 		}
-		cond, isLoop, matched := classifyBraceHeader(raw)
+		cond, isLoop, matched := classifyBraceHeader(raw, dia)
 		if !matched {
 			continue
 		}
@@ -253,10 +429,22 @@ func braceBlocks(src string, startLine int) []blockHeader {
 }
 
 // classifyBraceHeader reports whether a line opens a conditional/loop block and
-// returns its condition text + loop flag.
-func classifyBraceHeader(raw string) (cond string, isLoop bool, matched bool) {
+// returns its condition text + loop flag, applying the language dialect.
+func classifyBraceHeader(raw string, dia braceDialect) (cond string, isLoop bool, matched bool) {
 	scan := stripBraceNoise(raw)
+	// --- PHP keyword forms first (foreach/elseif) ------------------------
+	if dia.php {
+		switch {
+		case phpForEachRe.MatchString(scan):
+			return trimBraceCond(scan), true, true
+		case phpElseIfRe.MatchString(scan):
+			return trimBraceCond(scan), false, true
+		}
+	}
+	// --- paren baseline (C/Java/jsts/csharp/php) -------------------------
 	switch {
+	case foreachStmtRe.MatchString(scan): // C# / PHP `foreach (…)`
+		return trimBraceCond(scan), true, true
 	case braceForRe.MatchString(scan):
 		return trimBraceCond(scan), true, true
 	case braceWhileRe.MatchString(scan):
@@ -271,10 +459,56 @@ func classifyBraceHeader(raw string) (cond string, isLoop bool, matched bool) {
 		return trimBraceCond(scan), false, true
 	case braceTryRe.MatchString(scan):
 		return "try", false, true
+	}
+	// --- no-paren / keyword dialects (Go/Rust/Kotlin/Scala/Swift) --------
+	if dia.swift && (swiftGuardRe.MatchString(scan) || swiftSwitchRe.MatchString(scan)) {
+		return trimNoParenCond(scan), false, true
+	}
+	if dia.goExtra && (goSwitchRe.MatchString(scan) || goSelectRe.MatchString(scan)) {
+		return trimNoParenCond(scan), false, true
+	}
+	if dia.rust && (rustMatchRe.MatchString(scan) || rustLoopRe.MatchString(scan)) {
+		isLoop := rustLoopRe.MatchString(scan)
+		return trimNoParenCond(scan), isLoop, true
+	}
+	if dia.kotlin && kotlinWhenRe.MatchString(scan) {
+		return trimNoParenCond(scan), false, true
+	}
+	if dia.scala && scalaMatchRe.MatchString(scan) { // scala infix `x match {`
+		return trimNoParenCond(scan), false, true
+	}
+	if dia.noParen {
+		switch {
+		case noParenForRe.MatchString(scan): // `for x := range … {`, `for x in … {`, `for {`
+			return trimNoParenCond(scan), true, true
+		case noParenWhileRe.MatchString(scan):
+			return trimNoParenCond(scan), true, true
+		case noParenElseIfRe.MatchString(scan):
+			return trimNoParenCond(scan), false, true
+		case noParenIfRe.MatchString(scan): // `if cond {`, `if let … {`
+			return trimNoParenCond(scan), false, true
+		}
+	}
+	// --- else / fallthrough (all brace dialects) -------------------------
+	switch {
+	case braceElseIfRe.MatchString(scan):
+		return trimBraceCond(scan), false, true
 	case braceElseRe.MatchString(scan):
 		return "else", false, true
 	}
 	return "", false, false
+}
+
+// trimNoParenCond returns the header text up to (excluding) the opening `{` for
+// a no-paren / keyword-condition header (`if force {`, `for row in rows {`,
+// `match x {`, `when {`, `guard … else {`). It keeps the keyword + predicate so
+// the surfaced condition reads naturally.
+func trimNoParenCond(scan string) string {
+	s := strings.TrimSpace(stripLeadingCloser(scan))
+	if idx := strings.Index(s, "{"); idx >= 0 {
+		s = s[:idx]
+	}
+	return strings.TrimSpace(s)
 }
 
 // trimBraceCond returns the header text up to and including its closing `)` (or
@@ -342,7 +576,8 @@ var decisionPointRe = []*regexp.Regexp{
 	regexp.MustCompile(`\bexcept\b`),
 	regexp.MustCompile(`\brescue\b`),
 	regexp.MustCompile(`\.\s*for[Ee]ach\s*\(`),
-	regexp.MustCompile(`\?[^.:?]`), // ternary `?` (not `?.` optional chain, not `??`)
+	regexp.MustCompile(`\bdo\s*\|[^|]*\|`), // ruby/crystal iterator block `each do |x|`
+	regexp.MustCompile(`\?[^.:?]`),         // ternary `?` (not `?.` optional chain, not `??`)
 	regexp.MustCompile(`&&`),
 	regexp.MustCompile(`\|\|`),
 }
