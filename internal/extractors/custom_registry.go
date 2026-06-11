@@ -13,6 +13,7 @@ import (
 	_ "github.com/cajasmota/archigraph/internal/custom/dart"
 	_ "github.com/cajasmota/archigraph/internal/custom/elixir"
 	_ "github.com/cajasmota/archigraph/internal/custom/erlang"
+	_ "github.com/cajasmota/archigraph/internal/custom/fsharp"
 	_ "github.com/cajasmota/archigraph/internal/custom/golang"
 	_ "github.com/cajasmota/archigraph/internal/custom/java"
 	_ "github.com/cajasmota/archigraph/internal/custom/javascript"

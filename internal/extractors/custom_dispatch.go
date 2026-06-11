@@ -78,6 +78,7 @@ var customPrefixForLanguage = map[string]string{
 	"csharp":  "custom_csharp_",
 	"cpp":     "custom_cpp_",
 	"crystal": "custom_crystal_",
+	"fsharp":  "custom_fsharp_",
 	// Protocol Buffers IDL files (.proto) are classified as their own
 	// "protobuf" language but carry message/service definitions parsed by the
 	// C/C++ protobuf custom extractor (which path/language-gates internally and

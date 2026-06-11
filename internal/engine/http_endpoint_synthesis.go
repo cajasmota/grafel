@@ -121,6 +121,13 @@ func synthesisSupportsLanguage(lang string) bool {
 	// verb-macro route are no-ops inside the synthesizer.
 	case "crystal":
 		return true
+	// #4749: F# web producer-side route synthesis — Giraffe
+	// `GET >=> route "/path"` / `routef` combinator chains and Saturn
+	// `router { get "/path" handler }` blocks have no compiled YAML rules, so
+	// allow F# through for synthesizeGiraffeRoutes. Files without an F# web
+	// marker + route token are no-ops inside the synthesizer.
+	case "fsharp":
+		return true
 	// #3484: Lua Lapis / OpenResty producer-side route synthesis.
 	case "lua":
 		return true
@@ -1315,6 +1322,16 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// extractor stays structural-only; this pass adds the canonical
 		// definitions the coverage substrate keys off.
 		synthesizeKemalRoutes(string(content), emit)
+	case "fsharp":
+		// Producer side (#4749): F# web route registrations — Giraffe
+		// (`GET >=> route "/users" >=> handler`, `routef "/users/%i"`) and Saturn
+		// (`router { get "/users/:id" handler }`) → canonical
+		// http_endpoint_definition, in the same shape
+		// axum/Rocket/Express/Vapor/Kemal emit, so the shared resolver and the
+		// e2e route-test linker (#4351) light up for F#. The base fsharp
+		// extractor stays structural-only; this pass adds the canonical
+		// definitions the coverage substrate keys off.
+		synthesizeGiraffeRoutes(string(content), emit)
 	case "yaml", "json":
 		// Producer side (#3628, area #16): OpenAPI 3.x / Swagger 2.0 spec
 		// files declare the HTTP API surface as ground-truth. Each

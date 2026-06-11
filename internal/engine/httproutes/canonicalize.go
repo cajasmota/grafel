@@ -202,6 +202,17 @@ const (
 	// (`get "/files/*path"`), which the colon walker leaves intact (the segment
 	// matcher wildcards it). Canonicalisation reuses canonicalizeColonParams.
 	FrameworkKemal = "kemal"
+	// FrameworkGiraffe (#4749) — F# web frameworks Giraffe and Saturn. Giraffe
+	// composes routes with the `route "/literal"` combinator (a fully static
+	// path, no param syntax) and `routef "/users/%i"` (printf-style typed
+	// placeholders — `%i`/`%d`/`%u`/`%s`/`%b`/`%c`/`%f`/`%O` for int/decimal/
+	// uint/string/bool/char/float/guid). The `routef` placeholders are rewritten
+	// to the canonical `{}` positional-wildcard form so a `routef "/users/%i"`
+	// definition matches a concrete test route `/users/42` segment-for-segment.
+	// Saturn's `router { get "/users/:id" handler }` DSL uses the Sinatra/
+	// Express-style `:name` colon convention, so the same canonicaliser handles
+	// both `%fmt` and `:name`.
+	FrameworkGiraffe = "giraffe"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -254,6 +265,11 @@ func Canonicalize(framework, raw string) string {
 		FrameworkLapis, FrameworkOpenResty, FrameworkVapor, FrameworkClojure,
 		FrameworkKemal:
 		out = canonicalizeColonParams(raw)
+	case FrameworkGiraffe:
+		// Giraffe `routef "/users/%i"` printf placeholders → `{}` first, then
+		// the colon walker handles Saturn `:name` params. A plain Giraffe
+		// `route "/users"` has neither and passes through unchanged.
+		out = canonicalizeColonParams(canonicalizeGiraffeFormat(raw))
 	default:
 		// Unknown framework: pass through but still normalise slashes.
 		out = raw
@@ -506,6 +522,45 @@ func canonicalizeColonParams(raw string) string {
 		i = j
 		// Drop trailing `?` (optional marker) without altering the rest.
 		if i < len(raw) && raw[i] == '?' {
+			i++
+		}
+	}
+	return b.String()
+}
+
+// canonicalizeGiraffeFormat rewrites Giraffe `routef` printf-style typed
+// placeholders into the canonical `{}` positional-wildcard form. Giraffe
+// supports `%b` (bool), `%c` (char), `%s` (string), `%i` (int), `%d` (int64),
+// `%u` (uint64), `%f` (float), and `%O` (Guid) — a `%` immediately followed by
+// one of these format characters becomes a single `{}` wildcard segment-token,
+// so `"/users/%i"` → `"/users/{}"` and `"/x/%s/%i"` → `"/x/{}/{}"`. A literal
+// `%%` (escaped percent) collapses to a single `%`. Any other `%X` (not a known
+// format char) is left intact so a stray percent in a static path is not eaten.
+func canonicalizeGiraffeFormat(raw string) string {
+	if !strings.Contains(raw, "%") {
+		return raw
+	}
+	var b strings.Builder
+	b.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		if raw[i] != '%' || i+1 >= len(raw) {
+			b.WriteByte(raw[i])
+			i++
+			continue
+		}
+		n := raw[i+1]
+		if n == '%' {
+			b.WriteByte('%')
+			i += 2
+			continue
+		}
+		switch n {
+		case 'b', 'c', 's', 'i', 'd', 'u', 'f', 'O':
+			b.WriteString("{}")
+			i += 2
+		default:
+			b.WriteByte('%')
 			i++
 		}
 	}
