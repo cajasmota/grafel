@@ -49,6 +49,13 @@ import (
 // may read. Harvested into the framework-neutral Signal; each resolver picks
 // the keys its framework stamps. Kept explicit so the Signal carries exactly the
 // auth surface and nothing else.
+//
+// This is the SIGNAL-PLUMBING allow-list (the keys copied onto the resolver
+// Signal), NOT the cross-group JOIN keying — the #4550 boundary was about the
+// join algorithm, which is untouched here. The framework-specific blocks below
+// were added in #4734/#4742-#4747 so every registered resolver
+// (Spring/Rails/Flask/Laravel/ASP.NET/Go/Phoenix) reads its STRUCTURED posture
+// signal in the LIVE diff path instead of degrading to source-scan/unknown.
 var authPostureSignalProps = []string{
 	// Django DRF.
 	"has_get_permissions", "has_permission_classes", "permission_classes",
@@ -56,8 +63,54 @@ var authPostureSignalProps = []string{
 	// NestJS reconciled posture + @Require* literals.
 	"require_page", "require_action", "require_superuser", "is_public",
 	"auth_required", "auth_method", "auth_guard", "auth_roles", "auth_scopes",
+	// Generic reconciled posture shared across framework extractors (Rails/Flask/
+	// Laravel/ASP.NET/Go/Phoenix all stamp some subset of these via the #3734
+	// flat-contract convention).
+	"auth_kind", "auth_permissions", "auth_middleware", "auth_policy",
+	"middleware", "allow_anonymous",
+	// Spring (#4734) — method/class/global @PreAuthorize/@Secured/@RolesAllowed
+	// + SecurityFilterChain. The resolver reads both the bare and spring_*-prefixed
+	// class/global forms.
+	"auth_expression", "pre_authorize", "preauthorize", "post_authorize",
+	"secured", "roles_allowed",
+	"class_pre_authorize", "class_secured", "class_roles_allowed",
+	"spring_class_pre_authorize", "spring_class_post_authorize",
+	"spring_class_secured", "spring_class_roles_allowed", "spring_global_authorization",
+	// Rails (#4742) — Pundit / CanCanCan literals.
+	"pundit_policy", "pundit_action", "cancancan_ability",
+	// Flask (#4743) — Flask-Principal permission / decorator name + page.
+	"auth_decorator", "auth_page",
+	// Laravel (#4744) — middleware / permission already covered above (auth_middleware,
+	// middleware, auth_permissions, auth_page).
+	// ASP.NET Core (#4745) — policy + class-level / global [Authorize]/[AllowAnonymous].
+	"aspnet_class_authorize", "aspnet_class_roles", "aspnet_class_policy",
+	"aspnet_class_allow_anonymous", "aspnet_fallback_policy",
+	// Phoenix (#4747) — resolved pipeline list + per-pipeline plug list.
+	"auth_pipelines", "auth_plugs", "phoenix_pipelines", "phoenix_plugs",
+	"pipe_through", "plugs",
 	// Cross-framework action context.
 	"effective_action", "action", "framework",
+}
+
+// authPostureSourceProps are the endpoint property keys that may carry the raw
+// auth-bearing SOURCE body a resolver source-scans when its structured props are
+// absent. Tried in order; the first non-empty one populates Signal.Source. The
+// Django get_permissions body comes first (the flagship path); the per-framework
+// handler/controller/route/router source bodies (#4742-#4747) follow so each
+// resolver's source-scan fallback works in the LIVE diff path, not just unit
+// tests. Engine stamping of these bodies is tracked per-framework; this harvest
+// is forward-compatible — it picks up whichever body the extractor stamps.
+var authPostureSourceProps = []string{
+	"get_permissions_source", // Django DRF (flagship).
+	"auth_source",            // generic reconciled auth-source body.
+	"handler_source",         // flat handler body (Flask/FastAPI/Go).
+	"controller_source",      // Rails / Laravel / ASP.NET controller body.
+	"action_source",          // ASP.NET / DRF action body.
+	"view_source",            // Flask view / Django view body.
+	"route_source",           // Laravel / Go route-registration body.
+	"router_source",          // Phoenix / Go router body.
+	"guard_source",           // NestJS guard / middleware body.
+	"middleware_source",      // middleware-chain body.
 }
 
 // authPostureRecord is one joined endpoint's diff record.
@@ -228,7 +281,15 @@ func buildAuthSignal(e *graph.Entity) authposture.Signal {
 			}
 		}
 		sig.Framework = e.Properties["framework"]
-		sig.Source = e.Properties["get_permissions_source"]
+		// Source fallback: try the framework-neutral source-body props in priority
+		// order so a resolver's source-scan path works in the LIVE diff, not only
+		// the Django get_permissions case (#4742-#4747).
+		for _, k := range authPostureSourceProps {
+			if v := strings.TrimSpace(e.Properties[k]); v != "" {
+				sig.Source = v
+				break
+			}
+		}
 		if a := strings.TrimSpace(e.Properties["effective_action"]); a != "" {
 			sig.Action = a
 		} else {

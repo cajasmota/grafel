@@ -62,6 +62,12 @@ func (a goRouteAuth) stamp(props map[string]string) {
 	props["auth_confidence"] = a.Confidence
 	if a.Guard != "" {
 		props["auth_guard"] = a.Guard
+		// Also stamp the recognised middleware symbol as the reconciled chain
+		// (auth_middleware) so the cross-group auth-posture resolver
+		// (internal/authposture/gomiddleware.go) decodes role/superuser from a
+		// named guard like RequireAdmin / RequireRole("editor") in the LIVE diff
+		// instead of degrading to a bare authenticated posture (#4746).
+		props["auth_middleware"] = a.Guard
 	}
 	if a.Kind != "" {
 		props["auth_kind"] = a.Kind
