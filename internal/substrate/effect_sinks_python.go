@@ -86,6 +86,70 @@ var pyDBReadRe = regexp.MustCompile(
 		`|\bsession\s*\.\s*(?:query|execute|scalar|scalars|get)\s*\(`,
 )
 
+// pyDBReadHelperRe matches the Django shortcut read helpers that fetch a row /
+// list and 404 otherwise. These are distinctive names with no builtin/collection
+// collision, so they are safe to bare-match anywhere (#4691).
+var pyDBReadHelperRe = regexp.MustCompile(
+	`\bget_object_or_404\s*\(|\bget_list_or_404\s*\(`,
+)
+
+// --- #4691 queryset-receiver typing (ambiguous read terminals) ---
+//
+// #4694 (pyDBReadRe) bare-matched the DISTINCTIVE queryset read verbs
+// (filter/exclude/annotate/...) but kept the builtin-colliding terminals
+// (.get/.first/.last/.all/.exists/.count/.values/.values_list) gated to the
+// `.objects.<verb>` manager form, because `d.get("k")` (dict) and
+// `m.count()` (list/Mock) would otherwise be mis-credited as db_read.
+//
+// #4691 closes that gap with lightweight, content-local receiver typing: we
+// learn which local/attribute names hold a QuerySet/Manager (assigned from a
+// queryset-producing expression, or the inherent `self.queryset` /
+// `self.get_queryset()` handles), then credit the ambiguous read terminals
+// ONLY when the receiver is one of those typed names. A read terminal on an
+// untyped receiver (a dict, a Mock, a generic object) stays non-read — the
+// false-positive guard #4694 introduced is preserved exactly.
+
+// pyQSAssignRe captures `<name> = <rhs>` assignments whose RHS is a
+// queryset-producing expression. Group 1 is the assigned (now queryset-typed)
+// name. The RHS alternatives:
+//   - `<recv>.objects.<verb>(` / `<recv>.objects`            (Django manager)
+//   - `<recv>.filter|exclude|annotate|...(`                  (chained queryset op)
+//   - `self.get_queryset(` / `self.queryset`                 (DRF/CBV handles)
+//   - `<typedName>.filter|...` chains feed back via the iterative pass below.
+var pyQSAssignRe = regexp.MustCompile(
+	`(?m)^\s*([A-Za-z_]\w*)\s*=\s*` +
+		`(?:[A-Za-z_][\w.]*\s*\.\s*objects\b` +
+		`|[A-Za-z_][\w.]*\s*\.\s*(?:filter|exclude|annotate|select_related|prefetch_related|values_list|only|defer|distinct|order_by|get_queryset)\s*\(` +
+		`|self\s*\.\s*get_queryset\s*\(` +
+		`|self\s*\.\s*queryset\b)`,
+)
+
+// pyQSChainAssignRe captures `<name> = <knownQS>.<op>(...)` — a reassignment
+// whose RHS receiver is an already-queryset-typed name. Group 1 = assigned
+// name, group 2 = source receiver name. Used to propagate typing across
+// `qs = qs.filter(...)` style chains in a fixpoint loop.
+var pyQSChainAssignRe = regexp.MustCompile(
+	`(?m)^\s*([A-Za-z_]\w*)\s*=\s*([A-Za-z_]\w*)\s*\.\s*` +
+		`(?:filter|exclude|annotate|select_related|prefetch_related|values_list|only|defer|distinct|order_by|all|none|union|intersection|difference|reverse)\s*\(`,
+)
+
+// pyQSAmbiguousVerbs are the read terminals that collide with Python builtins
+// on dict/list/etc., so they are credited db_read ONLY on a queryset-typed
+// receiver (see querysetReadMatches).
+const pyQSAmbiguousVerbs = `get|first|last|all|exists|count|values|values_list`
+
+// pyInherentQSReadRe credits the ambiguous read terminals when chained
+// DIRECTLY off an inherent queryset handle — `self.get_queryset().first()`,
+// `self.queryset.count()`, `Model.objects.filter(...).get(...)` — without
+// needing an intermediate assignment. The `.objects` chain form is already
+// covered by pyDBReadRe's manager alternative; here we add the
+// `self.get_queryset()` / `self.queryset` handles, whose terminal read verb
+// would otherwise be missed.
+var pyInherentQSReadRe = regexp.MustCompile(
+	`self\s*\.\s*get_queryset\s*\(\s*\)\s*\.\s*(?:` + pyQSAmbiguousVerbs + `)\s*\(` +
+		`|self\s*\.\s*queryset\s*\.\s*(?:` + pyQSAmbiguousVerbs + `)\s*\(`,
+)
+
 // pyCursorSelectRe matches `cursor.execute("SELECT ...")` style raw reads.
 // Case-insensitive on the SQL keyword. Quote-agnostic.
 var pyCursorSelectRe = regexp.MustCompile(
@@ -188,6 +252,9 @@ func sniffEffectsPython(content string) []EffectMatch {
 	var out []EffectMatch
 	out = appendPyMatches(out, content, headers, pyHTTPRe, EffectHTTPOut, "requests/httpx", 1.0)
 	out = appendPyMatches(out, content, headers, pyDBReadRe, EffectDBRead, "orm.read", 0.85)
+	out = appendPyMatches(out, content, headers, pyDBReadHelperRe, EffectDBRead, "orm.read.shortcut", 0.9)
+	out = appendPyMatches(out, content, headers, pyInherentQSReadRe, EffectDBRead, "orm.read.queryset", 0.85)
+	out = append(out, querysetReadMatches(content, headers)...)
 	out = appendPyMatches(out, content, headers, pyCursorSelectRe, EffectDBRead, "cursor.execute(SELECT)", 1.0)
 	out = appendPyMatches(out, content, headers, pyDBConnectRe, EffectDBRead, "db.connect/cursor", 0.8)
 	out = appendPyMatches(out, content, headers, pyDBWriteRe, EffectDBWrite, "orm.write", 0.85)
@@ -199,6 +266,71 @@ func sniffEffectsPython(content string) []EffectMatch {
 	out = appendPyMatches(out, content, headers, pyMutationRe, EffectMutation, "self.field=", 0.7)
 	out = appendPyMatches(out, content, headers, pyEnvReadRe, EffectEnvRead, "os.environ/getenv", 1.0)
 	return out
+}
+
+// querysetReadMatches implements the #4691 receiver-typed read credit. It
+// (1) collects the set of local/attribute names known to hold a QuerySet/
+// Manager (assigned from a queryset-producing RHS, propagated across chained
+// reassignments to a fixpoint), then (2) emits a db_read EffectMatch for each
+// ambiguous read terminal (.get/.first/.last/.all/.exists/.count/.values/
+// .values_list) invoked on one of those typed receiver names. A read terminal
+// on an UNTYPED receiver (a dict, a Mock, a generic object) yields nothing —
+// the #4694 false-positive guard is preserved: only queryset-typed receivers
+// earn the credit. Module/function scope is not segmented (the sniffer is a
+// flat content scan, like every other sink here); typing is conservative
+// enough that cross-scope name reuse is a non-issue in practice.
+func querysetReadMatches(content string, headers []funcHeader) []EffectMatch {
+	typed := collectQuerysetTypedNames(content)
+	if len(typed) == 0 {
+		return nil
+	}
+	var out []EffectMatch
+	for name := range typed {
+		// `<name> . <ambiguous-verb> (` — receiver is the typed queryset name.
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*\.\s*(?:` + pyQSAmbiguousVerbs + `)\s*\(`)
+		for _, m := range re.FindAllStringIndex(content, -1) {
+			line := lineOfOffset(content, m[0])
+			out = append(out, EffectMatch{
+				Function:   nearestHeader(headers, line),
+				Line:       line,
+				Effect:     EffectDBRead,
+				Sink:       "orm.read.queryset",
+				Confidence: 0.85,
+			})
+		}
+	}
+	return out
+}
+
+// collectQuerysetTypedNames returns the set of names that hold a QuerySet /
+// Manager. Seeds from queryset-producing assignments (pyQSAssignRe), then
+// iterates pyQSChainAssignRe to a fixpoint so `qs = base.filter(...)` followed
+// by `qs2 = qs.exclude(...)` types both names.
+func collectQuerysetTypedNames(content string) map[string]bool {
+	typed := map[string]bool{}
+	for _, m := range pyQSAssignRe.FindAllStringSubmatch(content, -1) {
+		if len(m) >= 2 && m[1] != "" {
+			typed[m[1]] = true
+		}
+	}
+	chains := pyQSChainAssignRe.FindAllStringSubmatch(content, -1)
+	for {
+		changed := false
+		for _, m := range chains {
+			if len(m) < 3 {
+				continue
+			}
+			dst, srcName := m[1], m[2]
+			if dst != "" && srcName != "" && typed[srcName] && !typed[dst] {
+				typed[dst] = true
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return typed
 }
 
 func scanPyFuncHeaders(content string) []funcHeader {
