@@ -4,7 +4,12 @@
  * Run with: npx vitest run src/components/flow-dag/layout.test.ts
  */
 import { describe, it, expect } from "vitest";
-import { unfoldTree, layoutTree } from "./layout";
+import {
+  unfoldTree,
+  layoutTree,
+  layoutTreeElk,
+  defaultFlowLayoutEngine,
+} from "./layout";
 import { routeInstanceIds } from "./route";
 import {
   nodeBucket,
@@ -363,5 +368,64 @@ describe("layoutTree leaf vs truncated (#4561)", () => {
     // b has no out-edge in the DAG → genuine leaf, not truncated.
     expect(byId.get("a/b")?.isLeaf).toBe(true);
     expect(byId.get("a/b")?.truncatedHere).toBe(false);
+  });
+});
+
+describe("layoutTreeElk — ELK backend (#4828)", () => {
+  // a → b → {c, d} ; b also reached terminal e. A small branching tree.
+  const dag = () =>
+    unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c"), n("d"), n("e")],
+      [e("a", "b"), e("b", "c"), e("b", "d"), e("a", "e")],
+    );
+
+  it("produces the SAME node/edge STRUCTURE as the tidy backend (replay-stable)", async () => {
+    const { instances, hasOutEdge } = dag();
+    const tidy = layoutTree(instances, "LR", new Set(), () => {}, hasOutEdge);
+    const elk = await layoutTreeElk(instances, "LR", new Set(), () => {}, hasOutEdge);
+
+    // Same node ids (the replay/route sets key on these).
+    expect(elk.nodes.map((nd) => nd.id).sort()).toEqual(
+      tidy.nodes.map((nd) => nd.id).sort(),
+    );
+    // Same edge ids + source/target — the step-replay comet sequence derives
+    // PURELY from edge source/target, so this must be byte-identical.
+    const edgeKey = (g: typeof tidy) =>
+      g.edges.map((ed) => `${ed.id}|${ed.source}|${ed.target}`).sort();
+    expect(edgeKey(elk)).toEqual(edgeKey(tidy));
+    // Same leaf/truncated classification (engine-agnostic node data).
+    const flags = (g: typeof tidy) =>
+      new Map(g.nodes.map((nd) => [nd.id, `${nd.data.isLeaf}/${nd.data.truncatedHere}`]));
+    expect(flags(elk)).toEqual(flags(tidy));
+  });
+
+  it("assigns finite positions and ranks deeper nodes further along the main axis (LR→x)", async () => {
+    const { instances, hasOutEdge } = dag();
+    const elk = await layoutTreeElk(instances, "LR", new Set(), () => {}, hasOutEdge);
+    const x = new Map(elk.nodes.map((nd) => [nd.id, nd.position.x]));
+    for (const nd of elk.nodes) {
+      expect(Number.isFinite(nd.position.x)).toBe(true);
+      expect(Number.isFinite(nd.position.y)).toBe(true);
+    }
+    // a (depth 0) is left of b (depth 1), which is left of its children.
+    expect(x.get("a")!).toBeLessThan(x.get("a/b")!);
+    expect(x.get("a/b")!).toBeLessThan(x.get("a/b/c")!);
+  });
+
+  it("docks ports on the main axis per direction (LR vs TB)", async () => {
+    const { instances, hasOutEdge } = dag();
+    const lr = await layoutTreeElk(instances, "LR", new Set(), () => {}, hasOutEdge);
+    const tb = await layoutTreeElk(instances, "TB", new Set(), () => {}, hasOutEdge);
+    expect(lr.nodes[0].sourcePosition).toBe("right");
+    expect(lr.nodes[0].targetPosition).toBe("left");
+    expect(tb.nodes[0].sourcePosition).toBe("bottom");
+    expect(tb.nodes[0].targetPosition).toBe("top");
+  });
+});
+
+describe("defaultFlowLayoutEngine (#4828)", () => {
+  it("defaults to elk when the env flag is unset", () => {
+    expect(defaultFlowLayoutEngine()).toBe("elk");
   });
 });

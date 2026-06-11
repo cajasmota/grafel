@@ -28,6 +28,11 @@ import type {
   DownstreamDAGEdgeKind,
   DownstreamDAGNode,
 } from "@/data/types";
+import {
+  layoutWithElk,
+  type ElkLayoutNode,
+  type ElkLayoutEdge,
+} from "@/lib/elk-layout";
 import { nodeModule, type NodeModule } from "./style";
 
 /** Orientation toggle → which screen axis is the tree's main (depth) axis. */
@@ -344,13 +349,121 @@ function tidyTreeCross(
   return cross;
 }
 
+/* ============================================================
+   Engine-agnostic node/edge construction.
+
+   The leaf-vs-truncated classification (#4561), node data wiring, docking
+   ports, sizes, and the one-in-edge-per-instance edge list are IDENTICAL
+   regardless of which engine assigns coordinates. Both the tidy-tree (legacy
+   fallback) and ELK (#4828) positioners build the SAME nodes/edges here and only
+   differ in the final `position`. Keeping edge ids + source/target stable across
+   engines is load-bearing: the step-replay sequence and route-highlight set
+   (FlowDag.tsx) key off them, so the comet/scrubber animation is engine-agnostic.
+   ============================================================ */
+
+/** A node carrying its final data/ports/size but NO position yet. */
+interface UnplacedNode {
+  inst: TreeInstance;
+  data: FlowDagNodeData;
+}
+
 /**
- * Build positioned React Flow nodes + edges from the unfolded tree.
+ * buildNodeData computes the engine-agnostic per-instance node data: the
+ * leaf/truncated flags (#4561), the inline-expand wiring, and the module band.
+ */
+function buildUnplacedNodes(
+  instances: TreeInstance[],
+  expanded: Set<string>,
+  onToggle: (instanceId: string) => void,
+  hasOutEdge?: Set<string>,
+): UnplacedNode[] {
+  // Which instances actually emitted children in this unfold — to tell a real
+  // leaf from a depth-truncated branch (#4561).
+  const renderedParents = new Set<string>();
+  for (const inst of instances) {
+    if (inst.parentId != null) renderedParents.add(inst.parentId);
+  }
+
+  return instances.map((inst) => {
+    // #4561: this instance emitted no children here.
+    const childlessHere = !renderedParents.has(inst.id);
+    // The source node has downstream edges in the DAG.
+    const sourceHasChildren = hasOutEdge?.has(inst.node.id) ?? false;
+    // A genuine terminal: the backend marked it terminal, OR it's childless AND
+    // the source node truly has no out-edges (a real leaf / return).
+    const isLeaf = childlessHere && (inst.node.terminal === true || !sourceHasChildren);
+    // Cut by the depth/node cap: childless HERE but the source DID have children.
+    const truncatedHere = childlessHere && sourceHasChildren && inst.node.terminal !== true;
+    return {
+      inst,
+      data: {
+        node: inst.node,
+        edgeKind: inst.edgeKind,
+        expanded: expanded.has(inst.id),
+        onToggleExpand: onToggle,
+        isLeaf,
+        truncatedHere,
+        module: nodeModule(inst.node),
+      },
+    };
+  });
+}
+
+/** The single in-edge per non-root instance. Engine-agnostic and stable. */
+function buildEdges(instances: TreeInstance[]): FlowDagEdge[] {
+  return instances
+    .filter((inst) => inst.parentId != null)
+    .map((inst) => ({
+      // One edge per non-root instance (the tree's single in-edge). The
+      // instance id is unique, so the edge id is too.
+      id: `e__${inst.id}`,
+      source: inst.parentId!,
+      target: inst.id,
+      type: EDGE_TYPE,
+      data: { kind: inst.edgeKind ?? "CALLS" },
+    }));
+}
+
+/**
+ * assemble joins unplaced nodes + a per-instance top-left position into final
+ * React Flow nodes (ports keyed off direction), and pairs them with the stable
+ * edge list. Both positioners funnel through here so the output shape is
+ * byte-identical apart from coordinates.
+ */
+function assemble(
+  unplaced: UnplacedNode[],
+  instances: TreeInstance[],
+  direction: FlowDagDirection,
+  posOf: (id: string) => { x: number; y: number },
+): { nodes: FlowDagNode[]; edges: FlowDagEdge[] } {
+  const isLR = direction === "LR";
+  const sourcePos = isLR ? Position.Right : Position.Bottom;
+  const targetPos = isLR ? Position.Left : Position.Top;
+
+  const nodes: FlowDagNode[] = unplaced.map((u) => ({
+    id: u.inst.id,
+    type: NODE_TYPE,
+    position: posOf(u.inst.id),
+    data: u.data,
+    sourcePosition: sourcePos,
+    targetPosition: targetPos,
+    width: NODE_W,
+    height: NODE_H,
+  }));
+
+  return { nodes, edges: buildEdges(instances) };
+}
+
+/**
+ * Build positioned React Flow nodes + edges from the unfolded tree, using the
+ * synchronous tidy-tree pack (#4622). This is the legacy/fallback engine,
+ * selected via `VITE_FLOWS_LAYOUT_ENGINE=tidy` (or `=dagre` — same path); ELK is
+ * the default (see `layoutTreeElk` / `defaultFlowLayoutEngine`).
  *
- * Positioning is a tidy-tree pack (#4622): depth maps to the main axis and a
- * subtree-contiguous tidy layout maps to the cross axis, so each branch is one
- * visually-contiguous cluster. `direction` chooses which screen axis is main:
- * "LR" (horizontal, depth→x) or "TB" (vertical, depth→y).
+ * Positioning: depth maps to the main axis and a subtree-contiguous tidy layout
+ * maps to the cross axis, so each branch is one visually-contiguous cluster.
+ * `direction` chooses which screen axis is main: "LR" (horizontal, depth→x) or
+ * "TB" (vertical, depth→y).
  *
  * @param instances  unfolded tree instances (from unfoldTree)
  * @param direction  "LR" (horizontal) | "TB" (vertical)
@@ -364,12 +477,7 @@ export function layoutTree(
   onToggle: (instanceId: string) => void,
   hasOutEdge?: Set<string>,
 ): { nodes: FlowDagNode[]; edges: FlowDagEdge[] } {
-  // Which instances actually emitted children in this unfold — to tell a real
-  // leaf from a depth-truncated branch (#4561).
-  const renderedParents = new Set<string>();
-  for (const inst of instances) {
-    if (inst.parentId != null) renderedParents.add(inst.parentId);
-  }
+  const unplaced = buildUnplacedNodes(instances, expanded, onToggle, hasOutEdge);
 
   // Depth of each instance (along the main axis), derived from the parent chain.
   // instances are emitted parent-before-child (BFS), so a single forward pass
@@ -396,60 +504,92 @@ export function layoutTree(
 
   const crossById = tidyTreeCross(instances, crossStep, branchGap);
 
-  const sourcePos = isLR ? Position.Right : Position.Bottom;
-  const targetPos = isLR ? Position.Left : Position.Top;
-
-  const rfNodes: FlowDagNode[] = instances.map((inst) => {
-    const depth = depthById.get(inst.id) ?? 0;
-    const crossCenter = crossById.get(inst.id) ?? 0;
+  const posOf = (id: string): { x: number; y: number } => {
+    const depth = depthById.get(id) ?? 0;
+    const crossCenter = crossById.get(id) ?? 0;
     // Center coordinates along each axis, then convert to top-left for RF.
     const mainCenter = MARGIN + depth * mainStep + mainNode / 2;
     const x = isLR ? mainCenter : MARGIN + crossCenter + crossNode / 2;
     const y = isLR ? MARGIN + crossCenter + crossNode / 2 : mainCenter;
-    const pos = { x, y };
-    // #4561: this instance emitted no children here.
-    const childlessHere = !renderedParents.has(inst.id);
-    // The source node has downstream edges in the DAG.
-    const sourceHasChildren = hasOutEdge?.has(inst.node.id) ?? false;
-    // A genuine terminal: the backend marked it terminal, OR it's childless AND
-    // the source node truly has no out-edges (a real leaf / return).
-    const isLeaf = childlessHere && (inst.node.terminal === true || !sourceHasChildren);
-    // Cut by the depth/node cap: childless HERE but the source DID have children.
-    const truncatedHere = childlessHere && sourceHasChildren && inst.node.terminal !== true;
-    return {
-      id: inst.id,
-      type: NODE_TYPE,
-      // pos is the node center; React Flow positions by top-left corner.
-      position: { x: pos.x - NODE_W / 2, y: pos.y - NODE_H / 2 },
-      data: {
-        node: inst.node,
-        edgeKind: inst.edgeKind,
-        expanded: expanded.has(inst.id),
-        onToggleExpand: onToggle,
-        isLeaf,
-        truncatedHere,
-        module: nodeModule(inst.node),
-      },
-      sourcePosition: sourcePos,
-      targetPosition: targetPos,
-      width: NODE_W,
-      height: NODE_H,
-    };
+    // posOf returns the node center; convert to React Flow's top-left corner.
+    return { x: x - NODE_W / 2, y: y - NODE_H / 2 };
+  };
+
+  return assemble(unplaced, instances, direction, posOf);
+}
+
+/* ============================================================
+   ELK backend (default, async) — #4828.
+
+   The unfolded tree is laid out by the shared ELK helper (lib/elk-layout.ts)
+   with the layered algorithm + orthogonal edge routing, the same engine the IaC
+   and compound-topology diagrams use (#4824). Unlike those, the flow tree has NO
+   compound containers — every instance is a flat root-level node — so we pass a
+   flat node list and ELK ranks them purely from the tree's single-in-edge
+   structure. `direction` LR→RIGHT / TB→DOWN matches the tidy-tree orientation.
+
+   Node data, ports, edge ids, and source/target are IDENTICAL to the tidy
+   backend (shared via buildUnplacedNodes/assemble), so the replay/comet/scrubber
+   sequence and route-highlight set are unaffected by the engine swap.
+   ============================================================ */
+
+export async function layoutTreeElk(
+  instances: TreeInstance[],
+  direction: FlowDagDirection,
+  expanded: Set<string>,
+  onToggle: (instanceId: string) => void,
+  hasOutEdge?: Set<string>,
+): Promise<{ nodes: FlowDagNode[]; edges: FlowDagEdge[] }> {
+  const unplaced = buildUnplacedNodes(instances, expanded, onToggle, hasOutEdge);
+  const edges = buildEdges(instances);
+
+  const isLR = direction === "LR";
+  const elkNodes: ElkLayoutNode[] = instances.map((inst) => ({
+    id: inst.id,
+    width: NODE_W,
+    height: NODE_H,
+  }));
+  const elkEdges: ElkLayoutEdge[] = edges.map((e) => ({
+    id: e.id,
+    source: e.source,
+    target: e.target,
+  }));
+
+  const positions = await layoutWithElk(elkNodes, elkEdges, {
+    algorithm: "layered",
+    direction: isLR ? "RIGHT" : "DOWN",
+    edgeRouting: "ORTHOGONAL",
+    // Mirror the tidy-tree spacing so the H/V switch reads consistently.
+    nodeSpacing: isLR ? SIBLING_LEAF_GAP_LR : SIBLING_LEAF_GAP_TB,
+    layerSpacing: isLR ? RANK_GAP_LR : RANK_GAP_TB,
+    defaultNodeWidth: NODE_W,
+    defaultNodeHeight: NODE_H,
   });
 
-  const rfEdges: FlowDagEdge[] = instances
-    .filter((inst) => inst.parentId != null)
-    .map((inst) => ({
-      // One edge per non-root instance (the tree's single in-edge). The
-      // instance id is unique, so the edge id is too.
-      id: `e__${inst.id}`,
-      source: inst.parentId!,
-      target: inst.id,
-      type: EDGE_TYPE,
-      data: { kind: inst.edgeKind ?? "CALLS" },
-    }));
+  // Flat graph: ELK positions are already absolute (no parent nesting). Fall
+  // back to origin for any id ELK didn't place so the canvas still mounts.
+  const posOf = (id: string): { x: number; y: number } => {
+    const p = positions.get(id);
+    return { x: p?.x ?? 0, y: p?.y ?? 0 };
+  };
 
-  return { nodes: rfNodes, edges: rfEdges };
+  return assemble(unplaced, instances, direction, posOf);
+}
+
+/**
+ * Layout engine selection for the Flows replay/DAG diagram. Defaults to ELK
+ * (#4828); set `VITE_FLOWS_LAYOUT_ENGINE=dagre` (or `=tidy`) to fall back to the
+ * synchronous tidy-tree positioner for a visual revert. The replay/comet/
+ * scrubber animation is identical under either engine.
+ */
+export type FlowLayoutEngine = "elk" | "tidy";
+export function defaultFlowLayoutEngine(): FlowLayoutEngine {
+  const env =
+    typeof import.meta !== "undefined"
+      ? (import.meta as { env?: Record<string, string | undefined> }).env
+      : undefined;
+  const flag = env?.VITE_FLOWS_LAYOUT_ENGINE;
+  return flag === "dagre" || flag === "tidy" ? "tidy" : "elk";
 }
 
 export const FLOW_DAG_NODE_TYPE = NODE_TYPE;
