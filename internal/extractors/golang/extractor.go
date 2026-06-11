@@ -535,7 +535,7 @@ func mergeVarTypes(outer, inner map[string]string) map[string]string {
 // Pointer types are stripped (`*Mux` → `Mux`) and generic type parameter
 // lists (`[T]`) are dropped so the synth lookup table can use a single
 // key per package type.
-func collectBodyVarTypes(body *sitter.Node, src []byte) map[string]string {
+func collectBodyVarTypes(body *sitter.Node, src []byte, ctorReturns map[string]string) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -580,7 +580,7 @@ func collectBodyVarTypes(body *sitter.Node, src []byte) map[string]string {
 		}
 		name := nodeText(firstChildOfType(left, "identifier"), src)
 		expr := firstNamedChild(right)
-		if typ := typeOfExpression(expr, src); typ != "" {
+		if typ := typeOfExpression(expr, src, ctorReturns); typ != "" {
 			record(name, typ)
 		}
 	}
@@ -613,7 +613,7 @@ func collectBodyVarTypes(body *sitter.Node, src []byte) map[string]string {
 			if typeNode != nil {
 				typ = nodeText(typeNode, src)
 			} else if valueNode != nil {
-				typ = typeOfExpression(valueNode, src)
+				typ = typeOfExpression(valueNode, src, ctorReturns)
 			}
 			if typ != "" {
 				record(names[0], typ)
@@ -629,7 +629,7 @@ func collectBodyVarTypes(body *sitter.Node, src []byte) map[string]string {
 // typeOfExpression returns a textual type representation for an expression
 // AST node when it's recognisable as a static type, or "" otherwise. Used
 // by collectBodyVarTypes to type short/var declarations.
-func typeOfExpression(expr *sitter.Node, src []byte) string {
+func typeOfExpression(expr *sitter.Node, src []byte, ctorReturns map[string]string) string {
 	if expr == nil {
 		return ""
 	}
@@ -643,7 +643,7 @@ func typeOfExpression(expr *sitter.Node, src []byte) string {
 	case "unary_expression":
 		// `&Foo{}` or `&pkg.Foo{}` — drill into the operand.
 		if op := expr.ChildByFieldName("operand"); op != nil {
-			return typeOfExpression(op, src)
+			return typeOfExpression(op, src, ctorReturns)
 		}
 	case "type_assertion_expression":
 		if t := expr.ChildByFieldName("type"); t != nil {
@@ -675,8 +675,19 @@ func typeOfExpression(expr *sitter.Node, src []byte) string {
 					}
 				}
 			case "identifier":
-				if t, ok := goSamePackageConstructorReturnTypes[nodeText(fn, src)]; ok {
+				fnName := nodeText(fn, src)
+				if t, ok := goSamePackageConstructorReturnTypes[fnName]; ok {
 					return t
+				}
+				// Issue #4683 / #4615: file-local user-defined constructors.
+				// `svc := NewProposalService(); svc.GetCounts()` — type `svc`
+				// from NewProposalService's same-package named return type so
+				// the downstream method call gets a receiver_type stamp and
+				// the test→CALLS→handler coverage edge is credited.
+				if ctorReturns != nil {
+					if t, ok := ctorReturns[fnName]; ok {
+						return t
+					}
 				}
 			}
 		}
@@ -876,6 +887,139 @@ func unwrapGenericType(node *sitter.Node, src []byte) string {
 	return ""
 }
 
+// collectFileConstructorReturns scans top-level function_declaration nodes and
+// returns a (funcName -> canonical return type) map for functions that look
+// like constructors: a single result whose type is a same-package named type
+// (a bare type_identifier, optionally behind a leading `*`). This generalises
+// the hardcoded goSamePackageConstructorReturnTypes allowlist (#364) to ANY
+// user-defined `func NewFoo(...) *Foo` / `func MakeBar(...) Bar` declared in
+// the file, so `x := NewFoo(); x.Method()` types `x` as `Foo` and the
+// downstream method call acquires a receiver_type stamp (issue #4683 / #4615:
+// test→CALLS→handler coverage crediting for Go).
+//
+// Conservatism (mirrors prior-slice rules):
+//   - Only a SINGLE, unnamed result is accepted. Functions returning
+//     `(T, error)`, multiple values, or named results are skipped — pairing
+//     a `:=` LHS with the right tuple slot is out of scope (same limitation
+//     as the multi-LHS short_var_declaration skip).
+//   - The result type must be a bare same-package named type (type_identifier
+//     or pointer_type→type_identifier). Qualified types (`pkg.T`), interface
+//     results, slices, maps, generics, funcs and channels are skipped: a
+//     constructor returning an interface is ambiguous (the negative case —
+//     factory-returning-interface receiver stays bare).
+//   - The canonical return type is stored as a BARE type name (pointer
+//     stripped) so the resolver's same-package member lookup binds it directly
+//     — identical to the goSamePackageConstructorReturnTypes contract.
+func collectFileConstructorReturns(nodes []*sitter.Node, src []byte) map[string]string {
+	// Only constructors whose declared return type is a same-file STRUCT are
+	// accepted. A constructor declared to return an interface
+	// (`func NewCounter() Counter`) is intentionally excluded — the concrete
+	// type behind the interface is a runtime decision, so `c := NewCounter();
+	// c.Method()` must stay bare (the negative case from #4683). Interface and
+	// non-struct named types are therefore filtered out here.
+	structTypes := collectFileStructTypeNames(nodes, src)
+	if len(structTypes) == 0 {
+		return nil
+	}
+	out := map[string]string{}
+	for _, n := range nodes {
+		if n.Type() != "function_declaration" {
+			continue
+		}
+		nameNode := n.ChildByFieldName("name")
+		resultNode := n.ChildByFieldName("result")
+		if nameNode == nil || resultNode == nil {
+			continue
+		}
+		name := nodeText(nameNode, src)
+		if name == "" {
+			continue
+		}
+		// Accept only a single, unnamed, same-package named result that is a
+		// STRUCT declared in this file (interface returns stay bare).
+		ret := samePackageNamedResultType(resultNode, src)
+		if ret == "" || !structTypes[ret] {
+			continue
+		}
+		if existing, ok := out[name]; ok && existing != ret {
+			// Two same-named constructors with different return types in one
+			// file (extremely rare) — drop rather than guess.
+			delete(out, name)
+			continue
+		}
+		out[name] = ret
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+// collectFileStructTypeNames returns the set of type names whose declaration
+// body is a struct_type in the file's node slice. Used by
+// collectFileConstructorReturns to restrict constructor-return typing to
+// concrete structs — interface / alias / func / primitive named types are
+// excluded so an interface-returning factory stays bare (#4683 negative).
+//
+// The input slice is the file's function/method declaration list; type
+// declarations are elsewhere in the tree, so we recover the file root from the
+// first node's parentage and scan every type_spec once. A type_spec whose
+// `type` field is a `struct_type` is recorded; interfaces, aliases, funcs and
+// primitives are skipped.
+func collectFileStructTypeNames(nodes []*sitter.Node, src []byte) map[string]bool {
+	out := map[string]bool{}
+	if len(nodes) == 0 {
+		return out
+	}
+	// Recover the file root from any node (walk up to the top).
+	root := nodes[0]
+	for root.Parent() != nil {
+		root = root.Parent()
+	}
+	for _, spec := range findAll(root, "type_spec") {
+		nameNode := spec.ChildByFieldName("name")
+		typeNode := spec.ChildByFieldName("type")
+		if nameNode == nil || typeNode == nil {
+			continue
+		}
+		if typeNode.Type() != "struct_type" {
+			continue
+		}
+		if name := nodeText(nameNode, src); name != "" {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// samePackageNamedResultType returns the canonical bare type name of a
+// function `result` node when (and only when) it is a single, unnamed result
+// that is a same-package named type: a `type_identifier` or a `pointer_type`
+// wrapping one. Anything else (multiple results, named results, qualified
+// types, interfaces, slices, maps, generics, funcs, channels) returns "".
+//
+// The Go tree-sitter `result` field is either the bare type node itself (for
+// a single unnamed result like `*Foo`) or a `parameter_list` (for `(T, error)`
+// or named results). We only accept the bare-node form, which guarantees a
+// single unnamed result.
+func samePackageNamedResultType(result *sitter.Node, src []byte) string {
+	if result == nil {
+		return ""
+	}
+	switch result.Type() {
+	case "type_identifier":
+		return nodeText(result, src)
+	case "pointer_type":
+		for i := 0; i < int(result.ChildCount()); i++ {
+			c := result.Child(i)
+			if c.Type() == "type_identifier" {
+				return nodeText(c, src)
+			}
+		}
+	}
+	return ""
+}
+
 // collectIntraFileFuncNames returns the set of bare names of all top-level
 // functions (function_declaration, NOT method_declaration) in the node slice.
 // Only nodes of type "function_declaration" are included; method_declaration
@@ -928,6 +1072,12 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 	// cross-file resolution depends on byPackageOperation being unambiguous
 	// for the target name in the package directory).
 	intraFileFuncs := collectIntraFileFuncNames(nodes, src)
+
+	// Issue #4683 / #4615 — file-local constructor return-type table. Lets
+	// `x := NewFoo(); x.Method()` type `x` as Foo (Foo declared in this file)
+	// so the method call acquires a receiver_type stamp → test→CALLS→handler
+	// coverage crediting. Built once per file; nil when no constructor exists.
+	ctorReturns := collectFileConstructorReturns(nodes, src)
 
 	// Issue #3628 area #11 — non-OTel observability (ddtrace/Sentry/Prometheus).
 	// Build the file-level Prometheus metric registry once so `reqs.Inc()` body
@@ -1047,7 +1197,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 		paramTypes := collectParamTypes(paramsNode, src)
 		// Body-derived var types do NOT include closure-param shadowing — the
 		// per-call walker below maintains its own scope stack to disambiguate.
-		paramTypes = mergeVarTypes(paramTypes, collectBodyVarTypes(bodyOrNode, src))
+		paramTypes = mergeVarTypes(paramTypes, collectBodyVarTypes(bodyOrNode, src, ctorReturns))
 		relationships := extractCallRelationships(bodyOrNode, src, nameText, recvVarName, receiverType, paramTypes, filePath, structFields, intraFileFuncs, inTreeQualifiers)
 		// Rewrite FromID on each CALLS edge to the qualified Name so the
 		// edge source matches the entity ID downstream.

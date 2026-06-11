@@ -84,7 +84,7 @@ type goVarTypes map[string]string
 // adapter that lets the references pass share them.
 //
 // Passing nil for funcOrMethodNode is safe and returns nil.
-func buildFunctionVarTypes(funcOrMethodNode *sitter.Node, src []byte) goVarTypes {
+func buildFunctionVarTypes(funcOrMethodNode *sitter.Node, src []byte, ctorReturns map[string]string) goVarTypes {
 	if funcOrMethodNode == nil {
 		return nil
 	}
@@ -103,7 +103,7 @@ func buildFunctionVarTypes(funcOrMethodNode *sitter.Node, src []byte) goVarTypes
 	paramMap := collectParamTypes(paramsNode, src)
 
 	bodyNode := funcOrMethodNode.ChildByFieldName("body")
-	bodyMap := collectBodyVarTypes(bodyNode, src)
+	bodyMap := collectBodyVarTypes(bodyNode, src, ctorReturns)
 
 	// Merge in scope order: receiver → params → body. mergeVarTypes
 	// drops names with conflicting types (the conservative choice from

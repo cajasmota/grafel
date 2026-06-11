@@ -280,6 +280,12 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 	type edgeKey struct{ from, to string }
 	seen := make(map[edgeKey]bool)
 
+	// #4683 — file-local constructor return-type table, shared by every
+	// per-function var-type table so `x := NewFoo()` types `x` as Foo for the
+	// REFERENCES selector pass too (parity with the CALLS pass).
+	ctorReturns := collectFileConstructorReturns(
+		findAll(root, "function_declaration", "method_declaration"), file.Content)
+
 	// emit appends a REFERENCES edge from the top-of-stack function to
 	// the resolved symbol. When viaReceiverType is non-empty, it's
 	// stamped on the edge's Properties as a diagnostic so #1840's
@@ -360,7 +366,7 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 				funcLeafName:    leaf,
 				receiverType:    recvType,
 				receiverVar:     recvVar,
-				varTypes:        buildFunctionVarTypes(n, file.Content),
+				varTypes:        buildFunctionVarTypes(n, file.Content, ctorReturns),
 			}
 			newStack := fstack
 			if emitted != "" {
