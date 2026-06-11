@@ -131,6 +131,20 @@ export interface IaCGroupData {
   /** Short trailing segment of the module path, for the header label. */
   shortLabel: string;
   count: number;
+  /**
+   * Category key (resource_category) used to tint the container box so it reads
+   * as a grouping frame on-theme (#4866). In "tier" mode it is the dominant
+   * category for the tier; in "module" mode it is the dominant category among
+   * the module's resources. Resolved via categoryStyle().
+   */
+  categoryKey: string;
+  /**
+   * Container nesting depth (0 = outermost). Drives a slightly stronger
+   * tint/border at outer levels so nested boxes stay legible (#4866). IaC
+   * containers are single-level today, so this is 0 unless an owner-instance
+   * box wraps another container.
+   */
+  depth: number;
   [key: string]: unknown;
 }
 
@@ -158,6 +172,27 @@ function shortModuleLabel(module: string): string {
   const cleaned = module.replace(/\/+$/, "");
   const i = cleaned.lastIndexOf("/");
   return i >= 0 ? cleaned.slice(i + 1) : cleaned;
+}
+
+/**
+ * dominantCategory returns the most common resource_category among a container's
+ * members (case-insensitive, "" → "other"), used to tint the container box with
+ * a light per-category hue (#4866). Ties break by first-seen for stability.
+ */
+function dominantCategory(members: IaCResource[]): string {
+  const counts = new Map<string, number>();
+  let best = "other";
+  let bestN = 0;
+  for (const r of members) {
+    const key = (r.category || "other").toLowerCase();
+    const n = (counts.get(key) ?? 0) + 1;
+    counts.set(key, n);
+    if (n > bestN) {
+      bestN = n;
+      best = key;
+    }
+  }
+  return best;
 }
 
 interface RawEdge { from: string; to: string; facet: string; kind: string; detail?: string }
@@ -389,6 +424,9 @@ function materialize(
     // #4862 — an owner-instance container is keyed `instance:<entityId>` but
     // labelled by the module name (carried in groupLabels).
     const ownerLabel = groupLabels.get(module);
+    // #4866 — pick a dominant resource_category for the container so its box can
+    // be tinted with a light per-category hue (containers frame, not dominate).
+    const categoryKey = dominantCategory(members);
     const groupData: IaCGroupData = {
       module: ownerLabel ?? module,
       shortLabel: ownerLabel
@@ -399,6 +437,8 @@ function materialize(
             ? module
             : shortModuleLabel(module),
       count: members.length,
+      categoryKey,
+      depth: 0,
     };
     nodes.push({
       id: groupId,

@@ -99,6 +99,11 @@ export interface CTZoneData {
   collapsed: boolean;
   /** Member node count (direct + transitive) — shown when collapsed. */
   nodeCount: number;
+  /**
+   * Container nesting depth (0 = outermost). Drives a stronger tint/border at
+   * outer levels so a nested zone box stays legible inside its parent (#4866).
+   */
+  depth: number;
   /** Toggles collapse for this zone id. */
   onToggle: (zoneId: string) => void;
   [key: string]: unknown;
@@ -407,6 +412,7 @@ function materialize(
       zoneId: zid,
       collapsed: collapsedRendered,
       nodeCount: z.node_count,
+      depth: depthOf(zid),
       onToggle,
     };
     out.push({
