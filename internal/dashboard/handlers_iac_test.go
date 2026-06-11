@@ -255,3 +255,152 @@ func TestIDTail(t *testing.T) {
 		t.Fatalf("idTail = %q, want noColon", got)
 	}
 }
+
+// TestIaCCanonicalResourceRef covers the #4864 recovery of a canonical
+// Terraform resource reference from an unresolved relation endpoint id.
+func TestIaCCanonicalResourceRef(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want string
+	}{
+		// Structural-ref form the HCL extractor emits for a cross-file ref.
+		{"structural-ref resource", "scope:operation:method:terraform:infra/iam/main.tf:aws_iam_role.execution", "aws_iam_role.execution"},
+		// Bare canonical form.
+		{"bare resource", "aws_sqs_queue.work", "aws_sqs_queue.work"},
+		// Attribute interpolation collapses to the OWNING resource (#4864 case b).
+		{"interpolation attr", "scope:operation:method:terraform:infra/iam/main.tf:aws_iam_role.execution.arn", "aws_iam_role.execution"},
+		{"bare interpolation attr", "aws_cloudwatch_log_group.ecs.name", "aws_cloudwatch_log_group.ecs"},
+		// Non-resource heads stay chips (return "").
+		{"var", "scope:operation:method:terraform:x.tf:var.region", ""},
+		{"local", "local.tags", ""},
+		{"output", "output.url", ""},
+		{"data", "data.aws_ami.ubuntu", ""},
+		{"provider", "provider.aws", ""},
+		{"module", "module.network", ""},
+		{"path", "path.module", ""},
+		{"terraform", "terraform.workspace", ""},
+		// Not a two-segment dotted ref.
+		{"single segment", "scope:operation:method:terraform:x.tf:count", ""},
+		{"empty", "", ""},
+		{"trailing dot", "aws_iam_role.", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := iacCanonicalResourceRef(tc.in); got != tc.want {
+				t.Fatalf("iacCanonicalResourceRef(%q) = %q, want %q", tc.in, got, tc.want)
+			}
+		})
+	}
+}
+
+// TestAttachIaCRelation_SecondaryNameJoin is the #4864 regression: a resource
+// referencing another resource via a CROSS-FILE structural-ref that the global
+// resolver could not bind (byLocation is file-scoped) must still become a
+// resolved resource→resource edge (TargetEntityID set), NOT an unresolved chip.
+// A reference to a non-resource (a variable) legitimately stays a chip.
+func TestAttachIaCRelation_SecondaryNameJoin(t *testing.T) {
+	// Two rendered resources in the same repo, defined in different .tf files.
+	task := &IaCResource{
+		EntityID:   "infra/ent-task",
+		Repo:       "infra",
+		Name:       "aws_ecs_task_definition.worker",
+		SourceFile: "infra/ecs/main.tf",
+		Relations:  []IaCRelation{},
+	}
+	role := &IaCResource{
+		EntityID:   "infra/ent-role",
+		Repo:       "infra",
+		Name:       "aws_iam_role.execution",
+		SourceFile: "infra/iam/main.tf",
+		Relations:  []IaCRelation{},
+	}
+
+	byID := map[string]*IaCResource{
+		"ent-task": task,
+		"ent-role": role,
+	}
+	nameByID := map[string]string{
+		"ent-task": task.Name,
+		"ent-role": role.Name,
+	}
+	resByCanonRef := map[string]*IaCResource{
+		iacCanonicalResourceRef(task.Name): task,
+		iacCanonicalResourceRef(role.Name): role,
+	}
+
+	report := IaCReport{}
+
+	// The ECS task references the IAM role via an ATTRIBUTE interpolation in a
+	// SIBLING file. The global resolver left the edge with FromID = the task's
+	// own block ref (resolved → ent-task) and ToID = the unbound cross-file
+	// structural-ref encoding `aws_iam_role.execution.arn`.
+	attachIaCRelation(
+		&report, byID, nameByID, resByCanonRef,
+		"ent-task",
+		"scope:operation:method:terraform:infra/iam/main.tf:aws_iam_role.execution.arn",
+		"USES", nil,
+	)
+
+	// The task's outbound relation must now resolve to the role node.
+	if len(task.Relations) != 1 {
+		t.Fatalf("task relations = %d, want 1", len(task.Relations))
+	}
+	out := task.Relations[0]
+	if out.TargetEntityID != role.EntityID {
+		t.Fatalf("out.TargetEntityID = %q, want %q (edge would render as an unresolved chip otherwise)", out.TargetEntityID, role.EntityID)
+	}
+	if !out.TargetResolved {
+		t.Fatalf("out.TargetResolved = false, want true")
+	}
+	if out.Target != role.Name {
+		t.Fatalf("out.Target = %q, want %q", out.Target, role.Name)
+	}
+	// The role gains the mirror inbound relation joined back to the task.
+	if len(role.Relations) != 1 {
+		t.Fatalf("role relations = %d, want 1", len(role.Relations))
+	}
+	if role.Relations[0].TargetEntityID != task.EntityID {
+		t.Fatalf("role in.TargetEntityID = %q, want %q", role.Relations[0].TargetEntityID, task.EntityID)
+	}
+
+	// A reference to a VARIABLE legitimately stays an unresolved chip: the task
+	// gets a relation with no TargetEntityID (the footer counts it).
+	attachIaCRelation(
+		&report, byID, nameByID, resByCanonRef,
+		"ent-task",
+		"scope:operation:method:terraform:infra/ecs/main.tf:var.cpu",
+		"USES", nil,
+	)
+	if len(task.Relations) != 2 {
+		t.Fatalf("task relations after var ref = %d, want 2", len(task.Relations))
+	}
+	varRel := task.Relations[1]
+	if varRel.TargetEntityID != "" {
+		t.Fatalf("var ref TargetEntityID = %q, want empty (must stay a chip)", varRel.TargetEntityID)
+	}
+}
+
+// TestAttachIaCRelation_AmbiguousRefStaysChip verifies that when two resources
+// in one repo share a canonical ref (dropped to nil in the index), the
+// name-join does NOT fire — the edge stays an unresolved chip rather than
+// binding to an arbitrary node.
+func TestAttachIaCRelation_AmbiguousRefStaysChip(t *testing.T) {
+	src := &IaCResource{EntityID: "infra/ent-src", Repo: "infra", Name: "aws_s3_bucket.logs", Relations: []IaCRelation{}}
+	byID := map[string]*IaCResource{"ent-src": src}
+	nameByID := map[string]string{"ent-src": src.Name}
+	// Ambiguous target ref was dropped to nil during indexing.
+	resByCanonRef := map[string]*IaCResource{"aws_iam_role.shared": nil}
+	report := IaCReport{}
+
+	attachIaCRelation(
+		&report, byID, nameByID, resByCanonRef,
+		"ent-src", "aws_iam_role.shared", "USES", nil,
+	)
+	if len(src.Relations) != 1 {
+		t.Fatalf("relations = %d, want 1", len(src.Relations))
+	}
+	if src.Relations[0].TargetEntityID != "" {
+		t.Fatalf("ambiguous ref bound to %q, want empty chip", src.Relations[0].TargetEntityID)
+	}
+}

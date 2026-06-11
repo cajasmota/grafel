@@ -522,6 +522,116 @@ func joinModuleInstantiations(byID map[string]*IaCResource, slug string) {
 	}
 }
 
+// attachIaCRelation attaches one graph relationship to the resource(s) it
+// touches, resolving each endpoint to a rendered resource node. It is the core
+// of Pass 2, factored out so the resolution behaviour is unit-testable.
+//
+// Resolution order for each endpoint id:
+//  1. byID[id] — the global resolver already rewrote the edge to the target
+//     entity's id (the resolved-cross-tool / same-file case).
+//  2. (#4864) resByCanonRef[<type>.<name>] — the SECONDARY name-join: the
+//     global resolver left the endpoint as a cross-file structural-ref it could
+//     not statically bind, so we recover the canonical Terraform resource ref
+//     it encodes and look up the rendered resource by name. This is what turns
+//     the residual ~"N targets could not be resolved" chips (ECS task → IAM
+//     role / log group / SQS queue in a sibling .tf file) into real
+//     resource→resource architectural edges.
+//
+// An endpoint that resolves by neither path stays an unresolved chip (correct
+// for vars / locals / outputs / data sources / providers, whose canonical refs
+// iacCanonicalResourceRef rejects, and for genuinely-missing resources).
+func attachIaCRelation(
+	report *IaCReport,
+	byID map[string]*IaCResource,
+	nameByID map[string]string,
+	resByCanonRef map[string]*IaCResource,
+	fromID, toID, kind string,
+	props map[string]string,
+) {
+	resolveByCanonRef := func(endpointID string) *IaCResource {
+		ref := iacCanonicalResourceRef(endpointID)
+		if ref == "" {
+			return nil
+		}
+		return resByCanonRef[ref] // nil when absent or ambiguous (dropped).
+	}
+
+	fromRes := byID[fromID]
+	toRes := byID[toID]
+	if fromRes == nil {
+		fromRes = resolveByCanonRef(fromID)
+	}
+	if toRes == nil {
+		toRes = resolveByCanonRef(toID)
+	}
+	if fromRes == nil && toRes == nil {
+		return
+	}
+	facet, detail := iacRelationFacet(kind, props)
+
+	// targetName resolves an endpoint id to a display name. resolved is false
+	// when no indexed entity name was found and we fell back to a segment of the
+	// raw id (#4495). When the endpoint was rescued by the #4864 secondary
+	// name-join (other != nil), the resolved resource's Name is authoritative
+	// even though its raw id never indexed.
+	targetName := func(id string, other *IaCResource) (name string, resolved bool) {
+		if n, ok := nameByID[id]; ok && n != "" {
+			return n, true
+		}
+		if other != nil && other.Name != "" {
+			return other.Name, true
+		}
+		return idTail(id), false
+	}
+
+	// joinableID returns the slug-prefixed entity id of the other endpoint when
+	// it is itself a collected (rendered) resource, so the diagram can draw an
+	// edge between two rendered nodes (#4526); "" otherwise.
+	joinableID := func(other *IaCResource) string {
+		if other != nil {
+			return other.EntityID
+		}
+		return ""
+	}
+
+	if fromRes != nil {
+		name, resolved := targetName(toID, toRes)
+		fromRes.Relations = append(fromRes.Relations, IaCRelation{
+			Facet:          facet,
+			Kind:           kind,
+			Direction:      "out",
+			Target:         name,
+			TargetResolved: resolved,
+			TargetID:       toID,
+			TargetEntityID: joinableID(toRes),
+			Detail:         detail,
+		})
+	}
+	if toRes != nil && toRes != fromRes {
+		name, resolved := targetName(fromID, fromRes)
+		toRes.Relations = append(toRes.Relations, IaCRelation{
+			Facet:          facet,
+			Kind:           kind,
+			Direction:      "in",
+			Target:         name,
+			TargetResolved: resolved,
+			TargetID:       fromID,
+			TargetEntityID: joinableID(fromRes),
+			Detail:         detail,
+		})
+	}
+
+	// Totals — count once per edge (on the "out" side semantics).
+	switch facet {
+	case "grant":
+		report.TotalGrants++
+	case "event_source":
+		report.TotalEventSources++
+	case "dependency":
+		report.TotalDependencies++
+	}
+}
+
 // idTail returns the last path segment of a graph entity ID (Kind:Name or
 // repo/Kind:Name), used as a readable relation target when no entity name is
 // resolvable.
@@ -530,6 +640,84 @@ func idTail(id string) string {
 		return id[i+1:]
 	}
 	return id
+}
+
+// iacNonResourceRefPrefixes are the canonical Terraform reference prefixes whose
+// target is intrinsically NOT a rendered resource node: a variable, local,
+// output, data source, provider, or the path/terraform pseudo-namespaces. A
+// relation target that canonicalises to one of these is a legitimate chip (it
+// genuinely is not a resource→resource architectural edge) and must NOT be
+// joined as a resource edge. Resource refs are `<provider_type>.<name>` where
+// the leading segment is a provider resource type (e.g. `aws_iam_role`), never
+// one of these reserved heads. Module refs (`module.<name>`) are handled by the
+// directory join (#4657), not here.
+var iacNonResourceRefPrefixes = map[string]struct{}{
+	"var":       {},
+	"local":     {},
+	"output":    {},
+	"data":      {},
+	"provider":  {},
+	"module":    {},
+	"path":      {},
+	"terraform": {},
+	"each":      {},
+	"count":     {},
+	"self":      {},
+}
+
+// iacCanonicalResourceRef recovers the canonical Terraform resource reference
+// (`<type>.<name>`) from an UNRESOLVED relation endpoint id, returning "" when
+// the endpoint is not a resolvable resource reference (#4864).
+//
+// The graph resolver rewrites a successfully-resolved cross-file reference to
+// the target entity's 16-char id; what reaches the dashboard still bearing a
+// structural-ref / canonical form is a reference the global resolver could not
+// statically bind. For HCL/Terraform the dominant residual case is a CROSS-FILE
+// resource→resource reference inside a modularised stack: an ECS task in
+// `compute/main.tf` referencing `aws_iam_role.execution` defined in
+// `iam/main.tf`. byLocation is file-scoped so it cannot bind it, and a bare
+// `<type>.<name>` resource ref matches none of the dynamic-pattern leaves
+// (which cover only var./local./module./data./… and built-in functions). The
+// edge therefore lands with its ToID still encoding the canonical ref — which
+// is exactly the target resource entity's Name. We recover that ref here so the
+// dashboard can join it to the rendered resource node by name.
+//
+// Accepts both the structural-ref form the HCL extractor emits
+// (`scope:operation:method:<lang>:<file>:<type>.<name>`) and a bare
+// `<type>.<name>` form. Returns "" for var/local/output/data/provider/module/
+// path/terraform/each/count/self heads (legitimate non-resource chips) and for
+// anything that is not a dotted two-segment resource reference.
+func iacCanonicalResourceRef(endpointID string) string {
+	ref := endpointID
+	// Structural-ref form: the canonical ref is the segment after the LAST
+	// ':' (scope:operation:method:<lang>:<file>:<type>.<name>). A bare form has
+	// no ':' and is used as-is.
+	if i := strings.LastIndexByte(ref, ':'); i >= 0 && i+1 < len(ref) {
+		ref = ref[i+1:]
+	}
+	ref = strings.TrimSpace(ref)
+	// A resource reference is exactly `<type>.<name>`: a provider resource type
+	// followed by the block's local name. Anything with a reserved head, or
+	// without a single dotted segment, is not a rendered resource.
+	dot := strings.IndexByte(ref, '.')
+	if dot <= 0 || dot+1 >= len(ref) {
+		return ""
+	}
+	head := ref[:dot]
+	if _, reserved := iacNonResourceRefPrefixes[head]; reserved {
+		return ""
+	}
+	// Reject attribute interpolations (`aws_iam_role.execution.arn`): the
+	// canonical resource ref is the first two segments, so trim any trailing
+	// `.attr…` down to `<type>.<name>` — the owning resource. (#4864 case b.)
+	rest := ref[dot+1:]
+	if j := strings.IndexByte(rest, '.'); j >= 0 {
+		rest = rest[:j]
+	}
+	if rest == "" {
+		return ""
+	}
+	return head + "." + rest
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -569,11 +757,24 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 	byID := map[string]*IaCResource{}
 	// resource display name by entity ID, for resolving relation targets.
 	nameByID := map[string]string{}
+	// #4864 — rendered resources keyed by repo slug + canonical Terraform
+	// reference (`<type>.<name>`, i.e. the resource entity Name) so a relation
+	// whose endpoint id never resolved to a rendered node can still be joined to
+	// the resource it names. Cleared per repo so same-named resources in
+	// different repos don't cross-join. A name shared by two resources in ONE
+	// repo is dropped (set to nil) to avoid an ambiguous join.
+	resByCanonRef := map[string]*IaCResource{}
 	tools := map[string]bool{}
 
 	cachedGrp, _ := s.graphs.GetGroupCached(groupName)
 
 	for _, rp := range repoPaths {
+		// #4864 — canonical-ref index is repo-scoped: Terraform resource Names
+		// (`<type>.<name>`) are only unique within a repo. Reset per repo.
+		for k := range resByCanonRef {
+			delete(resByCanonRef, k)
+		}
+
 		var doc *graph.Document
 		var rdr *fbreader.Reader
 		if cachedGrp != nil {
@@ -697,6 +898,19 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 			}
 			byID[id] = res
 			nameByID[id] = name
+			// #4864 — index by canonical resource ref for name-based join of
+			// edges the global resolver left as cross-file structural-refs. A
+			// resource Name is already the canonical `<type>.<name>` for
+			// Terraform; iacCanonicalResourceRef normalises and rejects
+			// non-resource forms. Two resources sharing a ref in one repo make
+			// the join ambiguous → drop the entry (nil) so neither is matched.
+			if ref := iacCanonicalResourceRef(name); ref != "" {
+				if _, dup := resByCanonRef[ref]; dup {
+					resByCanonRef[ref] = nil
+				} else {
+					resByCanonRef[ref] = res
+				}
+			}
 			tools[tool] = true
 			if category != "" {
 				report.CountsByCategory[category]++
@@ -709,69 +923,7 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 
 		// Pass 2: attach relationships whose endpoints are collected resources.
 		iterRelationships(func(fromID, toID, kind string, props map[string]string) {
-			fromRes := byID[fromID]
-			toRes := byID[toID]
-			if fromRes == nil && toRes == nil {
-				return
-			}
-			facet, detail := iacRelationFacet(kind, props)
-
-			// targetName resolves an endpoint id to a display name. resolved is
-			// false when no indexed entity name was found and we fell back to a
-			// segment of the raw id (#4495).
-			targetName := func(id string) (name string, resolved bool) {
-				if n, ok := nameByID[id]; ok && n != "" {
-					return n, true
-				}
-				return idTail(id), false
-			}
-
-			// joinableID returns the slug-prefixed entity id of the other endpoint
-			// when it is itself a collected (rendered) resource, so the diagram can
-			// draw an edge between two rendered nodes (#4526); "" otherwise.
-			joinableID := func(other *IaCResource) string {
-				if other != nil {
-					return other.EntityID
-				}
-				return ""
-			}
-
-			if fromRes != nil {
-				name, resolved := targetName(toID)
-				fromRes.Relations = append(fromRes.Relations, IaCRelation{
-					Facet:          facet,
-					Kind:           kind,
-					Direction:      "out",
-					Target:         name,
-					TargetResolved: resolved,
-					TargetID:       toID,
-					TargetEntityID: joinableID(toRes),
-					Detail:         detail,
-				})
-			}
-			if toRes != nil && toRes != fromRes {
-				name, resolved := targetName(fromID)
-				toRes.Relations = append(toRes.Relations, IaCRelation{
-					Facet:          facet,
-					Kind:           kind,
-					Direction:      "in",
-					Target:         name,
-					TargetResolved: resolved,
-					TargetID:       fromID,
-					TargetEntityID: joinableID(fromRes),
-					Detail:         detail,
-				})
-			}
-
-			// Totals — count once per edge (on the "out" side semantics).
-			switch facet {
-			case "grant":
-				report.TotalGrants++
-			case "event_source":
-				report.TotalEventSources++
-			case "dependency":
-				report.TotalDependencies++
-			}
+			attachIaCRelation(&report, byID, nameByID, resByCanonRef, fromID, toID, kind, props)
 		})
 
 		// Pass 3 (#4657) — resolve module instantiation by DIRECTORY. The
