@@ -18,7 +18,7 @@
    chip on the owning node and in the legend footer.
    ============================================================ */
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ReactFlow,
   ReactFlowProvider,
@@ -34,12 +34,15 @@ import { cn } from "@/lib/utils";
 import type { IaCReport } from "@/data/types";
 import {
   layoutIaCDiagram,
+  layoutIaCDiagramElk,
+  defaultLayoutEngine,
   IAC_NODE_TYPE,
   IAC_GROUP_TYPE,
   IAC_EDGE_TYPE,
   MAX_DIAGRAM_NODES,
   type IaCDiagramDirection,
   type IaCGroupMode,
+  type IaCLayoutResult,
 } from "./layout";
 import { IaCNode } from "./IaCNode";
 import { IaCGroupNode } from "./IaCGroupNode";
@@ -72,10 +75,51 @@ function IaCDiagramInner({ report, className }: IaCDiagramProps) {
   const [direction, setDirection] = useState<IaCDiagramDirection>("LR");
   const [groupMode, setGroupMode] = useState<IaCGroupMode>("module");
 
-  const { nodes, edges, capped, unresolvedEdges } = useMemo(
-    () => layoutIaCDiagram(report, direction, groupMode),
-    [report, direction, groupMode],
+  // Layout engine: ELK (default, async) or the legacy dagre fallback (sync).
+  // Stable for the component lifetime — flip via VITE_IAC_LAYOUT_ENGINE.
+  const engine = useMemo(() => defaultLayoutEngine(), []);
+
+  const EMPTY: IaCLayoutResult = useMemo(
+    () => ({ nodes: [], edges: [], capped: false, unresolvedEdges: 0 }),
+    [],
   );
+
+  // dagre path is synchronous — compute inline.
+  const dagreResult = useMemo(
+    () => (engine === "dagre" ? layoutIaCDiagram(report, direction, groupMode) : EMPTY),
+    [engine, report, direction, groupMode, EMPTY],
+  );
+
+  // ELK path is async — run in an effect, last-write-wins, with a layout flag.
+  const [elkResult, setElkResult] = useState<IaCLayoutResult>(EMPTY);
+  const [elkLaidOut, setElkLaidOut] = useState(false);
+  const elkRunId = useRef(0);
+  useEffect(() => {
+    if (engine !== "elk") return;
+    const myRun = ++elkRunId.current;
+    let cancelled = false;
+    setElkLaidOut(false);
+    layoutIaCDiagramElk(report, direction, groupMode)
+      .then((res) => {
+        if (cancelled || myRun !== elkRunId.current) return;
+        setElkResult(res);
+        setElkLaidOut(true);
+      })
+      .catch(() => {
+        if (cancelled || myRun !== elkRunId.current) return;
+        // Fall back to dagre on ELK failure so the canvas still renders.
+        setElkResult(layoutIaCDiagram(report, direction, groupMode));
+        setElkLaidOut(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [engine, report, direction, groupMode]);
+
+  const { nodes, edges, capped, unresolvedEdges } =
+    engine === "dagre" ? dagreResult : elkResult;
+  // True while ELK is still computing its first layout for the current inputs.
+  const layingOut = engine === "elk" && !elkLaidOut;
 
   const moduleCount = useMemo(
     () => nodes.filter((n) => n.type === IAC_GROUP_TYPE).length,
@@ -172,23 +216,29 @@ function IaCDiagramInner({ report, className }: IaCDiagramProps) {
 
       {/* Canvas */}
       <div className="relative min-h-0 flex-1">
-        <ReactFlow
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={nodeTypes}
-          edgeTypes={edgeTypes}
-          fitView
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable
-          proOptions={{ hideAttribution: true }}
-          minZoom={0.1}
-          fitViewOptions={{ padding: 0.16 }}
-        >
-          <Background gap={18} size={1} color="var(--border)" />
-          <Controls showInteractive={false} />
-          <MiniMap pannable zoomable className="!border !border-border !bg-surface" />
-        </ReactFlow>
+        {layingOut ? (
+          <div className="flex h-full items-center justify-center text-sm text-text-4">
+            Laying out…
+          </div>
+        ) : (
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={nodeTypes}
+            edgeTypes={edgeTypes}
+            fitView
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable
+            proOptions={{ hideAttribution: true }}
+            minZoom={0.1}
+            fitViewOptions={{ padding: 0.16 }}
+          >
+            <Background gap={18} size={1} color="var(--border)" />
+            <Controls showInteractive={false} />
+            <MiniMap pannable zoomable className="!border !border-border !bg-surface" />
+          </ReactFlow>
+        )}
       </div>
 
       {/* Footer: unresolved-target honesty note (#4495). */}

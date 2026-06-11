@@ -15,16 +15,26 @@
                 ask — archigraph flattens modules to the resolved resource
                 graph, so grouping by module reconstructs the stack structure.
 
-   Layout uses dagre as a COMPOUND graph (setParent) so children cluster under
-   their module; we then derive each group node's bounding box from its laid-out
-   children. Unresolved edge targets (#4495 target_resolved=false, or a target
-   that is not itself a rendered node) are NOT drawn as dead edges — the caller
-   surfaces them separately as external/unresolved chips on the node.
+   Layout engine: as of the elkjs epic (#4824/#4826) the default backend is ELK
+   (elk.hierarchyHandling INCLUDE_CHILDREN + orthogonal routing) via the shared
+   `layoutWithElk` helper (lib/elk-layout.ts) — it lays out the nested module/
+   tier groups NATIVELY rather than dagre's faked compound (setParent + manual
+   bounding boxes). The legacy dagre compound pass is KEPT as a synchronous
+   fallback behind `VITE_IAC_LAYOUT_ENGINE=dagre` for a visual revert.
+
+   The "planning" stage (which resources render, which group each belongs to,
+   the drawn vs unresolved edges) is engine-agnostic and shared by both
+   backends; only the positioning differs.
    ============================================================ */
 
 import dagre from "dagre";
 import { Position, type Node, type Edge } from "@xyflow/react";
 import type { IaCReport, IaCResource } from "@/data/types";
+import {
+  layoutWithElk,
+  type ElkLayoutNode,
+  type ElkLayoutEdge,
+} from "@/lib/elk-layout";
 
 export type IaCDiagramDirection = "LR" | "TB";
 
@@ -37,6 +47,20 @@ export type IaCDiagramDirection = "LR" | "TB";
  *                layered cloud-architecture view regardless of module layout.
  */
 export type IaCGroupMode = "module" | "tier";
+
+/**
+ * Layout engine selection. Defaults to ELK (#4826); set the env flag
+ * `VITE_IAC_LAYOUT_ENGINE=dagre` (or pass engine="dagre") to use the legacy
+ * dagre fallback for a visual revert.
+ */
+export type IaCLayoutEngine = "elk" | "dagre";
+export function defaultLayoutEngine(): IaCLayoutEngine {
+  const env =
+    typeof import.meta !== "undefined"
+      ? (import.meta as { env?: Record<string, string | undefined> }).env
+      : undefined;
+  return env?.VITE_IAC_LAYOUT_ENGINE === "dagre" ? "dagre" : "elk";
+}
 
 /**
  * cloudTier maps a resource_category to a coarse cloud-architecture tier used by
@@ -69,7 +93,7 @@ export const IAC_NODE_TYPE = "iacResource";
 export const IAC_GROUP_TYPE = "iacModule";
 export const IAC_EDGE_TYPE = "iacRelation";
 
-/** Resource-node box fed to dagre (the renderer matches these dims). */
+/** Resource-node box fed to the layout engine (the renderer matches these dims). */
 const NODE_W = 220;
 const NODE_H = 64;
 
@@ -129,24 +153,45 @@ function shortModuleLabel(module: string): string {
   return i >= 0 ? cleaned.slice(i + 1) : cleaned;
 }
 
+interface RawEdge { from: string; to: string; facet: string; kind: string; detail?: string }
+
 /**
- * Build a positioned, module-grouped React Flow graph from the IaC report.
- *
- * @param report     the IaCReport (already fetched)
- * @param direction  "LR" (horizontal) | "TB" (vertical) → dagre rankdir
+ * IaCPlan is the engine-agnostic intermediate produced from the report: the
+ * rendered resources, their group bucket, the group order/labels, and the drawn
+ * (resolved) edges. Both the dagre and ELK positioners consume this identically.
  */
-export function layoutIaCDiagram(
+interface IaCPlan {
+  capped: boolean;
+  unresolvedEdges: number;
+  resources: IaCResource[];
+  /** Insertion-ordered group id → members. */
+  modules: Map<string, IaCResource[]>;
+  /** group bucket key for a resource (module path or cloud tier). */
+  moduleOf: (r: IaCResource) => string;
+  /** Unresolved relation count for a single resource (for its node chip). */
+  unresolvedCountFor: (r: IaCResource) => number;
+  rawEdges: RawEdge[];
+}
+
+/** group id for a module/tier bucket name (the React Flow parent node id). */
+function groupIdFor(module: string): string {
+  return `group:${module}`;
+}
+
+/**
+ * planIaCDiagram computes the engine-agnostic render plan: capped resource set,
+ * group buckets, and resolved (drawn) vs unresolved edges. This is the
+ * IaC-specific logic shared by both the ELK and dagre backends.
+ */
+function planIaCDiagram(
   report: IaCReport | undefined,
-  direction: IaCDiagramDirection,
-  groupMode: IaCGroupMode = "module",
-): IaCLayoutResult {
+  groupMode: IaCGroupMode,
+): IaCPlan | undefined {
   const all = flattenResources(report);
   const capped = all.length > MAX_DIAGRAM_NODES;
   const resources = capped ? all.slice(0, MAX_DIAGRAM_NODES) : all;
 
-  if (resources.length === 0) {
-    return { nodes: [], edges: [], capped, unresolvedEdges: 0 };
-  }
+  if (resources.length === 0) return undefined;
 
   // Index rendered resources by their slug-prefixed entity id so edges can join.
   const byEntityId = new Map<string, IaCResource>();
@@ -170,7 +215,6 @@ export function layoutIaCDiagram(
   // (from,to,kind). We follow the "out" direction so each edge is drawn once;
   // unresolved targets (no target_entity_id, or not a rendered node) are
   // counted, not drawn. ────────────────────────────────────────────────────
-  interface RawEdge { from: string; to: string; facet: string; kind: string; detail?: string }
   const rawEdges: RawEdge[] = [];
   const seen = new Set<string>();
   let unresolvedEdges = 0;
@@ -196,63 +240,74 @@ export function layoutIaCDiagram(
     }
   }
 
-  // ── Compound dagre layout: children grouped under their module cluster. ───
-  const g = new dagre.graphlib.Graph({ compound: true });
-  g.setGraph({
-    rankdir: direction,
-    nodesep: direction === "LR" ? 26 : 40,
-    ranksep: direction === "LR" ? 80 : 64,
-    marginx: 20,
-    marginy: 20,
-  });
-  g.setDefaultEdgeLabel(() => ({}));
+  const unresolvedCountFor = (r: IaCResource) =>
+    r.relations.filter(
+      (rel) => !rel.target_entity_id || !byEntityId.has(rel.target_entity_id),
+    ).length;
 
-  for (const [module, members] of modules) {
-    const groupId = `group:${module}`;
-    // Cluster node — dagre sizes it to fit children; we recompute the box below.
-    g.setNode(groupId, { label: module });
-    for (const r of members) {
-      g.setNode(r.entity_id, { width: NODE_W, height: NODE_H });
-      g.setParent(r.entity_id, groupId);
-    }
-  }
-  for (const e of rawEdges) g.setEdge(e.from, e.to);
+  return {
+    capped,
+    unresolvedEdges,
+    resources,
+    modules,
+    moduleOf,
+    unresolvedCountFor,
+    rawEdges,
+  };
+}
 
-  dagre.layout(g);
+/**
+ * materialize turns an IaCPlan + absolute boxes for every laid-out resource and
+ * group into the final React-Flow node/edge lists (parent-relative positions,
+ * derived group boxes). Engine-agnostic: both dagre and ELK feed it their
+ * absolute boxes. `groupBox` is optional per group — when an engine sizes the
+ * container natively (ELK) it is passed through; otherwise the box is derived
+ * from member bounding boxes (dagre).
+ */
+function materialize(
+  plan: IaCPlan,
+  groupMode: IaCGroupMode,
+  /** Absolute top-left position + size of each rendered resource. */
+  resourceAbs: Map<string, { x: number; y: number }>,
+  /** Optional engine-provided absolute group box; else derived from members. */
+  groupAbs: Map<string, { x: number; y: number; w: number; h: number }> | undefined,
+  direction: IaCDiagramDirection,
+): IaCLayoutResult {
+  const { resources, modules, unresolvedCountFor, rawEdges, capped, unresolvedEdges } = plan;
 
   const sourcePos = direction === "LR" ? Position.Right : Position.Bottom;
   const targetPos = direction === "LR" ? Position.Left : Position.Top;
 
-  // Resource node absolute positions (dagre centers; RF uses top-left).
-  const absPos = new Map<string, { x: number; y: number }>();
-  for (const r of resources) {
-    const n = g.node(r.entity_id);
-    absPos.set(r.entity_id, {
-      x: (n?.x ?? 0) - NODE_W / 2,
-      y: (n?.y ?? 0) - NODE_H / 2,
-    });
-  }
-
-  // Group bounding boxes derived from member positions (padded). React Flow
-  // child positions are RELATIVE to the parent, so we offset each child by its
-  // group's top-left.
   const nodes: Node[] = [];
 
   for (const [module, members] of modules) {
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const r of members) {
-      const p = absPos.get(r.entity_id)!;
-      minX = Math.min(minX, p.x);
-      minY = Math.min(minY, p.y);
-      maxX = Math.max(maxX, p.x + NODE_W);
-      maxY = Math.max(maxY, p.y + NODE_H);
-    }
-    const gx = minX - GROUP_PAD_X;
-    const gy = minY - GROUP_PAD_TOP;
-    const gw = maxX - minX + GROUP_PAD_X * 2;
-    const gh = maxY - minY + GROUP_PAD_TOP + GROUP_PAD_BOTTOM;
+    const groupId = groupIdFor(module);
 
-    const groupId = `group:${module}`;
+    // Group bounding box: engine-provided (ELK) or derived from members (dagre).
+    let gx: number, gy: number, gw: number, gh: number;
+    const provided = groupAbs?.get(groupId);
+    if (provided) {
+      gx = provided.x;
+      gy = provided.y;
+      gw = provided.w;
+      gh = provided.h;
+    } else {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const r of members) {
+        const p = resourceAbs.get(r.entity_id);
+        if (!p) continue;
+        minX = Math.min(minX, p.x);
+        minY = Math.min(minY, p.y);
+        maxX = Math.max(maxX, p.x + NODE_W);
+        maxY = Math.max(maxY, p.y + NODE_H);
+      }
+      if (!Number.isFinite(minX)) continue; // empty container → skip.
+      gx = minX - GROUP_PAD_X;
+      gy = minY - GROUP_PAD_TOP;
+      gw = maxX - minX + GROUP_PAD_X * 2;
+      gh = maxY - minY + GROUP_PAD_TOP + GROUP_PAD_BOTTOM;
+    }
+
     const groupData: IaCGroupData = {
       module,
       shortLabel:
@@ -277,11 +332,12 @@ export function layoutIaCDiagram(
     });
 
     for (const r of members) {
-      const p = absPos.get(r.entity_id)!;
-      const unresolvedCount = r.relations.filter(
-        (rel) => !rel.target_entity_id || !byEntityId.has(rel.target_entity_id),
-      ).length;
-      const nodeData: IaCNodeData = { resource: r, unresolvedCount };
+      const p = resourceAbs.get(r.entity_id);
+      if (!p) continue;
+      const nodeData: IaCNodeData = {
+        resource: r,
+        unresolvedCount: unresolvedCountFor(r),
+      };
       nodes.push({
         id: r.entity_id,
         type: IAC_NODE_TYPE,
@@ -311,5 +367,176 @@ export function layoutIaCDiagram(
     };
   });
 
+  // resources param kept referenced for clarity/parity with the plan.
+  void resources;
+
   return { nodes, edges, capped, unresolvedEdges };
+}
+
+/* ============================================================
+   ELK backend (default, async) — #4826.
+   ============================================================ */
+
+/**
+ * layoutIaCDiagramElk builds a positioned, module-grouped React Flow graph using
+ * the shared ELK helper. ELK lays out the nested group containers NATIVELY
+ * (hierarchyHandling INCLUDE_CHILDREN, handled inside layoutWithElk) and routes
+ * edges orthogonally (the architecture-diagram look). Async — ELK layout is
+ * Promise-based.
+ *
+ * @param report     the IaCReport (already fetched)
+ * @param direction  "LR" (horizontal) | "TB" (vertical) → ELK direction
+ * @param groupMode  module vs cloud-tier container buckets
+ */
+export async function layoutIaCDiagramElk(
+  report: IaCReport | undefined,
+  direction: IaCDiagramDirection,
+  groupMode: IaCGroupMode = "module",
+): Promise<IaCLayoutResult> {
+  const plan = planIaCDiagram(report, groupMode);
+  if (!plan) {
+    return {
+      nodes: [],
+      edges: [],
+      capped: flattenResources(report).length > MAX_DIAGRAM_NODES,
+      unresolvedEdges: 0,
+    };
+  }
+
+  const { modules, rawEdges } = plan;
+
+  // ── Build ELK inputs: one container per group, resources as its children. ──
+  const elkNodes: ElkLayoutNode[] = [];
+  for (const [module, members] of modules) {
+    const groupId = groupIdFor(module);
+    elkNodes.push({ id: groupId, isContainer: true });
+    for (const r of members) {
+      elkNodes.push({
+        id: r.entity_id,
+        parentId: groupId,
+        width: NODE_W,
+        height: NODE_H,
+      });
+    }
+  }
+
+  const elkEdges: ElkLayoutEdge[] = rawEdges.map((e, i) => ({
+    id: `elk-e:${i}`,
+    source: e.from,
+    target: e.to,
+  }));
+
+  const positions = await layoutWithElk(elkNodes, elkEdges, {
+    direction: direction === "LR" ? "RIGHT" : "DOWN",
+    edgeRouting: "ORTHOGONAL",
+    nodeSpacing: direction === "LR" ? 26 : 40,
+    layerSpacing: direction === "LR" ? 80 : 64,
+    padding: {
+      top: GROUP_PAD_TOP,
+      right: GROUP_PAD_X,
+      bottom: GROUP_PAD_BOTTOM,
+      left: GROUP_PAD_X,
+    },
+    defaultNodeWidth: NODE_W,
+    defaultNodeHeight: NODE_H,
+  });
+
+  // ELK positions are parent-relative. Resources nest exactly one level under
+  // their group, so a resource's absolute position = group pos + resource pos.
+  const finite = (v: number | undefined) =>
+    Number.isFinite(v) ? (v as number) : 0;
+
+  const groupAbs = new Map<string, { x: number; y: number; w: number; h: number }>();
+  for (const module of modules.keys()) {
+    const groupId = groupIdFor(module);
+    const gp = positions.get(groupId);
+    groupAbs.set(groupId, {
+      x: finite(gp?.x),
+      y: finite(gp?.y),
+      w: finite(gp?.width),
+      h: finite(gp?.height),
+    });
+  }
+
+  const resourceAbs = new Map<string, { x: number; y: number }>();
+  for (const [module, members] of modules) {
+    const g = groupAbs.get(groupIdFor(module))!;
+    for (const r of members) {
+      const rp = positions.get(r.entity_id);
+      resourceAbs.set(r.entity_id, {
+        x: g.x + finite(rp?.x),
+        y: g.y + finite(rp?.y),
+      });
+    }
+  }
+
+  return materialize(plan, groupMode, resourceAbs, groupAbs, direction);
+}
+
+/* ============================================================
+   dagre backend (legacy fallback, synchronous) — kept for visual revert.
+   ============================================================ */
+
+/**
+ * layoutIaCDiagram builds a positioned, module-grouped React Flow graph using
+ * the legacy dagre compound pass (setParent + member bounding boxes). Kept as a
+ * synchronous fallback (see defaultLayoutEngine / VITE_IAC_LAYOUT_ENGINE=dagre).
+ *
+ * @param report     the IaCReport (already fetched)
+ * @param direction  "LR" (horizontal) | "TB" (vertical) → dagre rankdir
+ */
+export function layoutIaCDiagram(
+  report: IaCReport | undefined,
+  direction: IaCDiagramDirection,
+  groupMode: IaCGroupMode = "module",
+): IaCLayoutResult {
+  const plan = planIaCDiagram(report, groupMode);
+  if (!plan) {
+    return {
+      nodes: [],
+      edges: [],
+      capped: flattenResources(report).length > MAX_DIAGRAM_NODES,
+      unresolvedEdges: 0,
+    };
+  }
+
+  const { resources, modules, rawEdges } = plan;
+
+  // ── Compound dagre layout: children grouped under their module cluster. ───
+  const g = new dagre.graphlib.Graph({ compound: true });
+  g.setGraph({
+    rankdir: direction,
+    nodesep: direction === "LR" ? 26 : 40,
+    ranksep: direction === "LR" ? 80 : 64,
+    marginx: 20,
+    marginy: 20,
+  });
+  g.setDefaultEdgeLabel(() => ({}));
+
+  for (const [module, members] of modules) {
+    const groupId = groupIdFor(module);
+    // Cluster node — dagre sizes it to fit children; we recompute the box below.
+    g.setNode(groupId, { label: module });
+    for (const r of members) {
+      g.setNode(r.entity_id, { width: NODE_W, height: NODE_H });
+      g.setParent(r.entity_id, groupId);
+    }
+  }
+  for (const e of rawEdges) g.setEdge(e.from, e.to);
+
+  dagre.layout(g);
+
+  // Resource node absolute positions (dagre centers; RF uses top-left).
+  const resourceAbs = new Map<string, { x: number; y: number }>();
+  for (const r of resources) {
+    const n = g.node(r.entity_id);
+    resourceAbs.set(r.entity_id, {
+      x: (n?.x ?? 0) - NODE_W / 2,
+      y: (n?.y ?? 0) - NODE_H / 2,
+    });
+  }
+
+  // dagre doesn't give us reliable padded group boxes; let materialize derive
+  // them from member bounding boxes (pass groupAbs = undefined).
+  return materialize(plan, groupMode, resourceAbs, undefined, direction);
 }
