@@ -401,6 +401,178 @@ func parsePreAuthorizeExpr(spel string) (roles, perms, scopes []string) {
 	return roles, perms, scopes
 }
 
+// SpringAuthStamps are the STRUCTURED Spring-Security auth props the authposture
+// spring resolver reads to decode the method ▸ class ▸ global precedence ladder
+// LIVE (#4750), distinct from the coarse auth_required/auth_roles flat companion.
+// Each field maps 1:1 to a prop key the resolver consults
+// (internal/authposture/spring.go).
+type SpringAuthStamps struct {
+	// MethodExpression is a method-level @PreAuthorize/@PostAuthorize SpEL body
+	// (stamped as auth_expression). The resolver decodes hasRole/hasAuthority/
+	// permitAll/isAuthenticated from it.
+	MethodExpression string
+	// MethodSecured is a method-level @Secured/@RolesAllowed role literal
+	// (stamped as secured).
+	MethodSecured string
+	// ClassPreAuthorize is the controller-class @PreAuthorize SpEL body (stamped
+	// as spring_class_pre_authorize); applies to handlers without their own.
+	ClassPreAuthorize string
+	// ClassSecured is the controller-class @Secured/@RolesAllowed role literal
+	// (stamped as spring_class_secured).
+	ClassSecured string
+	// GlobalAuthorization is the SecurityFilterChain/HttpSecurity authorization
+	// rule matched to THIS route, when statically recoverable (stamped as
+	// spring_global_authorization). Best-effort; empty when no matcher applies.
+	GlobalAuthorization string
+}
+
+// springPreAuthorizeAnyRe captures the SpEL body of a @PreAuthorize OR
+// @PostAuthorize annotation (the method/class authorization expression).
+var springPreAuthorizeAnyRe = regexp.MustCompile(`@(?:Pre|Post)Authorize\s*\(\s*"([^"]*)"\s*\)`)
+
+// ResolveSpringAuthStamps extracts the structured Spring-Security props from the
+// method-level and class-level annotation blocks. It is the engine-side half of
+// the #4750 stamping: the authposture spring resolver reads these exact prop keys
+// to decode the effective posture in the LIVE diff instead of degrading to a
+// source scan. The global SecurityFilterChain rule is passed in pre-matched
+// (globalAuthorization) — matching a route to a filter-chain requestMatcher is a
+// cross-file concern resolved by the caller where statically recoverable; this
+// resolver only threads it through. Returns the zero value (all-empty) when the
+// controller carries no Spring-Security annotation.
+func ResolveSpringAuthStamps(methodAnnoText, classAnnoText, globalAuthorization string) SpringAuthStamps {
+	var s SpringAuthStamps
+	// Method-level @PreAuthorize/@PostAuthorize SpEL body.
+	if m := springPreAuthorizeAnyRe.FindStringSubmatch(methodAnnoText); m != nil {
+		s.MethodExpression = m[1]
+	}
+	// Method-level @Secured / @RolesAllowed role literal (first quoted token).
+	if m := javaSecuredRe.FindStringSubmatch(methodAnnoText); m != nil {
+		s.MethodSecured = firstQuotedToken(m[1])
+	} else if m := javaRolesAllowedRe.FindStringSubmatch(methodAnnoText); m != nil {
+		s.MethodSecured = firstQuotedToken(m[1])
+	}
+	// Class-level @PreAuthorize/@PostAuthorize SpEL body.
+	if m := springPreAuthorizeAnyRe.FindStringSubmatch(classAnnoText); m != nil {
+		s.ClassPreAuthorize = m[1]
+	}
+	// Class-level @Secured / @RolesAllowed role literal.
+	if m := javaSecuredRe.FindStringSubmatch(classAnnoText); m != nil {
+		s.ClassSecured = firstQuotedToken(m[1])
+	} else if m := javaRolesAllowedRe.FindStringSubmatch(classAnnoText); m != nil {
+		s.ClassSecured = firstQuotedToken(m[1])
+	}
+	s.GlobalAuthorization = strings.TrimSpace(globalAuthorization)
+	return s
+}
+
+// Stamp writes the resolved Spring structured props onto an endpoint Properties
+// map. Only non-empty props are written, so an endpoint with only a method
+// annotation does not gain phantom class/global props.
+func (s SpringAuthStamps) Stamp(props map[string]string) {
+	if props == nil {
+		return
+	}
+	if s.MethodExpression != "" {
+		props["auth_expression"] = s.MethodExpression
+	}
+	if s.MethodSecured != "" {
+		props["secured"] = s.MethodSecured
+	}
+	if s.ClassPreAuthorize != "" {
+		props["spring_class_pre_authorize"] = s.ClassPreAuthorize
+	}
+	if s.ClassSecured != "" {
+		props["spring_class_secured"] = s.ClassSecured
+	}
+	if s.GlobalAuthorization != "" {
+		props["spring_global_authorization"] = s.GlobalAuthorization
+	}
+}
+
+// springFilterChainRule is one parsed SecurityFilterChain authorization rule:
+// the ant-pattern its requestMatchers/antMatchers names and the full rule text
+// (e.g. `requestMatchers("/admin/**").hasRole("ADMIN")`).
+type springFilterChainRule struct {
+	pattern string // the ant-pattern, e.g. "/admin/**"
+	rule    string // the full rule fragment the resolver decodes
+}
+
+// springFilterChainMatcherRe captures a SecurityFilterChain authorization rule
+// of the form `requestMatchers("/admin/**").hasRole("ADMIN")` /
+// `antMatchers("/public/**").permitAll()` / `.requestMatchers("/api/**").authenticated()`.
+// Group 1 = the ant-pattern; the whole match (group 0) is the rule text.
+var springFilterChainMatcherRe = regexp.MustCompile(
+	`(?:requestMatchers|antMatchers|mvcMatchers)\s*\(\s*"([^"]+)"\s*\)\s*\.\s*(?:hasRole|hasAnyRole|hasAuthority|hasAnyAuthority|permitAll|denyAll|authenticated|fullyAuthenticated|anonymous)\s*\([^)]*\)`)
+
+// parseSpringFilterChainRules extracts every SecurityFilterChain authorization
+// rule from a Java source file (#4750). Only fires when the file actually
+// declares a SecurityFilterChain / HttpSecurity authorize block, so a plain
+// controller file yields no rules.
+func parseSpringFilterChainRules(src string) []springFilterChainRule {
+	if !strings.Contains(src, "SecurityFilterChain") && !strings.Contains(src, "authorizeHttpRequests") && !strings.Contains(src, "authorizeRequests") {
+		return nil
+	}
+	var out []springFilterChainRule
+	for _, loc := range springFilterChainMatcherRe.FindAllStringSubmatchIndex(src, -1) {
+		full := src[loc[0]:loc[1]]
+		pattern := src[loc[2]:loc[3]]
+		out = append(out, springFilterChainRule{pattern: pattern, rule: full})
+	}
+	return out
+}
+
+// matchSpringFilterChainRule returns the authorization rule text whose ant-pattern
+// covers the given controller route prefix, or "" when none match. Matching is
+// best-effort over the statically-recoverable ant-pattern vocabulary (exact, `/**`
+// and `/*` suffix wildcards); dynamic/regex matchers are not matched (the
+// resolver then reports KindUnknown rather than false-public — #4750).
+func matchSpringFilterChainRule(rules []springFilterChainRule, prefix string) string {
+	if len(rules) == 0 || prefix == "" {
+		return ""
+	}
+	for _, r := range rules {
+		if antPatternMatchesPrefix(r.pattern, prefix) {
+			return r.rule
+		}
+	}
+	return ""
+}
+
+// antPatternMatchesPrefix reports whether a Spring ant-pattern covers a route
+// prefix: an exact match, or a `/**`/`/*` suffix-wildcard whose static head is a
+// prefix of the route. A leading `/**` (match-all) covers everything.
+func antPatternMatchesPrefix(pattern, prefix string) bool {
+	pattern = strings.TrimSpace(pattern)
+	prefix = strings.TrimSpace(prefix)
+	if pattern == "" || prefix == "" {
+		return false
+	}
+	if pattern == prefix {
+		return true
+	}
+	if pattern == "/**" || pattern == "/*" {
+		return true
+	}
+	for _, suffix := range []string{"/**", "/*"} {
+		if strings.HasSuffix(pattern, suffix) {
+			head := strings.TrimSuffix(pattern, suffix)
+			if head == "" || prefix == head || strings.HasPrefix(prefix, head+"/") || strings.HasPrefix(prefix, head) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// firstQuotedToken returns the first quoted token in an annotation argument list
+// (`{"ROLE_ADMIN","ROLE_USER"}` → `ROLE_ADMIN`), or "" when none is present.
+func firstQuotedToken(s string) string {
+	if m := authRoleArgRe.FindStringSubmatch(s); m != nil {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
+}
+
 // quarkusPermMatches reports whether any of the permission's path patterns
 // covers `endpointPath`. The grammar matches Quarkus's documented behaviour:
 //   - exact match

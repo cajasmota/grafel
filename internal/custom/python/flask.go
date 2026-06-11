@@ -84,6 +84,10 @@ func (e *FlaskExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		// django-ratelimit `@ratelimit(rate='5/m')` may be stacked above the
 		// route decorator, so widen to the full preceding decorator block.
 		resolvePyEndpointRateLimit(decoratorWindow(source, idx[0], idx[1]), source).stamp(props)
+		// #4752 — stamp the view source (decorator block through the handler body)
+		// so the flask resolver's source-scan fallback fires in the LIVE diff for
+		// any decorator shape the structured props above don't cover.
+		props["view_source"] = flViewSource(source, idx[0])
 		out = append(out, entity(funcName, "SCOPE.Operation", "endpoint", file.Path, line, props))
 	}
 
@@ -97,6 +101,7 @@ func (e *FlaskExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 		props := map[string]string{"framework": "flask", "pattern_type": "route", "path": path, "http_methods": httpMethod, "blueprint": appVar}
 		resolveFlaskDecoratorAuth(source[idx[0]:idx[1]]).stamp(props)
 		resolvePyEndpointRateLimit(decoratorWindow(source, idx[0], idx[1]), source).stamp(props)
+		props["view_source"] = flViewSource(source, idx[0])
 		out = append(out, entity(funcName, "SCOPE.Operation", "endpoint", file.Path, line, props))
 	}
 
@@ -224,6 +229,19 @@ func (e *FlaskExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil
+}
+
+// flViewSource returns the view source slice starting at the route decorator
+// (offset `start`) bounded to a small window — enough to carry the stacked auth
+// decorators and the handler signature for the flask resolver's source-scan
+// fallback (#4752) while keeping the graph payload small.
+func flViewSource(source string, start int) string {
+	const maxSource = 2048
+	end := start + maxSource
+	if end > len(source) {
+		end = len(source)
+	}
+	return strings.TrimSpace(source[start:end])
 }
 
 func parseHTTPMethods(raw string) string {

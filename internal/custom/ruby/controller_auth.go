@@ -93,6 +93,10 @@ var (
 	// per-action Pundit authorize call inside a method body: authorize @post
 	caPunditAuthorizeRe = regexp.MustCompile(`(?m)^\s*authorize\s+[@a-z_]`)
 
+	// Pundit `authorize @post` — capture the authorized record symbol so we can
+	// derive the policy literal (`@post` → `Post` policy). Group 1 = bare name.
+	caPunditRecordRe = regexp.MustCompile(`(?m)^\s*authorize\s+@?([A-Za-z_][\w]*)`)
+
 	// Pundit `authorize @post, :destroy?` — the trailing symbol is the explicit
 	// policy method. Group 1 = the policy-method name (without the `?`).
 	caPunditActionRe = regexp.MustCompile(`(?m)^\s*authorize\s+[@A-Za-z_][\w.]*\s*,\s*:([a-z_]+)\??`)
@@ -179,6 +183,12 @@ func (e *railsControllerAuthExtractor) Extract(ctx context.Context, file extract
 				"controller_action", handler,
 				"action", act.name)
 			posture.stamp(ent.Properties)
+			// #4752 — stamp the controller source body so the rails resolver's
+			// source-scan fallback fires in the LIVE diff for any guard shape the
+			// structured props above don't cover (custom before_action symbols, etc.).
+			if body := caSourceSlice(body); body != "" {
+				ent.Properties["controller_source"] = body
+			}
 			add(ent)
 		}
 	}
@@ -197,6 +207,17 @@ type caActionPosture struct {
 	// action checks (`authorize @post, :destroy?` → "destroy"). Empty when the
 	// guard is a coarse authenticate before_action (authn, not authz).
 	permission string
+	// punditPolicy is the Pundit policy class literal the resolver decodes the
+	// exact action grant from (`authorize @post` → "Post"). Empty for non-Pundit.
+	punditPolicy string
+	// punditAction is the explicit Pundit policy method (`authorize @post,
+	// :destroy?` → "destroy"). Empty when the action defaults to the controller
+	// action name.
+	punditAction string
+	// cancancanAbility is the CanCanCan ability literal (`authorize! :destroy` →
+	// "destroy" / `load_and_authorize_resource` → the controller action). Empty
+	// for non-CanCanCan.
+	cancancanAbility string
 }
 
 func (p caActionPosture) stamp(props map[string]string) {
@@ -213,6 +234,18 @@ func (p caActionPosture) stamp(props map[string]string) {
 	// archigraph_auth_coverage answers "what permission does this route require?".
 	if p.permission != "" {
 		props["auth_permissions"] = p.permission
+	}
+	// #4751 — stamp the Pundit policy/action and CanCanCan ability LITERALS so the
+	// rails resolver decodes the exact action grant (KindAction with the policy
+	// codename) instead of degrading to a coarse posture from the source scan.
+	if p.punditPolicy != "" {
+		props["pundit_policy"] = p.punditPolicy
+	}
+	if p.punditAction != "" {
+		props["pundit_action"] = p.punditAction
+	}
+	if p.cancancanAbility != "" {
+		props["cancancan_ability"] = p.cancancanAbility
 	}
 }
 
@@ -303,10 +336,17 @@ func caResolveAction(level caControllerLevelAuth, body, action string) caActionP
 			protected = false
 		}
 		if protected {
-			return caActionPosture{
+			p := caActionPosture{
 				required: true, guard: level.guard,
 				method: level.method, confidence: level.confidence,
 			}
+			// #4751 — a controller-level `load_and_authorize_resource` (CanCanCan)
+			// authorizes the controller action; stamp the action name as the ability
+			// literal so the resolver decodes the exact grant.
+			if level.method == "cancancan" {
+				p.cancancanAbility = action
+			}
+			return p
 		}
 	}
 
@@ -320,17 +360,27 @@ func caResolveAction(level caControllerLevelAuth, body, action string) caActionP
 			if m := caPunditActionRe.FindStringSubmatch(actionBody); m != nil {
 				perm = m[1]
 			}
+			// #4751 — derive the Pundit policy class literal from the authorized
+			// record (`authorize @post` → "Post"); the resolver reads pundit_policy
+			// + pundit_action to decode the exact action grant.
+			policy := ""
+			if m := caPunditRecordRe.FindStringSubmatch(actionBody); m != nil {
+				policy = caPunditPolicyClass(m[1])
+			}
 			return caActionPosture{
 				required: true, guard: "authorize",
 				method: "pundit", confidence: "medium",
-				permission: perm,
+				permission:   perm,
+				punditPolicy: policy,
+				punditAction: perm,
 			}
 		}
 		if m := caCanCanActionRe.FindStringSubmatch(actionBody); m != nil {
 			return caActionPosture{
 				required: true, guard: "authorize!",
 				method: "cancancan", confidence: "medium",
-				permission: m[1],
+				permission:       m[1],
+				cancancanAbility: m[1],
 			}
 		}
 	}
@@ -395,6 +445,44 @@ func caClassBody(src string, from int) string {
 		return rest[:nxt[0]]
 	}
 	return rest
+}
+
+// caPunditPolicyClass maps an authorized-record symbol to its Pundit policy class
+// literal: `post` / `@post` → "Post"; an already-capitalised constant is kept.
+// Pundit infers the policy from the record's class, so we Camelize the bare name.
+func caPunditPolicyClass(record string) string {
+	record = strings.TrimPrefix(strings.TrimSpace(record), "@")
+	if record == "" {
+		return ""
+	}
+	// Camelize a snake_case / lower record name (`blog_post` → "BlogPost").
+	var b strings.Builder
+	upNext := true
+	for _, r := range record {
+		if r == '_' {
+			upNext = true
+			continue
+		}
+		if upNext && r >= 'a' && r <= 'z' {
+			b.WriteRune(r - ('a' - 'A'))
+		} else {
+			b.WriteRune(r)
+		}
+		upNext = false
+	}
+	return b.String()
+}
+
+// caSourceSlice bounds a controller body for stamping as controller_source — the
+// resolver only needs the auth-bearing region, so cap the slice to keep the graph
+// payload small while still carrying every before_action / authorize call.
+func caSourceSlice(body string) string {
+	const maxSource = 4096
+	body = strings.TrimSpace(body)
+	if len(body) > maxSource {
+		return body[:maxSource]
+	}
+	return body
 }
 
 // caControllerResource maps a controller class name to the routes.rb resource

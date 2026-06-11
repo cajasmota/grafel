@@ -325,3 +325,50 @@ func keysOf(m map[string]types.EntityRecord) []string {
 	}
 	return out
 }
+
+// TestControllerAuthPunditLiteral_4751 — a per-action `authorize @post, :update?`
+// stamps pundit_policy/pundit_action so the rails resolver decodes the exact
+// action grant (#4751).
+func TestControllerAuthPunditLiteral_4751(t *testing.T) {
+	src := `class PostsController < ApplicationController
+  def update
+    @post = Post.find(params[:id])
+    authorize @post, :update?
+  end
+end
+`
+	eps := runControllerAuth(t, src)
+	e, ok := eps["posts#update"]
+	if !ok {
+		t.Fatalf("no posts#update endpoint; got %+v", eps)
+	}
+	if e.Properties["pundit_policy"] != "Post" {
+		t.Errorf("pundit_policy=%q, want Post", e.Properties["pundit_policy"])
+	}
+	if e.Properties["pundit_action"] != "update" {
+		t.Errorf("pundit_action=%q, want update", e.Properties["pundit_action"])
+	}
+	if e.Properties["controller_source"] == "" {
+		t.Errorf("controller_source not stamped")
+	}
+}
+
+// TestControllerAuthCanCanLiteral_4751 — controller-level
+// load_and_authorize_resource stamps cancancan_ability = the action name (#4751).
+func TestControllerAuthCanCanLiteral_4751(t *testing.T) {
+	src := `class WidgetsController < ApplicationController
+  load_and_authorize_resource
+
+  def destroy
+  end
+end
+`
+	eps := runControllerAuth(t, src)
+	e, ok := eps["widgets#destroy"]
+	if !ok {
+		t.Fatalf("no widgets#destroy endpoint; got %+v", eps)
+	}
+	if e.Properties["cancancan_ability"] != "destroy" {
+		t.Errorf("cancancan_ability=%q, want destroy", e.Properties["cancancan_ability"])
+	}
+}

@@ -81,7 +81,11 @@ var (
 type elixirPipeline struct {
 	name  string
 	plugs []string
-	line  int
+	// plugLines holds the full trimmed plug source line for each plug (parallel
+	// to plugs), so role/option literals (`plug :require_role, :editor`) survive
+	// for the #4751 auth-stamping role extraction.
+	plugLines []string
+	line      int
 }
 
 // authPlugMethod classifies a plug name/module into an auth method.
@@ -148,6 +152,30 @@ func (e *phoenixExtractor) Extract(ctx context.Context, file extractor.FileInput
 	var entities []types.EntityRecord
 	seen := make(map[string]bool)
 
+	// #4751 — resolve scope ▸ pipe_through ▸ pipeline ▸ plug so each route can be
+	// stamped with its effective auth_pipelines + auth_plugs (+ role literal). The
+	// router source is also stamped as router_source for the source-scan fallback.
+	pipelinesByName := map[string]elixirPipeline{}
+	for _, pl := range parsePhoenixPipelines(src) {
+		pipelinesByName[pl.name] = pl
+	}
+	scopeSpans := parsePhoenixScopeSpans(src)
+	stampRouteAuth := func(ent *types.EntityRecord, routeOff int) {
+		res := resolvePhoenixRouteAuth(routeOff, scopeSpans, pipelinesByName)
+		if len(res.pipelines) > 0 {
+			ent.Properties["auth_pipelines"] = strings.Join(res.pipelines, ",")
+		}
+		if len(res.plugs) > 0 {
+			ent.Properties["auth_plugs"] = strings.Join(res.plugs, ",")
+		}
+		if res.role != "" {
+			ent.Properties["auth_roles"] = res.role
+		}
+		// router_source — the resolver's source-scan fallback reads this when the
+		// structured pipeline/plug props above don't resolve (dynamic pipe_through).
+		ent.Properties["router_source"] = phoenixRouterSlice(src, routeOff)
+	}
+
 	add := func(ent types.EntityRecord) {
 		key := ent.Kind + ":" + ent.Name
 		if seen[key] {
@@ -165,6 +193,7 @@ func (e *phoenixExtractor) Extract(ctx context.Context, file extractor.FileInput
 		ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "phoenix", "provenance", "INFERRED_FROM_PHOENIX_ROUTE",
 			"http_method", method, "route_path", path)
+		stampRouteAuth(&ent, m[0])
 		add(ent)
 	}
 
@@ -174,6 +203,7 @@ func (e *phoenixExtractor) Extract(ctx context.Context, file extractor.FileInput
 		ent := makeEntity("LIVE "+path, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "phoenix", "provenance", "INFERRED_FROM_PHOENIX_LIVE_ROUTE",
 			"route_path", path, "route_type", "live")
+		stampRouteAuth(&ent, m[0])
 		add(ent)
 	}
 
@@ -187,6 +217,7 @@ func (e *phoenixExtractor) Extract(ctx context.Context, file extractor.FileInput
 			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, ln)
 			setProps(&ent, "framework", "phoenix", "provenance", "INFERRED_FROM_PHOENIX_RESOURCES",
 				"http_method", cr.method, "route_path", routePath)
+			stampRouteAuth(&ent, m[0])
 			add(ent)
 		}
 	}
@@ -390,11 +421,132 @@ func parsePhoenixPipelines(src string) []elixirPipeline {
 			}
 			if pm := rePhoenixPlugLine.FindStringSubmatch(ln); pm != nil {
 				pl.plugs = append(pl.plugs, pm[1])
+				pl.plugLines = append(pl.plugLines, strings.TrimSpace(ln))
 			}
 		}
 		out = append(out, pl)
 	}
 	return out
+}
+
+// phoenixScopeSpan is one `scope "/path" do ... end` block with its byte span
+// and the pipeline names its (first) pipe_through resolves to. Spans may nest;
+// the innermost enclosing scope's pipe_through wins for a route.
+type phoenixScopeSpan struct {
+	start    int // byte offset of the scope header
+	end      int // byte offset of the matching `end`
+	pipeline []string
+}
+
+// rePhoenixScopeHeader matches a `scope ... do` header (with or without a path).
+var rePhoenixScopeHeader = regexp.MustCompile(`(?m)^\s*scope\b.*\bdo\s*$`)
+
+// parsePhoenixScopeSpans returns every scope block with its byte span and the
+// pipeline names of the FIRST pipe_through declared directly in the scope body
+// (#4751). Spans are line-scanned by indentation, matching parsePhoenixPipelines.
+func parsePhoenixScopeSpans(src string) []phoenixScopeSpan {
+	var out []phoenixScopeSpan
+	lines := strings.Split(src, "\n")
+	// Precompute the byte offset of each line start.
+	offsets := make([]int, len(lines)+1)
+	off := 0
+	for i, ln := range lines {
+		offsets[i] = off
+		off += len(ln) + 1 // +1 for the split newline
+	}
+	offsets[len(lines)] = off
+	for i := 0; i < len(lines); i++ {
+		if !rePhoenixScopeHeader.MatchString(lines[i]) {
+			continue
+		}
+		headerIndent := indentWidth(lines[i])
+		span := phoenixScopeSpan{start: offsets[i], end: len(src)}
+		for j := i + 1; j < len(lines); j++ {
+			ln := lines[j]
+			trimmed := strings.TrimSpace(ln)
+			if trimmed == "end" && indentWidth(ln) <= headerIndent {
+				span.end = offsets[j]
+				break
+			}
+			if span.pipeline == nil {
+				if pm := rePhoenixPipeThrough.FindStringSubmatch(ln); pm != nil {
+					span.pipeline = parsePipeThroughList(pm[1])
+				}
+			}
+		}
+		out = append(out, span)
+	}
+	return out
+}
+
+// phoenixRouteAuth is the resolved auth context for one route: the pipeline names
+// it pipes through, the auth plugs across those pipelines, and a role literal
+// (from `plug :require_role, :editor`) when present.
+type phoenixRouteAuth struct {
+	pipelines []string
+	plugs     []string
+	role      string
+}
+
+// rePhoenixRolePlug matches a role-bearing plug `plug :require_role, :editor` /
+// `plug RequireRole, role: "editor"`; group 1 = the role literal.
+var rePhoenixRolePlug = regexp.MustCompile(`(?i)plug\s+[:\w.]*require_?role\w*\s*,?\s*(?:role:\s*)?:?["` + "`" + `]?(\w[\w.-]*)`)
+
+// resolvePhoenixRouteAuth finds the innermost scope enclosing the route at
+// routeOff, resolves its pipe_through pipeline names to the named pipelines, and
+// collects the auth plugs (and any role literal) across those pipelines (#4751).
+func resolvePhoenixRouteAuth(routeOff int, scopes []phoenixScopeSpan, pipelines map[string]elixirPipeline) phoenixRouteAuth {
+	var res phoenixRouteAuth
+	// Innermost (smallest, latest-starting) enclosing scope with a pipe_through.
+	best := -1
+	for i, s := range scopes {
+		if routeOff < s.start || routeOff >= s.end || len(s.pipeline) == 0 {
+			continue
+		}
+		if best < 0 || s.start > scopes[best].start {
+			best = i
+		}
+	}
+	if best < 0 {
+		return res
+	}
+	res.pipelines = scopes[best].pipeline
+	for _, name := range res.pipelines {
+		pl, ok := pipelines[name]
+		if !ok {
+			continue
+		}
+		for idx, pg := range pl.plugs {
+			if prov, _ := authPlugMethod(pg); prov != "" {
+				res.plugs = append(res.plugs, pg)
+			}
+			// Role literal from the FULL plug line (`plug :require_role, :editor`),
+			// since pg is only the plug name token.
+			if res.role == "" && idx < len(pl.plugLines) {
+				if m := rePhoenixRolePlug.FindStringSubmatch(pl.plugLines[idx]); m != nil {
+					res.role = m[1]
+				}
+			}
+		}
+	}
+	return res
+}
+
+// phoenixRouterSlice returns a bounded source slice around a route registration
+// for the router_source source-scan fallback (#4751/#4752). It includes a window
+// before the route (to carry the enclosing scope's pipe_through) and after.
+func phoenixRouterSlice(src string, routeOff int) string {
+	const before = 512
+	const after = 256
+	start := routeOff - before
+	if start < 0 {
+		start = 0
+	}
+	end := routeOff + after
+	if end > len(src) {
+		end = len(src)
+	}
+	return strings.TrimSpace(src[start:end])
 }
 
 // parsePipeThroughList normalises `pipe_through :api` or

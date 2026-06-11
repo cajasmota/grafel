@@ -55,8 +55,13 @@ type pyEndpointAuth struct {
 	Roles       []string
 	Permissions []string // fine-grained permission strings (DRF/Flask args)
 	Confidence  string   // "high" | "medium" | "low"
-	found       bool     // an explicit auth signal was recognised
-	publicSet   bool     // an explicit public marker was recognised (AllowAny)
+	// Decorator is the Flask auth-decorator name (`roles_required`,
+	// `permission_required`, …). Stamped as `auth_decorator` (#4752) so the flask
+	// resolver can decode admin/superuser-by-decorator-name (e.g.
+	// `@admin_required`) even when the decorator carries no explicit role arg.
+	Decorator string
+	found     bool // an explicit auth signal was recognised
+	publicSet bool // an explicit public marker was recognised (AllowAny)
 }
 
 // stamp writes the resolved posture onto an endpoint Properties map, mirroring
@@ -91,6 +96,16 @@ func (a pyEndpointAuth) stamp(props map[string]string) {
 			p := append([]string(nil), a.Permissions...)
 			sort.Strings(p)
 			props["auth_permissions"] = strings.Join(p, ",")
+			// #4752 — the flask resolver reads `auth_page` as a permission alias;
+			// mirror the permission into it so a Flask-Principal
+			// `@permission_required('export')` decodes structurally.
+			props["auth_page"] = props["auth_permissions"]
+		}
+		// #4752 — stamp the decorator name so the flask resolver decodes
+		// admin/superuser-by-name (`@admin_required` / `@superuser_required`) where
+		// the decorator carries no explicit role/permission arg.
+		if a.Decorator != "" {
+			props["auth_decorator"] = a.Decorator
 		}
 		return
 	}
@@ -210,7 +225,7 @@ func faDependenciesKwargAuth(decoratorArgs string) (string, bool) {
 var flAuthDecoratorRe = regexp.MustCompile(
 	`@(login_required|fresh_login_required|roles_required|roles_accepted|` +
 		`permission_required|auth_required|auth\.login_required|token_required|jwt_required|` +
-		`admin_required|requires_auth)\b\s*(?:\(([^)]*)\))?`)
+		`admin_required|superuser_required|staff_required|requires_auth)\b\s*(?:\(([^)]*)\))?`)
 
 // resolveFlaskDecoratorAuth scans the decorator block preceding a Flask route
 // handler for a recognised auth decorator. `decoratorBlock` is the text between
@@ -225,6 +240,7 @@ func resolveFlaskDecoratorAuth(decoratorBlock string) pyEndpointAuth {
 	a.Method = "decorator"
 	a.Confidence = "high"
 	a.Guard = m[1]
+	a.Decorator = m[1]
 	if len(m) > 2 && m[2] != "" {
 		// `@roles_required('admin')` / `@roles_accepted(...)` name roles;
 		// `@permission_required('app.delete_order')` names a fine-grained

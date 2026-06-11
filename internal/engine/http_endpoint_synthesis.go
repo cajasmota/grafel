@@ -807,6 +807,11 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeSpringFromComposed(entities, path, emit)
 		// JAX-RS: scan the file directly.
 		synthesizeJAXRS(string(content), emit)
+		// Producer side (#4750): stamp the method ▸ class ▸ global Spring-Security
+		// posture (@PreAuthorize/@Secured + matched SecurityFilterChain rule + the
+		// handler source body, #4752) onto the Spring endpoints emitted above, so
+		// the authposture spring resolver decodes class/global postures live.
+		applySpringCoreAuth(string(content), path, entities, javaMWBefore)
 		// Javalin (#3085): lambda DSL `app.get("/path", handler)` routing.
 		synthesizeJavalin(string(content), emit)
 		// Vert.x (#3086): lambda DSL `router.get("/path").handler(...)` routing.
@@ -1169,7 +1174,13 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 	case "csharp":
 		// Producer side (#2692): ASP.NET Core attribute routing —
 		// [HttpGet/Post/...] + class-level [Route("/api/[controller]")].
+		aspnetBefore := len(entities)
 		synthesizeASPNetCore(string(content), emit)
+		// Producer side (#4750): stamp the method ▸ class ▸ global
+		// [Authorize]/[AllowAnonymous]/Roles/Policy posture (and the action source
+		// body for the source-scan fallback, #4752) onto the ASP.NET endpoints
+		// emitted above, so the authposture aspnet resolver decodes them live.
+		applyAspnetCoreAuth(string(content), path, entities, aspnetBefore)
 		// Producer side (#3617): HotChocolate GraphQL server. Maps the three
 		// root types ([QueryType]/[MutationType]/[SubscriptionType] markers,
 		// [ExtendObjectType(...)] extensions, or fluent .AddQueryType<T>()
@@ -1216,6 +1227,10 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		phpRLBefore := len(entities)
 		// Producer side (#1419): Laravel Route::verb/resource/apiResource.
 		synthesizeLaravel(string(content), emit, emitResource)
+		// Producer side (#4752): reconcile route + group auth middleware
+		// (auth / role: / can: / withoutMiddleware) into the flat auth posture the
+		// authposture laravel resolver decodes live, over the endpoints emitted above.
+		applyLaravelAuth(string(content), path, entities, phpRLBefore)
 		// #3628 → #4073 rate-limit child — stamp the flat rate-limit contract
 		// (rate_limited/rate_limit/rate_limit_scope/rate_limit_source) on the
 		// Laravel endpoints emitted above: per-route
