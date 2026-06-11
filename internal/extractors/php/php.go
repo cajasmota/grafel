@@ -98,6 +98,8 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// `function test_x()` methods are already mined by walk() (named methods), so
 	// this pass touches only the anonymous-closure case (no double-emit).
 	emitPHPTestScopeOwner(root, file, &entities)
+	// Issue #4854 — in-file base-class EXTENDS for field-membership recursion.
+	entities = attachPhpExtends(entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")
@@ -152,6 +154,23 @@ func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *
 						Kind: "CONTAINS",
 					})
 			}
+		}
+		// Issue #4854 — general field membership: one SCOPE.Schema/field per
+		// typed property + promoted constructor param, plus a class→field
+		// CONTAINS edge so a plain data class has field children (dedups by
+		// Name with the framework DTO members in #4613).
+		fieldEnts, baseName := emitPhpFieldMembers(node, body, file.Content, className, file.Path)
+		for _, fe := range fieldEnts {
+			toID := extractor.BuildSchemaFieldStructuralRef("php", file.Path, fe.Name)
+			(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+				types.RelationshipRecord{ToID: toID, Kind: "CONTAINS"})
+		}
+		*out = append(*out, fieldEnts...)
+		if baseName != "" {
+			if (*out)[classIdx].Metadata == nil {
+				(*out)[classIdx].Metadata = map[string]interface{}{}
+			}
+			(*out)[classIdx].Metadata["base_candidate"] = baseName
 		}
 		return
 

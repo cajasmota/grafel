@@ -84,6 +84,8 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// THROWS / CATCHES edges to a shared SCOPE.ExceptionType node, matching the
 	// Java / Python / Go / JS flagship error_flow model.
 	emitExceptionFlowEdges(root, file.Content, &entities)
+	// Issue #4854 — in-file base-class EXTENDS for field-membership recursion.
+	entities = attachCsharpExtends(entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "csharp")
 	extractor.TagEntitiesLanguage(entities, "csharp")
@@ -176,6 +178,24 @@ func walk(
 						Kind: "CONTAINS",
 					})
 			}
+		}
+		// Issue #4854 — general field membership: one SCOPE.Schema/field per
+		// property / public field / record positional parameter, plus a
+		// class→field CONTAINS edge so a plain data class has field children
+		// (dedups by Name with the endpoint-bound DTO members in #4715).
+		fieldEnts, baseNames := emitFieldMembers(node, body, file.Content, rec.Name, file.Path)
+		for _, fe := range fieldEnts {
+			toID := extractor.BuildSchemaFieldStructuralRef("csharp", file.Path, fe.Name)
+			(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+				types.RelationshipRecord{ToID: toID, Kind: "CONTAINS"})
+		}
+		*out = append(*out, fieldEnts...)
+		// Stash base-type candidates for the in-file EXTENDS post-pass.
+		if len(baseNames) > 0 {
+			if (*out)[classIdx].Metadata == nil {
+				(*out)[classIdx].Metadata = map[string]interface{}{}
+			}
+			(*out)[classIdx].Metadata["base_candidates"] = baseNames
 		}
 		return
 

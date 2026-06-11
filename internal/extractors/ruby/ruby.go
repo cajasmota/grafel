@@ -82,6 +82,8 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// `User`). Mirrors the JS/Go/Java/Python collapse (#4343/#4358/#4359/#4357).
 	// No-op for non-test files and classes that are not Minitest test cases.
 	emitRubyMinitestSuite(root, file, &entities)
+	// Issue #4854 — in-file superclass EXTENDS for field-membership recursion.
+	entities = attachRubyExtends(entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")
@@ -185,6 +187,20 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 						Kind: "CONTAINS",
 					})
 			}
+			// Issue #4854 — general field membership: one SCOPE.Schema/field per
+			// attr_accessor/attr_reader/attr_writer symbol + a class→field
+			// CONTAINS edge so a plain Ruby data class has field children (these
+			// are the only declaratively-present members; Ruby has no static
+			// field declarations otherwise).
+			emitRubyAttrFields(out, classIdx, body, file.Content, rec.Name, file.Path)
+		}
+		// Issue #4854 — stash the in-file superclass for the EXTENDS post-pass
+		// so the shape walker can recurse into inherited attr fields.
+		if sc := classSuperclass(node, file.Content); sc != "" {
+			if (*out)[classIdx].Metadata == nil {
+				(*out)[classIdx].Metadata = map[string]interface{}{}
+			}
+			(*out)[classIdx].Metadata["base_candidate"] = sc
 		}
 		return
 
@@ -219,6 +235,12 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		// continues below so we never miss a deeper assignment.
 		if vs, vok := buildConstCollectionValueSet(node, file); vok {
 			*out = append(*out, vs)
+		}
+		// Issue #4854 — `Const = Struct.new(:a, :b)` / `Data.define(:a, :b)`
+		// synthesises a SCOPE.Component data class + one field member per
+		// declared accessor, with class→field CONTAINS edges.
+		if sd := emitRubyStructDefine(node, file); len(sd) > 0 {
+			*out = append(*out, sd...)
 		}
 	}
 

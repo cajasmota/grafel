@@ -65,6 +65,8 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
 	walkNode(file.Tree.RootNode(), file, &entities)
+	// Issue #4854 — in-file base-class EXTENDS for field-membership recursion.
+	entities = attachSwiftExtends(entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "swift")
 	extractor.TagEntitiesLanguage(entities, "swift")
@@ -130,6 +132,22 @@ func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRe
 						Kind: "CONTAINS",
 					})
 			}
+		}
+		// Issue #4854 — general field membership: one SCOPE.Schema/field per
+		// stored property (let/var) + a type→field CONTAINS edge so a plain
+		// Swift data struct/class has field children.
+		fieldEnts, baseNames := emitSwiftFieldMembers(node, body, file.Content, rec.Name, file.Path)
+		for _, fe := range fieldEnts {
+			toID := extractor.BuildSchemaFieldStructuralRef("swift", file.Path, fe.Name)
+			(*out)[classIdx].Relationships = append((*out)[classIdx].Relationships,
+				types.RelationshipRecord{ToID: toID, Kind: "CONTAINS"})
+		}
+		*out = append(*out, fieldEnts...)
+		if len(baseNames) > 0 {
+			if (*out)[classIdx].Metadata == nil {
+				(*out)[classIdx].Metadata = map[string]interface{}{}
+			}
+			(*out)[classIdx].Metadata["base_candidates"] = baseNames
 		}
 		return
 

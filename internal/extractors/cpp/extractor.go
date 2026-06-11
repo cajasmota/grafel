@@ -131,6 +131,10 @@ func (e *CppExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 	// may have been declared above or below the definition.
 	attachOutOfLineContains(&records, file.Path, lang)
 
+	// Issue #4854 — class→field CONTAINS + in-file base-class EXTENDS for the
+	// SCOPE.Schema/field members emitted in the structural walk.
+	records = attachCppFieldMembership(records, file.Path, lang)
+
 	// Issue #3628 — error-flow: scan throw / typed-catch sites and emit
 	// THROWS / CATCHES edges to a shared SCOPE.ExceptionType convergence node
 	// (records[0] is the file entity required by EmitExceptionEdges).
@@ -205,6 +209,28 @@ func walkStructural(n *sitter.Node, src []byte, path, lang, container string, ou
 						ToID: toID,
 						Kind: "CONTAINS",
 					})
+			}
+			// Issue #4854 — emit one SCOPE.Schema/field per data member so a
+			// plain C++ data class has field children (class→field CONTAINS is
+			// wired in a post-pass once every in-file type name is known).
+			fieldEnts := emitClassFieldMembers(body, src, rec.Name, path, lang)
+			*out = append(*out, fieldEnts...)
+		}
+		// Issue #4854 — stash candidate base-class names on the owner so the
+		// post-pass can emit EXTENDS edges restricted to bases declared in
+		// this same file (mirrors the Go embedded-field EXTENDS policy).
+		if bases := cppBaseClasses(n, src); len(bases) > 0 {
+			var baseNames []string
+			for _, b := range bases {
+				if nm, _ := b["name"].(string); nm != "" {
+					baseNames = append(baseNames, nm)
+				}
+			}
+			if len(baseNames) > 0 {
+				if (*out)[idx].Metadata == nil {
+					(*out)[idx].Metadata = map[string]interface{}{}
+				}
+				(*out)[idx].Metadata["base_candidates"] = baseNames
 			}
 		}
 		return
