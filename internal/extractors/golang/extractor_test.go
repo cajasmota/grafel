@@ -253,18 +253,32 @@ type User struct {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	results = stripFileEntity(results)
-	if len(results) != 1 {
-		t.Fatalf("expected 1 entity, got %d", len(results))
+	// Issue #4850 — the struct now also emits a SCOPE.Schema/field entity per
+	// field (ID, Name), so the expected set is: struct Component + 2 fields.
+	if len(results) != 3 {
+		t.Fatalf("expected 3 entities (struct + 2 fields), got %d", len(results))
 	}
-	r := results[0]
-	if r.Kind != "SCOPE.Component" {
-		t.Errorf("expected Kind=SCOPE.Component, got %q", r.Kind)
+	var r *types.EntityRecord
+	fieldNames := map[string]bool{}
+	for i := range results {
+		switch {
+		case results[i].Kind == "SCOPE.Component":
+			r = &results[i]
+		case results[i].Kind == "SCOPE.Schema" && results[i].Subtype == "field":
+			fieldNames[results[i].Name] = true
+		}
+	}
+	if r == nil {
+		t.Fatalf("expected a SCOPE.Component struct entity")
 	}
 	if r.Subtype != "struct" {
 		t.Errorf("expected Subtype=struct, got %q", r.Subtype)
 	}
 	if r.Name != "User" {
 		t.Errorf("expected Name=User, got %q", r.Name)
+	}
+	if !fieldNames["User.ID"] || !fieldNames["User.Name"] {
+		t.Errorf("expected User.ID and User.Name field entities, got %v", fieldNames)
 	}
 }
 
@@ -324,17 +338,20 @@ func NewConfig(host string, port int) *Config {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	results = stripFileEntity(results)
-	if len(results) != 2 {
-		t.Fatalf("expected 2 entities (struct + function), got %d", len(results))
+	// Issue #4850 — Config struct now also emits a SCOPE.Schema/field entity
+	// per field (Host, Port): struct Component + 2 fields + NewConfig func.
+	if len(results) != 4 {
+		t.Fatalf("expected 4 entities (struct + 2 fields + function), got %d", len(results))
 	}
 
 	kinds := map[string]bool{}
 	for _, r := range results {
 		kinds[r.Kind] = true
 	}
-	// Config struct must emit SCOPE.Component; NewConfig emits SCOPE.Operation.
-	if !kinds["SCOPE.Component"] || !kinds["SCOPE.Operation"] {
-		t.Errorf("expected both SCOPE.Component and SCOPE.Operation, got kinds: %v", kinds)
+	// Config struct must emit SCOPE.Component; NewConfig emits SCOPE.Operation;
+	// the struct fields emit SCOPE.Schema.
+	if !kinds["SCOPE.Component"] || !kinds["SCOPE.Operation"] || !kinds["SCOPE.Schema"] {
+		t.Errorf("expected SCOPE.Component, SCOPE.Operation and SCOPE.Schema, got kinds: %v", kinds)
 	}
 }
 

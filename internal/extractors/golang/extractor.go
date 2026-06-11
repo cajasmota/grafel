@@ -1834,6 +1834,10 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 			var signature string
 			var kind string
 			var relationships []types.RelationshipRecord
+			// Issue #4850 — SCOPE.Schema/field entities for struct members,
+			// appended after the owning struct record so the resolver's
+			// byLocation index can bind the CONTAINS structural-refs.
+			var fieldEntities []types.EntityRecord
 			switch entitySubtype {
 			case "struct":
 				tags := findAll(typeBody, "raw_string_literal")
@@ -1853,6 +1857,12 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 				// the graph conservative: no edges to primitives, no edges
 				// to unresolved identifiers (which could be package-external).
 				relationships = extractStructFieldDependencies(typeBody, src, name, knownTypeNames)
+				// Issue #4850 — emit a field entity per named member and an
+				// EXTENDS edge per embedded field, so the struct (a DTO/data
+				// class) projects field children in the dashboard shape tree.
+				var embedExtends []types.RelationshipRecord
+				fieldEntities, embedExtends = extractStructFieldEntities(typeBody, src, name, filePath, knownTypeNames)
+				relationships = append(relationships, embedExtends...)
 			case "interface":
 				methodNodes := findAll(typeBody, "method_elem", "method_spec")
 				signature = fmt.Sprintf("type %s interface // %d method(s)", name, len(methodNodes))
@@ -1903,6 +1913,8 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 				EnrichmentRequired: false,
 			}
 			records = append(records, rec)
+			// Issue #4850 — struct field members follow their owning struct.
+			records = append(records, fieldEntities...)
 		}
 	}
 
@@ -2250,6 +2262,27 @@ func attachClassContains(records []types.EntityRecord, filePath string) []types.
 		}
 		toID := extractor.BuildOperationStructuralRef("go", filePath, r.Name)
 		records = appendRelationshipTo(records, recv, types.RelationshipRecord{
+			ToID: toID,
+			Kind: "CONTAINS",
+		})
+	}
+	// Issue #4850 — class→field CONTAINS. For every SCOPE.Schema/field member
+	// emitted by extractStructFieldEntities, attach a CONTAINS edge from its
+	// owning struct Component (Metadata["owner"]) to a Format-A field
+	// structural-ref keyed on the dotted Name + file (mirrors the Java #690,
+	// Python #689, Kotlin and JS/TS #4851 emitters). Without this edge a Go
+	// struct DTO has zero field children and the dashboard shape tree returns
+	// rows:[] (classHasFieldChildren false → no expand glyph).
+	for _, r := range records {
+		if r.Kind != "SCOPE.Schema" || r.Subtype != "field" {
+			continue
+		}
+		owner, _ := r.Metadata["owner"].(string)
+		if owner == "" {
+			continue
+		}
+		toID := extractor.BuildSchemaFieldStructuralRef("go", filePath, r.Name)
+		records = appendRelationshipTo(records, owner, types.RelationshipRecord{
 			ToID: toID,
 			Kind: "CONTAINS",
 		})
