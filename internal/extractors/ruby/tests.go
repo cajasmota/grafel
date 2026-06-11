@@ -63,8 +63,32 @@ func emitRubyTestScopeOwner(root *sitter.Node, file extractor.FileInput, out *[]
 			rels = append(rels, rel)
 		}
 	}
+	// The test-scope owner is minted ONLY when the spec actually reaches a
+	// production handler (a resolved CALLS edge). A shape-only assertion spec
+	// that exercises no handler stays owner-less — the #4684 honest-exclusion
+	// contract. The #4398 subject edge rides ALONG WITH that owner; it must not
+	// be the sole reason an owner is created, so we gate it on CALLS being
+	// present and append it after this check.
 	if len(rels) == 0 {
 		return
+	}
+	// #4398 — name-affinity TESTS edge to the subject class under test. Resolve
+	// the subject from (in priority order) the spec's `described_class`
+	// (top-level `describe Const`), then the spec-file-stem → class convention
+	// (`user_spec.rb` → `User`). When a subject resolves, append a single TESTS
+	// edge (`Class:<Subject>` stub the resolver binds to the in-repo class).
+	// Honest: no edge when nothing resolves.
+	if subj := resolveRSpecSubject(file.Path, bodies); subj != "" {
+		rels = append(rels, types.RelationshipRecord{
+			ToID: "Class:" + subj,
+			Kind: string(types.RelationshipKindTests),
+			Properties: map[string]string{
+				"framework":    "rspec",
+				"match_source": "spec_subject_affinity",
+				"target_type":  subj,
+			},
+			Confidence: 0.9,
+		})
 	}
 	name := rubyTestScopeName(file.Path)
 	rec := types.EntityRecord{
@@ -84,6 +108,218 @@ func emitRubyTestScopeOwner(root *sitter.Node, file extractor.FileInput, out *[]
 		"description": "test scope " + name,
 	}
 	*out = append(*out, rec)
+}
+
+// resolveRSpecSubject resolves the class under test for an RSpec spec via name
+// affinity (#4398). Priority:
+//
+//  1. `described_class` — the constant of the nearest `RSpec.describe Const`
+//     (collectRSpecBlockBodies already threads this down per block); the
+//     top-level describe's constant is the authoritative subject.
+//  2. The spec-file-stem → class convention: `user_spec.rb` → `User`,
+//     `order_service_spec.rb` → `OrderService` (snake_case stem, `_spec`
+//     stripped, camelized). Used only when no `describe Const` was present —
+//     a string-label `describe 'GET /users'` spec falls through to here.
+//
+// Returns "" when no subject resolves (honest exclusion — no spurious edge).
+func resolveRSpecSubject(path string, bodies []rspecBlock) string {
+	// (1) described_class from a `describe Const` — prefer the constant carried
+	// by the OUTERMOST block (the first collected body threads the top-level
+	// described class). Any non-empty describedClass is a high-confidence subject.
+	for _, b := range bodies {
+		if b.describedClass != "" {
+			return rubyConstBaseName(b.describedClass)
+		}
+	}
+	// (2) Spec-file-stem → class convention.
+	return rubySpecStemToClass(path)
+}
+
+// rubyConstBaseName returns the final constant segment of a possibly
+// `::`-qualified Ruby constant (`Admin::UsersController` → `UsersController`),
+// so the `Class:<Subject>` stub matches the resolver's by-name index (which
+// keys on the bare class name).
+func rubyConstBaseName(c string) string {
+	if i := strings.LastIndex(c, "::"); i >= 0 {
+		return c[i+2:]
+	}
+	return c
+}
+
+// rubySpecStemToClass camelizes a spec file stem into the conventional class
+// name under test: `user_spec.rb` → `User`, `order_service_spec.rb` →
+// `OrderService`. Returns "" when the stem has no `_spec` suffix (so a non-spec
+// path never fabricates a subject) or yields no token.
+func rubySpecStemToClass(path string) string {
+	base := filepath.Base(filepath.ToSlash(path))
+	base = strings.TrimSuffix(base, ".rb")
+	stem := strings.TrimSuffix(base, "_spec")
+	if stem == base || stem == "" {
+		return "" // no `_spec` suffix — not the spec-stem convention
+	}
+	return rubyCamelize(stem)
+}
+
+// rubyCamelize converts a snake_case identifier to PascalCase
+// (`order_service` → `OrderService`). Empty segments are skipped.
+func rubyCamelize(snake string) string {
+	var b strings.Builder
+	for _, part := range strings.Split(snake, "_") {
+		if part == "" {
+			continue
+		}
+		b.WriteString(strings.ToUpper(part[:1]))
+		b.WriteString(part[1:])
+	}
+	return b.String()
+}
+
+// emitRubyMinitestSuite collapses a Minitest test case into a single
+// test_suite entity per class, folding the `def test_*` example count to a
+// property and emitting a name-affinity TESTS edge to the subject class under
+// test (#4398).
+//
+// Minitest test cases are NAMED classes (`class UserTest < Minitest::Test`)
+// whose `def test_x` examples ARE method declarations — so walk() already mines
+// their bodies for CALLS edges (no anonymous-block orphan problem like RSpec).
+// What was missing is (a) a one-per-class collapsed test_suite the coverage/
+// dashboard surfaces recognise, and (b) the TESTS→subject edge crediting the
+// class the suite exercises. This pass adds both, gated to test files that
+// declare a Minitest/Test::Unit/ActiveSupport test case.
+//
+// Subject affinity: strip the conventional `Test` suffix from the test-case
+// class name (`UserTest` → `User`, `OrderServiceTest` → `OrderService`), else
+// fall back to the spec-file-stem convention. No `Test`-suffix and no stem
+// match → no edge (honest exclusion).
+//
+// The suite Name is namespaced (`minitest_suite:<file>:<Class>`) so the
+// resolver's by-name index never confuses it with the production class of the
+// same base name and re-orphans it (the #4366 MergeWithCustom / #4343 lesson).
+func emitRubyMinitestSuite(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+	if root == nil || !isRubyTestFile(file.Path) {
+		return
+	}
+	for _, cls := range findAllNodes(root, "class") {
+		super := childFieldText(cls, "superclass", file.Content)
+		if !isMinitestSuperclass(super) {
+			continue
+		}
+		className := childFieldText(cls, "name", file.Content)
+		if className == "" {
+			continue
+		}
+		testCount := countMinitestExamples(cls, file.Content)
+		if testCount == 0 {
+			continue // a test-case class with no `def test_*` exercises nothing
+		}
+		base := filepath.Base(filepath.ToSlash(file.Path))
+		base = strings.TrimSuffix(base, ".rb")
+		rec := types.EntityRecord{
+			Name:       "minitest_suite:" + base + ":" + rubyConstBaseName(className),
+			Kind:       "SCOPE.Operation",
+			Subtype:    "test_suite",
+			SourceFile: file.Path,
+			Language:   "ruby",
+			StartLine:  int(cls.StartPoint().Row) + 1,
+			EndLine:    int(cls.EndPoint().Row) + 1,
+			Properties: map[string]string{
+				"framework":      "minitest",
+				"test_framework": "minitest",
+				"provenance":     "INFERRED_FROM_MINITEST_SUITE",
+				"suite_label":    className,
+				"test_count":     strconv.Itoa(testCount),
+			},
+		}
+		if subj := resolveMinitestSubject(file.Path, className); subj != "" {
+			rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
+				ToID: "Class:" + subj,
+				Kind: string(types.RelationshipKindTests),
+				Properties: map[string]string{
+					"framework":    "minitest",
+					"match_source": "spec_subject_affinity",
+					"target_type":  subj,
+				},
+				Confidence: 0.9,
+			})
+		}
+		*out = append(*out, rec)
+	}
+}
+
+// isMinitestSuperclass reports whether a class superclass marks a Minitest /
+// Test::Unit / ActiveSupport test case. Tolerates `::`-qualified forms.
+func isMinitestSuperclass(super string) bool {
+	s := strings.TrimSpace(super)
+	if s == "" {
+		return false
+	}
+	switch rubyConstBaseName(s) {
+	case "Test": // Minitest::Test
+		return strings.Contains(s, "Minitest") || strings.Contains(s, "MiniTest")
+	case "TestCase": // ActiveSupport::TestCase, Test::Unit::TestCase, Minitest::Test::Unit::TestCase
+		return true
+	case "Spec": // Minitest::Spec
+		return strings.Contains(s, "Minitest") || strings.Contains(s, "MiniTest")
+	}
+	return false
+}
+
+// countMinitestExamples counts the `def test_*` method declarations directly in
+// a Minitest test-case class body. Only methods whose name starts with `test_`
+// (or is exactly `test`) are Minitest examples; helpers / `setup` / `teardown`
+// are excluded from the count.
+func countMinitestExamples(cls *sitter.Node, src []byte) int {
+	n := 0
+	for _, m := range findAllNodes(cls, "method") {
+		name := childFieldText(m, "name", src)
+		if name == "test" || strings.HasPrefix(name, "test_") {
+			n++
+		}
+	}
+	return n
+}
+
+// resolveMinitestSubject resolves the subject class a Minitest case tests via
+// name affinity (#4398): strip the conventional `Test` suffix from the test-case
+// class name (`UserTest` → `User`), else fall back to the spec-file-stem
+// convention. Returns "" when neither yields a name (honest exclusion).
+func resolveMinitestSubject(path, className string) string {
+	base := rubyConstBaseName(className)
+	if strings.HasSuffix(base, "Test") && len(base) > len("Test") {
+		return strings.TrimSuffix(base, "Test")
+	}
+	// Minitest's file convention is `*_test.rb` (not `*_spec.rb`); reuse the
+	// camelize convention on the `_test`-stripped stem.
+	return rubyTestStemToClass(path)
+}
+
+// rubyTestStemToClass camelizes a `*_test.rb` file stem into the conventional
+// class under test (`user_test.rb` → `User`). Returns "" when the stem has no
+// `_test` suffix.
+func rubyTestStemToClass(path string) string {
+	base := filepath.Base(filepath.ToSlash(path))
+	base = strings.TrimSuffix(base, ".rb")
+	stem := strings.TrimSuffix(base, "_test")
+	if stem == base || stem == "" {
+		return ""
+	}
+	return rubyCamelize(stem)
+}
+
+// isRubyTestFile reports whether path is any Ruby test file — an RSpec spec
+// (`*_spec.rb` / under `/spec/`) OR a Minitest/Test::Unit test (`*_test.rb` /
+// `test_*.rb` / under `/test/`). Broader than isRubySpecFile so the Minitest
+// collapse fires on the `test/` tree.
+func isRubyTestFile(path string) bool {
+	if isRubySpecFile(path) {
+		return true
+	}
+	slashed := "/" + filepath.ToSlash(strings.ToLower(path))
+	if strings.Contains(slashed, "/test/") || strings.Contains(slashed, "/tests/") {
+		return true
+	}
+	base := strings.ToLower(filepath.Base(path))
+	return strings.HasSuffix(base, "_test.rb") || strings.HasPrefix(base, "test_")
 }
 
 // rspecBlock is an RSpec example/hook block body paired with the class constant

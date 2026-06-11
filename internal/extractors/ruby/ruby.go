@@ -75,6 +75,13 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// for non-spec files. Route-hit linkage (`get '/api/...'`) stays in the
 	// RSpec custom extractor's e2e_route_calls path (#4371).
 	emitRubyTestScopeOwner(root, file, &entities)
+	// Issue #4398 (epic #4615) — Minitest test-case collapse. A
+	// `class UserTest < Minitest::Test` with `def test_*` examples is collapsed
+	// to one test_suite per class (example count folded to a property) plus a
+	// name-affinity TESTS edge to the subject class under test (`UserTest` →
+	// `User`). Mirrors the JS/Go/Java/Python collapse (#4343/#4358/#4359/#4357).
+	// No-op for non-test files and classes that are not Minitest test cases.
+	emitRubyMinitestSuite(root, file, &entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")

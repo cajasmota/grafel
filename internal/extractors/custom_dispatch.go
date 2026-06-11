@@ -131,6 +131,18 @@ var extraCustomPrefixesForLanguage = map[string][]string{
 	// extractor. The keySet dedup in CustomExtractorsFor makes the duplicate a
 	// no-op when the primary already matches.
 	"dart": {"custom_dart_"},
+	// javascript/typescript's PRIMARY prefix in customPrefixForLanguage is
+	// ALREADY `custom_js_`, so the #4399 browser-e2e coverage-linkage tail
+	// extractor `custom_js_tests_route_e2e` is selected by
+	// CustomExtractorsFor("javascript"/"typescript") via that primary entry.
+	// This explicit re-listing is the #4769 belt-and-suspenders guard: it
+	// documents and locks the dispatch prefix so a future refactor of the JS
+	// primary entry (the Lua mismatch class of bug, where the framework prefix
+	// and the canonical `custom_<lang>_` tail key diverge) cannot silently drop
+	// the tail extractor. The keySet dedup in CustomExtractorsFor makes the
+	// duplicate a no-op when the primary already matches.
+	"javascript": {"custom_js_"},
+	"typescript": {"custom_js_"},
 }
 
 // CustomExtractorsFor returns all registered custom/framework extractors
