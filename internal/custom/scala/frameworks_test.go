@@ -434,15 +434,14 @@ class UserServiceSpec extends AnyFlatSpec {
 }
 `
 	ents := extract(t, "custom_scala_frameworks", fi("UserServiceSpec.scala", "scala", src))
-	found := false
+	// #4360 — the per-file SCOPE.Test/test_suite orphan is no longer emitted
+	// from this extractor. It carried no edges and had no consumer. Subject-aware
+	// test→SUT TESTS edges now come solely from the deep testmap linker
+	// (detectScalaTest), and route-hit e2e edges from tests_route_e2e.go.
 	for _, e := range ents {
 		if e.Kind == "SCOPE.Test" && e.Subtype == "test_suite" {
-			found = true
-			break
+			t.Errorf("scaffolding orphan test_suite must not be emitted (#4360); got %q", e.Name)
 		}
-	}
-	if !found {
-		t.Error("expected test_suite entity for ScalaTest")
 	}
 }
 

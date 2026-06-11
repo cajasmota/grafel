@@ -1666,22 +1666,108 @@ func scalaFirstSpecType(source string) string {
 	return ""
 }
 
+// scalaFlatSpecSubjectRE captures the leading string-literal subject of a
+// ScalaTest FlatSpec / specs2 block: the quoted phrase immediately before the
+// `should` / `must` / `can` / `when` / `in` chaining verb that opens a spec
+// behaviour group. For `"OrderService" should "place an order" in { … }` group
+// 1 is `OrderService`. specs2's `"OrderService" should { … }` block form is
+// caught by the same shape. #4360 — Tier-2 subject affinity.
+var scalaFlatSpecSubjectRE = regexp.MustCompile(
+	`(?m)"([A-Za-z_][\w]*)"\s+(?:should|must|can|when)\b`,
+)
+
+// scalaNewSubjectRE captures a locally-constructed system-under-test:
+// `new OrderService(...)` / `new OrderService`. Group 1 is the type. #4360 —
+// Tier-3 subject affinity (instantiated SUT).
+var scalaNewSubjectRE = regexp.MustCompile(
+	`\bnew\s+([A-Z][\w]*)\b`,
+)
+
+// scalaMockSubjectRE captures a mockito-scala / scalamock SUT-shaped target:
+// `mock[OrderService]` / `mock[OrderService](...)`. Group 1 is the mocked type.
+// #4360 — Tier-3 subject affinity (mocked SUT).
+var scalaMockSubjectRE = regexp.MustCompile(
+	`\bmock\s*\[\s*([A-Z][\w]*)\s*\]`,
+)
+
+// scalaSubjectStopwords are common ScalaTest / specs2 / library type names that
+// the leading-literal (Tier 2) and `new`/`mock` (Tier 3) passes must never
+// surface as the production subject under test — they are test-harness or
+// stdlib constructs, not the SUT. Lower-cased for case-insensitive lookup is
+// not needed (these are exact type names), so they are matched verbatim.
+var scalaSubjectStopwords = map[string]bool{
+	// ScalaTest / specs2 fixtures & matchers commonly instantiated in a body.
+	"TestKit": true, "TestProbe": true, "ActorSystem": true, "Scheduler": true,
+	"FakeRequest": true, "TestData": true, "FixtureParam": true,
+	// stdlib / collection constructors that appear as `new X` but are never SUTs.
+	"String": true, "StringBuilder": true, "Array": true, "Exception": true,
+	"RuntimeException": true, "Throwable": true, "Random": true, "Date": true,
+}
+
+// scalaSubjectFromBody resolves a Tier-2/Tier-3 subject from a single leaf
+// body / spec source slice: a leading string-literal subject (`"X" should`),
+// then a locally-constructed `new X(...)`, then a `mock[X]`. Returns "" when no
+// honest subject is found (never a spurious guess). Stopword-filtered so
+// test-harness constructs are not mistaken for the SUT.
+func scalaSubjectFromBody(s string) string {
+	if m := scalaFlatSpecSubjectRE.FindStringSubmatch(s); m != nil {
+		if cand := m[1]; !scalaSubjectStopwords[cand] {
+			return cand
+		}
+	}
+	if m := scalaNewSubjectRE.FindStringSubmatch(s); m != nil {
+		if cand := m[1]; !scalaSubjectStopwords[cand] {
+			return cand
+		}
+	}
+	if m := scalaMockSubjectRE.FindStringSubmatch(s); m != nil {
+		if cand := m[1]; !scalaSubjectStopwords[cand] {
+			return cand
+		}
+	}
+	return ""
+}
+
 // detectScalaTest detects ScalaTest (FunSuite/FlatSpec/WordSpec/FunSpec),
 // specs2, MUnit and ZIO Test leaf cases. Every leaf is annotated with the
 // subject derived from the spec type name, so a TESTS edge is emitted even for
 // pure-naming-convention cases; leaves whose body contains a production call are
 // promoted by the resolver to high confidence.
 func detectScalaTest(source string) []testFunction {
-	subject := scalaSubjectFromSpecName(scalaFirstSpecType(source))
+	// Subject affinity — three honest tiers (#4360), most-trusted first:
+	//   Tier 1: spec-class stem convention (OrderServiceSpec → OrderService).
+	//   Tier 2: leading string-literal subject ("OrderService" should …).
+	//   Tier 3: a locally-constructed SUT (new OrderService(…) / mock[OrderService]).
+	// The file-level subject is the fallback (describeSubject) the resolver uses
+	// only when a leaf body has no direct production call; a per-leaf body SUT
+	// (Tier 2/3 inside the leaf) overrides it so each leaf links to the symbol it
+	// actually exercises. Empty subject ⇒ honest no fallback edge.
+	fileSubject := scalaSubjectFromSpecName(scalaFirstSpecType(source))
+	if fileSubject == "" {
+		fileSubject = scalaSubjectFromBody(source)
+	}
 
 	var out []testFunction
 	seen := map[string]bool{}
+	// flatSpecLeafEnds records the byte offset of the `{` that opens each
+	// FlatSpec `"subj" should "verb" in {` leaf. The WordSpec / specs2 leaf
+	// scan (`"…" in {`) overlaps the same `in {` token, so without this the
+	// finer FlatSpec leaf and a redundant `"verb" in {` leaf are both emitted
+	// for one test — a scaffolding duplicate (#4360). Tracking the consumed
+	// brace lets the WordSpec pass skip leaves already claimed by FlatSpec.
+	flatSpecLeafEnds := map[int]bool{}
 	add := func(rawName, body string) {
 		name := jestCaseQName(rawName)
 		if name == "" || seen[name] {
 			return
 		}
 		seen[name] = true
+		// Per-leaf subject: a SUT named/instantiated inside this leaf body wins
+		// over the file-level fallback; otherwise inherit the file subject.
+		subject := scalaSubjectFromBody(body)
+		if subject == "" {
+			subject = fileSubject
+		}
 		out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
 	}
 
@@ -1698,6 +1784,9 @@ func detectScalaTest(source string) []testFunction {
 	// FlatSpec: "subject" should "verb" in { … }
 	for _, m := range scalaFlatSpecCaseRE.FindAllStringSubmatchIndex(source, -1) {
 		desc := source[m[2]:m[3]] + "_" + source[m[4]:m[5]]
+		// m[1] is the index just past the matched `{`; record the brace offset
+		// so the WordSpec leaf pass below can skip this same leaf.
+		flatSpecLeafEnds[m[1]-1] = true
 		add(desc, extractBraceBody(source, m[1]-1))
 	}
 	// FunSpec: it("…") { … }
@@ -1706,8 +1795,13 @@ func detectScalaTest(source string) []testFunction {
 	}
 	// WordSpec / specs2 leaf: "…" in { … } / "…" >> { … }. Scanned last so that
 	// the more specific FlatSpec/FunSpec forms claim their descriptions first
-	// (jestCaseQName de-dupes identical leaf names via `seen`).
+	// (jestCaseQName de-dupes identical leaf names via `seen`). A leaf whose
+	// opening `{` was already consumed by the FlatSpec pass is skipped so the
+	// same test is not emitted twice under a shorter, verb-only name (#4360).
 	for _, m := range scalaWordSpecLeafRE.FindAllStringSubmatchIndex(source, -1) {
+		if flatSpecLeafEnds[m[1]-1] {
+			continue
+		}
 		add(source[m[2]:m[3]], extractBraceBody(source, m[1]-1))
 	}
 

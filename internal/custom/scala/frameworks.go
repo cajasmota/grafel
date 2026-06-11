@@ -433,41 +433,17 @@ var (
 
 // ---------------------------------------------------------------------------
 // Testing regexes
+//
+// #4360 — the per-file `SCOPE.Test`/`test_suite` orphan that this extractor
+// previously emitted for every detected test file has been removed. It carried
+// no edges and no consumer (it was never wired into the route-hit e2e linker —
+// that uses the dedicated SCOPE.Operation/test_suite entity in
+// tests_route_e2e.go — nor into any other pass), so it only added orphan noise.
+// Subject-aware test→SUT TESTS edges for ScalaTest/specs2/MUnit leaves come
+// from the deep testmap linker (internal/extractors/cross/testmap,
+// detectScalaTest). The ScalaTest-detection regexes that only fed the dropped
+// orphan were removed with it.
 // ---------------------------------------------------------------------------
-
-var (
-	// ScalaTest: extends FlatSpec / WordSpec / AnyFlatSpec / FunSuite
-	reScalaTest = regexp.MustCompile(
-		`\b(?:extends\s+(?:AnyFlatSpec|FlatSpec|WordSpec|AnyWordSpec|FunSpec|AnyFunSpec|FunSuite|AnyFunSuite|FeatureSpec|PropSpec))\b`)
-
-	// Specs2: extends Specification
-	reSpecs2 = regexp.MustCompile(
-		`\bextends\s+(?:Specification|mutable\.Specification)\b`)
-
-	// MUnit (cats-effect, http4s): extends munit.FunSuite / munit.CatsEffectSuite
-	reMUnit = regexp.MustCompile(
-		`\bextends\s+(?:munit\.FunSuite|munit\.CatsEffectSuite|CatsEffectSuite)\b`)
-
-	// Akka TestKit: extends TestKit / extends ActorSpec
-	reAkkaTestKit = regexp.MustCompile(
-		`\bextends\s+(?:TestKit|ActorSpec|AkkaSpec|PekkoSpec|ScalaTestWithActorTestKit)\b`)
-
-	// http4s: Http4sClientDsl / Http4sMunitCirceSuite
-	reHttp4sTest = regexp.MustCompile(
-		`\bextends\s+(?:Http4sClientDsl|Http4sMunitCirceSuite|Http4sSuite)\b`)
-
-	// Cask: requests.get in test context
-	reCaskTest = regexp.MustCompile(
-		`\bTestServer\b|requests\.(get|post|put|delete)\s*\(`)
-
-	// ZIO Test: extends ZIOSpec / ZIOSpecDefault
-	reZioTest = regexp.MustCompile(
-		`\bextends\s+(?:ZIOSpec|ZIOSpecDefault|ZIOSpecAbstract)\b`)
-
-	// Finatra: extends HttpTest / FeatureTest
-	reFinatraTest = regexp.MustCompile(
-		`\bextends\s+(?:HttpTest|FeatureTest|TwitterServer|EmbeddedTwitterServer)\b`)
-)
 
 // ---------------------------------------------------------------------------
 // Extract
@@ -824,17 +800,14 @@ func (e *scalaFrameworksExtractor) Extract(ctx context.Context, file extractor.F
 	}
 
 	// ---------------------------------------------------------------------------
-	// Testing linkage
+	// Testing linkage — #4360
+	//
+	// The per-file `test_suite` orphan that used to be emitted here has been
+	// dropped (see the "Testing regexes" note above). Subject-aware test→SUT
+	// TESTS edges are produced by the deep testmap linker (detectScalaTest);
+	// route-hit e2e TESTS edges by tests_route_e2e.go. Nothing test-related is
+	// emitted from this extractor any more.
 	// ---------------------------------------------------------------------------
-	isTest := reScalaTest.MatchString(src) || reSpecs2.MatchString(src) || reMUnit.MatchString(src) ||
-		reAkkaTestKit.MatchString(src) || reHttp4sTest.MatchString(src) || reCaskTest.MatchString(src) ||
-		reZioTest.MatchString(src) || reFinatraTest.MatchString(src)
-
-	if isTest {
-		ent := makeEntity("test:"+fileBaseName(file.Path), "SCOPE.Test", "test_suite", file.Path, file.Language, 1)
-		setProps(&ent, "framework", framework, "provenance", "SCALA_TEST_SUITE")
-		add(ent)
-	}
 
 	return entities, nil
 }
