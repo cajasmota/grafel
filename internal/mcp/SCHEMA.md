@@ -133,6 +133,7 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`archigraph_find_paths`](#archigraph_find_paths) | Shortest path between two entities. |
 | [`archigraph_endpoints`](#archigraph_endpoints) | HTTP endpoint surface (action: definitions\|calls\|stats). |
 | `archigraph_endpoint_posture` | Per-endpoint/function posture: error_flow (throws/catches → ExceptionType), rate_limit, deprecation/version, feature_gates (GATED_BY → FeatureFlag), and HTTP/gRPC/tRPC auth. `entity_id` for one entity; omit for a repo-wide scan (facet/path_contains/method filters). |
+| `archigraph_control_flow` | On-demand (not persisted) per-function control-flow graph for the flowchart view (#4819): nodes (start/decision/loop/process/return/throw/end) + edges (seq/branch_true/branch_false/loop_back/exit), with predicate text on decision/loop nodes and effect annotations on process nodes, plus cyclomatic complexity. `entity_id` required; `detail`=outline\|decisions\|data\|full for token control. Languages: python + jsts validated. |
 | [`archigraph_effective_contract`](#archigraph_effective_contract) | Per-verb effective contract of a ViewSet/controller (kind, status, error_statuses, serializer, pagination, permissions). |
 | `archigraph_neighbors` | Graph neighbors of `entity_id` (`direction=in\|out\|both`, default `both`). **Unifies `find_callers` + `find_callees` (#1753).** |
 | [`archigraph_find_callers`](#archigraph_find_callers) | **Deprecated alias** of `archigraph_neighbors(direction=in)`. Removed next release. |

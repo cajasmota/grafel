@@ -578,6 +578,22 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_effects", s.handleEffects))
 
+	// #4822 — on-demand per-function control-flow graph (control-flow epic
+	// #4820 part (b)). Builds a CFG (start/decision/loop/process/return/throw/
+	// end nodes + seq/branch/loop_back/exit edges) for the named function at
+	// call time and returns it as compact JSON for the flowchart view (#4819);
+	// nothing is persisted to the graph. `detail` controls payload size
+	// (outline|decisions|data|full) per #2828. Also surfaces cyclomatic
+	// complexity. Languages: python + jsts validated; others degenerate.
+	s.MCP.AddTool(mcpapi.NewTool("archigraph_control_flow",
+		mcpapi.WithDescription("On-demand per-function CFG+complexity; detail=outline|decisions|data|full."),
+		mcpapi.WithString("entity_id", mcpapi.Required()),
+		mcpapi.WithString("detail"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("archigraph_control_flow", s.handleControlFlow))
+
 	// deploy-9 caps surfacing — per-endpoint/function "posture" assembled from
 	// existing #3628 nodes/edges/props that were populated but undiscoverable
 	// via MCP: error_flow (THROWS/CATCHES → ExceptionType), feature_flag gates

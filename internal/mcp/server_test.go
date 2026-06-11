@@ -613,6 +613,8 @@ func TestToolNameSurface(t *testing.T) {
 		"archigraph_stub_detector",
 		// #4424 cross-group branch-aware response-shape parity (oracle vs v3).
 		"archigraph_response_shape_diff",
+		// #4822 on-demand per-function CFG (control-flow epic #4820 part b).
+		"archigraph_control_flow",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -712,8 +714,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 archigraph_stub_detector (#4425 cross-group stub effects-contrast heuristic).
 	// +1 archigraph_response_shape_diff (#4424 cross-group branch-aware response-shape parity).
 	// +1 archigraph_apply_doc_semantics (#4309 doc ingestion L2 apply step).
-	if got := len(allRegisteredTools); got != 64 {
-		t.Errorf("expected 64 registered tools, got %d — update this count if tools are added/removed (added archigraph_apply_doc_semantics #4309 doc ingestion L2)", got)
+	// +1 archigraph_control_flow (#4822 on-demand per-function CFG, control-flow epic #4820 part (b)).
+	if got := len(allRegisteredTools); got != 65 {
+		t.Errorf("expected 65 registered tools, got %d — update this count if tools are added/removed (added archigraph_control_flow #4822 on-demand CFG)", got)
 	}
 }
 
@@ -3221,6 +3224,7 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"archigraph_dead_code": {"group": "g"},
 		// #2764 Phase 1A effect classification — entity_id required.
 		"archigraph_effects": {"group": "g", "entity_id": "DashboardScreen"},
+		"archigraph_control_flow": {"group": "g", "entity_id": "DashboardScreen"},
 		// deploy-9 caps surfacing — posture facets. entity_id optional (omitted
 		// here exercises the repo-wide scan path).
 		"archigraph_endpoint_posture": {"group": "g"},
@@ -3294,8 +3298,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 64 {
-		t.Errorf("expected 64 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_apply_doc_semantics #4309 doc ingestion L2)", len(tools))
+	if len(tools) != 65 {
+		t.Errorf("expected 65 registered tools, got %d — update minimalArgs if tools are added/removed (added archigraph_control_flow #4822 on-demand CFG)", len(tools))
 	}
 
 	for _, st := range tools {
