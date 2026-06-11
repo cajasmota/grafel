@@ -279,6 +279,162 @@ func normalizePyType(annot string) string {
 	return annot
 }
 
+// ── marshmallow Schema field parsing (#4714) ─────────────────────────────────
+
+// mmDTOFieldRe matches a marshmallow declared field inside a Schema body:
+//
+//	name = fields.Str(required=True, allow_none=False)
+//	email = ma.fields.Email()
+//	items = fields.Nested(ItemSchema, many=True)
+//
+// Group 1 = field name, group 2 = the marshmallow field class (e.g. Str, Email,
+// Nested), group 3 = the (possibly truncated at first `)`) argument blob.
+var mmDTOFieldRe = regexp.MustCompile(
+	`(?m)^[ \t]+(\w+)\s*=\s*(?:\w+\.)?fields\.(\w+)\s*\(([^)]*)`)
+
+// mmFieldTypeKind maps a marshmallow field class to a normalized scalar type
+// (parity with the JS/DRF scalar maps).
+var mmFieldTypeKind = map[string]string{
+	"Str": "string", "String": "string", "Email": "string", "URL": "string",
+	"Url": "string", "UUID": "string", "Uuid": "string", "Constant": "string",
+	"Int": "integer", "Integer": "integer",
+	"Float": "number", "Decimal": "number", "Number": "number",
+	"Bool": "boolean", "Boolean": "boolean",
+	"Date": "date", "DateTime": "date", "Time": "date", "NaiveDateTime": "date",
+	"AwareDateTime": "date", "TimeDelta": "date",
+	"List": "array", "Tuple": "array",
+	"Dict": "object", "Mapping": "object", "Nested": "object", "Pluck": "object",
+	"Raw": "any", "Field": "any", "Function": "any", "Method": "any",
+}
+
+// mmFieldType normalizes a marshmallow field class name to a scalar type.
+func mmFieldType(fieldClass string) string {
+	if k, ok := mmFieldTypeKind[fieldClass]; ok {
+		return k
+	}
+	return strings.ToLower(fieldClass)
+}
+
+// extractMarshmallowSchemaFields parses a marshmallow Schema body into field
+// members. A field is optional when `required=True` is absent, or when
+// `allow_none=True` / `load_default=` / `missing=` / `dump_only=True` is set.
+func extractMarshmallowSchemaFields(body string) []pyDTOField {
+	var fields []pyDTOField
+	seen := make(map[string]bool)
+	for _, m := range mmDTOFieldRe.FindAllStringSubmatch(body, -1) {
+		name := m[1]
+		fieldClass := m[2]
+		args := m[3]
+		if name == "" || seen[name] || strings.HasPrefix(name, "__") {
+			continue
+		}
+		seen[name] = true
+
+		required := regexp.MustCompile(`\brequired\s*=\s*True`).MatchString(args)
+		optional := !required
+		if regexp.MustCompile(`\ballow_none\s*=\s*True`).MatchString(args) ||
+			regexp.MustCompile(`\bdump_only\s*=\s*True`).MatchString(args) ||
+			regexp.MustCompile(`\b(?:load_default|missing|default)\s*=`).MatchString(args) {
+			optional = true
+		}
+
+		var validators []string
+		if required {
+			validators = append(validators, "@required")
+		}
+		for _, kw := range []string{"allow_none", "load_only", "dump_only",
+			"validate", "data_key"} {
+			if regexp.MustCompile(`\b` + kw + `\s*=`).MatchString(args) {
+				validators = append(validators, "@"+kw)
+			}
+		}
+
+		fields = append(fields, pyDTOField{
+			name:       name,
+			typ:        mmFieldType(fieldClass),
+			validators: validators,
+			optional:   optional,
+		})
+	}
+	return fields
+}
+
+// ── attrs / dataclasses field parsing (#4714) ────────────────────────────────
+
+// dcAnnotatedFieldRe matches an annotated class-body attribute, the shape both
+// dataclasses and attrs-with-annotations use:
+//
+//	name: str
+//	age: int = 0
+//	tags: list[str] = field(default_factory=list)
+//	nickname: Optional[str] = None
+//	count: int = attr.ib(default=0)
+//
+// Group 1 = leading indent, group 2 = name, group 3 = type annotation, group 4
+// = RHS default expression (may be empty). Shares the direct-body-indent
+// discipline with the Pydantic field regex.
+var dcAnnotatedFieldRe = regexp.MustCompile(
+	`(?m)^([ \t]+)([a-zA-Z_]\w*)\s*:\s*([^=\n]+?)\s*(?:=\s*(.+))?$`)
+
+// extractAttrsDataclassFields parses a @dataclass / @attr.s / @define class body
+// into field members. A field is optional when it has any default — a literal,
+// `field(default=...)` / `field(default_factory=...)`, `attr.ib(default=...)` /
+// `attr.ib(factory=...)`, or an `Optional[...]` / `X | None` annotation.
+func extractAttrsDataclassFields(body string) []pyDTOField {
+	var fields []pyDTOField
+	seen := make(map[string]bool)
+	baseIndent := -1
+	for _, m := range dcAnnotatedFieldRe.FindAllStringSubmatch(body, -1) {
+		if n := len(m[1]); baseIndent < 0 || n < baseIndent {
+			baseIndent = n
+		}
+	}
+	for _, m := range dcAnnotatedFieldRe.FindAllStringSubmatch(body, -1) {
+		if len(m[1]) != baseIndent {
+			continue // nested in a method / inner class — not a direct field
+		}
+		name := m[2]
+		annot := strings.TrimSpace(m[3])
+		rhs := strings.TrimSpace(m[4])
+		if name == "" || seen[name] || strings.HasPrefix(name, "__") {
+			continue
+		}
+		if name == "model_config" {
+			continue
+		}
+		seen[name] = true
+
+		optional := pydIsOptional(annot)
+		var validators []string
+		if rhs != "" {
+			// Any RHS is a default → optional. Recognize field()/attr.ib() shapes
+			// and surface their validator/constraint kwargs as markers.
+			optional = true
+			if regexp.MustCompile(`^(?:attr\.ib|attrib|attr\.attrib|field|attrs\.field)\s*\(`).MatchString(rhs) {
+				// A field()/attr.ib() with no default and not Optional is required
+				// unless it carries default=/factory=/default_factory=.
+				hasDefault := regexp.MustCompile(`\b(?:default|factory|default_factory)\s*=`).MatchString(rhs)
+				if !hasDefault && !pydIsOptional(annot) {
+					optional = false
+				}
+				for _, kw := range []string{"validator", "converter"} {
+					if regexp.MustCompile(`\b` + kw + `\s*=`).MatchString(rhs) {
+						validators = append(validators, "@"+kw)
+					}
+				}
+			}
+		}
+
+		fields = append(fields, pyDTOField{
+			name:       name,
+			typ:        normalizePyType(annot),
+			validators: validators,
+			optional:   optional,
+		})
+	}
+	return fields
+}
+
 // ── DRF serializer field parsing ─────────────────────────────────────────────
 
 // drfFieldDeclRe matches an explicit DRF serializer field declaration:

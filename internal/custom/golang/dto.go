@@ -167,16 +167,19 @@ type dtoStruct struct {
 type dtoField struct {
 	Name string
 	Type string
+	Tag  string // the raw struct-tag backtick contents (json/validate/binding…)
 }
 
 // reDtoStructHead locates a `type <Name> struct {` opening.
 var reDtoStructHead = regexp.MustCompile(`type\s+(\w+)\s+struct\s*\{`)
 
 // reDtoStructField matches one exported/unexported field line inside a struct
-// body: a leading identifier and a type token. Embedded fields (a bare type) and
-// blank lines are skipped by requiring two tokens. Best-effort; complex types
-// (maps/funcs) are captured as their leading token.
-var reDtoStructField = regexp.MustCompile(`(?m)^\s*([A-Za-z_]\w*)\s+([\w\.\*\[\]]+)`)
+// body: a leading identifier, a type token, and an optional backtick struct tag.
+// Embedded fields (a bare type) and blank lines are skipped by requiring two
+// tokens. Best-effort; complex types (maps/funcs) are captured as their leading
+// token. Group 3 (when present) is the tag's backtick-delimited contents.
+var reDtoStructField = regexp.MustCompile(
+	"(?m)^\\s*([A-Za-z_]\\w*)\\s+([\\w\\.\\*\\[\\]]+)[^`\\n]*(?:`([^`]*)`)?")
 
 // catalogStructs parses every `type T struct {...}` in src into a name→struct
 // map, capturing each struct's field list by scanning to the matching closing
@@ -198,7 +201,11 @@ func catalogStructs(src string) map[string]dtoStruct {
 			if fname == "struct" || fname == "func" {
 				continue
 			}
-			fields = append(fields, dtoField{Name: fname, Type: fm[2]})
+			tag := ""
+			if len(fm) > 3 {
+				tag = fm[3]
+			}
+			fields = append(fields, dtoField{Name: fname, Type: fm[2], Tag: tag})
 		}
 		out[name] = dtoStruct{
 			Name:   name,
@@ -302,6 +309,9 @@ func (e *dtoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 
 	var entities []types.EntityRecord
 	seen := make(map[string]bool)
+	// Track which resolved DTO structs have had their field members emitted so a
+	// struct bound at several call sites yields exactly one member set (#4715).
+	fieldMembersEmitted := make(map[string]bool)
 	add := func(ent types.EntityRecord) {
 		key := ent.Kind + ":" + ent.Name
 		if seen[key] {
@@ -378,6 +388,17 @@ func (e *dtoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 						"binding_subtype": sig.subtype,
 					},
 				})
+				// Field-as-member sub-entities (#4715): each struct field becomes a
+				// `SCOPE.Schema`/field child with a CONTAINS edge to the struct, the
+				// SAME shape as the JS/Python/Java DTO field members so cross-framework
+				// FIELD-level diffs stay uniform. Emitted once per resolved struct.
+				if !fieldMembersEmitted[structName] {
+					fieldMembersEmitted[structName] = true
+					for _, child := range emitGoDTOFieldMembers(
+						structName, st.Fields, file.Path, file.Language, st.Line) {
+						add(child)
+					}
+				}
 			} else {
 				setProps(&ent, "resolved", "false")
 			}

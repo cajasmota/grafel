@@ -121,6 +121,17 @@ func (e *MarshmallowExtractor) Extract(ctx context.Context, file extractor.FileI
 				"schema_name":  schemaName,
 			},
 		))
+
+		// Field-as-member sub-entities (issue #4714). Each declared field on the
+		// Schema becomes a `SCOPE.Schema`/field child with a CONTAINS edge back to
+		// the schema class (resolved via the `Class:<name>` byName fallback), the
+		// SAME shape as the Pydantic/DRF/JS DTO field members so cross-framework
+		// FIELD-level diffs are uniform. The owner class node is emitted by the
+		// base Python extractor; here we hang only the membership + child fields.
+		body := pydModelBody(source, idx[0])
+		fields := extractMarshmallowSchemaFields(body)
+		out = append(out, emitPyDTOFieldMembers(
+			schemaName, fields, "marshmallow", file.Path, line, nil)...)
 	}
 
 	// 2. Field declarations — capture field name + marshmallow field type.

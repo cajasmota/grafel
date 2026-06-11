@@ -193,6 +193,122 @@ class ProductSerializer(serializers.ModelSerializer):
 	}
 }
 
+// ── marshmallow Schema field membership (#4714) ──────────────────────────────
+
+func TestMarshmallow_FieldMembers(t *testing.T) {
+	src := `from marshmallow import Schema, fields
+
+class UserSchema(Schema):
+    name = fields.Str(required=True)
+    email = fields.Email()
+    age = fields.Int(allow_none=True)
+    bio = fields.Str(load_default="")
+`
+	rs := extract(t, "python_marshmallow", src)
+
+	name := findFieldChild(rs, "UserSchema.name")
+	if name == nil || name.Props["field_type"] != "string" {
+		t.Fatalf("expected UserSchema.name:string, got %+v", name)
+	}
+	if name.Props["optional"] == "true" {
+		t.Errorf("name (required=True) should not be optional, props=%v", name.Props)
+	}
+	if name.Props["validators"] == "" {
+		t.Errorf("name (required=True) should carry @required, props=%v", name.Props)
+	}
+
+	email := findFieldChild(rs, "UserSchema.email")
+	if email == nil || email.Props["field_type"] != "string" {
+		t.Fatalf("expected UserSchema.email:string, got %+v", email)
+	}
+	if email.Props["optional"] != "true" {
+		t.Errorf("email (no required=True) should be optional, props=%v", email.Props)
+	}
+
+	age := findFieldChild(rs, "UserSchema.age")
+	if age == nil || age.Props["field_type"] != "integer" || age.Props["optional"] != "true" {
+		t.Fatalf("age (Int, allow_none) wrong: %+v", age)
+	}
+
+	bio := findFieldChild(rs, "UserSchema.bio")
+	if bio == nil || bio.Props["optional"] != "true" {
+		t.Fatalf("bio (load_default) should be optional: %+v", bio)
+	}
+
+	if !hasContainsTo(rs, "UserSchema.name") {
+		t.Error("expected CONTAINS edge to UserSchema.name")
+	}
+}
+
+// ── dataclass / attrs field membership (#4714) ───────────────────────────────
+
+func TestDataclass_FieldMembers(t *testing.T) {
+	src := `from dataclasses import dataclass, field
+from typing import Optional
+
+@dataclass
+class CreateUser:
+    name: str
+    age: int = 0
+    nickname: Optional[str] = None
+    tags: list = field(default_factory=list)
+`
+	rs := extract(t, "python_attrs", src)
+
+	name := findFieldChild(rs, "CreateUser.name")
+	if name == nil || name.Props["field_type"] != "string" {
+		t.Fatalf("expected CreateUser.name:string, got %+v", name)
+	}
+	if name.Props["optional"] == "true" {
+		t.Errorf("name (no default) should be required, props=%v", name.Props)
+	}
+
+	age := findFieldChild(rs, "CreateUser.age")
+	if age == nil || age.Props["field_type"] != "integer" || age.Props["optional"] != "true" {
+		t.Fatalf("age (default 0) wrong: %+v", age)
+	}
+
+	nick := findFieldChild(rs, "CreateUser.nickname")
+	if nick == nil || nick.Props["optional"] != "true" || nick.Props["field_type"] != "string" {
+		t.Fatalf("nickname (Optional) wrong: %+v", nick)
+	}
+
+	tags := findFieldChild(rs, "CreateUser.tags")
+	if tags == nil || tags.Props["optional"] != "true" {
+		t.Fatalf("tags (field default_factory) should be optional: %+v", tags)
+	}
+
+	if !hasContainsTo(rs, "CreateUser.name") {
+		t.Error("expected CONTAINS edge to CreateUser.name")
+	}
+}
+
+func TestAttrs_FieldMembers(t *testing.T) {
+	src := `import attr
+
+@attr.s
+class Point:
+    x: int = attr.ib()
+    y: int = attr.ib(default=0)
+`
+	rs := extract(t, "python_attrs", src)
+
+	x := findFieldChild(rs, "Point.x")
+	if x == nil || x.Props["field_type"] != "integer" {
+		t.Fatalf("expected Point.x:integer, got %+v", x)
+	}
+	if x.Props["optional"] == "true" {
+		t.Errorf("x (attr.ib() no default) should be required, props=%v", x.Props)
+	}
+	y := findFieldChild(rs, "Point.y")
+	if y == nil || y.Props["optional"] != "true" {
+		t.Fatalf("y (attr.ib default=0) should be optional: %+v", y)
+	}
+	if !hasContainsTo(rs, "Point.x") {
+		t.Error("expected CONTAINS edge to Point.x")
+	}
+}
+
 func TestDRF_ModelSerializerAllFieldsFlagged(t *testing.T) {
 	src := `from rest_framework import serializers
 

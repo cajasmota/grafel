@@ -42,6 +42,14 @@ var (
 			`(?:[ \t]*@\w[\w.]*\s*(?:\([^)]*\))?\s*\n)*` +
 			`[ \t]*class\s+(\w+)\s*`)
 
+	// @dataclass / @dataclasses.dataclass / @dataclass(frozen=True) — stdlib
+	// dataclasses share the annotated-field body shape with attrs, so the same
+	// DTO field-member emission applies (issue #4714).
+	dataclassDecoratorRe = regexp.MustCompile(
+		`(?m)^[ \t]*@(?:dataclasses\.)?dataclass\s*(?:\([^)]*\))?\s*\n` +
+			`(?:[ \t]*@\w[\w.]*\s*(?:\([^)]*\))?\s*\n)*` +
+			`[ \t]*class\s+(\w+)\s*`)
+
 	// x = attr.ib() / x = attrib() / x = attr.attrib() / x = field()
 	attrsAttribRe = regexp.MustCompile(
 		`(?m)^[ \t]+(\w+)\s*(?::\s*\S+\s*)?=\s*(?:attr\.ib|attrib|attr\.attrib|field|attrs\.field)\s*\(([^)]*)\)`)
@@ -70,8 +78,12 @@ var (
 	attrsAndRe        = regexp.MustCompile(`(?:attr(?:s)?\.)?validators\.and_\(`)
 )
 
-// attrsReferenced reports whether the source likely uses the attrs library.
+// attrsReferenced reports whether the source likely uses the attrs library or
+// stdlib dataclasses (both share the annotated-field DTO body shape, #4714).
 func attrsReferenced(source string) bool {
+	if strings.Contains(source, "dataclass") {
+		return true
+	}
 	return strings.Contains(source, "attrs") ||
 		strings.Contains(source, "attr") && (strings.Contains(source, "attr.s") ||
 			strings.Contains(source, "attr.ib") ||
@@ -212,6 +224,31 @@ func (e *AttrsExtractor) Extract(ctx context.Context, file extractor.FileInput) 
 			file.Path, line, props,
 		))
 	}
+
+	// 5. Field-as-member sub-entities (issue #4714). Each attrs/dataclass class's
+	// annotated attributes become `SCOPE.Schema`/field children with a CONTAINS
+	// edge to the class, the SAME shape as the Pydantic/DRF/marshmallow/JS DTO
+	// field members so cross-framework FIELD-level diffs stay uniform. The owner
+	// class node is emitted by the base Python extractor; we hang only members.
+	emitDataclassFields := func(re *regexp.Regexp, library string) {
+		for _, idx := range allMatchesIndex(re, source) {
+			className := source[idx[2]:idx[3]]
+			// The decorator regex's match start is the `@…` line; locate the
+			// `class` header so the body scan dedents from the class indent.
+			classStart := strings.Index(source[idx[0]:idx[1]], "class ")
+			if classStart < 0 {
+				continue
+			}
+			classStart += idx[0]
+			line := lineOf(source, classStart)
+			body := pydModelBody(source, classStart)
+			fields := extractAttrsDataclassFields(body)
+			out = append(out, emitPyDTOFieldMembers(
+				className, fields, library, file.Path, line, nil)...)
+		}
+	}
+	emitDataclassFields(attrsClassDecoratorRe, "attrs")
+	emitDataclassFields(dataclassDecoratorRe, "dataclasses")
 
 	span.SetAttributes(attribute.Int("entity_count", len(out)))
 	return out, nil

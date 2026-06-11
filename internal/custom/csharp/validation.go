@@ -229,6 +229,16 @@ func (e *csharpValidationExtractor) Extract(ctx context.Context, file extractor.
 				"provenance", "INFERRED_FROM_DATA_ANNOTATION",
 			)
 			add(dtoEnt)
+
+			// Field-as-member sub-entities (#4715): each annotated DTO property
+			// becomes a `SCOPE.Schema`/field child with a CONTAINS edge to the
+			// class, the SAME shape as the JS/Python/Java/Go DTO field members so
+			// cross-framework FIELD-level diffs stay uniform.
+			body := csClassBody(src, m[0])
+			for _, child := range emitCsharpDTOFieldMembers(
+				className, extractCsharpDTOFields(body), file.Path, line) {
+				add(child)
+			}
 		}
 	}
 
