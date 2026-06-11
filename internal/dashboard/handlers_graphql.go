@@ -48,7 +48,6 @@ package dashboard
 // the sibling /api/security/* and /api/groups/* routes.
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -399,10 +398,7 @@ func (s *Server) handleGraphQL(w http.ResponseWriter, r *http.Request) {
 		return report.SchemaTypes[i].Name < report.SchemaTypes[j].Name
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(report)
+	writeReportJSON(w, report)
 }
 
 // firstNonEmpty returns the first non-empty string argument, or "" if none.

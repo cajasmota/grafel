@@ -123,7 +123,8 @@ func parsePagination(q url.Values, total int) V2Pagination {
 func writeV2JSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	// Wire contract (#4516): nil slice fields serialize as `[]`, not `null`.
+	_ = json.NewEncoder(w).Encode(normalizeNilSlices(v))
 }
 
 // writeV2Err writes a v2 error response.

@@ -848,7 +848,22 @@ func (s *Server) withAuth(next http.Handler) http.Handler {
 func writeJSON(w http.ResponseWriter, status int, v any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(v)
+	// Wire contract (#4516): emit `[]` not `null` for empty array-typed fields
+	// so the webui-v2 TS report types (which call .length/.map/.filter) don't
+	// crash. The frontend null-guards (#4514) remain as belt-and-suspenders.
+	_ = json.NewEncoder(w).Encode(normalizeNilSlices(v))
+}
+
+// writeReportJSON writes an indented JSON report with the dashboard wire
+// contract applied (nil slices -> []). This is the shared write path for the
+// report handlers (graphql, errorflow, di, dataflow, iac, coverage, security,
+// nplus1, …) which previously constructed a json.Encoder inline and emitted
+// `null` for empty slice fields.
+func writeReportJSON(w http.ResponseWriter, v any) {
+	w.Header().Set("Content-Type", "application/json")
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	_ = enc.Encode(normalizeNilSlices(v))
 }
 
 // writeErr emits a uniform { "error": "..." } body.

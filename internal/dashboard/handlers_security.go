@@ -12,7 +12,6 @@ package dashboard
 // graph document, run the graph-package detector, aggregate, return JSON.
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -30,9 +29,9 @@ import (
 
 // AuthEndpointFinding is a single HTTP endpoint finding.
 type AuthEndpointFinding struct {
-	EntityID     string `json:"entity_id"`
-	Name         string `json:"name"`
-	Repo         string `json:"repo"`
+	EntityID string `json:"entity_id"`
+	Name     string `json:"name"`
+	Repo     string `json:"repo"`
 	// ModulePath is the monorepo module sub-path owning this finding's source
 	// file (#4698), derived from the repo's configured module roots. Empty for
 	// single-repo groups or files under no module root. Lets the scope selector
@@ -81,9 +80,9 @@ type GroupAuthCoverageReport struct {
 // SecuritySecretFinding is a single secret-related finding returned by
 // GET /api/security/secrets/{group}.
 type SecuritySecretFinding struct {
-	EntityID   string `json:"entity_id"`
-	Name       string `json:"name"`
-	Repo       string `json:"repo"`
+	EntityID string `json:"entity_id"`
+	Name     string `json:"name"`
+	Repo     string `json:"repo"`
 	// ModulePath is the monorepo module sub-path owning this finding's source
 	// file (#4698). See AuthEndpointFinding.ModulePath.
 	ModulePath string `json:"module_path,omitempty"`
@@ -536,10 +535,7 @@ func (s *Server) handleSecurityAuthCoverage(w http.ResponseWriter, r *http.Reque
 		return result.Findings[i].Name < result.Findings[j].Name
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(result)
+	writeReportJSON(w, result)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -685,10 +681,7 @@ func (s *Server) handleSecuritySecrets(w http.ResponseWriter, r *http.Request) {
 		return result.Findings[i].Name < result.Findings[j].Name
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(result)
+	writeReportJSON(w, result)
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -809,8 +802,5 @@ func (s *Server) handleSecurityCycles(w http.ResponseWriter, r *http.Request) {
 		return result.Findings[i].Repo < result.Findings[j].Repo
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(result)
+	writeReportJSON(w, result)
 }

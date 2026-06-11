@@ -19,7 +19,6 @@ package dashboard
 // Wire format is JSON (application/json).
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -138,8 +137,5 @@ func (s *Server) handleNPlusOne(w http.ResponseWriter, r *http.Request) {
 
 	result.TotalFindings = len(result.Findings)
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(result)
+	writeReportJSON(w, result)
 }

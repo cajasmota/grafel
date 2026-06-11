@@ -56,7 +56,6 @@ package dashboard
 // relationships via the mmap reader when available; raw-JSON envelope.
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -794,8 +793,5 @@ func (s *Server) handleIaC(w http.ResponseWriter, r *http.Request) {
 	}
 	sort.Strings(report.Tools)
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(report)
+	writeReportJSON(w, report)
 }

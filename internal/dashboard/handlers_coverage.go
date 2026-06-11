@@ -18,7 +18,6 @@ package dashboard
 //	limit=<n>      — cap UncoveredEntities to n items (default 200)
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -337,8 +336,5 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 		return result.ByModule[i].Module < result.ByModule[j].Module
 	})
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(result)
+	writeReportJSON(w, result)
 }

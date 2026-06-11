@@ -43,7 +43,6 @@ package dashboard
 // state on the client.
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"sort"
@@ -399,8 +398,5 @@ func (s *Server) handleDI(w http.ResponseWriter, r *http.Request) {
 
 	report := acc.assemble(groupName)
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(report)
+	writeReportJSON(w, report)
 }

@@ -479,10 +479,7 @@ func (s *Server) handleDataflow(w http.ResponseWriter, r *http.Request) {
 
 	report.ConfidenceFloor = dataflowConfidenceFloor
 
-	w.Header().Set("Content-Type", "application/json")
-	enc := json.NewEncoder(w)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(report)
+	writeReportJSON(w, report)
 }
 
 // dataflowConfidenceFloor mirrors links.TaintFindingFloor() — the taint pass
