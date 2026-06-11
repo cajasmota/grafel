@@ -267,8 +267,12 @@ type AnnotatedStep struct {
 	SourceFile  string   `json:"source_file"`
 	StartLine   int      `json:"start_line"`
 	Repo        string   `json:"repo"`
-	StepIndex   int      `json:"step_index"`
-	EdgeKind    string   `json:"edge_kind"`
+	StepIndex int    `json:"step_index"`
+	EdgeKind  string `json:"edge_kind"`
+	// EntityKind is the raw graph entity Kind of the step (e.g. "SCOPE.Operation").
+	// Carried through so the server-side FlowDag payload (#4363) can label node
+	// kinds from the resolved entity rather than re-deriving from step_kind.
+	EntityKind  string   `json:"entity_kind,omitempty"`
 	StepKind    string   `json:"step_kind"`
 	SideEffects []string `json:"side_effects,omitempty"`
 }
@@ -415,6 +419,7 @@ func annotateFlowSteps(
 			Repo:        s.Repo,
 			StepIndex:   s.StepIndex,
 			EdgeKind:    s.EdgeKind,
+			EntityKind:  s.EntityKind,
 			StepKind:    kind,
 			SideEffects: stepSideEffects,
 		})
