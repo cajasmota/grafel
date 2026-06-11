@@ -141,6 +141,21 @@ type Input struct {
 	NoInputUse     Tristate
 }
 
+// PartialStubField is one response-object field that is unconditionally bound
+// to a literal/constant rather than derived from read/computed data — the
+// field-level partial-stub signal (#4669). It COMPLEMENTS the endpoint verdict:
+// a fully "implemented" endpoint can still carry these. The caller computes
+// these from the per-language field-literal analyzer (internal/substrate); this
+// package only carries the plain data so it stays pure (no substrate import).
+type PartialStubField struct {
+	// Field is the response key name.
+	Field string `json:"field"`
+	// LiteralValue is the verbatim hardcoded value (e.g. "null", "0", `"tbd"`).
+	LiteralValue string `json:"literal_value,omitempty"`
+	// Line is the 1-indexed source line of the field assignment.
+	Line int `json:"line,omitempty"`
+}
+
 // Result is one scored endpoint.
 type Result struct {
 	Endpoint      string   `json:"endpoint"`
@@ -151,6 +166,14 @@ type Result struct {
 	OracleEffects []string `json:"oracle_effects"`
 	// Rationale is a short human explanation of the verdict.
 	Rationale string `json:"rationale"`
+	// PartialStubFields are the unconditionally literal-bound DATA fields of the
+	// v3 handler's response object — the field-level partial-stub signal (#4669),
+	// independent of the endpoint verdict. Nil/empty when none.
+	PartialStubFields []PartialStubField `json:"partial_stub_fields,omitempty"`
+	// PartialStubSupported reports whether the field-level analysis ran for this
+	// endpoint's handler language. False ⇒ "unknown" (honest-partial: no
+	// analyzer for the language), never read as "no literal fields".
+	PartialStubSupported bool `json:"-"`
 }
 
 // Scoring weights. The effects CONTRAST is the dominant term; the supporting

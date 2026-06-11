@@ -169,7 +169,7 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 
 			v3Eff := computeEndpointEffects(r.Repo, e, hres, callsAdj, byID, v3Effs, v3HasEffectData)
 
-			results = append(results, stubdetector.Score(stubdetector.Input{
+			res := stubdetector.Score(stubdetector.Input{
 				Endpoint:      label,
 				V3Effects:     v3Eff,
 				OracleEffects: oracleEntry,
@@ -180,7 +180,18 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 				// next increment on this tool.
 				ReturnsLiteral: stubdetector.Unknown,
 				NoInputUse:     stubdetector.Unknown,
-			}))
+			})
+
+			// #4669 field-level partial-stub signal — complements the endpoint
+			// verdict: classify the v3 handler's response-object fields and
+			// surface the unconditionally literal-bound DATA fields. Independent
+			// of the effects contrast, so a fully "implemented" endpoint can
+			// still carry partial-stub fields.
+			fields, supported := partialStubFieldsForEndpoint(r, e, hres, byID)
+			res.PartialStubFields = fields
+			res.PartialStubSupported = supported
+
+			results = append(results, res)
 		}
 	}
 
@@ -222,7 +233,7 @@ func (s *Server) handleStubDetector(_ context.Context, req mcpapi.CallToolReques
 func resultsToJSON(results []stubdetector.Result) []map[string]any {
 	out := make([]map[string]any, 0, len(results))
 	for _, r := range results {
-		out = append(out, map[string]any{
+		rec := map[string]any{
 			"endpoint": r.Endpoint,
 			"signals": map[string]any{
 				"returns_literal":    r.Signals.ReturnsLiteral.String(),
@@ -235,7 +246,18 @@ func resultsToJSON(results []stubdetector.Result) []map[string]any {
 			"v3_effects":     r.V3Effects,
 			"oracle_effects": r.OracleEffects,
 			"rationale":      r.Rationale,
-		})
+		}
+		// #4669 field-level partial-stub signal. Only surfaced when the handler
+		// language has a registered analyzer (honest-partial otherwise): a
+		// non-empty list flags the unconditionally literal-bound DATA fields; an
+		// empty list under supported=true means "analysed, none hardcoded".
+		if r.PartialStubSupported {
+			rec["partial_stub_fields"] = partialStubFieldsToJSON(r.PartialStubFields)
+			rec["partial_stub_supported"] = true
+		} else {
+			rec["partial_stub_supported"] = false
+		}
+		out = append(out, rec)
 	}
 	return out
 }
