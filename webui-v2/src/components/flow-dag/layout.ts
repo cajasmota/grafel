@@ -137,7 +137,11 @@ export interface UnfoldResult {
 // layout rank box (edges dock to it); the card itself grows downward in the DOM
 // for the inline expander/extra rows without reflowing the graph.
 const NODE_W = 268;
-const NODE_H = 76;
+// #4816: the header now wraps into two tidy rows (kind+terminal / role+repo)
+// so the load-bearing badges no longer clip. That adds ~one badge-row of
+// height; bump the layout rank box so edges still dock to the card cleanly and
+// the tidy-tree pack reserves the extra vertical space.
+const NODE_H = 92;
 
 const NODE_TYPE = "flowDag";
 const EDGE_TYPE = "flowDag";

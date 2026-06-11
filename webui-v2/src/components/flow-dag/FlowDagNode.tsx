@@ -138,47 +138,59 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
       <Handle type="source" position={sourcePosition ?? Position.Right} className="!bg-text-4" />
 
       <div className="px-2.5 py-2">
-        {/* Header row: role pill · incoming-edge pill · terminal marker · repo.
-            #4619: the row clips to the card width (overflow-hidden + min-w-0)
-            and the role pill is allowed to truncate, so the right-aligned repo
-            chip is always pulled INSIDE the card instead of bleeding past its
-            right edge. */}
-        <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
-          <span
-            className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-semibold uppercase tracking-wide leading-none min-w-0 truncate"
-            style={{
-              background: `color-mix(in srgb, ${rs.bg} 38%, transparent)`,
-              color: rs.ink,
-            }}
-          >
-            {rs.label}
-          </span>
-          {edgeLabel && (
+        {/* Header — two tidy rows (#4816). Cramming kind + role + terminal +
+            repo into ONE row clipped the load-bearing badges ('finish'→'F',
+            'handler'→'handl'). Split into:
+              row 1 — KIND badge + terminal end-cap (both must stay fully
+                      readable, so they never truncate / shrink),
+              row 2 — incoming-role word + repo chip (the least-critical info;
+                      repo truncates gracefully with a hover title).
+            Each row clips to the card width (min-w-0 + overflow-hidden) so
+            nothing bleeds past the card's right edge. */}
+        <div className="flex flex-col gap-1 min-w-0">
+          {/* Row 1: KIND badge + terminal marker — kept fully readable. */}
+          <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
             <span
-              className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-medium lowercase leading-none min-w-0 truncate text-text-3 bg-surface-2"
-              title={`incoming relationship: ${edgeLabel}`}
-            >
-              {edgeLabel}
-            </span>
-          )}
-          {/* #4561: a genuine return/finish end-cap reads distinctly from a
-              collection sink and from a depth-truncated branch. */}
-          {terminalCap && (
-            <span
-              className="inline-flex items-center gap-0.5 h-[15px] px-1 rounded text-[9px] font-semibold uppercase tracking-wide leading-none shrink-0"
+              className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-semibold uppercase tracking-wide leading-none shrink-0"
               style={{
                 background: `color-mix(in srgb, ${rs.bg} 38%, transparent)`,
                 color: rs.ink,
               }}
-              title="Return / finish — this branch terminates here"
             >
-              <Flag size={9} /> end
+              {rs.label}
             </span>
+            {/* #4561: a genuine return/finish end-cap reads distinctly from a
+                collection sink and from a depth-truncated branch. */}
+            {terminalCap && (
+              <span
+                className="inline-flex items-center gap-0.5 h-[15px] px-1 rounded text-[9px] font-semibold uppercase tracking-wide leading-none shrink-0"
+                style={{
+                  background: `color-mix(in srgb, ${rs.bg} 38%, transparent)`,
+                  color: rs.ink,
+                }}
+                title="Return / finish — this branch terminates here"
+              >
+                <Flag size={9} /> end
+              </span>
+            )}
+            {!terminalCap && node.terminal && (
+              <CircleDot size={11} className="shrink-0" style={{ color: rs.ink }} aria-label="terminal" />
+            )}
+          </div>
+          {/* Row 2: incoming-role word + repo chip (least critical → truncates). */}
+          {(edgeLabel || node.repo) && (
+            <div className="flex items-center gap-1.5 min-w-0 overflow-hidden">
+              {edgeLabel && (
+                <span
+                  className="inline-flex items-center h-[15px] px-1 rounded text-[9px] font-medium lowercase leading-none min-w-0 truncate text-text-3 bg-surface-2"
+                  title={`incoming relationship: ${edgeLabel}`}
+                >
+                  {edgeLabel}
+                </span>
+              )}
+              {node.repo && <RepoChip slug={node.repo} className="ml-auto" maxLength={18} />}
+            </div>
           )}
-          {!terminalCap && node.terminal && (
-            <CircleDot size={11} className="shrink-0" style={{ color: rs.ink }} aria-label="terminal" />
-          )}
-          <RepoChip slug={node.repo} className="ml-auto" maxLength={14} />
         </div>
 
         {/* Name — responsive size, wraps to 2 lines, full name on hover. An
