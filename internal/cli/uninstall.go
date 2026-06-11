@@ -65,19 +65,24 @@ func newUninstallCmd() *cobra.Command {
 		claudeConfigDirs []string
 		skipSkillUnlink  bool
 		purge            bool
+		removeBinary     bool
 		yes              bool
 	)
 
 	cmd := &cobra.Command{
 		Use:   "uninstall",
 		Short: "Remove the archigraph install (daemon, MCP, skills)",
-		Long: `Uninstall removes the archigraph install:
+		Long: `Uninstall tears down the archigraph install:
 
   - Removes copied/linked skills from ~/.claude/skills/ (only those in install.json)
   - Deregisters the archigraph MCP entry from all detected .claude.json files
-  - Stops the archigraph daemon (OS service)
-  - Removes the CLI binary (with confirmation unless --yes)
-  - Removes ~/.archigraph/install.json
+  - Stops the daemon and removes its OS service unit (launchd/systemd/schtasks),
+    socket, and pidfile
+
+Default: leaves the installed CLI binary in place so a subsequent
+'archigraph install'/'archigraph start' works without re-downloading or
+rebuilding it. Use --remove-binary to also delete the binary (with
+confirmation unless --yes).
 
 Default: leaves ~/.archigraph/store/ (your graphs) intact.
 Use --purge to also remove store/ and docs/.
@@ -91,8 +96,9 @@ Idempotent: if archigraph is not installed the command exits 0.`,
 			// no install.json — in that case all fields are zero and we fall through
 			// to the legacy path.
 			result, err := install.RunUninstall(install.UninstallOptions{
-				Purge: purge,
-				Yes:   yes,
+				Purge:        purge,
+				RemoveBinary: removeBinary,
+				Yes:          yes,
 			})
 			if err != nil {
 				return fmt.Errorf("uninstall: %w", err)
@@ -149,7 +155,9 @@ Idempotent: if archigraph is not installed the command exits 0.`,
 		"skip removing skills from Claude Code's skills/ directories")
 	cmd.Flags().BoolVar(&purge, "purge", false,
 		"also remove ~/.archigraph/store/ and ~/.archigraph/docs/ (user graphs and docs)")
+	cmd.Flags().BoolVar(&removeBinary, "remove-binary", false,
+		"also delete the installed CLI binary (default: keep it so a reinstall/start needs no re-download)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false,
-		"assume yes / non-interactive: skip the binary-removal confirmation prompt (auto-enabled when stdin is not a TTY)")
+		"assume yes / non-interactive: skip the binary-removal confirmation prompt for --remove-binary (auto-enabled when stdin is not a TTY)")
 	return cmd
 }

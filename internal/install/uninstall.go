@@ -4,8 +4,12 @@
 //  1. Read install.json for the list of owned skills and MCP paths.
 //  2. Remove copied/linked skills from ~/.claude/skills/<name>/ (only those in install.json).
 //  3. Deregister archigraph from MCP in every registered .claude.json.
-//  4. Stop the daemon gracefully via service.Uninstall.
-//  5. Remove the CLI binary (with confirmation prompt unless --yes).
+//  4. Stop the daemon and tear down the OS service (launchd/systemd/schtasks
+//     unit, socket, pidfile) via service.Uninstall.
+//  5. Default: leave the installed CLI binary in place so a subsequent
+//     install/start works without re-downloading or rebuilding (#4478).
+//     --remove-binary: also remove the CLI binary (with confirmation prompt
+//     unless --yes).
 //  6. Remove ~/.archigraph/install.json.
 //  7. Default: leave ~/.archigraph/store/ intact.
 //     --purge: also remove ~/.archigraph/store/ and ~/.archigraph/docs/.
@@ -36,7 +40,15 @@ type UninstallOptions struct {
 	// ~/.archigraph/docs/ in addition to the install artifacts.
 	Purge bool
 
+	// RemoveBinary, when true, removes the installed CLI binary as part of
+	// uninstall. The default (false) leaves the binary in place so a
+	// subsequent `install`/`start` works without re-downloading or
+	// rebuilding it (#4478). Service artifacts (unit/socket/pidfile) are torn
+	// down regardless of this flag.
+	RemoveBinary bool
+
 	// Yes skips the confirmation prompt before removing the CLI binary.
+	// It only has an effect when RemoveBinary is true.
 	Yes bool
 
 	// DryRun prints actions without writing anything.
@@ -184,8 +196,10 @@ func RunUninstall(opts UninstallOptions) (*UninstallResult, error) {
 		result.DaemonStopped = opts.DryRun
 	}
 
-	// ── Step 4: Remove CLI binary (with confirmation) ─────────────────────────
-	if state.CLI.Path != "" {
+	// ── Step 4: Remove CLI binary (opt-in, with confirmation) ─────────────────
+	// By default the binary is KEPT so a subsequent install/start works without
+	// re-downloading or rebuilding (#4478). Only --remove-binary deletes it.
+	if opts.RemoveBinary && state.CLI.Path != "" {
 		if _, err := os.Stat(state.CLI.Path); err == nil {
 			removeIt := opts.Yes || opts.DryRun
 			if !removeIt {

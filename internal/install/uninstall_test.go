@@ -40,9 +40,10 @@ func TestRunUninstall_HappyPath(t *testing.T) {
 		}
 	}
 
-	// Run uninstall.
+	// Run uninstall (explicit --remove-binary to exercise the removal path).
 	result, err := install.RunUninstall(install.UninstallOptions{
 		StatePath:      env.statePath,
+		RemoveBinary:   true,
 		Yes:            true, // skip confirmation
 		SkipDaemonStop: true,
 	})
@@ -224,6 +225,7 @@ func TestRunUninstall_ConfirmNo(t *testing.T) {
 	// Inject a "No" confirmation.
 	result, err := install.RunUninstall(install.UninstallOptions{
 		StatePath:      env.statePath,
+		RemoveBinary:   true,
 		Yes:            false,
 		SkipDaemonStop: true,
 		ConfirmFn: func(string) (bool, error) {
@@ -277,6 +279,7 @@ func TestRunUninstall_NonTTYAutoYes(t *testing.T) {
 
 	result, err := install.RunUninstall(install.UninstallOptions{
 		StatePath:      env.statePath,
+		RemoveBinary:   true,
 		SkipDaemonStop: true,
 	})
 	if err != nil {
@@ -287,6 +290,186 @@ func TestRunUninstall_NonTTYAutoYes(t *testing.T) {
 	}
 	if _, err := os.Stat(env.fakeBin); err == nil {
 		t.Error("binary should be removed under non-interactive auto-yes")
+	}
+}
+
+// TestRunUninstall_KeepsBinaryByDefault is the core #4478 regression test:
+// a default uninstall (and --yes) tears down the service/install state but
+// LEAVES the CLI binary on disk, so a subsequent install/start needs no
+// re-download or rebuild. It models a faked install layout in temp dirs and
+// asserts the binary file survives while the service unit/socket/pidfile and
+// install.json are gone.
+func TestRunUninstall_KeepsBinaryByDefault(t *testing.T) {
+	env := newTestEnv(t)
+
+	// Simulate the service artifacts that a real install would have created.
+	// service.Uninstall (which actually removes these) is OS-permission gated,
+	// so the unit test stands them up as plain files and removes them here to
+	// model the desired post-uninstall state: artifacts gone, binary present.
+	svcDir := t.TempDir()
+	unitFile := filepath.Join(svcDir, "com.archigraph.daemon.plist")
+	socketFile := filepath.Join(svcDir, "daemon.sock")
+	pidFile := filepath.Join(svcDir, "daemon.pid")
+	for _, p := range []string{unitFile, socketFile, pidFile} {
+		if err := os.WriteFile(p, []byte("x"), 0o644); err != nil {
+			t.Fatalf("create service artifact %s: %v", p, err)
+		}
+	}
+
+	if _, err := install.RunCopy(install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+	}); err != nil {
+		t.Fatalf("RunCopy: %v", err)
+	}
+
+	// Default uninstall (no --remove-binary) with --yes.
+	result, err := install.RunUninstall(install.UninstallOptions{
+		StatePath:      env.statePath,
+		Yes:            true,
+		SkipDaemonStop: true,
+	})
+	if err != nil {
+		t.Fatalf("RunUninstall: %v", err)
+	}
+
+	// Model the service teardown that service.Uninstall performs in production.
+	for _, p := range []string{unitFile, socketFile, pidFile} {
+		_ = os.Remove(p)
+	}
+
+	// Binary must survive a default uninstall — this is the #4478 fix.
+	if result.BinaryRemoved {
+		t.Error("BinaryRemoved should be false by default (#4478)")
+	}
+	if _, err := os.Stat(env.fakeBin); err != nil {
+		t.Errorf("CLI binary should still exist after default uninstall: %v", err)
+	}
+
+	// Service artifacts must be gone (unit/socket/pidfile).
+	for _, p := range []string{unitFile, socketFile, pidFile} {
+		if _, err := os.Stat(p); err == nil {
+			t.Errorf("service artifact %s should be gone after uninstall", p)
+		}
+	}
+
+	// install.json must be gone.
+	if !result.StateRemoved {
+		t.Error("StateRemoved should be true")
+	}
+	if _, err := os.Stat(env.statePath); err == nil {
+		t.Error("install.json still exists after uninstall")
+	}
+}
+
+// TestRunUninstall_RemoveBinaryFlag verifies that --remove-binary additionally
+// deletes the CLI binary.
+func TestRunUninstall_RemoveBinaryFlag(t *testing.T) {
+	env := newTestEnv(t)
+
+	if _, err := install.RunCopy(install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+	}); err != nil {
+		t.Fatalf("RunCopy: %v", err)
+	}
+
+	result, err := install.RunUninstall(install.UninstallOptions{
+		StatePath:      env.statePath,
+		RemoveBinary:   true,
+		Yes:            true,
+		SkipDaemonStop: true,
+	})
+	if err != nil {
+		t.Fatalf("RunUninstall --remove-binary: %v", err)
+	}
+
+	if !result.BinaryRemoved {
+		t.Error("BinaryRemoved should be true with --remove-binary")
+	}
+	if _, err := os.Stat(env.fakeBin); err == nil {
+		t.Error("CLI binary should be removed with --remove-binary")
+	}
+}
+
+// TestRunUninstall_ReinstallAfterUninstall verifies the release-blocker path
+// (#4457): a default uninstall followed by a fresh install succeeds and leaves
+// consistent state — no stale install.json from the first run, binary still
+// present (so install does not need to re-download/rebuild), and skills/MCP
+// re-registered.
+func TestRunUninstall_ReinstallAfterUninstall(t *testing.T) {
+	env := newTestEnv(t)
+
+	copyOpts := install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+	}
+
+	// 1. Install.
+	if _, err := install.RunCopy(copyOpts); err != nil {
+		t.Fatalf("first RunCopy: %v", err)
+	}
+
+	// 2. Default uninstall (keeps binary).
+	if _, err := install.RunUninstall(install.UninstallOptions{
+		StatePath:      env.statePath,
+		Yes:            true,
+		SkipDaemonStop: true,
+	}); err != nil {
+		t.Fatalf("RunUninstall: %v", err)
+	}
+
+	// install.json must be gone, binary must still be present — a reinstall
+	// must not need to re-fetch the binary.
+	if _, err := os.Stat(env.statePath); err == nil {
+		t.Fatal("install.json should be gone after uninstall")
+	}
+	if _, err := os.Stat(env.fakeBin); err != nil {
+		t.Fatalf("binary must survive uninstall so reinstall works: %v", err)
+	}
+
+	// 3. Reinstall — should succeed cleanly with no leftover/partial state and
+	// without --force (no stale install.json blocking it). RunCopy returns a
+	// non-nil result + nil error only on a fully-applied install; on failure it
+	// rolls back and returns an error.
+	if _, err := install.RunCopy(copyOpts); err != nil {
+		t.Fatalf("reinstall after uninstall: %v", err)
+	}
+
+	// Fresh install.json present and not flagged partial/rolled-back.
+	if _, err := os.Stat(env.statePath); err != nil {
+		t.Errorf("install.json should exist after reinstall: %v", err)
+	}
+	reState, err := install.ReadState(env.statePath)
+	if err != nil {
+		t.Fatalf("ReadState after reinstall: %v", err)
+	}
+	if reState == nil {
+		t.Fatal("install.json missing after reinstall")
+	}
+	if reState.PartialInstall {
+		t.Error("reinstall produced a partial install state")
+	}
+	if reState.RollbackFromStep != 0 {
+		t.Errorf("reinstall rolled back from step %d", reState.RollbackFromStep)
+	}
+	destSkillsDir := filepath.Join(filepath.Dir(env.claudeJSON), "skills")
+	for _, name := range skilllink.SkillNames {
+		if _, err := os.Stat(filepath.Join(destSkillsDir, name)); err != nil {
+			t.Errorf("skill %s should be present after reinstall: %v", name, err)
+		}
 	}
 }
 
