@@ -906,6 +906,13 @@ export interface ShapeRow {
   name: string;
   type: string;
   annotations?: string[];
+  /**
+   * Per-field validation constraint chips (#4858), parsed from the field's
+   * validation decorators — e.g. for a NestJS DTO field
+   * `@IsString() @MaxLength(120) @IsOptional() name?: string` this is
+   * ["IsString","MaxLength:120","IsOptional"]. Absent for fields with none.
+   */
+  validations?: string[];
   nullable?: boolean;
   type_entity_id?: string;
   has_children: boolean;

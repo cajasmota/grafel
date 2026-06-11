@@ -351,6 +351,23 @@ function NestedFieldRow({
         >
           {optional ? "optional" : "required"}
         </span>
+        {field.validations && field.validations.length > 0 && (
+          <span
+            data-testid={`shape-field-validations-${field.name}`}
+            className="flex items-center gap-1 min-w-0 overflow-hidden"
+          >
+            {field.validations.map((v) => (
+              <span
+                key={v}
+                data-testid={`validation-chip-${v}`}
+                className="inline-flex items-center px-1 py-0.5 rounded-sm text-[10px] font-medium font-mono shrink-0 bg-[var(--info-soft)] text-[var(--info)] border border-[var(--info-soft)]"
+                title={v}
+              >
+                {v}
+              </span>
+            ))}
+          </span>
+        )}
         {field.annotations && field.annotations.length > 0 && (
           <span className="text-text-4 truncate font-mono text-[11px]">
             {field.annotations.join(" ")}

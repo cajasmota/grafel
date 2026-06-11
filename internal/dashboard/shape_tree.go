@@ -37,6 +37,12 @@ type v2ShapeRow struct {
 	Name         string   `json:"name"`
 	Type         string   `json:"type"`
 	Annotations  []string `json:"annotations,omitempty"`
+	// Validations are per-field constraint chips (#4858) parsed from the
+	// field entity's `validations` metadata property — e.g. for a NestJS DTO
+	// field `@IsString() @MaxLength(120) @IsOptional() name?: string` this is
+	// ["IsString","MaxLength:120","IsOptional"]. Empty for fields without
+	// validation decorators.
+	Validations  []string `json:"validations,omitempty"`
 	Nullable     bool     `json:"nullable,omitempty"`
 	TypeEntityID string   `json:"type_entity_id,omitempty"`
 	HasChildren  bool     `json:"has_children"`
@@ -270,6 +276,7 @@ func buildShapeRow(grp *DashGroup, field *graph.Entity) v2ShapeRow {
 		Name:        name,
 		Type:        typ,
 		Annotations: annotations,
+		Validations: fieldValidations(field),
 		Nullable:    inferNullable(annotations, typ),
 	}
 	// Resolve the field's element type to a class entity so the frontend
@@ -284,6 +291,32 @@ func buildShapeRow(grp *DashGroup, field *graph.Entity) v2ShapeRow {
 		}
 	}
 	return row
+}
+
+// fieldValidations reads the per-field validation constraints stamped onto a
+// field entity by the extractor (#4858) under Properties["validations"]
+// (comma-joined). Returns nil when the field carries none. The list is rendered
+// by the dashboard as small constraint chips next to the field type — e.g.
+// ["IsString","MaxLength:120","IsOptional"] for a class-validator DTO field.
+func fieldValidations(field *graph.Entity) []string {
+	if field == nil || field.Properties == nil {
+		return nil
+	}
+	raw := strings.TrimSpace(field.Properties["validations"])
+	if raw == "" {
+		return nil
+	}
+	parts := strings.Split(raw, ",")
+	out := parts[:0]
+	for _, p := range parts {
+		if p = strings.TrimSpace(p); p != "" {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // parseFieldSignature splits a Java field signature like

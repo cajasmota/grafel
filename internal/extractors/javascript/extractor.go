@@ -1199,7 +1199,17 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 			if typeNode := n.ChildByFieldName("type"); typeNode != nil {
 				sig = name + ": " + x.nodeText(typeNode)
 			}
-			x.emit(emittedName, "SCOPE.Schema", n, "field", sig)
+			// Issue #4858 — attach class-validator constraints (if any) as
+			// structured metadata so the dashboard can render them as chips.
+			if validations := x.fieldValidations(n); len(validations) > 0 {
+				props := applyFieldValidations(map[string]string{
+					"kind":    "SCOPE.Schema",
+					"subtype": "field",
+				}, validations)
+				x.emitWithProps(emittedName, "SCOPE.Schema", n, "field", sig, props, nil)
+			} else {
+				x.emit(emittedName, "SCOPE.Schema", n, "field", sig)
+			}
 		}
 		x.walkChildren(n, parentClass, cb)
 		return

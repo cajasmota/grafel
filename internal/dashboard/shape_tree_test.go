@@ -375,6 +375,39 @@ func TestShape_InferNullable(t *testing.T) {
 	}
 }
 
+// TestShape_FieldValidationsChips covers #4858 — buildShapeRow surfaces the
+// class-validator constraints stamped on a field entity (Properties["validations"],
+// comma-joined) as the row's Validations slice for the dashboard chips. A field
+// without the property yields an empty (nil) slice.
+func TestShape_FieldValidationsChips(t *testing.T) {
+	grp := &DashGroup{}
+	cases := []struct {
+		name  string
+		props map[string]string
+		want  []string
+	}{
+		{"name", map[string]string{"validations": "IsString,MaxLength:120,IsOptional"},
+			[]string{"IsString", "MaxLength:120", "IsOptional"}},
+		{"email", map[string]string{"validations": "IsEmail"}, []string{"IsEmail"}},
+		{"plain", map[string]string{}, nil},
+		{"sloppy", map[string]string{"validations": " IsInt , Min:0 ,"},
+			[]string{"IsInt", "Min:0"}},
+	}
+	for _, c := range cases {
+		field := &graph.Entity{
+			Name:       "CreateUserDto." + c.name,
+			Kind:       "SCOPE.Schema",
+			Subtype:    "field",
+			Signature:  c.name + ": string",
+			Properties: c.props,
+		}
+		row := buildShapeRow(grp, field)
+		if !reflect.DeepEqual(row.Validations, c.want) {
+			t.Errorf("field %q: Validations=%v want %v", c.name, row.Validations, c.want)
+		}
+	}
+}
+
 // nestMappedTypeFixture models the live upvate-v3 NestJS mapped-type DTO shape:
 // CreateThingBody owns its fields, UpdateThingBody (extends PartialType(...))
 // owns NONE — its field-set is inherited via the EXTENDS edge that #4845's
