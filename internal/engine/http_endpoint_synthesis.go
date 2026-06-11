@@ -131,6 +131,12 @@ func synthesisSupportsLanguage(lang string) bool {
 	// #3484: Lua Lapis / OpenResty producer-side route synthesis.
 	case "lua":
 		return true
+	// #4749 (epic #4615 tail): Erlang Cowboy producer-side route synthesis —
+	// `cowboy_router:compile([{'_', [{"/path", handler, []}]}])` dispatch tables
+	// have no compiled YAML rules, so allow Erlang through for synthesizeCowboy.
+	// Files without a `cowboy_router` marker are no-ops inside the synthesizer.
+	case "erlang":
+		return true
 	// #1596: Infrastructure-as-Code languages have no compiled YAML rule sets
 	// of their own (Terraform rules live under the `hcl` key; CloudFormation
 	// YAML has none), so without this they would short-circuit out of Detect
@@ -1268,6 +1274,17 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// Clojure. The clojure framework rule manifests stay for detection; this
 		// pass adds the canonical definitions the coverage substrate keys off.
 		synthesizeClojureRoutes(string(content), emit)
+	case "erlang":
+		// Producer side (#4749, epic #4615 tail): Erlang Cowboy dispatch route
+		// tables — `cowboy_router:compile([{'_', [{"/users/:id", user_handler,
+		// []}]}])`. The `{"/path", Handler, _}` triple shape is identical to the
+		// Elixir Cowboy form, so the existing synthesizeCowboy synthesizer (which
+		// gates on a `cowboy_router` signal and reads literal-path/handler triples)
+		// emits the canonical http_endpoint_definition for Erlang too. It was
+		// previously only reached for `case "elixir"` even though Cowboy is the
+		// Erlang HTTP server; this wires the same producer for `.erl` dispatch
+		// tables so the shared resolver + e2e route-test linker (#4351) light up.
+		synthesizeCowboy(string(content), emit)
 	case "scala":
 		// Consumer side (#3554): sttp (basicRequest/quickRequest verb
 		// combinators with uri"..." literals) outbound HTTP client. The Scala

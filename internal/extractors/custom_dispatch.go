@@ -74,6 +74,7 @@ var customPrefixForLanguage = map[string]string{
 	"dart":    "custom_dart_",
 	"elixir":  "custom_elixir_",
 	"clojure": "custom_clojure_",
+	"erlang":  "custom_erlang_",
 	"csharp":  "custom_csharp_",
 	"cpp":     "custom_cpp_",
 	"crystal": "custom_crystal_",
