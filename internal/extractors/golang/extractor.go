@@ -118,7 +118,7 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	// so cross-package selector calls (`resolve.BuildIndex()`) can be stamped
 	// with the importing package directory and bound by the resolver instead
 	// of collapsing to an ambiguity-prone bare name.
-	inTreeQualifiers := buildGoInTreeQualifiers(root, file.Content, goModuleRoot(file.RepoRoot))
+	inTreeQualifiers := buildGoInTreeQualifiers(root, file.Content, goModuleRoot(file.RepoRoot), goModuleReplaces(file.RepoRoot))
 	funcEntities, fCount := extractFunctions(root, file.Content, file.Path, structFields, inTreeQualifiers)
 	records = append(records, funcEntities...)
 	funcs = fCount
@@ -148,7 +148,7 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 	//    EntityRecord entries (one per import path). Not fanned out to
 	// every function/type entity.
 	// ----------------------------------------------------------------
-	importRecords := extractImportEntities(root, file.Content, file.Path, goModuleRoot(file.RepoRoot))
+	importRecords := extractImportEntities(root, file.Content, file.Path, goModuleRoot(file.RepoRoot), goModuleReplaces(file.RepoRoot))
 	records = append(records, importRecords...)
 
 	// ----------------------------------------------------------------
@@ -2303,7 +2303,7 @@ func appendRelationshipTo(records []types.EntityRecord, target string, rel types
 // Properties["go_pkg_dir"] so the resolver's ResolveGoInTreeImports pass
 // can map them to the correct file-level SCOPE.Component entities. External
 // imports are left for the resolveImportToIDs pass to rewrite to ext: form.
-func extractImportEntities(root *sitter.Node, src []byte, filePath, moduleRoot string) []types.EntityRecord {
+func extractImportEntities(root *sitter.Node, src []byte, filePath, moduleRoot string, replaces []goReplace) []types.EntityRecord {
 	var records []types.EntityRecord
 
 	for _, spec := range findAll(root, "import_spec") {
@@ -2376,6 +2376,15 @@ func extractImportEntities(root *sitter.Node, src []byte, filePath, moduleRoot s
 		}
 		if moduleRoot != "" && strings.HasPrefix(importPath, moduleRoot+"/") {
 			pkgDir := importPath[len(moduleRoot)+1:]
+			rel.Properties = map[string]string{
+				"go_module_root": moduleRoot,
+				"go_pkg_dir":     pkgDir,
+			}
+		} else if pkgDir, ok := goReplacePkgDir(importPath, replaces); ok {
+			// #4705c: a local-path `replace` directive redirects this import
+			// to an in-repo directory. Stamp go_pkg_dir so the resolver's
+			// ResolveGoInTreeImports pass binds it to the local file entity
+			// BEFORE it falls through to external_package.
 			rel.Properties = map[string]string{
 				"go_module_root": moduleRoot,
 				"go_pkg_dir":     pkgDir,

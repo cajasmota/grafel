@@ -74,8 +74,8 @@ import (
 // package qualifier so the resolver can bind a cross-package call back to the
 // imported package's directory (issue #4332) instead of dropping the
 // package qualifier and emitting an ambiguity-prone bare name.
-func buildGoInTreeQualifiers(root *sitter.Node, src []byte, moduleRoot string) map[string]string {
-	if moduleRoot == "" || root == nil {
+func buildGoInTreeQualifiers(root *sitter.Node, src []byte, moduleRoot string, replaces []goReplace) map[string]string {
+	if root == nil || (moduleRoot == "" && len(replaces) == 0) {
 		return nil
 	}
 	out := make(map[string]string)
@@ -98,10 +98,15 @@ func buildGoInTreeQualifiers(root *sitter.Node, src []byte, moduleRoot string) m
 		if importPath == "" {
 			continue
 		}
-		if !strings.HasPrefix(importPath, moduleRoot+"/") {
+		var pkgDir string
+		if moduleRoot != "" && strings.HasPrefix(importPath, moduleRoot+"/") {
+			pkgDir = importPath[len(moduleRoot)+1:]
+		} else if dir, ok := goReplacePkgDir(importPath, replaces); ok {
+			// #4705c: local-path `replace` redirect to an in-repo package.
+			pkgDir = dir
+		} else {
 			continue // external or the module root itself — not an in-tree subpackage
 		}
-		pkgDir := importPath[len(moduleRoot)+1:]
 		if pkgDir == "" {
 			continue
 		}

@@ -703,7 +703,43 @@ func modulesForPythonFile(p string) []string {
 			break
 		}
 	}
+	// #4705a: src-layout / Django source roots nested under a project
+	// container. Many Django repos place apps under `src/`, `app/`, or a
+	// Django `apps/` package one or more directories below the repo root
+	// (e.g. `backend/src/core/models.py`, `server/apps/users/views.py`).
+	// The leading-prefix strip above misses these because the source-root
+	// marker is interior. Strip ONE recognised source-root segment found
+	// anywhere on a segment boundary so `from core.models import X` /
+	// `from users.views import V` bind to the internal file. This is the
+	// dominant under-linking pattern for the Django oracle. The markers
+	// are conventional package roots (`apps.`, `src.`, `app.`, `lib.`),
+	// matched with the same single-strip, boundary-anchored discipline as
+	// the Java source-root strip to avoid monorepo tail collisions.
+	for _, prefix := range pythonInteriorSourceRoots {
+		if tail, ok := stripAfterSourceRoot(out[0], prefix); ok && tail != "" {
+			out = appendUnique(out, tail)
+			break
+		}
+	}
 	return out
+}
+
+// pythonInteriorSourceRoots lists conventional Python/Django source-root
+// package segments that modulesForPythonFile may strip once when found on
+// an interior segment boundary (#4705a). Dotted, trailing-dot form. Kept
+// deliberately small to avoid monorepo collisions.
+var pythonInteriorSourceRoots = []string{"apps.", "src.", "app."}
+
+// appendUnique appends s to out only when not already present. Keeps the
+// dotted-module alias slices free of duplicates when multiple strip rules
+// converge on the same tail.
+func appendUnique(out []string, s string) []string {
+	for _, e := range out {
+		if e == s {
+			return out
+		}
+	}
+	return append(out, s)
 }
 
 // modulesForJavaFile derives the dotted package path of a Java source
@@ -731,14 +767,19 @@ func modulesForJavaFile(p string) []string {
 	}
 	dotted := strings.ReplaceAll(dir, "/", ".")
 	out := []string{dotted}
-	// Strip well-known Java source-root prefixes once. Keep the
-	// pre-strip form too so an in-corpus class indexed under its
-	// repo-relative dotted form continues to resolve. The strip is
-	// conservative — only the canonical Maven/Gradle layouts, plus
-	// the same generic prefixes used by Python.
+	// Strip the canonical Maven/Gradle source root. #4705b: the source
+	// root is matched ANYWHERE in the dotted path (anchored on segment
+	// boundaries), not only as a leading prefix, so Gradle multi-module
+	// layouts — `lib/src/main/java/com/acme/Bar.java`,
+	// `app/src/main/java/...` — strip their leading module-container
+	// segment and the import `com.acme.Bar` binds to the internal class.
+	// The canonical `src.main.java.`-style markers are specific enough
+	// that an interior match is safe (a real package would not contain
+	// the literal `src.main.java` triple). The pre-strip form is kept too
+	// so a corpus indexed at the source root still resolves.
 	for _, prefix := range javaSourceRootPrefixes {
-		if strings.HasPrefix(dotted, prefix) {
-			out = append(out, strings.TrimPrefix(dotted, prefix))
+		if tail, ok := stripAfterSourceRoot(dotted, prefix); ok {
+			out = append(out, tail)
 			break
 		}
 	}
@@ -749,6 +790,23 @@ func modulesForJavaFile(p string) []string {
 		}
 	}
 	return out
+}
+
+// stripAfterSourceRoot returns the dotted-path tail that follows the
+// canonical source-root marker `root` (a dotted, trailing-dot form such
+// as "src.main.java."), matched as a leading prefix OR anchored at a
+// segment boundary anywhere in `dotted`. Returns (tail, true) on a match,
+// ("", false) otherwise. Used to honor Gradle/Maven multi-module layouts
+// where a module-container segment precedes the source root (#4705b).
+func stripAfterSourceRoot(dotted, root string) (string, bool) {
+	if strings.HasPrefix(dotted, root) {
+		return strings.TrimPrefix(dotted, root), true
+	}
+	// Interior match must sit on a segment boundary: ".<root>".
+	if idx := strings.Index(dotted, "."+root); idx >= 0 {
+		return dotted[idx+1+len(root):], true
+	}
+	return "", false
 }
 
 // modulesForScalaFile derives the dotted-package forms of a Scala source
