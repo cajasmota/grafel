@@ -25,6 +25,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/cajasmota/archigraph/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -393,8 +394,53 @@ func dataFlowEndpointRepo(key string) string {
 	return ""
 }
 
+// dbSinkEdgeKinds is the set of live-graph DB-access relationship kinds that
+// represent a node reaching a database sink. handleDataFlows projects edges of
+// these kinds as `sink_kind=db` data flows so that DB access surfaced ONLY as a
+// graph edge — never picked up by the request-input→sink taint sniffer that
+// fills the data-flow sidecar — still appears under `data_flows(sink_kind=db)`
+// (#4299, follow-up to #4288).
+//
+// The set mirrors the DB-access subset of semanticEdgeKinds (internal/mcp/
+// tools.go) — every kind here is a genuine read/write/query/join against a
+// table or collection, NOT structural scaffolding and NOT a non-DB semantic
+// edge (THROWS, RENDERS, PUBLISHES_TO, …):
+//
+//	READS_FROM / WRITES_TO         — explicit DB read/write access edges
+//	QUERIES                        — ORM query call-site → model/table (#723)
+//	ACCESSES_TABLE / MODIFIES_TABLE — relational table read / mutation
+//	JOINS_COLLECTION               — Mongo $lookup / cross-collection join (#3426)
+//	GRAPH_RELATES                  — Neo4j graph-DB join analogue of the above (#3611)
+//
+// The map value is the synthesised effect-style `sink_kind` reported for the
+// projected flow — db_read for pure reads, db_write for writes/mutations, and
+// the join kinds default to db_read (a $lookup/relationship traversal reads the
+// joined collection). All match the `db` sink_kind filter (see sinkKindMatchesDB).
+var dbSinkEdgeKinds = map[string]string{
+	string(types.RelationshipKindReadsFrom):       "db_read",
+	string(types.RelationshipKindWritesTo):        "db_write",
+	string(types.RelationshipKindQueries):         "db_read",
+	string(types.RelationshipKindAccessesTable):   "db_read",
+	string(types.RelationshipKindModifiesTable):   "db_write",
+	string(types.RelationshipKindJoinsCollection): "db_read",
+	string(types.RelationshipKindGraphRelates):    "db_read",
+}
+
+// sinkKindMatchesDB reports whether a `sink_kind` filter value should include
+// graph-edge-projected DB sinks. An empty filter (no narrowing) and the generic
+// "db" both match; the concrete effect kinds db_read / db_write match their own
+// projected flows. Any other filter (http, queue, …) excludes them.
+func sinkKindMatchesDB(filter, projected string) bool {
+	switch filter {
+	case "", "db":
+		return true
+	default:
+		return filter == projected
+	}
+}
+
 func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
-	groupName, _, errRes := s.resolveAndGroup(req)
+	groupName, lg, errRes := s.resolveAndGroup(req)
 	if errRes != nil {
 		return errRes, nil
 	}
@@ -408,15 +454,7 @@ func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) 
 
 	var doc dataFlowSidecarDoc
 	path := sidecarPath(groupName, "data-flow")
-	if !loadSidecar(path, &doc) {
-		return jsonResult(map[string]any{
-			"data_flows": []any{},
-			"count":      0,
-			"total":      0,
-			"source":     "missing",
-			"note":       "Data-flow sidecar absent — run the link passes to generate it (#3867).",
-		}), nil
-	}
+	sidecarPresent := loadSidecar(path, &doc)
 
 	out := make([]map[string]any, 0, len(doc.Links))
 	for _, l := range doc.Links {
@@ -455,6 +493,78 @@ func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) 
 		}
 		out = append(out, rec)
 	}
+
+	// #4299: project live-graph DB-access edges (JOINS_COLLECTION and siblings)
+	// as db sinks. The taint sidecar only carries request-input→sink flows the
+	// sniffer could follow; a node whose only DB signal is a graph edge (e.g. a
+	// Mongo $lookup recorded as JOINS_COLLECTION) never appears there. Surface
+	// those edges so `data_flows(sink_kind=db)` is consistent with how
+	// db_read/db_write sinks are reported and with inspect().semantic_edges.
+	// Only runs when the sink_kind filter could include db sinks.
+	graphProjected := 0
+	if sinkKindMatchesDB(sinkKindFilter, "db_read") || sinkKindMatchesDB(sinkKindFilter, "db_write") {
+		for _, r := range reposToConsider(lg, argStringSlice(req, "repo_filter")) {
+			if r == nil || r.Doc == nil {
+				continue
+			}
+			repo := r.Doc.Repo
+			if len(repoFilter) > 0 && !repoFilter[repo] {
+				continue
+			}
+			byID := r.getByID()
+			for i := range r.Doc.Relationships {
+				rel := &r.Doc.Relationships[i]
+				sinkKind, ok := dbSinkEdgeKinds[strings.ToUpper(rel.Kind)]
+				if !ok {
+					continue
+				}
+				if !sinkKindMatchesDB(sinkKindFilter, sinkKind) {
+					continue
+				}
+				fromID := prefixedID(repo, rel.FromID)
+				if entityFilter != "" && fromID != entityFilter {
+					continue
+				}
+				toID := rel.ToID
+				if rprefix, _ := splitPrefixed(toID); rprefix == "" {
+					// Bare local id (graph ToIDs are local, e.g. "Class:Inspection")
+					// — repo-prefix it so the projected `to` matches the sidecar's
+					// "<repo>::<localId>" endpoint shape.
+					toID = prefixedID(repo, rel.ToID)
+				}
+				sink := toID
+				if tgt := byID[rel.ToID]; tgt != nil && tgt.Name != "" {
+					sink = tgt.Name
+				}
+				rec := map[string]any{
+					"id":         rel.ID,
+					"from":       fromID,
+					"to":         toID,
+					"relation":   rel.Kind,
+					"confidence": types.EffectiveConfidence(rel.Confidence),
+					"sink_kind":  sinkKind,
+					"sink":       sink,
+					"source":     "graph-edge",
+				}
+				if v := rel.Properties["field"]; v != "" {
+					rec["field"] = v
+				}
+				out = append(out, rec)
+				graphProjected++
+			}
+		}
+	}
+
+	if !sidecarPresent && graphProjected == 0 {
+		return jsonResult(map[string]any{
+			"data_flows": []any{},
+			"count":      0,
+			"total":      0,
+			"source":     "missing",
+			"note":       "Data-flow sidecar absent and no DB-access graph edges — run the link passes to generate it (#3867).",
+		}), nil
+	}
+
 	// Stable order: by from-endpoint, then sink, then id.
 	sort.SliceStable(out, func(i, j int) bool {
 		fi, fj := fmt.Sprint(out[i]["from"]), fmt.Sprint(out[j]["from"])
@@ -471,16 +581,25 @@ func (s *Server) handleDataFlows(_ context.Context, req mcpapi.CallToolRequest) 
 	if limit > 0 && len(out) > limit {
 		out = out[:limit]
 	}
+	source := "sidecar"
+	switch {
+	case sidecarPresent && graphProjected > 0:
+		source = "sidecar+graph-edge"
+	case !sidecarPresent && graphProjected > 0:
+		source = "graph-edge"
+	}
 	return jsonResult(map[string]any{
 		"data_flows": out,
 		"count":      len(out),
 		"total":      total,
 		"truncated":  total > len(out),
-		"source":     "sidecar",
+		"source":     source,
 		"note": "Request-input → sink DATA_FLOWS_TO edges (intra-function + bounded inter-procedural hops). " +
 			"`from` is the request handler, `to` the resolved sink entity (or a synthetic sink: residue), " +
 			"`field` the tainted request field, `hop_path` the inter-procedural chain. " +
-			"Precision-first: a flow the sniffer did not soundly follow is never fabricated (#3867).",
+			"Precision-first: a flow the sniffer did not soundly follow is never fabricated (#3867). " +
+			"db sinks reached only via live-graph DB-access edges (JOINS_COLLECTION/READS_FROM/WRITES_TO/" +
+			"QUERIES/ACCESSES_TABLE/MODIFIES_TABLE/GRAPH_RELATES) are also projected with source=graph-edge (#4299).",
 	}), nil
 }
 
