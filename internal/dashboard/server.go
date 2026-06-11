@@ -727,6 +727,10 @@ func (s *Server) routes() http.Handler {
 	// The v1 topology routes above are UNCHANGED.
 	mux.HandleFunc("GET /api/v2/topology/{group}", s.handleV2Topology)
 	mux.HandleFunc("GET /api/v2/topology/{group}/topic/{topicId}", s.handleV2TopologyDetail)
+	// Compound architecture-diagram topology (Model 1, #4810/#4811):
+	// nested containment zones + tier lanes + typed/aggregatable edges, for a
+	// `group_by` lens (infra|modules|tier).
+	mux.HandleFunc("GET /api/v2/topology/{group}/compound", s.handleV2TopologyCompound)
 	// --- v2 Pending screen (#1442) ---
 	mux.HandleFunc("GET /api/v2/groups/{group}/candidates", s.handleV2Candidates)
 	mux.HandleFunc("PUT /api/v2/groups/{group}/candidates/{cid}/hint", s.handleV2CandidateHint)

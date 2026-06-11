@@ -21,6 +21,7 @@ import {
   Map as MapIcon,
   LayoutList,
   ArrowUpRight,
+  Network as NetworkIcon,
 } from "lucide-react";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -32,6 +33,7 @@ import type { InsightValue } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
+import { CompoundTopology } from "@/components/compound-topology";
 import {
   useTopology,
   useTopologyDetail,
@@ -1729,7 +1731,7 @@ export default function TopologyScreen() {
     | "scheduled";
   const channelParam = searchParams.get("channel");
 
-  const [viewMode, setViewMode] = useState<"map" | "list">("map");
+  const [viewMode, setViewMode] = useState<"map" | "list" | "arch">("map");
   const [search, setSearch] = useState("");
   const [activeBrokers, setActiveBrokers] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(channelParam);
@@ -2043,10 +2045,33 @@ export default function TopologyScreen() {
                 <LayoutList size={13} />
                 List
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("arch")}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2.5 h-7 text-xs border-l border-border transition-colors",
+                  viewMode === "arch"
+                    ? "bg-surface-2 text-text"
+                    : "text-text-3 hover:bg-surface",
+                )}
+                aria-pressed={viewMode === "arch"}
+                title="Architecture diagram — compound zones + tier lanes (Model 1)"
+              >
+                <NetworkIcon size={13} />
+                Architecture
+              </button>
             </div>
           </div>
 
           {/* Workspace */}
+          {viewMode === "arch" ? (
+            /* Architecture diagram (Model 1, #4810/#4811) — compound zones +
+               tier lanes + collapsible zones, independent of the broker
+               channel filters above. Takes the full canvas. */
+            <div className="flex flex-1 min-h-0">
+              <CompoundTopology groupId={groupId} className="flex-1 min-w-0" />
+            </div>
+          ) : (
           <div className="flex flex-1 min-h-0">
             {/* Canvas / list area */}
             <div
@@ -2121,6 +2146,7 @@ export default function TopologyScreen() {
               </div>
             )}
           </div>
+          )}
         </TabsContent>
 
         {/* Orphan publishers */}

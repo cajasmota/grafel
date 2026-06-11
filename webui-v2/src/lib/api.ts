@@ -21,6 +21,8 @@ import type {
   SettingsFeatures,
   DoctorCheck,
   TopologyResponse,
+  CompoundTopologyResponse,
+  CompoundGroupBy,
   TopologyChannelDetail,
   OrphanPublisherEntry,
   OrphanSubscriberEntry,
@@ -326,6 +328,16 @@ export const api = {
    */
   getTopology: (groupId: string) =>
     requestV2<TopologyResponse>(`/topology/${encodeURIComponent(groupId)}`),
+
+  /**
+   * GET /api/v2/topology/:group/compound?group_by=infra|modules|tier
+   * Compound architecture-diagram payload (Model 1, #4810/#4811): nested
+   * containment zones + node tier facets + typed/aggregatable edges.
+   */
+  getCompoundTopology: (groupId: string, groupBy: CompoundGroupBy) =>
+    requestV2<CompoundTopologyResponse>(
+      `/topology/${encodeURIComponent(groupId)}/compound?group_by=${groupBy}`,
+    ),
 
   /**
    * GET /api/v2/topology/:group/topic/:topicId

@@ -14,6 +14,7 @@ import type {
   BrokerCanonical,
   OrphanPublisherEntry,
   OrphanSubscriberEntry,
+  CompoundGroupBy,
 } from "@/data/types";
 
 // ---------------------------------------------------------------------------
@@ -31,6 +32,11 @@ export const orphanPublishersQueryKey = (groupId: string) =>
 
 export const orphanSubscribersQueryKey = (groupId: string) =>
   ["topology", groupId, "orphan-subscribers"] as const;
+
+export const compoundTopologyQueryKey = (
+  groupId: string,
+  groupBy: CompoundGroupBy,
+) => ["topology", groupId, "compound", groupBy] as const;
 
 // ---------------------------------------------------------------------------
 // Derived helpers
@@ -174,6 +180,19 @@ export function useOrphanSubscribers(groupId: string) {
   return useQuery({
     queryKey: orphanSubscribersQueryKey(groupId),
     queryFn: () => api.getOrphanSubscribers(groupId),
+    enabled: !!groupId,
+  });
+}
+
+/**
+ * Compound architecture-diagram payload (Model 1, #4810/#4811). Re-fetches
+ * per group_by lens; the same nodes are re-grouped server-side so the
+ * Infra/Modules/Tier toggle is a cheap query swap.
+ */
+export function useCompoundTopology(groupId: string, groupBy: CompoundGroupBy) {
+  return useQuery({
+    queryKey: compoundTopologyQueryKey(groupId, groupBy),
+    queryFn: () => api.getCompoundTopology(groupId, groupBy),
     enabled: !!groupId,
   });
 }

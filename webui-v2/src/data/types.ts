@@ -2630,3 +2630,65 @@ export interface SourceReply {
   /** The returned window. */
   lines: SourceLine[];
 }
+
+/* ============================================================
+   Compound topology (architecture-diagram view) — Model 1, #4810/#4811.
+   GET /api/v2/topology/:group/compound?group_by=infra|modules|tier
+   ============================================================ */
+
+export type CompoundTier =
+  | "client"
+  | "edge"
+  | "auth"
+  | "compute"
+  | "data"
+  | "messaging"
+  | "external";
+
+export type CompoundEdgeType =
+  | "reads"
+  | "writes"
+  | "invokes"
+  | "consumes"
+  | "routes"
+  | "depends";
+
+export type CompoundGroupBy = "infra" | "modules" | "tier";
+
+export interface CompoundNode {
+  id: string;
+  label: string;
+  kind: string;
+  tier: CompoundTier;
+  repo: string;
+  /** Containment chain outermost→innermost; empty in tier mode. */
+  zone_path: string[];
+}
+
+export interface CompoundZone {
+  id: string;
+  label: string;
+  parent_id?: string;
+  /** "repo" | "module" | "cloud" | "network" | "service". */
+  kind: string;
+  /** Direct + transitive member node count. */
+  node_count: number;
+}
+
+export interface CompoundEdge {
+  source: string;
+  target: string;
+  type: CompoundEdgeType;
+  label: string;
+  /** Stable per-edge aggregation key (type + source + target). */
+  agg_key: string;
+}
+
+export interface CompoundTopologyResponse {
+  group_by: CompoundGroupBy;
+  zones: CompoundZone[];
+  nodes: CompoundNode[];
+  edges: CompoundEdge[];
+  /** Canonical left→right lane order. */
+  tiers: CompoundTier[];
+}
