@@ -66,6 +66,15 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// string raise, and bare re-raise are dropped (precision-first). Mirrors the
 	// flagship convergence-node shape (internal/extractor/exception_flow.go).
 	emitExceptionFlowEdges(root, file.Content, &entities)
+	// Issue #4684 (epic #4615) — RSpec test-scope owner. RSpec example/hook
+	// blocks (`it`/`describe`/`before` …) are anonymous `do ... end` callbacks,
+	// not method declarations, so walk() never mined their CALLS edges. Emit one
+	// SCOPE.Operation per spec file owning the receiver-typed CALLS edges to the
+	// production handlers the spec exercises, so ComputeCoverage credits them
+	// (test→CALLS→handler→endpoint). Mirrors javascript/tests.go (#4680). No-op
+	// for non-spec files. Route-hit linkage (`get '/api/...'`) stays in the
+	// RSpec custom extractor's e2e_route_calls path (#4371).
+	emitRubyTestScopeOwner(root, file, &entities)
 	// Issue #90 — tag every embedded relationship with the source language
 	// so the resolver picks the Ruby dynamic-pattern catalog.
 	extractor.TagRelationshipsLanguage(entities, "ruby")
@@ -138,6 +147,22 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 				child := &(*out)[k]
 				if child.Kind != "SCOPE.Operation" {
 					continue
+				}
+				// Issue #4684 (epic #4615) — class-qualify each method with a
+				// QualifiedName ("<Class>.<method>") WITHOUT touching its bare
+				// Name (existing CONTAINS structural-refs and Rails route
+				// resolution rely on the bare Name). The resolver indexes
+				// QualifiedName globally (byQualifiedName, #100), so a
+				// receiver-typed CALLS target like `ProposalsController.
+				// get_counts` — emitted by the RSpec test-scope owner once a
+				// local is typed from `ProposalsController.new` — resolves
+				// cross-file to this method. Mirrors the dotted Name Python
+				// (#4681) / Java (#4682) carry; Ruby keeps the bare Name and
+				// adds the qualifier as metadata only. First (innermost) class
+				// wins: a nested class stamps its own methods before this outer
+				// loop runs, so we never overwrite an already-qualified child.
+				if child.QualifiedName == "" {
+					child.QualifiedName = rec.Name + "." + child.Name
 				}
 				// Issue #140 — bare-name CONTAINS targets are 100%
 				// ambiguous in Rails apps where dozens of controllers
