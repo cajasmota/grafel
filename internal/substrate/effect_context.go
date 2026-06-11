@@ -62,6 +62,77 @@ type EffectContext struct {
 	InLoop bool `json:"in_loop,omitempty"`
 }
 
+// CallContext is the control-flow attribution of a single CALLS edge whose
+// invocation site sits at Line inside a function body (#4832, control-flow
+// follow-up epic #4820). It is the call-site analogue of EffectContext: instead
+// of classifying an effect sink, it classifies a function/method invocation, so
+// a guarded call (`if X { svc.foo() }`) is distinguishable from an
+// always-executed one. Reuses the same enclosingBlocks/innermostEnclosing block
+// classifier as part (a), so it is language-general across the ~10 validated
+// languages (#4830).
+type CallContext struct {
+	// Line is the 1-indexed absolute source line of the call site (the CALLS
+	// edge's Properties["line"]).
+	Line int `json:"line"`
+	// Conditional is true when the call site is inside any conditional block
+	// (if/else-if/else, switch/case, try/catch). False when the call runs
+	// unconditionally at the top level of the function body.
+	Conditional bool `json:"conditional"`
+	// Condition is the nearest enclosing branch predicate text (e.g.
+	// "if user.is_admin", "catch (e)", "if (flag)"). Empty when unconditional.
+	Condition string `json:"condition,omitempty"`
+	// InLoop is true when the call site is inside a for/while/foreach loop — a
+	// fan-out / N+1 signal.
+	InLoop bool `json:"in_loop,omitempty"`
+}
+
+// CallContextsFor classifies the control-flow context of each call site in
+// callLines (1-indexed absolute file lines, e.g. the CALLS edges' "line"
+// properties) against the enclosing conditional/loop blocks of funcSource.
+// startLine is the 1-indexed absolute file line of the function's first line so
+// the block spans are absolute and line-up with the absolute callLines.
+//
+// It reuses the SAME enclosingBlocks/innermostEnclosing classifier that part (a)
+// applied to EFFECTS, so the language coverage is identical (Python by
+// indentation; brace dialects by `{`/`}` depth; Ruby by `end`). Returns a map
+// keyed by call line; lines with no enclosing conditional/loop block are absent
+// from the map (the caller treats them as unconditional — conditional=false, no
+// condition), mirroring how part (a) represented unconditional effects.
+//
+// Pure + deterministic. Returns nil when funcSource is empty, the language has
+// no block detector, or no call line falls inside a block.
+func CallContextsFor(lang, funcSource string, startLine int, callLines []int) map[int]CallContext {
+	if strings.TrimSpace(funcSource) == "" || len(callLines) == 0 {
+		return nil
+	}
+	// Clamp to the target function's own body so call lines from trailing
+	// sibling defs (when the window was EndLine-padded) are not mis-attributed,
+	// matching EffectContextsFor.
+	clamped := ClampToFunctionBody(funcSource, lang)
+	blocks := enclosingBlocks(clamped, lang, startLine)
+	if len(blocks) == 0 {
+		return nil
+	}
+	out := make(map[int]CallContext)
+	for _, ln := range callLines {
+		if ln <= 0 {
+			continue
+		}
+		if cond, loop, ok := innermostEnclosing(blocks, ln); ok {
+			out[ln] = CallContext{
+				Line:        ln,
+				Conditional: true,
+				Condition:   cond,
+				InLoop:      loop,
+			}
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
 // FunctionComplexity is the cheap per-function control-flow summary persisted as
 // entity properties (cyclomatic_complexity, branch_count).
 type FunctionComplexity struct {

@@ -488,6 +488,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"),                                        // PH1c: optional git ref; defaults to CWD HEAD ref
 		mcpapi.WithAny("include_unresolved"),                         // #2640: when true, include unresolved calls[] with annotation
+		mcpapi.WithString("include"),                                 // #4832: opt-in facets, e.g. "call_contexts" — stamps conditional/condition/in_loop on calls[]
 		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("archigraph_inspect", s.handleGetNode))
 

@@ -20,6 +20,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/gitmeta"
 	"github.com/cajasmota/archigraph/internal/graph"
 	"github.com/cajasmota/archigraph/internal/links"
+	"github.com/cajasmota/archigraph/internal/substrate"
 	"github.com/cajasmota/archigraph/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
@@ -1087,6 +1088,10 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	// #2640: include_unresolved=false (default) filters calls[] rows where the
 	// target entity could not be resolved (empty target_path or bare repo prefix).
 	includeUnresolved := argBool(req, "include_unresolved", false)
+	// #4832: opt-in control-flow attribution on outbound CALLS edges
+	// (conditional/condition/in_loop). Off by default so the inspect payload is
+	// byte-identical (#2828 token-reduction respected).
+	includeCallContexts := includeWants(req, "call_contexts")
 	allFindings := loadFindings(findingsMemDir(g, lg))
 	// Cross-repo prefixed ID? Resolve repo first for unambiguous lookup.
 	if rprefix, local := splitPrefixed(key); rprefix != "" {
@@ -1103,7 +1108,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 				}
 				// #2634: line-precise CALLS edges.
 				// #2640: filter unresolved by default.
-				out["calls"] = inspectOutboundCalls(r, e, scopeIsOne, includeUnresolved)
+				out["calls"] = inspectOutboundCalls(r, e, scopeIsOne, includeUnresolved, includeCallContexts)
 				// #2641: called_by always present (empty array when no callers).
 				out["called_by"] = inspectInboundCalls(r, e, scopeIsOne)
 				// #2666: discriminator comparison sites surfaced from DISCRIMINATES_ON
@@ -1180,7 +1185,7 @@ func (s *Server) handleGetNode(ctx context.Context, req mcpapi.CallToolRequest) 
 	}
 	// #2634: line-precise CALLS edges.
 	// #2640: filter unresolved by default.
-	out["calls"] = inspectOutboundCalls(m.repo, m.ent, scopeIsOne, includeUnresolved)
+	out["calls"] = inspectOutboundCalls(m.repo, m.ent, scopeIsOne, includeUnresolved, includeCallContexts)
 	// #2641: called_by always present (empty array when no callers).
 	out["called_by"] = inspectInboundCalls(m.repo, m.ent, scopeIsOne)
 	// #2666: discriminator comparison sites surfaced from DISCRIMINATES_ON
@@ -1298,7 +1303,13 @@ func isUnresolvedCallEdge(targetPath, targetID string) bool {
 // When includeUnresolved is false (the default), edges where the target entity
 // could not be resolved are omitted. When true, all edges are returned and
 // unresolved ones carry an additional "unresolved: true" field. (#2640)
-func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, includeUnresolved bool) []map[string]any {
+//
+// When includeCallContexts is true (opt-in via include=call_contexts, #4832),
+// each resolved-line call entry additionally carries the control-flow context
+// of its call site — conditional/condition/in_loop — computed from the caller's
+// source window via the same enclosing-block classifier part (a) used for
+// effect_contexts. Default off so the inspect payload is byte-identical (#2828).
+func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, includeUnresolved, includeCallContexts bool) []map[string]any {
 	if lr == nil || lr.Doc == nil {
 		return []map[string]any{}
 	}
@@ -1350,7 +1361,64 @@ func inspectOutboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool, incl
 		}
 		out = append(out, entry)
 	}
+	// #4832 — opt-in control-flow attribution of each call site. Reuses the same
+	// enclosing-block classifier part (a) applied to effects: read the CALLER's
+	// source window once, classify every call-site line against its enclosing
+	// conditional/loop blocks, and stamp conditional/condition/in_loop on each
+	// entry. Unconditional (top-level) calls carry conditional=false with no
+	// condition, matching how part (a) represented unconditional effects.
+	if includeCallContexts {
+		attachCallContexts(out, lr, e)
+	}
 	return out
+}
+
+// attachCallContexts stamps conditional/condition/in_loop on each outbound-call
+// entry that has a positive "line", using substrate.CallContextsFor against the
+// caller entity e's source window. No-op (entries unchanged) when the source is
+// unreadable or the language has no block detector — honest-partial, so callers
+// never see a false "unconditional" for an unsupported language. (#4832)
+func attachCallContexts(entries []map[string]any, lr *LoadedRepo, e *graph.Entity) {
+	if len(entries) == 0 || lr == nil || e == nil {
+		return
+	}
+	lang := substrate.LanguageForPath(e.SourceFile)
+	start, end := branchSourceSpan(e)
+	if start <= 0 {
+		return
+	}
+	abs := e.SourceFile
+	if !filepath.IsAbs(abs) && lr.Path != "" {
+		abs = filepath.Join(lr.Path, e.SourceFile)
+	}
+	src, err := readRawSourceWindow(abs, start, end)
+	if err != nil || src == "" {
+		return
+	}
+	callLines := make([]int, 0, len(entries))
+	for _, entry := range entries {
+		if ln, ok := entry["line"].(int); ok && ln > 0 {
+			callLines = append(callLines, ln)
+		}
+	}
+	ctxs := substrate.CallContextsFor(lang, src, start, callLines)
+	for _, entry := range entries {
+		ln, ok := entry["line"].(int)
+		if !ok || ln <= 0 {
+			continue
+		}
+		if cc, found := ctxs[ln]; found {
+			entry["conditional"] = true
+			if cc.Condition != "" {
+				entry["condition"] = cc.Condition
+			}
+			if cc.InLoop {
+				entry["in_loop"] = true
+			}
+		} else {
+			entry["conditional"] = false
+		}
+	}
 }
 
 // inspectInboundCalls returns inbound CALLS edges (callers of entity e) with
