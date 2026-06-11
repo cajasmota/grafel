@@ -54,11 +54,20 @@ type contractResolverRegistry struct {
 }
 
 // newContractResolverRegistry builds the default registry. NestJS is the
-// flagship non-DRF resolver (#4601); Spring / FastAPI / Express / … land via
-// their own follow-up tickets and slot in here without touching any consumer.
+// flagship non-DRF resolver (#4601/#4711); Spring (#4708), FastAPI (#4709) and
+// Express/Fastify (#4710) slot in after it without touching any consumer.
+//
+// ORDER MATTERS for the TS/JS pair: nestJS MUST precede express, because the
+// Express resolver's bare-TS/JS catch-all (a TS endpoint with no Nest signature
+// is Express-family) would otherwise claim NestJS endpoints. isExpressEndpoint
+// excludes Nest endpoints defensively, but registration order is the primary
+// guard. Spring (Java) and FastAPI (Python) cannot collide with the JS pair.
 func newContractResolverRegistry() *contractResolverRegistry {
 	return &contractResolverRegistry{resolvers: []contractResolver{
-		nestJSContractResolver{},
+		nestJSContractResolver{},  // flagship (#4601/#4711)
+		springContractResolver{},  // #4708 — Java @RestController
+		fastAPIContractResolver{}, // #4709 — Python path-ops
+		expressContractResolver{}, // #4710 — Node bare-name frameworks
 	}}
 }
 

@@ -246,7 +246,9 @@ func TestRegistry_NestRequireActionDecoratorFallback(t *testing.T) {
 func TestRegistry_StubsRegisteredButDecline(t *testing.T) {
 	reg := NewRegistry()
 	fws := reg.Frameworks()
-	want := []string{"aspnet", "django-drf", "fastapi", "flask", "go-middleware", "laravel", "nestjs", "phoenix", "rails", "spring-security"}
+	// spring-security (#4708), fastapi (#4709) and express (#4710) are now
+	// implemented members; the remaining follow-up frameworks stay stubs.
+	want := []string{"aspnet", "django-drf", "express", "fastapi", "flask", "go-middleware", "laravel", "nestjs", "phoenix", "rails", "spring-security"}
 	if len(fws) != len(want) {
 		t.Fatalf("frameworks=%v, want %v", fws, want)
 	}
@@ -255,8 +257,8 @@ func TestRegistry_StubsRegisteredButDecline(t *testing.T) {
 			t.Fatalf("frameworks=%v, want %v", fws, want)
 		}
 	}
-	// A Spring-shaped signal with no resolver implemented yet → unknown.
-	p, fw := reg.Resolve(Signal{Props: map[string]string{"pre_authorize": "hasRole('ADMIN')"}})
+	// A still-unimplemented framework (rails) signal → unknown / no resolver.
+	p, fw := reg.Resolve(Signal{Props: map[string]string{"pundit_policy": "AdminPolicy"}})
 	if fw != "" || p.Kind != KindUnknown {
 		t.Fatalf("unimplemented framework resolved as %s/%s, want unknown/none", fw, p.Kind)
 	}
