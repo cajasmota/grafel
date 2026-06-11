@@ -1,4 +1,4 @@
-.PHONY: build dashboard-build test lint fmt vet clean fbgen fb-bench mcp-audit coverage coverage-validate
+.PHONY: build dashboard-build verify-dashboard test lint fmt vet clean fbgen fb-bench mcp-audit coverage coverage-validate
 
 GO ?= go
 NPM ?= npm
@@ -22,9 +22,20 @@ dashboard-build:
 	cd webui-v2 && $(NPM) ci && npx vite build
 	rm -rf internal/dashboard/dist
 	cp -r webui-v2/dist internal/dashboard/dist
+	@$(MAKE) verify-dashboard
+
+# verify-dashboard (#4468): fail loudly if the embedded bundle
+# (internal/dashboard/dist) is STALE relative to the freshly built SPA
+# (webui-v2/dist). A `vite build && go build` that skips the `cp` above
+# silently re-embeds the OLD dist — the daemon then serves a months-old UI
+# while reporting the new commit. Run this in CI and post-deploy. It passes
+# (with a notice) when webui-v2/dist is absent (Go-only / pre-built-CI flows).
+verify-dashboard:
+	$(GO) run ./cmd/verify-dashboard -root .
 
 # build: full binary including embedded SPA. Depends on dashboard-build
-# so `make build` always produces a self-contained binary.
+# so `make build` always produces a self-contained binary. dashboard-build
+# now also runs verify-dashboard, so a stale embed fails the build.
 build: dashboard-build
 	$(GO) build -ldflags='$(LDFLAGS)' -o $(BINARY) ./cmd/archigraph
 
