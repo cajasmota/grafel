@@ -531,6 +531,15 @@ func walk(
 			if body != nil {
 				classBodySrc = string(file.Content[body.StartByte():body.EndByte()])
 			}
+			// Issue #4283 — Spring Data NoSQL schema/model extraction.
+			// Emit a SCOPE.Schema model entity for @Document (Mongo) /
+			// @Table (Cassandra) / @RedisHash (Redis) annotated classes,
+			// CONTAINS-wired to the field children already emitted into the
+			// [classIdx+1, len(*out)) region above. Runs before the Lombok /
+			// Panache synthesizers so the field region holds only the real
+			// extracted children, not synthesized members.
+			emitNoSQLModel(node, file, rec.Name, classDeclSrc, classBodySrc,
+				pkgName, classIdx+1, len(*out), out)
 			// Class-level Lombok synthesis.
 			lombokSynth := synthesizeLombokEntities(rec.Name, classDeclSrc, classBodySrc, file.Path)
 			*out = append(*out, lombokSynth...)
