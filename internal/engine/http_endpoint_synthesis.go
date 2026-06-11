@@ -1185,6 +1185,17 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// StartLine on the synthetic so the audit2678 attribution lands on the
 		// verb block's line in app.rb.
 		synthesizeSinatra(string(content), path, emitFile)
+		// Producer side (#4417): Grape (`class API < Grape::API` with
+		// resource/namespace prefix nesting + verb blocks) and Roda (routing-tree
+		// `r.on`/`r.is` branch prefixes + leaf verbs). Both attach their handler
+		// as an anonymous block — same-file by construction — so each route is
+		// signalled as an inline handler (refKind=inlineHandlerRefKind) and
+		// emitFile stamps StartLine on the synthetic + a same-file IMPLEMENTS
+		// bridge (mirrors Sinatra #4385). Each synthesizer is gated on its own
+		// class signal (`< Grape::API` / `< Roda`) so it no-ops on every other
+		// Ruby file.
+		synthesizeGrape(string(content), path, emitFile)
+		synthesizeRoda(string(content), path, emitFile)
 		// Producer side (#3621): graphql-ruby GraphQL server. Maps each
 		// `field :<name>` on a root operation type class (QueryType /
 		// MutationType / SubscriptionType, subclasses of *BaseObject) to the

@@ -259,6 +259,21 @@ const (
 	// and required ones as `:id`. canonicalizeConduitParams drops the optional
 	// `[ ]` wrapper and rewrites `:name` → `{name}`.
 	FrameworkConduit = "conduit"
+	// FrameworkGrape (#4417) — Ruby Grape API (`class API < Grape::API`) declares
+	// routes with verb blocks (`get ':id' do ... end`) nested inside `resource`/
+	// `namespace`/`group` blocks. The synthesizer composes the resource/namespace
+	// prefixes onto the verb path. Grape path parameters use the Sinatra/Express-
+	// style `:name` colon-prefixed convention (`/users/:id` → `/users/{id}`), so
+	// canonicalisation reuses canonicalizeColonParams.
+	FrameworkGrape = "grape"
+	// FrameworkRoda (#4417) — Ruby Roda routing tree (`route do |r| r.on "users"
+	// do r.get Integer do |id| ... end end end`). The synthesizer composes the
+	// `r.on`/`r.is` branch segments into the path with the verb at the leaf. Roda
+	// captures are NORMALISED by the synthesizer before canonicalisation: a
+	// `String`/`Integer`/`Float`/`:sym` class-matcher or symbol-capture branch
+	// segment is rewritten to the Express-style `:param` form, so canonicalisation
+	// reuses canonicalizeColonParams.
+	FrameworkRoda = "roda"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -319,7 +334,7 @@ func Canonicalize(framework, raw string) string {
 		FrameworkAdonis, FrameworkMarble, FrameworkPolka, FrameworkRestify, FrameworkSails,
 		FrameworkRobyn, FrameworkPlug, FrameworkCowboy,
 		FrameworkLapis, FrameworkOpenResty, FrameworkVapor, FrameworkClojure,
-		FrameworkKemal, FrameworkRatpack:
+		FrameworkKemal, FrameworkRatpack, FrameworkGrape, FrameworkRoda:
 		out = canonicalizeColonParams(raw)
 	case FrameworkGiraffe:
 		// Giraffe `routef "/users/%i"` printf placeholders → `{}` first, then
