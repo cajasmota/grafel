@@ -5413,7 +5413,11 @@ func TestPdfBoxBareNames_ClassifiedWithPdfBoxImport(t *testing.T) {
 				},
 			}
 			Synthesize(doc)
-			want := "ext:org.apache.pdfbox"
+			// #4515 — the bare-name reference is a NAMED import of the pdfbox
+			// type, so it now resolves to a distinct per-symbol node
+			// (ext:org.apache.pdfbox:<Type>) keyed off the precise pdfbox
+			// package canon, rather than the coarse package-level placeholder.
+			want := "ext:org.apache.pdfbox:" + name
 			if doc.Relationships[1].ToID != want {
 				t.Fatalf("name=%q: ToID=%q, want %q", name, doc.Relationships[1].ToID, want)
 			}

@@ -261,6 +261,24 @@ func Synthesize(doc *graph.Document) Stats {
 		}
 	}
 
+	// #4515 — per-symbol named-import index. Build, per source file, the set
+	// of symbols that file named-imports from an EXTERNAL package, so a
+	// bare-name reference (`throw new NotFoundException()`, `extends BaseX`,
+	// `: SomeType`) resolves to a distinct, stable `ext:<pkg>:<Symbol>` node
+	// instead of folding to the package-level placeholder (which loses the
+	// symbol identity and leaves #4480's throws→class retarget nothing to land
+	// on → the imported-exception DUPLICATE). Keyed by package so two packages
+	// exporting the same name get distinct nodes. Built once, consulted in the
+	// relationship loop below before the package-level classifier.
+	namedImports := buildNamedImportIndex(doc, entityLang, entityFile, internalRoots{
+		python: internalPyRoots,
+		java:   internalJavaRoots,
+		ruby:   internalRubyRoots,
+		golang: internalGoRoots,
+		rust:   internalRustRoots,
+		csharp: internalCsharpRoots,
+	})
+
 	// First pass — collect every unique external name we want to
 	// synthesise. The placeholder carries a subtype hint
 	// ("package"/"function") but the language field is left empty:
@@ -274,6 +292,13 @@ func Synthesize(doc *graph.Document) Stats {
 		canonical string
 		subtype   string
 		language  string
+		// name overrides the entity Name when non-empty. Per-symbol named-import
+		// nodes (#4515) set this to the bare imported symbol (e.g.
+		// "NotFoundException") while canonical stays the package-keyed id body
+		// ("@nestjs/common:NotFoundException"), so #4480's name-keyed
+		// throws→class resolver can match the synthetic exception node to this
+		// per-symbol external class.
+		name string
 	}
 	uniques := make(map[string]externalInfo) // ext-id -> info
 	resolved := 0
@@ -320,6 +345,23 @@ func Synthesize(doc *graph.Document) Stats {
 			continue
 		}
 
+		// #4515 — per-symbol named-import resolution. Snapshot the bare-name
+		// reference's imported-symbol identity BEFORE the package-level
+		// classifier runs. IMPORTS edges are excluded (they carry the package
+		// disposition and must keep folding to the package-level placeholder);
+		// only *reference* edges (CALLS/THROWS/EXTENDS/IMPLEMENTS/USES_TYPE/…)
+		// to a named-imported external symbol get upgraded to the per-symbol
+		// node. The upgrade is applied AFTER classifyExternal so it reuses the
+		// classifier's precise package canon (e.g. ext:org.apache.poi, not the
+		// coarse 2-segment fold) — we only append the resolved symbol leaf.
+		var perSymbolLeaf, perSymbolPkg string
+		if rel.Kind != string(types.RelationshipKindImports) && !namedImports.empty() {
+			if pkg, leaf, hit := namedImports.lookup(entityFile[rel.FromID], rel.ToID); hit {
+				perSymbolLeaf = leaf
+				perSymbolPkg = pkg
+			}
+		}
+
 		canonical, subtype, ok := classifyExternal(rel.ToID, rel.Kind, lang, entityFile[rel.FromID], fileImports[entityFile[rel.FromID]], rel.Properties, internalRoots{
 			python: internalPyRoots,
 			java:   internalJavaRoots,
@@ -328,16 +370,45 @@ func Synthesize(doc *graph.Document) Stats {
 			rust:   internalRustRoots,
 			csharp: internalCsharpRoots,
 		})
+
+		// #4515 — apply per-symbol upgrade. Two cases:
+		//   1. classifyExternal resolved to a package-level canon (no symbol
+		//      leaf yet) — append the named-imported symbol so the reference
+		//      binds to ext:<pkg>:<Symbol> (reuses the precise classifier canon,
+		//      e.g. ext:org.apache.poi). Already-per-symbol canons (containing a
+		//      ":<Pascal>" leaf) are left untouched.
+		//   2. classifyExternal did NOT resolve (ok=false) but the symbol IS a
+		//      named import — synthesise the per-symbol node off the index's
+		//      package root so imported framework classes/exceptions still get a
+		//      distinct node instead of dangling unresolved.
+		perSymbol := false
+		if perSymbolLeaf != "" {
+			switch {
+			case ok && !canonicalHasSymbolLeaf(canonical):
+				canonical = canonical + ":" + perSymbolLeaf
+				perSymbol = true
+				ok = true
+			case !ok && perSymbolPkg != "":
+				canonical = perSymbolPkg + ":" + perSymbolLeaf
+				perSymbol = true
+				ok = true
+			}
+		}
 		if !ok {
 			continue
 		}
 		extID := ExtIDPrefix + canonical
 		if _, seen := uniques[extID]; !seen {
-			uniques[extID] = externalInfo{
+			info := externalInfo{
 				canonical: canonical,
 				subtype:   subtype,
 				language:  "",
 			}
+			if perSymbol {
+				info.subtype = "symbol"
+				info.name = perSymbolLeaf
+			}
+			uniques[extID] = info
 		}
 		rel.ToID = extID
 		resolved++
@@ -357,9 +428,13 @@ func Synthesize(doc *graph.Document) Stats {
 			continue // re-run path: placeholder already present
 		}
 		info := uniques[extID]
+		entName := info.canonical
+		if info.name != "" {
+			entName = info.name
+		}
 		doc.Entities = append(doc.Entities, graph.Entity{
 			ID:            extID,
-			Name:          info.canonical,
+			Name:          entName,
 			QualifiedName: info.canonical,
 			Kind:          KindExternal,
 			Subtype:       info.subtype,
