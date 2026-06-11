@@ -868,19 +868,179 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 		top = raw[:idx]
 	}
 
+	// #4783 — expand the `use` path into one IMPORTS edge per imported symbol,
+	// stamping the `imported_name`/`local_name`(/`wildcard`) contract that the
+	// per-symbol external-node synthesis (#4515) reads to mint a stable
+	// `ext:<crate>:<Symbol>` node. Brace groups (`use a::{B, C as D}`) fan out;
+	// a glob (`use a::*`) stamps wildcard with the namespace local. A plain
+	// `use a::B` keeps its historical single-edge ToID `a::B`.
+	syms := parseRustUsePath(raw)
+	rels := make([]types.RelationshipRecord, 0, len(syms))
+	for _, s := range syms {
+		props := map[string]string{
+			"import_path":   s.path,
+			"source_module": s.path,
+		}
+		if s.wildcard {
+			props["wildcard"] = "1"
+			// The namespace local is the last concrete path segment (`use a::b::*`
+			// → namespace local `b`); the per-symbol synth resolves `b.<member>`.
+			if s.local != "" {
+				props["local_name"] = s.local
+			}
+		} else {
+			props["imported_name"] = s.imported
+			props["local_name"] = s.local
+		}
+		rels = append(rels, types.RelationshipRecord{
+			FromID:     file.Path,
+			ToID:       s.path,
+			Kind:       "IMPORTS",
+			Properties: props,
+		})
+	}
+	if len(rels) == 0 {
+		rels = []types.RelationshipRecord{{FromID: file.Path, ToID: raw, Kind: "IMPORTS"}}
+	}
+
 	return types.EntityRecord{
-		Name:       top,
-		Kind:       "SCOPE.Component",
-		SourceFile: file.Path,
-		Language:   "rust",
-		Relationships: []types.RelationshipRecord{
-			{
-				FromID: file.Path,
-				ToID:   raw,
-				Kind:   "IMPORTS",
-			},
-		},
+		Name:          top,
+		Kind:          "SCOPE.Component",
+		SourceFile:    file.Path,
+		Language:      "rust",
+		Relationships: rels,
 	}, true
+}
+
+// rustUseSym is one resolved symbol from a `use` declaration: its full
+// `crate::path::Leaf` reference path (the IMPORTS ToID, which keeps the crate
+// root as its leading `::`-segment so rustExternalPackageRoot resolves it), the
+// imported (source) name, the local (possibly `as`-aliased) name, and whether
+// it is a glob `*` namespace import.
+type rustUseSym struct {
+	path     string
+	imported string
+	local    string
+	wildcard bool
+}
+
+// parseRustUsePath parses the text AFTER `use ` (and trailing `;`) into one
+// entry per imported symbol. It handles the common static shapes:
+//
+//	a::b::C            → {path:a::b::C, imported:C, local:C}
+//	a::b::C as D       → {path:a::b::C, imported:C, local:D}
+//	a::b::{C, D as E}  → two entries, prefixed with `a::b::`
+//	a::b::*            → {path:a::b, wildcard, local:b}
+//	a                  → {path:a, imported:a, local:a}  (crate root binding)
+//
+// Nested brace groups are flattened recursively. Whitespace and `self` group
+// members (`a::{self, B}` — the `self` re-exports the module `a` itself) are
+// handled: `self` binds the trailing path segment as its local name.
+func parseRustUsePath(raw string) []rustUseSym {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil
+	}
+	// Find a top-level `{ ... }` group (brace not nested inside an earlier one).
+	open := strings.IndexByte(raw, '{')
+	if open < 0 {
+		return []rustUseSym{rustUseLeaf(raw)}
+	}
+	prefix := strings.TrimSpace(raw[:open])
+	prefix = strings.TrimSuffix(prefix, "::")
+	// Locate the matching close brace for this group.
+	close := rustMatchBrace(raw, open)
+	if close < 0 {
+		return []rustUseSym{rustUseLeaf(strings.TrimSuffix(raw, "{"))}
+	}
+	inner := raw[open+1 : close]
+	var out []rustUseSym
+	for _, member := range splitRustTopLevel(inner) {
+		member = strings.TrimSpace(member)
+		if member == "" {
+			continue
+		}
+		full := member
+		if prefix != "" {
+			if member == "self" {
+				full = prefix // `a::{self}` re-binds module `a` itself.
+			} else {
+				full = prefix + "::" + member
+			}
+		}
+		out = append(out, parseRustUsePath(full)...)
+	}
+	return out
+}
+
+// rustUseLeaf resolves a brace-free `use` path fragment into a single symbol.
+func rustUseLeaf(path string) rustUseSym {
+	path = strings.TrimSpace(path)
+	// `as` alias: `a::b::C as D`.
+	imported, local := path, ""
+	if i := strings.Index(path, " as "); i >= 0 {
+		imported = strings.TrimSpace(path[:i])
+		local = strings.TrimSpace(path[i+4:])
+		path = imported
+	}
+	// Glob namespace import: `a::b::*`.
+	if strings.HasSuffix(path, "::*") || path == "*" {
+		ns := strings.TrimSuffix(path, "::*")
+		ns = strings.TrimSuffix(ns, "*")
+		ns = strings.TrimSuffix(ns, "::")
+		nsLeaf := ns
+		if i := strings.LastIndex(ns, "::"); i >= 0 {
+			nsLeaf = ns[i+2:]
+		}
+		return rustUseSym{path: ns, wildcard: true, local: strings.TrimSpace(nsLeaf)}
+	}
+	leaf := imported
+	if i := strings.LastIndex(imported, "::"); i >= 0 {
+		leaf = imported[i+2:]
+	}
+	if local == "" {
+		local = leaf
+	}
+	return rustUseSym{path: path, imported: leaf, local: local}
+}
+
+// rustMatchBrace returns the index of the `}` matching the `{` at open, or -1.
+func rustMatchBrace(s string, open int) int {
+	depth := 0
+	for i := open; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
+// splitRustTopLevel splits a brace-group body on top-level commas (commas not
+// nested inside a deeper `{ ... }`).
+func splitRustTopLevel(s string) []string {
+	var out []string
+	depth, start := 0, 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+		case ',':
+			if depth == 0 {
+				out = append(out, s[start:i])
+				start = i + 1
+			}
+		}
+	}
+	out = append(out, s[start:])
+	return out
 }
 
 // stripRustVisibility removes a leading Rust visibility modifier from a

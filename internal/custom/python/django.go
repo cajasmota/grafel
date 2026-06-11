@@ -35,6 +35,15 @@ var (
 	djangoCBVMethodRe     = regexp.MustCompile(`(?m)^\s{4,}def\s+(get|post|put|patch|delete|head|options|trace)\s*\(\s*self`)
 	djangoReceiverRe      = regexp.MustCompile(`(?m)@receiver\s*\(\s*([\w.]+)(?:\s*,\s*sender\s*=\s*(\w+))?[^)]*\)\s*\n\s*(?:async\s+)?def\s+(\w+)\s*\(`)
 	djangoReceiverOnlyRe  = regexp.MustCompile(`(?m)@receiver\s*\(\s*([\w.]+)(?:\s*,\s*sender\s*=\s*(\w+))?[^)]*\)`)
+	// #4789 — imperative signal wiring registered in AppConfig.ready() (or
+	// anywhere): `post_save.connect(my_receiver, sender=Foo)`, the dotted
+	// `signals.post_delete.connect(handler)` form, and the bare
+	// `<signal>.connect(<receiver>)` (no sender). Group 1 = the signal
+	// expression (possibly dotted, e.g. `signals.post_save`), group 2 = the
+	// receiver callable, group 3 = the optional `sender=` model. The receiver
+	// and sender may be dotted; the leaf is used for entity / model resolution.
+	djangoSignalConnectRe = regexp.MustCompile(
+		`([\w.]+)\.connect\s*\(\s*([\w.]+)\s*(?:,\s*sender\s*=\s*([\w.]+))?[^)]*\)`)
 	djangoAdminRegRe      = regexp.MustCompile(`(?m)admin\.site\.register\s*\(\s*(\w+)(?:\s*,\s*(\w+))?\s*\)`)
 	djangoAdminDecorRe    = regexp.MustCompile(`(?m)@admin\.register\s*\(\s*(\w+)\s*\)\s*\n\s*class\s+(\w+)\s*\(`)
 	djangoDRFSerializerRe = regexp.MustCompile(
@@ -341,6 +350,72 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 			}
 		}
 
+		out = append(out, ent)
+	}
+
+	// 3b. Imperative signal wiring (#4789).
+	// `post_save.connect(my_receiver, sender=Foo)` registered in an AppConfig
+	// `ready()` method (or anywhere in the module) wires the receiver→signal the
+	// same way the `@receiver` decorator does, but through a runtime call rather
+	// than a decorator — so the decorator pass above never sees it. Emit the same
+	// HANDLES_SIGNAL edge shape: a handler entity (the receiver function) with a
+	// HANDLES_SIGNAL edge to the sender model, carrying signal_type. Marked
+	// di_role=signal_handler so the binding is distinguishable from the
+	// decorator form. The receiver's leaf name resolves structurally to the real
+	// function entity via the QualifiedName/name index. A `connect()` whose first
+	// arg is not a plausible callable name (e.g. a lambda) is skipped.
+	for _, m := range djangoSignalConnectRe.FindAllStringSubmatchIndex(source, -1) {
+		signalExpr := source[m[2]:m[3]]
+		receiver := source[m[4]:m[5]]
+		var senderModel string
+		if m[6] != -1 {
+			senderModel = source[m[6]:m[7]]
+		}
+		// The `.connect(` method also appears on non-signal objects (sockets,
+		// DB connections). Gate on the signal expression's leaf being a known
+		// Django signal name so we don't wire unrelated `.connect()` calls.
+		signalType := djangoLeafName(signalExpr)
+		if !djangoKnownSignals[signalType] {
+			continue
+		}
+		handlerName := djangoLeafName(receiver)
+		if handlerName == "" {
+			continue
+		}
+		// Skip an already-emitted decorator-wired handler so the same function
+		// isn't double-listed (the decorator path is authoritative for it).
+		if handledFuncs[handlerName] {
+			continue
+		}
+		props := map[string]string{
+			"framework":    "django",
+			"language":     "python",
+			"pattern_type": "signal",
+			"signal_type":  signalType,
+			"di_role":      "signal_handler",
+			"provenance":   "INFERRED_FROM_DJANGO_SIGNAL_CONNECT",
+		}
+		if senderModel != "" {
+			props["sender"] = djangoLeafName(senderModel)
+		}
+		ent := entity(handlerName, "SCOPE.Operation", "function", file.Path, lineOf(source, m[0]), props)
+		// Emit the HANDLES_SIGNAL edge. With a sender, target the model; without
+		// one, target the signal itself so the wiring is still represented.
+		edgeProps := map[string]string{"signal_type": signalType, "framework": "django", "di_role": "signal_handler"}
+		if senderModel != "" {
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				ToID:       djangoModelRef(djangoLeafName(senderModel)),
+				Kind:       string(types.RelationshipKindHandlesSignal),
+				Properties: edgeProps,
+			})
+		} else {
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				ToID:       signalType,
+				Kind:       string(types.RelationshipKindHandlesSignal),
+				Properties: edgeProps,
+			})
+		}
+		handledFuncs[handlerName] = true
 		out = append(out, ent)
 	}
 
@@ -894,6 +969,47 @@ func isOnlyWhitespaceAndComments(text string) bool {
 // passes connect to the same canonical model node.
 func djangoModelRef(modelName string) string {
 	return fmt.Sprintf("Class:%s", modelName)
+}
+
+// djangoLeafName returns the trailing dotted segment of an expression
+// ("signals.post_save" → "post_save", "post_save" → "post_save"). Used to
+// normalise both the signal and the receiver/sender names in the imperative
+// signal-connect form (#4789).
+func djangoLeafName(expr string) string {
+	expr = strings.TrimSpace(expr)
+	if i := strings.LastIndex(expr, "."); i >= 0 && i+1 < len(expr) {
+		return expr[i+1:]
+	}
+	return expr
+}
+
+// djangoKnownSignals is the set of Django signal names whose `.connect(...)`
+// call is a signal registration (#4789). Gating on this set keeps the
+// `<x>.connect(...)` matcher from wiring unrelated `.connect()` calls (DB
+// connections, sockets, custom non-signal objects). Covers the built-in
+// model/request/migration/auth signals plus the generic `Signal()` convention
+// names; custom signals declared as `Signal()` are commonly suffixed
+// `_signal`/`_done`/`_started` but cannot be enumerated, so only the built-ins
+// (the overwhelmingly common case) are recognised — a conservative gate.
+var djangoKnownSignals = map[string]bool{
+	"pre_init":              true,
+	"post_init":             true,
+	"pre_save":              true,
+	"post_save":             true,
+	"pre_delete":            true,
+	"post_delete":           true,
+	"m2m_changed":           true,
+	"pre_migrate":           true,
+	"post_migrate":          true,
+	"request_started":       true,
+	"request_finished":      true,
+	"got_request_exception": true,
+	"setting_changed":       true,
+	"template_rendered":     true,
+	"connection_created":    true,
+	"user_logged_in":        true,
+	"user_logged_out":       true,
+	"user_login_failed":     true,
 }
 
 // appendDRFSerializerEdges resolves a DRF view's request/response serializer

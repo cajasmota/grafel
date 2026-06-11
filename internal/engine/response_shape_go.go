@@ -57,11 +57,34 @@ var goRouteRe = regexp.MustCompile(
 //
 // Group 1 = the assigned group variable, group 2 = the parent receiver
 // (router or an enclosing group), group 3 = the literal prefix. Echo's
-// `e.Group("/x")` and chi's `r.Route("/x", fn)` use the same `.Group(`
-// spelling for echo; chi's `r.Route(` is captured by goChiRouteAssignRe.
+// `e.Group("/x")` and chi's `r.Route("/x", fn)` differ — echo uses this
+// `.Group(` spelling; chi's closure-based `r.Route(` is captured by
+// goChiRouteHeadRe and resolved positionally (#4782).
 var goGroupAssignRe = regexp.MustCompile(
 	`\b(\w+)\s*:?=\s*(\w+)\s*\.\s*Group\s*\(\s*` +
 		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]*)["` + "`" + `]` + "`" + `?`,
+)
+
+// goChiRouteHeadRe captures the HEAD of a chi closure-based sub-router mount:
+//
+//	r.Route("/api", func(r chi.Router) {        // canonical
+//	router.Route("/v1", func(sub chi.Router) {  // arbitrary param name
+//	r.Route("/admin", func(r chi.Router) { ... })
+//
+// chi sub-routers nest via a closure (NOT the `.Group(` spelling): the
+// `Route(prefix, fn)` mounts `fn`'s body under `prefix`, and the router
+// param passed into `fn` (often `r`, shadowing the outer router) is the
+// receiver every route inside the closure registers on. Because the param
+// is commonly re-`r`, a name-keyed prefix map (as goGroupPrefixIndex uses)
+// would be ambiguous — so chi prefixes are resolved POSITIONALLY instead:
+// the closure body's byte span carries the prefix, and a route's prefix is
+// the concatenation of every enclosing Route-span's segment (#4782).
+//
+// Group 1 = the literal mount prefix. The trailing `{` anchors the closure
+// body so we can brace-match its extent.
+var goChiRouteHeadRe = regexp.MustCompile(
+	`\b\w+\s*\.\s*Route\s*\(\s*` +
+		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]*)["` + "`" + `]` + "`" + `?\s*,\s*func\s*\([^)]*\)\s*\{`,
 )
 
 // goFrameworkFromImports returns the framework name based on package
@@ -119,10 +142,19 @@ func synthesizeGoRouters(content string, emit emitFn) {
 	// nested groups `admin := v1.Group("/admin")`) so a route registered on a
 	// group variable synthesizes at its fully-prefixed path.
 	groupPrefix := goGroupPrefixIndex(content)
-	for _, m := range goRouteRe.FindAllStringSubmatch(content, -1) {
+	// #4782 — resolve chi closure-based sub-router prefixes (`r.Route("/api",
+	// func(r chi.Router){ ... })`), accumulated transitively across nesting.
+	// Unlike gin/echo groups these are keyed by the closure body's byte span
+	// (the router param is commonly re-`r`, shadowing the parent), so a route
+	// at byte offset P inherits every enclosing Route-span's prefix.
+	chiSpans := goChiRouteSpans(content)
+	locs := goRouteRe.FindAllStringSubmatchIndex(content, -1)
+	for _, loc := range locs {
+		m := groupSubmatchStrings(content, loc)
 		if len(m) < 5 {
 			continue
 		}
+		routePos := loc[0]
 		recv := m[1]
 		rawVerb := m[2]
 		// Normalise the verb to upper-case so the endpoint key is canonical
@@ -144,6 +176,13 @@ func synthesizeGoRouters(content string, emit emitFn) {
 		// on a `r.Group("/v1")` variable). The prefix is already accumulated
 		// across nested groups by goGroupPrefixIndex (#4408).
 		if pfx := groupPrefix[recv]; pfx != "" {
+			raw = joinPathFragments(pfx, raw)
+		}
+		// Prepend the accumulated chi closure-router prefix for any `r.Route(...)`
+		// closures enclosing this route's call site (#4782). Independent of the
+		// gin/echo group resolution above — a route can be inside a chi Route
+		// closure whose param was reassigned, so we key off byte position.
+		if pfx := chiEnclosingPrefix(chiSpans, routePos); pfx != "" {
 			raw = joinPathFragments(pfx, raw)
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, raw)
@@ -227,6 +266,99 @@ func goGroupPrefixIndex(content string) map[string]string {
 		resolve(name, 0)
 	}
 	return resolved
+}
+
+// groupSubmatchStrings extracts the submatch strings for one match location
+// (produced by FindAllStringSubmatchIndex) from content. Returns a slice
+// parallel to FindStringSubmatch where index 0 is the whole match. Unmatched
+// optional groups (offset -1) yield "".
+func groupSubmatchStrings(content string, loc []int) []string {
+	out := make([]string, len(loc)/2)
+	for i := 0; i < len(loc)/2; i++ {
+		s, e := loc[2*i], loc[2*i+1]
+		if s < 0 || e < 0 {
+			out[i] = ""
+			continue
+		}
+		out[i] = content[s:e]
+	}
+	return out
+}
+
+// chiRouteSpan is a chi `r.Route(prefix, func(...){ … })` closure body, located
+// by its byte extent so enclosing prefixes can be accumulated positionally.
+type chiRouteSpan struct {
+	start int    // byte offset of the closure body open brace `{`
+	end   int    // byte offset just past the matching close brace `}`
+	seg   string // this Route's own (normalized) mount prefix segment
+}
+
+// goChiRouteSpans scans a Go file for chi closure-based sub-router mounts
+// (`r.Route("/api", func(r chi.Router){ ... })`) and returns one span per
+// closure, each carrying its mount prefix segment and the byte extent of its
+// body. Spans nest naturally (a child Route closure's span lies inside its
+// parent's), so chiEnclosingPrefix composes them transitively. A closure whose
+// body brace is unbalanced (truncated source) is skipped. Returns nil when the
+// file uses no chi `.Route(` mounts so the common path stays allocation-free.
+func goChiRouteSpans(content string) []chiRouteSpan {
+	if !strings.Contains(content, ".Route(") {
+		return nil
+	}
+	var spans []chiRouteSpan
+	for _, loc := range goChiRouteHeadRe.FindAllStringSubmatchIndex(content, -1) {
+		// loc[1] is the offset just past the head match, i.e. just past the
+		// opening `{` of the closure body. The body open brace is the last
+		// char of the head match.
+		open := loc[1] - 1
+		seg := normalizeMountPrefix(content[loc[2]:loc[3]])
+		if close, ok := goMatchBrace(content, open); ok {
+			spans = append(spans, chiRouteSpan{start: open, end: close + 1, seg: seg})
+		}
+	}
+	return spans
+}
+
+// goMatchBrace returns the byte offset of the `}` that closes the `{` at
+// open, accounting for nested braces. It is brace-counting only (it does not
+// skip braces inside strings/comments) — adequate for route-setup code, where
+// brace-bearing string literals in a router DSL are vanishingly rare and a
+// mismatch merely degrades to the pre-#4782 (unprefixed) behaviour via ok=false.
+func goMatchBrace(content string, open int) (int, bool) {
+	depth := 0
+	for i := open; i < len(content); i++ {
+		switch content[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i, true
+			}
+		}
+	}
+	return 0, false
+}
+
+// chiEnclosingPrefix composes the mount prefixes of every chi Route closure
+// whose body span encloses byte offset pos, outermost-first, so a route nested
+// `r.Route("/api", …r.Route("/v1", …r.Get("/users")))` resolves to
+// `/api/v1/users` (#4782). Spans are emitted in source order, so an enclosing
+// (parent) Route head always precedes its children — sorting by start offset
+// yields outermost-to-innermost composition.
+func chiEnclosingPrefix(spans []chiRouteSpan, pos int) string {
+	if len(spans) == 0 {
+		return ""
+	}
+	prefix := ""
+	for _, s := range spans {
+		if pos > s.start && pos < s.end {
+			prefix = joinPathFragments(prefix, s.seg)
+		}
+	}
+	if prefix == "/" {
+		return ""
+	}
+	return prefix
 }
 
 // goFuncOpenRe locates the brace that opens a Go function or method

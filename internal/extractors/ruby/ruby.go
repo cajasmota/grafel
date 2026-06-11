@@ -335,6 +335,22 @@ func buildRequireImport(node *sitter.Node, file extractor.FileInput) (types.Enti
 		if raw == "" {
 			continue
 		}
+		props := map[string]string{"require_kind": mname}
+		// #4783 — stamp the `imported_name`/`local_name` contract so the
+		// per-symbol external-node synthesis (#4515) can mint a stable
+		// `ext:<gem>:<Const>` node. Only meaningful for gem requires (NOT
+		// `require_relative`/`load`, which are intra-project file loads).
+		// A required gem conventionally exposes a top-level constant that is the
+		// CamelCased leaf of its require path (`require 'active_record'` → the
+		// `ActiveRecord` constant; `require 'json'` → `JSON`-by-convention via
+		// `Json`). `autoload :Const, 'path'` carries the symbol explicitly and is
+		// handled below.
+		if mname == "require" || mname == "autoload" {
+			if c := rubyRequireConstant(node, file, mname, raw); c != "" {
+				props["imported_name"] = c
+				props["local_name"] = c
+			}
+		}
 		return types.EntityRecord{
 			Name:       raw,
 			Kind:       "SCOPE.Component",
@@ -343,14 +359,105 @@ func buildRequireImport(node *sitter.Node, file extractor.FileInput) (types.Enti
 			Language:   "ruby",
 			Relationships: []types.RelationshipRecord{
 				{
-					FromID: file.Path,
-					ToID:   raw,
-					Kind:   "IMPORTS",
+					FromID:     file.Path,
+					ToID:       raw,
+					Kind:       "IMPORTS",
+					Properties: props,
 				},
 			},
 		}, true
 	}
 	return types.EntityRecord{}, false
+}
+
+// rubyRequireConstant derives the top-level constant a require/autoload binds,
+// where statically recoverable (#4783):
+//
+//   - `autoload :Foo, 'foo/bar'`  → "Foo" (explicit symbol — authoritative).
+//   - `require 'active_record'`   → "ActiveRecord" (CamelCased leaf — the Ruby
+//     gem convention that the require's leaf path segment names the exposed
+//     constant).
+//
+// Returns "" when no constant is recoverable (e.g. a leaf that isn't a legal
+// constant stem). The synth layer keys the per-symbol node by this name; an
+// over-eager guess merely mints an extra node, so we stay conservative.
+func rubyRequireConstant(node *sitter.Node, file extractor.FileInput, mname, raw string) string {
+	if mname == "autoload" {
+		// `autoload :Const, 'path'` — first argument is the explicit symbol.
+		if args := node.ChildByFieldName("arguments"); args != nil {
+			for i := 0; i < int(args.NamedChildCount()); i++ {
+				a := args.NamedChild(i)
+				if a.Type() == "simple_symbol" {
+					sym := strings.TrimPrefix(string(file.Content[a.StartByte():a.EndByte()]), ":")
+					sym = strings.TrimSpace(sym)
+					if rubyIsConstantStem(sym) {
+						return sym
+					}
+				}
+			}
+		}
+		return ""
+	}
+	// require: CamelCase the leaf path segment.
+	leaf := raw
+	if i := strings.LastIndexByte(leaf, '/'); i >= 0 {
+		leaf = leaf[i+1:]
+	}
+	return rubyCamelizeConstant(leaf)
+}
+
+// rubyIsConstantStem reports whether s is a legal Ruby constant name
+// (begins with an upper-case letter, contains only word characters).
+func rubyIsConstantStem(s string) bool {
+	if s == "" || !(s[0] >= 'A' && s[0] <= 'Z') {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_') {
+			return false
+		}
+	}
+	return true
+}
+
+// rubyCamelizeConstant converts a snake/lower require leaf into the conventional
+// Ruby constant name (`active_record` → "ActiveRecord", `json` → "Json"),
+// returning "" when the leaf has no constant-able characters.
+func rubyCamelizeConstant(leaf string) string {
+	leaf = strings.TrimSpace(leaf)
+	if leaf == "" {
+		return ""
+	}
+	var b strings.Builder
+	upNext := true
+	for i := 0; i < len(leaf); i++ {
+		c := leaf[i]
+		switch {
+		case c == '_' || c == '-':
+			upNext = true
+		case (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z'):
+			if upNext {
+				if c >= 'a' && c <= 'z' {
+					c -= 32
+				}
+				upNext = false
+			}
+			b.WriteByte(c)
+		case c >= '0' && c <= '9':
+			if b.Len() == 0 {
+				return "" // constants cannot start with a digit
+			}
+			b.WriteByte(c)
+		default:
+			// Non-identifier char (e.g. a leftover extension dot) — stop.
+		}
+	}
+	out := b.String()
+	if !rubyIsConstantStem(out) {
+		return ""
+	}
+	return out
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
