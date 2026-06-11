@@ -495,3 +495,148 @@ func TestDRF_ClassOverridesGlobalDefault(t *testing.T) {
 		t.Fatalf("got %s, want public (class permission_classes=[AllowAny] overrides global IsAuthenticated)", p.Kind)
 	}
 }
+
+// --- #4674: Spring EFFECTIVE-guard precedence (method ▸ class ▸ global) --------
+//
+// The Spring analog of the NestJS effective-guard fix and the DRF method▸class▸
+// global fix. The resolver must resolve the most-specific posture: a method-level
+// @PreAuthorize/@Secured/@RolesAllowed/@PermitAll ▸ the controller-class
+// annotation ▸ a SecurityFilterChain/HttpSecurity rule matched to the route.
+
+// (A) class @PreAuthorize("hasRole('USER')") with a method @PreAuthorize("permitAll()").
+// The annotated method resolves PUBLIC (method wins) while a sibling that carries
+// only the class annotation resolves to the USER role.
+func TestSpring_MethodPermitAll_OverridesClassRole(t *testing.T) {
+	reg := NewRegistry()
+	// The method-level @PreAuthorize("permitAll()") override endpoint.
+	m, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework":                  "spring",
+		"auth_expression":            "permitAll()",
+		"spring_class_pre_authorize": "hasRole('USER')",
+	}})
+	if fw != "spring-security" {
+		t.Fatalf("framework=%s, want spring-security", fw)
+	}
+	if m.Kind != KindPublic {
+		t.Fatalf("method: got %s, want public (method @PreAuthorize(permitAll()) overrides class)", m.Kind)
+	}
+	// A sibling handler with NO method annotation inherits the class @PreAuthorize.
+	sib, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework":                  "spring",
+		"spring_class_pre_authorize": "hasRole('USER')",
+	}})
+	if sib.Kind != KindRole || sib.Literal != "USER" {
+		t.Fatalf("sibling: got %s/%q, want role/USER (inherited class @PreAuthorize)", sib.Kind, sib.Literal)
+	}
+}
+
+// (B) No method/class annotation, but a SecurityFilterChain
+// `.requestMatchers("/admin/**").hasRole("ADMIN")` rule the engine matched to the
+// route → resolves the ADMIN role via the global level.
+func TestSpring_GlobalFilterChain_AppliesWhenNoMethodOrClass(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework":                   "spring",
+		"spring_global_authorization": `requestMatchers("/admin/**").hasRole("ADMIN")`,
+	}})
+	if fw != "spring-security" {
+		t.Fatalf("framework=%s, want spring-security", fw)
+	}
+	if p.Kind != KindRole || p.Literal != "ADMIN" {
+		t.Fatalf("got %s/%q, want role/ADMIN (global SecurityFilterChain rule)", p.Kind, p.Literal)
+	}
+}
+
+// (B2) A global permitAll() rule resolves PUBLIC; a global authenticated() rule
+// resolves authenticated — the rest of the HttpSecurity DSL vocabulary.
+func TestSpring_GlobalFilterChain_PermitAllAndAuthenticated(t *testing.T) {
+	reg := NewRegistry()
+	pub, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework":                   "spring",
+		"spring_global_authorization": `antMatchers("/public/**").permitAll()`,
+	}})
+	if pub.Kind != KindPublic {
+		t.Fatalf("got %s, want public (global permitAll())", pub.Kind)
+	}
+	authed, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework":                   "spring",
+		"spring_global_authorization": `requestMatchers("/api/**").authenticated()`,
+	}})
+	if authed.Kind != KindAuthenticated {
+		t.Fatalf("got %s, want authenticated (global authenticated())", authed.Kind)
+	}
+}
+
+// (C) Method @Secured("ROLE_X") over class @RolesAllowed("ROLE_Y") → the method
+// annotation wins (X), the class is shadowed.
+func TestSpring_MethodSecured_OverridesClassRolesAllowed(t *testing.T) {
+	reg := NewRegistry()
+	p, fw := reg.Resolve(Signal{Props: map[string]string{
+		"framework":                  "spring",
+		"secured":                    "ROLE_X",
+		"spring_class_roles_allowed": "ROLE_Y",
+	}})
+	if fw != "spring-security" {
+		t.Fatalf("framework=%s, want spring-security", fw)
+	}
+	if p.Kind != KindRole || p.Literal != "X" {
+		t.Fatalf("got %s/%q, want role/X (method @Secured wins over class @RolesAllowed)", p.Kind, p.Literal)
+	}
+}
+
+// Class wins over global (precedence level 2 > 3): a class @PreAuthorize role
+// shadows a matching SecurityFilterChain permitAll() rule.
+func TestSpring_ClassOverridesGlobal(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework":                   "spring",
+		"spring_class_pre_authorize":  "hasRole('MANAGER')",
+		"spring_global_authorization": `requestMatchers("/**").permitAll()`,
+	}})
+	if p.Kind != KindRole || p.Literal != "MANAGER" {
+		t.Fatalf("got %s/%q, want role/MANAGER (class @PreAuthorize overrides global permitAll())", p.Kind, p.Literal)
+	}
+}
+
+// A recognised Spring handler with no decodable method/class/global grant →
+// unknown (never false-public).
+func TestSpring_NoDecodableGrant_IsUnknownNotPublic(t *testing.T) {
+	reg := NewRegistry()
+	p, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework":   "spring",
+		"auth_method": "spring-security",
+	}})
+	if p.Kind == KindPublic {
+		t.Fatalf("recognised-but-undecodable Spring handler resolved PUBLIC; must be unknown")
+	}
+	if p.Kind != KindUnknown {
+		t.Fatalf("got %s, want unknown", p.Kind)
+	}
+}
+
+// End-to-end: a Spring class-role handler vs a Django role oracle is EQUIVALENT,
+// and a Spring method permitAll() override vs the same oracle is LOOSER (the
+// override opened the endpoint).
+func TestSpring_E2E_ClassRoleVsOracle_AndMethodOverrideLooser(t *testing.T) {
+	reg := NewRegistry()
+	// Oracle: a DRF class with permission_classes naming a role-equivalent gate.
+	oracle, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "django", "has_permission_classes": "true",
+		"permission_classes": "IsAuthenticated",
+	}})
+	// Sibling Spring handler inherits the class @PreAuthorize → authenticated-or-stricter.
+	sib, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "spring", "spring_class_pre_authorize": "isAuthenticated()",
+	}})
+	if d := Diff(sib, oracle); d.Verdict != VerdictEquivalent {
+		t.Fatalf("sibling verdict=%s detail=%s, want equivalent (both authenticated)", d.Verdict, d.Detail)
+	}
+	// The method override opens it → looser than the authenticated oracle.
+	over, _ := reg.Resolve(Signal{Props: map[string]string{
+		"framework": "spring", "auth_expression": "permitAll()",
+		"spring_class_pre_authorize": "isAuthenticated()",
+	}})
+	if d := Diff(over, oracle); d.Verdict != VerdictLooser {
+		t.Fatalf("override verdict=%s detail=%s, want looser (permitAll opened an authenticated endpoint)", d.Verdict, d.Detail)
+	}
+}
