@@ -150,6 +150,18 @@
   animation: ag-insight-glow 1.4s ease-out infinite;
 }
 
+/* Flow step-replay (#4362) — sub-200ms CSS-only arrival bounce on the active
+   node. transform-only so it never reflows the canvas; the global
+   prefers-reduced-motion rule below collapses it to a no-op. */
+@keyframes flow-replay-bounce {
+  0%   { transform: scale(0.96); }
+  55%  { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
+.flow-replay-bounce {
+  animation: flow-replay-bounce 180ms ease-out;
+}
+
 /* Honor reduced-motion globally (per handoff motion rules). */
 @media (prefers-reduced-motion: reduce) {
   *,

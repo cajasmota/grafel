@@ -71,6 +71,13 @@ export interface FlowDagNodeData extends Record<string, unknown> {
    *  - false     → an active route exists but this instance is off it (dimmed)
    */
   onRoute?: boolean;
+  /**
+   * Step-replay state (#4362). Undefined when no replay is active.
+   *  - "active"    → the comet is arriving on / has just reached this node
+   *  - "traversed" → an earlier step in the replay sequence reached it
+   *  - "pending"   → not yet reached by the current playhead (dimmed)
+   */
+  replay?: "active" | "traversed" | "pending";
 }
 
 /** Data carried on each React Flow edge, consumed by the custom edge renderer. */
@@ -78,6 +85,18 @@ export interface FlowDagEdgeData extends Record<string, unknown> {
   kind: DownstreamDAGEdge["kind"];
   /** Highlight state, mirroring FlowDagNodeData.onRoute (#4479). */
   onRoute?: boolean;
+  /**
+   * Step-replay state (#4362). Undefined when no replay is active.
+   *  - "active"    → the comet is currently riding this edge
+   *  - "traversed" → the replay has already crossed this edge (tinted trail)
+   *  - "pending"   → not yet reached by the playhead (dimmed)
+   */
+  replay?: "active" | "traversed" | "pending";
+  /**
+   * Comet position along the active edge (0..1), only meaningful when
+   * replay === "active". Drives the traveling-light marker (#4362).
+   */
+  replayProgress?: number;
 }
 
 export type FlowDagNode = Node<FlowDagNodeData>;

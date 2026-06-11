@@ -776,10 +776,14 @@ function ListRail({
 // drive the existing StepInspector; the H/V layout toggle now lives inside the
 // shared controls bar.
 //
-// NOTE (#4354): the replay/comet animation + scrubber (#1922) is NOT carried
-// over — it was welded to the SVG path geometry (edge-geometry pointAt + the
-// per-edge bridge map). Re-implementing it on React Flow is tracked as a
-// follow-up rather than silently dropped.
+// REPLAY (#4362): the step-replay / comet animation + scrubber (originally
+// #1922) — dropped in the #4354 React Flow migration because it was welded to
+// the old SVG path geometry — is re-implemented on React Flow inside the shared
+// <FlowDag enableReplay> component. It reuses the still-present
+// lib/flow-animation.ts controller + lib/flow-audio.ts blip, walks the laid-out
+// tree in topological order, glows the active node/edge, and rides a comet
+// (sampled off the real bezier edge geometry via getPointAtLength) along each
+// edge. Enabled here via the `enableReplay` prop below.
 
 function FlowDag({
   flow,
@@ -830,6 +834,7 @@ function FlowDag({
       payload={payload}
       onNodeClick={handleNodeClick}
       selectedNodeId={selectedNodeId}
+      enableReplay
       className="flex-1 min-h-0"
     />
   );

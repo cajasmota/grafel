@@ -47,6 +47,7 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
     isLeaf,
     truncatedHere,
     module: mod,
+    replay,
   } = data as FlowDagNodeData;
   // Taxonomy bucket → tint (#4566): exception=red (#4556), external=muted
   // (#4558/#4564), genuine leaf=Return/finish end-cap (#4561), else role/kind.
@@ -71,7 +72,10 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
   const collapsed = node.collapsed_children ?? [];
   const hasCollapsed = collapsed.length > 0;
   // Click-to-highlight (#4479): when a route is active, off-route nodes dim.
-  const dimmed = onRoute === false;
+  // Step-replay (#4362): a pending (not-yet-reached) node dims like an off-route
+  // node; the active node glows; traversed nodes stay at full opacity (trail).
+  const dimmed = onRoute === false || replay === "pending";
+  const replayActive = replay === "active";
 
   // Incoming relationship label (calls/handler/joins/throws/validates) — from
   // the single in-edge feeding this instance. Absent on the root.
@@ -100,6 +104,9 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
         "rounded-lg border bg-surface shadow-[var(--shadow-2)] text-left cursor-pointer",
         "min-w-[268px] max-w-[268px] transition-opacity",
         dimmed ? "opacity-25" : "opacity-100",
+        // #4362: CSS-only arrival bounce on the active replay node. Cheap
+        // transform animation, respects prefers-reduced-motion via the keyframe.
+        replayActive && "flow-replay-bounce",
       )}
       style={{
         // Role/taxonomy tint as a soft background wash (#4566). The border is a
@@ -108,7 +115,7 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
         // outline reads as a saturated version of the background, never a
         // generic neutral/brown frame. External nodes stay muted.
         background: `color-mix(in srgb, ${rs.bg} ${external ? 12 : 22}%, var(--surface))`,
-        borderColor: selected || onRoute === true
+        borderColor: selected || onRoute === true || replayActive
           ? "var(--accent)"
           : external
             ? "color-mix(in srgb, var(--text-4) 45%, transparent)"
@@ -117,7 +124,9 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
         borderLeft: band ? `3px solid ${band.color}` : undefined,
         // Selected / route-lit (#4479) → accent ring; a genuine terminal
         // end-cap (#4561) or a collection sink → a heavier outline ring.
-        boxShadow: selected || onRoute === true
+        boxShadow: replayActive
+          ? "0 0 0 2px var(--accent), 0 0 16px 2px color-mix(in srgb, var(--accent) 55%, transparent)"
+          : selected || onRoute === true
           ? "0 0 0 2px var(--accent)"
           : terminalCap || node.terminal
             ? `0 0 0 2px color-mix(in srgb, ${rs.border} 60%, var(--text))`
