@@ -43,6 +43,27 @@ var (
 		`(?m)^class\s+([A-Z][A-Za-z0-9_]*)\s*\([^)]*(?:viewsets\.)?(?:ModelViewSet|ReadOnlyModelViewSet|ViewSet|GenericViewSet|ViewSetMixin)[^)]*\)\s*:`)
 	djangoRouterRegRe = regexp.MustCompile(
 		`(?m)router\.register\s*\(\s*(?:r)?["']([^"']*)["']\s*,\s*(\w+)`)
+
+	// #4474 — DRF view↔serializer DTO linkage. A GenericAPIView/ViewSet resolves
+	// its request/response DTO via `serializer_class = FooSerializer` (class
+	// attribute) or per-action `get_serializer_class()`/inline overrides. We
+	// resolve the serializer class name and emit ACCEPTS_INPUT (request) /
+	// RETURNS (response) edges from the view to the serializer entity.
+	//
+	// (a) class-level `serializer_class = FooSerializer` (4-space body indent).
+	djangoSerializerClassAttrRe = regexp.MustCompile(
+		`(?m)^\s{4,}serializer_class\s*=\s*([A-Z][A-Za-z0-9_]*)\b`)
+	// (b) inline serializer construction inside an action:
+	//     `FooSerializer(data=request.data)` (request — ACCEPTS_INPUT)
+	//     `FooSerializer(obj)` / `FooSerializer(qs, many=True)` (response — RETURNS)
+	// Group 1 = serializer class name, group 2 = the call arg head.
+	djangoSerializerCallRe = regexp.MustCompile(
+		`([A-Z][A-Za-z0-9_]*Serializer)\s*\(\s*(data\s*=)?`)
+	// (c) drf-yasg `@swagger_auto_schema(request_body=FooSerializer, responses={...: BarSerializer})`.
+	djangoSwaggerRequestBodyRe = regexp.MustCompile(
+		`request_body\s*=\s*([A-Z][A-Za-z0-9_]*)\b`)
+	djangoSwaggerResponsesSerRe = regexp.MustCompile(
+		`([A-Z][A-Za-z0-9_]*Serializer)\b`)
 	djangoMiddlewareClassRe  = regexp.MustCompile(`(?m)^class\s+([A-Z][A-Za-z0-9_]*Middleware)\s*(?:\([^)]*\))?\s*:`)
 	djangoMiddlewareMethodRe = regexp.MustCompile(
 		`(?m)^\s{4,}def\s+(process_(?:request|response|view|exception|template_response))\s*\(`)
@@ -183,13 +204,24 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		// #1411: Skip the CBV class entity if section 5b will emit this class
 		// as a DRF ViewSet (SCOPE.Component/viewset). HTTP method children are
 		// still emitted for both ViewSet and non-ViewSet CBVs.
+		// Extract class body once — used for HTTP-method children and (for DRF
+		// APIView/GenericAPIView CBVs) the #4474 view↔serializer DTO edges.
+		body := extractClassBody(source, idx[0])
+
 		if !drfViewsetNames[className] {
-			out = append(out, entity(className, "SCOPE.Operation", "endpoint", file.Path, classLine,
-				map[string]string{"framework": "django", "pattern_type": "cbv", "base_classes": bases}))
+			cbvEnt := entity(className, "SCOPE.Operation", "endpoint", file.Path, classLine,
+				map[string]string{"framework": "django", "pattern_type": "cbv", "base_classes": bases})
+			// #4474 — a DRF APIView/GenericAPIView CBV resolves its request/
+			// response DTO via serializer_class / inline serializer calls, exactly
+			// like a ViewSet. Attach the edges in-place (no duplicate view node).
+			if strings.Contains(bases, "APIView") || strings.Contains(bases, "GenericAPIView") ||
+				strings.Contains(body, "serializer_class") || djangoSerializerCallRe.MatchString(body) {
+				appendDRFSerializerEdges(&cbvEnt, body)
+			}
+			out = append(out, cbvEnt)
 		}
 
-		// Extract class body and find HTTP methods
-		body := extractClassBody(source, idx[0])
+		// Find HTTP methods
 		for _, mIdx := range allMatchesIndex(djangoCBVMethodRe, body) {
 			httpMethod := body[mIdx[2]:mIdx[3]]
 			methodName := className + "." + httpMethod
@@ -423,13 +455,10 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		out = append(out, serEnt)
 	}
 
-	// 5b. DRF viewsets
-	for _, idx := range allMatchesIndex(djangoDRFViewsetRe, source) {
-		className := source[idx[2]:idx[3]]
-		line := lineOf(source, idx[0])
-		out = append(out, entity(className, "SCOPE.Component", "", file.Path, line,
-			map[string]string{"framework": "drf", "pattern_type": "viewset", "component_kind": "viewset"}))
-	}
+	// 5b. DRF viewsets — the ViewSet entity (carrying the #4474 view↔serializer
+	// edges) is emitted by section 5d below so the edges hang off a single
+	// canonical viewset node. (Pre-collected as drfViewsetNames above so the CBV
+	// pass already skips re-emitting these as endpoints.)
 
 	// 5c. DRF router.register()
 	for _, idx := range allMatchesIndex(djangoRouterRegRe, source) {
@@ -438,6 +467,28 @@ func (e *DjangoExtractor) Extract(ctx context.Context, file extractor.FileInput)
 		line := lineOf(source, idx[0])
 		out = append(out, entity("router:"+prefix, "SCOPE.Component", "", file.Path, line,
 			map[string]string{"framework": "drf", "pattern_type": "router_entry", "prefix": prefix, "viewset": viewsetName}))
+	}
+
+	// 5d. #4474 — DRF view↔serializer DTO linkage. For each DRF view class
+	// (GenericAPIView/APIView CBV or ViewSet), resolve its request/response
+	// serializer and emit ACCEPTS_INPUT (request) / RETURNS (response) edges
+	// from the view to the serializer entity, mirroring the NestJS handler→DTO
+	// edge kind/shape so cross-framework request/response-shape diffs join
+	// uniformly. The serializer entities already exist (section 5); these edges
+	// connect the floating view to them. Conservative: only when the serializer
+	// resolves to a `XSerializer`-shaped class name (Class:<name> resolver stub,
+	// bound merge-stably post-merge — no duplicate DTO nodes created here).
+	// Emit the ViewSet entities here (carrying the view↔serializer edges) so the
+	// edges hang off a single canonical viewset node (section 5b no longer emits
+	// them). APIView/GenericAPIView CBVs get the same edges attached in-place in
+	// section 2, so no duplicate view node is created.
+	for _, idx := range allMatchesIndex(djangoDRFViewsetRe, source) {
+		className := source[idx[2]:idx[3]]
+		line := lineOf(source, idx[0])
+		ent := entity(className, "SCOPE.Component", "", file.Path, line,
+			map[string]string{"framework": "drf", "pattern_type": "viewset", "component_kind": "viewset"})
+		appendDRFSerializerEdges(&ent, extractClassBody(source, idx[0]))
+		out = append(out, ent)
 	}
 
 	// NOTE: Celery tasks (@shared_task / @app.task) and apply_async/delay call
@@ -843,6 +894,68 @@ func isOnlyWhitespaceAndComments(text string) bool {
 // passes connect to the same canonical model node.
 func djangoModelRef(modelName string) string {
 	return fmt.Sprintf("Class:%s", modelName)
+}
+
+// appendDRFSerializerEdges resolves a DRF view's request/response serializer
+// from its class body and hangs ACCEPTS_INPUT (request) / RETURNS (response)
+// edges off the view entity (#4474). It mirrors the NestJS handler→DTO edge
+// kind/shape (RelationshipKindAcceptsInput / RelationshipKindReturns, ToID
+// `Class:<serializer>`) so cross-framework request/response-shape diffs join
+// uniformly. The serializer entity already exists (django section 5); this only
+// adds the EDGE — no duplicate DTO node. Conservative: only serializer names
+// that resolve to a real `XSerializer`-shaped class.
+func appendDRFSerializerEdges(ent *types.EntityRecord, body string) {
+	seen := map[string]bool{} // dedup (kind+serializer)
+	addEdge := func(serializer, kind, matchSource string) {
+		if serializer == "" {
+			return
+		}
+		key := kind + ":" + serializer
+		if seen[key] {
+			return
+		}
+		seen[key] = true
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: pyClassRef(serializer),
+			Kind: kind,
+			Properties: map[string]string{
+				"framework":    "drf",
+				"language":     "python",
+				"dto_type":     serializer,
+				"match_source": matchSource,
+				"provenance":   "INFERRED_FROM_DRF_VIEW_SERIALIZER",
+			},
+		})
+	}
+
+	// (a) class-level `serializer_class = FooSerializer` — the canonical DRF
+	// request+response DTO. It shapes both the deserialized request body and the
+	// serialized response, so emit BOTH edges (NestJS treats a @Body DTO and a
+	// Promise<DTO> return symmetrically; DRF's serializer_class is both).
+	for _, m := range djangoSerializerClassAttrRe.FindAllStringSubmatch(body, -1) {
+		ser := m[1]
+		addEdge(ser, string(types.RelationshipKindAcceptsInput), "serializer_class_attr")
+		addEdge(ser, string(types.RelationshipKindReturns), "serializer_class_attr")
+	}
+
+	// (b) inline serializer construction inside an action method:
+	//   FooSerializer(data=request.data)    → request  (ACCEPTS_INPUT)
+	//   FooSerializer(obj) / (qs, many=True) → response (RETURNS)
+	for _, m := range djangoSerializerCallRe.FindAllStringSubmatch(body, -1) {
+		ser := m[1]
+		if m[2] != "" { // had `data=` → request deserialization
+			addEdge(ser, string(types.RelationshipKindAcceptsInput), "serializer_data_call")
+		} else { // positional instance/queryset → response serialization
+			addEdge(ser, string(types.RelationshipKindReturns), "serializer_response_call")
+		}
+	}
+
+	// (c) drf-yasg `@swagger_auto_schema(request_body=FooSerializer, responses=...)`.
+	if rb := djangoSwaggerRequestBodyRe.FindStringSubmatch(body); rb != nil {
+		if strings.HasSuffix(rb[1], "Serializer") {
+			addEdge(rb[1], string(types.RelationshipKindAcceptsInput), "swagger_request_body")
+		}
+	}
 }
 
 // extractClassBody returns the class body text from class_start to the next

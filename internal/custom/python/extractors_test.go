@@ -63,6 +63,83 @@ func extract(t *testing.T, key, content string) []extractResult {
 // Django tests
 // ============================================================================
 
+// #4474 — a DRF ViewSet with serializer_class gets ACCEPTS_INPUT + RETURNS
+// edges to the serializer, and the serializer entity is not duplicated.
+func TestDRF_ViewSetSerializerClassEdges(t *testing.T) {
+	src := `from rest_framework import viewsets, serializers
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ["id", "sku"]
+
+class OrderViewSet(viewsets.ModelViewSet):
+    queryset = Order.objects.all()
+    serializer_class = OrderSerializer
+`
+	ents := extract(t, "python_django", src)
+	if !hasEntRel(ents, "ACCEPTS_INPUT", "Class:OrderSerializer") {
+		t.Error("expected ACCEPTS_INPUT -> Class:OrderSerializer from OrderViewSet")
+	}
+	if !hasEntRel(ents, "RETURNS", "Class:OrderSerializer") {
+		t.Error("expected RETURNS -> Class:OrderSerializer from OrderViewSet")
+	}
+	// No duplicate serializer node, and exactly one viewset node.
+	var serCount, viewCount int
+	for _, e := range ents {
+		switch e.Name {
+		case "OrderSerializer":
+			serCount++
+		case "OrderViewSet":
+			viewCount++
+		}
+	}
+	if serCount != 1 {
+		t.Errorf("expected exactly 1 OrderSerializer node, got %d", serCount)
+	}
+	if viewCount != 1 {
+		t.Errorf("expected exactly 1 OrderViewSet node, got %d", viewCount)
+	}
+}
+
+// #4474 — a DRF APIView with inline serializer calls: `XSerializer(data=...)`
+// → ACCEPTS_INPUT, `XSerializer(obj)` → RETURNS.
+func TestDRF_APIViewInlineSerializerCalls(t *testing.T) {
+	src := `from rest_framework.views import APIView
+from rest_framework.response import Response
+
+class OrderCreateView(APIView):
+    def post(self, request):
+        ser = OrderInputSerializer(data=request.data)
+        ser.is_valid(raise_exception=True)
+        obj = ser.save()
+        return Response(OrderOutputSerializer(obj).data)
+`
+	ents := extract(t, "python_django", src)
+	if !hasEntRel(ents, "ACCEPTS_INPUT", "Class:OrderInputSerializer") {
+		t.Error("expected ACCEPTS_INPUT -> Class:OrderInputSerializer (data= call)")
+	}
+	if !hasEntRel(ents, "RETURNS", "Class:OrderOutputSerializer") {
+		t.Error("expected RETURNS -> Class:OrderOutputSerializer (positional call)")
+	}
+}
+
+// #4474 — drf-yasg @swagger_auto_schema(request_body=) → ACCEPTS_INPUT.
+func TestDRF_SwaggerRequestBodyEdge(t *testing.T) {
+	src := `from rest_framework.views import APIView
+from drf_yasg.utils import swagger_auto_schema
+
+class OrderView(APIView):
+    @swagger_auto_schema(request_body=OrderRequestSerializer)
+    def post(self, request):
+        pass
+`
+	ents := extract(t, "python_django", src)
+	if !hasEntRel(ents, "ACCEPTS_INPUT", "Class:OrderRequestSerializer") {
+		t.Error("expected ACCEPTS_INPUT -> Class:OrderRequestSerializer from swagger_auto_schema")
+	}
+}
+
 func TestDjango_URLPattern(t *testing.T) {
 	src := `from django.urls import path
 from . import views
@@ -2064,6 +2141,63 @@ def create_user(user: UserCreate):
 	}
 }
 
+// #4476: a Pydantic model injected via Depends() as a query model gets an
+// ACCEPTS_INPUT edge (the FastAPI analog of the NestJS @Query() DTO).
+func TestFastAPIReqResp_DependsQueryModelEdge(t *testing.T) {
+	src := `@app.get("/items", response_model=ItemOut)
+def list_items(q: FilterParams = Depends()):
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	if !hasEntRel(ents, "ACCEPTS_INPUT", "Class:FilterParams") {
+		t.Fatal("expected ACCEPTS_INPUT -> Class:FilterParams from Depends() query model")
+	}
+	if !hasEntRel(ents, "RETURNS", "Class:ItemOut") {
+		t.Fatal("expected RETURNS -> Class:ItemOut")
+	}
+}
+
+// #4476: `Depends(FilterParams)` (explicit model arg) gets ACCEPTS_INPUT.
+func TestFastAPIReqResp_DependsExplicitModelEdge(t *testing.T) {
+	src := `@app.get("/items")
+def list_items(q = Depends(FilterParams)):
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	if !hasEntRel(ents, "ACCEPTS_INPUT", "Class:FilterParams") {
+		t.Fatal("expected ACCEPTS_INPUT -> Class:FilterParams from Depends(FilterParams)")
+	}
+}
+
+// #4476: an `Annotated[Model, Query()]` query model gets ACCEPTS_INPUT.
+func TestFastAPIReqResp_AnnotatedQueryModelEdge(t *testing.T) {
+	src := `@app.get("/items")
+def list_items(q: Annotated[FilterParams, Query()]):
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	if !hasEntRel(ents, "ACCEPTS_INPUT", "Class:FilterParams") {
+		t.Fatal("expected ACCEPTS_INPUT -> Class:FilterParams from Annotated[..., Query()]")
+	}
+}
+
+// #4476: a Depends() resolving to a provider FUNCTION (not a model) must NOT
+// emit an ACCEPTS_INPUT edge — conservative.
+func TestFastAPIReqResp_DependsProviderNoEdge(t *testing.T) {
+	src := `@app.get("/items")
+def list_items(db = Depends(get_db), user = Depends(get_current_user)):
+    pass
+`
+	ents := extract(t, "python_fastapi_reqresp", src)
+	for _, e := range ents {
+		for _, r := range e.Rels {
+			if r.Kind == "ACCEPTS_INPUT" {
+				t.Fatalf("unexpected ACCEPTS_INPUT edge for provider dependency: %s", r.ToID)
+			}
+		}
+	}
+}
+
 // #3629: FastAPI response_model= emits a RETURNS edge to the response DTO.
 func TestFastAPIReqResp_ReturnsEdgeResponseModel(t *testing.T) {
 	src := `@app.get("/users", response_model=UserOut)
@@ -2207,6 +2341,21 @@ func TestFastAPIReqResp_FullFixture(t *testing.T) {
 	}
 	if !foundUpdate {
 		t.Error("expected accepts_input entity with dto_type=UpdateOrderRequest (update_order endpoint)")
+	}
+
+	// #4476 — list_orders accepts OrderFilterParams via Depends() query model,
+	// and the get_current_user provider dependency yields NO edge.
+	foundQueryModel := false
+	for _, e := range acceptsInput {
+		if e.Props["dto_type"] == "OrderFilterParams" && e.Props["match_source"] == "dependency_query_model" {
+			foundQueryModel = true
+		}
+		if e.Props["dto_type"] == "get_current_user" || e.Props["dto_type"] == "user" {
+			t.Errorf("provider dependency must not yield an accepts_input edge: %v", e.Props)
+		}
+	}
+	if !foundQueryModel {
+		t.Error("expected accepts_input entity with dto_type=OrderFilterParams (Depends() query model, #4476)")
 	}
 
 	// create_order returns OrderResponse via response_model=

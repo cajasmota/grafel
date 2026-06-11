@@ -36,6 +36,13 @@ class UpdateOrderRequest(BaseModel):
     notes: Optional[str] = None
 
 
+# --- Query-model DTO (#4476: Depends() request shape) ---
+
+class OrderFilterParams(BaseModel):
+    status: Optional[str] = None
+    min_total_cents: Optional[int] = None
+
+
 # --- Dependency ---
 
 def get_current_user(token: str = ""):
@@ -58,6 +65,14 @@ async def update_order(order_id: str, body: UpdateOrderRequest, user=Depends(get
 @router.get("/{order_id}", response_model=OrderResponse)
 async def get_order(order_id: str):
     return {"order_id": order_id, "status": "pending", "total_cents": 0}
+
+
+# #4476: a Pydantic model bound as a query model via Depends() — the FastAPI
+# analog of the NestJS @Query() DTO. Must get an ACCEPTS_INPUT edge; the
+# get_current_user provider dependency above must NOT.
+@router.get("", response_model=OrderResponse)
+async def list_orders(filters: OrderFilterParams = Depends(), user=Depends(get_current_user)):
+    return {"order_id": "1", "status": "pending", "total_cents": 0}
 
 
 # --- Middleware ---

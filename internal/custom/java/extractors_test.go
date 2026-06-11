@@ -228,6 +228,73 @@ public class OrderController {
 	}
 }
 
+// #4475 — @ModelAttribute command object → ACCEPTS_INPUT, plus return type
+// → RETURNS, with no duplicate DTO node.
+func TestSpringReqResp_ModelAttributeCommandObject(t *testing.T) {
+	source := `
+@RestController
+public class SearchController {
+    @GetMapping("/search")
+    public ResponseEntity<SearchResult> search(@ModelAttribute SearchQuery query) { return null; }
+}
+`
+	r := ExtractSpringRequestResponse(PatternContext{Source: source, Language: "java", Framework: "spring_boot", FilePath: "SearchController.java"})
+	var accepts, returns int
+	dtoCount := map[string]int{}
+	for _, e := range r.Entities {
+		dtoCount[e.Name]++
+	}
+	for _, rel := range r.Relationships {
+		switch rel.RelationshipType {
+		case "ACCEPTS_INPUT":
+			accepts++
+			if rel.Properties["dto_type"] != "SearchQuery" {
+				t.Errorf("ACCEPTS_INPUT dto_type = %q, want SearchQuery", rel.Properties["dto_type"])
+			}
+			if rel.Properties["match_source"] != "model_attribute_annotation" {
+				t.Errorf("match_source = %q, want model_attribute_annotation", rel.Properties["match_source"])
+			}
+		case "RETURNS":
+			returns++
+			if rel.Properties["dto_type"] != "SearchResult" {
+				t.Errorf("RETURNS dto_type = %q, want SearchResult", rel.Properties["dto_type"])
+			}
+		}
+	}
+	if accepts != 1 {
+		t.Errorf("expected 1 ACCEPTS_INPUT, got %d", accepts)
+	}
+	if returns != 1 {
+		t.Errorf("expected 1 RETURNS, got %d", returns)
+	}
+	if dtoCount["SearchQuery"] != 1 {
+		t.Errorf("expected exactly 1 SearchQuery DTO node, got %d", dtoCount["SearchQuery"])
+	}
+}
+
+// #4475 — a bare command-object param (no binding annotation) is the implicit
+// Spring command object and gets an ACCEPTS_INPUT edge; @RequestParam scalars
+// and primitives do NOT.
+func TestSpringReqResp_BareCommandObject(t *testing.T) {
+	source := `
+@RestController
+public class ReportController {
+    @GetMapping("/report")
+    public ResponseEntity<ReportDto> report(ReportFilter filter, @RequestParam String fmt, int page) { return null; }
+}
+`
+	r := ExtractSpringRequestResponse(PatternContext{Source: source, Language: "java", Framework: "spring_boot", FilePath: "ReportController.java"})
+	var acceptsDTOs []string
+	for _, rel := range r.Relationships {
+		if rel.RelationshipType == "ACCEPTS_INPUT" {
+			acceptsDTOs = append(acceptsDTOs, rel.Properties["dto_type"])
+		}
+	}
+	if len(acceptsDTOs) != 1 || acceptsDTOs[0] != "ReportFilter" {
+		t.Errorf("expected exactly ReportFilter ACCEPTS_INPUT, got %v", acceptsDTOs)
+	}
+}
+
 func TestSpringReqResp_NoController(t *testing.T) {
 	source := `public class PlainClass { public void foo() {} }`
 	r := ExtractSpringRequestResponse(PatternContext{Source: source, Language: "java", Framework: "spring_boot", FilePath: "X.java"})

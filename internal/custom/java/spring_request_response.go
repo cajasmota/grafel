@@ -1,6 +1,35 @@
 package java
 
-import "regexp"
+import (
+	"regexp"
+	"strings"
+)
+
+// srrSplitParams splits a Java handler parameter list at top-level commas,
+// respecting `<>` generic args and `()` annotation args so a param like
+// `Map<String,Object> m` or `@RequestParam(value="x") String x` stays intact.
+func srrSplitParams(paramsBlock string) []string {
+	var parts []string
+	depth := 0
+	start := 0
+	for i := 0; i < len(paramsBlock); i++ {
+		switch paramsBlock[i] {
+		case '<', '(', '[':
+			depth++
+		case '>', ')', ']':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				parts = append(parts, paramsBlock[start:i])
+				start = i + 1
+			}
+		}
+	}
+	parts = append(parts, paramsBlock[start:])
+	return parts
+}
 
 // Spring Request/Response extractor: ACCEPTS_INPUT and RETURNS relationships.
 // Ported from: spring_request_response_extractor.py
@@ -20,6 +49,18 @@ var (
 			`(?:<[^>]*>\s*)?([\w<>\[\], ]+?)\s+(\w+)\s*\(([^)]*)`)
 	srrRequestBodyRE = regexp.MustCompile(
 		`@RequestBody\b(?:\s*@\w+(?:\s*\([^)]*\))?\s*)*\s+(\w+)(?:\s*<[^>]*>)?\s+\w+`)
+	// #4475 — Spring's GET-side request DTO: a command/form object bound via
+	// `@ModelAttribute FooQuery foo`. Group 1 is the DTO type. The leading
+	// `@ModelAttribute` may itself carry args (`@ModelAttribute("cmd")`).
+	srrModelAttributeRE = regexp.MustCompile(
+		`@ModelAttribute\b(?:\s*\([^)]*\))?(?:\s*@\w+(?:\s*\([^)]*\))?\s*)*\s+(\w+)(?:\s*<[^>]*>)?\s+\w+`)
+	// srrParamSplitRE splits a handler param list at top-level commas so each
+	// param can be classified (annotated vs bare command object). Generic
+	// commas (`Map<K,V>`) are handled by srrSplitParams, not this RE.
+	srrAnnotatedParamRE = regexp.MustCompile(`@(\w+)\b`)
+	// srrBareParamRE matches a `Type name` param with no annotation. Group 1 is
+	// the type (ignoring generic args), group 2 the identifier.
+	srrBareParamRE = regexp.MustCompile(`^([A-Z]\w*)(?:\s*<[^>]*>)?\s+(\w+)\s*$`)
 	srrResponseEntityRE = regexp.MustCompile(`ResponseEntity\s*<\s*([\w<>, ]+?)\s*>`)
 	srrGenericWrapperRE = regexp.MustCompile(`(?:Optional|Mono|Flux|Publisher)\s*<\s*([\w<>, ]+?)\s*>`)
 	srrBaseGenericRE    = regexp.MustCompile(`^(\w+)(?:\s*<([^>]+)>)?$`)
@@ -119,6 +160,53 @@ func ExtractSpringRequestResponse(ctx PatternContext) PatternResult {
 					Properties:       map[string]string{"match_source": "request_body_annotation", "dto_type": dtoName},
 				})
 			}
+		}
+
+		// #4475 — ACCEPTS_INPUT for command/form objects: the Spring GET-side
+		// request DTO. Two forms, both the analog of the NestJS @Query() DTO:
+		//   (1) `@ModelAttribute FooQuery foo` — explicitly bound command object.
+		//   (2) a bare command-object param (`FooQuery foo`) with no binding
+		//       annotation — Spring binds these to request params implicitly.
+		// Skip primitives / @RequestParam-/@PathVariable-bound scalars and the
+		// framework injection types in srrSkipTypes. Conservative: only when the
+		// type resolves to a known user DTO.
+		for _, mam := range srrModelAttributeRE.FindAllStringSubmatch(paramsBlock, -1) {
+			dtoName := mam[1]
+			if srrSkipTypes[dtoName] {
+				continue
+			}
+			dtoRef := ensureDTO(dtoName, lineNo)
+			addRel(&result, seenRels, Relationship{
+				SourceRef: endpointRef, TargetRef: dtoRef,
+				RelationshipType: "ACCEPTS_INPUT",
+				Properties:       map[string]string{"match_source": "model_attribute_annotation", "dto_type": dtoName},
+			})
+		}
+		for _, param := range srrSplitParams(paramsBlock) {
+			param = strings.TrimSpace(param)
+			if param == "" {
+				continue
+			}
+			// Annotated params are handled by their dedicated passes
+			// (@RequestBody / @ModelAttribute above) or are scalar bindings
+			// (@RequestParam/@PathVariable/@RequestHeader) we deliberately skip.
+			if srrAnnotatedParamRE.MatchString(param) {
+				continue
+			}
+			bm := srrBareParamRE.FindStringSubmatch(param)
+			if bm == nil {
+				continue
+			}
+			dtoName := bm[1]
+			if srrSkipTypes[dtoName] {
+				continue
+			}
+			dtoRef := ensureDTO(dtoName, lineNo)
+			addRel(&result, seenRels, Relationship{
+				SourceRef: endpointRef, TargetRef: dtoRef,
+				RelationshipType: "ACCEPTS_INPUT",
+				Properties:       map[string]string{"match_source": "command_object_param", "dto_type": dtoName},
+			})
 		}
 
 		// RETURNS: method return type
