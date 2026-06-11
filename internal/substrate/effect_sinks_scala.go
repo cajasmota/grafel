@@ -50,14 +50,65 @@ var scalaHTTPRe = regexp.MustCompile(
 		`|\bsttp\s*\.\s*client3\b`,
 )
 
-// scalaDBReadRe matches Slick / Doobie / Quill / JPA read primitives.
+// scalaDBReadRe matches the DISTINCTIVE Slick / Doobie / Quill / JPA read
+// primitives — terminals whose names do NOT collide with the Scala collection
+// combinators, so they are safe to bare-match on ANY receiver:
+//
+//   - `.result` / `.resultSet`  — Slick query materialisation (no Seq method
+//     named `result`).
+//   - `.query[T].to`            — Doobie query builder.
+//   - `sql"SELECT…"` / `sql"WITH…"` — Doobie/anorm interpolated read.
+//   - `em.find` / `em.createQuery…` — JPA reads.
+//   - `quote(query[…])`         — Quill read.
+//   - `.executeQuery(`          — raw JDBC.
+//
+// The AMBIGUOUS Slick combinators (`filter`/`map`/`sortBy`/`take`/`drop`/
+// `groupBy`/`join`/`joinLeft`/`joinRight`) are NOT here — they are ALSO the
+// standard Scala collection combinators (`List(1,2,3).filter(_>1).map(_*2)`),
+// so bare-matching them over-credits db_read on plain in-memory collections
+// (#4736 false-positive). They are credited db_read ONLY on a Slick
+// TableQuery/Query-typed receiver by scalaSlickReadMatches (#4736 receiver-typed
+// read credit, mirroring the Python #4691 / Ruby+Go+C#+PHP #4692 model).
 var scalaDBReadRe = regexp.MustCompile(
-	`\.\s*(?:result|resultSet|filter|map|sortBy|take|drop|groupBy|join|joinLeft|joinRight)\s*[\(\.]` +
+	`\.\s*(?:result|resultSet)\b` +
 		`|\.\s*query\s*\[[^\]]+\]\s*\.\s*to\b` +
 		`|\bsql"(?i:\s*(?:SELECT|WITH)\b)` +
 		`|\b(?:entityManager|em)\s*\.\s*(?:find|getReference|createQuery|createNamedQuery|createNativeQuery)\s*\(` +
 		`|\bquote\s*\(\s*query\s*\[` +
 		`|\.\s*executeQuery\s*\(`,
+)
+
+// --- #4736 Slick receiver-typed read credit (ambiguous combinators) ---
+//
+// scalaSlickAmbiguousVerbs collide with the Scala collection combinators, so
+// they are credited db_read ONLY when invoked on a receiver typed as a Slick
+// TableQuery / Query (assigned from `TableQuery[T]`, a `.result`-bearing chain,
+// or a `db.run(...)` argument). On a plain List/Seq/Map they stay pure,
+// preserving the false-positive guard #4736 calls out.
+const scalaSlickAmbiguousVerbs = `filter|map|sortBy|take|drop|groupBy|join|joinLeft|joinRight`
+
+// scalaTableQuerySeedRe seeds query-typed locals from the unambiguous Slick
+// roots. Group 1 = assigned name. Three trusted shapes:
+//
+//	val q = TableQuery[Users]              — Slick table query literal
+//	val q = TableQuery[Users].filter(...)  — query literal with a refinement tail
+//	val active = users.filter(_.active)    — (handled by the chain regex below)
+//
+// Only `TableQuery[...]` is an UNAMBIGUOUS Slick root (a plain `users` could be
+// a collection), so the seed anchors on it; relation-typed locals derived from a
+// seed are propagated by scalaTableQueryChainRe to a fixpoint.
+var scalaTableQuerySeedRe = regexp.MustCompile(
+	`(?m)\b(?:val|var)\s+([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*TableQuery\s*\[`,
+)
+
+// scalaTableQueryChainRe propagates query typing across assignment from an
+// already-typed name — `val q2 = q.filter(...)`, `val sorted = q.sortBy(...)`.
+// Group 1 = assigned name, group 2 = source receiver name (checked against the
+// typed set in a fixpoint loop). The refinement verb set is the read combinators
+// that RETURN a Query (so the result stays query-typed).
+var scalaTableQueryChainRe = regexp.MustCompile(
+	`(?m)\b(?:val|var)\s+([A-Za-z_]\w*)\s*(?::[^=\n]+)?=\s*([A-Za-z_]\w*)\s*\.\s*` +
+		`(?:` + scalaSlickAmbiguousVerbs + `)\s*[\(\.]`,
 )
 
 // scalaDBWriteRe matches Slick / Doobie / Quill / JPA write primitives.
@@ -104,12 +155,88 @@ func sniffEffectsScala(content string) []EffectMatch {
 	var out []EffectMatch
 	out = appendScalaMatches(out, content, headers, scalaHTTPRe, EffectHTTPOut, "sttp/akka-http/http4s/requests", 1.0)
 	out = appendScalaMatches(out, content, headers, scalaDBReadRe, EffectDBRead, "slick/doobie/quill.read", 0.8)
+	out = append(out, scalaSlickReadMatches(content, headers)...)
 	out = appendScalaMatches(out, content, headers, scalaDBWriteRe, EffectDBWrite, "slick/doobie/quill.write", 0.85)
 	out = appendScalaMatches(out, content, headers, scalaFSReadRe, EffectFSRead, "Source.fromFile/Files.read", 1.0)
 	out = appendScalaMatches(out, content, headers, scalaFSWriteRe, EffectFSWrite, "Files.write/os.write", 1.0)
 	out = appendScalaMatches(out, content, headers, scalaProcessRe, EffectFSWrite, "Process/sys.process", 0.9)
 	out = appendScalaMatches(out, content, headers, scalaMutationRe, EffectMutation, "this.field=", 0.7)
 	return out
+}
+
+// scalaSlickReadMatches implements the #4736 receiver-typed read credit for
+// Slick. It emits db_read for an ambiguous combinator
+// (`filter`/`map`/`sortBy`/`take`/`drop`/`groupBy`/`join`/…) ONLY when the
+// receiver is a Slick query-typed local — `TableQuery[Users]` directly, or a
+// local seeded from a `TableQuery[...]` and propagated across reassignment to a
+// fixpoint. An ambiguous combinator on a plain List/Seq/Map (untyped) earns no
+// credit — the collection false-positive guard is preserved.
+//
+// `TableQuery[Users].filter(...)` directly (a literal receiver) is also credited
+// via the literal-root regex, since the inline `TableQuery[...]` head is itself
+// the unambiguous Slick marker.
+func scalaSlickReadMatches(content string, headers []funcHeader) []EffectMatch {
+	var out []EffectMatch
+	emit := func(off int) {
+		line := lineOfOffset(content, off)
+		out = append(out, EffectMatch{
+			Function:   nearestHeader(headers, line),
+			Line:       line,
+			Effect:     EffectDBRead,
+			Sink:       "slick.read.query",
+			Confidence: 0.8,
+		})
+	}
+	// (a) Inline literal root: `TableQuery[Users].filter(...)` — the
+	// `TableQuery[...]` head immediately followed by an ambiguous combinator is an
+	// unambiguous Slick read.
+	for _, m := range scalaTableQueryLiteralReadRe.FindAllStringIndex(content, -1) {
+		emit(m[0])
+	}
+	// (b) Typed-local receivers: `q.filter(...)` where `q` was seeded/propagated
+	// from a TableQuery root.
+	for name := range collectScalaQueryNames(content) {
+		re := regexp.MustCompile(`\b` + regexp.QuoteMeta(name) + `\s*\.\s*(?:` + scalaSlickAmbiguousVerbs + `)\s*[\(\.]`)
+		for _, m := range re.FindAllStringIndex(content, -1) {
+			emit(m[0])
+		}
+	}
+	return out
+}
+
+// scalaTableQueryLiteralReadRe matches an ambiguous combinator invoked directly
+// on a `TableQuery[T]` literal — `TableQuery[Users].filter(_.active)`.
+var scalaTableQueryLiteralReadRe = regexp.MustCompile(
+	`\bTableQuery\s*\[[^\]]+\]\s*\.\s*(?:` + scalaSlickAmbiguousVerbs + `)\s*[\(\.]`,
+)
+
+// collectScalaQueryNames returns the set of local names known to hold a Slick
+// query. Seeds from `val q = TableQuery[T]…` and iterates `val q2 = q.<combinator>`
+// to a fixpoint, so a chain of refinements stays query-typed.
+func collectScalaQueryNames(content string) map[string]bool {
+	typed := map[string]bool{}
+	for _, m := range scalaTableQuerySeedRe.FindAllStringSubmatch(content, -1) {
+		if len(m) >= 2 && m[1] != "" {
+			typed[m[1]] = true
+		}
+	}
+	chains := scalaTableQueryChainRe.FindAllStringSubmatch(content, -1)
+	for {
+		changed := false
+		for _, m := range chains {
+			if len(m) < 3 {
+				continue
+			}
+			if typed[m[2]] && !typed[m[1]] {
+				typed[m[1]] = true
+				changed = true
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return typed
 }
 
 func scanScalaFuncHeaders(content string) []funcHeader {
