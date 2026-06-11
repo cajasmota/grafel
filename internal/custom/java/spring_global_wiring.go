@@ -44,8 +44,9 @@ import (
 // entity owns the edge so it is retained even when nothing else references it.
 //
 // Spring Security's SecurityFilterChain @Bean / WebSecurityConfigurerAdapter
-// filter wiring is a deliberate follow-up (epic #4334) — see the note at the
-// bottom of this file.
+// filter wiring is handled in extractSpringSecurityWiring (#4410):
+// http.addFilterBefore/After/At(new X(), Y.class) → security-config → X USES,
+// di_role=security_filter.
 
 var (
 	// springWebMvcConfigClassRE matches a class implementing WebMvcConfigurer,
@@ -111,6 +112,42 @@ var (
 	// springDotClassRE pulls each `Foo.class` token out of an exception-handler
 	// argument list, capturing the exception class name (group 1).
 	springDotClassRE = regexp.MustCompile(`([A-Z]\w*)\s*\.\s*class\b`)
+
+	// ---- Spring Security global filter-chain wiring (#4410) ----------------
+
+	// springSecurityFilterChainBeanRE matches a `@Bean SecurityFilterChain
+	// name(HttpSecurity http)` method declaration, capturing the bean-method
+	// name (group 1). `(?s)` lets the annotation + signature span lines. This is
+	// the modern (component-based) Spring Security entry point.
+	springSecurityFilterChainBeanRE = regexp.MustCompile(
+		`(?s)SecurityFilterChain\s+(\w+)\s*\([^)]*HttpSecurity`)
+
+	// springWebSecurityAdapterRE matches the legacy
+	// `class X extends WebSecurityConfigurerAdapter`, capturing the config class
+	// name (group 1). Its `configure(HttpSecurity)` override carries the same
+	// addFilter* idioms.
+	springWebSecurityAdapterRE = regexp.MustCompile(
+		`(?s)class\s+(\w+)\b[^{]*?\bextends\b[^{]*?\bWebSecurityConfigurerAdapter\b`)
+
+	// springAddFilterRE matches http.addFilterBefore / addFilterAfter /
+	// addFilterAt(new X(...), Y.class) — and the bare-bean-reference form
+	// addFilterBefore(jwtFilter, Y.class). Group 1 = the relative position verb
+	// (Before/After/At). Group 2 = the added filter class (from `new X` or a
+	// PascalCase bean identifier). Group 3 = the reference filter class Y.
+	springAddFilterRE = regexp.MustCompile(
+		`\.addFilter(Before|After|At)\s*\(\s*(?:new\s+)?([A-Za-z]\w*)\b[^,]*,\s*([A-Z]\w*)\s*\.\s*class`)
+
+	// springEnableMethodSecurityRE matches @EnableGlobalMethodSecurity /
+	// @EnableMethodSecurity, capturing the annotation name (group 1) so the
+	// posture flag can be recorded on the security config carrier.
+	springEnableMethodSecurityRE = regexp.MustCompile(
+		`@(EnableGlobalMethodSecurity|EnableMethodSecurity)\b`)
+
+	// springSecurityBeanProviderRE matches a `@Bean` method returning an
+	// AuthenticationProvider / UserDetailsService, capturing the return type
+	// (group 1) and method name (group 2). These are wired into the chain.
+	springSecurityBeanProviderRE = regexp.MustCompile(
+		`(?s)\b(AuthenticationProvider|UserDetailsService|AuthenticationManager)\s+(\w+)\s*\(`)
 )
 
 // springGlobalWiringFrameworks gates the Spring frameworks for which global
@@ -345,7 +382,180 @@ func ExtractSpringGlobalWiring(ctx PatternContext) PatternResult {
 		}
 	}
 
+	// ---- 5. Spring Security global filter-chain wiring (#4410) --------------
+	// Spring Security registers its own global servlet filter chain that the MVC
+	// passes above do not cover. Two entry-point shapes carry it:
+	//   (a) modern: @Bean SecurityFilterChain filterChain(HttpSecurity http) in a
+	//       @Configuration class.
+	//   (b) legacy: class X extends WebSecurityConfigurerAdapter
+	//       { configure(HttpSecurity http) }.
+	// Both configure the chain with http.addFilterBefore/After/At(new X(),
+	// Y.class). Each such call binds the custom filter X app-wide, relative to a
+	// reference filter Y. The owning security-config class carries the edge
+	// (di_role=security_filter, global=true), recording the relative position and
+	// the reference filter.
+	extractSpringSecurityWiring(source, fp, &result, seenRefs, seenRels, ensureApp)
+
 	return result
+}
+
+// extractSpringSecurityWiring emits the global=true USES edges for the Spring
+// Security filter chain (issue #4410): http.addFilterBefore/After/At custom
+// filters owned by the security config carrier, plus method-security posture and
+// AuthenticationProvider/UserDetailsService beans wired into the chain.
+func extractSpringSecurityWiring(
+	source, fp string,
+	result *PatternResult,
+	seenRefs map[string]bool,
+	seenRels map[relKey]bool,
+	ensureApp func() string,
+) {
+	// Detect a Spring Security configuration carrier in this file:
+	//   - a @Bean SecurityFilterChain method (modern), or
+	//   - a class extending WebSecurityConfigurerAdapter (legacy).
+	// Both are owned by the nearest @Configuration class (modern) or the adapter
+	// class itself (legacy). We collect carrier (name, offset, ref) records so an
+	// addFilter* call can attribute to the nearest preceding one.
+	type secCarrier struct {
+		name   string
+		offset int
+		ref    string
+	}
+	var carriers []secCarrier
+
+	emitCarrier := func(name string, offset int, legacy bool) string {
+		ref := "scope:pattern:spring_security_config:" + fp + ":" + name
+		props := map[string]any{"framework": "spring_boot", "scope": "application"}
+		if legacy {
+			props["security_style"] = "websecurityconfigureradapter"
+		} else {
+			props["security_style"] = "securityfilterchain_bean"
+		}
+		if addEntity(result, seenRefs, SecondaryEntity{
+			Name: name, Kind: "SCOPE.Pattern", Subtype: "security_config",
+			SourceFile: fp, LineStart: lineOf(source, offset), LineEnd: lineOf(source, offset),
+			Provenance: "INFERRED_FROM_SPRING_SECURITY_WIRING", Ref: ref,
+			Properties: props,
+		}) {
+			carriers = append(carriers, secCarrier{name, offset, ref})
+		} else {
+			// Already emitted (same ref): still record it for ownership lookup.
+			carriers = append(carriers, secCarrier{name, offset, ref})
+		}
+		return ref
+	}
+
+	// Modern: @Bean SecurityFilterChain method → owned by the nearest preceding
+	// @Configuration class (its enclosing config carrier).
+	for _, m := range springSecurityFilterChainBeanRE.FindAllStringSubmatchIndex(source, -1) {
+		// The carrier name is the enclosing @Configuration class when present;
+		// fall back to the bean-method name so the chain still has a stable owner.
+		name := ""
+		bestOff := -1
+		for _, cm := range sbConfigurationClassRE.FindAllStringSubmatchIndex(source, -1) {
+			if cm[0] <= m[0] && cm[0] > bestOff {
+				name = source[cm[2]:cm[3]]
+				bestOff = cm[0]
+			}
+		}
+		off := m[0]
+		if name == "" {
+			name = source[m[2]:m[3]] // bean-method name
+		} else {
+			off = bestOff
+		}
+		emitCarrier(name, off, false)
+	}
+
+	// Legacy: class extends WebSecurityConfigurerAdapter.
+	for _, m := range springWebSecurityAdapterRE.FindAllStringSubmatchIndex(source, -1) {
+		emitCarrier(source[m[2]:m[3]], m[0], true)
+	}
+
+	// Nearest preceding security carrier for an offset; falls back to the
+	// synthetic spring_app entity when no carrier was detected (defensive: an
+	// addFilter* on an HttpSecurity passed in from elsewhere).
+	ownerSecCarrier := func(offset int) string {
+		bestRef := ""
+		bestOff := -1
+		for _, c := range carriers {
+			if c.offset <= offset && c.offset > bestOff {
+				bestRef, bestOff = c.ref, c.offset
+			}
+		}
+		if bestRef == "" {
+			return ensureApp()
+		}
+		return bestRef
+	}
+
+	// http.addFilterBefore/After/At(new X(), Y.class) → config → X USES.
+	for _, m := range springAddFilterRE.FindAllStringSubmatchIndex(source, -1) {
+		position := source[m[2]:m[3]] // Before / After / At
+		filterCls := source[m[4]:m[5]]
+		refCls := source[m[6]:m[7]]
+		if filterCls == "" || primitiveTypes[filterCls] {
+			continue
+		}
+		addRel(result, seenRels, Relationship{
+			SourceRef:        ownerSecCarrier(m[0]),
+			TargetRef:        classStub(filterCls),
+			RelationshipType: string(types.RelationshipKindUses),
+			Properties: map[string]string{
+				"framework":      "spring_boot",
+				"di_role":        "security_filter",
+				"di_scope":       "global",
+				"global":         "true",
+				"relative_to":    refCls,
+				"relative_order": strings.ToLower(position), // before / after / at
+				"via":            "spring_security_add_filter",
+			},
+		})
+	}
+
+	// @EnableGlobalMethodSecurity / @EnableMethodSecurity posture: record on the
+	// nearest security carrier (or the app entity) so the method-security stance
+	// is queryable from the chain.
+	for _, m := range springEnableMethodSecurityRE.FindAllStringSubmatchIndex(source, -1) {
+		annotation := source[m[2]:m[3]]
+		addRel(result, seenRels, Relationship{
+			SourceRef:        ownerSecCarrier(m[0]),
+			TargetRef:        classStub(annotation),
+			RelationshipType: string(types.RelationshipKindUses),
+			Properties: map[string]string{
+				"framework":  "spring_boot",
+				"di_role":    "method_security",
+				"di_scope":   "global",
+				"global":     "true",
+				"annotation": annotation,
+				"via":        "spring_enable_method_security",
+			},
+		})
+	}
+
+	// AuthenticationProvider / UserDetailsService / AuthenticationManager @Bean
+	// methods wired into the chain. Only emit when a @Bean annotation precedes
+	// the method (so we don't link the interface declaration itself).
+	for _, m := range springSecurityBeanProviderRE.FindAllStringSubmatchIndex(source, -1) {
+		win := windowBefore(source, m[0], 120)
+		if !strings.Contains(win, "@Bean") {
+			continue
+		}
+		retType := source[m[2]:m[3]]
+		addRel(result, seenRels, Relationship{
+			SourceRef:        ownerSecCarrier(m[0]),
+			TargetRef:        classStub(retType),
+			RelationshipType: string(types.RelationshipKindUses),
+			Properties: map[string]string{
+				"framework": "spring_boot",
+				"di_role":   "security_provider",
+				"di_scope":  "global",
+				"global":    "true",
+				"bean_type": retType,
+				"via":       "spring_security_provider_bean",
+			},
+		})
+	}
 }
 
 // springInterceptorPathPatterns returns the comma-joined path patterns chained
@@ -434,12 +644,10 @@ func windowAfter(source string, offset, n int) string {
 	return source[offset:end]
 }
 
-// NOTE (deferred, epic #4334): Spring Security global wiring —
-// @EnableGlobalMethodSecurity and the SecurityFilterChain @Bean /
-// WebSecurityConfigurerAdapter.configure(HttpSecurity) graph (entry points,
-// custom filters added via http.addFilterBefore(new X(), ...)) — is a tight
-// follow-up. The carrier/edge convention here (config/app → Class:<X> USES,
-// global=true, di_role) extends directly to it: emit, for each
-// http.addFilterBefore/After/At(new X(), Y.class), a security-config → X USES
-// edge with di_role=security_filter. Filed separately to keep this PR scoped to
-// the MVC interceptor / servlet filter / controller-advice shapes.
+// Spring Security global wiring (#4410) is implemented in
+// extractSpringSecurityWiring above: for each
+// http.addFilterBefore/After/At(new X(), Y.class) it emits a security-config → X
+// USES edge (global=true, di_role=security_filter, relative_to/relative_order),
+// covering both the modern @Bean SecurityFilterChain and the legacy
+// WebSecurityConfigurerAdapter entry points, plus @EnableMethodSecurity posture
+// and AuthenticationProvider/UserDetailsService chain beans.

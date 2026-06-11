@@ -97,12 +97,12 @@ var (
 		`(?m)^MIDDLEWARE\s*(?:\+?=)\s*\[`)
 	djangoMiddlewareItemRe = regexp.MustCompile(`["']([A-Za-z][\w.]+)["']`)
 
-	// Anchor for the global-wiring pass (issue #4379): fires when the file is a
-	// settings module declaring any of the supported cross-cutting lists. The
-	// matched offset positions the synthetic django_settings entity on the
-	// first such assignment.
+	// Anchor for the global-wiring pass (issue #4379, extended #4403): fires
+	// when the file is a settings module declaring any of the supported
+	// cross-cutting lists. The matched offset positions the synthetic
+	// django_settings entity on the first such assignment.
 	djangoSettingsAnchorRe = regexp.MustCompile(
-		`(?m)^(?:MIDDLEWARE|AUTHENTICATION_BACKENDS|REST_FRAMEWORK)\s*(?:\+?=)\s*[\[({]`)
+		`(?m)^(?:MIDDLEWARE|AUTHENTICATION_BACKENDS|REST_FRAMEWORK|TEMPLATES|INSTALLED_APPS)\s*(?:\+?=)\s*[\[({]`)
 
 	// DRF SerializerMethodField return-type inference (issue #3346).
 	// class FooSerializer → field = SerializerMethodField() → def get_field(self) -> ReturnType

@@ -57,6 +57,21 @@ var (
 
 	// A single dotted-path string literal item inside a settings list/tuple.
 	djangoDottedPathItemRe = regexp.MustCompile(`["']([A-Za-z_][\w.]*\.[A-Za-z_]\w*)["']`)
+
+	// Issue #4403 — TEMPLATES[...]['OPTIONS']['context_processors'] = [dotted, …].
+	// The TEMPLATES setting is a list of backend dicts; each may carry an
+	// OPTIONS.context_processors list of dotted-path callables bound app-wide.
+	// We locate the `"context_processors": [ … ]` key (single or double quoted)
+	// anywhere inside the TEMPLATES block and read its balanced list body.
+	djangoTemplatesSettingRe     = regexp.MustCompile(`(?m)^TEMPLATES\s*(?:\+?=)\s*([\[(])`)
+	djangoContextProcessorsKeyRe = regexp.MustCompile(`["']context_processors["']\s*:\s*([\[(])`)
+
+	// Issue #4403 — INSTALLED_APPS = [ "app", "app.apps.AppConfig", … ]. Entries
+	// are either a bare app-package label ("rest_framework") or a dotted path to
+	// an AppConfig subclass ("core.apps.CoreConfig"). Only the dotted-path
+	// AppConfig form resolves to a real class entity, so we wire those; bare
+	// labels carry no in-repo target and are skipped.
+	djangoInstalledAppsSettingRe = regexp.MustCompile(`(?m)^INSTALLED_APPS\s*(?:\+?=)\s*([\[(])`)
 )
 
 // djangoDRFKeyRole maps a REST_FRAMEWORK default-class bucket key to the
@@ -137,6 +152,35 @@ func extractDjangoGlobalWiring(source, filePath string, line int) *types.EntityR
 			for _, im := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
 				add(role, im[1], -1)
 			}
+		}
+	}
+
+	// TEMPLATES[...]['OPTIONS']['context_processors'] — dotted-path callables
+	// bound app-wide for template rendering (issue #4403). Each TEMPLATES
+	// backend dict may declare its own context_processors list; we scan every
+	// "context_processors": [...] / (...) key found inside the TEMPLATES block.
+	for _, m := range djangoTemplatesSettingRe.FindAllStringSubmatchIndex(source, -1) {
+		open := m[len(m)-2] // captured opening delimiter of the TEMPLATES container
+		tplBlock := djangoBalancedDelim(source, open)
+		for _, km := range djangoContextProcessorsKeyRe.FindAllStringSubmatchIndex(tplBlock, -1) {
+			cpOpen := km[len(km)-2] // opening delimiter of the context_processors list
+			body := djangoStripPyComments(djangoBalancedDelim(tplBlock, cpOpen))
+			for _, im := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
+				add("context_processor", im[1], -1)
+			}
+		}
+	}
+
+	// INSTALLED_APPS — dotted-path AppConfig entries bound app-wide (issue
+	// #4403). Bare package labels (e.g. "rest_framework") carry no in-repo
+	// target and are skipped by djangoDottedPathItemRe (which requires at least
+	// one interior dot); the "core.apps.CoreConfig" form resolves to the real
+	// AppConfig subclass via the QualifiedName index.
+	for _, m := range djangoInstalledAppsSettingRe.FindAllStringSubmatchIndex(source, -1) {
+		open := m[len(m)-2]
+		body := djangoStripPyComments(djangoBalancedDelim(source, open))
+		for _, im := range djangoDottedPathItemRe.FindAllStringSubmatch(body, -1) {
+			add("app_config", im[1], -1)
 		}
 	}
 
