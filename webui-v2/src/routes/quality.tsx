@@ -1262,7 +1262,7 @@ function Sparkline({ points, lowerIsBetter }: { points: { v: number }[]; lowerIs
   const first = vals[0];
   const last = vals[vals.length - 1];
   const improved = lowerIsBetter ? last < first : last > first;
-  const stroke = last === first ? "var(--color-text-4, #888)" : improved ? "#22c55e" : "#ef4444";
+  const stroke = last === first ? "var(--color-text-4, #888)" : improved ? "var(--color-success)" : "var(--color-danger)";
   return (
     <svg width={W} height={H} viewBox={`0 0 ${W} ${H}`} className="overflow-visible">
       <polyline

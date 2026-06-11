@@ -67,12 +67,12 @@ const ENRICHMENT_LABEL: Record<EnrichmentType, string> = {
 
 // Pastel color map for entity type dots (matches prototype TYPE_DOT).
 const TYPE_COLOR: Record<string, string> = {
-  function:      "var(--pastel-6, #7ba7bc)",
-  component:     "var(--pastel-1, #e88c8c)",
-  hook:          "var(--pastel-2, #d4a96a)",
-  class:         "var(--pastel-3, #8cc98c)",
-  method:        "var(--pastel-4, #a08cd4)",
-  http_endpoint: "var(--pastel-5, #e8c46a)",
+  function:      "var(--pastel-6)",
+  component:     "var(--pastel-1)",
+  hook:          "var(--pastel-2)",
+  class:         "var(--pastel-3)",
+  method:        "var(--pastel-4)",
+  http_endpoint: "var(--pastel-5)",
 };
 
 const AGENTS = [

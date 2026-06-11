@@ -1525,7 +1525,7 @@ function OrphanPublisherTab({
                 <span className="text-xs text-text-3">+{(e.producers?.length ?? 0) - 3}</span>
               )}
             </div>
-            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-950/30 text-amber-300 border border-amber-700/40 shrink-0">
+            <span className="text-xs px-2 py-0.5 rounded-full bg-warning/10 text-warning border border-warning/40 shrink-0">
               no subscriber found
             </span>
             <LocalRepoChip repo={e.repo} />
@@ -1607,8 +1607,8 @@ function OrphanSubscriberTab({
               className={cn(
                 "text-xs px-2 py-0.5 rounded-full shrink-0",
                 e.reason === "publisher_only_in_external_lib"
-                  ? "bg-slate-900/30 text-slate-400 border border-dashed border-slate-600"
-                  : "bg-amber-950/30 text-amber-300 border border-amber-700/40",
+                  ? "bg-surface-2 text-text-3 border border-dashed border-border-strong"
+                  : "bg-warning/10 text-warning border border-warning/40",
               )}
             >
               {e.reason === "publisher_only_in_external_lib"
