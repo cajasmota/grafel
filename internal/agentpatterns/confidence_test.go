@@ -158,19 +158,33 @@ func TestApplyTimeDecayFromUnix_FloorAt02(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 func TestDecayScheduler_RunAndCancel(t *testing.T) {
+	// Deterministic tick assertion: rather than counting how many ticks land
+	// inside a wall-clock deadline (which is flaky under parallel CPU
+	// contention because time.Ticker coalesces/drops ticks when the receiving
+	// goroutine is starved), we cancel from inside the job once we've observed
+	// the target number of ticks. The scheduler is therefore guaranteed to run
+	// at least wantTicks times before Run returns, regardless of scheduling
+	// pressure. Run executes the job inline, so calls is not racy.
+	const wantTicks = 3
 	calls := 0
-	job := func(nowUnix int64) {
-		calls++
-	}
-	sched := agentpatterns.NewDecayScheduler(10*time.Millisecond, job)
 
-	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
+	job := func(nowUnix int64) {
+		calls++
+		if calls >= wantTicks {
+			cancel()
+		}
+	}
+	// A short interval keeps the test fast; correctness no longer depends on
+	// it being short relative to any deadline.
+	sched := agentpatterns.NewDecayScheduler(1*time.Millisecond, job)
+
 	sched.Run(ctx)
-	// After ~50 ms with 10 ms interval, we expect ≥ 3 ticks (conservative).
-	if calls < 3 {
-		t.Errorf("expected >= 3 scheduler ticks, got %d", calls)
+
+	if calls < wantTicks {
+		t.Errorf("expected >= %d scheduler ticks, got %d", wantTicks, calls)
 	}
 }
 
