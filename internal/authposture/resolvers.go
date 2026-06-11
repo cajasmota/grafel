@@ -78,16 +78,18 @@ func NewRegistry() *Registry {
 		// Flagship — fully implemented.
 		djangoDRFResolver{},
 		nestJSResolver{},
+		// Implemented (effective_contract framework wave #4708/#4709/#4710).
+		springSecurityResolver{}, // #4708 — @PreAuthorize/@Secured/@RolesAllowed
+		fastAPIResolver{},        // #4709 — Depends(auth)/Security scopes
+		expressResolver{},        // #4710 — passport/requireAuth/role middleware
 		// Stubs — registry members so the shape is fixed; each returns
 		// ok=false until its follow-up ticket lands. NOT flagship-only.
-		stubResolver{name: "spring-security"}, // ref #4419 — @PreAuthorize/@Secured
-		stubResolver{name: "rails"},           // ref #4419 — Pundit/CanCanCan/before_action
-		stubResolver{name: "fastapi"},         // ref #4419 — Depends(auth)/Security scopes
-		stubResolver{name: "flask"},           // ref #4419 — decorators/before_request
-		stubResolver{name: "laravel"},         // ref #4419 — middleware/Gates/Policies
-		stubResolver{name: "aspnet"},          // ref #4419 — [Authorize]/policies
-		stubResolver{name: "go-middleware"},   // ref #4419 — middleware chains
-		stubResolver{name: "phoenix"},         // ref #4419 — plugs
+		stubResolver{name: "rails"},         // ref #4419 — Pundit/CanCanCan/before_action
+		stubResolver{name: "flask"},         // ref #4419 — decorators/before_request
+		stubResolver{name: "laravel"},       // ref #4419 — middleware/Gates/Policies
+		stubResolver{name: "aspnet"},        // ref #4419 — [Authorize]/policies
+		stubResolver{name: "go-middleware"}, // ref #4419 — middleware chains
+		stubResolver{name: "phoenix"},       // ref #4419 — plugs
 	}}
 }
 

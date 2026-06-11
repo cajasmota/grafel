@@ -231,10 +231,12 @@ var (
 			`|\b(?:os\s*\.\s*)?getenv\s*\(\s*['"]([^'"]+)['"]`,
 	)
 
-	// pyHTTPStatusRe extracts an HTTP status from a return expression:
-	// status.HTTP_409_CONFLICT, status=409, HTTP_200_OK.
+	// pyHTTPStatusRe extracts an HTTP status from a return/raise expression:
+	// status.HTTP_409_CONFLICT, status=409, HTTP_200_OK, and the FastAPI
+	// HTTPException(status_code=404, ...) / JSONResponse(status_code=201) form
+	// (#4709 — the `status_code=NNN` kwarg the FastAPI/Starlette stack uses).
 	pyHTTPStatusConstRe = regexp.MustCompile(`HTTP_(\d{3})_[A-Z_]+`)
-	pyHTTPStatusNumRe   = regexp.MustCompile(`status\s*=\s*(\d{3})\b`)
+	pyHTTPStatusNumRe   = regexp.MustCompile(`status(?:_code)?\s*=\s*(\d{3})\b`)
 )
 
 func analyzeBranchesPython(funcSource string, startLine int) []BranchFacet {
