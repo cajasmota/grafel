@@ -3,6 +3,8 @@
 // Extracted entities:
 //   - CREATE TABLE        → Kind="SCOPE.Datastore", Subtype="table"
 //   - column              → Kind="SCOPE.Schema",    Subtype="column" (one per column inside a CREATE TABLE)
+//                           Properties: col_type, nullable, is_primary_key,
+//                           is_unique, default (Issue #4295)
 //   - CREATE VIEW         → Kind="SCOPE.Datastore", Subtype="view"
 //   - CREATE INDEX        → Kind="SCOPE.Datastore", Subtype="index"
 //   - CREATE FUNCTION     → Kind="SCOPE.Datastore", Subtype="function"
@@ -807,6 +809,22 @@ var (
 	// at the top level — used to filter constraint clauses.
 	columnIdentRE = regexp.MustCompile(`^\s*([A-Za-z_][A-Za-z0-9_]*)\b`)
 
+	// Issue #4295: column metadata flag parsing.
+	// notNullRE matches an explicit NOT NULL (word-boundary tolerant).
+	notNullRE = regexp.MustCompile(`(?i)\bNOT\s+NULL\b`)
+	// defaultRE captures the DEFAULT expression — a parenthesized group, a
+	// quoted literal, or a single bare token (function call / literal).
+	defaultRE = regexp.MustCompile(`(?i)\bDEFAULT\s+('(?:[^']|'')*'|"(?:[^"]|"")*"|\([^)]*\)|[^\s,]+)`)
+	// columnTypeRE captures the SQL type immediately following the column
+	// identifier: a type word, optional schema qualifier, optional length /
+	// precision parens, and trailing array brackets (Postgres). It is applied
+	// to the post-identifier remainder of a column definition.
+	columnTypeRE = regexp.MustCompile(`^\s*((?:\w+\.)?\w+(?:\s*\([^)]*\))?(?:\s*\[\s*\])*)`)
+	// table-level PRIMARY KEY (col, ...) and UNIQUE (col, ...) constraint
+	// clauses. Applied to the uppercased entry text.
+	tableLevelPKRE     = regexp.MustCompile(`^(?:CONSTRAINT\s+\w+\s+)?PRIMARY\s+KEY\s*\(\s*([^)]+?)\s*\)`)
+	tableLevelUniqueRE = regexp.MustCompile(`^(?:CONSTRAINT\s+\w+\s+)?UNIQUE\s*\(\s*([^)]+?)\s*\)`)
+
 	// Issue #389 (PORT-RELS-SQL): DML target detection inside view / function
 	// bodies. We attach READS_FROM / WRITES_TO edges from the surrounding
 	// scope entity (view or function) to each referenced table.
@@ -875,8 +893,28 @@ func parseTableBody(body, tableName, filePath string, tableStartLine int) ([]col
 	var cols []columnEntry
 	var fks []fkEntry
 
+	// Issue #4295: table-level PRIMARY KEY / UNIQUE constraint clauses name
+	// columns that are not flagged inline. Collect them in a first pass so the
+	// flags can be stamped onto the matching column entities below.
+	tablePKCols := map[string]bool{}
+	tableUniqueCols := map[string]bool{}
+
 	// Split top-level by commas (depth-aware: don't split inside parens).
 	entries := splitTopLevelCommas(body)
+
+	for _, raw := range entries {
+		upper := strings.ToUpper(strings.TrimSpace(raw))
+		if m := tableLevelPKRE.FindStringSubmatch(upper); m != nil {
+			for _, c := range splitAndTrim(m[1], ",") {
+				tablePKCols[strings.ToLower(unquoteIdent(c))] = true
+			}
+		} else if m := tableLevelUniqueRE.FindStringSubmatch(upper); m != nil {
+			for _, c := range splitAndTrim(m[1], ",") {
+				tableUniqueCols[strings.ToLower(unquoteIdent(c))] = true
+			}
+		}
+	}
+
 	lineCursor := tableStartLine
 	consumed := 0
 
@@ -944,6 +982,39 @@ func parseTableBody(body, tableName, filePath string, tableStartLine int) ([]col
 		// short column name is preserved in Properties["column"] for
 		// downstream consumers that need it without re-parsing.
 		qualName := tableName + "." + colName
+		props := map[string]string{
+			"table":  tableName,
+			"column": colName,
+		}
+
+		// Issue #4295: parse column metadata flags (type, nullable, PK,
+		// unique, default) from the remainder of the column definition.
+		// `rest` is the definition with the leading identifier stripped.
+		rest := strings.TrimSpace(entry[len(idMatch[0]):])
+		restUpper := strings.ToUpper(rest)
+
+		if colType := parseColumnType(rest); colType != "" {
+			props["col_type"] = colType
+		}
+
+		isPK := strings.Contains(restUpper, "PRIMARY KEY") || tablePKCols[strings.ToLower(colName)]
+		if isPK {
+			props["is_primary_key"] = "true"
+		}
+		if strings.Contains(restUpper, "UNIQUE") || tableUniqueCols[strings.ToLower(colName)] {
+			props["is_unique"] = "true"
+		}
+		// Nullability: a PK is implicitly NOT NULL. Otherwise honour an
+		// explicit NOT NULL; default to nullable when unspecified.
+		if isPK || notNullRE.MatchString(rest) {
+			props["nullable"] = "false"
+		} else {
+			props["nullable"] = "true"
+		}
+		if m := defaultRE.FindStringSubmatch(rest); m != nil {
+			props["default"] = strings.TrimSpace(m[1])
+		}
+
 		colEntity := types.EntityRecord{
 			Name:               qualName,
 			Kind:               "SCOPE.Schema",
@@ -955,10 +1026,7 @@ func parseTableBody(body, tableName, filePath string, tableStartLine int) ([]col
 			QualifiedName:      qualName,
 			Signature:          strings.TrimSpace(entry),
 			EnrichmentRequired: false,
-			Properties: map[string]string{
-				"table":  tableName,
-				"column": colName,
-			},
+			Properties:         props,
 		}
 		cols = append(cols, colEntity)
 	}
@@ -1004,6 +1072,45 @@ func splitAndTrim(s, sep string) []string {
 		}
 	}
 	return out
+}
+
+// parseColumnType extracts the SQL data type from the remainder of a column
+// definition (the text after the column identifier). It returns "" when the
+// leading token is a constraint keyword (i.e. the column has no explicit type,
+// e.g. "id PRIMARY KEY") rather than a real type.
+func parseColumnType(rest string) string {
+	m := columnTypeRE.FindStringSubmatch(rest)
+	if m == nil {
+		return ""
+	}
+	t := strings.TrimSpace(m[1])
+	// First word of the candidate type — reject when it is a constraint
+	// keyword so "id PRIMARY KEY" does not yield col_type="PRIMARY".
+	firstWord := strings.ToUpper(t)
+	if i := strings.IndexAny(firstWord, " ([\t"); i >= 0 {
+		firstWord = firstWord[:i]
+	}
+	switch firstWord {
+	case "PRIMARY", "FOREIGN", "CONSTRAINT", "UNIQUE", "CHECK", "REFERENCES",
+		"NOT", "NULL", "DEFAULT", "GENERATED", "COLLATE":
+		return ""
+	}
+	// Normalize internal whitespace (e.g. "VARCHAR (255)" -> "VARCHAR(255)").
+	t = strings.Join(strings.Fields(t), " ")
+	t = strings.ReplaceAll(t, " (", "(")
+	return t
+}
+
+// unquoteIdent strips surrounding double quotes or backticks from an SQL
+// identifier so column-name matching is quote-insensitive.
+func unquoteIdent(s string) string {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '`' && s[len(s)-1] == '`') {
+			return s[1 : len(s)-1]
+		}
+	}
+	return s
 }
 
 // isConstraintClause returns true when an entry (uppercased) is a top-level
