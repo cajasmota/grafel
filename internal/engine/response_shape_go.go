@@ -31,18 +31,37 @@ import (
 //	r.Get("/users", h.List)            // chi / fiber (idiomatic title-case)
 //	app.Delete("/users/:id", deleteUser)
 //
-// Group 1 is the verb, group 2 is the path, group 3 is the handler
-// identifier (may be qualified, e.g. `h.Create`). The handler is the
-// bare or last-component name so the shape extractor can locate its
-// definition in the same file.
+// Group 1 is the RECEIVER variable (the router or route-group on which the
+// verb method is invoked), group 2 is the verb, group 3 is the path, group 4
+// is the handler identifier (may be qualified, e.g. `h.Create`). The handler
+// is the bare or last-component name so the shape extractor can locate its
+// definition in the same file. The receiver name lets synthesis resolve a
+// `r.Group("/v1")` prefix and prepend it to the route path (#4408).
 //
 // The title-case spelling is matched here (it was previously only matched by
 // the ROUTES_TO-edge pass in go_routes.go) so that idiomatic chi/fiber/echo
 // handlers receive an http_endpoint_definition entity — which the
 // response-codes / pagination enrichment passes (#3920) then stamp.
 var goRouteRe = regexp.MustCompile(
-	`\b\w+\s*\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*` +
+	`\b(\w+)\s*\.\s*(GET|POST|PUT|PATCH|DELETE|HEAD|OPTIONS|Get|Post|Put|Patch|Delete|Head|Options)\s*\(\s*` +
 		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]+)["` + "`" + `]` + "`" + `?\s*,\s*([\w.]+)`,
+)
+
+// goGroupAssignRe captures a gin/echo/chi route-GROUP assignment so its path
+// prefix can be prepended to every route registered on the group variable
+// (#4408). Recognised shapes:
+//
+//	v1 := r.Group("/api/v1")              // gin / echo
+//	admin := v1.Group("/admin", authMW)   // gin extra-middleware args
+//	g = base.Group("/g")                  // = reassignment
+//
+// Group 1 = the assigned group variable, group 2 = the parent receiver
+// (router or an enclosing group), group 3 = the literal prefix. Echo's
+// `e.Group("/x")` and chi's `r.Route("/x", fn)` use the same `.Group(`
+// spelling for echo; chi's `r.Route(` is captured by goChiRouteAssignRe.
+var goGroupAssignRe = regexp.MustCompile(
+	`\b(\w+)\s*:?=\s*(\w+)\s*\.\s*Group\s*\(\s*` +
+		"`" + `?["` + "`" + `]([^"` + "`" + `\n\r]*)["` + "`" + `]` + "`" + `?`,
 )
 
 // goFrameworkFromImports returns the framework name based on package
@@ -96,11 +115,16 @@ func synthesizeGoRouters(content string, emit emitFn) {
 	// (`.GET(`) are router-specific and need no such gate. This keeps the
 	// false-positive rate near zero while unlocking idiomatic chi/fiber/echo.
 	hasRouterImport := goFileImportsHTTPRouter(content)
+	// #4408 — resolve route-group prefixes (`v1 := r.Group("/v1")`, including
+	// nested groups `admin := v1.Group("/admin")`) so a route registered on a
+	// group variable synthesizes at its fully-prefixed path.
+	groupPrefix := goGroupPrefixIndex(content)
 	for _, m := range goRouteRe.FindAllStringSubmatch(content, -1) {
-		if len(m) < 4 {
+		if len(m) < 5 {
 			continue
 		}
-		rawVerb := m[1]
+		recv := m[1]
+		rawVerb := m[2]
 		// Normalise the verb to upper-case so the endpoint key is canonical
 		// regardless of the title-case (chi/fiber) vs upper-case (gin/echo)
 		// method-name spelling at the call site.
@@ -109,12 +133,18 @@ func synthesizeGoRouters(content string, emit emitFn) {
 		if rawVerb != verb && !hasRouterImport {
 			continue
 		}
-		raw := m[2]
-		handler := m[3]
+		raw := m[3]
+		handler := m[4]
 		// Use the last `.`-separated component so a `h.Create` style
 		// handler resolves to `Create` in the same file's func decls.
 		if i := strings.LastIndex(handler, "."); i >= 0 {
 			handler = handler[i+1:]
+		}
+		// Prepend the enclosing route-group prefix (if the route was registered
+		// on a `r.Group("/v1")` variable). The prefix is already accumulated
+		// across nested groups by goGroupPrefixIndex (#4408).
+		if pfx := groupPrefix[recv]; pfx != "" {
+			raw = joinPathFragments(pfx, raw)
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkGin, raw)
 		// #4382 — the handler argument is an ANONYMOUS / INLINE func literal
@@ -131,6 +161,72 @@ func synthesizeGoRouters(content string, emit emitFn) {
 		}
 		emit(verb, canonical, framework, refKind, handler)
 	}
+}
+
+// goGroupPrefixIndex scans a Go file for gin/echo route-group assignments
+// (`v1 := r.Group("/v1")`, `admin := v1.Group("/admin")`) and returns a map
+// from each group VARIABLE to its fully-accumulated path prefix, composing
+// nested groups (`admin` → "/v1/admin") via joinPathFragments (#4408).
+//
+// Resolution is order-independent: assignments are collected first, then each
+// variable's prefix is resolved by walking its parent chain. The root router
+// (`r := gin.Default()`) is not a group, so it contributes no prefix and a
+// route on `r` directly is left unprefixed. A cycle guard (bounded by the
+// number of groups) prevents pathological self-referential bindings from
+// looping. Best-effort: a group whose prefix is built from a non-literal
+// (a `RouterGroup` passed into a setup func, a computed string) is not
+// statically recoverable and is simply omitted — the route then synthesizes
+// at its own path, the pre-#4408 behaviour, rather than a wrong path.
+func goGroupPrefixIndex(content string) map[string]string {
+	if !strings.Contains(content, ".Group(") {
+		return nil
+	}
+	type binding struct {
+		parent string // receiver the group was derived from
+		seg    string // this group's own (normalized) path segment
+	}
+	bindings := map[string]binding{}
+	for _, m := range goGroupAssignRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 4 {
+			continue
+		}
+		varName := m[1]
+		parent := m[2]
+		seg := normalizeMountPrefix(m[3])
+		// A later assignment to the same variable wins (mirrors Go's last-write
+		// semantics in linear setup code). Self-assignment (`g = g.Group(...)`)
+		// keeps the earlier binding as the parent via the recorded parent name.
+		bindings[varName] = binding{parent: parent, seg: seg}
+	}
+	if len(bindings) == 0 {
+		return nil
+	}
+	resolved := map[string]string{}
+	var resolve func(name string, depth int) string
+	resolve = func(name string, depth int) string {
+		if p, ok := resolved[name]; ok {
+			return p
+		}
+		b, ok := bindings[name]
+		if !ok {
+			// `name` is the root router (or an unknown receiver): no prefix.
+			return ""
+		}
+		if depth > len(bindings) {
+			// Cycle guard: stop accumulating and treat as root-relative.
+			return b.seg
+		}
+		full := joinPathFragments(resolve(b.parent, depth+1), b.seg)
+		if full == "/" {
+			full = ""
+		}
+		resolved[name] = full
+		return full
+	}
+	for name := range bindings {
+		resolve(name, 0)
+	}
+	return resolved
 }
 
 // goFuncOpenRe locates the brace that opens a Go function or method

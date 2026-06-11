@@ -87,13 +87,11 @@ func main() {
 `
 	ents, rels := detectInline(t, "go", "cmd/gin/main.go", src)
 	assertInlineEndpointBridged(t, ents, rels, "GET", "/ping", "gin")
-	// NOTE: the http_endpoint synthesis layer (synthesizeGoRouters) does not
-	// resolve gin r.Group("/v1") prefixes — it emits the route's own path
-	// ("/items"), for BOTH named and inline handlers alike. That group-prefix
-	// gap is pre-existing and handler-shape-INDEPENDENT (see PR follow-up); this
-	// #4382 assertion deliberately tracks the layer's actual (verb,path) so it
-	// isolates the inline-handler regression it is here to guard.
-	assertInlineEndpointBridged(t, ents, rels, "POST", "/items", "gin")
+	// #4408 — synthesizeGoRouters now resolves the enclosing gin
+	// r.Group("/v1") prefix and prepends it, for BOTH named and inline
+	// handlers alike. The inline route registered on the `v1` group therefore
+	// synthesizes at its fully-prefixed path.
+	assertInlineEndpointBridged(t, ents, rels, "POST", "/v1/items", "gin")
 }
 
 // TestInline4382_EchoInlineHandlers covers echo e.GET("/x", func(c echo.Context) error {...}).
