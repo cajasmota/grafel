@@ -545,6 +545,18 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 	docgenStateDetail, _ := mcp.LoadDocgenState(group)
 	enrichedFM, enrichedSummary := extractFlowDocs(group, processEnt.ID, docgenStateDetail)
 
+	// #4363 — build the FlowDag payload (the shared v2DownstreamDAGResponse
+	// shape) server-side from the annotated steps + the persisted branches_dag
+	// tree, so the Flows view renders it directly and the client-side
+	// flowToDagPayload adapter retires. Node ids use the "flow-step-<index>"
+	// scheme the frontend's step-selection / replay / node-click wiring keys on.
+	flowDag := buildFlowDagPayload(
+		steps,
+		processEnt.Properties["branches_dag"],
+		processEnt.Name,
+		flowMeta.EntryKind,
+	)
+
 	process := map[string]any{
 		"process_id":   dashPrefixedID(processRepo.Slug, processEnt.ID),
 		"repo":         processRepo.Slug,
@@ -563,6 +575,9 @@ func (s *Server) handleFlowDetail(w http.ResponseWriter, r *http.Request) {
 		"complexity_score":  flowMeta.ComplexityScore,
 		"is_cross_repo":     flowMeta.IsCrossRepo,
 		"data_lineage":      flowMeta.DataLineage,
+		// #4363 — server-built DAG payload + the is_dag flag the rail badges read.
+		"is_dag":   processEnt.Properties["is_dag"] == "true",
+		"flow_dag": flowDag,
 	}
 	process["docgen_status"] = docgenStatus(enrichedFM, enrichedSummary)
 	process["enrichment_health"] = enrichmentHealth(enrichedFM)

@@ -770,11 +770,13 @@ function ListRail({
 // and renders the REAL branching DAG — the old SVG flattened every flow to its
 // primary path and could not draw fan-out arms.
 //
-// The Flows endpoint doesn't emit the DownstreamDAGResponse payload the shared
-// component consumes, so flowToDagPayload() adapts the flow's resolved steps +
-// persisted branches_dag into that shape (see lib/flow-to-dag.ts). Node clicks
-// drive the existing StepInspector; the H/V layout toggle now lives inside the
-// shared controls bar.
+// The flows DETAIL endpoint now emits the DownstreamDAGResponse payload the
+// shared component consumes directly (flow.flow_dag, #4363) — built server-side
+// from the same steps + branches_dag the old client adapter reshaped, with
+// first-class roles + semantic side-edges. lib/flow-to-dag.ts is retained only
+// as a back-compat fallback for an older daemon that doesn't emit flow_dag. Node
+// clicks drive the existing StepInspector; the H/V layout toggle now lives
+// inside the shared controls bar.
 //
 // REPLAY (#4362): the step-replay / comet animation + scrubber (originally
 // #1922) — dropped in the #4354 React Flow migration because it was welded to
@@ -800,9 +802,15 @@ function FlowDag({
 }) {
   const steps = detailSteps ?? flow.steps;
 
-  // Adapt the flow (steps + branches_dag) onto the shared payload shape. Memo
-  // so a re-render from step selection doesn't re-walk the DAG.
-  const payload = useMemo(() => flowToDagPayload(flow, steps), [flow, steps]);
+  // #4363 — the flows DETAIL endpoint now emits the FlowDag payload server-side
+  // (flow.flow_dag), built from the same steps + branches_dag the client adapter
+  // used, with the same "flow-step-<index>" node ids the selection/replay/click
+  // wiring below keys on. Consume it directly; fall back to the client-side
+  // flowToDagPayload adapter only for an older daemon that doesn't emit flow_dag.
+  const payload = useMemo(
+    () => flow.flow_dag ?? flowToDagPayload(flow, steps),
+    [flow, steps],
+  );
 
   // Map the selected step index → its DAG node id so the shared renderer can
   // highlight it. The mapper keys node ids on step_index (see flow-to-dag.ts).

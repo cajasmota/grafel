@@ -678,8 +678,20 @@ export interface Process {
   /**
    * JSON-serialised ChainStep tree emitted by #2028 Phase 1.
    * Only present when `is_dag === true`. Parse with JSON.parse → ChainStep.
+   *
+   * @deprecated Superseded by the server-built `flow_dag` payload (#4363). The
+   * detail endpoint now emits the rendered DAG directly; this raw tree remains
+   * for backward-compat / the "View DAG JSON" affordance only.
    */
   branches_dag?: string;
+  /**
+   * Server-built FlowDag payload (#4363) — the same DownstreamDAGResponse shape
+   * the v2 paths /downstream-dag endpoint produces, rooted at this flow's entry
+   * with "flow-step-<index>" node ids. Emitted by the flows DETAIL endpoint so
+   * the Flows view renders it directly (no client-side reshape). Null when the
+   * flow carries no steps.
+   */
+  flow_dag?: DownstreamDAGResponse | null;
 }
 
 export interface FlowDeadEnd {
