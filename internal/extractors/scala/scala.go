@@ -151,8 +151,9 @@ func walkNode(node *sitter.Node, file extractor.FileInput, cc *classCtx, out *[]
 		if rec, ok := buildOperation(node, file, "function"); ok {
 			body := findFunctionBody(node)
 			paramTypes := collectParamTypes(node, file.Content)
+			localVars := collectScalaLocalVarTypes(body, file.Content)
 			rec.Relationships = append(rec.Relationships,
-				extractCallRelationships(body, file.Content, rec.Name, cc, paramTypes)...)
+				extractCallRelationships(body, file.Content, rec.Name, cc, paramTypes, localVars)...)
 			*out = append(*out, rec)
 		}
 		return
@@ -374,6 +375,93 @@ func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
 	return out
 }
 
+// collectScalaLocalVarTypes scans a function/method body and returns a map of
+// local val/var name → the concrete class it is statically typed as, for the
+// local-variable receiver-typing path (#4749, the Scala slice of epic #4615 —
+// the analogue of Java #4682 collectLocalVarTypes/newExprClassName, Kotlin
+// #4687 kotlinLocalReceiverTypes, TS/JS #4680, Go #4683). Two trusted shapes,
+// matching how a unit test constructs the SUT and calls its method:
+//
+//   - Constructor call:  `val c = new FooController(svc)` → c : FooController.
+//     The val_definition's initializer is an instance_expression whose
+//     type_identifier names the constructed class. This is the dominant unit-test
+//     idiom (`val c = new FooController(...); c.method()`).
+//   - Explicit type annotation: `val c: FooController = makeIt()` → c :
+//     FooController. The declared type wins regardless of the RHS shape, so a
+//     typed local seeded from a factory is still credited.
+//
+// Honest exclusion (no entry, receiver stays bare): an untyped factory/builder
+// call (`val c = makeController()`), a method chain, a literal — anything whose
+// class is not statically recoverable from a `new` or an explicit annotation.
+// First binding per name wins. Generic wrappers are stripped to the leaf type
+// (`new List[Owner]` → "List") to match the field/param index shape.
+func collectScalaLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, decl := range findAllNodes(body, "val_definition", "var_definition") {
+		name := scalaLocalVarName(decl, src)
+		if name == "" {
+			continue
+		}
+		if _, taken := out[name]; taken {
+			continue // first binding wins
+		}
+		// 1. Explicit declared type (`val c: FooController = …`). extractNamedTypePair
+		//    returns (name, leafType) reading the identifier + type_identifier pair.
+		if _, typ := extractNamedTypePair(decl, src); typ != "" {
+			out[name] = typ
+			continue
+		}
+		// 2. Infer from a `new Foo(...)` initializer (instance_expression).
+		if typ := scalaInstanceExprType(decl, src); typ != "" {
+			out[name] = typ
+		}
+	}
+	return out
+}
+
+// scalaLocalVarName returns the bound name of a val_definition/var_definition —
+// the first direct `identifier` child (`val c: T = …` → "c"). Returns "" for a
+// pattern/destructuring binding with no plain identifier.
+func scalaLocalVarName(decl *sitter.Node, src []byte) string {
+	for i := 0; i < int(decl.ChildCount()); i++ {
+		ch := decl.Child(i)
+		if ch.Type() == "identifier" {
+			return string(src[ch.StartByte():ch.EndByte()])
+		}
+	}
+	return ""
+}
+
+// scalaInstanceExprType returns the leaf type a val_definition's
+// instance_expression initializer constructs (`val c = new FooController(svc)` →
+// "FooController"). Returns "" when the RHS is not a direct `new` expression.
+// A generic_type leaf is stripped to its first type_identifier.
+func scalaInstanceExprType(decl *sitter.Node, src []byte) string {
+	for i := 0; i < int(decl.ChildCount()); i++ {
+		ch := decl.Child(i)
+		if ch.Type() != "instance_expression" {
+			continue
+		}
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			gc := ch.Child(j)
+			switch gc.Type() {
+			case "type_identifier":
+				return string(src[gc.StartByte():gc.EndByte()])
+			case "generic_type":
+				for k := 0; k < int(gc.ChildCount()); k++ {
+					if gc.Child(k).Type() == "type_identifier" {
+						return string(src[gc.Child(k).StartByte():gc.Child(k).EndByte()])
+					}
+				}
+			}
+		}
+	}
+	return ""
+}
+
 // scalaKeywordStop lists Scala keywords / special identifiers that the
 // parser surfaces as call_expression heads but are not real call
 // targets. Mirrors the kotlin extractor's drop list (#106).
@@ -397,6 +485,7 @@ func extractCallRelationships(
 	callerName string,
 	cc *classCtx,
 	paramTypes map[string]string,
+	localVars map[string]string,
 ) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
@@ -408,7 +497,7 @@ func extractCallRelationships(
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
-		target, recv := scalaCallTarget(call, src, cc, paramTypes)
+		target, recv := scalaCallTarget(call, src, cc, paramTypes, localVars)
 		if target == "" {
 			continue
 		}
@@ -464,6 +553,7 @@ func scalaCallTarget(
 	src []byte,
 	cc *classCtx,
 	paramTypes map[string]string,
+	localVars map[string]string,
 ) (string, string) {
 	if call.ChildCount() == 0 {
 		return "", ""
@@ -504,6 +594,17 @@ func scalaCallTarget(
 				recvType = t
 			}
 		}
+		// #4749 — local-variable receiver typing: `val c = new FooController(...)`
+		// (or `val c: FooController = …`) inside a (unit-test) method body lets
+		// `c.create()` resolve to `FooController.create` with a receiver_type
+		// stamp, so the shared coverage linkage credits the controller method the
+		// unit test exercises. Fields/params take precedence (already resolved
+		// above); a local binding fills the gap a class-scope lookup leaves.
+		if recvType == "" {
+			if t, ok := localVars[receiver]; ok && t != "" {
+				recvType = t
+			}
+		}
 		// PascalCase static-call shape: `Module.method`.
 		if recvType == "" && isPascalCase(receiver) {
 			recvType = receiver
@@ -514,7 +615,7 @@ func scalaCallTarget(
 		return method, ""
 	case "call_expression":
 		// Curried call — recurse.
-		return scalaCallTarget(first, src, cc, paramTypes)
+		return scalaCallTarget(first, src, cc, paramTypes, localVars)
 	}
 	return "", ""
 }

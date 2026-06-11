@@ -100,7 +100,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DB effect | 🟢 `partial` | `2026-06-03` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_scala.go` | Scala effect sniffer (effect_sinks_scala.go, RegisterEffectSniffer('scala')) recognises Slick/Doobie/Quill/JPA read+write primitives; framework-agnostic, fires on any .scala file. Fixture: TestScalaTrailing_Caliban_Effects. |
+| DB effect | 🟢 `partial` | `2026-06-11` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_scala.go`<br>`internal/substrate/effect_sinks_scala_slick_read_4736_test.go` | Scala effect sniffer (effect_sinks_scala.go, RegisterEffectSniffer('scala')) recognises Slick/Doobie/Quill/JPA read+write primitives; framework-agnostic, fires on any .scala file. #4736: ambiguous Slick combinators (filter/map/sortBy/take/drop/groupBy/join) are credited db_read ONLY on a TableQuery/Query-typed receiver (scalaSlickReadMatches) — plain in-memory collection combinators (List(...).filter().map()) stay pure; distinctive .result/.resultSet terminals remain bare. Fixtures: TestScalaTrailing_Caliban_Effects, TestScalaSlickTypedRead_4736, TestScalaCollectionNoFalsePositive_4736, TestScalaSlickReadChain_4736. |
 
 ### Substrate
 
