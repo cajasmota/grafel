@@ -78,6 +78,16 @@ type kotlinCrossCtx struct {
 	// call under an active star import is conservatively NOT stamped — the
 	// star-import case is a documented follow-up (#4334).
 	hasStarImport bool
+
+	// classRecvTypes maps a CLASS-LEVEL property name to the concrete class it
+	// is statically constructed as — the MockK `@InjectMockKs val controller =
+	// XController()` / `val controller = mockk<XController>()` field idiom
+	// (#4687, the Kotlin slice of epic #4615). Set transiently while a class
+	// body is walked so each test method's CALLS extractor can type a receiver
+	// declared as a class field, then restored on exit. The per-method body
+	// locals (collected in extractCallRelationships) take precedence over these
+	// — a same-named local shadows the field within the method scope.
+	classRecvTypes map[string]string
 }
 
 // buildKotlinCrossCtx scans the compilation unit for the package header and
@@ -198,10 +208,17 @@ type qualifiedKotlinCall struct {
 // localNames is the set of in-scope value names (parameters, properties, locals)
 // whose head segment marks an INSTANCE receiver — those are left to the base
 // extractor, never stamped as a cross-package static qualifier.
+// recvTypes maps an in-scope value name (local or class field) to the concrete
+// class it was statically constructed as (`val c = XController()` /
+// `@InjectMockKs val c = XController()` / `val c = mockk<XController>()`). A
+// navigation call whose head is such a typed receiver (`c.getCounts()`) is bound
+// to the class method via a (package, Type=that class, leaf) stamp — the #4687
+// local-variable / MockK receiver-typing path. Empty/nil → no typed-local path.
 func (c *kotlinCrossCtx) resolveKotlinQualifiedCall(
 	call *sitter.Node,
 	src []byte,
 	localNames map[string]bool,
+	recvTypes map[string]string,
 ) *qualifiedKotlinCall {
 	if c == nil || call == nil || call.ChildCount() == 0 {
 		return nil
@@ -226,7 +243,7 @@ func (c *kotlinCrossCtx) resolveKotlinQualifiedCall(
 		return nil
 
 	case "navigation_expression":
-		return c.resolveKotlinNavigationCall(first, src, localNames)
+		return c.resolveKotlinNavigationCall(first, src, localNames, recvTypes)
 	}
 	return nil
 }
@@ -238,6 +255,7 @@ func (c *kotlinCrossCtx) resolveKotlinNavigationCall(
 	nav *sitter.Node,
 	src []byte,
 	localNames map[string]bool,
+	recvTypes map[string]string,
 ) *qualifiedKotlinCall {
 	segs, ok := flattenKotlinNavigation(nav, src)
 	if !ok || len(segs) < 2 {
@@ -249,6 +267,20 @@ func (c *kotlinCrossCtx) resolveKotlinNavigationCall(
 		return nil
 	}
 	head := recv[0]
+	// #4687 — typed-local / typed-field receiver. A plain `c.method()` whose
+	// receiver `c` was statically typed to a concrete class via a constructor
+	// call, an explicit type annotation, or a `mockk<T>()` builder resolves to
+	// that class's method (the test→CALLS→handler coverage path). Only the
+	// single-segment receiver form `c.method()` is bound here — `c.field.m()`
+	// would need field-type tracking and falls through. This branch runs BEFORE
+	// the instance-receiver guard so a typed local is upgraded rather than
+	// dropped; an untyped local (factory/`mockk()` receiver) still falls to the
+	// guard and stays bare (honest exclusion).
+	if len(recv) == 1 {
+		if typ, ok := recvTypes[head]; ok && typ != "" {
+			return c.buildTypedReceiverCall(leaf, typ)
+		}
+	}
 	// Instance-receiver guard: a head that is a known local/param/property is
 	// an instance call (`order.place()`), owned by the base extractor — not a
 	// static cross-package qualifier.
@@ -295,6 +327,223 @@ func (c *kotlinCrossCtx) resolveKotlinNavigationCall(
 	// Resolve an alias `Svc` to its real imported type name `OrderService` for
 	// the index lookup (the package mapping is keyed on the alias, but the
 	// callee entity's enclosing type is the real name).
+	if real, ok := c.aliasRealType[typ]; ok && real != "" {
+		b.typ = real
+	}
+	if len(b.pkgCandidates) == 0 {
+		return nil
+	}
+	return b
+}
+
+// kotlinLocalReceiverTypes scans a function/lambda body and returns a map of
+// local value name → the concrete class it is statically constructed as, for
+// the local-variable receiver-typing path (#4687, the Kotlin slice of epic
+// #4615 — the analogue of Java #4682 collectLocalVarTypes/newExprClassName,
+// TS/JS #4680, Python #4716, Go #4683). Three trusted shapes:
+//
+//   - Constructor call (Kotlin has NO `new` keyword):
+//     `val c = XController(svc)` → c : XController. The initializer is a
+//     call_expression whose callee is a bare PascalCase simple_identifier and
+//     which has a call_suffix (real invocation). This is the dominant modern
+//     test idiom for the SUT.
+//   - Explicit type annotation: `val c: XController = makeIt()` → c : XController
+//     (the declared user_type wins regardless of the RHS shape).
+//   - MockK local: `val c = mockk<XController>()` → c : XController (the type
+//     argument of the `mockk`/`spyk` builder), the Kotlin mirror of Java's
+//     Mockito `@InjectMocks` and the C# DI `GetRequiredService<T>` cases.
+//
+// Honest exclusion (no entry, receiver stays bare): a factory/builder/`make()`
+// call (`val c = makeController()`), a method chain, a non-PascalCase callee, a
+// `mockk()` with no static type argument, a literal, a cast — anything whose
+// class is not statically recoverable. First binding per name wins.
+func kotlinLocalReceiverTypes(body *sitter.Node, src []byte) map[string]string {
+	if body == nil {
+		return nil
+	}
+	out := map[string]string{}
+	for _, decl := range findAllNodes(body, "property_declaration") {
+		name, vd := kotlinPropertyVarNameNode(decl, src)
+		if name == "" {
+			continue
+		}
+		if _, taken := out[name]; taken {
+			continue // first binding wins
+		}
+		// 1. Explicit declared type (`val c: XController = …`).
+		if typ := kotlinUserTypeLeaf(vd, src); typ != "" && isKotlinPascalType(typ) {
+			out[name] = typ
+			continue
+		}
+		// 2 / 3. Infer from the initializer call_expression (ctor or mockk<T>()).
+		if init := kotlinPropertyInitCall(decl); init != nil {
+			if typ := kotlinConstructedOrMockType(init, src); typ != "" {
+				out[name] = typ
+			}
+		}
+	}
+	return out
+}
+
+// kotlinPropertyVarNameNode returns the declared value name and its
+// variable_declaration node from a property_declaration
+// (`val a: T = …` / `var a = …`). Returns ("", nil) when no variable_declaration
+// child is present (multi-declaration / destructuring shapes are skipped).
+func kotlinPropertyVarNameNode(decl *sitter.Node, src []byte) (string, *sitter.Node) {
+	for i := 0; i < int(decl.ChildCount()); i++ {
+		ch := decl.Child(i)
+		if ch.Type() != "variable_declaration" {
+			continue
+		}
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			id := ch.Child(j)
+			if id.Type() == "simple_identifier" {
+				return string(src[id.StartByte():id.EndByte()]), ch
+			}
+		}
+	}
+	return "", nil
+}
+
+// kotlinUserTypeLeaf returns the leaf type_identifier of a variable_declaration's
+// explicit type annotation (`a: XController` → "XController"), stripping any
+// package/generic wrapping by taking the first type_identifier descendant of the
+// user_type. Returns "" when the declaration has no explicit type.
+func kotlinUserTypeLeaf(vd *sitter.Node, src []byte) string {
+	if vd == nil {
+		return ""
+	}
+	var ut *sitter.Node
+	for i := 0; i < int(vd.ChildCount()); i++ {
+		if vd.Child(i).Type() == "user_type" {
+			ut = vd.Child(i)
+			break
+		}
+	}
+	if ut == nil {
+		return ""
+	}
+	ids := findAllNodes(ut, "type_identifier")
+	if len(ids) == 0 {
+		return ""
+	}
+	// The declared type is the FIRST type_identifier (`com.x.XController<T>` →
+	// the outer type, not a generic argument). findAllNodes is pre-order so the
+	// leftmost/outermost user_type's identifier comes first for the common
+	// unqualified `XController` shape.
+	n := ids[0]
+	return string(src[n.StartByte():n.EndByte()])
+}
+
+// kotlinPropertyInitCall returns the initializer call_expression of a
+// property_declaration (`val c = XController(svc)` → the `XController(svc)`
+// call_expression), or nil when the RHS is not a direct call expression.
+func kotlinPropertyInitCall(decl *sitter.Node) *sitter.Node {
+	// The RHS is the child following the `=` token. Find `=`, then the next
+	// non-trivial sibling.
+	sawEq := false
+	for i := 0; i < int(decl.ChildCount()); i++ {
+		ch := decl.Child(i)
+		if ch.Type() == "=" {
+			sawEq = true
+			continue
+		}
+		if !sawEq {
+			continue
+		}
+		if ch.Type() == "call_expression" {
+			return ch
+		}
+		// Any other RHS node (literal, navigation, when, etc.) — not a ctor/mockk.
+		return nil
+	}
+	return nil
+}
+
+// kotlinConstructedOrMockType returns the class a property initializer call
+// constructs, for the two trusted shapes:
+//   - `XController(...)` — a Kotlin constructor call: callee is a bare PascalCase
+//     simple_identifier with a call_suffix. Returns "XController".
+//   - `mockk<XController>()` / `spyk<XController>()` — a MockK builder whose
+//     single type argument names the mocked class. Returns "XController".
+//
+// Returns "" for any other call (factory/`make()`, lowercase callee, `mockk()`
+// with no type argument, navigation chains) so the receiver stays bare.
+func kotlinConstructedOrMockType(call *sitter.Node, src []byte) string {
+	if call == nil || call.ChildCount() == 0 {
+		return ""
+	}
+	callee := call.Child(0)
+	if callee.Type() != "simple_identifier" {
+		return ""
+	}
+	name := string(src[callee.StartByte():callee.EndByte()])
+	// MockK builder: `mockk<T>()` / `spyk<T>()` — read the type argument.
+	if name == "mockk" || name == "spyk" {
+		if t := kotlinCallSuffixTypeArg(call, src); t != "" && isKotlinPascalType(t) {
+			return t
+		}
+		return ""
+	}
+	// Constructor call: a PascalCase callee invoked with a call_suffix.
+	if isKotlinPascalType(name) && hasCallSuffix(call) {
+		return name
+	}
+	return ""
+}
+
+// kotlinCallSuffixTypeArg returns the leaf type_identifier of the first
+// type_arguments projection on a call_expression's call_suffix
+// (`mockk<XController>()` → "XController"), or "" when absent.
+func kotlinCallSuffixTypeArg(call *sitter.Node, src []byte) string {
+	for i := 0; i < int(call.ChildCount()); i++ {
+		cs := call.Child(i)
+		if cs.Type() != "call_suffix" {
+			continue
+		}
+		for j := 0; j < int(cs.ChildCount()); j++ {
+			ta := cs.Child(j)
+			if ta.Type() != "type_arguments" {
+				continue
+			}
+			ids := findAllNodes(ta, "type_identifier")
+			if len(ids) > 0 {
+				n := ids[0]
+				return string(src[n.StartByte():n.EndByte()])
+			}
+		}
+	}
+	return ""
+}
+
+// isKotlinPascalType reports whether name is a non-empty identifier whose first
+// rune is an uppercase letter — the Kotlin class-name convention. Mirrors Java's
+// isPascalCase used by receiverTypeName.
+func isKotlinPascalType(name string) bool {
+	if name == "" {
+		return false
+	}
+	r := rune(name[0])
+	return r >= 'A' && r <= 'Z'
+}
+
+// buildTypedReceiverCall constructs the (package candidates, type, leaf) binding
+// for a typed-local / typed-field receiver call `c.leaf()` where `c` is known to
+// be of class `typ` (#4687). The candidate packages are the imported-type
+// package for `typ` (an `import com.x.XController` brings the class into scope
+// from another package) and the file's own package (a same-file SUT), most
+// specific first — mirroring the lone-`Type.method()` resolution path. An alias
+// (`import ... as Svc`) is resolved to the real type name for the index lookup.
+// Returns nil when no candidate package can be recovered (then the receiver
+// stays bare — honest exclusion).
+func (c *kotlinCrossCtx) buildTypedReceiverCall(leaf, typ string) *qualifiedKotlinCall {
+	b := &qualifiedKotlinCall{leaf: leaf, typ: typ}
+	if pkg, ok := c.importedTypes[typ]; ok && pkg != "" {
+		b.pkgCandidates = appendUniqueKt(b.pkgCandidates, pkg)
+	}
+	if c.filePackage != "" {
+		b.pkgCandidates = appendUniqueKt(b.pkgCandidates, c.filePackage)
+	}
 	if real, ok := c.aliasRealType[typ]; ok && real != "" {
 		b.typ = real
 	}

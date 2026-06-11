@@ -362,10 +362,48 @@ func TestIssue4375_SamePackageObjectMember(t *testing.T) {
 	}
 }
 
-// TestIssue4375_NegativeInstanceReceiver — an instance receiver
-// (`order.place()` where `order` is a local val) must NOT be stamped as a
-// cross-package static qualifier (no false bind).
+// TestIssue4375_NegativeInstanceReceiver — an instance receiver whose type is
+// NOT statically recoverable must NOT be stamped as a cross-package static
+// qualifier (no false bind).
+//
+// NOTE (#4687): the original form of this test used `val order = OrderService();
+// order.place()` and asserted NO stamp. That case is now DELIBERATELY upgraded —
+// a local constructed via a ctor call IS receiver-typed (the test→endpoint
+// coverage-linkage win, validated in TestIssue4375_LocalCtorReceiverNowTyped and
+// issue4687_localvar_receiver_test.go). The genuine negative is a receiver whose
+// class can't be statically recovered: a factory-returned local stays bare.
 func TestIssue4375_NegativeInstanceReceiver(t *testing.T) {
+	files := ktCollidingCalleeFiles()
+	files["src/app/Caller.kt"] = "" +
+		"package com.app.app\n" +
+		"\n" +
+		"import com.app.services.OrderService\n" +
+		"\n" +
+		"class Caller {\n" +
+		"    fun run() {\n" +
+		"        val order = makeOrder()\n" +
+		"        order.place()\n" +
+		"    }\n" +
+		"}\n"
+	merged := extractKotlinProjectForTest(t, files)
+
+	_, props, ok := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	if !ok {
+		t.Fatal("CALLS edge to place not found")
+	}
+	if props["kotlin_call_pkg"] != "" || props["kotlin_call_type"] != "" {
+		t.Fatalf("factory-returned instance receiver must NOT be stamped, got pkg=%q type=%q",
+			props["kotlin_call_pkg"], props["kotlin_call_type"])
+	}
+}
+
+// TestIssue4375_LocalCtorReceiverNowTyped — #4687: a local constructed via a
+// Kotlin ctor call (`val order = OrderService(); order.place()`) IS now
+// receiver-typed and binds to the imported OrderService's method (the
+// com.app.services one, NOT the colliding com.app.billing one). This is the
+// instance-receiver case the original #4375 negative test guarded — deliberately
+// upgraded for the test→CALLS→handler→endpoint coverage-linkage program.
+func TestIssue4375_LocalCtorReceiverNowTyped(t *testing.T) {
 	files := ktCollidingCalleeFiles()
 	files["src/app/Caller.kt"] = "" +
 		"package com.app.app\n" +
@@ -384,9 +422,14 @@ func TestIssue4375_NegativeInstanceReceiver(t *testing.T) {
 	if !ok {
 		t.Fatal("CALLS edge to place not found")
 	}
-	if props["kotlin_call_pkg"] != "" || props["kotlin_call_type"] != "" {
-		t.Fatalf("instance receiver must NOT be stamped, got pkg=%q type=%q",
-			props["kotlin_call_pkg"], props["kotlin_call_type"])
+	if props["kotlin_call_type"] != "OrderService" {
+		t.Fatalf("ctor-local receiver should be typed OrderService, got type=%q", props["kotlin_call_type"])
+	}
+	runKotlinResolve(merged)
+	toID, _, _ := ktCallEdge(merged, "src/app/Caller.kt", "run", "place")
+	want := ktEntID(merged, "src/services/OrderService.kt", "place")
+	if toID != want || !ktIs16Hex(toID) {
+		t.Fatalf("ctor-local receiver did not bind to com.app.services OrderService.place: got %q want %q", toID, want)
 	}
 }
 

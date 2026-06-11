@@ -185,9 +185,25 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 		// These are structural properties, not just formal parameters, so they
 		// must appear as field entities with CONTAINS edges to the class.
 		emitPrimaryConstructorFields(node, file, rec.Name, classIdx, out)
+		// #4687 — Kotest spec classes carry their example logic in an anonymous
+		// constructor lambda (`class FooSpec : StringSpec({ … })`), not in
+		// `@Test fun` methods, so emit a test_scope owner for the receiver-typed
+		// CALLS mined from that lambda. No-op for non-spec classes.
+		emitKotestTestScopeOwner(node, file, rec.Name, ctx, out)
 		// CONTAINS: every function AND property declared in the class body.
 		body := findClassBody(node)
 		if body != nil {
+			// #4687 — collect class-level typed receiver fields (MockK
+			// `@InjectMockKs val controller = XController()` / `val c =
+			// mockk<XController>()`) so every test method's CALLS extractor can
+			// type a receiver declared as a class field. Set transiently for the
+			// duration of this class body, restored on exit (nested classes save
+			// and replace their own).
+			var savedRecv map[string]string
+			if ctx != nil {
+				savedRecv = ctx.classRecvTypes
+				ctx.classRecvTypes = kotlinLocalReceiverTypes(body, file.Content)
+			}
 			before := len(*out)
 			for i := range body.ChildCount() {
 				ch := body.Child(int(i))
@@ -242,6 +258,9 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 						ToID: toID,
 						Kind: "CONTAINS",
 					})
+			}
+			if ctx != nil {
+				ctx.classRecvTypes = savedRecv // restore enclosing scope (#4687)
 			}
 		}
 		return
@@ -398,6 +417,21 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 	// Instance-receiver guard inputs: names whose head segment marks an
 	// instance receiver (`order.place()`) rather than a static type qualifier.
 	localNames := kotlinLocalValueNames(body, src)
+	// #4687 — typed-local / typed-field receiver map. Body locals
+	// (`val c = XController()`) take precedence over class-level fields
+	// (`@InjectMockKs val c = XController()`); a same-named local shadows the
+	// field within the method scope.
+	recvTypes := kotlinLocalReceiverTypes(body, src)
+	if ctx != nil && len(ctx.classRecvTypes) > 0 {
+		merged := make(map[string]string, len(ctx.classRecvTypes)+len(recvTypes))
+		for k, v := range ctx.classRecvTypes {
+			merged[k] = v
+		}
+		for k, v := range recvTypes {
+			merged[k] = v // body local wins over class field
+		}
+		recvTypes = merged
+	}
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
@@ -421,7 +455,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 		props := map[string]string{"line": callLine}
 		// #4375 — stamp the cross-package qualifier when statically resolvable.
 		if ctx != nil {
-			if q := ctx.resolveKotlinQualifiedCall(call, src, localNames); q != nil &&
+			if q := ctx.resolveKotlinQualifiedCall(call, src, localNames, recvTypes); q != nil &&
 				q.leaf == target && len(q.pkgCandidates) > 0 {
 				props["kotlin_call_pkg"] = strings.Join(q.pkgCandidates, ";")
 				props["call_leaf"] = q.leaf
