@@ -5,9 +5,10 @@ import { memo } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
-  getBezierPath,
+  getSmoothStepPath,
   type EdgeProps,
 } from "@xyflow/react";
+import { orthogonalPath } from "@/lib/elk-layout";
 import type { CTEdgeData } from "./layout";
 import { edgeStroke } from "./tierStyle";
 
@@ -23,14 +24,23 @@ function CTEdgeImpl({
   markerEnd,
 }: EdgeProps) {
   const d = (data ?? { type: "depends", label: "depends", count: 1, summary: false }) as CTEdgeData;
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    sourcePosition,
-    targetX,
-    targetY,
-    targetPosition,
-  });
+  // Follow ELK's orthogonal route when available (#4843); else smoothstep (H/V).
+  const elk = orthogonalPath(d.elkPoints ?? []);
+  let path: string;
+  let labelX: number;
+  let labelY: number;
+  if (elk) {
+    ({ path, labelX, labelY } = elk);
+  } else {
+    [path, labelX, labelY] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      sourcePosition,
+      targetX,
+      targetY,
+      targetPosition,
+    });
+  }
   const stroke = edgeStroke(d.type);
 
   return (

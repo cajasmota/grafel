@@ -42,6 +42,7 @@ import {
   layoutWithElk,
   type ElkLayoutNode,
   type ElkLayoutEdge,
+  type ElkPoint2D,
 } from "@/lib/elk-layout";
 
 export const CT_NODE_TYPE = "ctNode";
@@ -110,6 +111,12 @@ export interface CTEdgeData {
   count: number;
   /** True when this is a zone-level summary edge (a collapse aggregate). */
   summary: boolean;
+  /**
+   * ELK's orthogonal route (absolute flow coords). When present the edge draws
+   * an H/V polyline through these points instead of a bezier (#4843). Absent
+   * under the dagre fallback.
+   */
+  elkPoints?: ElkPoint2D[];
   [key: string]: unknown;
 }
 
@@ -312,6 +319,8 @@ function materialize(
   plan: CTPlan,
   abs: Map<string, { x: number; y: number; w: number; h: number }>,
   onToggle: (zoneId: string) => void,
+  /** Optional ELK routes keyed by folded-edge key "from to type" (abs coords). */
+  edgeRoutes?: Map<string, ElkPoint2D[]>,
 ): CTLayoutResult {
   const {
     visibleNodes,
@@ -455,6 +464,7 @@ function materialize(
       label: fe.count > 1 ? `${fe.type} ×${fe.count}` : fe.type,
       count: fe.count,
       summary: fe.summary,
+      elkPoints: edgeRoutes?.get(`${fe.from} ${fe.to} ${fe.type}`),
     };
     edges.push({
       id: `cte:${fe.from}->${fe.to}:${fe.type}:${i++}`,
@@ -519,16 +529,20 @@ export async function layoutCompoundTopologyElk(
     });
   }
 
-  // Folded edges between laid-out endpoints only.
+  // Folded edges between laid-out endpoints only. Track each elk edge id → its
+  // folded key so we can re-attach ELK's route to the right React Flow edge.
   const elkEdges: ElkLayoutEdge[] = [];
+  const elkEdgeKeyById = new Map<string, string>();
   let ei = 0;
   for (const fe of folded.values()) {
     if (plan.layoutable(fe.from) && plan.layoutable(fe.to)) {
-      elkEdges.push({ id: `elk-e:${ei++}`, source: fe.from, target: fe.to });
+      const id = `elk-e:${ei++}`;
+      elkEdges.push({ id, source: fe.from, target: fe.to });
+      elkEdgeKeyById.set(id, `${fe.from} ${fe.to} ${fe.type}`);
     }
   }
 
-  const positions = await layoutWithElk(elkNodes, elkEdges, {
+  const { nodes: positions, edges: routes } = await layoutWithElk(elkNodes, elkEdges, {
     direction: "RIGHT",
     edgeRouting: "ORTHOGONAL",
     nodeSpacing: 22,
@@ -585,7 +599,17 @@ export async function layoutCompoundTopologyElk(
     });
   }
 
-  return materialize(plan, absById, onToggle);
+  // Re-key ELK routes by folded-edge key for materialize. ELK already returns
+  // points in absolute flow coords (cross-zone edges live on the LCA container
+  // and lib/elk-layout adds the container's absolute offset), so they line up
+  // with the absolute node boxes materialize positions against.
+  const edgeRoutes = new Map<string, ElkPoint2D[]>();
+  for (const [elkId, key] of elkEdgeKeyById) {
+    const route = routes.get(elkId);
+    if (route && route.points.length >= 2) edgeRoutes.set(key, route.points);
+  }
+
+  return materialize(plan, absById, onToggle, edgeRoutes);
 }
 
 /* ============================================================

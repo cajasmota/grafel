@@ -11,9 +11,10 @@ import { memo, useEffect, useRef, useState } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
-  getBezierPath,
+  getSmoothStepPath,
   type EdgeProps,
 } from "@xyflow/react";
+import { orthogonalPath } from "@/lib/elk-layout";
 import { edgeStyle } from "./style";
 import type { FlowDagEdgeData } from "./layout";
 
@@ -38,16 +39,26 @@ function FlowDagEdgeImpl({
   const dimmed = ed?.onRoute === false || replay === "pending";
   const traversed = replay === "traversed" || replay === "active";
 
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  });
+  // Follow ELK's orthogonal route when available (#4843); else smoothstep (H/V).
+  // Never a diagonal bezier — the comet rides whichever path we render.
+  const elk = orthogonalPath(ed?.elkPoints ?? []);
+  let path: string;
+  let labelX: number;
+  let labelY: number;
+  if (elk) {
+    ({ path, labelX, labelY } = elk);
+  } else {
+    [path, labelX, labelY] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition,
+      targetPosition,
+    });
+  }
 
-  // Comet position — sample the exact bezier path via getPointAtLength on a
+  // Comet position — sample the exact path via getPointAtLength on a
   // measured (off-screen) copy of the path. Only the ACTIVE edge re-renders per
   // frame, so this stays cheap (one DOM measure per frame, one edge at a time).
   const measureRef = useRef<SVGPathElement | null>(null);

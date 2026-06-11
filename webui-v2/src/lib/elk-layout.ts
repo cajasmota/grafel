@@ -69,6 +69,39 @@ export interface ElkLayoutPosition {
   height: number;
 }
 
+/** A single 2D point in React-Flow ABSOLUTE flow coordinates. */
+export interface ElkPoint2D {
+  x: number;
+  y: number;
+}
+
+/**
+ * ELK's computed orthogonal route for one edge, as a polyline of ABSOLUTE flow
+ * coordinates: [startPoint, ...bendPoints, endPoint]. ELK stores edge section
+ * points RELATIVE to the container the edge is attached to (its endpoints' LCA);
+ * we translate them to absolute flow space by adding that container's absolute
+ * offset, so consumers can build the SVG path directly (no further offsetting).
+ *
+ * The edge component should draw a polyline through these points (right-angle
+ * H/V segments — ELK routes orthogonally) and fall back to getSmoothStepPath
+ * when no route is present for an edge.
+ */
+export interface ElkLayoutEdgeRoute {
+  id: string;
+  /** ≥2 points: start, optional bends, end — absolute flow coordinates. */
+  points: ElkPoint2D[];
+}
+
+/**
+ * Full ELK layout result: node positions/sizes AND per-edge orthogonal routes.
+ * `nodes` keeps the original parent-relative position contract; `edges` carries
+ * ELK's routed bendPoints translated to absolute flow coords (#4843).
+ */
+export interface ElkLayoutResult {
+  nodes: Map<string, ElkLayoutPosition>;
+  edges: Map<string, ElkLayoutEdgeRoute>;
+}
+
 export type ElkDirection = "RIGHT" | "LEFT" | "DOWN" | "UP";
 
 export interface ElkLayoutOptions {
@@ -116,6 +149,72 @@ const DEFAULTS: Required<
 
 const finite = (v: number | undefined, fallback = 0): number =>
   typeof v === "number" && Number.isFinite(v) ? v : fallback;
+
+/**
+ * orthogonalPath builds an SVG path string through an ELK-routed polyline,
+ * rounding each corner by up to `radius` px for polish (the segments stay
+ * orthogonal H/V; only the corners are filleted). Returns "" for <2 points so
+ * the caller can fall back to getSmoothStepPath. Also returns a sensible
+ * mid-point for label placement (the polyline's mid-length vertex).
+ *
+ * Consumers pass ELK's absolute-flow-coord points (ElkLayoutEdgeRoute.points)
+ * straight in — they're already in the diagram's coordinate space (#4843).
+ */
+export function orthogonalPath(
+  points: ElkPoint2D[],
+  radius = 8,
+): { path: string; labelX: number; labelY: number } | null {
+  if (!points || points.length < 2) return null;
+  // Drop consecutive duplicate points (ELK can emit zero-length segments).
+  const pts: ElkPoint2D[] = [];
+  for (const p of points) {
+    const last = pts[pts.length - 1];
+    if (!last || last.x !== p.x || last.y !== p.y) pts.push(p);
+  }
+  if (pts.length < 2) return null;
+
+  let d = `M ${pts[0].x},${pts[0].y}`;
+  for (let i = 1; i < pts.length - 1; i++) {
+    const prev = pts[i - 1];
+    const cur = pts[i];
+    const next = pts[i + 1];
+    // Approach/leave lengths, capped so radius never overshoots a short segment.
+    const inLen = Math.hypot(cur.x - prev.x, cur.y - prev.y);
+    const outLen = Math.hypot(next.x - cur.x, next.y - cur.y);
+    const r = Math.max(0, Math.min(radius, inLen / 2, outLen / 2));
+    if (r < 0.5) {
+      d += ` L ${cur.x},${cur.y}`;
+      continue;
+    }
+    const ix = cur.x - (cur.x - prev.x) * (r / (inLen || 1));
+    const iy = cur.y - (cur.y - prev.y) * (r / (inLen || 1));
+    const ox = cur.x + (next.x - cur.x) * (r / (outLen || 1));
+    const oy = cur.y + (next.y - cur.y) * (r / (outLen || 1));
+    d += ` L ${ix},${iy} Q ${cur.x},${cur.y} ${ox},${oy}`;
+  }
+  const end = pts[pts.length - 1];
+  d += ` L ${end.x},${end.y}`;
+
+  // Label at the polyline's mid-length point.
+  let total = 0;
+  for (let i = 1; i < pts.length; i++) {
+    total += Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+  }
+  let acc = 0;
+  let labelX = pts[0].x;
+  let labelY = pts[0].y;
+  for (let i = 1; i < pts.length; i++) {
+    const seg = Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y);
+    if (acc + seg >= total / 2) {
+      const t = seg === 0 ? 0 : (total / 2 - acc) / seg;
+      labelX = pts[i - 1].x + (pts[i].x - pts[i - 1].x) * t;
+      labelY = pts[i - 1].y + (pts[i].y - pts[i - 1].y) * t;
+      break;
+    }
+    acc += seg;
+  }
+  return { path: d, labelX, labelY };
+}
 
 /**
  * buildElkTree turns the flat React-Flow node list (with `parentId` links) into
@@ -219,6 +318,11 @@ function graphLayoutOptions(o: typeof DEFAULTS, extra?: LayoutOptions): LayoutOp
     "elk.edgeRouting": o.edgeRouting,
     "elk.layered.spacing.nodeNodeBetweenLayers": String(o.layerSpacing),
     "elk.spacing.nodeNode": String(o.nodeSpacing),
+    // Keep clean lanes: edges leave/enter on consistent sides and reserve
+    // gutter so orthogonal segments route in channels rather than overlapping
+    // nodes (#4843). Ports are fixed to the layout direction sides.
+    "elk.layered.spacing.edgeNodeBetweenLayers": String(Math.round(o.nodeSpacing * 0.6)),
+    "elk.spacing.edgeNode": String(Math.round(o.nodeSpacing * 0.6)),
     "elk.padding": `[top=${o.padding.top},left=${o.padding.left},bottom=${o.padding.bottom},right=${o.padding.right}]`,
     "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
     ...extra,
@@ -226,24 +330,53 @@ function graphLayoutOptions(o: typeof DEFAULTS, extra?: LayoutOptions): LayoutOp
 }
 
 /**
- * collectPositions flattens ELK's laid-out tree back into per-node positions.
- * ELK positions children relative to their parent already — which is exactly the
- * React-Flow `parentId` convention — so we return x/y as-is.
+ * collectLayout flattens ELK's laid-out tree back into per-node positions AND
+ * per-edge orthogonal routes.
+ *
+ * - Node positions: ELK positions children relative to their parent already —
+ *   exactly the React-Flow `parentId` convention — so x/y are returned as-is.
+ * - Edge routes: ELK stores each edge under its endpoints' lowest-common-ancestor
+ *   container, with section points RELATIVE to that container's content box.
+ *   We walk the tree carrying each container's ABSOLUTE offset (sum of its and
+ *   its ancestors' relative positions) and translate every edge point into
+ *   absolute flow space, so consumers can draw the polyline directly.
  */
-function collectPositions(root: ElkNode, out: Map<string, ElkLayoutPosition>): void {
-  const visit = (node: ElkNode) => {
+function collectLayout(
+  root: ElkNode,
+  outNodes: Map<string, ElkLayoutPosition>,
+  outEdges: Map<string, ElkLayoutEdgeRoute>,
+): void {
+  // Visit carries the ABSOLUTE offset of `node`'s content origin. The root's
+  // own x/y are layout origin (0,0); children are relative to that origin.
+  const visit = (node: ElkNode, absX: number, absY: number) => {
+    // Edges declared on THIS container route in this container's coordinate
+    // space → translate each point by the container's absolute offset.
+    for (const edge of node.edges ?? []) {
+      const points: ElkPoint2D[] = [];
+      for (const sec of edge.sections ?? []) {
+        points.push({ x: absX + finite(sec.startPoint.x), y: absY + finite(sec.startPoint.y) });
+        for (const bp of sec.bendPoints ?? []) {
+          points.push({ x: absX + finite(bp.x), y: absY + finite(bp.y) });
+        }
+        points.push({ x: absX + finite(sec.endPoint.x), y: absY + finite(sec.endPoint.y) });
+      }
+      if (edge.id && points.length >= 2) {
+        outEdges.set(edge.id, { id: edge.id, points });
+      }
+    }
     for (const child of node.children ?? []) {
-      out.set(child.id, {
+      outNodes.set(child.id, {
         id: child.id,
         x: finite(child.x),
         y: finite(child.y),
         width: finite(child.width, 0),
         height: finite(child.height, 0),
       });
-      visit(child);
+      // A child container's content origin is its own absolute top-left.
+      visit(child, absX + finite(child.x), absY + finite(child.y));
     }
   };
-  visit(root);
+  visit(root, 0, 0);
 }
 
 /**
@@ -254,20 +387,25 @@ function collectPositions(root: ElkNode, out: Map<string, ElkLayoutPosition>): v
  *
  * Async: ELK layout is Promise-based. Call from an effect and store the result.
  *
+ * Returns BOTH node positions (`.nodes`) and ELK's orthogonal edge routes
+ * (`.edges`, bendPoints in absolute flow coords) — see ElkLayoutResult (#4843).
+ *
  * @example
- *   const pos = await layoutWithElk(nodes, edges, {
+ *   const { nodes: pos, edges: routes } = await layoutWithElk(nodes, edges, {
  *     direction: "RIGHT",
  *     laneOf: (id) => tierRankById.get(id),
  *   });
  *   const placed = nodes.map(n => ({ ...n, position: { x: pos.get(n.id)!.x, y: pos.get(n.id)!.y } }));
+ *   const route = routes.get(edgeId)?.points; // [{x,y}, …] orthogonal polyline
  */
 export async function layoutWithElk(
   nodes: ElkLayoutNode[],
   edges: ElkLayoutEdge[],
   options: ElkLayoutOptions = {},
-): Promise<Map<string, ElkLayoutPosition>> {
-  const out = new Map<string, ElkLayoutPosition>();
-  if (nodes.length === 0) return out;
+): Promise<ElkLayoutResult> {
+  const outNodes = new Map<string, ElkLayoutPosition>();
+  const outEdges = new Map<string, ElkLayoutEdgeRoute>();
+  if (nodes.length === 0) return { nodes: outNodes, edges: outEdges };
 
   const o = {
     ...DEFAULTS,
@@ -283,6 +421,6 @@ export async function layoutWithElk(
   root.layoutOptions = graphLayoutOptions(o, options.extraLayoutOptions);
 
   const laid = await elk.layout(root);
-  collectPositions(laid, out);
-  return out;
+  collectLayout(laid, outNodes, outEdges);
+  return { nodes: outNodes, edges: outEdges };
 }

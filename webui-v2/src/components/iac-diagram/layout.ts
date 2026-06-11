@@ -34,6 +34,7 @@ import {
   layoutWithElk,
   type ElkLayoutNode,
   type ElkLayoutEdge,
+  type ElkPoint2D,
 } from "@/lib/elk-layout";
 
 export type IaCDiagramDirection = "LR" | "TB";
@@ -109,6 +110,12 @@ export interface IaCEdgeData {
   facet: string;
   kind: string;
   detail?: string;
+  /**
+   * ELK's orthogonal route for this edge (absolute flow coords). When present
+   * the edge component draws an H/V polyline through these points instead of a
+   * bezier/smoothstep curve (#4843). Absent under the dagre fallback.
+   */
+  elkPoints?: ElkPoint2D[];
   [key: string]: unknown;
 }
 
@@ -272,6 +279,8 @@ function materialize(
   /** Optional engine-provided absolute group box; else derived from members. */
   groupAbs: Map<string, { x: number; y: number; w: number; h: number }> | undefined,
   direction: IaCDiagramDirection,
+  /** Optional ELK orthogonal routes per rawEdge index (absolute flow coords). */
+  edgeRoutes?: Map<number, ElkPoint2D[]>,
 ): IaCLayoutResult {
   const { resources, modules, unresolvedCountFor, rawEdges, capped, unresolvedEdges } = plan;
 
@@ -356,7 +365,12 @@ function materialize(
   }
 
   const edges: Edge[] = rawEdges.map((e, i) => {
-    const data: IaCEdgeData = { facet: e.facet, kind: e.kind, detail: e.detail };
+    const data: IaCEdgeData = {
+      facet: e.facet,
+      kind: e.kind,
+      detail: e.detail,
+      elkPoints: edgeRoutes?.get(i),
+    };
     return {
       id: `e:${e.from}->${e.to}:${e.kind}:${i}`,
       source: e.from,
@@ -426,7 +440,7 @@ export async function layoutIaCDiagramElk(
     target: e.to,
   }));
 
-  const positions = await layoutWithElk(elkNodes, elkEdges, {
+  const { nodes: positions, edges: routes } = await layoutWithElk(elkNodes, elkEdges, {
     direction: direction === "LR" ? "RIGHT" : "DOWN",
     edgeRouting: "ORTHOGONAL",
     nodeSpacing: direction === "LR" ? 26 : 40,
@@ -439,6 +453,15 @@ export async function layoutIaCDiagramElk(
     },
     defaultNodeWidth: NODE_W,
     defaultNodeHeight: NODE_H,
+  });
+
+  // ELK routes are keyed by the elk edge id ("elk-e:<i>"); re-key by rawEdge
+  // index so materialize can attach each route to its React Flow edge. ELK
+  // points are already in absolute flow coords (lib/elk-layout translates them).
+  const edgeRoutes = new Map<number, ElkPoint2D[]>();
+  rawEdges.forEach((_e, i) => {
+    const route = routes.get(`elk-e:${i}`);
+    if (route && route.points.length >= 2) edgeRoutes.set(i, route.points);
   });
 
   // ELK positions are parent-relative. Resources nest exactly one level under
@@ -470,7 +493,7 @@ export async function layoutIaCDiagramElk(
     }
   }
 
-  return materialize(plan, groupMode, resourceAbs, groupAbs, direction);
+  return materialize(plan, groupMode, resourceAbs, groupAbs, direction, edgeRoutes);
 }
 
 /* ============================================================

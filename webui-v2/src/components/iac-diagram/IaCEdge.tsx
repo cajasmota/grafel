@@ -11,9 +11,10 @@ import { memo } from "react";
 import {
   BaseEdge,
   EdgeLabelRenderer,
-  getBezierPath,
+  getSmoothStepPath,
   type EdgeProps,
 } from "@xyflow/react";
+import { orthogonalPath } from "@/lib/elk-layout";
 import type { IaCEdgeData } from "./layout";
 
 interface FacetStyle {
@@ -71,14 +72,24 @@ function IaCEdgeImpl({
   const ed = data as IaCEdgeData | undefined;
   const fs = facetStyle(ed?.facet ?? "dependency");
 
-  const [path, labelX, labelY] = getBezierPath({
-    sourceX,
-    sourceY,
-    targetX,
-    targetY,
-    sourcePosition,
-    targetPosition,
-  });
+  // Follow ELK's orthogonal route when available (#4843); else fall back to a
+  // smoothstep (H/V) path — never a diagonal bezier.
+  const elk = orthogonalPath(ed?.elkPoints ?? []);
+  let path: string;
+  let labelX: number;
+  let labelY: number;
+  if (elk) {
+    ({ path, labelX, labelY } = elk);
+  } else {
+    [path, labelX, labelY] = getSmoothStepPath({
+      sourceX,
+      sourceY,
+      targetX,
+      targetY,
+      sourcePosition,
+      targetPosition,
+    });
+  }
 
   return (
     <>

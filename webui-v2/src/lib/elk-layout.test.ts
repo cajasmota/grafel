@@ -5,6 +5,7 @@
 import { describe, it, expect } from "vitest";
 import {
   layoutWithElk,
+  orthogonalPath,
   type ElkLayoutNode,
   type ElkLayoutEdge,
 } from "./elk-layout";
@@ -23,7 +24,7 @@ describe("layoutWithElk", () => {
       { id: "e2", source: "b", target: "c" },
     ];
 
-    const pos = await layoutWithElk(nodes, edges, { direction: "RIGHT" });
+    const { nodes: pos } = await layoutWithElk(nodes, edges, { direction: "RIGHT" });
 
     for (const id of ["A", "a", "b", "c"]) {
       const p = pos.get(id);
@@ -50,7 +51,7 @@ describe("layoutWithElk", () => {
       { id: "n1", width: 100, height: 40, lane: 1 },
       { id: "n2", width: 100, height: 40, lane: 2 },
     ];
-    const pos = await layoutWithElk(nodes, [], { direction: "RIGHT" });
+    const { nodes: pos } = await layoutWithElk(nodes, [], { direction: "RIGHT" });
     const x0 = pos.get("n0")!.x;
     const x1 = pos.get("n1")!.x;
     const x2 = pos.get("n2")!.x;
@@ -58,8 +59,74 @@ describe("layoutWithElk", () => {
     expect(x1).toBeLessThanOrEqual(x2);
   });
 
-  it("returns an empty map for no nodes", async () => {
-    const pos = await layoutWithElk([], []);
-    expect(pos.size).toBe(0);
+  it("returns an empty result for no nodes", async () => {
+    const { nodes, edges } = await layoutWithElk([], []);
+    expect(nodes.size).toBe(0);
+    expect(edges.size).toBe(0);
+  });
+
+  it("returns ELK orthogonal edge routes (bendPoints) per edge (#4843)", async () => {
+    // A simple 2-node graph yields a route with ≥2 points (start + end).
+    const nodes: ElkLayoutNode[] = [
+      { id: "a", width: 120, height: 40, lane: 0 },
+      { id: "b", width: 120, height: 40, lane: 1 },
+    ];
+    const edges: ElkLayoutEdge[] = [{ id: "e1", source: "a", target: "b" }];
+
+    const { nodes: pos, edges: routes } = await layoutWithElk(nodes, edges, {
+      direction: "RIGHT",
+    });
+
+    const route = routes.get("e1");
+    expect(route, "route for e1").toBeDefined();
+    expect(route!.points.length).toBeGreaterThanOrEqual(2);
+    for (const pt of route!.points) {
+      expect(Number.isFinite(pt.x)).toBe(true);
+      expect(Number.isFinite(pt.y)).toBe(true);
+    }
+    // The route runs from near node a to near node b (RIGHT direction → x grows).
+    const a = pos.get("a")!;
+    const b = pos.get("b")!;
+    const start = route!.points[0];
+    const end = route!.points[route!.points.length - 1];
+    expect(start.x).toBeGreaterThanOrEqual(a.x - 1);
+    expect(end.x).toBeLessThanOrEqual(b.x + b.width + 1);
+    expect(end.x).toBeGreaterThan(start.x);
+  });
+
+  it("translates routes of a cross-container edge into absolute flow coords", async () => {
+    // group A contains a; standalone c. Edge a→c is a cross-container edge ELK
+    // stores at the root → its points must already be absolute.
+    const nodes: ElkLayoutNode[] = [
+      { id: "A", isContainer: true },
+      { id: "a", parentId: "A", width: 120, height: 40, lane: 0 },
+      { id: "c", width: 120, height: 40, lane: 1 },
+    ];
+    const edges: ElkLayoutEdge[] = [{ id: "e1", source: "a", target: "c" }];
+
+    const { edges: routes } = await layoutWithElk(nodes, edges, { direction: "RIGHT" });
+    const route = routes.get("e1");
+    expect(route).toBeDefined();
+    expect(route!.points.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe("orthogonalPath", () => {
+  it("returns null for <2 points (caller falls back to smoothstep)", () => {
+    expect(orthogonalPath([])).toBeNull();
+    expect(orthogonalPath([{ x: 0, y: 0 }])).toBeNull();
+  });
+
+  it("builds a path with a mid-length label for a routed polyline", () => {
+    const res = orthogonalPath([
+      { x: 0, y: 0 },
+      { x: 50, y: 0 },
+      { x: 50, y: 40 },
+      { x: 100, y: 40 },
+    ]);
+    expect(res).not.toBeNull();
+    expect(res!.path.startsWith("M 0,0")).toBe(true);
+    expect(Number.isFinite(res!.labelX)).toBe(true);
+    expect(Number.isFinite(res!.labelY)).toBe(true);
   });
 });

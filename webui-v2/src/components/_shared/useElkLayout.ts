@@ -19,6 +19,7 @@ import {
   type ElkLayoutEdge,
   type ElkLayoutOptions,
   type ElkLayoutPosition,
+  type ElkLayoutEdgeRoute,
 } from "@/lib/elk-layout";
 
 export interface UseElkLayoutInput<N, E> {
@@ -46,15 +47,19 @@ export interface UseElkLayoutResult<N, E> {
 /**
  * useElkLayout runs ELK asynchronously and returns positioned nodes.
  *
- * @param build  produces the render nodes/edges + ELK layout inputs. Recomputed
- *               when `deps` change.
- * @param apply  maps an ELK position onto a render node (set position + size).
- * @param deps   dependency list that retriggers the build + layout.
+ * @param build      produces the render nodes/edges + ELK layout inputs.
+ *                   Recomputed when `deps` change.
+ * @param apply      maps an ELK position onto a render node (set position + size).
+ * @param deps       dependency list that retriggers the build + layout.
+ * @param applyEdge  optional: maps an ELK orthogonal route (bendPoints, absolute
+ *                   flow coords) onto a render edge, so its component can follow
+ *                   ELK's route instead of a bezier (#4843). Edges keyed by id.
  */
-export function useElkLayout<N extends { id: string }, E>(
+export function useElkLayout<N extends { id: string }, E extends { id: string }>(
   build: () => UseElkLayoutInput<N, E>,
   apply: (node: N, pos: ElkLayoutPosition | undefined) => N,
   deps: DependencyList,
+  applyEdge?: (edge: E, route: ElkLayoutEdgeRoute | undefined) => E,
 ): UseElkLayoutResult<N, E> {
   const [state, setState] = useState<{ nodes: N[]; edges: E[]; laidOut: boolean }>({
     nodes: [],
@@ -74,10 +79,13 @@ export function useElkLayout<N extends { id: string }, E>(
 
     let cancelled = false;
     layoutWithElk(elkNodes, elkEdges, options)
-      .then((positions) => {
+      .then(({ nodes: positions, edges: routes }) => {
         if (cancelled || myRun !== runId.current) return;
         const placed = nodes.map((n) => apply(n, positions.get(n.id)));
-        setState({ nodes: placed, edges, laidOut: true });
+        const routed = applyEdge
+          ? edges.map((e) => applyEdge(e, routes.get(e.id)))
+          : edges;
+        setState({ nodes: placed, edges: routed, laidOut: true });
       })
       .catch(() => {
         if (cancelled || myRun !== runId.current) return;

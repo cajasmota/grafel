@@ -33,6 +33,7 @@ import {
   type ElkDirection,
   type ElkLayoutEdge,
   type ElkLayoutNode,
+  type ElkPoint2D,
 } from "@/lib/elk-layout";
 import { nodeModule, type NodeModule } from "./style";
 
@@ -103,6 +104,12 @@ export interface FlowDagEdgeData extends Record<string, unknown> {
    * replay === "active". Drives the traveling-light marker (#4362).
    */
   replayProgress?: number;
+  /**
+   * ELK's orthogonal route (absolute flow coords). When present the edge draws
+   * an H/V polyline through these points instead of a bezier (#4843). Absent
+   * under the tidy-tree (dagre) fallback engine.
+   */
+  elkPoints?: ElkPoint2D[];
 }
 
 export type FlowDagNode = Node<FlowDagNodeData>;
@@ -606,7 +613,7 @@ export async function layoutTreeElk(
     target: e.target,
   }));
 
-  const positions = await layoutWithElk(elkNodes, elkEdges, {
+  const { nodes: positions, edges: routes } = await layoutWithElk(elkNodes, elkEdges, {
     direction: elkDirection(direction),
     algorithm: "layered",
     edgeRouting: "ORTHOGONAL",
@@ -620,6 +627,16 @@ export async function layoutTreeElk(
   for (const node of rfNodes) {
     const p = positions.get(node.id);
     if (p) node.position = { x: p.x, y: p.y };
+  }
+
+  // Attach ELK's orthogonal route to each edge (#4843). The flat tree puts every
+  // edge at the root, so ELK points are already absolute flow coords. The elk
+  // edge id == the React Flow edge id, so the lookup is direct.
+  for (const edge of rfEdges) {
+    const route = routes.get(edge.id);
+    if (route && route.points.length >= 2) {
+      edge.data = { ...(edge.data ?? { kind: "CALLS" }), elkPoints: route.points };
+    }
   }
 
   return { nodes: rfNodes, edges: rfEdges };
