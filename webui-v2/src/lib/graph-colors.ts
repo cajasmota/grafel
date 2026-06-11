@@ -166,6 +166,83 @@ export function linkPalette(isDark: boolean): LinkPalette {
   };
 }
 
+/**
+ * Fix #4852 — LINK ALPHA MODEL (the single source of truth for per-link
+ * opacity, factored out of graph-canvas so it's unit-testable).
+ *
+ * A rendered link's on-screen alpha is the product of several independent
+ * modulators. Before #4852 these were spread across two places and could
+ * silently COMPOUND a link down toward invisibility:
+ *
+ *   1. tier alpha       — packLinkColors picks faded / subtle / emphasized
+ *                         per edge CLASS (intra-module / cross-module /
+ *                         cross-repo). Derived from the master `linkOpacity`.
+ *   2. linkOpacity (×2) — the cosmos `linkOpacity` UNIFORM multiplies the
+ *                         per-link `color.a` AGAIN in the frag shader. Because
+ *                         the tier alpha was ALSO scaled by linkOpacity, the
+ *                         slider acted ~quadratically and a low setting drove
+ *                         faded links to ~0 (e.g. tier 0.36 × uniform 0.6 =
+ *                         0.22 actual — much dimmer than the 0.36 the tier math
+ *                         implied).
+ *   3. zoom visFactor   — see graph-canvas; now pinned to 1.0 so it no longer
+ *                         participates (was a 0.8–1.0 zoom-coupled swing).
+ *
+ * To keep the tier RELATIONSHIPS (faded < subtle < emphasized) while preventing
+ * the double-linkOpacity multiply from collapsing any link to invisible, we
+ * compute the tier alpha here and clamp the COMBINED alpha (tier × uniform
+ * linkOpacity, the value the shader actually renders) to a small floor. The
+ * floor guarantees that even the faintest intra-module link at a low slider
+ * setting stays perceptible, without flattening the emphasis gaps above it.
+ */
+
+/** Effective combined alpha floor: tierAlpha × linkOpacity is never rendered
+ *  below this, so stacked modulators can't multiply a link to invisible. Chosen
+ *  to stay just above the perceptibility threshold on both themes. */
+export const LINK_ALPHA_FLOOR = 0.12;
+
+export type LinkTier = "faded" | "subtle" | "emphasized";
+
+/**
+ * Pure per-tier base alpha as a function of the master `linkOpacity` (`base`)
+ * and whether the group is multi-repo. This is the alpha written into the
+ * per-link color buffer (`color.a`). Mirrors the tiers tuned in #1567/#1599 —
+ * extracted verbatim so the canvas and the tests share one definition.
+ *
+ *   • multi-repo : wide gap so the rare cross-repo bridges pop, intra recedes.
+ *   • single-repo: gentler gap; cross-module is the (commoner) emphasized tier.
+ */
+export function linkTierAlpha(tier: LinkTier, base: number, isMultiRepo: boolean): number {
+  if (isMultiRepo) {
+    if (tier === "emphasized") return 0.85;
+    if (tier === "subtle") return Math.min(0.42, Math.max(0.3, base * 0.62));
+    return Math.min(0.32, base * 0.5); // faded
+  }
+  if (tier === "emphasized") return Math.min(0.85, Math.max(0.65, base * 1.15));
+  if (tier === "subtle") return Math.min(0.7, Math.max(0.5, base * 0.85));
+  return Math.min(0.5, base * 0.6); // faded
+}
+
+/**
+ * The alpha actually rendered for a link = tierAlpha × linkOpacity uniform,
+ * clamped UP to LINK_ALPHA_FLOOR so the doubled linkOpacity multiply can't push
+ * a link to invisibility. We bake this clamped value into `color.a` and the
+ * shader still multiplies by the linkOpacity uniform — so to keep the clamp
+ * meaningful we DIVIDE the uniform back out here, i.e. we store
+ * `max(tierAlpha, FLOOR/linkOpacity)` so that `color.a × linkOpacity` lands at
+ * `max(tierAlpha × linkOpacity, FLOOR)`. The division is guarded against a
+ * zero linkOpacity (the slider allows 0, meaning "links off"); at linkOpacity=0
+ * the shader's `color.a × 0` still renders nothing, so the floor never forces a
+ * hidden link visible — it only protects against the COMPOUNDING dim at low,
+ * non-zero settings.
+ */
+export function packedLinkAlpha(tier: LinkTier, linkOpacity: number, isMultiRepo: boolean): number {
+  const tierA = linkTierAlpha(tier, linkOpacity, isMultiRepo);
+  const op = Math.max(linkOpacity, 1e-3);
+  const flooredTier = Math.max(tierA, LINK_ALPHA_FLOOR / op);
+  // color.a is an opacity → clamp to a valid [0,1] alpha.
+  return Math.min(1, flooredTier);
+}
+
 /** Same-repo edge color — slate, lifted brighter (#1532-2). Retained for
  *  back-compat; the live canvas now uses linkPalette() (#1564). */
 export const SAME_REPO_EDGE: RGBA = [71, 85, 105, 1];

@@ -43,6 +43,7 @@ import {
   pastelAt,
   degreeColor,
   linkPalette,
+  packedLinkAlpha,
   lerpRGBA,
   JARVIS_GLOW,
 } from "@/lib/graph-colors";
@@ -632,25 +633,18 @@ function GraphCanvasInner(
     // so it gets the emphasized treatment but with a gentler gap (cross-module is
     // far more common than cross-repo, so over-brightening it would re-introduce
     // spaghetti).
+    // Fix #4852: tier alphas + the combined-alpha floor now live in one pure,
+    // unit-tested place (graph-colors.packedLinkAlpha). `packedLinkAlpha` returns
+    // the value to bake into color.a such that, AFTER the shader multiplies by the
+    // linkOpacity uniform, the rendered alpha is max(tierAlpha × linkOpacity,
+    // LINK_ALPHA_FLOOR) — so the doubled linkOpacity multiply (tier already scaled
+    // by linkOpacity, then × the uniform again) can no longer compound a faded
+    // link to invisibility at low slider settings. The faded/subtle/emphasized
+    // RELATIONSHIPS (the #1567/#1599 emphasis tuning) are preserved.
     const base = render.linkOpacity;
-    let fadedA: number;
-    let subtleA: number;
-    let emphA: number;
-    if (isMultiRepo) {
-      // Wide gap: bridges pop, intra-repo recedes. The rare cross-repo edges
-      // (376 of 37k on upvate) get a high — but not fully opaque — alpha so they
-      // clearly own the foreground while staying tasteful even when a denser
-      // layout packs them through the center (not a solid cyan mat).
-      fadedA = Math.min(0.32, base * 0.5);
-      subtleA = Math.min(0.42, Math.max(0.3, base * 0.62));
-      emphA = 0.85;
-    } else {
-      // Single-repo: cross-module is the (more common) emphasized tier — a
-      // tasteful gap that still keeps it readable, not blaring.
-      fadedA = Math.min(0.5, base * 0.6);
-      subtleA = Math.min(0.7, Math.max(0.5, base * 0.85));
-      emphA = Math.min(0.85, Math.max(0.65, base * 1.15));
-    }
+    const fadedA = packedLinkAlpha("faded", base, isMultiRepo);
+    const subtleA = packedLinkAlpha("subtle", base, isMultiRepo);
+    const emphA = packedLinkAlpha("emphasized", base, isMultiRepo);
     for (let i = 0; i < states.length; i++) {
       const st = states[i];
       // tier: 0 faded, 1 subtle, 2 emphasized — repo-aware.
@@ -1174,15 +1168,43 @@ function GraphCanvasInner(
       // zoom level, so the long inter-island bridge links never thin out and
       // disappear when the user zooms all the way out.
       scaleLinksOnZoom: false,
-      // Fix #1548-2: cosmos.gl fades links by their ON-SCREEN length
-      // (linkVisibilityDistanceRange, in px) and caps far-link alpha at
-      // linkVisibilityMinTransparency. The defaults ([50,150] / 0.25) made
-      // every link nearly invisible at the fitted (zoomed-out) level — links
-      // only "appeared" after zooming/settling. Widen the visibility floor and
-      // raise the min transparency so links read clearly from the first paint
-      // at any zoom.
+      // ─── HOW THE LINK-VISIBILITY KNOBS WORK (cosmos.gl link frag shader) ───
+      // The shader computes, per link, per frame:
+      //
+      //   visFactor = max(
+      //     linkVisibilityMinTransparency,
+      //     map(linkDistPx, range[1], range[0], 0, 1)   // linear, clamped 0..1
+      //   )
+      //   finalAlpha = color.a * linkOpacity * visFactor   // (× greyout if dimmed)
+      //
+      // where `linkDistPx` is the link's length in ON-SCREEN PIXELS (it grows as
+      // you zoom IN, shrinks as you zoom OUT, because scaleLinksOnZoom is off so
+      // only the *positions* scale, not the width). `map(linkDistPx, hi, lo, 0, 1)`
+      // therefore returns ≈1 for SHORT on-screen links (zoomed out) and falls
+      // toward 0 for LONG on-screen links (zoomed in), then is floored at
+      // linkVisibilityMinTransparency.
+      //
+      // Fix #1548-2: the cosmos defaults ([50,150] / 0.25) made every link nearly
+      // invisible at the fitted (zoomed-out) level — links only "appeared" after
+      // zooming/settling — so the floor was raised to 0.8 and the range widened.
+      //
+      // Fix #4852: that map() is the entire source of the "edges dim when zoomed
+      // IN, over-strong when zoomed OUT" inconsistency: zooming in lengthens links
+      // in px → visFactor sinks toward the floor; zooming out shortens them →
+      // visFactor rides at ~1.0. The previous [1,10000]/0.8 still left a 0.8→1.0
+      // (≈20%) brightness swing tied purely to zoom. We do NOT want any
+      // zoom-coupled alpha here — link emphasis is already fully governed by the
+      // per-link `color.a` tiers (packLinkColors) and the master `linkOpacity`
+      // slider, both zoom-independent. So pin the visibility factor to a CONSTANT
+      // by setting MinTransparency = 1.0: `max(1.0, map(...))` clamps visFactor to
+      // 1.0 at every zoom (map() is ≤1 for any on-screen length within the range),
+      // making finalAlpha = color.a * linkOpacity, independent of zoom. The
+      // distance range is kept wide so the (now-inert) map() can never dip below 1
+      // within the visible pixel range. Net effect: identical, predictable edge
+      // legibility from the fitted zoom-out to deep zoom-in — no near-invisible
+      // links zoomed in, no harsh over-strong mat zoomed out.
       linkVisibilityDistanceRange: [1, 10000],
-      linkVisibilityMinTransparency: 0.8,
+      linkVisibilityMinTransparency: 1.0,
       renderHoveredPointRing: true,
       hoveredPointRingColor: isDark ? "#e2e8f0" : "#1e293b",
       pointSamplingDistance: 120,

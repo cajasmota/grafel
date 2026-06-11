@@ -54,8 +54,14 @@ const PREFIX = "archigraph.v2.layout";
  * after a manual Reset (which routes through kickFreshSettle). Bumping makes every
  * v5 layout a guaranteed miss → first load runs the unified fresh settle. Reload ===
  * Reset by construction. (Kept in lock-step with DEFAULTS_VERSION = 6.)
+ *
+ * Fix #4852: bump to 7 — kept in lock-step with DEFAULTS_VERSION = 7, which was
+ * bumped to ship the retuned DEFAULT_RENDER.linkOpacity. No layout-producing force
+ * changed (this is a pure render/opacity tweak), so the only effect of this bump is
+ * a harmless one-time re-settle on next load; the lock-step is maintained purely to
+ * honor the documented protocol (the two stamps must move together).
  */
-export const LAYOUT_VERSION = 6;
+export const LAYOUT_VERSION = 7;
 
 function fnv1a32(s: string): string {
   let h = 0x811c9dc5 >>> 0;

@@ -157,7 +157,14 @@ export const DEFAULT_RENDER: RenderConfig = {
   // Fix #1548-2: edges must read clearly from the FIRST paint (not just after
   // settle). Raise the default same-repo link opacity further so relationships
   // are visible immediately on a light background.
-  linkOpacity: 0.6,
+  // Fix #4852: the zoom-fade (linkVisibilityMinTransparency) is now pinned to 1.0,
+  // so the alpha that USED to apply only at the fitted zoom-out (visFactor≈1.0,
+  // the "over-strong" end) now applies at EVERY zoom. To keep the uniform level
+  // tasteful — between the old over-strong (zoomed-out) and dim (zoomed-in, ×0.8)
+  // extremes — nudge the default down slightly. The combined-alpha floor
+  // (LINK_ALPHA_FLOOR) keeps faded links legible at this setting; the "Link
+  // opacity" slider remains the master control for users who want more/less.
+  linkOpacity: 0.55,
   showLinks: true,
 };
 
@@ -217,7 +224,12 @@ const DEFAULT_ENABLED_EDGE_KINDS: EdgeKind[] = STRUCTURAL_EDGE_KINDS;
 // "graph needs a manual Reset to lay out" bug. No DEFAULT_SIMULATION/sizing value
 // changed here, so persisted tuning is unaffected; this bump exists purely to keep
 // the two version stamps in lock-step per the documented protocol.
-const DEFAULTS_VERSION = 6;
+// Fix #4852: bump to 7 (in lock-step with graph-layout-cache.LAYOUT_VERSION) so the
+// retuned DEFAULT_RENDER.linkOpacity (0.6 → 0.55) reaches users who already have a
+// stored render blob — without it the shipped default would never apply. No
+// layout-producing force changed, so the lock-step layout-cache invalidation only
+// triggers a harmless one-time re-settle on next load.
+const DEFAULTS_VERSION = 7;
 const VERSION_KEY = "ag.v2.graph.defaultsVersion";
 
 function readStoredVersion(): number {
