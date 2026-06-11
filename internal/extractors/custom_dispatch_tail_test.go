@@ -35,6 +35,7 @@ func TestTailCoverageLinkageExtractorsDispatch(t *testing.T) {
 		{"elixir", "custom_elixir_tests_route_e2e"},
 		{"lua", "custom_lua_tests_route_e2e"}, // the confirmed-broken case (#4749 tail)
 		{"nim", "custom_nim_tests_route_e2e"},
+		{"dart", "custom_dart_tests_route_e2e"}, // #4758 — primary prefix is already custom_dart_
 		{"kotlin", "custom_kotlin_tests_route_e2e"}, // #4723
 		{"csharp", "custom_csharp_integration_e2e"}, // #4720
 		{"php", "custom_php_phpunit_pest"},          // #4721

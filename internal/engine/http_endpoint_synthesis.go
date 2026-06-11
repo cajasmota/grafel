@@ -1321,6 +1321,17 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// producer side is handled by the custom_scala_* framework extractors.
 		synthesizeScalaClientWithRuntime(string(content), emitClientRuntime)
 	case "dart":
+		// Producer side (#4758): Dart server route registrations — shelf_router
+		// (`Router()..get('/users/<id>', h)`), dart_frog file-based routes
+		// (`routes/users/[id]/index.dart` + `onRequest`) and Conduit
+		// (`router.route("/users/[:id]")`) → canonical http_endpoint_definition,
+		// in the same shape axum/Vapor/Kemal/Jester emit, so the shared resolver
+		// and the e2e route-test linker (#4351) light up for Dart. The base dart
+		// extractor stays structural-only; this pass adds the canonical
+		// definitions the coverage substrate keys off. Closes the #4757 N/A.
+		synthesizeShelfRoutes(string(content), emit)
+		synthesizeConduitRoutes(string(content), emit)
+		synthesizeDartFrogRoutes(string(content), path, emit)
 		// Consumer side (#3574, epic #3571): Flutter mobile HTTP clients —
 		// Dio (`dio.get("/path")`) and package:http
 		// (`http.get(Uri.parse("..."))`). Emits outbound http_endpoint_call

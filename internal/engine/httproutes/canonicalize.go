@@ -241,6 +241,24 @@ const (
 	// `{name}` convention identical to FastAPI/Spring, so canonicalisation
 	// reuses canonicalizeCurlyBraces.
 	FrameworkPrologue = "prologue"
+	// FrameworkShelf (#4758) — Dart's shelf_router (`Router()..get('/users/<id>',
+	// handler)`, `router.post('/x', h)`) uses ANGLE-bracket path parameters with
+	// an OPTIONAL inline regex constraint after a `|` pipe: `<id>` and
+	// `<id|[0-9]+>` both name a single param `id`. Canonicalisation strips the
+	// `|regex` tail and rewrites `<name>` → `{name}` via canonicalizeShelfParams.
+	FrameworkShelf = "shelf"
+	// FrameworkDartFrog (#4758) — Dart Frog's file-based routing derives the path
+	// from the route file location under `routes/`: a directory/file segment
+	// `[id]` is a dynamic path parameter and `index.dart` collapses to its parent
+	// directory. The synthesizer pre-derives the route path from the file path,
+	// pre-rewriting `[name]` → `{name}`, so canonicalisation here is the shared
+	// curly-brace pass (defensive — handles any residual `[name]`).
+	FrameworkDartFrog = "dart_frog"
+	// FrameworkConduit (#4758) — Dart's Conduit (`router.route("/users/[:id]")`)
+	// declares OPTIONAL path parameters as `[:id]` (square-bracketed colon param)
+	// and required ones as `:id`. canonicalizeConduitParams drops the optional
+	// `[ ]` wrapper and rewrites `:name` → `{name}`.
+	FrameworkConduit = "conduit"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -279,8 +297,15 @@ func Canonicalize(framework, raw string) string {
 	case FrameworkFastAPI, FrameworkSpring, FrameworkJAXRS, FrameworkAxum,
 		FrameworkStarlette, FrameworkPyramid, FrameworkASPNetCore, FrameworkHapi,
 		FrameworkLitestar, FrameworkAiohttp, FrameworkFalcon, FrameworkHug,
-		FrameworkJavalin, FrameworkVertx, FrameworkGrails, FrameworkPrologue:
+		FrameworkJavalin, FrameworkVertx, FrameworkGrails, FrameworkPrologue,
+		FrameworkDartFrog:
 		out = canonicalizeCurlyBraces(raw)
+	case FrameworkShelf:
+		// Dart shelf_router `<id>` / `<id|[0-9]+>` angle-bracket params → `{id}`.
+		out = canonicalizeShelfParams(raw)
+	case FrameworkConduit:
+		// Dart Conduit `[:id]` optional + `:id` required params → `{id}`.
+		out = canonicalizeConduitParams(raw)
 	case FrameworkJester:
 		// Nim Jester `@name` AT-prefixed path params → `{name}`.
 		out = canonicalizeJesterParams(raw)
@@ -593,6 +618,60 @@ func canonicalizeJesterParams(raw string) string {
 		i = j
 	}
 	return b.String()
+}
+
+// canonicalizeShelfParams rewrites Dart shelf_router `<name>` / `<name|regex>`
+// angle-bracket path parameters to the shared `{name}` form. shelf_router
+// supports an optional inline regex constraint after a `|` pipe
+// (`<id|[0-9]+>`); the constraint is dropped and only the parameter name is
+// kept (`/users/<id|[0-9]+>` → `/users/{id}`). A lone `<` with no matching `>`
+// is left verbatim; an empty `<>` becomes `{}`.
+func canonicalizeShelfParams(raw string) string {
+	var b strings.Builder
+	b.Grow(len(raw))
+	i := 0
+	for i < len(raw) {
+		c := raw[i]
+		if c != '<' {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		end := strings.IndexByte(raw[i+1:], '>')
+		if end < 0 {
+			b.WriteByte(c)
+			i++
+			continue
+		}
+		inner := raw[i+1 : i+1+end]
+		// Drop a `|regex` constraint tail (shelf_router's inline regex syntax).
+		if idx := strings.IndexByte(inner, '|'); idx >= 0 {
+			inner = inner[:idx]
+		}
+		inner = strings.TrimSpace(inner)
+		if inner == "" {
+			b.WriteString("{}")
+		} else {
+			b.WriteByte('{')
+			b.WriteString(inner)
+			b.WriteByte('}')
+		}
+		i += 1 + end + 1
+	}
+	return b.String()
+}
+
+// canonicalizeConduitParams rewrites Dart Conduit path parameters to the shared
+// `{name}` form. Conduit declares a REQUIRED param as `:name` and an OPTIONAL
+// param as `[:name]` (square-bracket wrapped). The optional `[ ]` wrapper is
+// dropped first, then the colon walker rewrites every `:name` → `{name}`
+// (`/users/[:id]` → `/users/{id}`, `/a/:b` → `/a/{b}`). Bare `[`/`]` that do not
+// wrap a colon param are removed (Conduit uses them only for optionality).
+func canonicalizeConduitParams(raw string) string {
+	// Strip the optional-segment square brackets; the param shape that remains
+	// (`:name`) is handled by the shared colon walker.
+	cleaned := strings.NewReplacer("[", "", "]", "").Replace(raw)
+	return canonicalizeColonParams(cleaned)
 }
 
 // canonicalizeGiraffeFormat rewrites Giraffe `routef` printf-style typed

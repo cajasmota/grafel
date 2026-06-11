@@ -121,6 +121,16 @@ var extraCustomPrefixesForLanguage = map[string][]string{
 	// Dispatch both namespaces so the legacy lua_* framework extractors AND the
 	// custom_lua_* tail extractor are picked up.
 	"lua": {"custom_lua_"},
+	// dart's PRIMARY prefix in customPrefixForLanguage is ALREADY `custom_dart_`,
+	// so the #4758 coverage-linkage tail extractor `custom_dart_tests_route_e2e`
+	// is selected by CustomExtractorsFor("dart") via that primary entry. This
+	// explicit re-listing is the #4769 belt-and-suspenders guard: it documents
+	// and locks the dispatch prefix so a future refactor of dart's primary entry
+	// (the Lua mismatch class of bug, where the framework prefix and the
+	// canonical `custom_<lang>_` tail key diverge) cannot silently drop the tail
+	// extractor. The keySet dedup in CustomExtractorsFor makes the duplicate a
+	// no-op when the primary already matches.
+	"dart": {"custom_dart_"},
 }
 
 // CustomExtractorsFor returns all registered custom/framework extractors
