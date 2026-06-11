@@ -89,6 +89,15 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// `define('X', [...])` maps so the member roster + literal values are
 	// searchable and diffable. Empty collections emit no node (honest-partial).
 	emitConstValueSets(root, file, &entities)
+	// Issue #4686 (epic #4615 / #4672) — Pest test-scope owner. Pest specs put
+	// their logic in anonymous `it('...', function () {...})` / `test(...)`
+	// closures, which walk() (method/function declarations only) never mines, so
+	// a Pest spec emitted zero CALLS and the handlers it exercises read untested.
+	// This emits one SCOPE.Operation/test_scope per Pest spec file that owns the
+	// receiver-typed CALLS edges reachable from those closures. PHPUnit
+	// `function test_x()` methods are already mined by walk() (named methods), so
+	// this pass touches only the anonymous-closure case (no double-emit).
+	emitPHPTestScopeOwner(root, file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "php")
 	extractor.TagEntitiesLanguage(entities, "php")
