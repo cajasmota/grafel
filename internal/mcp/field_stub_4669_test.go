@@ -154,7 +154,7 @@ func TestStubDetector_PartialStubFields_unsupportedLanguage(t *testing.T) {
 	dir := t.TempDir()
 	handler := graph.Entity{
 		ID: "h1", Name: "h", Kind: "SCOPE.Operation",
-		SourceFile: "handler.rb", StartLine: 1, EndLine: 3,
+		SourceFile: "handler.kt", StartLine: 1, EndLine: 3,
 		Properties: map[string]string{"effects": "db_read"},
 	}
 	v3 := &graph.Document{Repo: "r",
@@ -171,7 +171,7 @@ func TestStubDetector_PartialStubFields_unsupportedLanguage(t *testing.T) {
 	out := callStubDetector(t, s, map[string]any{"group_v3": "v3", "group_oracle": "oracle"})
 	r := resultFor(t, out, "GET /x")
 	if r["partial_stub_supported"] != false {
-		t.Fatalf("ruby handler: partial_stub_supported = %v, want false", r["partial_stub_supported"])
+		t.Fatalf("kotlin handler: partial_stub_supported = %v, want false", r["partial_stub_supported"])
 	}
 	if _, ok := r["partial_stub_fields"]; ok {
 		t.Fatalf("unsupported language must not emit partial_stub_fields")
