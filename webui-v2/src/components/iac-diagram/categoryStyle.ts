@@ -2,8 +2,9 @@
    components/iac-diagram/categoryStyle.ts — resource_category styling.
 
    The single cross-tool join key every IaC tool emits is resource_category
-   (datastore/queue/topic/stream/function/cache/secret/network/compute/
-   storage/other — see internal/types/iac_resource_category.go). The
+   (datastore/queue/topic/stream/function/cache/secret/security/observability/
+   network/compute/storage/other — see internal/types/iac_resource_category.go).
+   The catalog (#4885) is provider-agnostic; this table mirrors its categories. The
    architecture diagram (#4526) colors + icons each resource node by that
    category so a modularized stack reads at a glance. Colors reference the
    theme CSS vars (tone palette) used elsewhere in the dashboard rather than
@@ -22,6 +23,8 @@ import {
   Boxes,
   KeyRound,
   Package,
+  ShieldCheck,
+  Activity,
   type LucideIcon,
 } from "lucide-react";
 
@@ -48,6 +51,10 @@ const STYLES: Record<string, Omit<CategoryStyle, "key">> = {
   stream: { label: "Stream", Icon: Waves, color: "var(--warning)", tint: "var(--warning-bg, rgba(210,153,34,0.12))" },
   function: { label: "Function", Icon: Zap, color: "var(--accent)", tint: "var(--accent-bg, rgba(124,108,255,0.14))" },
   secret: { label: "Secret", Icon: KeyRound, color: "var(--danger)", tint: "var(--danger-bg, rgba(248,81,73,0.12))" },
+  // #4885 — Security/Identity (IAM/KMS/ACM/Cognito/SGs) shares the danger tone with secret.
+  security: { label: "Security", Icon: ShieldCheck, color: "var(--danger)", tint: "var(--danger-bg, rgba(248,81,73,0.12))" },
+  // #4885 — Observability (CloudWatch/X-Ray/logging+monitoring) on the accent tone.
+  observability: { label: "Observability", Icon: Activity, color: "var(--accent)", tint: "var(--accent-bg, rgba(124,108,255,0.14))" },
   network: { label: "Network", Icon: Network, color: "var(--success)", tint: "var(--success-bg, rgba(63,185,80,0.12))" },
   compute: { label: "Compute", Icon: Cpu, color: "var(--success)", tint: "var(--success-bg, rgba(63,185,80,0.12))" },
   storage: { label: "Storage", Icon: HardDrive, color: "var(--success)", tint: "var(--success-bg, rgba(63,185,80,0.12))" },

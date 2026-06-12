@@ -74,8 +74,30 @@ func TestIaCCategory_Classifier_ValueTable(t *testing.T) {
 		// compute
 		{"aws_instance", types.IaCCategoryCompute},
 		{"AWS::ECS::Cluster", types.IaCCategoryCompute},
-		// other
-		{"aws_iam_policy_attachment_unknownthing", types.IaCCategoryOther},
+		{"AWS::ECS::Service", types.IaCCategoryCompute},
+		// security / identity (#4885) — IAM/KMS/ACM/Cognito across dialects
+		{"aws_iam_role", types.IaCCategorySecurity},
+		{"AWS::IAM::Role", types.IaCCategorySecurity},
+		{"iam.Role", types.IaCCategorySecurity},
+		{"aws_kms_key", types.IaCCategorySecurity},
+		{"AWS::KMS::Key", types.IaCCategorySecurity},
+		{"aws_acm_certificate", types.IaCCategorySecurity},
+		{"AWS::Cognito::UserPool", types.IaCCategorySecurity},
+		{"google_kms_crypto_key", types.IaCCategorySecurity},
+		// observability (#4885) — CloudWatch / X-Ray / GCP logging
+		{"aws_cloudwatch_log_group", types.IaCCategoryObservability},
+		{"AWS::Logs::LogGroup", types.IaCCategoryObservability},
+		{"aws_cloudwatch_metric_alarm", types.IaCCategoryObservability},
+		{"AWS::CloudWatch::Dashboard", types.IaCCategoryObservability},
+		{"aws_xray_sampling_rule", types.IaCCategoryObservability},
+		{"google_logging_metric", types.IaCCategoryObservability},
+		// Kubernetes samples — provider-agnostic catalog coverage
+		{"apps/v1/Deployment", types.IaCCategoryCompute},
+		{"v1/Service", types.IaCCategoryNetwork},
+		{"v1/Secret", types.IaCCategorySecret},
+		// other — genuine fallback only
+		{"aws_glue_crawler", types.IaCCategoryOther},
+		{"some_totally_unknown_resource", types.IaCCategoryOther},
 	}
 	for _, c := range cases {
 		if got := types.IaCResourceCategory(c.typeString); got != c.want {
