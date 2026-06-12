@@ -501,6 +501,121 @@ func TestErlangExtractor_HrlFile(t *testing.T) {
 	}
 }
 
+// TestErlangExtractor_OTPBehaviour verifies that -behaviour(gen_server). is
+// detected: the module entity is refined to gen_server_module, stamped with
+// Properties["otp_behaviour"]="gen_server" and tagged "otp"/"otp:gen_server".
+func TestErlangExtractor_OTPBehaviour(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "cache_server.erl",
+		Content:  []byte(genServerFixture),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var mod bool
+	for _, rec := range got {
+		if rec.Name == "cache_server" && rec.Kind == "SCOPE.Component" {
+			mod = true
+			if rec.Subtype != "gen_server_module" {
+				t.Errorf("expected module subtype gen_server_module, got %q", rec.Subtype)
+			}
+			if rec.Properties["otp_behaviour"] != "gen_server" {
+				t.Errorf("expected otp_behaviour=gen_server, got %q", rec.Properties["otp_behaviour"])
+			}
+			if !hasTag(rec.Tags, "otp") || !hasTag(rec.Tags, "otp:gen_server") {
+				t.Errorf("expected otp tags, got %v", rec.Tags)
+			}
+		}
+	}
+	if !mod {
+		t.Fatal("module entity cache_server not found")
+	}
+}
+
+// TestErlangExtractor_OTPCallbacks verifies gen_server callbacks are tagged.
+func TestErlangExtractor_OTPCallbacks(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "cache_server.erl",
+		Content:  []byte(genServerFixture),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantCallbacks := map[string]bool{
+		"init": false, "handle_call": false, "handle_cast": false,
+		"handle_info": false, "terminate": false, "code_change": false,
+	}
+	for _, rec := range got {
+		if rec.Kind != "SCOPE.Operation" {
+			continue
+		}
+		if _, want := wantCallbacks[rec.Name]; want {
+			if rec.Subtype != "otp_callback" {
+				t.Errorf("%s: expected subtype otp_callback, got %q", rec.Name, rec.Subtype)
+			}
+			if rec.Properties["otp_callback_of"] != "gen_server" {
+				t.Errorf("%s: expected otp_callback_of=gen_server, got %q", rec.Name, rec.Properties["otp_callback_of"])
+			}
+			if !hasTag(rec.Tags, "otp_callback") {
+				t.Errorf("%s: expected otp_callback tag, got %v", rec.Name, rec.Tags)
+			}
+			wantCallbacks[rec.Name] = true
+		}
+	}
+	for cb, seen := range wantCallbacks {
+		if !seen {
+			t.Errorf("callback %q not found / not tagged", cb)
+		}
+	}
+}
+
+// TestErlangExtractor_SupervisorBehaviour verifies the supervisor role + that
+// a non-OTP module keeps the plain "module" subtype.
+func TestErlangExtractor_SupervisorBehaviour(t *testing.T) {
+	src := `-module(my_sup).
+-behavior(supervisor).
+-export([start_link/0, init/1]).
+
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+init([]) ->
+    {ok, {{one_for_one, 5, 10}, []}}.
+`
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "my_sup.erl",
+		Content:  []byte(src),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, rec := range got {
+		if rec.Name == "my_sup" && rec.Kind == "SCOPE.Component" {
+			if rec.Subtype != "supervisor_module" {
+				t.Errorf("expected supervisor_module (American spelling -behavior), got %q", rec.Subtype)
+			}
+		}
+		if rec.Name == "init" && rec.Properties["otp_callback_of"] != "supervisor" {
+			t.Errorf("init should be a supervisor callback, got %q", rec.Properties["otp_callback_of"])
+		}
+	}
+}
+
+func hasTag(tags []string, want string) bool {
+	for _, t := range tags {
+		if t == want {
+			return true
+		}
+	}
+	return false
+}
+
 func sortedKeys(m map[string]bool) []string {
 	out := make([]string, 0, len(m))
 	for k := range m {
