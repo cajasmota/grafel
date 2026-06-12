@@ -343,8 +343,28 @@ func resolveInheritedEndpoint(lr *LoadedRepo, e *graph.Entity) (memberResolution
 // from an entity. Returns empty member when the entity is not a class member.
 func classifyMember(e *graph.Entity) (member, owning string, bodyless bool) {
 	// DRF synthetic implicit method: the engine stamps the origin verb and the
-	// owning ViewSet explicitly. These are bodyless by construction.
-	if e.Properties["pattern_type"] == "drf_viewset_implicit_method" {
+	// owning ViewSet explicitly. The engine emits this synthetic ONLY for a
+	// CRUD method the ViewSet does NOT override (emitViewSetMethodEntities skips
+	// explicitMethods), so it is bodyless by construction.
+	//
+	// #4890 — but the marker can LEAK onto a REAL override node: the
+	// explicit-method detector (drfExplicitMethodRe) misses some override forms
+	// (e.g. `async def create(self`), and the synthetic shares (Kind, Name,
+	// SourceFile) with the extractor's real method node, so a property merge can
+	// stamp pattern_type onto the override. An override carries its OWN real
+	// source span; reporting it bodyless forced resolveMember up the EXTENDS
+	// walk and get_source returned the synthesized inherited-mixin contract
+	// instead of the override's body (~14 false rewrite-agent findings).
+	//
+	// A real source span IS an override: report bodyless=false so the explicit
+	// gate in resolveMember keeps the node's own body. The synthesis is
+	// preserved only for a genuinely bodyless synthetic (no override).
+	//
+	// Django class-based views (django_cbv_implicit_method, cbv_method_origin /
+	// cbv_class) carry the same shape and the same leak risk, so they share the
+	// override-aware bodyless logic.
+	switch e.Properties["pattern_type"] {
+	case "drf_viewset_implicit_method":
 		m := e.Properties["drf_method_origin"]
 		o := e.Properties["viewset_class"]
 		if m == "" {
@@ -354,7 +374,17 @@ func classifyMember(e *graph.Entity) (member, owning string, bodyless bool) {
 		if o == "" {
 			o = prefixBeforeDot(e.Name)
 		}
-		return m, o, true
+		return m, o, !hasRealBody(e)
+	case "django_cbv_implicit_method":
+		m := e.Properties["cbv_method_origin"]
+		o := e.Properties["cbv_class"]
+		if m == "" {
+			m = leafAfterDot(e.Name)
+		}
+		if o == "" {
+			o = prefixBeforeDot(e.Name)
+		}
+		return m, o, !hasRealBody(e)
 	}
 
 	// A general method entity: name is "Owner.member" (qualified) — split it.
