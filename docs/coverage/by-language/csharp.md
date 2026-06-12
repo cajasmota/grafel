@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # C#
 
-**Frameworks**: 17 · **Tools**: 7 · **ORMs**: 14 · **Other**: 5
+**Frameworks**: 17 · **Tools**: 7 · **ORMs**: 14 · **Other**: 6
 
 Back to [summary](../summary.md).
 
@@ -122,3 +122,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [MassTransit (.NET cross-process service bus)](../detail/msg.masstransit.md) | ✅ | ✅ | 🟢 | |
 | [MediatR (.NET in-process CQRS / mediator)](../detail/msg.mediatr.md) | ✅ | ✅ | ✅ | |
 | [NServiceBus / Rebus (IHandleMessages<T> convention)](../detail/msg.nservicebus.md) | ✅ | ✅ | 🟢 | |
+| [Wolverine (.NET convention-based message bus)](../detail/msg.wolverine.md) | ✅ | ✅ | 🟢 | |

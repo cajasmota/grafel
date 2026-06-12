@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 57 records · **C/C++**: 3 · **C#**: 5 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 3
+**Total**: 58 records · **C/C++**: 3 · **C#**: 6 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 3
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -42,6 +42,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [C#](../by-language/csharp.md) | [MassTransit (.NET cross-process service bus)](../detail/msg.masstransit.md) | ✅ | ✅ | 🟢 | 🟢 | |
 | [C#](../by-language/csharp.md) | [MediatR (.NET in-process CQRS / mediator)](../detail/msg.mediatr.md) | ✅ | ✅ | ✅ | ✅ | |
 | [C#](../by-language/csharp.md) | [NServiceBus / Rebus (IHandleMessages<T> convention)](../detail/msg.nservicebus.md) | ✅ | ✅ | 🟢 | 🟢 | |
+| [C#](../by-language/csharp.md) | [Wolverine (.NET convention-based message bus)](../detail/msg.wolverine.md) | ✅ | ✅ | 🟢 | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [go](../by-language/go.md) | [Kafka — Go (Sarama / segmentio/kafka-go)](../detail/msg.broker.kafka-go.md) | 🟢 | ✅ | 🟢 | 🟢 | |
 | [go](../by-language/go.md) | [NATS — Go (nats.go / JetStream)](../detail/msg.broker.nats-go.md) | ✅ | ✅ | ✅ | ✅ | |
