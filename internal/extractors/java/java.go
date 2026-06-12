@@ -403,6 +403,12 @@ func walk(
 		// parameters via a `formal_parameters` child on
 		// record_declaration; each child is a `formal_parameter`
 		// with `type` + `name` named children.
+		// Issue #4872 — collect the AST node carrying each field's
+		// annotations (record component or class field_declaration) so the
+		// Bean Validation pass can stamp Properties["validations"] without
+		// re-traversing the tree.
+		recBefore := len(*out)
+		fieldNodes := map[string]*sitter.Node{}
 		if node.Type() == "record_declaration" {
 			if params := node.ChildByFieldName("parameters"); params != nil {
 				for i := range params.ChildCount() {
@@ -420,6 +426,7 @@ func walk(
 					if fieldName == "" || typeName == "" {
 						continue
 					}
+					fieldNodes[fieldName] = p
 					emittedName := rec.Name + "." + fieldName
 					// Preserve any annotations on the record
 					// component by replaying the raw source span.
@@ -458,6 +465,23 @@ func walk(
 			// class because Java field resolution at a call site uses the
 			// member-type rules, not lexical scope.
 			localCtx := &classCtx{fields: collectFieldTypes(body, file.Content)}
+			// Issue #4872 — record each class field_declaration's node by leaf
+			// name so the Bean Validation pass can read its annotations.
+			for i := range body.ChildCount() {
+				ch := body.Child(int(i))
+				if ch == nil || ch.Type() != "field_declaration" {
+					continue
+				}
+				for j := range ch.ChildCount() {
+					vd := ch.Child(int(j))
+					if vd == nil || vd.Type() != "variable_declarator" {
+						continue
+					}
+					if fn := childFieldText(vd, "name", file.Content); fn != "" {
+						fieldNodes[fn] = ch
+					}
+				}
+			}
 			before := len(*out)
 			for i := range body.ChildCount() {
 				// Members of this type are qualified by rec.Name (the
@@ -502,6 +526,13 @@ func walk(
 					})
 			}
 		}
+
+		// Issue #4872 — route Bean Validation annotations (javax.* + jakarta.*)
+		// on this type's fields/record-components into Properties["validations"]
+		// so the dashboard ShapeTree renders them as constraint chips, matching
+		// TS (#4858) and Python (#4871). Covers the whole [recBefore, now)
+		// window — both record components and class field_declarations.
+		emitJavaFieldValidations(rec.Name, recBefore, len(*out), fieldNodes, file.Content, out)
 
 		// Issue #793 — Lombok annotation-driven entity synthesis.
 		// Synthesize SCOPE.Operation / SCOPE.Component entities for every
