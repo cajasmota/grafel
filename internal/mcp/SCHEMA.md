@@ -833,15 +833,31 @@ above and below the entity's recorded `[start_line, end_line]` range.
 **Span guard (#1614):** when `end_line <= start_line` or either is `0` (common
 for synthetic / shadow / route entities), the span is clamped to a fixed
 fallback window (`start_line + 60`). A **hard cap of 200 emitted lines** is then
-applied unconditionally, so `get_source` can never dump an entire file no matter
-what span the entity records.
+applied so `get_source` can never accidentally dump an entire file from the
+symbol-anchored span.
+
+**Explicit window (#4891):** pass **both** `from_line` and `to_line` to read
+*exactly* that line range of the resolved entity's source file, clamped to the
+file's real bounds. An explicit window **bypasses the symbol-anchored 200-line
+cap** — the caller has named exact bounds and owns the token budget. This is the
+intended way to read **distal method internals** (e.g. lines 200-240 of a long
+function whose recorded entity span starts much earlier) without falling back to
+`grep`. A one-sided range (only `from_line` or only `to_line`) fills the missing
+bound from the entity span and keeps the hard cap. `start_line` / `end_line` are
+accepted as legacy aliases of `from_line` / `to_line`. The optional `max_lines`
+heads the emitted line count and signals truncation. Every truncation is
+signalled with a precise `from_line` / `to_line` continuation hint
+([no-silent-caps]).
 
 **Inputs**
 
 | Name | Type | Required | Default | Description |
 |------|------|----------|---------|-------------|
 | `entity_id` | string | yes | — | Entity ID, prefixed ID, qname, or label. |
-| `context_lines` | number | no | `20` | Lines of context above/below the entity. |
+| `context_lines` | number | no | `8` | Lines of context above/below the entity span (ignored for an explicit window). |
+| `from_line` | number | no | — | Explicit window start (1-based, inclusive). With `to_line`, bypasses the 200-line cap. |
+| `to_line` | number | no | — | Explicit window end (1-based, inclusive). Clamped to the file's last line. |
+| `max_lines` | number | no | — | Head cap on emitted lines (opt-in; undeclared, #1639 token-ceiling). |
 | `group`, `cwd` | string | no | — | Common args. |
 
 **Output** — text, line-numbered:

@@ -81,7 +81,7 @@ func TestGetSource_2828_DefaultLargeEntityTruncatesWithSignal(t *testing.T) {
 	if !strings.Contains(out, "archigraph: truncated") {
 		t.Fatalf("missing truncation marker:\n%s", tail(out))
 	}
-	if !strings.Contains(out, "start_line=") || !strings.Contains(out, "end_line=") {
+	if !strings.Contains(out, "from_line=") || !strings.Contains(out, "to_line=") {
 		t.Errorf("truncation marker lacks precise continuation range:\n%s", tail(out))
 	}
 }
@@ -187,6 +187,93 @@ func TestComputeSourceSpan_2828_Policy(t *testing.T) {
 				t.Error("expected empty truncation marker")
 			}
 		})
+	}
+}
+
+// TestGetSource_4891_ExplicitWindowBypassesHardCap verifies the #4891 explicit
+// from_line/to_line window: a named range larger than the 200-line symbol-anchored
+// hard cap is returned VERBATIM (the caller owns the budget), so distal method
+// internals are readable without a grep fallback. It also confirms from_line/to_line
+// are honoured identically to the legacy start_line/end_line aliases, and that the
+// default (no window) call is unchanged (still hard-capped + signalled).
+func TestGetSource_4891_ExplicitWindowBypassesHardCap(t *testing.T) {
+	t.Parallel()
+	// Entity span starts at line 5; the body we want is "distal" (lines 210-260),
+	// a 51-line window inside a 600-line span — and the window itself is fine, but
+	// to prove the cap bypass we also request a 300-line window (> 200 hard cap).
+	s := build2828SourceServer(t, 700, 5, 605)
+
+	// (a) A 300-line explicit window (250..549) MUST come back in full — the
+	// pre-#4891 200-line hard cap would have clipped it to 250..449.
+	wide := callGetSource(t, s, map[string]any{
+		"group": "test", "entity_id": "big", "from_line": 250, "to_line": 549,
+	})
+	for _, want := range []int{250, 449, 450, 549} { // includes lines past the old 200-cap
+		if !strings.Contains(wide, fmt.Sprintf("statement_%d ", want)) {
+			t.Errorf("explicit 300-line window missing line %d (hard cap not bypassed):\n%s", want, tail(wide))
+		}
+	}
+	if strings.Contains(wide, "statement_249 ") || strings.Contains(wide, "statement_550 ") {
+		t.Errorf("explicit window leaked lines outside [250,549]:\n%s", tail(wide))
+	}
+	if strings.Contains(wide, "archigraph: truncated") {
+		t.Errorf("explicit window honoured verbatim must NOT be marked truncated:\n%s", tail(wide))
+	}
+
+	// (b) from_line/to_line are identical to the legacy start_line/end_line aliases.
+	viaNew := callGetSource(t, s, map[string]any{
+		"group": "test", "entity_id": "big", "from_line": 300, "to_line": 320,
+	})
+	viaLegacy := callGetSource(t, s, map[string]any{
+		"group": "test", "entity_id": "big", "start_line": 300, "end_line": 320,
+	})
+	if viaNew != viaLegacy {
+		t.Errorf("from_line/to_line must match start_line/end_line aliases\nnew:\n%s\nlegacy:\n%s", viaNew, viaLegacy)
+	}
+
+	// (c) to_line past EOF is clamped to the file's real bounds (700 lines on disk).
+	clamped := callGetSource(t, s, map[string]any{
+		"group": "test", "entity_id": "big", "from_line": 695, "to_line": 999,
+	})
+	if !strings.Contains(clamped, "statement_700 ") {
+		t.Errorf("window past EOF should include the last real line 700:\n%s", clamped)
+	}
+	if strings.Contains(clamped, "statement_701 ") {
+		t.Errorf("window past EOF leaked a nonexistent line:\n%s", clamped)
+	}
+
+	// (d) NO-REGRESSION: a default call (no window) is still hard-capped + signalled.
+	def := callGetSource(t, s, map[string]any{"group": "test", "entity_id": "big", "context_lines": 0})
+	if !strings.Contains(def, "archigraph: truncated") {
+		t.Errorf("default call must still signal the symbol-anchored hard cap:\n%s", tail(def))
+	}
+}
+
+// TestComputeSourceSpan_4891_ExplicitWindow unit-tests the cap-bypass policy.
+func TestComputeSourceSpan_4891_ExplicitWindow(t *testing.T) {
+	t.Parallel()
+	// Explicit window of 300 lines on a 1000-line span: returned verbatim, no cap.
+	sp := computeSourceSpan(&graph.Entity{StartLine: 5, EndLine: 605},
+		sourceWindowOpts{startLine: 250, endLine: 549, explicitWindow: true})
+	if sp.start != 250 || sp.end != 549 {
+		t.Errorf("explicit window span = [%d,%d], want [250,549]", sp.start, sp.end)
+	}
+	if sp.truncated {
+		t.Error("explicit window honoured verbatim must not be truncated")
+	}
+
+	// max_lines still heads an explicit window when the caller opts back into a cap.
+	sp2 := computeSourceSpan(&graph.Entity{StartLine: 5, EndLine: 605},
+		sourceWindowOpts{startLine: 250, endLine: 549, explicitWindow: true, maxLines: 40})
+	if sp2.end != 250+40-1 || !sp2.truncated {
+		t.Errorf("max_lines on explicit window: span=[%d,%d] trunc=%v, want end=289 trunc=true", sp2.start, sp2.end, sp2.truncated)
+	}
+
+	// A one-sided range (no explicitWindow) still respects the hard cap.
+	sp3 := computeSourceSpan(&graph.Entity{StartLine: 1, EndLine: 1000},
+		sourceWindowOpts{startLine: 1, explicitWindow: false})
+	if sp3.end != getSourceHardMaxLines || !sp3.truncated {
+		t.Errorf("one-sided range must keep hard cap: span=[%d,%d] trunc=%v", sp3.start, sp3.end, sp3.truncated)
 	}
 }
 
