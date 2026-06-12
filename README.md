@@ -1,6 +1,6 @@
 # archigraph
 
-> A local code-knowledge-graph daemon that gives AI agents structural navigation — call graphs, cross-repo dependency traces, HTTP surface maps, and process flows — across one or many repositories, exposed via 29 MCP tools.
+> A local code-knowledge-graph daemon that gives AI agents structural navigation — call graphs, cross-repo dependency traces, HTTP surface maps, and process flows — across one or many repositories, exposed via 65 MCP tools.
 
 [![Build](https://github.com/cajasmota/archigraph/actions/workflows/test.yml/badge.svg)](https://github.com/cajasmota/archigraph/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
@@ -26,7 +26,7 @@ The graph lives entirely on your machine. No cloud indexing, no account, no data
 - **Message-bus topology** — topic/broker/service groupings for event-driven systems; publisher and subscriber orphan detection.
 - **Cross-repo dependency graph** — index a folder of repos as one group; edges span repo boundaries with confidence scores; diff graph state between any two indexed refs.
 - **Documentation and analysis skills** — a 14-skill family (tech docs, business docs, security audit, consultant panel, patterns) all driven off the graph, invokable from Claude Code as slash commands.
-- **Real-time dashboard** — 12 surfaces (Graph, Flows, Topology, Paths, Docs, Quality, Patterns, ...) embedded in the daemon, no separate server, at `http://127.0.0.1:47274`.
+- **Real-time dashboard** — 19 surfaces (Graph, Flows, Event-flows, Topology, Paths, Links, GraphQL, IaC, Docs, Security, Taint, DI, Error-flow, Quality, Settings, Pending, Operations, Compare, Missing) embedded in the daemon, no separate server, at `http://127.0.0.1:47274`.
 
 ---
 
@@ -113,7 +113,7 @@ For per-agent setup instructions see [docs/agent-hosts.md](docs/agent-hosts.md).
 | [docs/agent-hosts.md](docs/agent-hosts.md) | Per-agent setup (Claude Code, Cursor, Windsurf, Continue, Aider, Cline) |
 | [skills/README.md](skills/README.md) | Skill family — chains, dependencies, install |
 | [internal/mcp/SCHEMA.md](internal/mcp/SCHEMA.md) | Full MCP tool schema (canonical) |
-| [docs/adrs/](docs/adrs/) | Architectural decision records (ADR-0001 through ADR-0020) |
+| [docs/adrs/](docs/adrs/) | Architectural decision records (ADR-0001 through ADR-0022) |
 | [CHANGELOG.md](CHANGELOG.md) | Version history and breaking changes |
 | [CLAUDE.md](CLAUDE.md) | When to use MCP vs grep (agent pairing guide) |
 

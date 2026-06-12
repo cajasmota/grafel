@@ -65,8 +65,9 @@ It turns the deterministic stubs into LLM-filled prose via a three-step loop:
 ```
  daemon side                 orchestrator side (Claude Code)      daemon side
 ┌─────────────┐             ┌──────────────────────────────┐    ┌─────────────┐
-│  --llm-mode │             │  /generate-docs Pass 20       │    │  --llm-mode │
-│    =emit    │ ──bundle──► │  (skills/generate-docs)       │ ──►│    =apply   │
+│  --llm-mode │             │  Pass 20 orchestrate          │    │  --llm-mode │
+│    =emit    │ ──bundle──► │  (skills/archigraph-tech-docs │ ──►│    =apply   │
+│             │             │   or /archigraph-test-page)   │    │             │
 └─────────────┘             └──────────────────────────────┘    └─────────────┘
    Tier 0 or 1                  reads bundle, fills each           re-runs Tier
    writes bundle.json           section with LLM prose,            contracts,
@@ -87,7 +88,7 @@ sequenceDiagram
     Daemon->>Daemon: build LLMPromptBundle<br/>(entity context, 1-hop neighbours,<br/>guidance, max_words, max_mermaid)
     Daemon-->>Dev: writes <pageID>-page-bundle.json
 
-    Dev->>Skill: invoke /generate-docs (Pass 20)
+    Dev->>Skill: invoke /archigraph-tech-docs (or /archigraph-test-page) — Pass 20
     Skill->>Skill: locate *-bundle.json files
     loop for each section in bundle
         Skill->>Cache: check section cache (prompt_hash)
@@ -114,7 +115,7 @@ sequenceDiagram
    budgets, and a `prompt_hash` (SHA-256 over version + section names + entity
    ID + graph node hash + guidance text). Source: `internal/docgen/llm_bundle.go`.
 
-2. **Orchestrate** — Pass 20 of the `generate-docs` skill reads every bundle
+2. **Orchestrate** — Pass 20 of the `archigraph-tech-docs` skill reads every bundle
    file, calls the LLM once per section, assembles an `LLMRunResult` JSON, and
    writes it next to the bundle. The pass is idempotent: it skips any bundle
    whose result file already exists with a matching `prompt_hash`.
@@ -128,8 +129,8 @@ sequenceDiagram
 
 ## 3. Claude Code Skill Integration (Pass 20 / #1822)
 
-Pass 20 lives at `skills/generate-docs/prompts/20-llm-orchestrate.md`.
-It is part of the `generate-docs` skill (`skills/generate-docs/SKILL.md`).
+Pass 20 lives at `skills/archigraph-tech-docs/prompts/20-llm-orchestrate.md`.
+It is part of the `archigraph-tech-docs` skill (`skills/archigraph-tech-docs/SKILL.md`).
 
 **Trigger phrases** that invoke Pass 20:
 
@@ -205,7 +206,7 @@ archigraph docgen \
 # Output: ~/.archigraph/docs/<group>/.tier0-<ts>/<entity-id>-capabilities-bundle.json
 
 # Step 2: run Pass 20 in Claude Code.
-# In Claude Code:  /generate-docs
+# In Claude Code:  /archigraph-test-page   (single-entity emit→fill→apply loop)
 # (Pass 20 auto-detects the bundle and fills the section.)
 
 # Step 3: apply.
@@ -232,7 +233,7 @@ archigraph docgen \
   --llm-mode=emit
 
 # Step 2: fill via Pass 20 in Claude Code.
-# /generate-docs  →  Pass 20 runs automatically.
+# /archigraph-test-page  →  Pass 20 runs automatically.
 
 # Step 3: apply and verify contracts.
 archigraph docgen \
@@ -342,8 +343,8 @@ reference-scripts, reference-misc, module-readme, glossary, how-to-local-dev
 
 ## See Also
 
-- `skills/generate-docs/SKILL.md` — full pass pipeline (Passes 0–20)
-- `skills/generate-docs/prompts/20-llm-orchestrate.md` — Pass 20 full procedure
+- `skills/archigraph-tech-docs/SKILL.md` — full pass pipeline (Passes 0–20)
+- `skills/archigraph-tech-docs/prompts/20-llm-orchestrate.md` — Pass 20 full procedure
 - `internal/docgen/llm_bundle.go` — schema source of truth
 - `internal/docgen/llm_apply.go` — apply-time contract enforcement
 - `docs/adrs/0015-residual-repair-agent-enrichment.md` — residual repair (ADR-0015)

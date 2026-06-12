@@ -13,7 +13,7 @@ archigraph start             # start the daemon
 archigraph doctor            # check for port conflicts, permission errors
 ```
 
-The daemon listens on `http://127.0.0.1:47274`. If that port is occupied by another process, change it in `~/.archigraph/settings.json` (`daemon_port`) and restart.
+The daemon listens on `http://127.0.0.1:47274`. If that port is occupied by another process, override it with the `ARCHIGRAPH_DASHBOARD_PORT` environment variable before starting the daemon (e.g. `ARCHIGRAPH_DASHBOARD_PORT=48000 archigraph start`), then restart. For a standalone dev server you can also pass `archigraph dashboard serve --port N`. There is no `daemon_port` field in `settings.json`.
 
 ### Dashboard shows a blank page or fails to load
 

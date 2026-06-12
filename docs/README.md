@@ -17,7 +17,7 @@ Reference documentation for archigraph. The [README.md](../README.md) at the rep
 | Doc | Contents |
 |-----|----------|
 | [concepts.md](concepts.md) | Knowledge graph model, entity kinds, edge kinds, residual edges, repair |
-| [modes.md](modes.md) | Single-repo vs multi-repo groups, monorepo splitting, group lifecycle |
+| [modes.md](modes.md) | Daemon operational modes (background, workstation, readonly) — memory, background activity, feature activation |
 | [graph-format.md](graph-format.md) | On-disk graph format (`.archigraph/graph.fb`), binary schema, JSON export |
 | [embedding.md](embedding.md) | Semantic search embedding strategy (BM25 + optional MiniLM / BYO endpoint) |
 
@@ -45,5 +45,5 @@ Reference documentation for archigraph. The [README.md](../README.md) at the rep
 | Doc | Contents |
 |-----|----------|
 | [../internal/mcp/SCHEMA.md](../internal/mcp/SCHEMA.md) | Full MCP tool schema — canonical source of truth for inputs/outputs |
-| [adrs/README.md](adrs/README.md) | Architectural decision records index (ADR-0001 through ADR-0020) |
+| [adrs/README.md](adrs/README.md) | Architectural decision records index (ADR-0001 through ADR-0022) |
 | [RELEASING.md](RELEASING.md) | Release process (maintainer reference) |

@@ -176,7 +176,7 @@ An agent can ask for the structural diff between two refs in a single call:
 
 ```json
 {
-  "tool": "archigraph_diff",
+  "tool": "archigraph_diff_refs",
   "arguments": {
     "repo": "my-repo",
     "ref_a": "main",

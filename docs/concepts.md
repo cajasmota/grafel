@@ -68,7 +68,7 @@ Beyond residual edges, the enrichment queue holds three types of candidates:
 - **Cross-repo link candidates** — edges where the target might be in a sibling repo (`archigraph_cross_links`)
 - **Enrichment candidates** — `http_endpoint`, `process_flow`, and `message_topic` entities that the indexer flagged for LLM annotation (`archigraph_enrichments`)
 
-The dashboard **Pending** surface (`/pending`) shows the full queue tiered by priority (Critical / High / Medium / Low).
+The dashboard **Pending** surface (`/g/:groupId/pending`) shows the full queue tiered by priority (Critical / High / Medium / Low).
 
 The `/archigraph-graph-enrich` skill emits YAML frontmatter for HTTP endpoints, flows, and topics — this makes the **Paths**, **Flows**, and **Topology** dashboard panels display data.
 
@@ -98,3 +98,37 @@ See [user-guide/multi-branch.md](user-guide/multi-branch.md) for the full guide.
 As agents work with the graph, they can save findings via `archigraph_save_finding`. Over time, recurring structural patterns are extracted and stored as first-class entities. These are visible in the **Patterns** dashboard surface and manageable via the `/archigraph-patterns-discover` and `/archigraph-patterns-sync` skills.
 
 See [ADR-0018](adrs/0018-agent-learned-patterns.md) for the full design.
+
+---
+
+## Dashboard surfaces
+
+The dashboard is embedded in the daemon at `http://127.0.0.1:47274`. After
+selecting a group, every surface is nested under `/g/:groupId/` — so the
+Pending view, for example, is `/g/:groupId/pending`, not a bare `/pending`.
+The available surfaces (routes defined in `webui-v2/src/routes/router.tsx`):
+
+| Surface | Path | Shows |
+|---------|------|-------|
+| Graph | `/g/:groupId/graph` | Entity/edge graph explorer |
+| Flows | `/g/:groupId/flows` | Pre-computed process flows |
+| Event-flows | `/g/:groupId/event-flows` | Message-bus / event-driven flows |
+| Topology | `/g/:groupId/topology` | Topic/broker/service topology |
+| Paths | `/g/:groupId/paths` | HTTP endpoint surface and pairings |
+| Links | `/g/:groupId/links` | Cross-repo link candidates |
+| GraphQL | `/g/:groupId/graphql` | GraphQL schema surface |
+| IaC | `/g/:groupId/iac` | Infrastructure-as-code resources |
+| Docs | `/g/:groupId/docs` | Generated documentation viewer |
+| Security | `/g/:groupId/security` | Security findings |
+| Taint | `/g/:groupId/taint` | Taint / data-flow reachability |
+| DI | `/g/:groupId/di` | Dependency-injection wiring |
+| Error-flow | `/g/:groupId/errorflow` | Error / exception propagation |
+| Quality | `/g/:groupId/quality` | Extraction-quality metrics |
+| Settings | `/g/:groupId/settings` | Per-group daemon settings |
+| Pending | `/g/:groupId/pending` | Residual / repair / enrichment queue |
+| Operations | `/g/:groupId/operations` | Index/rebuild operation log |
+| Compare | `/g/:groupId/compare` | Structural ref-to-ref diff |
+| Missing | `/g/:groupId/missing` | Unresolved / missing targets |
+
+Most surfaces light up only after the graph is indexed and (for Paths, Flows,
+and Topology) enriched via `/archigraph-graph-enrich`.

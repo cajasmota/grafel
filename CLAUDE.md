@@ -8,7 +8,7 @@ Pair them: MCP narrows the search space; grep verifies edge-property questions M
 ## Three concrete examples
 
 **MCP-good — structural navigation:**
-"Which services call `OrderService.CreateOrder`?" → `archigraph_find` + `archigraph_callers` gives you
+"Which services call `OrderService.CreateOrder`?" → `archigraph_find` + `archigraph_find_callers` gives you
 the precise call graph with repo context, in one round-trip. grep would require you to know every
 caller file location across every repo in the group.
 
@@ -19,7 +19,7 @@ the source files is faster and more complete for this class of pattern.
 
 **Paired — search space reduction then raw verify:**
 "Does any service leak the internal `User.PasswordHash` field in an HTTP response?" →
-1. MCP: `archigraph_find entity_type=http_endpoint_definition` + `archigraph_paths` to identify
+1. MCP: `archigraph_find entity_type=http_endpoint_definition` + `archigraph_find_paths` to identify
    every endpoint that touches `User`. Narrows a 500-file repo to 8 handlers.
 2. grep: search only those 8 handler files for `PasswordHash` to confirm whether it appears in any
    serialisation path.
