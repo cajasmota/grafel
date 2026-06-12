@@ -64,9 +64,11 @@ import {
   TooltipContent,
   TabCount,
   DefTerm,
+  CoverageProvenanceBanner,
   useSetInsight,
 } from "@/components/ui";
 import type { InsightValue } from "@/components/ui";
+import type { CoverageSourceState } from "@/lib/coverage-provenance";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { useSourcePeek } from "@/components/SourcePeek";
@@ -837,8 +839,20 @@ function CoverageTab({ groupId }: { groupId: string }) {
     </div>
   );
 
+  // Coverage provenance (#5038). The dashboard's headline `coverage_pct` is
+  // graph-derived REACH coverage (static test-reachability), not a measured
+  // line %. Ingested line coverage (#5036) and ingestion-config state are not
+  // yet wired into this endpoint, so we report reachability and let the banner
+  // surface the "how to enable" affordance. When the data layer later exposes
+  // stamped line-coverage props + ingestion config, populate `line` /
+  // `reportIngestionConfigured` here and the banner upgrades automatically.
+  const coverageProvenance: CoverageSourceState = {
+    reachabilityAvailable: true,
+  };
+
   return (
     <div className="space-y-4">
+      <CoverageProvenanceBanner state={coverageProvenance} />
       <CoverageGauge
         covered={data.covered_production}
         total={data.total_production}
