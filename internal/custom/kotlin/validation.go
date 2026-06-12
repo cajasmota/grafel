@@ -99,6 +99,15 @@ var (
 		`\b(?:validate|Validator)\s*(?:<\s*([A-Z][A-Za-z0-9_]*)\s*>)?\s*\(`,
 	)
 
+	// @Valid (any Kotlin use-site target) on a property — the cascade marker
+	// that drives nested-model recursion. Matches @Valid, @field:Valid,
+	// @get:Valid, @property:Valid, @param:Valid.
+	reFieldValid = regexp.MustCompile(`@(?:field:|get:|param:|property:|set:)?Valid\b`)
+
+	// Element-position @Valid inside a generic, e.g. List<@Valid AddressDto> or
+	// Map<String, @Valid AddressDto>. Submatch 1 = the annotated element type.
+	reElementValid = regexp.MustCompile(`@Valid\s+([A-Z][A-Za-z0-9_.]*)`)
+
 	// konform: Validation<Foo> { ... } — submatch 1 = validated type.
 	reKonformHead = regexp.MustCompile(`\bValidation\s*<\s*([A-Z][A-Za-z0-9_]*)\s*>\s*\{`)
 	// konform property block:  Foo::bar { ... }  — submatch 1 = receiver type,
@@ -379,6 +388,7 @@ func emitDataClasses(add func(types.EntityRecord), src string, heads []classHead
 		setProps(&dtoEnt, "provenance", "INFERRED_FROM_DATA_CLASS")
 
 		var propList []string
+		var validatesEdges []types.RelationshipRecord
 		for _, pm := range reDataProperty.FindAllStringSubmatchIndex(body, -1) {
 			annoBlock := body[pm[2]:pm[3]]
 			pname := body[pm[6]:pm[7]]
@@ -396,6 +406,24 @@ func emitDataClasses(add func(types.EntityRecord), src string, heads []classHead
 				wire = w[1]
 			}
 
+			// ── Nested @Valid recursion → VALIDATES edge (#4972, parity Java #3605).
+			// When a property carries @Valid (any use-site target) — or the
+			// generic element form List<@Valid X> — emit a class→class VALIDATES
+			// edge from the owning DTO to the nested DTO type. For a collection
+			// property the validation target is the element type, not the wrapper.
+			if nested := nestedValidTarget(annoBlock, ptype); nested != "" && !kotlinPrimitives[nested] {
+				validatesEdges = append(validatesEdges, types.RelationshipRecord{
+					ToID: nested,
+					Kind: "VALIDATES",
+					Properties: map[string]string{
+						"field":     pname,
+						"via":       "valid_annotation",
+						"framework": "BeanValidation",
+						"owner_dto": h.name,
+					},
+				})
+			}
+
 			// Per-property keys (value-asserted by tests).
 			setProps(&dtoEnt,
 				"prop."+pname+".type", ptype,
@@ -411,8 +439,54 @@ func emitDataClasses(add func(types.EntityRecord), src string, heads []classHead
 			setProps(&dtoEnt, "properties", strings.Join(propList, ","))
 			setProps(&dtoEnt, "property_count", strconv.Itoa(len(propList)))
 		}
+		if len(validatesEdges) > 0 {
+			dtoEnt.Relationships = append(dtoEnt.Relationships, validatesEdges...)
+		}
 		add(dtoEnt)
 	}
+}
+
+// nestedValidTarget resolves the nested DTO type a @Valid cascade annotation
+// targets on a data-class property, or "" when the property is not @Valid.
+// It handles both the property-level annotation form (@field:Valid val nested:
+// AddressDto) and the generic-element form (val items: List<@Valid AddressDto>),
+// unwrapping a single level of collection / generic wrapper to the element type.
+func nestedValidTarget(annoBlock, ptype string) string {
+	// Generic-element form: List<@Valid AddressDto> / Map<String, @Valid X>.
+	if m := reElementValid.FindStringSubmatch(ptype); m != nil {
+		return strings.TrimSuffix(m[1], "?")
+	}
+	// Property-level @Valid (any use-site target) on the leading annotation block.
+	if !reFieldValid.MatchString(annoBlock) {
+		return ""
+	}
+	return validationElementType(ptype)
+}
+
+// validationElementType strips nullability and unwraps one level of a generic
+// collection wrapper (List<T>, Set<T>, Collection<T>, Iterable<T>, Array<T>) to
+// the element type T, so the VALIDATES edge points at the validated DTO rather
+// than the collection. For Map<K,V> the value type V is taken.
+func validationElementType(ptype string) string {
+	t := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(ptype), "?"))
+	open := strings.IndexByte(t, '<')
+	if open < 0 {
+		return t
+	}
+	wrapper := strings.TrimSpace(t[:open])
+	inner := strings.TrimSpace(strings.TrimSuffix(t[open+1:], ">"))
+	switch wrapper {
+	case "List", "Set", "Collection", "Iterable", "Sequence", "Array", "MutableList", "MutableSet":
+		return strings.TrimSuffix(strings.TrimSpace(inner), "?")
+	case "Map", "MutableMap":
+		// Map<K, V> → value type V.
+		if c := strings.LastIndexByte(inner, ','); c >= 0 {
+			return strings.TrimSuffix(strings.TrimSpace(inner[c+1:]), "?")
+		}
+		return ""
+	}
+	// Unknown generic — treat the raw wrapper as the validated type.
+	return wrapper
 }
 
 // emitKonform parses konform Validation<T> { T::field { constraint(bound) } }

@@ -6,6 +6,8 @@ package kotlin_test
 
 import (
 	"testing"
+
+	"github.com/cajasmota/archigraph/internal/types"
 )
 
 func TestValidationAtValid(t *testing.T) {
@@ -316,4 +318,93 @@ data class LoginRequest(
 	if findEntity(ents, "SCOPE.Pattern", "validation:rule:LoginRequest.username:NotNull") == nil {
 		t.Error("expected username -> NotNull rule")
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Nested @Valid → VALIDATES edge (#4972, parity with Java #3605).
+// A @Valid-annotated DTO field cascades validation into the nested DTO type;
+// the owning DTO must carry a VALIDATES edge to that nested type.
+// ---------------------------------------------------------------------------
+
+func TestValidationNestedValidVALIDATESEdge(t *testing.T) {
+	src := `
+data class OrderRequest(
+    @field:NotNull val id: String,
+    @field:Valid val shippingAddress: AddressDto,
+    @get:Valid val billingAddress: AddressDto?,
+    @field:Valid val items: List<LineItemDto>,
+    val notes: String?
+)
+
+data class AddressDto(
+    @field:NotBlank val street: String
+)
+
+data class LineItemDto(
+    @field:Min(1) val quantity: Int
+)
+`
+	ents := extractRels(t, "custom_kotlin_validation", fi("OrderRequest.kt", "kotlin", src))
+
+	// Owner DTO → nested DTO via @field:Valid.
+	if !hasEdge(ents, "OrderRequest", "VALIDATES", "AddressDto") {
+		t.Errorf("expected OrderRequest VALIDATES AddressDto; edges=%v", dumpValidatesEdges(ents))
+	}
+	// Collection element form: List<LineItemDto> unwraps to LineItemDto.
+	if !hasEdge(ents, "OrderRequest", "VALIDATES", "LineItemDto") {
+		t.Errorf("expected OrderRequest VALIDATES LineItemDto (List element); edges=%v", dumpValidatesEdges(ents))
+	}
+	// Edge carries the field + via metadata.
+	for _, e := range ents {
+		if e.Name != "OrderRequest" {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind == "VALIDATES" && r.ToID == "AddressDto" {
+				if r.Properties["via"] != "valid_annotation" {
+					t.Errorf("expected via=valid_annotation, got %q", r.Properties["via"])
+				}
+				if r.Properties["field"] == "" {
+					t.Error("expected non-empty field on VALIDATES edge")
+				}
+			}
+		}
+	}
+	// A non-@Valid field must NOT produce a VALIDATES edge.
+	if hasEdge(ents, "OrderRequest", "VALIDATES", "String") {
+		t.Error("plain (non-@Valid) field should not emit a VALIDATES edge")
+	}
+}
+
+// Generic-element annotation form: List<@Valid AddressDto> — the @Valid sits on
+// the element type inside the generic, not on the property annotation block.
+func TestValidationNestedValidElementForm(t *testing.T) {
+	src := `
+data class BatchRequest(
+    val addresses: List<@Valid AddressDto>
+)
+
+data class AddressDto(
+    @field:NotBlank val street: String
+)
+`
+	ents := extractRels(t, "custom_kotlin_validation", fi("BatchRequest.kt", "kotlin", src))
+	if !hasEdge(ents, "BatchRequest", "VALIDATES", "AddressDto") {
+		t.Errorf("expected BatchRequest VALIDATES AddressDto (List<@Valid X>); edges=%v", dumpValidatesEdges(ents))
+	}
+}
+
+func dumpValidatesEdges(ents []types.EntityRecord) string {
+	out := ""
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.Kind == "VALIDATES" {
+				out += "\n  " + e.Name + " -VALIDATES-> " + r.ToID
+			}
+		}
+	}
+	if out == "" {
+		return "(none)"
+	}
+	return out
 }
