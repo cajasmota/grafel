@@ -186,7 +186,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Testing | Other capabilities | Notes |
 |---|---|---|---|
-| [Joi (@hapi/joi)](../detail/lang.jsts.validation.joi.md) | 🟢 1/1 | 🟡 1/5 | |
-| [Yup](../detail/lang.jsts.validation.yup.md) | 🟢 1/1 | 🟡 1/5 | |
-| [Zod](../detail/lang.jsts.validation.zod.md) | 🟢 1/1 | 🟡 1/5 | |
+| [Joi (@hapi/joi)](../detail/lang.jsts.validation.joi.md) | 🟢 1/1 | 🟡 2/5 | |
+| [Yup](../detail/lang.jsts.validation.yup.md) | 🟢 1/1 | 🟡 2/5 | |
+| [Zod](../detail/lang.jsts.validation.zod.md) | 🟢 1/1 | 🟡 2/5 | |
 | [class-validator (NestJS DTOs)](../detail/lang.jsts.validation.class-validator.md) | 🟢 1/1 | 🟡 3/5 | |

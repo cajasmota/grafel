@@ -31,7 +31,7 @@ one is a separate detail page.
 | [`lang.jsts.framework.graphql-client`](./lang.jsts.framework.graphql-client.md) | JS/TS | framework | 3 full, 6 partial, 27 missing |
 | [`lang.jsts.framework.graphql-resolvers`](./lang.jsts.framework.graphql-resolvers.md) | JS/TS | framework | 11 full, 20 partial, 23 missing, 1 n/a |
 | [`lang.jsts.framework.type-graphql`](./lang.jsts.framework.type-graphql.md) | JS/TS | framework | 8 full, 16 partial, 25 missing |
-| [`lang.kotlin.framework.graphql-kotlin`](./lang.kotlin.framework.graphql-kotlin.md) | kotlin | framework | 8 full, 11 partial, 36 missing |
+| [`lang.kotlin.framework.graphql-kotlin`](./lang.kotlin.framework.graphql-kotlin.md) | kotlin | framework | 8 full, 11 partial, 32 missing, 4 n/a |
 | [`msg.graphql-subscriptions`](./msg.graphql-subscriptions.md) | multi |  | 3 full |
 | [`lang.php.framework.api-platform-graphql`](./lang.php.framework.api-platform-graphql.md) | php | framework | 12 full, 17 partial, 20 missing |
 | [`lang.php.framework.graphql-php`](./lang.php.framework.graphql-php.md) | php | framework | 11 full, 17 partial, 21 missing |

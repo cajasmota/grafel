@@ -15,9 +15,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
-| Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
-| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
+| Endpoint deprecation versioning | — `not_applicable` | `2026-06-12` | 4973 | `internal/custom/kotlin/graphql_kotlin.go` | #4973 (split from #4924): graphql-kotlin endpoints are GraphQL operations over a single POST /graphql transport, not versioned REST routes. Deprecation is expressed via the @Deprecated/@GraphQLDescription schema directive on a field, not URL/path/header versioning — the REST endpoint_deprecation_versioning concern does not apply. Schema-directive deprecation extraction, if pursued, is a distinct GraphQL-native capability (follow-up #5010). |
+| Endpoint pagination posture | — `not_applicable` | `2026-06-12` | 4973 | `internal/custom/kotlin/graphql_kotlin.go` | #4973 (split from #4924): the REST pagination-posture signal (limit+offset/page/cursor HTTP query-param shape, applyEndpointPagination) does not apply to graphql-kotlin — GraphQL pagination is modelled in the schema (Relay connection/edges/pageInfo data classes), not as endpoint HTTP params. GraphQL-native connection-pattern detection is a distinct follow-up (#5010), not a REST-pagination gap. |
+| Endpoint response codes | — `not_applicable` | `2026-06-12` | 4973 | `internal/custom/kotlin/graphql_kotlin.go` | #4973 (split from #4924): graphql-kotlin transports every operation over a single POST /graphql that returns HTTP 200 with errors carried in the GraphQL `errors` array — there is no per-endpoint REST response-code surface. endpoint_response_codes (a REST-status concept) does not apply. |
 | Endpoint synthesis | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | class : Query/Mutation/Subscription marker-interface roots → each public member fun is a GraphQL field synthesised as a GRAPHQL endpoint /graphql/<Operation>/<field>. Value-asserted (user, users, createUser) in TestGraphQLKotlin_ResolverFields/_NameRename. File-local: cross-file root composition via SchemaGeneratorConfig not chased. |
 | Handler attribution | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | Each synthesised GraphQL field carries handler_name=<Class>.<fun> and resolver_fun, binding the field to its Kotlin resolver function even under @GraphQLName rename (field=createUser, resolver_fun=addUser). Asserted in TestGraphQLKotlin_NameRename. |
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/kotlin/graphql_kotlin.go` | GraphQL operation paths /graphql/<Operation>/<field> derived from the Query/Mutation/Subscription supertype; @GraphQLName renames the field segment, @GraphQLIgnore and private/protected/internal funs excluded. Asserted in TestGraphQLKotlin_ResolverFields/_IgnoreAndPrivate. |
@@ -26,7 +26,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+| View rendering | — `not_applicable` | — | 4973 | `internal/custom/kotlin/graphql_kotlin.go` | #4973 (split from #4924): graphql-kotlin resolvers return typed Kotlin objects serialised to a JSON GraphQL response — there is no server-side HTML/template view-rendering layer. view_rendering does not apply to a GraphQL API. |
 
 ### Auth
 

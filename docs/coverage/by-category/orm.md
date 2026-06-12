@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 167 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 1 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 15 · **JS/TS**: 19 · **kotlin**: 7 · **nim**: 1 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
+**Total**: 168 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 1 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 15 · **JS/TS**: 19 · **kotlin**: 7 · **nim**: 2 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -14,11 +14,11 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C/C++](../by-language/c-cpp.md) | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/6 | |
 | [C/C++](../by-language/c-cpp.md) | [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/10 | |
 | [C/C++](../by-language/c-cpp.md) | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/6 | |
-| [C/C++](../by-language/c-cpp.md) | [SQLite (direct C API)](../detail/lang.c-cpp.orm.sqlite-direct-c-api.md) | 🔴 0/6 | |
-| [C/C++](../by-language/c-cpp.md) | [SQLiteCpp](../detail/lang.c-cpp.orm.sqlitecpp.md) | 🔴 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [SQLite (direct C API)](../detail/lang.c-cpp.orm.sqlite-direct-c-api.md) | 🟡 1/6 | |
+| [C/C++](../by-language/c-cpp.md) | [SQLiteCpp](../detail/lang.c-cpp.orm.sqlitecpp.md) | 🟡 1/6 | |
 | [C/C++](../by-language/c-cpp.md) | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/6 | |
 | [C/C++](../by-language/c-cpp.md) | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/6 | |
-| [C/C++](../by-language/c-cpp.md) | [nanodbc (ODBC)](../detail/lang.c-cpp.orm.nanodbc.md) | 🔴 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [nanodbc (ODBC)](../detail/lang.c-cpp.orm.nanodbc.md) | 🟡 1/6 | |
 | [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/4 | |
 | [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/6 | |
 | [clojure](../by-language/clojure.md) | [DataScript](../detail/lang.clojure.driver.datascript.md) | 🔴 0/11 | |
@@ -26,7 +26,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [clojure](../by-language/clojure.md) | [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🔴 0/11 | |
 | [clojure](../by-language/clojure.md) | [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🔴 0/11 | |
 | [clojure](../by-language/clojure.md) | [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🔴 0/11 | |
-| [crystal](../by-language/crystal.md) | [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | 🟡 5/10 | |
+| [crystal](../by-language/crystal.md) | [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | 🟡 7/10 | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 2/5 | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 2/5 | |
 | [C#](../by-language/csharp.md) | [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 3/6 | |
@@ -109,7 +109,8 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [kotlin](../by-language/kotlin.md) | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟡 7/10 | |
 | [kotlin](../by-language/kotlin.md) | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟡 7/10 | |
 | [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 8/11 | |
-| [nim](../by-language/nim.md) | [Norm (Nim ORM)](../detail/lang.nim.orm.norm.md) | 🟡 4/9 | |
+| [nim](../by-language/nim.md) | [Allographer (Nim query/schema builder)](../detail/lang.nim.orm.allographer.md) | 🟡 3/6 | |
+| [nim](../by-language/nim.md) | [Norm (Nim ORM)](../detail/lang.nim.orm.norm.md) | 🟡 6/9 | |
 | [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟡 1/4 | |
 | [php](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟡 8/11 | |
 | [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟡 8/11 | |

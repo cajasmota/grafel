@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Constraint extraction | 🔴 `missing` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | Yup chained constraints (.min/.max/.required/.email) not folded into per-field chips. Shares the chain-chip follow-up. |
+| Constraint extraction | ✅ `full` | `2026-06-12` | 4976 | `internal/custom/javascript/issue4976_chain_constraints_test.go`<br>`internal/custom/javascript/validation_schema.go` | parseChainConstraints folds Yup field-chain bounds into the per-field Properties["validations"] chip list (class-validator chip format, #4858): .min/.max → MinLength/MaxLength (string) or Min/Max (numeric) with the bound, .required/.email/.uuid/.url/.matches/.integer → Required/Email/UUID/Url/Pattern/Int. Proven by TestYupChainConstraints_StampedAsChips. |
 | Custom validator extraction | 🔴 `missing` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | Yup .test() custom validators not modeled. |
 
 ### Coercion

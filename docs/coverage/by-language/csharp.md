@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # C#
 
-**Frameworks**: 16 · **Tools**: 7 · **ORMs**: 14 · **Other**: 3
+**Frameworks**: 17 · **Tools**: 7 · **ORMs**: 14 · **Other**: 5
 
 Back to [summary](../summary.md).
 
@@ -65,6 +65,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
+| [WCF](../detail/lang.csharp.framework.wcf.md) | 🔴 0/1 | ✅ 3/3 | ✅ 1/1 | 🔴 0/25 | 🟡 3/14 | |
 | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 10/10 | |
 
 
@@ -118,4 +119,6 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
 |---|---|---|---|---|
+| [MassTransit (.NET cross-process service bus)](../detail/msg.masstransit.md) | ✅ | ✅ | 🟢 | |
 | [MediatR (.NET in-process CQRS / mediator)](../detail/msg.mediatr.md) | ✅ | ✅ | ✅ | |
+| [NServiceBus / Rebus (IHandleMessages<T> convention)](../detail/msg.nservicebus.md) | ✅ | ✅ | 🟢 | |

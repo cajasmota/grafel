@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Constraint extraction | 🔴 `missing` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | Joi chained constraints (.min()/.max()/.required()/.email()) not folded into per-field constraint chips. Follow-up shares the zod chain-chip extension. |
+| Constraint extraction | ✅ `full` | `2026-06-12` | 4976 | `internal/custom/javascript/issue4976_chain_constraints_test.go`<br>`internal/custom/javascript/validation_schema.go` | parseChainConstraints folds Joi field-chain bounds into the per-field Properties["validations"] chip list (class-validator chip format, #4858): .min/.max → MinLength/MaxLength (string) or Min/Max (numeric) with the bound, .required/.email/.uuid/.uri/.pattern/.integer → Required/Email/UUID/Url/Pattern/Int; joi fields default optional unless .required(). Proven by TestJoiChainConstraints_StampedAsChips. |
 | Custom validator extraction | 🔴 `missing` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | Joi .custom()/.external() validators not modeled as entities. |
 
 ### Coercion

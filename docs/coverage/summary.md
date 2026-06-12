@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 244 · **ORMs**: 167 · **Tools**: 120 · **Other**: 196
+**Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 246 · **ORMs**: 168 · **Tools**: 120 · **Other**: 198
 
 ## Coverage by language
 
@@ -13,10 +13,10 @@
 | [go](by-language/go.md) | 21 | 8 | 17 | 5 |
 | [C/C++](by-language/c-cpp.md) | 20 | 16 | 10 | 4 |
 | [kotlin](by-language/kotlin.md) | 18 | 0 | 7 | 1 |
-| [C#](by-language/csharp.md) | 16 | 7 | 14 | 3 |
+| [C#](by-language/csharp.md) | 17 | 7 | 14 | 5 |
 | [php](by-language/php.md) | 16 | 6 | 14 | 1 |
+| [rust](by-language/rust.md) | 15 | 6 | 15 | 3 |
 | [elixir](by-language/elixir.md) | 14 | 9 | 10 | 5 |
-| [rust](by-language/rust.md) | 14 | 6 | 15 | 3 |
 | [scala](by-language/scala.md) | 14 | 3 | 7 | 1 |
 | [ruby](by-language/ruby.md) | 9 | 6 | 14 | 8 |
 | [swift](by-language/swift.md) | 5 | 1 | 0 | 1 |
@@ -27,7 +27,7 @@
 | [erlang](by-language/erlang.md) | 1 | 0 | 0 | 2 |
 | [F#](by-language/fsharp.md) | 1 | 1 | 0 | 1 |
 | [groovy](by-language/groovy.md) | 1 | 1 | 0 | 1 |
-| [nim](by-language/nim.md) | 1 | 0 | 1 | 1 |
+| [nim](by-language/nim.md) | 1 | 0 | 2 | 1 |
 | [assembly](by-language/assembly.md) | 0 | 0 | 0 | 5 |
 | [COBOL](by-language/cobol.md) | 0 | 0 | 0 | 5 |
 | [javascript](by-language/javascript.md) | 0 | 0 | 0 | 1 |
@@ -83,4 +83,4 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 244 frameworks · 120 tools · 167 ORMs · 196 other
+Total: 246 frameworks · 120 tools · 168 ORMs · 198 other

@@ -36,7 +36,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | 🟡 5/10 | |
+| [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | 🟡 7/10 | |
 
 
 ## Other

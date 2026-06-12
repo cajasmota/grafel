@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 54 records · **C/C++**: 3 · **C#**: 3 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 2
+**Total**: 56 records · **C/C++**: 3 · **C#**: 5 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 2
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -12,7 +12,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | Language | Name | Consumer extraction | Status | Notes |
 |---|---|---|---|---|
 | [C#](../by-language/csharp.md) | [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | 🟢 | 🟢 | |
-| [C#](../by-language/csharp.md) | [Quartz.NET (.NET job scheduler)](../detail/msg.quartz-net.md) | ✅ | 🟢 | |
+| [C#](../by-language/csharp.md) | [Quartz.NET (.NET job scheduler)](../detail/msg.quartz-net.md) | ✅ | ✅ | |
 | [go](../by-language/go.md) | [robfig/cron (Go scheduler)](../detail/msg.go-cron.md) | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [node-schedule (Node scheduled jobs)](../detail/msg.node-schedule.md) | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [APScheduler (Python advanced scheduler)](../detail/msg.apscheduler.md) | 🟢 | 🟢 | |
@@ -39,7 +39,9 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [C/C++](../by-language/c-cpp.md) | [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [C/C++](../by-language/c-cpp.md) | [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [C/C++](../by-language/c-cpp.md) | [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [C#](../by-language/csharp.md) | [MassTransit (.NET cross-process service bus)](../detail/msg.masstransit.md) | ✅ | ✅ | 🟢 | 🟢 | |
 | [C#](../by-language/csharp.md) | [MediatR (.NET in-process CQRS / mediator)](../detail/msg.mediatr.md) | ✅ | ✅ | ✅ | ✅ | |
+| [C#](../by-language/csharp.md) | [NServiceBus / Rebus (IHandleMessages<T> convention)](../detail/msg.nservicebus.md) | ✅ | ✅ | 🟢 | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [go](../by-language/go.md) | [Kafka — Go (Sarama / segmentio/kafka-go)](../detail/msg.broker.kafka-go.md) | 🟢 | ✅ | 🟢 | 🟢 | |
 | [go](../by-language/go.md) | [NATS — Go (nats.go / JetStream)](../detail/msg.broker.nats-go.md) | ✅ | ✅ | ✅ | ✅ | |

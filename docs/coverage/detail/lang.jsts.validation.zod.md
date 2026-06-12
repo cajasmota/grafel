@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Constraint extraction | 🔴 `missing` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | Field type is captured (z.string/z.number/...) but chained constraint bounds (.min()/.max()/.email()/.uuid()/.regex()) are NOT folded into per-field constraint chips the way python field_validations.go / jsts class-validator (#4858) do. Follow-up: extend the issue4858 'validations' chip stamping to zod chains. |
+| Constraint extraction | ✅ `full` | `2026-06-12` | 4976 | `internal/custom/javascript/issue4976_chain_constraints_test.go`<br>`internal/custom/javascript/validation_schema.go` | parseChainConstraints folds zod field-chain bounds into the per-field Properties["validations"] chip list (same format as class-validator #4858): .min/.max → MinLength/MaxLength (string/array) or Min/Max (numeric) with the scalar bound, .int/.email/.uuid/.url/.regex/.positive/.negative → Int/Email/UUID/Url/Pattern/... and .optional()/.nullish() set the field optional. Proven by TestZodChainConstraints_StampedAsChips, TestSchemaField_NoChainConstraints_NoValidationsProp. |
 | Custom validator extraction | 🔴 `missing` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | zod .refine()/.superRefine()/.transform() custom validators are not modeled as entities. |
 
 ### Coercion

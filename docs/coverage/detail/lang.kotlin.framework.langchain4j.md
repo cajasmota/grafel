@@ -28,7 +28,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Confidence overlay | 🟢 `partial` | `2026-06-12` | 3093 | `internal/links/constant_propagation.go`<br>`internal/links/taint_flow.go` | Framework-blind substrate stamps per-binding/per-finding Confidence on Kotlin entities; the langchain4j extractor does not yet stamp top-level EntityRecord.Confidence directly. Parity with Java langchain4j. |
+| Confidence overlay | ✅ `full` | `2026-06-12` | 4974 | `internal/custom/kotlin/extractors_test.go`<br>`internal/custom/kotlin/langchain4j.go`<br>`internal/types/confidence.go` | #4974 (parity with Java #3093): the langchain4j extractor now stamps a top-level EntityRecord.Confidence directly on every emitted entity (@AiService/@Tool/@SystemMessage/@UserMessage/ChatLanguageModel/ChatMemory/RAG). All entities are regex pattern matches so the stamped value is BaseConfidence(SourceRegexPattern)=0.7; the framework-blind per-binding/per-finding substrate overlay still applies on top. Proven by TestLangChain4jConfidenceStamp. |
 
 ## Provenance
 

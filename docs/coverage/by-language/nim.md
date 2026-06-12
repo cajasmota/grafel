@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # nim
 
-**Frameworks**: 1 · **Tools**: 0 · **ORMs**: 1 · **Other**: 1
+**Frameworks**: 1 · **Tools**: 0 · **ORMs**: 2 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -36,7 +36,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Norm (Nim ORM)](../detail/lang.nim.orm.norm.md) | 🟡 4/9 | |
+| [Allographer (Nim query/schema builder)](../detail/lang.nim.orm.allographer.md) | 🟡 3/6 | |
+| [Norm (Nim ORM)](../detail/lang.nim.orm.norm.md) | 🟡 6/9 | |
 
 
 ## Other

@@ -97,11 +97,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/6 | |
 | [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/10 | |
 | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/6 | |
-| [SQLite (direct C API)](../detail/lang.c-cpp.orm.sqlite-direct-c-api.md) | 🔴 0/6 | |
-| [SQLiteCpp](../detail/lang.c-cpp.orm.sqlitecpp.md) | 🔴 0/6 | |
+| [SQLite (direct C API)](../detail/lang.c-cpp.orm.sqlite-direct-c-api.md) | 🟡 1/6 | |
+| [SQLiteCpp](../detail/lang.c-cpp.orm.sqlitecpp.md) | 🟡 1/6 | |
 | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/6 | |
 | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/6 | |
-| [nanodbc (ODBC)](../detail/lang.c-cpp.orm.nanodbc.md) | 🔴 0/6 | |
+| [nanodbc (ODBC)](../detail/lang.c-cpp.orm.nanodbc.md) | 🟡 1/6 | |
 | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/4 | |
 | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/6 | |
 

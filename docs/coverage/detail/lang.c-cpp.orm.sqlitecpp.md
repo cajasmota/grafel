@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4978 | `internal/engine/rules/cpp/orms/sqlitecpp.yaml` | SQLiteCpp DETECTED via internal/engine/rules/cpp/orms/sqlitecpp.yaml (find_package(SQLiteCpp), SQLite::Database/Statement/Transaction, db.exec markers). No Go extractor emits query_attribution / model / schema entities yet — detection-only. Follow-up #4978. |
+| Query attribution | 🟢 `partial` | — | 4978 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/sqlitecpp.yaml` | Regex (custom_cpp_sqlitecpp): SQLite::Statement(db, "SQL") and db.exec("SQL") → query with classified sql_verb + sql_text + best-effort sql_table. Gated on SQLiteCpp/SQLite:: signal. String-literal SQL only; runtime-built/variable SQL is a cross-file dataflow gap (#4978). Detection still via sqlitecpp.yaml. |
 
 ### Migrations
 

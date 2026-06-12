@@ -34,4 +34,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Category | Status | Notes |
 |---|---|---|---|
 | [Erlang](../detail/lang.erlang.core.md) | [language](../by-category/language.md) | 🟢 | |
-| [Erlang/OTP behaviours](../detail/lang.erlang.runtime.otp.md) | [language](../by-category/language.md) | 🟢 | |
+| [Erlang/OTP behaviours](../detail/lang.erlang.runtime.otp.md) | [language](../by-category/language.md) | ✅ | |

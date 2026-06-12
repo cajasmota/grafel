@@ -37,7 +37,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 4/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/11 | |
 | [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 4/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/11 | |
 | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 12/24 | 🟡 3/12 | |
-| [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 13/24 | 🟡 4/12 | |
+| [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 13/24 | 🟡 5/12 | |
 
 
 ### Meta Framework

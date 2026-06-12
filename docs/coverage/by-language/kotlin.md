@@ -35,7 +35,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 13/18 | |
 | [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | ✅ 2/2 | — | 🟡 1/4 | 🔴 0/1 | 🟡 13/24 | 🔴 0/15 | |
 | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 8/18 | |
-| [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 14/24 | 🟡 2/19 | |
+| [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 14/24 | 🟡 2/18 | |
 | [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/9 | |
 | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟡 1/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/6 | |
 | [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | — | — | 🔴 0/4 | 🔴 0/1 | 🟡 12/23 | 🟡 1/15 | |

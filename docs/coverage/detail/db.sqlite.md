@@ -22,8 +22,8 @@ one is a separate detail page.
 
 | Record | Language | Kind | Status |
 |--------|----------|------|--------|
-| [`lang.c-cpp.orm.sqlite-direct-c-api`](./lang.c-cpp.orm.sqlite-direct-c-api.md) | C/C++ | orm | 6 missing, 5 n/a |
-| [`lang.c-cpp.orm.sqlitecpp`](./lang.c-cpp.orm.sqlitecpp.md) | C/C++ | orm | 6 missing, 5 n/a |
+| [`lang.c-cpp.orm.sqlite-direct-c-api`](./lang.c-cpp.orm.sqlite-direct-c-api.md) | C/C++ | orm | 1 partial, 5 missing, 5 n/a |
+| [`lang.c-cpp.orm.sqlitecpp`](./lang.c-cpp.orm.sqlitecpp.md) | C/C++ | orm | 1 partial, 5 missing, 5 n/a |
 | [`lang.csharp.driver.sqlite`](./lang.csharp.driver.sqlite.md) | C# | driver | 4 missing, 7 n/a |
 | [`lang.elixir.orm.ecto-sqlite3`](./lang.elixir.orm.ecto-sqlite3.md) | elixir | orm | 6 full, 1 partial, 3 missing, 1 n/a |
 | [`lang.go.driver.sqlite`](./lang.go.driver.sqlite.md) | go | driver | 1 full, 3 partial, 3 missing, 4 n/a |

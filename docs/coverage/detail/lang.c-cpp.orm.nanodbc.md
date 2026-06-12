@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4978 | `internal/engine/rules/cpp/orms/nanodbc.yaml` | nanodbc (ODBC) DETECTED via internal/engine/rules/cpp/orms/nanodbc.yaml (find_package(nanodbc), nanodbc::connection/result/statement/execute markers). No Go extractor emits query_attribution / model / schema entities yet — detection-only. Follow-up #4978. |
+| Query attribution | 🟢 `partial` | — | 4978 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/nanodbc.yaml` | Regex (custom_cpp_nanodbc): nanodbc::execute/prepare(conn, "SQL"), nanodbc::statement(conn, "SQL"), conn.execute("SQL") → query with classified sql_verb + sql_text + best-effort sql_table. String-literal SQL only; runtime-built/variable SQL is a cross-file dataflow gap (#4978). Detection still via nanodbc.yaml. |
 
 ### Migrations
 

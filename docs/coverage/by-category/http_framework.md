@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 244 records · **C/C++**: 20 · **clojure**: 4 · **crystal**: 1 · **C#**: 16 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 1 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 14 · **scala**: 14 · **swift**: 5
+**Total**: 246 records · **C/C++**: 20 · **clojure**: 4 · **crystal**: 1 · **C#**: 17 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 1 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 15 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -50,7 +50,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [elixir](../by-language/elixir.md) | [Phoenix](../detail/lang.elixir.framework.phoenix.md) | 🟡 4/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/11 | |
 | [elixir](../by-language/elixir.md) | [Plug](../detail/lang.elixir.framework.plug.md) | 🟡 4/6 | ✅ 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 7/11 | |
 | [elixir](../by-language/elixir.md) | [Req](../detail/lang.elixir.framework.req.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 12/24 | 🟡 3/12 | |
-| [elixir](../by-language/elixir.md) | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 13/24 | 🟡 4/12 | |
+| [elixir](../by-language/elixir.md) | [Tesla](../detail/lang.elixir.framework.tesla.md) | 🟡 1/6 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🟡 13/24 | 🟡 5/12 | |
 | [erlang](../by-language/erlang.md) | [Cowboy](../detail/lang.erlang.framework.cowboy.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/24 | 🔴 0/13 | |
 | [F#](../by-language/fsharp.md) | [Giraffe / Saturn (F# HTTP)](../detail/lang.fsharp.framework.giraffe.md) | 🟡 3/6 | 🔴 0/1 | 🟢 4/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 | [go](../by-language/go.md) | [Beego](../detail/lang.go.framework.beego.md) | 🟡 3/6 | 🟢 1/1 | 🟢 3/3 | 🟢 1/1 | 🟢 24/24 | 🟡 7/12 | |
@@ -135,11 +135,11 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [ruby](../by-language/ruby.md) | [Sinatra](../detail/lang.ruby.framework.sinatra.md) | 🟡 4/6 | 🟢 1/1 | — | 🟢 1/1 | 🟢 25/25 | 🟡 8/12 | |
 | [ruby](../by-language/ruby.md) | [dry-rb (ecosystem)](../detail/lang.ruby.framework.dry-rb.md) | 🟡 2/5 | — | 🟢 1/1 | 🟢 1/1 | 🟡 24/25 | 🟡 6/10 | |
 | [ruby](../by-language/ruby.md) | [graphql-ruby (GraphQL)](../detail/lang.ruby.framework.graphql-ruby.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 21/24 | 🟡 2/13 | |
-| [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/12 | |
-| [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/12 | |
+| [rust](../by-language/rust.md) | [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 11/12 | |
+| [rust](../by-language/rust.md) | [Axum](../detail/lang.rust.framework.axum.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 11/12 | |
 | [rust](../by-language/rust.md) | [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [Poem](../detail/lang.rust.framework.poem.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
-| [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 7/12 | |
+| [rust](../by-language/rust.md) | [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [Tide](../detail/lang.rust.framework.tide.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟢 4/4 | 🔴 0/1 | 🟡 8/24 | 🟡 4/12 | |
@@ -147,6 +147,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [rust](../by-language/rust.md) | [Warp](../detail/lang.rust.framework.warp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [rust](../by-language/rust.md) | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 9/24 | 🟡 6/13 | |
 | [rust](../by-language/rust.md) | [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
+| [rust](../by-language/rust.md) | [juniper](../detail/lang.rust.framework.juniper.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 1/24 | 🟡 1/13 | |
 | [rust](../by-language/rust.md) | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 8/24 | 🟡 4/12 | |
 | [swift](../by-language/swift.md) | [Vapor](../detail/lang.swift.framework.vapor.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/25 | 🟡 6/12 | |
 
@@ -180,7 +181,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [kotlin](../by-language/kotlin.md) | [Quarkus (Kotlin)](../detail/lang.kotlin.framework.quarkus.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 13/18 | |
 | [kotlin](../by-language/kotlin.md) | [Retrofit (HTTP client)](../detail/lang.kotlin.framework.retrofit.md) | ✅ 2/2 | — | 🟡 1/4 | 🔴 0/1 | 🟡 13/24 | 🔴 0/15 | |
 | [kotlin](../by-language/kotlin.md) | [Spring Boot (Kotlin)](../detail/lang.kotlin.framework.spring-boot.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 8/18 | |
-| [kotlin](../by-language/kotlin.md) | [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | 🟡 3/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 14/24 | 🟡 2/19 | |
+| [kotlin](../by-language/kotlin.md) | [graphql-kotlin](../detail/lang.kotlin.framework.graphql-kotlin.md) | ✅ 3/3 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 14/24 | 🟡 2/18 | |
 | [kotlin](../by-language/kotlin.md) | [http4k](../detail/lang.kotlin.framework.http4k.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/9 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.coroutines (structured concurrency)](../detail/lang.kotlin.framework.coroutines.md) | 🟡 1/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/6 | |
 | [kotlin](../by-language/kotlin.md) | [kotlinx.serialization (Kotlin DTO/serialization)](../detail/lang.kotlin.framework.kotlinx-serialization.md) | — | — | 🔴 0/4 | 🔴 0/1 | 🟡 12/23 | 🟡 1/15 | |
@@ -276,6 +277,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 |---|---|---|---|---|---|---|---|---|
 | [C/C++](../by-language/c-cpp.md) | [Protocol Buffers (C++)](../detail/lang.c-cpp.framework.protobuf.md) | 🔴 0/6 | 🔴 0/1 | ✅ 3/3 | 🔴 0/1 | 🟡 8/25 | 🟡 3/15 | |
 | [C/C++](../by-language/c-cpp.md) | [gRPC C++ (grpc++)](../detail/lang.c-cpp.framework.grpc.md) | — | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 8/24 | 🟡 7/10 | |
+| [C#](../by-language/csharp.md) | [WCF](../detail/lang.csharp.framework.wcf.md) | — | 🔴 0/1 | ✅ 3/3 | ✅ 1/1 | 🔴 0/25 | 🟡 3/14 | |
 | [C#](../by-language/csharp.md) | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | — | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 10/10 | |
 | [elixir](../by-language/elixir.md) | [elixir-grpc](../detail/lang.elixir.framework.grpc.md) | — | 🟢 1/1 | 🟢 4/4 | ✅ 1/1 | 🟡 13/24 | 🟡 6/10 | |
 | [go](../by-language/go.md) | [gRPC-Go (google.golang.org/grpc)](../detail/lang.go.framework.grpc.md) | — | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/25 | 🟡 3/10 | |
