@@ -59,10 +59,15 @@ const edgeTypes: EdgeTypes = { [IAC_EDGE_TYPE]: IaCEdge };
 const LEGEND_CATEGORIES = [
   "compute",
   "datastore",
+  "storage",
   "queue",
+  "topic",
   "function",
   "network",
+  "security",
+  "observability",
   "secret",
+  "cache",
   "other",
 ];
 
