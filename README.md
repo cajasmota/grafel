@@ -132,7 +132,6 @@ Each extractor emits language-specific edges (HTTP endpoints, ORM queries, dynam
 Preview (v0.x). Approaching v1.0. APIs, MCP tool names, and graph schema may change between minor versions. macOS is the primary supported platform; Linux is tested; Windows works via MinGW build.
 
 See [CHANGELOG.md](CHANGELOG.md) for breaking changes.
-See [docs/migration/v1.md](docs/migration/v1.md) for the v1 migration runbook.
 Track the v1.0 milestone: https://github.com/cajasmota/archigraph/milestone/1
 
 ### v1.0 ship-gate

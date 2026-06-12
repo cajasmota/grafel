@@ -57,4 +57,4 @@ even if they would otherwise pass the allowlist gate.
   `bare_name_allowlisted_no_match`) make resolver behaviour auditable
   in tests.
 - Runtime tuning is not supported in v1; allowlist edits require a
-  binary rebuild (see "limitations" in [`docs/migration/v1.md`](../migration/v1.md)).
+  binary rebuild.

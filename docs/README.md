@@ -44,7 +44,6 @@ Reference documentation for archigraph. The [README.md](../README.md) at the rep
 
 | Doc | Contents |
 |-----|----------|
-| [../internal/mcp/SCHEMA.md](../internal/mcp/SCHEMA.md) | Full MCP tool schema — canonical source of truth for all 29 tools |
+| [../internal/mcp/SCHEMA.md](../internal/mcp/SCHEMA.md) | Full MCP tool schema — canonical source of truth for inputs/outputs |
 | [adrs/README.md](adrs/README.md) | Architectural decision records index (ADR-0001 through ADR-0020) |
-| [migration/v1.md](migration/v1.md) | v0.x to v1.0 migration runbook |
 | [RELEASING.md](RELEASING.md) | Release process (maintainer reference) |

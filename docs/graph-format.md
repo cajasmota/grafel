@@ -26,7 +26,7 @@ archigraph release version and of the MCP `wire_version` string.
 |----------|--------|
 | Additive field appended at the end of a table | No bump required — FlatBuffers default-fills missing fields on old readers. |
 | Existing field semantics change, or a field is removed / reordered | Bump `version` by 1. |
-| Breaking change incompatible with old readers | Bump `version` and add a migration path in `docs/migration/`. |
+| Breaking change incompatible with old readers | Bump `version` and document the migration path in [CHANGELOG.md](../CHANGELOG.md). |
 
 ### Reader behaviour
 

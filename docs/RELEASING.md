@@ -21,7 +21,7 @@ v1.0 ships when all of the following are true:
    binaries each pass the full integration test suite in CI.
 3. **MCP API stable for 3+ minor releases** — no tool renames, param renames,
    or response-shape changes across the most recent three MINOR versions.
-4. **Documented migration path** — `docs/migration/v1.md` covers every
+4. **Documented migration path** — [CHANGELOG.md](../CHANGELOG.md) covers every
    breaking change since v0.1.0 with before/after examples.
 
 Until v1.0, the "This is a pre-release" checkbox on every GitHub Release
