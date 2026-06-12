@@ -451,9 +451,11 @@ func (s *Server) registerTools() {
 	), s.wrap("archigraph_whoami", s.handleWhoami))
 
 	s.MCP.AddTool(mcpapi.NewTool("archigraph_get_source",
-		mcpapi.WithDescription("Source for a node (id/qname/label). Opt-in: start_line/end_line/max_lines."),
+		mcpapi.WithDescription("Source for a node (id/qname/label). from_line+to_line: exact range, no cap."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(8)), // #2828: was 20
+		mcpapi.WithNumber("from_line"),                              // #4891: explicit window start (1-based, inclusive)
+		mcpapi.WithNumber("to_line"),                                // #4891: explicit window end (1-based, inclusive)
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("archigraph_get_source", s.handleGetNodeSource))

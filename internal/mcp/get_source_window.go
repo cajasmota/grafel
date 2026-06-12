@@ -63,6 +63,18 @@ type sourceWindowOpts struct {
 	startLine    int // explicit window start; 0 = derive from entity
 	endLine      int // explicit window end; 0 = derive from entity
 	maxLines     int // head cap on emitted lines; 0 = use hard ceiling only
+
+	// explicitWindow is true when the caller passed BOTH bounds of an explicit
+	// line range (from_line/to_line, or the legacy start_line/end_line). #4891:
+	// an explicit window bypasses the symbol-anchored 200-line hard cap — the
+	// caller has named exact bounds and owns the token budget, so distal method
+	// internals (e.g. lines 200-240 of a long function whose entity span starts
+	// at line 5) are readable without a grep fallback. The clamp to the file's
+	// actual line count still applies in readSourceWindow. A one-sided range
+	// (only from_line or only to_line) is NOT a full explicit window: it still
+	// derives the missing bound from the entity span and keeps the hard cap so a
+	// `from_line`-only call can't accidentally request a whole-file dump.
+	explicitWindow bool
 }
 
 // computeSourceSpan resolves the line window to emit for entity e under opts,
@@ -118,9 +130,16 @@ func computeSourceSpan(e *graph.Entity, opts sourceWindowOpts) sourceSpan {
 	// caller how to request the remainder.
 	fullEnd := end
 
-	// Effective per-call line cap: the smaller of the hard ceiling and a
-	// caller-supplied max_lines (when positive).
+	// #4891 — a fully-explicit from/to window bypasses the symbol-anchored hard
+	// cap. The caller has named both bounds and owns the token budget, so we
+	// honour the range verbatim (the clamp to the file's real line count still
+	// happens in readSourceWindow). max_lines, when also passed, still heads the
+	// emitted count even on an explicit window so a caller can opt back into a
+	// cap. Without an explicit window, the hard ceiling applies as before.
 	cap := getSourceHardMaxLines
+	if opts.explicitWindow {
+		cap = end - start + 1 // honour the named range; no symbol-anchored ceiling
+	}
 	if opts.maxLines > 0 && opts.maxLines < cap {
 		cap = opts.maxLines
 	}
@@ -143,19 +162,36 @@ func (sp sourceSpan) truncationMarker(entityID string) string {
 	nextStart := sp.end + 1
 	return fmt.Sprintf(
 		"\n# archigraph: truncated — emitted lines %d-%d of %d-%d. "+
-			"Request the rest with get_source(entity_id=%q, start_line=%d, end_line=%d).\n",
+			"Request the rest with get_source(entity_id=%q, from_line=%d, to_line=%d).\n",
 		sp.start, sp.end, sp.start, sp.fullEnd, entityID, nextStart, sp.fullEnd,
 	)
 }
 
-// readSourceWindowOpts reads the #2828 opt-in slicing controls off the request
-// map. They are intentionally undeclared in the tool schema per the #1639
-// token-ceiling pattern (allow-listed in schema_contract_ast_test.go).
+// readSourceWindowOpts reads the opt-in slicing controls off the request map.
+//
+// #4891: from_line/to_line are the canonical, schema-declared (discoverable in
+// the handshake) names for an explicit line window. start_line/end_line remain
+// accepted as legacy aliases (undeclared, allow-listed in
+// schema_contract_ast_test.go) so existing callers and the #2828 truncation
+// hint keep working. max_lines is the #2828 head cap, also an undeclared opt-in.
+//
+// When BOTH bounds of the window are supplied (via either naming), the window is
+// "explicit" and bypasses the symbol-anchored hard cap (see computeSourceSpan).
 func readSourceWindowOpts(req mcpapi.CallToolRequest, contextLines int) sourceWindowOpts {
+	// from_line/to_line take precedence; fall back to the legacy aliases.
+	start := argInt(req, "from_line", 0)
+	if start == 0 {
+		start = argInt(req, "start_line", 0)
+	}
+	end := argInt(req, "to_line", 0)
+	if end == 0 {
+		end = argInt(req, "end_line", 0)
+	}
 	return sourceWindowOpts{
-		contextLines: contextLines,
-		startLine:    argInt(req, "start_line", 0),
-		endLine:      argInt(req, "end_line", 0),
-		maxLines:     argInt(req, "max_lines", 0),
+		contextLines:   contextLines,
+		startLine:      start,
+		endLine:        end,
+		maxLines:       argInt(req, "max_lines", 0),
+		explicitWindow: start > 0 && end > 0,
 	}
 }

@@ -111,12 +111,14 @@ var intentionalGaps = []intentionalGap{
 
 	// archigraph_get_source: legacy alias node_id — deprecated, intentionally undeclared.
 	{"archigraph_get_source", "node_id", "deprecated alias for entity_id, intentionally undeclared"},
-	// archigraph_get_source: #2828 opt-in precise-slicing controls — read off the
-	// request map per the #1639 token-ceiling pattern (declaring them would bloat
-	// the handshake). start_line/end_line take an explicit range; max_lines heads
-	// the emitted line count. All optional; absence = legacy entity-span behaviour.
-	{"archigraph_get_source", "start_line", "#2828 / #1639 token-ceiling: opt-in explicit line range, undeclared"},
-	{"archigraph_get_source", "end_line", "#2828 / #1639 token-ceiling: opt-in explicit line range, undeclared"},
+	// archigraph_get_source: #2828 opt-in precise-slicing controls. The canonical
+	// explicit-window params from_line/to_line ARE declared in the schema (#4891 —
+	// discoverable in the handshake so callers reach for the window instead of a
+	// grep fallback). start_line/end_line remain accepted as legacy aliases and
+	// max_lines is the #2828 head cap; all three stay undeclared per the #1639
+	// token-ceiling pattern. All optional; absence = legacy entity-span behaviour.
+	{"archigraph_get_source", "start_line", "#2828 / #1639 token-ceiling: legacy alias of from_line, undeclared"},
+	{"archigraph_get_source", "end_line", "#2828 / #1639 token-ceiling: legacy alias of to_line, undeclared"},
 	{"archigraph_get_source", "max_lines", "#2828 / #1639 token-ceiling: opt-in head cap, undeclared"},
 
 	// archigraph_patterns: action-specific args for sub-actions (query, record, get,
