@@ -84,6 +84,20 @@ var (
 	// Group 1: target paragraph/section name.
 	performRe = regexp.MustCompile(`(?i)\bPERFORM\s+([A-Za-z0-9][A-Za-z0-9-]*)`)
 
+	// performThruRe matches `PERFORM <a> THRU <b>` / `PERFORM <a> THROUGH <b>`
+	// out-of-line range execution (#4946). Group 1: range-start paragraph;
+	// group 2: range-end paragraph. The range end is an additional control
+	// target — the PERFORM transfers through every paragraph from <a> to <b>,
+	// so we model both endpoints as CALLS edges (start via=PERFORM by the
+	// general performRe above, end via=PERFORM-THRU here).
+	performThruRe = regexp.MustCompile(`(?i)\bPERFORM\s+([A-Za-z0-9][A-Za-z0-9-]*)\s+(?:THRU|THROUGH)\s+([A-Za-z0-9][A-Za-z0-9-]*)`)
+
+	// goToTargetsRe captures the whole target list of a GO TO statement up to
+	// the terminating period / DEPENDING clause, so `GO TO A B C DEPENDING ON X`
+	// yields each of A, B, C as a branch target.
+	goToTargetsRe   = regexp.MustCompile(`(?i)\bGO\s*TO\s+([A-Za-z][A-Za-z0-9- ]*?)(?:\s+DEPENDING\b|\.|$)`)
+	cobolIdentRe    = regexp.MustCompile(`[A-Za-z][A-Za-z0-9-]*`)
+
 	// callRe matches `CALL '<program>'` / `CALL "<program>"` dynamic calls.
 	// Group 1: literal program name (without quotes).
 	callLiteralRe = regexp.MustCompile(`(?i)\bCALL\s+['"]([A-Za-z0-9$#@][A-Za-z0-9$#@_-]*)['"]`)
@@ -635,6 +649,48 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					},
 				}
 				attachCall(entities, currentParagraphIdx, programIdx, rel)
+			}
+
+			// PERFORM <a> THRU <b> → CALLS to the range-end paragraph (#4946).
+			// The start paragraph is already emitted by performRe above; the
+			// THRU/THROUGH end is the additional control target the PERFORM
+			// reaches by falling through the paragraph range.
+			for _, tm := range performThruRe.FindAllStringSubmatch(ln.code, -1) {
+				rangeEnd := tm[2]
+				if performInlineKeywords[strings.ToUpper(rangeEnd)] {
+					continue
+				}
+				rel := types.RelationshipRecord{
+					ToID: rangeEnd,
+					Kind: "CALLS",
+					Properties: map[string]string{
+						"line":        strconv.Itoa(ln.num),
+						"via":         "PERFORM-THRU",
+						"range_start": tm[1],
+					},
+				}
+				attachCall(entities, currentParagraphIdx, programIdx, rel)
+			}
+
+			// GO TO <para> [<para>...] [DEPENDING ON x] → CALLS (intra-program
+			// unconditional / conditional branch, #4946). Each target paragraph
+			// in the list becomes a control-flow edge tagged via=GO-TO.
+			for _, gm := range goToTargetsRe.FindAllStringSubmatch(ln.code, -1) {
+				for _, target := range cobolIdentRe.FindAllString(gm[1], -1) {
+					up := strings.ToUpper(target)
+					if cobolReservedHeads[up] || performInlineKeywords[up] {
+						continue
+					}
+					rel := types.RelationshipRecord{
+						ToID: target,
+						Kind: "CALLS",
+						Properties: map[string]string{
+							"line": strconv.Itoa(ln.num),
+							"via":  "GO-TO",
+						},
+					}
+					attachCall(entities, currentParagraphIdx, programIdx, rel)
+				}
 			}
 
 			// CALL '<program>' → CALLS (external, inter-program).

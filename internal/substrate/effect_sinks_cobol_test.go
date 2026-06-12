@@ -74,6 +74,52 @@ func TestSniffEffectsCobol_Mutation(t *testing.T) {
 	}
 }
 
+// TestSniffEffectsCobol_MutationExpanded proves the expanded mutation verb set
+// (#4946): arithmetic GIVING, STRING/UNSTRING INTO, INITIALIZE, and INSPECT
+// REPLACING each register a mutation effect on their paragraph.
+func TestSniffEffectsCobol_MutationExpanded(t *testing.T) {
+	cases := map[string]string{
+		"ADD-GIVING": `       PROCEDURE DIVISION.
+       ADD-GIVING.
+           ADD WS-A TO WS-B GIVING WS-TOTAL.
+`,
+		"SUB-GIVING": `       PROCEDURE DIVISION.
+       SUB-GIVING.
+           SUBTRACT WS-A FROM WS-B GIVING WS-NET.
+`,
+		"MUL-GIVING": `       PROCEDURE DIVISION.
+       MUL-GIVING.
+           MULTIPLY WS-A BY WS-B GIVING WS-PROD.
+`,
+		"DIV-GIVING": `       PROCEDURE DIVISION.
+       DIV-GIVING.
+           DIVIDE WS-A INTO WS-B GIVING WS-Q.
+`,
+		"STRING-INTO": `       PROCEDURE DIVISION.
+       STRING-INTO.
+           STRING WS-A WS-B DELIMITED BY SIZE INTO WS-OUT.
+`,
+		"UNSTRING-INTO": `       PROCEDURE DIVISION.
+       UNSTRING-INTO.
+           UNSTRING WS-IN DELIMITED BY ',' INTO WS-A WS-B.
+`,
+		"INIT": `       PROCEDURE DIVISION.
+       INIT.
+           INITIALIZE WS-RECORD.
+`,
+		"INSPECT-REPL": `       PROCEDURE DIVISION.
+       INSPECT-REPL.
+           INSPECT WS-TEXT REPLACING ALL ' ' BY '-'.
+`,
+	}
+	for fn, src := range cases {
+		got := cobolEffectsByFn(src)
+		if !got[fn][EffectMutation] {
+			t.Errorf("%s expected mutation effect, got %v", fn, got[fn])
+		}
+	}
+}
+
 // TestSniffEffectsCobol_CICSFileIO proves EXEC CICS file/queue I/O
 // (READ/READQ → fs_read, WRITE/WRITEQ/REWRITE → fs_write) is surfaced as
 // filesystem effects, deepening CICS beyond the http_out flag (#2838).

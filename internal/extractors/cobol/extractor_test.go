@@ -166,6 +166,91 @@ func TestExtractor_PerformIsIntraCall(t *testing.T) {
 	}
 }
 
+// relByViaTo returns the first CALLS edge to target whose via property equals
+// via, or false.
+func relByViaTo(recs []types.EntityRecord, target, via string) (types.RelationshipRecord, bool) {
+	for _, rel := range relationsByKind(recs, "CALLS") {
+		if rel.ToID == target && rel.Properties["via"] == via {
+			return rel, true
+		}
+	}
+	return types.RelationshipRecord{}, false
+}
+
+// TestExtractor_PerformThruRange proves PERFORM <a> THRU <b> emits CALLS edges
+// to both range endpoints (#4946): the start via=PERFORM and the end
+// via=PERFORM-THRU carrying range_start.
+func TestExtractor_PerformThruRange(t *testing.T) {
+	src := "" +
+		"       IDENTIFICATION DIVISION.\n" +
+		"       PROGRAM-ID. RANGER.\n" +
+		"       PROCEDURE DIVISION.\n" +
+		"       MAIN-PARA.\n" +
+		"           PERFORM STEP-A THRU STEP-C.\n" +
+		"           PERFORM STEP-D THROUGH STEP-E.\n" +
+		"           GOBACK.\n" +
+		"       STEP-A.\n" +
+		"           CONTINUE.\n" +
+		"       STEP-C.\n" +
+		"           CONTINUE.\n" +
+		"       STEP-D.\n" +
+		"           CONTINUE.\n" +
+		"       STEP-E.\n" +
+		"           CONTINUE.\n"
+	recs := run(t, "ranger.cbl", src)
+
+	// Start endpoints emitted via=PERFORM.
+	if _, ok := relByViaTo(recs, "STEP-A", "PERFORM"); !ok {
+		t.Error("expected PERFORM edge to range-start STEP-A")
+	}
+	// THRU end emitted via=PERFORM-THRU with range_start.
+	end, ok := relByViaTo(recs, "STEP-C", "PERFORM-THRU")
+	if !ok {
+		t.Fatal("expected PERFORM-THRU edge to range-end STEP-C")
+	}
+	if end.Properties["range_start"] != "STEP-A" {
+		t.Errorf("PERFORM-THRU edge to STEP-C missing range_start=STEP-A: %v", end.Properties)
+	}
+	// THROUGH spelling also works.
+	if _, ok := relByViaTo(recs, "STEP-E", "PERFORM-THRU"); !ok {
+		t.Error("expected PERFORM-THRU edge for THROUGH spelling to STEP-E")
+	}
+}
+
+// TestExtractor_GoToControlFlow proves GO TO emits intra-program CALLS edges
+// tagged via=GO-TO, including the DEPENDING ON multi-target form (#4946).
+func TestExtractor_GoToControlFlow(t *testing.T) {
+	src := "" +
+		"       IDENTIFICATION DIVISION.\n" +
+		"       PROGRAM-ID. BRANCHER.\n" +
+		"       PROCEDURE DIVISION.\n" +
+		"       MAIN-PARA.\n" +
+		"           GO TO EXIT-PARA.\n" +
+		"       DISPATCH-PARA.\n" +
+		"           GO TO OPT-ONE OPT-TWO OPT-THREE DEPENDING ON WS-IDX.\n" +
+		"       EXIT-PARA.\n" +
+		"           GOBACK.\n" +
+		"       OPT-ONE.\n" +
+		"           CONTINUE.\n" +
+		"       OPT-TWO.\n" +
+		"           CONTINUE.\n" +
+		"       OPT-THREE.\n" +
+		"           CONTINUE.\n"
+	recs := run(t, "brancher.cbl", src)
+
+	for _, target := range []string{"EXIT-PARA", "OPT-ONE", "OPT-TWO", "OPT-THREE"} {
+		if _, ok := relByViaTo(recs, target, "GO-TO"); !ok {
+			t.Errorf("expected GO-TO CALLS edge to %q", target)
+		}
+	}
+	// DEPENDING / ON must not become spurious targets.
+	for _, notTarget := range []string{"DEPENDING", "ON", "WS-IDX"} {
+		if _, ok := relByViaTo(recs, notTarget, "GO-TO"); ok {
+			t.Errorf("GO TO produced a spurious GO-TO edge to %q", notTarget)
+		}
+	}
+}
+
 func TestExtractor_CallIsExternal(t *testing.T) {
 	src := loadFixture(t, "payroll.cbl")
 	recs := run(t, "payroll.cbl", src)
