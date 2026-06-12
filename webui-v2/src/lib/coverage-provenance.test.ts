@@ -10,6 +10,7 @@
 import { describe, it, expect } from "vitest";
 import {
   resolveCoverageProvenance,
+  coverageStateFromReport,
   COVERAGE_DEFINITIONS,
   COVERAGE_MCP_TOOL,
   type CoverageSourceState,
@@ -130,5 +131,60 @@ describe("self-documenting definitions", () => {
       expect(d.title.length).toBeGreaterThan(0);
       expect(d.body.length).toBeGreaterThan(0);
     }
+  });
+});
+
+describe("coverageStateFromReport — #5066 endpoint wiring", () => {
+  it("renders the INGESTED LINE COVERAGE state when the API reports line_coverage", () => {
+    // What the /quality/coverage endpoint now returns once a report is ingested.
+    const apiLineCoverage = {
+      source: "lcov",
+      covered_lines: 734,
+      total_lines: 1000,
+      coverage_pct: 73.4,
+      measured_at: "2026-06-12T10:00:00Z",
+      entities: 42,
+    };
+    const state = coverageStateFromReport(apiLineCoverage);
+    // The banner upgrades automatically off this state.
+    const p = resolveCoverageProvenance(state);
+    expect(p.kind).toBe("line");
+    expect(p.label).toBe("Line coverage");
+    expect(p.method).toContain("ingested from LCOV");
+    expect(p.method).toContain("measured 2026-06-12T10:00:00Z");
+    expect(p.freshness?.measuredAt).toBe("2026-06-12T10:00:00Z");
+    // Ingestion is active ⇒ no "how to enable" nag.
+    expect(p.howToEnable).toBeNull();
+    // And we carry the real line numbers through for the % display.
+    expect(state.line?.pct).toBe(73.4);
+    expect(state.line?.coveredLines).toBe(734);
+    expect(state.reportIngestionConfigured).toBe(true);
+  });
+
+  it("flags the line measurement STALE when it predates the latest index", () => {
+    const state = coverageStateFromReport(
+      {
+        source: "lcov",
+        covered_lines: 1,
+        total_lines: 2,
+        coverage_pct: 50,
+        measured_at: "2026-06-10T00:00:00Z",
+        entities: 1,
+      },
+      "2026-06-12T00:00:00Z", // index newer than measurement
+    );
+    const p = resolveCoverageProvenance(state);
+    expect(p.kind).toBe("line");
+    expect(p.freshness?.stale).toBe(true);
+  });
+
+  it("DEGRADES to reachability when no line_coverage is present", () => {
+    const state = coverageStateFromReport(undefined);
+    expect(state.line).toBeUndefined();
+    expect(state.reachabilityAvailable).toBe(true);
+    const p = resolveCoverageProvenance(state);
+    expect(p.kind).toBe("reachability");
+    // Not yet configured ⇒ surfaces the how-to-enable affordance.
+    expect(p.howToEnable).not.toBeNull();
   });
 });

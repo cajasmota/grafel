@@ -69,6 +69,7 @@ import {
 } from "@/components/ui";
 import type { InsightValue } from "@/components/ui";
 import type { CoverageSourceState } from "@/lib/coverage-provenance";
+import { coverageStateFromReport } from "@/lib/coverage-provenance";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { useSourcePeek } from "@/components/SourcePeek";
@@ -839,20 +840,36 @@ function CoverageTab({ groupId }: { groupId: string }) {
     </div>
   );
 
-  // Coverage provenance (#5038). The dashboard's headline `coverage_pct` is
-  // graph-derived REACH coverage (static test-reachability), not a measured
-  // line %. Ingested line coverage (#5036) and ingestion-config state are not
-  // yet wired into this endpoint, so we report reachability and let the banner
-  // surface the "how to enable" affordance. When the data layer later exposes
-  // stamped line-coverage props + ingestion config, populate `line` /
-  // `reportIngestionConfigured` here and the banner upgrades automatically.
-  const coverageProvenance: CoverageSourceState = {
-    reachabilityAvailable: true,
-  };
+  // Coverage provenance (#5066, wires #5038). The dashboard's headline
+  // `coverage_pct` is graph-derived REACH coverage (static test-reachability),
+  // not a measured line %. When a coverage report was ingested (#5036) the
+  // endpoint now carries `line_coverage` — its presence is the authoritative
+  // "report ingestion ran" signal, so we populate `line` (authoritative % +
+  // measured-at) and mark ingestion configured, and the banner upgrades to the
+  // line-coverage state automatically. Otherwise we report reachability and the
+  // banner surfaces the "how to enable" affordance.
+  const lineCov = data.line_coverage;
+  const coverageProvenance: CoverageSourceState =
+    coverageStateFromReport(lineCov);
 
   return (
     <div className="space-y-4">
       <CoverageProvenanceBanner state={coverageProvenance} />
+      {lineCov && (
+        // Real ingested line coverage (#5066) — the authoritative executed
+        // line %, shown distinctly from the reach-coverage gauge below so the
+        // two numbers are never conflated.
+        <div className="flex flex-wrap items-center gap-2 text-sm">
+          <Badge tone="success">
+            Line coverage {lineCov.coverage_pct.toFixed(1)}%
+          </Badge>
+          <span className="text-text-4 tabular-nums">
+            {lineCov.covered_lines.toLocaleString()} /{" "}
+            {lineCov.total_lines.toLocaleString()} lines (
+            {lineCov.source.toUpperCase()})
+          </span>
+        </div>
+      )}
       <CoverageGauge
         covered={data.covered_production}
         total={data.total_production}

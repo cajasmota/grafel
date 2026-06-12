@@ -25,6 +25,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cajasmota/archigraph/internal/coverage"
 	"github.com/cajasmota/archigraph/internal/graph"
 )
 
@@ -62,6 +63,123 @@ type GroupCoverageReport struct {
 	// coverage tree: directory → file → entity. Severity sorted (high first)
 	// and capped per file (PerFileUncoveredCap) with a per-file overflow count.
 	ByFileUncovered map[string]FileUncovered `json:"by_file_uncovered,omitempty"`
+
+	// LineCoverage (#5066) surfaces the REAL ingested line coverage (#5036)
+	// when a coverage report (LCOV/Cobertura/JaCoCo) was ingested and stamped
+	// onto entities at index time (#5061). It is distinct from CoveragePct,
+	// which is graph-derived reach coverage (static test-reachability), not a
+	// measured line %. Nil when no entity in the group carries the stamped
+	// `coverage_source` prop — the common case until a report is ingested — so
+	// the provenance banner degrades cleanly to reachability/capability.
+	LineCoverage *LineCoverageSummary `json:"line_coverage,omitempty"`
+}
+
+// LineCoverageSummary is the group-level roll-up of the per-entity ingested
+// line-coverage props (#5036) stamped at index time (#5061). It is the
+// authoritative, executed line % — never conflated with reach coverage.
+//
+// Presence of this object is itself the "report ingestion ran for this group"
+// signal the provenance banner (#5038) keys off: an entity only carries
+// `coverage_source` if a report was actually ingested.
+type LineCoverageSummary struct {
+	// Source is the coverage_source prop, e.g. "lcov" (the first non-empty
+	// source seen; v1 honors a single ingestor per group).
+	Source string `json:"source"`
+	// CoveredLines / TotalLines are the group-wide sums over file-scope
+	// entities (whole-file roll-ups), so the percentage is a true line ratio
+	// and not double-counted across nested span-bearing entities.
+	CoveredLines int `json:"covered_lines"`
+	TotalLines   int `json:"total_lines"`
+	// CoveragePct is 100*CoveredLines/TotalLines, or 0 when TotalLines==0.
+	CoveragePct float64 `json:"coverage_pct"`
+	// MeasuredAt is the coverage_measured_at prop (RFC3339), the latest seen
+	// across entities. Empty when the ingestor did not stamp a timestamp.
+	MeasuredAt string `json:"measured_at,omitempty"`
+	// Entities is how many entities carried a stamped coverage_source prop —
+	// distinguishes a real (if zero-line) ingestion from no ingestion at all.
+	Entities int `json:"entities"`
+}
+
+// lineCovAccumulator folds stamped ingested line-coverage props (#5036/#5061)
+// from one or more documents into a group-level roll-up. It is keyed by the
+// forward-slash source path so the line ratio is a true per-file roll-up and
+// not double-counted across the nested span-bearing entities that share a file:
+// for each file it keeps the widest (whole-file-scope) total_lines stamp seen.
+//
+// Kept as a small pure helper (no Server/IO) so the aggregation policy is
+// directly unit-testable (#5066).
+type lineCovAccumulator struct {
+	byFile     map[string]lineCovFile // source path → widest file stamp
+	source     string                 // first non-empty coverage_source seen
+	measuredAt string                 // latest coverage_measured_at seen
+	entities   int                    // count of entities carrying coverage_source
+}
+
+type lineCovFile struct{ covered, total int }
+
+// accumulate folds every entity in doc that carries a coverage_source prop.
+func (a *lineCovAccumulator) accumulate(doc *graph.Document) {
+	if doc == nil {
+		return
+	}
+	for ei := range doc.Entities {
+		ent := &doc.Entities[ei]
+		if len(ent.Properties) == 0 {
+			continue
+		}
+		src := ent.Properties[coverage.PropCoverageSource]
+		if src == "" {
+			continue
+		}
+		a.entities++
+		if a.source == "" {
+			a.source = src
+		}
+		// RFC3339 timestamps sort lexicographically, so a string compare picks
+		// the most recent measurement without parsing.
+		if at := ent.Properties[coverage.PropCoverageMeasAt]; at > a.measuredAt {
+			a.measuredAt = at
+		}
+		covered, cErr := strconv.Atoi(ent.Properties[coverage.PropCoveredLines])
+		total, tErr := strconv.Atoi(ent.Properties[coverage.PropTotalLines])
+		if cErr != nil || tErr != nil || total <= 0 {
+			continue
+		}
+		key := filepath.ToSlash(ent.SourceFile)
+		if key == "" {
+			key = ent.ID
+		}
+		if a.byFile == nil {
+			a.byFile = make(map[string]lineCovFile)
+		}
+		// A file-scope entity reports the full file's total_lines; a span
+		// entity a subset. Keeping the max total (with its covered) avoids both
+		// double-counting and undercounting.
+		if cur, ok := a.byFile[key]; !ok || total > cur.total {
+			a.byFile[key] = lineCovFile{covered: covered, total: total}
+		}
+	}
+}
+
+// summarize renders the wire shape, or nil when no report was ingested (no
+// entity carried coverage_source) so the provenance banner degrades cleanly.
+func (a *lineCovAccumulator) summarize() *LineCoverageSummary {
+	if a.entities == 0 {
+		return nil
+	}
+	s := &LineCoverageSummary{
+		Source:     a.source,
+		MeasuredAt: a.measuredAt,
+		Entities:   a.entities,
+	}
+	for _, f := range a.byFile {
+		s.CoveredLines += f.covered
+		s.TotalLines += f.total
+	}
+	if s.TotalLines > 0 {
+		s.CoveragePct = 100.0 * float64(s.CoveredLines) / float64(s.TotalLines)
+	}
+	return s
 }
 
 // PerFileUncoveredCap bounds how many uncovered-entity leaves a single file
@@ -128,6 +246,12 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	modAcc := make(map[string]*modAccum)
 	fileAcc := make(map[string]*fileAccum)
 
+	// Ingested line-coverage roll-up (#5066). The #5036 props are stamped onto
+	// entities at index time (#5061); accumulateLineCoverage folds each doc's
+	// stamped entities into lineCov, which summarize() turns into the wire
+	// shape once all repos are scanned.
+	var lineCov lineCovAccumulator
+
 	// S8 (#2159): use the cached group to avoid per-request LoadGraphFromDir.
 	cachedGrpCov, _ := s.graphs.GetGroupCached(groupName)
 
@@ -193,7 +317,15 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 			modAcc[m.Module].total += m.Total
 			modAcc[m.Module].covered += m.Covered
 		}
+
+		// Fold this repo's stamped ingested line-coverage props (#5066).
+		lineCov.accumulate(doc)
 	}
+
+	// Presence of any stamped entity ⇒ a report was ingested for this group, so
+	// we emit the authoritative line % (distinct from reach CoveragePct). When
+	// nothing was stamped, LineCoverage stays nil and the banner degrades.
+	result.LineCoverage = lineCov.summarize()
 
 	// ── compute group-level coverage % ───────────────────────────────────────
 	// CoveragePct stays pure reach-coverage; ContractCoveredPct is the union

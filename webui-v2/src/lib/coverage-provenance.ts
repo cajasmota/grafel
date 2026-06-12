@@ -237,3 +237,51 @@ export function resolveCoverageProvenance(
     freshness: null,
   };
 }
+
+/**
+ * Group-level ingested line-coverage roll-up, as surfaced by the dashboard
+ * `/quality/coverage` endpoint's optional `line_coverage` field (#5066). Mirror
+ * of the Go `LineCoverageSummary` wire shape. Kept here (rather than importing
+ * from data/types) so this module stays dependency-free and node-testable.
+ */
+export interface LineCoverageReport {
+  source: string;
+  covered_lines: number;
+  total_lines: number;
+  coverage_pct: number;
+  measured_at?: string;
+  entities: number;
+}
+
+/**
+ * Build the banner's {@link CoverageSourceState} from what the coverage
+ * endpoint returns (#5066 wiring). When `line_coverage` is present a report was
+ * ingested, so we populate the authoritative `line` state and mark ingestion
+ * configured; otherwise we degrade to static reachability and the banner shows
+ * the "how to enable" affordance. Pure so the wiring is unit-testable without a
+ * DOM (the CoverageTab call site is a thin pass-through over this).
+ *
+ * @param lineCoverage  the endpoint's `line_coverage` field (or undefined)
+ * @param latestIndexAt optional ISO index time for the staleness check
+ */
+export function coverageStateFromReport(
+  lineCoverage: LineCoverageReport | null | undefined,
+  latestIndexAt?: string,
+): CoverageSourceState {
+  if (lineCoverage && lineCoverage.source) {
+    return {
+      line: {
+        source: lineCoverage.source,
+        measuredAt: lineCoverage.measured_at,
+        pct: lineCoverage.coverage_pct,
+        coveredLines: lineCoverage.covered_lines,
+        totalLines: lineCoverage.total_lines,
+      },
+      // line_coverage only exists because a report was ingested.
+      reportIngestionConfigured: true,
+      reachabilityAvailable: true,
+      latestIndexAt,
+    };
+  }
+  return { reachabilityAvailable: true };
+}

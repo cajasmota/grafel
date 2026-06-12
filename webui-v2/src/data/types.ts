@@ -1943,6 +1943,33 @@ export interface GroupCoverageReport {
    * backends — the UI falls back to the flat `uncovered_entities` list.
    */
   by_file_uncovered?: Record<string, FileUncovered>;
+  /**
+   * Real ingested LINE coverage (#5036), rolled up across the group from the
+   * entity props stamped at index time (#5061). Present ONLY when a coverage
+   * report (LCOV/Cobertura/JaCoCo) was actually ingested — its presence is the
+   * authoritative "report ingestion ran" signal the provenance banner keys
+   * off. Absent (the common case) ⇒ no report ingested; the banner degrades to
+   * static reachability / capability coverage. Distinct from `coverage_pct`,
+   * which is graph-derived reach coverage, not a measured line %.
+   */
+  line_coverage?: LineCoverageSummary;
+}
+
+/**
+ * Group-level roll-up of ingested line coverage (#5066). The authoritative,
+ * executed line % — never the same as `coverage_pct` (reach coverage).
+ */
+export interface LineCoverageSummary {
+  /** `coverage_source` prop, e.g. "lcov". */
+  source: string;
+  covered_lines: number;
+  total_lines: number;
+  /** 100 * covered_lines / total_lines (0 when total_lines === 0). */
+  coverage_pct: number;
+  /** `coverage_measured_at` (RFC3339), latest across entities. May be absent. */
+  measured_at?: string;
+  /** How many entities carried a stamped `coverage_source` prop. */
+  entities: number;
 }
 
 /** One declared / used / unused / phantom external dependency. */
