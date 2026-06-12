@@ -2,6 +2,7 @@
 //
 // Extracted entities:
 //   - defn / defn-      → Kind="SCOPE.Operation", Subtype="function"
+//   - defmacro          → Kind="SCOPE.Operation", Subtype="macro"
 //   - defrecord / defprotocol / deftype / defmulti / definterface
 //     → Kind="SCOPE.Component", Subtype="class"
 //   - ns                → Kind="SCOPE.Component", Subtype="namespace"
@@ -57,6 +58,12 @@ var (
 	// (defn name [...] ...) or (defn- name ...)
 	defnRE = regexp.MustCompile(
 		`(?m)^\s*\(defn-?\s+([\w\-\?!\*'+]+)\s*(?:\[[^\]]*\]|\()`,
+	)
+	// (defmacro name [...] ...) — macros are first-class operations in
+	// Clojure (most libraries ship core behaviour as macros). Treated like
+	// defn but stamped Subtype="macro" so callers can distinguish them.
+	defmacroRE = regexp.MustCompile(
+		`(?m)^\s*\(defmacro\s+([\w\-\?!\*'+]+)\s*(?:\[[^\]]*\]|\()`,
 	)
 	// Top-level type declarations.
 	deftypeRE = regexp.MustCompile(
@@ -171,6 +178,36 @@ func extractClojure(src, filePath string) []types.EntityRecord {
 			StartLine:          startLine,
 			EndLine:            endLine,
 			Signature:          "(defn " + name + " [...])",
+			EnrichmentRequired: false,
+			Properties: map[string]string{
+				"imports": importsCSV,
+			},
+			Relationships: calls,
+		}
+		ops = append(ops, opOffset{idx: len(entities), name: name})
+		entities = append(entities, rec)
+	}
+
+	// 2b. defmacro → operations (subtype=macro), with CALLS edges. Macros
+	// are the primary extension mechanism in Clojure; modelling them as
+	// operations gives them call-graph edges and CONTAINS membership like
+	// any defn.
+	for _, m := range defmacroRE.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		startLine := strings.Count(src[:m[0]], "\n") + 1
+		endLine := findFormEnd(src, m[0])
+		body := extractFormBody(src, m[0])
+		calls := collectCalls(body, name)
+
+		rec := types.EntityRecord{
+			Name:               name,
+			Kind:               "SCOPE.Operation",
+			Subtype:            "macro",
+			SourceFile:         filePath,
+			Language:           "clojure",
+			StartLine:          startLine,
+			EndLine:            endLine,
+			Signature:          "(defmacro " + name + " [...])",
 			EnrichmentRequired: false,
 			Properties: map[string]string{
 				"imports": importsCSV,
