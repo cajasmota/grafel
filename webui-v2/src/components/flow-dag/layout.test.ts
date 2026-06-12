@@ -391,6 +391,77 @@ describe("layoutTreeElk (#4827)", () => {
     expect(nodes).toEqual([]);
     expect(edges).toEqual([]);
   });
+
+  // #4882: centered direction-aware edge handles must work in BOTH orientations.
+  // The horizontal (LR→RIGHT) mapping shipped in #4874; the vertical (TB→DOWN)
+  // mapping is the bug — verify each outgoing edge's ELK route LEAVES the parent
+  // at the centered LEADING face and ENTERS the child at the centered TRAILING
+  // face, for both directions, and that a fan-out shares ONE centered trunk.
+  it("anchors edge routes at the centered leading/trailing faces — LR (right→left)", async () => {
+    const { instances, hasOutEdge } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c")],
+      [e("a", "b"), e("a", "c")], // fan-out: a → b, a → c
+    );
+    const { nodes: rf, edges } = await layoutTreeElk(
+      instances, "LR", new Set(), () => {}, hasOutEdge,
+    );
+    const byId = new Map(rf.map((nd) => [nd.id, nd]));
+    const a = byId.get("a")!;
+    for (const ed of edges) {
+      const pts = (ed.data as { elkPoints?: { x: number; y: number }[] })?.elkPoints;
+      expect(pts && pts.length >= 2).toBe(true);
+      const src = byId.get(ed.source)!;
+      const tgt = byId.get(ed.target)!;
+      const start = pts![0];
+      const end = pts![pts!.length - 1];
+      // RIGHT: source leaves the right-edge center, target enters left-edge center.
+      expect(start.x).toBeCloseTo(src.position.x + (src.width ?? 0), 1);
+      expect(start.y).toBeCloseTo(src.position.y + (src.height ?? 0) / 2, 1);
+      expect(end.x).toBeCloseTo(tgt.position.x, 1);
+      expect(end.y).toBeCloseTo(tgt.position.y + (tgt.height ?? 0) / 2, 1);
+    }
+    // The two outgoing edges share a's single right-center trunk start point.
+    const starts = edges.map(
+      (ed) => (ed.data as { elkPoints?: { x: number; y: number }[] }).elkPoints![0],
+    );
+    expect(starts[0].x).toBeCloseTo(a.position.x + (a.width ?? 0), 1);
+    expect(starts[1].x).toBeCloseTo(starts[0].x, 1);
+    expect(starts[1].y).toBeCloseTo(starts[0].y, 1);
+  });
+
+  it("anchors edge routes at the centered leading/trailing faces — TB (bottom→top)", async () => {
+    const { instances, hasOutEdge } = unfoldTree(
+      "a",
+      [n("a"), n("b"), n("c")],
+      [e("a", "b"), e("a", "c")], // fan-out: a → b, a → c
+    );
+    const { nodes: rf, edges } = await layoutTreeElk(
+      instances, "TB", new Set(), () => {}, hasOutEdge,
+    );
+    const byId = new Map(rf.map((nd) => [nd.id, nd]));
+    const a = byId.get("a")!;
+    for (const ed of edges) {
+      const pts = (ed.data as { elkPoints?: { x: number; y: number }[] })?.elkPoints;
+      expect(pts && pts.length >= 2).toBe(true);
+      const src = byId.get(ed.source)!;
+      const tgt = byId.get(ed.target)!;
+      const start = pts![0];
+      const end = pts![pts!.length - 1];
+      // DOWN: source leaves the bottom-edge center, target enters top-edge center.
+      expect(start.x).toBeCloseTo(src.position.x + (src.width ?? 0) / 2, 1);
+      expect(start.y).toBeCloseTo(src.position.y + (src.height ?? 0), 1);
+      expect(end.x).toBeCloseTo(tgt.position.x + (tgt.width ?? 0) / 2, 1);
+      expect(end.y).toBeCloseTo(tgt.position.y, 1);
+    }
+    // The two outgoing edges share a's single bottom-center trunk start point.
+    const starts = edges.map(
+      (ed) => (ed.data as { elkPoints?: { x: number; y: number }[] }).elkPoints![0],
+    );
+    expect(starts[0].y).toBeCloseTo(a.position.y + (a.height ?? 0), 1);
+    expect(starts[1].x).toBeCloseTo(starts[0].x, 1);
+    expect(starts[1].y).toBeCloseTo(starts[0].y, 1);
+  });
 });
 
 describe("layoutTree leaf vs truncated (#4561)", () => {
