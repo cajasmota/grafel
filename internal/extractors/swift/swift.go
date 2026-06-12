@@ -110,6 +110,16 @@ func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRe
 		}
 		classIdx := len(*out)
 		*out = append(*out, rec)
+		// Issue #4913 — Type System: for an `enum` declaration also emit a
+		// SCOPE.Enum value-set node carrying its `case` members (parity with
+		// the dart/python/ts/java enum value-sets) IN ADDITION to the
+		// SCOPE.Component above. The Component models the nominal type; the
+		// value-set answers "what cases can this take?".
+		if subtype == "enum" {
+			if ve, ok := buildEnumValueSet(node, file); ok {
+				*out = append(*out, ve)
+			}
+		}
 		// CONTAINS: every function declared in the class body.
 		body := findClassBody(node)
 		fieldTypes := collectFieldTypes(body, file.Content)
@@ -174,6 +184,17 @@ func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRe
 
 	case "import_declaration":
 		if rec, ok := buildImport(node, file); ok {
+			*out = append(*out, rec)
+		}
+		return
+
+	case "typealias_declaration":
+		// Issue #4913 — Type System: `typealias Name = <type>` →
+		// SCOPE.Schema(subtype=type_alias), parity with the python/rust/go/
+		// dart type_alias shape. Supersedes the loose vapor-only
+		// reSwiftTypealias→Component v1 with a tree-sitter, language-wide,
+		// value-set-grade Schema node carrying the aliased type_body.
+		if rec, ok := buildTypeAlias(node, file); ok {
 			*out = append(*out, rec)
 		}
 		return
