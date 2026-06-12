@@ -118,6 +118,125 @@ func TestGiraffe_CanonicalizeFormat(t *testing.T) {
 	}
 }
 
+// TestGiraffe_SubRouteFolding (#4940) proves a `subRoute "/api" (...)` mount
+// prefix is folded into the nested child routes, and that nesting composes
+// left-to-right.
+func TestGiraffe_SubRouteFolding(t *testing.T) {
+	src := `module App
+open Giraffe
+
+let webApp =
+    subRoute "/api" (
+        choose [
+            GET >=> route "/users" >=> listUsers
+            subRoute "/v1" (
+                choose [
+                    GET >=> route "/health" >=> health
+                ]
+            )
+        ]
+    )
+`
+	ids, _ := runDetect(t, "fsharp", "src/App.fs", src)
+	requireContains(t, ids, []string{
+		"http:GET:/api/users",
+		"http:GET:/api/v1/health",
+	}, "giraffe-subroute-folding")
+}
+
+// TestGiraffe_ForwardFolding (#4940) proves a `forward "/admin" (...)` mount
+// prefix folds exactly like subRoute.
+func TestGiraffe_ForwardFolding(t *testing.T) {
+	src := `module App
+open Giraffe
+
+let webApp =
+    forward "/admin" (
+        choose [
+            POST >=> route "/users" >=> createUser
+        ]
+    )
+`
+	ids, _ := runDetect(t, "fsharp", "src/App.fs", src)
+	requireContains(t, ids, []string{
+		"http:POST:/admin/users",
+	}, "giraffe-forward-folding")
+}
+
+// TestGiraffe_RouteStartsWithAndRoutex (#4940) proves the routeStartsWith prefix
+// variant emits as a literal path and routex regex bodies canonicalise to `{}`.
+func TestGiraffe_RouteStartsWithAndRoutex(t *testing.T) {
+	src := `module App
+open Giraffe
+
+let webApp =
+    choose [
+        GET >=> routeStartsWith "/api" >=> apiHandler
+        GET >=> routex "/users/(\d+)" idHandler
+    ]
+`
+	ids, _ := runDetect(t, "fsharp", "src/App.fs", src)
+	requireContains(t, ids, []string{
+		"http:GET:/api",
+		"http:GET:/users/{}",
+	}, "giraffe-routestartswith-routex")
+}
+
+// TestGiraffe_NamedHandlerImplements (#4940) proves a same-file `let`-bound
+// HttpHandler named as a route's handler yields an endpoint→handler IMPLEMENTS
+// bridge edge (synthesis-time structural ref).
+func TestGiraffe_NamedHandlerImplements(t *testing.T) {
+	src := `module App
+open Giraffe
+
+let listUsers : HttpHandler = fun next ctx -> task { return! json [] next ctx }
+
+let webApp =
+    choose [
+        GET >=> route "/users" >=> listUsers
+    ]
+`
+	_, res := runDetect(t, "fsharp", "src/App.fs", src)
+	found := false
+	for _, r := range res.Relationships {
+		if r.Kind == implementsEdgeKind &&
+			r.Properties["pattern_type"] == "http_endpoint_synthesis_time_bridge" &&
+			r.Properties["path"] == "/users" &&
+			r.Properties["verb"] == "GET" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a synthesis-time IMPLEMENTS bridge for named handler listUsers -> GET /users; rels=%+v", res.Relationships)
+	}
+}
+
+// TestGiraffe_SaturnNamedHandlerImplements (#4940) is the Saturn-router analogue
+// of the named-handler bridge.
+func TestGiraffe_SaturnNamedHandlerImplements(t *testing.T) {
+	src := `module App
+open Saturn
+
+let listUsers : HttpHandler = fun next ctx -> task { return! json [] next ctx }
+
+let apiRouter = router {
+    get "/users" listUsers
+}
+`
+	_, res := runDetect(t, "fsharp", "src/Router.fs", src)
+	found := false
+	for _, r := range res.Relationships {
+		if r.Kind == implementsEdgeKind &&
+			r.Properties["pattern_type"] == "http_endpoint_synthesis_time_bridge" &&
+			r.Properties["path"] == "/users" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected a synthesis-time IMPLEMENTS bridge for Saturn named handler listUsers -> GET /users; rels=%+v", res.Relationships)
+	}
+}
+
 // TestGiraffe_E2ERouteTestLinkage is the end-to-end RED→GREEN proof (#4749
 // validation). A Giraffe route GET /users is represented as an
 // http_endpoint_definition; an fsharp-testserver test_suite carrying
