@@ -41,6 +41,22 @@ var (
 	reLaravelJobHandle = regexp.MustCompile(
 		`(?m)public\s+function\s+(handle)\s*\(`,
 	)
+	// reLaravelQueueProp matches a `public $queue = 'name';` / `protected $queue = "name";`
+	// property on a queued Job class (Laravel queue attribution). #4920.
+	reLaravelQueueProp = regexp.MustCompile(
+		`(?m)(?:public|protected|private)\s+\$queue\s*=\s*['"]([^'"]+)['"]`,
+	)
+	// reLaravelJobDispatchStatic matches a CONSTANT-receiver static dispatch
+	// `FooJob::dispatch(...)` / `::dispatchSync(...)` / `::dispatchAfterResponse(...)`
+	// (the dominant Laravel producer idiom). #4920.
+	reLaravelJobDispatchStatic = regexp.MustCompile(
+		`(?m)\b([A-Z]\w*)::(dispatch|dispatchSync|dispatchNow|dispatchAfterResponse|dispatchIf|dispatchUnless)\s*\(`,
+	)
+	// reLaravelJobDispatchHelper matches the `dispatch(new FooJob(...))` global-helper
+	// and `Bus::dispatch(new FooJob(...))` facade producer forms. #4920.
+	reLaravelJobDispatchHelper = regexp.MustCompile(
+		`(?m)(?:\bdispatch|\bBus::dispatch(?:Sync|Now)?)\s*\(\s*new\s+([A-Z]\w*)`,
+	)
 	reLaravelObserver = regexp.MustCompile(
 		`(?m)public\s+function\s+(creating|created|updating|updated|deleting|deleted|saving|saved|restoring|restored)\s*\(`,
 	)
@@ -149,19 +165,57 @@ func (e *laravelExtractor) Extract(ctx context.Context, file extractor.FileInput
 		add(ent)
 	}
 
-	// 5. Job classes -> SCOPE.Service
+	// 5. Job classes (queue consumer) -> SCOPE.Service
+	// A queued job is `class FooJob ... implements ShouldQueue`. Attribute its
+	// queue from a `public $queue = '...'` property (file-scoped; honest-partial:
+	// a single $queue per file is attributed to every job class in that file —
+	// the dominant one-class-per-file Laravel convention). #4920.
+	queueName := ""
+	if qm := reLaravelQueueProp.FindStringSubmatch(src); qm != nil {
+		queueName = qm[1]
+	}
 	for _, m := range reLaravelJobClass.FindAllStringSubmatchIndex(src, -1) {
 		name := src[m[2]:m[3]]
 		ent := makeEntity(name, "SCOPE.Service", "", file.Path, file.Language, lineOf(src, m[0]))
-		setProps(&ent, "framework", "laravel", "provenance", "INFERRED_FROM_LARAVEL_JOB")
+		setProps(&ent, "framework", "laravel", "provenance", "INFERRED_FROM_LARAVEL_JOB",
+			"job_class", name)
+		if queueName != "" {
+			setProps(&ent, "queue", queueName)
+		}
 		add(ent)
 	}
 
-	// 6. Job handle() -> SCOPE.Operation/function
+	// 6. Job handle() -> SCOPE.Operation/function (consumer entrypoint)
 	for _, m := range reLaravelJobHandle.FindAllStringSubmatchIndex(src, -1) {
 		ent := makeEntity("handle", "SCOPE.Operation", "function", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "framework", "laravel", "provenance", "INFERRED_FROM_LARAVEL_JOB")
+		if queueName != "" {
+			setProps(&ent, "queue", queueName)
+		}
 		add(ent)
+	}
+
+	// 6b. Job dispatch (queue PRODUCER, previously MISSING) -> SCOPE.Operation.
+	// `FooJob::dispatch(...)` (incl. dispatchSync/dispatchNow/dispatchAfterResponse/
+	// dispatchIf/dispatchUnless), `dispatch(new FooJob(...))`, and
+	// `Bus::dispatch(new FooJob(...))`. Emits `<JobClass>.dispatch` so the producer
+	// converges with the consumer SCOPE.Service by job-class name, letting the graph
+	// answer "who enqueues SendInvoice?". #4920.
+	emitJobDispatch := func(jobClass, method string, off int) {
+		// `Bus`/`Job` are facades/base names, never a concrete job target.
+		if jobClass == "Bus" {
+			return
+		}
+		ent := makeEntity(jobClass+".dispatch", "SCOPE.Operation", "function", file.Path, file.Language, lineOf(src, off))
+		setProps(&ent, "framework", "laravel", "provenance", "INFERRED_FROM_LARAVEL_JOB_DISPATCH",
+			"job_class", jobClass, "dispatch_method", method)
+		add(ent)
+	}
+	for _, m := range reLaravelJobDispatchStatic.FindAllStringSubmatchIndex(src, -1) {
+		emitJobDispatch(src[m[2]:m[3]], src[m[4]:m[5]], m[0])
+	}
+	for _, m := range reLaravelJobDispatchHelper.FindAllStringSubmatchIndex(src, -1) {
+		emitJobDispatch(src[m[2]:m[3]], "dispatch", m[0])
 	}
 
 	// 7. Observer hooks -> SCOPE.Pattern
