@@ -331,6 +331,122 @@ proc store(db: DbConn, p: Post) =
 	}
 }
 
+// --- Allographer schema builder (#4933) -------------------------------------
+
+// TestNimAllographerORM_TablesColumnsFK proves an Allographer
+// schema().create(table("...", [Column()...])) declaration synthesises table +
+// column SCOPE.Schema entities (framework=allographer), stamps column_type from
+// the builder method, captures unique/nullable modifiers, and yields a
+// REFERENCES edge table->referenced-table for a .foreign().reference().on()
+// chain.
+func TestNimAllographerORM_TablesColumnsFK(t *testing.T) {
+	src := `
+import allographer/schema_builder
+
+schema().create(
+  table("users", [
+    Column().increments("id"),
+    Column().string("name"),
+    Column().string("email").unique(),
+    Column().integer("age").nullable(),
+  ]),
+  table("posts", [
+    Column().increments("id"),
+    Column().string("title"),
+    Column().foreign("user_id").reference("id").on("users").onDelete(SET_NULL),
+  ]),
+)
+`
+	e, ok := extreg.Get("custom_nim_allographer_orm")
+	if !ok {
+		t.Fatal("custom_nim_allographer_orm not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("src/schema.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	views := make([]recView, len(ents))
+	for i, en := range ents {
+		if en.Kind != "SCOPE.Schema" {
+			t.Errorf("unexpected kind %q for %q", en.Kind, en.Name)
+		}
+		if en.Properties["framework"] != "allographer" {
+			t.Errorf("entity %q missing framework=allographer", en.Name)
+		}
+		views[i] = recView{en.Name, en.Subtype, en.Kind, en.Properties, en.Relationships}
+	}
+	pick := func(name, sub string) *recView {
+		for i := range views {
+			if views[i].name == name && views[i].sub == sub {
+				return &views[i]
+			}
+		}
+		return nil
+	}
+
+	// Tables.
+	for _, tbl := range []string{"users", "posts"} {
+		if pick(tbl, "table") == nil {
+			t.Errorf("expected SCOPE.Schema/table %q", tbl)
+		}
+	}
+	// Columns + column_type.
+	if c := pick("name", "column"); c == nil || c.props["column_type"] != "string" || c.props["table"] != "users" {
+		t.Error("expected users.name column column_type=string")
+	}
+	if c := pick("id", "column"); c == nil || c.props["column_type"] != "increments" {
+		t.Error("expected id column column_type=increments")
+	}
+	// Modifiers.
+	if c := pick("email", "column"); c == nil || c.props["unique"] != "true" {
+		t.Error("expected email column unique=true")
+	}
+	if c := pick("age", "column"); c == nil || c.props["nullable"] != "true" {
+		t.Error("expected age column nullable=true")
+	}
+	// FK column + edge.
+	fkCol := pick("user_id", "column")
+	if fkCol == nil || fkCol.props["foreign_key"] != "true" || fkCol.props["fk_target"] != "users" || fkCol.props["fk_column"] != "id" {
+		t.Errorf("expected user_id column foreign_key=true fk_target=users fk_column=id, got %+v", fkCol)
+	}
+	fkEdge := false
+	if pt := pick("posts", "table"); pt != nil {
+		for _, r := range pt.rels {
+			if r.Kind == "REFERENCES" && r.ToID == "users" && r.Properties["fk_field"] == "user_id" && r.Properties["references"] == "id" {
+				fkEdge = true
+			}
+		}
+	}
+	if !fkEdge {
+		t.Error("expected REFERENCES edge posts->users (fk_field=user_id, references=id)")
+	}
+}
+
+// TestNimAllographerORM_NonSchemaNoop proves an arbitrary Nim file with neither
+// a schema builder nor Column() calls is ignored.
+func TestNimAllographerORM_NonSchemaNoop(t *testing.T) {
+	src := `
+proc table(name: string) = discard
+echo "no columns here"
+`
+	e, _ := extreg.Get("custom_nim_allographer_orm")
+	ents, _ := e.Extract(context.Background(), fi("src/util.nim", "nim", src))
+	if len(ents) != 0 {
+		t.Fatalf("expected no schema entities for a non-Allographer file, got %d", len(ents))
+	}
+}
+
+// TestNimAllographerORM_WrongLanguageNoop gates on language=="nim".
+func TestNimAllographerORM_WrongLanguageNoop(t *testing.T) {
+	src := `schema().create(table("users", [Column().string("name")]))`
+	e, _ := extreg.Get("custom_nim_allographer_orm")
+	ents, _ := e.Extract(context.Background(), fi("src/schema.nim", "go", src))
+	if len(ents) != 0 {
+		t.Fatalf("expected no entities for non-nim language, got %d", len(ents))
+	}
+}
+
 // recView is a flattened entity view for table-driven assertions.
 type recView struct {
 	name, sub, kind string

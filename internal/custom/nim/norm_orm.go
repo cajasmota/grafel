@@ -56,7 +56,8 @@
 //     to the concrete entity here — the shared resolver handles binding.
 //   - Norm migrations (createTables/dropTables/migration procs) and column
 //     index pragmas beyond unique/dbType remain follow-ups (#4932 → see PR).
-//   - Allographer / ormin / Debby model→table mapping is deferred to #4933.
+//   - Allographer schema→table/column mapping is covered by allographer_orm.go
+//     (#4933); ormin / Debby model→table mapping remains follow-up (#5028).
 //
 // Registration key: "custom_nim_norm_orm".
 package nim
