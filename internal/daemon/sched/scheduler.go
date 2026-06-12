@@ -274,6 +274,16 @@ type Scheduler struct {
 	mu           sync.Mutex
 	inflight     map[string]int64  // repo → predicted MB charged against the ledger
 	pendingIndex map[string]bool   // repos already enqueued but not yet running
+	// dirty marks repos that received an enqueue WHILE a reindex for that
+	// same repo was already in-flight (#5138). Per-repo reindex coalescing:
+	// at most one reindex per repo runs at a time; any number of enqueues
+	// arriving mid-run collapse into this single boolean. When the in-flight
+	// run finishes, runIndex consumes the marker and schedules EXACTLY ONE
+	// follow-up reindex — capturing all intervening changes in one pass with
+	// no lost update (the marker is set AFTER the run snapshots its input, so
+	// a change landing mid-run still triggers the follow-up). N events during
+	// a reindex → 1 follow-up, not N. Guarded by mu.
+	dirty        map[string]bool
 	pendingRefs  map[string]string // repo → ref captured at last Enqueue (overwritten on re-enqueue)
 	pendingQ     []string          // ordered admission queue
 	queueLen     int               // pending + admitted-but-not-yet-running
@@ -382,6 +392,7 @@ func New(cfg Config) *Scheduler {
 		algoSem:        make(chan struct{}, algoCap),
 		inflight:       map[string]int64{},
 		pendingIndex:   map[string]bool{},
+		dirty:          map[string]bool{},
 		pendingRefs:    map[string]string{},
 		linkTimers:     map[string]*time.Timer{},
 		linkPending:    map[string]bool{},
@@ -493,8 +504,14 @@ func (s *Scheduler) dedupLoop() {
 			s.mu.Lock()
 			s.cancelAlgoLocked(p)
 			if _, running := s.inflight[p]; running {
-				// Already running: update the stored ref so if it re-queues
-				// after completion it uses the latest ref.
+				// Already running for this repo (#5138): do NOT start a
+				// second concurrent reindex. Mark the repo dirty so that
+				// when the in-flight run completes, runIndex schedules
+				// EXACTLY ONE follow-up that picks up this (and any other
+				// mid-run) change. N enqueues during the run collapse into
+				// this single boolean → 1 follow-up, not N. Also update the
+				// stored ref so the follow-up uses the latest observed ref.
+				s.dirty[p] = true
 				if req.ref != "" {
 					s.pendingRefs[p] = req.ref
 				}
@@ -825,6 +842,15 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	s.mu.Lock()
 	s.pendingIndex[repoPath] = false
 	s.queueLen--
+	// #5138 no-lost-update: clear the dirty marker BEFORE the index runs so
+	// that this run is treated as covering the repo state as of now. The
+	// actual extraction (below) snapshots the working tree shortly after.
+	// Any enqueue arriving AFTER this point re-sets dirty[repoPath] (via
+	// dedupLoop, since inflight[repoPath] is still set), guaranteeing the
+	// post-run check sees it and schedules exactly one follow-up. Clearing
+	// it AFTER the run instead would race: a change landing between the
+	// snapshot and the clear would be silently dropped.
+	delete(s.dirty, repoPath)
 	s.mu.Unlock()
 
 	t0 := time.Now()
@@ -916,7 +942,32 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	if s.usedMB < 0 {
 		s.usedMB = 0
 	}
+	// #5138: consume the dirty marker while still holding the lock and
+	// inflight[repoPath] is already cleared. If any enqueue arrived during
+	// this run it set dirty[repoPath]=true; schedule EXACTLY ONE follow-up
+	// reindex to capture all those coalesced changes in a single pass.
+	// Reading-and-clearing under the lock makes this atomic w.r.t. dedupLoop:
+	// either an enqueue landed before this point (caught here → one
+	// follow-up) or it lands after (sees inflight cleared → enqueues a fresh
+	// job normally). No double-run, no lost update.
+	followUp := s.dirty[repoPath]
+	if followUp {
+		delete(s.dirty, repoPath)
+	}
+	// Prefer the latest observed ref recorded while dirty; fall back to the
+	// ref this run used. dedupLoop overwrites pendingRefs[repoPath] on every
+	// mid-run enqueue, so it holds the most recent branch for the follow-up.
+	followUpRef := tok.ref
+	if r, ok := s.pendingRefs[repoPath]; ok && r != "" {
+		followUpRef = r
+	}
 	s.mu.Unlock()
+
+	if followUp {
+		s.logEvent("reindex_coalesced_followup", repoPath,
+			"changes landed during in-flight reindex — scheduling single follow-up (#5138)")
+		s.EnqueueRef(repoPath, followUpRef)
+	}
 
 	// History persistence happens outside the lock (its own mutex +
 	// file IO). Only record when the job succeeded; failed runs may
@@ -1103,6 +1154,12 @@ type Snapshot struct {
 	BudgetMB    int64
 	UsedMB      int64
 	BlockedJobs []string
+
+	// CoalescedDirty lists repos that have an in-flight reindex AND received
+	// further enqueues during it (#5138). Each will get exactly one follow-up
+	// when its in-flight run completes — these are the requests that, before
+	// coalescing, would have stacked into concurrent same-repo reindex jobs.
+	CoalescedDirty []string
 }
 
 // InFlightJob is one currently-running index, with its reserved MB.
@@ -1151,6 +1208,12 @@ func (s *Scheduler) Snapshot() Snapshot {
 	}
 	sort.Strings(out.PendingLinks)
 	out.BlockedJobs = append(out.BlockedJobs, s.pendingQ...)
+	for p, d := range s.dirty {
+		if d {
+			out.CoalescedDirty = append(out.CoalescedDirty, p)
+		}
+	}
+	sort.Strings(out.CoalescedDirty)
 	for p, st := range s.indexedRepos {
 		out.IndexedRepos = append(out.IndexedRepos, RepoSnapshot{
 			Path: p, LastIndex: st.LastIndex, LastAlgo: st.LastAlgo,
