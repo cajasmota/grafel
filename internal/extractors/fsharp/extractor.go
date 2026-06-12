@@ -159,6 +159,14 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 	importEntities := buildImportEntities(filePath, imports)
 	entities = append(entities, importEntities...)
 
+	// #5048: active-pattern definitions (`let (|Even|Odd|) n = ...`). The base
+	// letRE only matches a plain identifier head, so the banana-clip name is
+	// invisible to it; scan separately and emit SCOPE.Pattern entities (+case
+	// sub-entities). Track the clip name so the plain let-scanner does not also
+	// try to (and fail to) bind it.
+	apEntities := extractActivePatterns(src, filePath, imports)
+	entities = append(entities, apEntities...)
+
 	// 1. Module/namespace declarations → SCOPE.Component
 	seen := make(map[string]bool)
 	for _, m := range moduleRE.FindAllStringSubmatchIndex(src, -1) {
@@ -231,6 +239,9 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		body := extractIndentBody(src, m[1], len(indent))
 		endLine := startLine + strings.Count(body, "\n")
 		calls := collectCalls(body, name)
+		// #5048: computation-expression usage (`async { }` / custom builders)
+		// inside the body → USES edges to the builder symbol.
+		calls = append(calls, collectCEUsage(body)...)
 
 		entities = append(entities, types.EntityRecord{
 			Name:       name,
@@ -270,6 +281,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		body := extractIndentBody(src, m[1], len(indent))
 		endLine := startLine + strings.Count(body, "\n")
 		calls := collectCalls(body, name)
+		calls = append(calls, collectCEUsage(body)...)
 
 		entities = append(entities, types.EntityRecord{
 			Name:       name,
@@ -340,18 +352,28 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		memberEnts, memberRels := extractTypeMembers(name, subtype, body, filePath, startLine)
 		rels = append(rels, memberRels...)
 
+		typeProps := map[string]string{
+			"imports": strings.Join(imports, ","),
+		}
+		// #5048: a type that declares the computation-expression builder member
+		// protocol (Bind/Return/Zero/Combine/...) is a CE BUILDER — stamp it so
+		// `myBuilder { ... }` USES edges have a recognisable target type.
+		if members, ok := detectCEBuilder(body); ok {
+			typeProps["ce_builder"] = "true"
+			typeProps["ce_builder_members"] = strings.Join(members, ",")
+			subtype = "computation_builder"
+		}
+
 		entities = append(entities, types.EntityRecord{
-			Name:       name,
-			Kind:       "SCOPE.Component",
-			Subtype:    subtype,
-			SourceFile: filePath,
-			Language:   "fsharp",
-			StartLine:  startLine,
-			EndLine:    endLine,
-			Signature:  "type " + name,
-			Properties: map[string]string{
-				"imports": strings.Join(imports, ","),
-			},
+			Name:          name,
+			Kind:          "SCOPE.Component",
+			Subtype:       subtype,
+			SourceFile:    filePath,
+			Language:      "fsharp",
+			StartLine:     startLine,
+			EndLine:       endLine,
+			Signature:     "type " + name,
+			Properties:    typeProps,
 			Relationships: rels,
 		})
 		entities = append(entities, memberEnts...)

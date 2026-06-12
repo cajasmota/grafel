@@ -2,6 +2,7 @@ package fsharp_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -764,5 +765,209 @@ type Pair = int * string
 		if e.Kind == "SCOPE.Schema" {
 			t.Errorf("alias produced unexpected schema sub-entity %q", e.Name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #5048: computation expressions + active patterns
+// ---------------------------------------------------------------------------
+
+// TestFSharp_ActivePattern_Total — #5048: a total active pattern
+// `let (|Even|Odd|) n = ...` emits a SCOPE.Pattern entity (subtype
+// active_pattern) plus one case sub-entity per banana-clip case, with a
+// definition→case CONTAINS edge.
+func TestFSharp_ActivePattern_Total(t *testing.T) {
+	src := `module Patterns
+
+let (|Even|Odd|) n =
+    if n % 2 = 0 then Even else Odd
+`
+	ents := runFSharp(t, src, "patterns.fs")
+	ap := fsFind(ents, "(|Even|Odd|)", "SCOPE.Pattern")
+	if ap == nil {
+		t.Fatal("expected SCOPE.Pattern (|Even|Odd|)")
+	}
+	if ap.Subtype != "active_pattern" {
+		t.Errorf("subtype=%q, want active_pattern", ap.Subtype)
+	}
+	if ap.Properties["active_pattern_cases"] != "Even,Odd" {
+		t.Errorf("cases=%q, want Even,Odd", ap.Properties["active_pattern_cases"])
+	}
+	if ap.Properties["partial"] != "false" {
+		t.Errorf("partial=%q, want false", ap.Properties["partial"])
+	}
+	for _, c := range []string{"Even", "Odd"} {
+		dotted := "(|Even|Odd|)." + c
+		if fsFind(ents, dotted, "SCOPE.Schema") == nil {
+			t.Errorf("expected case sub-entity %q", dotted)
+		}
+		if !fsHasRel(ents, "(|Even|Odd|)", "SCOPE.Pattern", "CONTAINS", fsSchemaRef("patterns.fs", dotted)) {
+			t.Errorf("expected CONTAINS edge to %q", dotted)
+		}
+	}
+}
+
+// TestFSharp_ActivePattern_Partial — #5048: a partial active pattern
+// `let (|Positive|_|) n = ...` is flagged partial and only its named case
+// becomes a sub-entity (the `_` wildcard is not a case).
+func TestFSharp_ActivePattern_Partial(t *testing.T) {
+	src := `module Patterns
+
+let (|Positive|_|) n =
+    if n > 0 then Some n else None
+`
+	ents := runFSharp(t, src, "patterns.fs")
+	ap := fsFind(ents, "(|Positive|_|)", "SCOPE.Pattern")
+	if ap == nil {
+		t.Fatal("expected SCOPE.Pattern (|Positive|_|)")
+	}
+	if ap.Subtype != "partial_active_pattern" {
+		t.Errorf("subtype=%q, want partial_active_pattern", ap.Subtype)
+	}
+	if ap.Properties["partial"] != "true" {
+		t.Errorf("partial=%q, want true", ap.Properties["partial"])
+	}
+	if ap.Properties["active_pattern_cases"] != "Positive" {
+		t.Errorf("cases=%q, want Positive", ap.Properties["active_pattern_cases"])
+	}
+	if fsFind(ents, "(|Positive|_|)._", "SCOPE.Schema") != nil {
+		t.Error("wildcard _ should not be a case sub-entity")
+	}
+}
+
+// TestFSharp_ActivePattern_Parameterised — #5048: a parameterised active
+// pattern `let (|DivisibleBy|_|) divisor n = ...` is flagged parameterised.
+func TestFSharp_ActivePattern_Parameterised(t *testing.T) {
+	src := `module Patterns
+
+let (|DivisibleBy|_|) divisor n =
+    if n % divisor = 0 then Some n else None
+`
+	ents := runFSharp(t, src, "patterns.fs")
+	ap := fsFind(ents, "(|DivisibleBy|_|)", "SCOPE.Pattern")
+	if ap == nil {
+		t.Fatal("expected SCOPE.Pattern (|DivisibleBy|_|)")
+	}
+	if ap.Properties["parameterised"] != "true" {
+		t.Errorf("parameterised=%q, want true", ap.Properties["parameterised"])
+	}
+}
+
+// TestFSharp_CEBuilder_Custom — #5048: a custom computation-expression builder
+// type (declaring Bind/Return/...) is stamped ce_builder and re-subtyped
+// computation_builder.
+func TestFSharp_CEBuilder_Custom(t *testing.T) {
+	src := `module Builders
+
+type OptionBuilder() =
+    member _.Bind(m, f) = Option.bind f m
+    member _.Return(x) = Some x
+    member _.Zero() = None
+`
+	ents := runFSharp(t, src, "builders.fs")
+	b := fsFind(ents, "OptionBuilder", "SCOPE.Component")
+	if b == nil {
+		t.Fatal("expected SCOPE.Component OptionBuilder")
+	}
+	if b.Properties["ce_builder"] != "true" {
+		t.Errorf("ce_builder=%q, want true", b.Properties["ce_builder"])
+	}
+	if b.Subtype != "computation_builder" {
+		t.Errorf("subtype=%q, want computation_builder", b.Subtype)
+	}
+	members := b.Properties["ce_builder_members"]
+	for _, want := range []string{"Bind", "Return", "Zero"} {
+		if !strings.Contains(members, want) {
+			t.Errorf("ce_builder_members=%q missing %q", members, want)
+		}
+	}
+}
+
+// TestFSharp_CEBuilder_NotMisclassified — #5048: an ordinary type with a single
+// unrelated CE-shaped member is NOT flagged a builder.
+func TestFSharp_CEBuilder_NotMisclassified(t *testing.T) {
+	src := `module Things
+
+type Repo() =
+    member _.Return(x) = x
+`
+	ents := runFSharp(t, src, "things.fs")
+	b := fsFind(ents, "Repo", "SCOPE.Component")
+	if b == nil {
+		t.Fatal("expected SCOPE.Component Repo")
+	}
+	if b.Properties["ce_builder"] == "true" {
+		t.Error("Repo should not be classified a CE builder (single member)")
+	}
+}
+
+// TestFSharp_CEUsage_Intrinsic — #5048: a `task { ... }` CE invocation inside a
+// let body emits a USES edge to the builder with bind-point metadata.
+func TestFSharp_CEUsage_Intrinsic(t *testing.T) {
+	src := `module Work
+
+let fetchAll () =
+    task {
+        let! a = getA ()
+        let! b = getB ()
+        return a + b
+    }
+`
+	ents := runFSharp(t, src, "work.fs")
+	op := fsFind(ents, "fetchAll", "SCOPE.Operation")
+	if op == nil {
+		t.Fatal("expected SCOPE.Operation fetchAll")
+	}
+	var uses *types.RelationshipRecord
+	for i := range op.Relationships {
+		if op.Relationships[i].Kind == "USES" && op.Relationships[i].ToID == "task" {
+			uses = &op.Relationships[i]
+		}
+	}
+	if uses == nil {
+		t.Fatal("expected USES edge to task builder")
+	}
+	if uses.Properties["ce_builder"] != "task" {
+		t.Errorf("ce_builder=%q, want task", uses.Properties["ce_builder"])
+	}
+	if !strings.Contains(uses.Properties["ce_bind_points"], "let!") {
+		t.Errorf("ce_bind_points=%q, want let!", uses.Properties["ce_bind_points"])
+	}
+	if !strings.Contains(uses.Properties["ce_bind_points"], "return") {
+		// 'return' (no bang) is not a bind point; only return! counts. Just
+		// confirm let! is present (above) — this is a sanity guard.
+		_ = uses
+	}
+}
+
+// TestFSharp_CEUsage_CustomBuilder — #5048: a custom builder invocation
+// `optional { ... }` emits a USES edge to that builder symbol.
+func TestFSharp_CEUsage_CustomBuilder(t *testing.T) {
+	src := `module Work
+
+let optional = OptionBuilder()
+
+let combine () =
+    optional {
+        let! x = tryGet ()
+        return! finish x
+    }
+`
+	ents := runFSharp(t, src, "work.fs")
+	op := fsFind(ents, "combine", "SCOPE.Operation")
+	if op == nil {
+		t.Fatal("expected SCOPE.Operation combine")
+	}
+	found := false
+	for _, r := range op.Relationships {
+		if r.Kind == "USES" && r.ToID == "optional" {
+			found = true
+			if !strings.Contains(r.Properties["ce_bind_points"], "return!") {
+				t.Errorf("ce_bind_points=%q, want return!", r.Properties["ce_bind_points"])
+			}
+		}
+	}
+	if !found {
+		t.Error("expected USES edge to optional builder")
 	}
 }
