@@ -1,6 +1,7 @@
 package fbwriter_test
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -10,6 +11,7 @@ import (
 	"github.com/cajasmota/archigraph/internal/graph"
 	fb "github.com/cajasmota/archigraph/internal/graph/fbgraph"
 	"github.com/cajasmota/archigraph/internal/graph/fbreader"
+	"github.com/cajasmota/archigraph/internal/graph/fbversion"
 	"github.com/cajasmota/archigraph/internal/graph/fbwriter"
 )
 
@@ -472,12 +474,54 @@ func TestLoaderRejectsOldFormatVersion(t *testing.T) {
 	// Spot-check the operative phrases — verbatim error string is part of the
 	// loader contract and must point the user at `archigraph index`.
 	for _, want := range []string{
-		"graph.fb format version 2 is older than required version 3",
+		fmt.Sprintf("graph.fb format version 2 is older than required version %d", fbversion.Version),
 		"please reindex",
 		"archigraph index <repo>",
 	} {
 		if !strings.Contains(msg, want) {
 			t.Errorf("error message missing %q\nfull message: %s", want, msg)
 		}
+	}
+}
+
+// TestRoundtripSignature guards #4881: the Entity `signature` slot must
+// round-trip through the binary graph.fb path. Before the fix the FB Entity
+// table had no signature field, so every entity's Signature was silently
+// dropped on write — which emptied SCOPE.Schema field TYPES in the dashboard.
+// Entities with an empty signature must read back empty (no spurious value).
+func TestRoundtripSignature(t *testing.T) {
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: time.Date(2026, 6, 13, 0, 0, 0, 0, time.UTC),
+		Repo:        "fixture-sig",
+		Entities: []graph.Entity{
+			{ID: "ent0000000000000a", Name: "Dto.id", Kind: "SCOPE.Schema", Subtype: "field", SourceFile: "a.ts", StartLine: 1, Signature: "id: number"},
+			{ID: "ent0000000000000b", Name: "Dto.type", Kind: "SCOPE.Schema", Subtype: "field", SourceFile: "a.ts", StartLine: 2, Signature: "type: string | null"},
+			// No signature — must read back empty.
+			{ID: "ent0000000000000c", Name: "bare", Kind: "function", SourceFile: "b.ts", StartLine: 3},
+		},
+	}
+	doc.Stats.Entities = len(doc.Entities)
+
+	out := filepath.Join(t.TempDir(), "graph.fb")
+	if err := fbwriter.WriteAtomic(out, doc); err != nil {
+		t.Fatalf("write: %v", err)
+	}
+	got, err := graph.LoadGraphFromDir(filepath.Dir(out))
+	if err != nil {
+		t.Fatalf("load: %v", err)
+	}
+	sigByID := map[string]string{}
+	for i := range got.Entities {
+		sigByID[got.Entities[i].ID] = got.Entities[i].Signature
+	}
+	if sigByID["ent0000000000000a"] != "id: number" {
+		t.Errorf("field signature lost: got %q want %q", sigByID["ent0000000000000a"], "id: number")
+	}
+	if sigByID["ent0000000000000b"] != "type: string | null" {
+		t.Errorf("nullable field signature lost: got %q want %q", sigByID["ent0000000000000b"], "type: string | null")
+	}
+	if sigByID["ent0000000000000c"] != "" {
+		t.Errorf("empty signature should stay empty: got %q", sigByID["ent0000000000000c"])
 	}
 }

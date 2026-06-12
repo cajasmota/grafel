@@ -61,6 +61,20 @@ table Entity {
   // FormatVersion is bumped to force a clean reindex (archigraph is
   // pre-1.0; no backward-compat path).
   language: string;
+
+  // Issue #4881 — dedicated slot for the entity signature. The binary
+  // graph.fb path (the one the daemon MCP + dashboard actually read) had
+  // NO signature field, so every entity round-tripped through graph.fb
+  // with Signature="" even though graph.json preserved it. For SCOPE.Schema
+  // field entities the signature is the canonical carrier of the field
+  // TYPE + nullability ("id: number", "type: string | null"), so the
+  // dashboard shape API rendered every DTO field with an empty type. This
+  // bug was general — graph.fb dropped the signature for functions, classes,
+  // methods and every other kind too; field types are just where it was most
+  // visible. Appended after `language` so existing field IDs are unchanged
+  // and old graph.fb files read back with an empty signature (prior
+  // behavior). FormatVersion is bumped to force a clean reindex.
+  signature: string;
 }
 
 // Community is one Louvain modularity community summarised for the

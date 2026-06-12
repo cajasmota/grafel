@@ -11,4 +11,9 @@ package fbversion
 // load expects. Bump together with any schema change in graph.fbs that
 // breaks readers. Both internal/graph and internal/graph/fbwriter
 // import this package — drift is now compile-time impossible.
-const Version = 3
+// Version 4 (#4881) — added the `signature` slot to the Entity table so the
+// binary graph.fb path persists entity signatures (it never did before, which
+// dropped SCOPE.Schema field TYPES from the dashboard shape API). A v3 graph.fb
+// has no signatures, so the min-version gate rejects it and forces a clean
+// reindex that repopulates signatures.
+const Version = 4
