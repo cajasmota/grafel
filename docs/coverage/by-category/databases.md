@@ -1,12 +1,13 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # databases
 
-**Total**: 12 records · **multi**: 12
+**Total**: 13 records · **elixir**: 1 · **multi**: 12
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Dependency attribution | Resource extraction | Status | Notes |
 |---|---|---|---|---|---|
+| [elixir](../by-language/elixir.md) | [Nebulex (cache)](../detail/db.nebulex.md) | 🔴 | 🔴 | 🔴 | |
 | [multi](../by-language/multi.md) | [AWS DynamoDB](../detail/db.dynamodb.md) | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Apache Cassandra (schema)](../detail/db.cassandra.md) | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Caching (regions/keys)](../detail/db.cache.md) | 🟢 | 🟢 | 🟢 | |

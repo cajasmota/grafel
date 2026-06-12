@@ -27,7 +27,7 @@ one is a separate detail page.
 | [`lang.elixir.driver.mongodb`](./lang.elixir.driver.mongodb.md) | elixir | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.go.driver.mongodb`](./lang.go.driver.mongodb.md) | go | driver | 3 partial, 3 missing, 5 n/a |
 | [`lang.java.driver.mongodb`](./lang.java.driver.mongodb.md) | java | driver | 1 full, 3 missing, 7 n/a |
-| [`lang.java.orm.spring-data-mongo`](./lang.java.orm.spring-data-mongo.md) | java | orm | 1 full, 5 missing, 5 n/a |
+| [`lang.java.orm.spring-data-mongo`](./lang.java.orm.spring-data-mongo.md) | java | orm | 2 full, 4 missing, 5 n/a |
 | [`lang.jsts.driver.mongodb`](./lang.jsts.driver.mongodb.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.jsts.orm.mongoose`](./lang.jsts.orm.mongoose.md) | JS/TS | orm | 7 full, 3 missing, 3 n/a |
 | [`lang.kotlin.orm.mongodb`](./lang.kotlin.orm.mongodb.md) | kotlin | orm | 2 full, 3 missing, 6 n/a |

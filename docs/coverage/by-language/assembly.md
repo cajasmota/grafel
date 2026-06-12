@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # assembly
 
-**Frameworks**: 0 · **Tools**: 0 · **ORMs**: 0 · **Other**: 4
+**Frameworks**: 0 · **Tools**: 0 · **ORMs**: 0 · **Other**: 5
 
 Back to [summary](../summary.md).
 
@@ -27,3 +27,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [GNU as (gas)](../detail/lang.assembly.toolchain.gnu-as.md) | [language](../by-category/language.md) | ✅ | |
 | [MASM](../detail/lang.assembly.toolchain.masm.md) | [language](../by-category/language.md) | 🟢 | |
 | [NASM](../detail/lang.assembly.toolchain.nasm.md) | [language](../by-category/language.md) | ✅ | |
+| [RISC-V as (gas)](../detail/lang.assembly.toolchain.riscv.md) | [language](../by-category/language.md) | ✅ | |

@@ -26,7 +26,7 @@ one is a separate detail page.
 | [`lang.csharp.driver.redis`](./lang.csharp.driver.redis.md) | C# | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.elixir.driver.redix`](./lang.elixir.driver.redix.md) | elixir | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.go.driver.redis`](./lang.go.driver.redis.md) | go | driver | 2 partial, 3 missing, 6 n/a |
-| [`lang.java.orm.spring-data-redis`](./lang.java.orm.spring-data-redis.md) | java | orm | 1 full, 5 missing, 5 n/a |
+| [`lang.java.orm.spring-data-redis`](./lang.java.orm.spring-data-redis.md) | java | orm | 2 full, 4 missing, 5 n/a |
 | [`lang.jsts.driver.redis`](./lang.jsts.driver.redis.md) | JS/TS | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.php.driver.redis`](./lang.php.driver.redis.md) | php | driver | 1 full, 3 missing, 7 n/a |
 | [`lang.python.driver.redis`](./lang.python.driver.redis.md) | python | driver | 1 full, 3 missing, 7 n/a |

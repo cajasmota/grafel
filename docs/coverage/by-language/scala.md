@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # scala
 
-**Frameworks**: 14 · **Tools**: 3 · **ORMs**: 6 · **Other**: 0
+**Frameworks**: 14 · **Tools**: 3 · **ORMs**: 7 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -69,9 +69,17 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
+| [Anorm](../detail/lang.scala.orm.anorm.md) | 🟡 3/6 | |
 | [Doobie](../detail/lang.scala.orm.doobie.md) | 🟡 3/6 | |
 | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟡 3/6 | |
 | [Quill](../detail/lang.scala.orm.quill.md) | 🟡 5/8 | |
 | [ScalikeJDBC](../detail/lang.scala.orm.scalikejdbc.md) | 🟡 6/9 | |
 | [Scanamo (DynamoDB)](../detail/lang.scala.orm.scanamo.md) | 🟡 2/6 | |
 | [Slick](../detail/lang.scala.orm.slick.md) | 🟡 7/10 | |
+
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [Scala (base language)](../detail/lang.scala.base.md) | [language](../by-category/language.md) | ✅ | |

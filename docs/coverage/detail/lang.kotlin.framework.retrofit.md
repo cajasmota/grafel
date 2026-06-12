@@ -15,38 +15,38 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
-| Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
-| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
+| Endpoint deprecation versioning | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
+| Endpoint pagination posture | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
+| Endpoint response codes | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
 | Endpoint synthesis | ✅ `full` | — | — | `internal/engine/http_endpoint_kotlin_client.go`<br>`internal/engine/http_endpoint_kotlin_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | Retrofit interface verb annotations (@GET/@POST/@PUT/@DELETE/@PATCH/@HEAD/@OPTIONS) → one outbound http_endpoint (consumer) per annotated method + FETCHES from the method; Retrofit.Builder().baseUrl() composed; {param} paths normalized. Value-asserted in http_endpoint_kotlin_client_test.go. |
 | Handler attribution | ✅ `full` | — | — | `internal/engine/http_endpoint_kotlin_client.go`<br>`internal/engine/http_endpoint_kotlin_client_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | FETCHES edge attributes each outbound call to the enclosing Retrofit interface method. Value-asserted in http_endpoint_kotlin_client_test.go. |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Route extraction | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
 
 ### View
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+| View rendering | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Auth coverage | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Middleware coverage | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
+| Rate limit stamping | — `not_applicable` | `2026-06-12` | 4924 | `internal/engine/http_endpoint_kotlin_client.go` | Retrofit is an HTTP CLIENT (outbound), not a server framework — server-side routing/middleware/auth/rate-limit/response-code/pagination concerns do not apply (parity with how Arrow marks server cells N/A). #4924 reclassification: these were inflating Kotlin 'missing' metrics. Retrofit @-annotation interfaces + baseUrl composition are extracted as FETCHES via internal/engine/http_endpoint_kotlin_client.go. |
 
 ### Testing
 

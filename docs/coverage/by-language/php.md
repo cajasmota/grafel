@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # php
 
-**Frameworks**: 16 · **Tools**: 6 · **ORMs**: 14 · **Other**: 0
+**Frameworks**: 16 · **Tools**: 6 · **ORMs**: 14 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -76,3 +76,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [mongodb (PHP driver)](../detail/lang.php.driver.mongodb.md) | 🟡 2/5 | |
 | [neo4j-php-client](../detail/lang.php.driver.neo4j.md) | 🟡 3/6 | |
 | [phpredis / Predis](../detail/lang.php.driver.redis.md) | 🟡 1/4 | |
+
+
+## Other
+
+
+### Task Queues
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [Laravel Queue (queued Jobs / dispatch)](../detail/msg.broker.laravel-queue.md) | 🟢 | 🟢 | 🟢 | |

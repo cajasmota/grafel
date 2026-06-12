@@ -28,6 +28,7 @@ one is a separate detail page.
 | [`lang.elixir.framework.grpc`](./lang.elixir.framework.grpc.md) | elixir | framework | 3 full, 22 partial, 15 missing, 14 n/a |
 | [`lang.go.framework.grpc`](./lang.go.framework.grpc.md) | go | framework | 1 full, 3 partial, 37 missing, 13 n/a |
 | [`lang.java.framework.grpc`](./lang.java.framework.grpc.md) | java | framework | 1 full, 3 partial, 37 missing, 13 n/a |
+| [`lang.python.framework.grpc`](./lang.python.framework.grpc.md) | python | framework | 4 partial, 41 missing, 9 n/a |
 | [`lang.rust.framework.tonic`](./lang.rust.framework.tonic.md) | rust | framework | 10 full, 9 partial, 29 missing, 1 n/a |
 | [`lang.scala.framework.scalapb-grpc`](./lang.scala.framework.scalapb-grpc.md) | scala | framework | 10 full, 19 partial, 8 missing, 17 n/a |
 

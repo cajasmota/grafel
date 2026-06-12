@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # ruby
 
-**Frameworks**: 9 · **Tools**: 6 · **ORMs**: 14 · **Other**: 7
+**Frameworks**: 9 · **Tools**: 6 · **ORMs**: 14 · **Other**: 8
 
 Back to [summary](../summary.md).
 
@@ -86,6 +86,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
 |---|---|---|---|---|
+| [Rails ActiveJob (queue abstraction)](../detail/msg.broker.activejob.md) | 🟢 | 🟢 | 🟢 | |
 | [Resque (Ruby task queue)](../detail/msg.resque.md) | 🟢 | 🟢 | 🟢 | |
 | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🟢 | 🟢 | — | |
 

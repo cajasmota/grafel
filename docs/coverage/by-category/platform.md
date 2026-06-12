@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # platform
 
-**Total**: 40 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 34 · **python**: 1 · **ruby**: 1
+**Total**: 45 records · **java**: 2 · **javascript**: 1 · **JS/TS**: 1 · **multi**: 39 · **python**: 1 · **ruby**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -51,6 +51,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Apache Airflow (DAG topology)](../detail/infra.orchestration.airflow.md) | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Argo Workflows (DAG topology)](../detail/infra.orchestration.argo.md) | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Celery canvas (chain/group/chord topology)](../detail/infra.orchestration.celery-canvas.md) | 🟢 | 🟢 | 🟢 | |
+| [multi](../by-language/multi.md) | [Workflow orchestration (Temporal/Cadence/Step-Functions)](../detail/analysis.orchestration.workflow.md) | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Python transitions (FSM topology)](../detail/infra.state-machine.python-transitions.md) | 🟢 | 🟢 | 🟢 | |
 | [ruby](../by-language/ruby.md) | [Ruby AASM (FSM topology)](../detail/infra.state-machine.aasm.md) | 🟢 | 🟢 | 🟢 | |
 
@@ -61,10 +62,14 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [API-gateway route topology (application frameworks)](../detail/infra.gateway.api-routing.md) | ✅ | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS CDK](../detail/infra.resource.aws-cdk.md) | 🟢 | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS CloudFormation](../detail/infra.resource.cloudformation.md) | ✅ | ✅ | — | ✅ | |
+| [multi](../by-language/multi.md) | [Feature-flag gating topology (SCOPE.FeatureFlag + GATED_BY)](../detail/analysis.orchestration.feature-flags.md) | ✅ | ✅ | — | ✅ | |
+| [multi](../by-language/multi.md) | [Finite-state-machine topology (SCOPE.State + TRANSITIONS_TO)](../detail/analysis.orchestration.state-machine.md) | ✅ | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [Helm charts](../detail/infra.resource.helm.md) | — | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [Kubernetes manifests](../detail/infra.resource.kubernetes.md) | 🟢 | ✅ | — | 🟢 | |
+| [multi](../by-language/multi.md) | [Plugin / extension-system registration (SCOPE.Plugin + REGISTERS_PLUGIN)](../detail/analysis.orchestration.plugin-system.md) | ✅ | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [Pulumi](../detail/infra.resource.pulumi.md) | 🟢 | 🟢 | — | 🟢 | |
 | [multi](../by-language/multi.md) | [Reverse-proxy / gateway request topology](../detail/infra.deployment.request-topology.md) | ✅ | 🟢 | — | 🟢 | |
+| [multi](../by-language/multi.md) | [Scheduled-job / cron entry-points (SCOPE.ScheduledJob + TRIGGERS)](../detail/analysis.orchestration.scheduled-jobs.md) | ✅ | ✅ | — | ✅ | |
 | [multi](../by-language/multi.md) | [Shared-database cross-service coupling (SHARES_DATA)](../detail/analysis.architecture.shared-db-coupling.md) | — | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Structural coupling metrics (Ca/Ce/instability)](../detail/analysis.architecture.structural-coupling.md) | ✅ | — | — | ✅ | |
 | [multi](../by-language/multi.md) | [Terraform / OpenTofu / Vault / Nomad / Packer / Waypoint](../detail/infra.resource.terraform.md) | ✅ | ✅ | — | ✅ | |

@@ -38,7 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3255) | `internal/custom/golang/dto.go`<br>`internal/custom/golang/dto_test.go` | — |
+| DTO extraction | ✅ `full` | `2026-06-11` | — | `internal/custom/golang/dto.go`<br>`internal/custom/golang/dto_field_members.go`<br>`internal/custom/golang/dto_field_members_test.go`<br>`internal/custom/golang/dto_test.go` | #4715: each request/response DTO struct field is emitted as a SCOPE.Schema/field member (field_name from json tag, normalized field_type, parent_class, optional from omitempty/pointer/non-required validate|binding rule, validators as @rule markers + parseable Signature) with a CONTAINS edge to the struct — the SAME uniform shape as the JS (#4635) and Python/Java (#4613) DTO field members. emitGoDTOFieldMembers in dto_field_members.go; value-asserted by TestGoDTO_FieldMembers (type/optional/validators/CONTAINS). DTO struct resolution stays same-file heuristic (partial where not proven by a per-framework fixture). |
 | Request validation | 🟢 `partial` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3213) | `internal/custom/golang/helpers.go` | binding call sites captured (c.ShouldBindJSON/BindJSON/Bind etc); struct-tag validation chain (go-playground/validator binding:"required" tags) not analyzed; no data-flow tracing of validated vs unvalidated paths |
 
 ### Middleware
@@ -75,7 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | `2026-05-29` | backfill:dictionary-completeness | `internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/resolver.go` | Go test file + Test* func detection via tree-sitter base extractor; handler→test edge resolution and functional coverage mapping not implemented |
+| Tests linkage | 🟢 `partial` | `2026-06-11` | 4683 | `internal/custom/golang/httptest_e2e.go`<br>`internal/extractors/cross/testmap/extractor.go`<br>`internal/extractors/cross/testmap/frameworks.go`<br>`internal/extractors/cross/testmap/resolver.go`<br>`internal/extractors/golang/extractor.go`<br>`internal/extractors/golang/issue4683_localvar_receiver_test.go`<br>`internal/graph/coverage.go` | Go test file + Test* func detection via tree-sitter base extractor. Test→endpoint linkage credited two ways: (1) stdlib httptest route-by-string e2e — httptest.NewRequest / http.NewRequest+ServeHTTP / httptest.NewServer+http.Get — stamped to e2e_route_calls and resolved by the shared engine route-map pass (#4371); (2) test→CALLS→handler/service crediting via local-variable receiver typing — svc := NewProposalService(); svc.GetCounts() types the local from the same-file constructor's struct return so the method CALLS edge carries receiver_type and ComputeCoverage credits the endpoint (#4683). Partial: framework-specific test clients (gin CreateTestContext, echo NewContext, fiber app.Test) and non-literal/built routes are not yet linked; interface-returning factories and multi-return constructors stay bare (honest exclusion). |
 
 ### Observability
 

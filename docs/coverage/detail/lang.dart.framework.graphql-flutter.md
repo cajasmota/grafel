@@ -48,9 +48,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | 🟢 `partial` | — | 4912 | `internal/extractors/dart/types.go`<br>`internal/extractors/dart/types_test.go` | #4912: the base Dart extractor (types.go, dartEnums) now emits a SCOPE.Enum value-set node per `enum` declaration via extractor.EnumEntity(kind_hint=dart_enum) — plain enums and Dart-2.17 enhanced enums (constants-before-`;` kept as members, single-literal ctor args lifted to values). Value-asserted: TestDartTypes_PlainEnum (Color -> red,green,blue), TestDartTypes_EnhancedEnum (Planet -> mercury,earth, post-`;` fields/methods dropped). PARTIAL: regex over canonical declarations; computed/multi-arg ctor values are not resolved. |
+| Interface extraction | 🟢 `partial` | — | 4912 | `internal/extractors/dart/types.go`<br>`internal/extractors/dart/types_test.go` | #4912: Dart-3 class modifiers (types.go, dartModifiedClasses) — `sealed`/`base`/`interface`/`final`/`mixin class` — are now extracted as SCOPE.Component(class) carrying Properties{class_modifier, dart_sealed, dart_interface}; the base classRE only matched plain/`abstract` classes so these (incl. `interface class`, Dart's nominal-interface form) were invisible. Value-asserted: TestDartTypes_SealedClass (sealed Shape -> dart_sealed=true; interface Drawable -> dart_interface=true). PARTIAL: subtype permits-clause / exhaustiveness graph wiring not modelled; Dart has no standalone `interface` keyword (interfaces are implicit via `implements`). |
+| Type alias extraction | 🟢 `partial` | — | 4912 | `internal/extractors/dart/types.go`<br>`internal/extractors/dart/types_test.go` | #4912: `typedef` (types.go, dartTypedefs) now emits SCOPE.Schema(subtype=type_alias) with type_body — both the modern `typedef Name = <type>;` (Dart 2.13+) and the legacy function-type `typedef Ret Name(params);` spellings, parity with the python/rust/go type_alias shape. Value-asserted: TestDartTypes_TypedefAlias (JsonMap -> Map<String, dynamic>), TestDartTypes_TypedefFunc (Comparator). PARTIAL: regex over canonical one-line forms. |
 
 ### Lifecycle
 

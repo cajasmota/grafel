@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # build_system
 
-**Total**: 91 records · **C/C++**: 12 · **C#**: 6 · **elixir**: 4 · **go**: 7 · **groovy**: 1 · **java**: 8 · **JS/TS**: 20 · **multi**: 4 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 5 · **scala**: 2
+**Total**: 100 records · **C/C++**: 12 · **clojure**: 4 · **C#**: 6 · **elixir**: 8 · **F#**: 1 · **go**: 7 · **groovy**: 1 · **java**: 8 · **JS/TS**: 20 · **multi**: 4 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 5 · **scala**: 2
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -20,16 +20,25 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [C/C++](../by-language/c-cpp.md) | [Ninja](../detail/lang.c-cpp.tool.ninja.md) | 🔴 | 🔴 | |
 | [C/C++](../by-language/c-cpp.md) | [doctest (C++)](../detail/test.doctest-cpp.md) | 🔴 | 🔴 | |
 | [C/C++](../by-language/c-cpp.md) | [xmake](../detail/lang.c-cpp.tool.xmake.md) | 🔴 | 🔴 | |
+| [clojure](../by-language/clojure.md) | [Boot](../detail/build.boot.md) | 🟢 | 🟢 | |
+| [clojure](../by-language/clojure.md) | [Leiningen](../detail/build.leiningen.md) | 🟢 | 🟢 | |
+| [clojure](../by-language/clojure.md) | [shadow-cljs](../detail/build.shadow-cljs.md) | 🟢 | 🟢 | |
+| [clojure](../by-language/clojure.md) | [tools.deps / deps.edn](../detail/build.tools-deps.md) | 🟢 | 🟢 | |
 | [C#](../by-language/csharp.md) | [FluentAssertions](../detail/test.fluentassertions.md) | 🔴 | 🔴 | |
 | [C#](../by-language/csharp.md) | [MSTest](../detail/test.mstest.md) | 🟢 | 🟢 | |
 | [C#](../by-language/csharp.md) | [NUnit](../detail/test.nunit.md) | 🟢 | 🟢 | |
 | [C#](../by-language/csharp.md) | [NuGet](../detail/build.nuget.md) | 🟢 | 🟢 | |
 | [C#](../by-language/csharp.md) | [dotnet CLI / MSBuild](../detail/build.dotnet.md) | ✅ | ✅ | |
 | [C#](../by-language/csharp.md) | [xUnit](../detail/test.xunit.md) | 🟢 | 🟢 | |
+| [elixir](../by-language/elixir.md) | [Bypass](../detail/test.bypass.md) | 🔴 | 🔴 | |
 | [elixir](../by-language/elixir.md) | [ExUnit](../detail/test.exunit.md) | ✅ | ✅ | |
+| [elixir](../by-language/elixir.md) | [Faker / ExMachina](../detail/test.faker.md) | 🔴 | 🔴 | |
 | [elixir](../by-language/elixir.md) | [Hex](../detail/build.hex.md) | 🟢 | 🟢 | |
 | [elixir](../by-language/elixir.md) | [Mix (mix.exs)](../detail/build.mix.md) | ✅ | ✅ | |
+| [elixir](../by-language/elixir.md) | [Mox](../detail/test.mox.md) | 🔴 | 🔴 | |
 | [elixir](../by-language/elixir.md) | [StreamData (property tests)](../detail/test.streamdata.md) | ✅ | ✅ | |
+| [elixir](../by-language/elixir.md) | [Wallaby](../detail/test.wallaby.md) | 🔴 | 🔴 | |
+| [F#](../by-language/fsharp.md) | [Expecto / xUnit (F#)](../detail/test.fsharp-expecto.md) | 🔴 | 🟢 | |
 | [go](../by-language/go.md) | [Ginkgo](../detail/test.ginkgo.md) | 🟢 | ✅ | |
 | [go](../by-language/go.md) | [Gomega](../detail/test.gomega.md) | 🟢 | ✅ | |
 | [go](../by-language/go.md) | [Mage](../detail/build.mage.md) | ✅ | ✅ | |

@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -119,6 +119,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | 3046 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_test.go` | Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex. |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3046 | `internal/substrate/template_pattern_jsts.go`<br>`internal/substrate/template_pattern_test.go` | Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered. |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3046 | `internal/links/taint_flow.go`<br>`internal/links/taint_flow_test.go` | Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected. |
+
+## Framework-specific
+
+### Fastify Contract
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Effective contract | 🟢 `partial` | `2026-06-11` | [link](https://github.com/cajasmota/archigraph/issues/4710) | `internal/authposture/express.go`<br>`internal/mcp/effective_contract_express.go`<br>`internal/mcp/effective_contract_express_4710_test.go`<br>`internal/mcp/effective_contract_fw_common.go`<br>`internal/mcp/effective_contract_registry.go` | #4710: the expressContractResolver (shared with Express/Koa/Hapi/Hono) in the framework-pluggable effective_contract registry (#4601) composes the per-endpoint contract from existing graph signals. Fastify-specific: request fields from the route schema.body JSON-schema (request_body_type) field members plus any VALIDATES->dto:<schema>; per-branch statuses from the JSTS branch analyzer (reply.code(NNN), substrate analyzeBranchesJSTS); auth posture from the authposture express resolver (preHandler auth middleware). PARTIAL: untyped requests with no schema yield no request fields; structured RBAC frequently absent. Value-asserting coverage via TestEffectiveContract_Express_FullContract (shared resolver). |
 
 ## Provenance
 

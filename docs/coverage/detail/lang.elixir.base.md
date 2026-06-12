@@ -1,0 +1,29 @@
+<!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
+# `lang.elixir.base` — Elixir (base language)
+
+Auto-generated. Back to [summary](../summary.md).
+
+- **Language:** [elixir](../by-language/elixir.md)
+- **Category:** [language](../by-category/language.md)
+- **Capability cells:** 6
+
+## Capabilities
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Call line precision | ✅ `full` | `2026-06-12` | 4916 | `internal/extractors/elixir/elixir.go`<br>`internal/extractors/elixir/relationships_test.go` | #4916 documents the base record. CALLS edges (#370) are mined per def/defp body (extractCallRelationships over every descendant call node): a bare helper() -> ToID="helper"; a dotted Repo.all(User) -> ToID="all" (trailing identifier of the dot). Self-recursion is dropped and a stop-list (elixirCallStop) filters control-flow keywords (if/unless/case/cond/with/for/try/receive/quote/unquote/fn/raise/throw), def-defining macros (def/defp/defmodule/defprotocol/defimpl/defmacro/defstruct/defguard/...), import forms (alias/import/use/require), ExUnit/Phoenix test macros (test/describe/setup/assert/refute/...) and Ecto schema declarators (schema/field/has_many/belongs_to/...). Each edge is stamped Properties["line"] (1-based, call.StartPoint().Row+1). Duplicate targets within one body are de-duped. Proven by relationships_test.go. |
+| Core extraction | ✅ `full` | `2026-06-12` | 4916 | `internal/extractors/elixir/elixir.go`<br>`internal/extractors/elixir/elixir_test.go`<br>`internal/extractors/elixir/exception_flow.go`<br>`internal/extractors/elixir/exception_flow_test.go`<br>`internal/extractors/elixir/relationships_test.go` | #4916 documents the previously-undocumented base record. Tree-sitter (smacker/go-tree-sitter/elixir) extractor (elixir.go, registered via init()). Emits: defmodule -> SCOPE.Component(subtype=module); defprotocol -> SCOPE.Component(subtype=protocol); def -> SCOPE.Operation(subtype=function) and defp -> subtype=private_function (buildFunction, signature = first line minus trailing " do"); Ecto schema "table" do -> SCOPE.Schema(subtype=schema, buildSchema). Each defmodule/defprotocol attaches one CONTAINS edge per def/defp in its do_block via the canonical Format-A structural ref scope:operation:method:elixir:<file>:<name> (BuildOperationStructuralRef, #144/#370) so same-named functions in different files disambiguate. A file-level SCOPE.Component(subtype=file) is emitted (#577) for cross-repo import linkage. #3628 (exception_flow.go) adds THROWS/CATCHES edges to shared SCOPE.ExceptionType convergence nodes for typed raise Type / rescue e in [Type] shapes. Proven by elixir_test.go + relationships_test.go + exception_flow_test.go. |
+| DB effect | ✅ `full` | `2026-06-12` | 4916 | `internal/substrate/effect_sinks_elixir.go`<br>`internal/substrate/elixir_trailing_frameworks_test.go` | #4916: sniffEffectsElixir recognises EffectDBRead (Repo.all/get/get_by/one/stream/preload/aggregate/exists?, raw Ecto.Adapters.SQL.query SELECT/WITH) and EffectDBWrite (Repo.insert/update/delete/insert_all/update_all/delete_all/transaction/insert_or_update, raw SQL INSERT/UPDATE/DELETE/...), attributed to the nearest def/defp. Proven by elixir_trailing_frameworks_test.go (Repo.get -> db_read). |
+| Fs effect | ✅ `full` | `2026-06-12` | 4916 | `internal/substrate/effect_sinks_elixir.go`<br>`internal/substrate/elixir_trailing_frameworks_test.go` | #4916: sniffEffectsElixir recognises EffectFSRead (File.read/read!/stream!/exists?/ls/dir?/stat, File.open read-mode, IO.read) and EffectFSWrite (File.write/cp/rm/mkdir/rename/..., File.open with :write|:append|:exclusive, plus System.cmd/Port.open spawn). Proven by elixir_trailing_frameworks_test.go (noEffect FSWrite assertions). |
+| HTTP effect | ✅ `full` | `2026-06-12` | 4916 | `internal/substrate/effect_sinks_elixir.go`<br>`internal/substrate/elixir_confidence_overlay_test.go`<br>`internal/substrate/elixir_trailing_frameworks_test.go` | #4916: the framework-blind effect sniffer (sniffEffectsElixir, registered via RegisterEffectSniffer("elixir")) recognises outbound HTTP egress (EffectHTTPOut, conf 1.0) for HTTPoison.<get|post|put|...|request>, Tesla.<verb>/Tesla.client, Finch.build/request/stream, Req.<verb>/Req.new, Mint.HTTP, :httpc.request, :hackney.request and (NEW this PR) WebSockex.<start_link|start|send_frame|cast> — the dominant Elixir WebSocket client, previously unrecognised (#4916 HIGH MISSING-FRAMEWORK gap). HTTPoison/hackney/Mint thus DOCUMENTED here (they had no registry record); Finch/Req/Tesla also carry dedicated http_framework records. Matches are attributed to the nearest preceding def/defp header. Proven by elixir_confidence_overlay_test.go (Finch/Req/Tesla/WebSockex) + elixir_trailing_frameworks_test.go. |
+| Import resolution quality | ✅ `full` | `2026-06-12` | 4916 | `internal/extractors/elixir/elixir.go`<br>`internal/extractors/elixir/relationships_test.go` | #4916 documents the base record. IMPORTS edges (#370, parity with the java #120 / python #93 contract) are emitted per alias/import/use/require directive (buildImportRecord) carrying Properties: alias Foo.Bar.Baz -> local_name=Baz/source_module=Foo.Bar/imported_name=Baz; alias Foo -> local_name=Foo/source_module=Foo. The original directive is preserved as Properties["import_kind"] (alias|import|use|require). The leaf segment becomes local_name/imported_name and the dotted prefix is source_module. Proven by relationships_test.go. |
+
+## Provenance
+
+This record is sourced from `docs/coverage/registry.json`. To update it, edit the JSON
+(or use `go run ./tools/coverage update lang.elixir.base ...`) then regenerate:
+
+```
+go run ./tools/coverage validate
+go run ./tools/coverage gen
+```

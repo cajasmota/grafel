@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🔴 `missing` | `2026-06-06` | [link](https://github.com/cajasmota/archigraph/issues/3643) | — | @RedisHash("people") is recognised by scanJavaSpringDataRedis but emitted only as a QUERIES keyspace edge (Class:People), NOT as a schema/model entity, so model_extraction is honestly left missing (same follow-up shape as the java elastic model_extraction gap). Promoting requires emitting the @RedisHash aggregate root + its @Id/@Indexed fields as a model/schema entity. |
+| Model extraction | ✅ `full` | `2026-06-11` | [link](https://github.com/cajasmota/archigraph/issues/4283) | `internal/extractors/java/nosql_model.go`<br>`internal/extractors/java/nosql_model_test.go` | Native Go pass (#4283): a class-level @RedisHash("people") emits a SCOPE.Schema model entity (Subtype "schema") named after the class (the aggregate root), keyspace on the `keyspace` property and `store=redis`. Field membership reuses the base extractor's SCOPE.Schema/field children via CONTAINS (BuildSchemaFieldStructuralRef); @Id/@Indexed flags recorded in model Properties (field.<n>.id / field.<n>.indexed). Complements the existing scanJavaSpringDataRedis QUERIES keyspace edge (#3643). Honest limit: dynamic/non-literal keyspace -> model emitted without a `keyspace` property. |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
 | Schema extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_ecosystem.go` | — |
 

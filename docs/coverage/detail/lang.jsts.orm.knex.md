@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/orm_queries_jsts_drivers.go`<br>`internal/engine/orm_queries_jsts_drivers_test.go`<br>`internal/extractors/cross/dbmap/orms.go`<br>`internal/extractors/cross/dbmap/query_builders.go`<br>`internal/extractors/cross/dbmap/query_builders_test.go` | Driver query attribution via orm_queries_jsts_drivers. #3628 area #3 ADDS table-level access: knex('t')/.from('t')/.into('t') resolve the string-literal table → ACCESSES_TABLE (op from .insert/.update/.del/.truncate); dynamic knex(tableVar) skipped. Proven by TestKnex* in query_builders_test.go. |
+| Query attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/orm_queries_jsts_drivers.go`<br>`internal/extractors/cross/dbmap/query_builders.go`<br>`internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_querybuilder_4335_4336_test.go` | #4336 Knex builder data-access effects: knex('t').where().select()/first()/pluck() -> db_read; .insert()/.update()/.del()/.truncate() -> db_write. Ambiguous first/pluck/del/execute credited ONLY on a knex('t')/knex.table('t')-typed receiver (seeded + propagated across shaper reassignments) so plain collection .first() stays pure. Complements the #3628 ACCESSES_TABLE attribution. effect_sinks_jsts.go. |
 
 ### Migrations
 

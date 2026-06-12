@@ -24,7 +24,7 @@ one is a separate detail page.
 | Record | Language | Kind | Status |
 |--------|----------|------|--------|
 | [`lang.csharp.framework.hotchocolate`](./lang.csharp.framework.hotchocolate.md) | C# | framework | 8 full, 19 partial, 22 missing |
-| [`lang.dart.framework.graphql-flutter`](./lang.dart.framework.graphql-flutter.md) | dart | framework | 1 full, 36 missing |
+| [`lang.dart.framework.graphql-flutter`](./lang.dart.framework.graphql-flutter.md) | dart | framework | 1 full, 3 partial, 33 missing |
 | [`lang.elixir.framework.absinthe`](./lang.elixir.framework.absinthe.md) | elixir | framework | 7 full, 32 partial, 10 missing |
 | [`lang.go.framework.gqlgen`](./lang.go.framework.gqlgen.md) | go | framework | 8 full, 19 partial, 22 missing |
 | [`lang.java.framework.spring-graphql`](./lang.java.framework.spring-graphql.md) | java | framework | 8 full, 15 partial, 31 missing, 1 n/a |

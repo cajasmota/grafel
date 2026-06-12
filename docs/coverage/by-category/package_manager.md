@@ -27,4 +27,4 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [ruby](../by-language/ruby.md) | [Gemfile](../detail/pkg.gemfile.md) | — | 🔴 | ✅ | |
 | [rust](../by-language/rust.md) | [Cargo.toml](../detail/pkg.cargo.md) | — | 🔴 | ✅ | |
 | [scala](../by-language/scala.md) | [build.sbt](../detail/pkg.sbt.md) | — | — | 🔴 | |
-| [swift](../by-language/swift.md) | [Package.swift / Podfile](../detail/pkg.swift-package.md) | — | — | 🔴 | |
+| [swift](../by-language/swift.md) | [Package.swift / Podfile](../detail/pkg.swift-package.md) | — | — | 🟢 | |

@@ -26,18 +26,18 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
-| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
-| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
-| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
-| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Actix Web](../detail/lang.rust.framework.actix.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/12 | |
+| [Axum](../detail/lang.rust.framework.axum.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 9/12 | |
+| [Gotham](../detail/lang.rust.framework.gotham.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
+| [Poem](../detail/lang.rust.framework.poem.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
+| [Rocket](../detail/lang.rust.framework.rocket.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 21/24 | 🟡 7/12 | |
+| [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
+| [Tide](../detail/lang.rust.framework.tide.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟢 4/4 | 🔴 0/1 | 🟡 8/24 | 🟡 4/12 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 7/11 | |
-| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/6 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 8/12 | |
+| [Warp](../detail/lang.rust.framework.warp.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 9/24 | 🟡 6/13 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 21/24 | 🟡 7/12 | |
 | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 8/24 | 🟡 4/12 | |
 
 
