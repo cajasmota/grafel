@@ -217,6 +217,69 @@ func TestLangChain4jNoMatch(t *testing.T) {
 	}
 }
 
+// chain_composition wiring (#5012): runtime AiServices.builder() assembly is
+// traced into a SCOPE.Service entity carrying USES edges to each wired
+// component (chatLanguageModel / tools / chatMemory / contentRetriever).
+func TestLangChain4jServiceWiring(t *testing.T) {
+	src := `
+class AssistantConfig {
+    private val model: ChatLanguageModel = OpenAiChatModel.builder().build()
+    private val memory: ChatMemory = MessageWindowChatMemory.withMaxMessages(10)
+    private val retriever: ContentRetriever = EmbeddingStoreContentRetriever.from(store)
+
+    fun assistant(tools: Any): Assistant {
+        val assistant = AiServices.builder(Assistant::class.java)
+            .chatLanguageModel(model)
+            .tools(tools)
+            .chatMemory(memory)
+            .contentRetriever(retriever)
+            .build()
+        return assistant
+    }
+}
+`
+	e, ok := extreg.Get("custom_kotlin_langchain4j")
+	if !ok {
+		t.Fatal("extractor custom_kotlin_langchain4j not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("Config.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+
+	var svc *types.EntityRecord
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Service" && ents[i].Name == "assistant" {
+			svc = &ents[i]
+		}
+	}
+	if svc == nil {
+		t.Fatal("expected assembled SCOPE.Service 'assistant' from AiServices.builder")
+	}
+	if svc.Properties["provenance"] != "INFERRED_FROM_LANGCHAIN4J_AI_SERVICES_BUILDER" {
+		t.Errorf("wrong provenance: %s", svc.Properties["provenance"])
+	}
+
+	want := map[string]string{
+		"model":     "chat_model",
+		"tools":     "tools",
+		"memory":    "chat_memory",
+		"retriever": "content_retriever",
+	}
+	got := make(map[string]string)
+	for _, r := range svc.Relationships {
+		if r.Kind != "USES" {
+			t.Errorf("expected USES edge, got %s", r.Kind)
+		}
+		got[r.ToID] = r.Properties["wire_role"]
+	}
+	for target, role := range want {
+		if got[target] != role {
+			t.Errorf("wiring edge to %q: got role %q, want %q (edges=%v)", target, got[target], role, got)
+		}
+	}
+}
+
 // confidence_overlay (#4974, parity with Java #3093): the langchain4j extractor
 // stamps a top-level EntityRecord.Confidence directly. All entities are regex
 // pattern matches, so the stamped value is BaseConfidence(SourceRegexPattern)=0.7.
