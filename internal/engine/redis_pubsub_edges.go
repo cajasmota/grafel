@@ -82,7 +82,7 @@ const redisPubSubChannelEntityKind = "SCOPE.Queue"
 // can emit synthetics for `lang`.
 func redisPubSubSynthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "python", "javascript", "typescript", "go", "ruby", "java", "kotlin", "elixir":
+	case "python", "javascript", "typescript", "go", "ruby", "java", "kotlin", "elixir", "csharp":
 		return true
 	default:
 		return false
@@ -213,6 +213,8 @@ func applyRedisPubSubEdges(args DetectorPassArgs) DetectorPassResult {
 		synthesizeSpringRedisPubSub(src, emitChannel, emitEdge)
 	case "elixir":
 		synthesizeElixirRedisPubSub(src, emitChannel, emitEdge)
+	case "csharp":
+		synthesizeCSharpRedisPubSub(src, emitChannel, emitEdge)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -959,5 +961,100 @@ func synthesizeElixirRedisPubSub(
 			"messaging_layer": "redix",
 			"channel_type":    "pubsub",
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// C# — StackExchange.Redis ISubscriber (#5016)
+// ---------------------------------------------------------------------------
+//
+// StackExchange.Redis exposes pub/sub through the multiplexer's ISubscriber.
+// Before #5016 the C# Redis extractor (internal/custom/csharp/redis.go)
+// recorded Publish/Subscribe only as a per-file ORM keyspace access
+// (SCOPE.Datastore + PUBLISHES_TO/SUBSCRIBES_TO to a Datastore node) — useful
+// for data-access topology but invisible to the cross-repo message_broker
+// view. This synthesizer adds the broker view: it emits the SAME canonical
+// `channel:redis-pubsub:<name>` SCOPE.Queue entity the other languages use, so
+// a C# publisher and a (e.g. Node/Python/Kotlin) subscriber on the same
+// channel pair up cross-repo via the import-channel linker (P7) — no new
+// matching code.
+//
+// Producer:  sub.Publish("events", payload)
+//            sub.PublishAsync("events", payload)
+//            sub.Publish(RedisChannel.Literal("events"), payload)
+//            sub.Publish(new RedisChannel("events", RedisChannel.PatternMode.Literal), p)
+// Consumer:  sub.Subscribe("events", handler)
+//            sub.SubscribeAsync("events", handler)
+//            sub.Subscribe(RedisChannel.Pattern("orders.*"), handler)  // wildcard
+//
+// The first argument is the RedisChannel. We capture the first string literal
+// after the verb (covering both a bare "events" and the literal nested inside
+// RedisChannel.Literal(...) / RedisChannel.Pattern(...) / new RedisChannel(...)).
+// Pattern subscriptions are flagged via a trailing/embedded `*` wildcard or an
+// explicit RedisChannel.Pattern(...) / PatternMode.Pattern marker.
+
+// csRedisPubSubRe captures the StackExchange.Redis ISubscriber verb plus the
+// first string literal argument. Group 1 = verb (Publish/PublishAsync/
+// Subscribe/SubscribeAsync), group 2 = the channel literal. The optional
+// `RedisChannel.Literal(` / `RedisChannel.Pattern(` / `new RedisChannel(`
+// wrapper before the literal is matched non-capturing so both bare and
+// wrapped channel forms resolve to the same name.
+var csRedisPubSubRe = regexp.MustCompile(
+	`\.(Publish|PublishAsync|Subscribe|SubscribeAsync)\s*\(\s*(?:(?:new\s+)?RedisChannel\s*(?:\.\s*(?:Literal|Pattern))?\s*\(\s*)?"([^"\n\r]+)"`,
+)
+
+func synthesizeCSharpRedisPubSub(
+	src string,
+	emitChannel func(channelID, channelName, channelType string, isWildcard bool, props map[string]string),
+	emitEdge func(callerKind, callerName, channelID, edgeKind string, props map[string]string),
+) {
+	// Guard: must reference StackExchange.Redis ISubscriber pub/sub tokens.
+	if !strings.Contains(src, ".Publish") && !strings.Contains(src, ".Subscribe") {
+		return
+	}
+
+	// Enclosing class name for a stable per-file caller entity.
+	className := ""
+	if m := classNameRe.FindStringSubmatch(src); len(m) >= 2 {
+		className = m[1]
+	}
+
+	for _, m := range csRedisPubSubRe.FindAllStringSubmatchIndex(src, -1) {
+		verb := src[m[2]:m[3]]
+		ch := src[m[4]:m[5]]
+		if !looksLikeRedisChannel(ch) {
+			continue
+		}
+		isPublish := strings.HasPrefix(verb, "Publish")
+		// A wildcard `*` makes this a pattern subscription (psubscribe-style).
+		// RedisChannel.Pattern(...) also implies a pattern; both surface as a
+		// `*`-bearing literal in practice, so the glob check covers it.
+		isWildcard := strings.Contains(ch, "*")
+
+		caller := className
+		if caller == "" {
+			caller = findFollowingMethod(src, m[0])
+		}
+		if caller == "" {
+			continue
+		}
+
+		id := redisPubSubChannelID(ch)
+		emitChannel(id, ch, "pubsub", isWildcard, map[string]string{
+			"messaging_layer": "stackexchange-redis",
+		})
+
+		edge := subscribesToEdgeKind
+		if isPublish {
+			edge = publishesToEdgeKind
+		}
+		props := map[string]string{
+			"messaging_layer": "stackexchange-redis",
+			"channel_type":    "pubsub",
+		}
+		if isWildcard {
+			props["is_pattern"] = "true"
+		}
+		emitEdge("Service", caller, id, edge, props)
 	}
 }

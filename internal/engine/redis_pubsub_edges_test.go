@@ -870,3 +870,163 @@ end
 		t.Fatalf("expected literal-channel SCOPE.Queue, ents=%v", ents)
 	}
 }
+
+// ============================================================================
+// C# — StackExchange.Redis ISubscriber (#5016)
+// ============================================================================
+
+func TestRedisPubSub_CSharp_Publish(t *testing.T) {
+	src := `using StackExchange.Redis;
+
+public class NotificationPublisher
+{
+    private readonly ISubscriber _sub;
+    public NotificationPublisher(IConnectionMultiplexer mux) => _sub = mux.GetSubscriber();
+
+    public void SendPush(string payload)
+    {
+        _sub.Publish("notifications.push", payload);
+    }
+}
+`
+	ents, rels := runRedisPubSub(t, "csharp", src)
+
+	wantID := "channel:redis-pubsub:notifications.push"
+	if !hasEntity(ents, wantID) {
+		t.Fatalf("expected entity %q; got %v", wantID, ents)
+	}
+	wantRel := "PUBLISHES_TO|Service:NotificationPublisher|SCOPE.Queue:channel:redis-pubsub:notifications.push"
+	if !hasRel(rels, wantRel) {
+		t.Errorf("expected rel %q; got %v", wantRel, rels)
+	}
+}
+
+func TestRedisPubSub_CSharp_PublishAsync(t *testing.T) {
+	src := `using StackExchange.Redis;
+
+public class EventBus
+{
+    private readonly ISubscriber _sub;
+    public async Task Emit(string payload)
+    {
+        await _sub.PublishAsync("orders.created", payload);
+    }
+}
+`
+	ents, rels := runRedisPubSub(t, "csharp", src)
+	wantID := "channel:redis-pubsub:orders.created"
+	if !hasEntity(ents, wantID) {
+		t.Fatalf("expected entity %q; got %v", wantID, ents)
+	}
+	wantRel := "PUBLISHES_TO|Service:EventBus|SCOPE.Queue:channel:redis-pubsub:orders.created"
+	if !hasRel(rels, wantRel) {
+		t.Errorf("expected rel %q; got %v", wantRel, rels)
+	}
+}
+
+func TestRedisPubSub_CSharp_Subscribe(t *testing.T) {
+	src := `using StackExchange.Redis;
+
+public class NotificationListener
+{
+    private readonly ISubscriber _sub;
+    public void Start()
+    {
+        _sub.Subscribe("notifications.push", (channel, message) => Handle(message));
+    }
+    private void Handle(RedisValue m) { }
+}
+`
+	ents, rels := runRedisPubSub(t, "csharp", src)
+	wantID := "channel:redis-pubsub:notifications.push"
+	if !hasEntity(ents, wantID) {
+		t.Fatalf("expected entity %q; got %v", wantID, ents)
+	}
+	wantRel := "SUBSCRIBES_TO|Service:NotificationListener|SCOPE.Queue:channel:redis-pubsub:notifications.push"
+	if !hasRel(rels, wantRel) {
+		t.Errorf("expected rel %q; got %v", wantRel, rels)
+	}
+}
+
+func TestRedisPubSub_CSharp_RedisChannelLiteralWrapper(t *testing.T) {
+	src := `using StackExchange.Redis;
+
+public class TelemetrySink
+{
+    private readonly ISubscriber _sub;
+    public void Push(string p) =>
+        _sub.Publish(RedisChannel.Literal("telemetry.events"), p);
+}
+`
+	ents, rels := runRedisPubSub(t, "csharp", src)
+	wantID := "channel:redis-pubsub:telemetry.events"
+	if !hasEntity(ents, wantID) {
+		t.Fatalf("expected entity %q; got %v", wantID, ents)
+	}
+	wantRel := "PUBLISHES_TO|Service:TelemetrySink|SCOPE.Queue:channel:redis-pubsub:telemetry.events"
+	if !hasRel(rels, wantRel) {
+		t.Errorf("expected rel %q; got %v", wantRel, rels)
+	}
+}
+
+func TestRedisPubSub_CSharp_PatternSubscribeWildcard(t *testing.T) {
+	src := `using StackExchange.Redis;
+
+public class OrderWatcher
+{
+    private readonly ISubscriber _sub;
+    public void Watch() =>
+        _sub.Subscribe(RedisChannel.Pattern("orders.*"), (c, m) => {});
+}
+`
+	ents, rels := runRedisPubSub(t, "csharp", src)
+	wantID := "channel:redis-pubsub:orders.*"
+	if !hasEntity(ents, wantID) {
+		t.Fatalf("expected wildcard entity %q; got %v", wantID, ents)
+	}
+	wantRel := "SUBSCRIBES_TO|Service:OrderWatcher|SCOPE.Queue:channel:redis-pubsub:orders.*"
+	if !hasRel(rels, wantRel) {
+		t.Errorf("expected rel %q; got %v", wantRel, rels)
+	}
+}
+
+// Cross-repo: a C# publisher and a Node subscriber on the same channel must
+// resolve to the SAME canonical SCOPE.Queue ID so P7 pairs them.
+func TestRedisPubSub_CSharp_CrossRepoTopicLink(t *testing.T) {
+	csSrc := `using StackExchange.Redis;
+public class Pub {
+    private readonly ISubscriber _sub;
+    public void Go(string p) => _sub.Publish("user.events", p);
+}`
+	nodeSrc := `const redis = require("ioredis");
+const sub = new redis();
+sub.subscribe("user.events", (msg) => {});`
+
+	csEnts, csRels := runRedisPubSub(t, "csharp", csSrc)
+	nodeEnts, nodeRels := runRedisPubSub(t, "javascript", nodeSrc)
+
+	wantID := "channel:redis-pubsub:user.events"
+	if !hasEntity(csEnts, wantID) || !hasEntity(nodeEnts, wantID) {
+		t.Fatalf("expected shared entity %q on both sides; cs=%v node=%v", wantID, csEnts, nodeEnts)
+	}
+	if !hasRel(csRels, "PUBLISHES_TO|Service:Pub|SCOPE.Queue:"+wantID) {
+		t.Errorf("missing C# publisher edge; got %v", csRels)
+	}
+	if len(nodeRels) == 0 {
+		t.Errorf("expected node subscriber edge; got none")
+	}
+}
+
+// Cache-only StackExchange.Redis file must NOT fire the pub/sub synthesis.
+func TestRedisPubSub_CSharp_NoCacheOps(t *testing.T) {
+	src := `using StackExchange.Redis;
+public class Cache {
+    private readonly IDatabase _db;
+    public string Get(string k) => _db.StringGet(k);
+    public void Set(string k, string v) => _db.StringSet(k, v);
+}`
+	ents, rels := runRedisPubSub(t, "csharp", src)
+	if len(ents) != 0 || len(rels) != 0 {
+		t.Errorf("cache-only file should yield no pub/sub synthetics; got ents=%v rels=%v", ents, rels)
+	}
+}
