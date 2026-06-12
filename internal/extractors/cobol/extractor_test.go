@@ -504,6 +504,96 @@ func TestExtractor_EmbeddedSQLCursor(t *testing.T) {
 	}
 }
 
+// dliSegmentFor reports whether an IMS DL/I segment SCOPE.DataAccess entity
+// (orm=ims-dli) exists for the given operation + segment.
+func dliSegmentFor(recs []types.EntityRecord, op, segment string) bool {
+	for _, r := range findDataAccess(recs, "ims-dli") {
+		if r.Properties["operation"] == op && r.Properties["segment"] == segment {
+			return true
+		}
+	}
+	return false
+}
+
+// TestExtractor_IMSDLISegments proves EXEC DLI GU|GN|ISRT|REPL|DLET
+// SEGMENT(<seg>) yields SCOPE.DataAccess segment entities (orm=ims-dli) with
+// ACCESSES_TABLE edges from the enclosing paragraph — the IMS DB/DC data layer
+// (#4948), the hierarchical analog of the DB2 table pipeline.
+func TestExtractor_IMSDLISegments(t *testing.T) {
+	src := loadFixture(t, "imsparts.cbl")
+	recs := run(t, "imsparts.cbl", src)
+
+	want := []struct{ op, segment string }{
+		{"SELECT", "PARTROOT"}, // EXEC DLI GU SEGMENT(PARTROOT)
+		{"SELECT", "PARTDETL"}, // EXEC DLI GN SEGMENT(PARTDETL)
+		{"INSERT", "PARTDETL"}, // EXEC DLI ISRT SEGMENT(PARTDETL)
+		{"UPDATE", "PARTROOT"}, // EXEC DLI REPL SEGMENT(PARTROOT)
+		{"DELETE", "PARTDETL"}, // EXEC DLI DLET SEGMENT(PARTDETL)
+	}
+	for _, w := range want {
+		if !dliSegmentFor(recs, w.op, w.segment) {
+			t.Errorf("expected IMS DL/I SCOPE.DataAccess %s %s", w.op, w.segment)
+		}
+	}
+
+	// Each segment access carries an orm=ims-dli ACCESSES_TABLE edge.
+	var imsEdges int
+	for _, rel := range relationsByKind(recs, "ACCESSES_TABLE") {
+		if rel.Properties["orm"] == "ims-dli" {
+			imsEdges++
+		}
+	}
+	if imsEdges == 0 {
+		t.Error("expected orm=ims-dli ACCESSES_TABLE edges for EXEC DLI")
+	}
+	// The via tag identifies the DL/I function command.
+	var taggedGU bool
+	for _, r := range findDataAccess(recs, "ims-dli") {
+		if r.Properties["segment"] == "PARTROOT" && r.Properties["operation"] == "SELECT" &&
+			r.Properties["via"] == "EXEC-DLI-GU" {
+			taggedGU = true
+		}
+	}
+	if !taggedGU {
+		t.Error("expected EXEC-DLI-GU via tag on PARTROOT SELECT segment access")
+	}
+}
+
+// TestExtractor_IMSDLICall proves CALL 'CBLTDLI'/'AIBTDLI' USING <func> ...
+// surfaces the IMS segment from an inline SSA literal (when statically
+// recoverable) as a SCOPE.DataAccess entity with the correct operation, while
+// the CALLS edge to the interface module is preserved (#4948).
+func TestExtractor_IMSDLICall(t *testing.T) {
+	src := loadFixture(t, "imsparts.cbl")
+	recs := run(t, "imsparts.cbl", src)
+
+	// CALL 'CBLTDLI' USING 'GU  ' ... 'PARTROOT(PARTKEY = ...' → SELECT PARTROOT.
+	if !dliSegmentFor(recs, "SELECT", "PARTROOT") {
+		t.Error("expected CBLTDLI GU to surface SELECT PARTROOT from SSA literal")
+	}
+	// CALL 'AIBTDLI' USING 'ISRT' ... 'PARTDETL' → INSERT PARTDETL.
+	if !dliSegmentFor(recs, "INSERT", "PARTDETL") {
+		t.Error("expected AIBTDLI ISRT to surface INSERT PARTDETL from SSA literal")
+	}
+	// The CALLS edge to the DL/I interface module is still emitted.
+	for _, mod := range []string{"CBLTDLI", "AIBTDLI"} {
+		if !hasCallTo(recs, mod) {
+			t.Errorf("expected CALLS edge to DL/I interface module %q", mod)
+		}
+	}
+	// A CALL-sourced segment access carries the CALL-<MODULE> via tag.
+	var taggedCall bool
+	for _, r := range findDataAccess(recs, "ims-dli") {
+		if r.Properties["segment"] == "PARTDETL" && r.Properties["operation"] == "INSERT" &&
+			r.Properties["via"] == "CALL-AIBTDLI" {
+			taggedCall = true
+		}
+	}
+	if !taggedCall {
+		t.Error("expected CALL-AIBTDLI via tag on PARTDETL INSERT segment access")
+	}
+}
+
 // TestExtractor_CICSProgramTransfer proves EXEC CICS LINK/XCTL/START become
 // external CALLS edges (CICS transaction-graph depth).
 func TestExtractor_CICSProgramTransfer(t *testing.T) {

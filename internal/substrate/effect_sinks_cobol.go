@@ -7,8 +7,12 @@
 //     (sequential / indexed / relative file I/O on an FD record)
 //   - fs_write : WRITE <rec> / REWRITE <rec> / DELETE <file> / OPEN OUTPUT /
 //     OPEN EXTEND / RELEASE
-//   - db_read  : EXEC SQL SELECT / OPEN <cursor> / FETCH (embedded DB2)
-//   - db_write : EXEC SQL INSERT|UPDATE|DELETE|MERGE (embedded DB2)
+//   - db_read  : EXEC SQL SELECT / OPEN <cursor> / FETCH (embedded DB2);
+//     EXEC DLI GU|GN|GHU|GNP|GHN / CALL 'CBLTDLI'/'AIBTDLI' get-function
+//     (IMS DB/DC segment retrieval, #4948)
+//   - db_write : EXEC SQL INSERT|UPDATE|DELETE|MERGE (embedded DB2);
+//     EXEC DLI ISRT|REPL|DLET / CALL CBLTDLI/AIBTDLI mutate-function
+//     (IMS DB/DC segment insert/replace/delete, #4948)
 //   - http_out : EXEC CICS LINK / XCTL / WEB / INVOKE — outbound transaction
 //     / service calls treated as the COBOL analog of an outbound
 //     request (the closest effect in the lattice for CICS
@@ -69,6 +73,22 @@ var cobolDBWriteRe = regexp.MustCompile(
 	`(?is)EXEC\s+SQL\b[^.]*?\b(?:INSERT|UPDATE|DELETE|MERGE|CREATE|DROP|ALTER)\b`,
 )
 
+// cobolDLIReadRe matches IMS DB/DC (DL/I) segment retrieval — the 2nd most
+// common mainframe data layer (#4948). Both call shapes are covered: the
+// command-level EXEC DLI GU|GN|GHU|GNP|GHN form, and the call-level
+// CALL 'CBLTDLI'/'AIBTDLI' ... with a get function-code literal.
+var cobolDLIReadRe = regexp.MustCompile(
+	`(?is)\bEXEC\s+DLI\s+(?:GU|GN|GHU|GNP|GHN|GHNP)\b` +
+		`|(?is)\bCALL\s+['"](?:CBL|AIB|ASM|PLI)TDLI['"][^.]*?['"]\s*(?:GU|GN|GHU|GNP|GHN|GHNP)\s*['"]`,
+)
+
+// cobolDLIWriteRe matches IMS DL/I segment mutation: ISRT (insert), REPL
+// (replace/update), DLET (delete) — via EXEC DLI or the CBLTDLI/AIBTDLI call.
+var cobolDLIWriteRe = regexp.MustCompile(
+	`(?is)\bEXEC\s+DLI\s+(?:ISRT|REPL|DLET)\b` +
+		`|(?is)\bCALL\s+['"](?:CBL|AIB|ASM|PLI)TDLI['"][^.]*?['"]\s*(?:ISRT|REPL|DLET)\s*['"]`,
+)
+
 // cobolCICSRe matches EXEC CICS outbound transaction / service primitives:
 // program transfer (LINK/XCTL), transaction scheduling (START), and terminal
 // / web service traffic (SEND/RECEIVE/WEB/INVOKE) — all modelled as the COBOL
@@ -122,6 +142,8 @@ func sniffEffectsCobol(content string) []EffectMatch {
 	out = appendCobolMatches(out, content, headers, cobolFSWriteRe, EffectFSWrite, "WRITE/REWRITE/DELETE", 1.0)
 	out = appendCobolMatches(out, content, headers, cobolDBReadRe, EffectDBRead, "EXEC-SQL.SELECT/FETCH", 1.0)
 	out = appendCobolMatches(out, content, headers, cobolDBWriteRe, EffectDBWrite, "EXEC-SQL.INSERT/UPDATE/DELETE", 1.0)
+	out = appendCobolMatches(out, content, headers, cobolDLIReadRe, EffectDBRead, "IMS-DLI.GU/GN/GHU", 1.0)
+	out = appendCobolMatches(out, content, headers, cobolDLIWriteRe, EffectDBWrite, "IMS-DLI.ISRT/REPL/DLET", 1.0)
 	out = appendCobolMatches(out, content, headers, cobolCICSRe, EffectHTTPOut, "EXEC-CICS.LINK/XCTL/WEB", 0.85)
 	out = appendCobolMatches(out, content, headers, cobolCICSFSReadRe, EffectFSRead, "EXEC-CICS.READ/READQ", 0.9)
 	out = appendCobolMatches(out, content, headers, cobolCICSFSWriteRe, EffectFSWrite, "EXEC-CICS.WRITE/WRITEQ/REWRITE", 0.9)

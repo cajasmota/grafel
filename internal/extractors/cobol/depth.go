@@ -181,13 +181,13 @@ func trimPseudo(s string) string {
 
 // execBlock is one EXEC SQL / EXEC CICS block accumulated across lines.
 type execBlock struct {
-	kind      string // "SQL" or "CICS"
+	kind      string // "SQL", "CICS" or "DLI"
 	startLine int
 	text      string // joined block body (between EXEC <kind> and END-EXEC)
 }
 
 var (
-	execStartRe = regexp.MustCompile(`(?i)\bEXEC\s+(SQL|CICS)\b`)
+	execStartRe = regexp.MustCompile(`(?i)\bEXEC\s+(SQL|CICS|DLI)\b`)
 	execEndRe   = regexp.MustCompile(`(?i)\bEND-EXEC\b`)
 
 	// SQL DML / cursor patterns. Table names follow FROM / INTO / UPDATE /
@@ -726,6 +726,194 @@ func buildFileResourceEntity(filePath string, fs fileSelect) types.EntityRecord 
 		Signature:     "SELECT " + fs.logical + " ASSIGN TO " + fs.assignTo,
 		Properties:    props,
 	}
+}
+
+// ---------------------------------------------------------------------------
+// IMS DB/DC (DL/I) segment I/O — #4948
+//
+// IMS DL/I is the 2nd most common mainframe data layer after DB2. A program
+// reaches it two ways, both of which were previously invisible (execStartRe
+// matched only SQL|CICS):
+//
+//	EXEC DLI GU|GN|GHU|GNP|GHN|ISRT|REPL|DLET SEGMENT(<seg>) ... END-EXEC
+//	CALL 'CBLTDLI' USING <func> <pcb> <io-area> <ssa>      (or 'AIBTDLI')
+//
+// An IMS *segment* is the hierarchical-database analog of a relational table,
+// so we model each accessed segment as a SCOPE.DataAccess entity (orm=ims-dli)
+// carrying an ACCESSES_TABLE edge FromID=enclosing paragraph — exactly the
+// shape extractSQLEntities uses for DB2 tables, so segment access resolves
+// through the same pipeline. The DL/I function code maps to a DML operation:
+// GU/GN/GHU/GNP/GHN (get) → SELECT; ISRT → INSERT; REPL → UPDATE; DLET →
+// DELETE. The EXEC DLI form names the segment directly (SEGMENT(<seg>)); the
+// CALL CBLTDLI form passes the segment inside the SSA argument, which is
+// typically a working-storage data item, so a segment is only resolvable from
+// the CALL form when an inline SSA literal `'SEGNAME(...'` is present.
+// ---------------------------------------------------------------------------
+
+const ormIMSDLI = "ims-dli"
+
+var (
+	// dliFuncRe captures the DL/I function code in an EXEC DLI block
+	// (EXEC DLI GU SEGMENT(...)). The function keyword leads the command.
+	dliFuncRe = regexp.MustCompile(`(?i)\bEXEC\s+DLI\s+([A-Z]+)\b`)
+	// dliSegmentRe captures one or more SEGMENT(<name>) operands in an
+	// EXEC DLI block (a path call may reference several segments).
+	dliSegmentRe = regexp.MustCompile(`(?i)\bSEGMENT\s*\(\s*([A-Za-z][A-Za-z0-9#@$-]*)\s*\)`)
+
+	// dliCallModuleRe matches a CALL to a DL/I interface module — CBLTDLI
+	// (COBOL/TDLI), AIBTDLI (AIB interface), or the assembler-style ASMTDLI /
+	// PLITDLI variants — capturing the module name.
+	dliCallModuleRe = regexp.MustCompile(`(?i)\bCALL\s+['"]((?:CBL|AIB|ASM|PLI)TDLI)['"]`)
+	// dliFuncLiteralRe captures an inline DL/I function-code literal in a
+	// CBLTDLI USING list (CALL 'CBLTDLI' USING 'GU' ...). The 4-char form
+	// (e.g. 'GHU ', 'ISRT') and the data-name form are both common; only the
+	// literal form is classified here (the data-name form stays generic).
+	dliFuncLiteralRe = regexp.MustCompile(`(?i)\bUSING\b[^.]*?['"]\s*(GU|GN|GHU|GNP|GHN|GHNP|ISRT|REPL|DLET)\s*['"]`)
+	// dliSSASegRe captures a segment name from an inline SSA literal in the
+	// USING list. A qualified SSA names the segment then a key in parens
+	// (USING ... 'PARTROOT(PARTKEY  ='); an unqualified SSA is just the bare
+	// 8-char segment name (USING ... 'PARTDETL'). The leading 1-8 char token
+	// of the quoted literal is the segment; function-code literals (GU/ISRT…)
+	// are excluded by dliFuncCodeReserved. Trailing key/blanks are tolerated.
+	dliSSASegRe = regexp.MustCompile(`(?i)['"]\s*([A-Za-z][A-Za-z0-9#@$-]{0,7})\s*(?:\(|['"]|\s)`)
+)
+
+// dliOpFor maps a DL/I function code to the primary DML operation, mirroring
+// sqlOpFor so IMS segment access classifies on the same SELECT/INSERT/UPDATE/
+// DELETE lattice as embedded SQL.
+func dliOpFor(fn string) string {
+	switch strings.ToUpper(fn) {
+	case "ISRT":
+		return "INSERT"
+	case "REPL":
+		return "UPDATE"
+	case "DLET":
+		return "DELETE"
+	case "GU", "GN", "GHU", "GNP", "GHN", "GHNP", "GNHP":
+		return "SELECT"
+	default:
+		return "EXEC"
+	}
+}
+
+// dliSegmentRef builds a stable identity for an IMS segment SCOPE.DataAccess
+// entity, matching dataAccessRef so the resolver binds ACCESSES_TABLE to it.
+func dliSegmentRef(filePath, op, segment string) string {
+	return "scope:dataaccess:" + filepath.ToSlash(filePath) + "#" + ormIMSDLI + ":" + op + ":" + segment
+}
+
+// buildDLISegmentEntity emits one SCOPE.DataAccess entity per accessed IMS
+// segment, with an ACCESSES_TABLE edge FromID=enclosing paragraph (fnRef).
+func buildDLISegmentEntity(filePath, fnQName, fnRef, op, segment string, line int, via string) types.EntityRecord {
+	ref := dliSegmentRef(filePath, op, segment)
+	rec := types.EntityRecord{
+		Name:          op + " " + segment,
+		Kind:          kindDataAccess,
+		QualifiedName: ref,
+		SourceFile:    filePath,
+		Language:      "cobol",
+		Subtype:       ormIMSDLI,
+		StartLine:     line,
+		EndLine:       line,
+		Properties: map[string]string{
+			"segment":      segment,
+			"operation":    op,
+			"orm":          ormIMSDLI,
+			"ref":          ref,
+			"function_ref": fnQName,
+			"via":          via,
+			"provenance":   "INFERRED_FROM_IMS_DLI",
+		},
+		QualityScore: 0.8,
+	}
+	rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
+		FromID: fnRef,
+		ToID:   ref,
+		Kind:   relAccessesTab,
+		Properties: map[string]string{
+			"function_qname": fnQName,
+			"orm":            ormIMSDLI,
+			"operation":      op,
+			"segment":        segment,
+			"via":            via,
+			"line":           strconv.Itoa(line),
+		},
+	})
+	return rec
+}
+
+// extractDLIEntities turns one EXEC DLI block into SCOPE.DataAccess segment
+// entities — one per referenced SEGMENT(<name>) — mirroring extractSQLEntities
+// for DB2 tables. The DL/I function code classifies the operation.
+func extractDLIEntities(filePath, fnQName string, blk execBlock) []types.EntityRecord {
+	fn := ""
+	if m := dliFuncRe.FindStringSubmatch(blk.text); m != nil {
+		fn = m[1]
+	}
+	op := dliOpFor(fn)
+	fnRef := sqlFunctionRef(filePath, fnQName)
+
+	segments := map[string]bool{}
+	for _, m := range dliSegmentRe.FindAllStringSubmatch(blk.text, -1) {
+		seg := strings.ToUpper(m[1])
+		if seg != "" {
+			segments[seg] = true
+		}
+	}
+
+	var out []types.EntityRecord
+	for seg := range segments {
+		out = append(out, buildDLISegmentEntity(filePath, fnQName, fnRef, op, seg, blk.startLine, "EXEC-DLI-"+strings.ToUpper(fn)))
+	}
+	return out
+}
+
+// dliFuncCodeReserved are USING-list tokens that follow CBLTDLI but are not
+// SSA segment literals.
+var dliFuncCodeReserved = map[string]bool{
+	"GU": true, "GN": true, "GHU": true, "GNP": true, "GHN": true,
+	"GHNP": true, "ISRT": true, "REPL": true, "DLET": true,
+}
+
+// extractDLICall classifies a `CALL 'CBLTDLI'/'AIBTDLI' USING ...` statement.
+// The function code (when an inline literal) maps to a DML operation; the
+// segment is recovered only from an inline SSA literal (the data-name SSA form
+// is not statically resolvable here). Returns nil when no segment is
+// recoverable — the abstract db_effect (effect_sinks_cobol.go) still records
+// the read/write, so the call is never wholly invisible. `line` is the source
+// line; `module` is the matched DL/I interface module.
+func extractDLICall(filePath, fnQName, code, module string, line int) []types.EntityRecord {
+	op := "EXEC"
+	if m := dliFuncLiteralRe.FindStringSubmatch(code); m != nil {
+		op = dliOpFor(m[1])
+	}
+	fnRef := sqlFunctionRef(filePath, fnQName)
+
+	// Scan only the USING argument list for SSA literals — strip the leading
+	// `CALL '<module>'` so the interface-module name is never mistaken for a
+	// segment.
+	args := code
+	if loc := dliCallModuleRe.FindStringIndex(args); loc != nil {
+		args = args[loc[1]:]
+	}
+
+	// Recover a segment name from an inline SSA literal: the leading token of
+	// a quoted `'SEG(...'` (qualified) or `'SEG'` (unqualified) operand in the
+	// USING list. Skip function-code literals (e.g. 'GHU ').
+	segments := map[string]bool{}
+	for _, m := range dliSSASegRe.FindAllStringSubmatch(args, -1) {
+		seg := strings.ToUpper(strings.TrimSpace(m[1]))
+		if seg == "" || dliFuncCodeReserved[seg] {
+			continue
+		}
+		segments[seg] = true
+	}
+
+	var out []types.EntityRecord
+	for seg := range segments {
+		out = append(out, buildDLISegmentEntity(filePath, fnQName, fnRef, op, seg, line, "CALL-"+strings.ToUpper(module)))
+	}
+	return out
 }
 
 // cicsCallEdge builds the CALLS relationship for a CICS program/transaction

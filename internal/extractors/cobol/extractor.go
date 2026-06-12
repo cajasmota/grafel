@@ -357,6 +357,11 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 		switch blk.kind {
 		case "SQL":
 			entities = append(entities, extractSQLEntities(filePath, fnRefName(), blk)...)
+		case "DLI":
+			// IMS DB/DC (DL/I) segment I/O (#4948): EXEC DLI GU|GN|GHU|ISRT|REPL|
+			// DLET SEGMENT(<seg>) → SCOPE.DataAccess segment entity + ACCESSES_TABLE
+			// edge from the enclosing paragraph (segment = the IMS table analog).
+			entities = append(entities, extractDLIEntities(filePath, fnRefName(), blk)...)
 		case "CICS":
 			for _, c := range extractCICSTransfers(blk.text) {
 				attachCall(entities, currentParagraphIdx, programIdx, cicsCallEdge(c, blk.startLine))
@@ -782,6 +787,16 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 				}
 				attachCall(entities, currentParagraphIdx, programIdx, rel)
 			}
+			// CALL 'CBLTDLI'/'AIBTDLI' USING <func> <pcb> <io> <ssa> → IMS DL/I
+			// segment I/O (#4948). The CALLS edge to the interface module is
+			// already emitted above; here we additionally surface the accessed
+			// IMS segment as a SCOPE.DataAccess entity (when statically
+			// recoverable from an inline SSA literal) with an ACCESSES_TABLE edge.
+			if dm := dliCallModuleRe.FindStringSubmatch(ln.code); dm != nil {
+				entities = append(entities,
+					extractDLICall(filePath, fnRefName(), ln.code, dm[1], ln.num)...)
+			}
+
 			// CALL <data-item> (dynamic call via a variable). Only when no
 			// literal CALL matched on the line (avoids double-counting).
 			if !matchedLiteral {
