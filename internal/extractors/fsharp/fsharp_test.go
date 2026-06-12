@@ -336,6 +336,111 @@ let process (n: Node) = n.Value
 	}
 }
 
+// fsRel returns the first relationship matching (name,kind,edgeKind,toID), or nil.
+func fsRel(ents []types.EntityRecord, name, kind, edgeKind, toID string) *types.RelationshipRecord {
+	for i := range ents {
+		if ents[i].Name != name || ents[i].Kind != kind {
+			continue
+		}
+		for j := range ents[i].Relationships {
+			r := &ents[i].Relationships[j]
+			if r.Kind == edgeKind && r.ToID == toID {
+				return r
+			}
+		}
+	}
+	return nil
+}
+
+// TestFSharp_SpaceApplicationCalls proves the space-applied application scanner
+// (#4939): F#'s dominant call idiom `head arg1 arg2` now emits CALLS edges that
+// the paren/pipe/compose scanners miss. This is the evidence behind flipping the
+// fsharp function-application coverage cell.
+func TestFSharp_SpaceApplicationCalls(t *testing.T) {
+	src := `module App
+
+let createUser name email = { Name = name; Email = email }
+let notify msg = printfn "%s" msg
+let render user = sprintf "%A" user
+
+let handler () =
+    let u = createUser "ada" "ada@example.com"
+    notify "created"
+    render u
+`
+	ents := runFSharp(t, src, "app.fs")
+
+	for _, target := range []string{"createUser", "notify", "render"} {
+		if !fsHasRel(ents, "handler", "SCOPE.Operation", "CALLS", target) {
+			t.Errorf("expected space-applied CALLS handler→%s", target)
+		}
+	}
+}
+
+// TestFSharp_SpaceApplicationGating proves the scanner stays conservative: it
+// does NOT fire on keywords, type-case heads, or non-call positions (#4939).
+func TestFSharp_SpaceApplicationGating(t *testing.T) {
+	src := `module App
+
+let helper x = x
+
+let caller flag =
+    if flag then helper 1
+    else helper 2
+`
+	ents := runFSharp(t, src, "g.fs")
+
+	// keyword heads (if/then/else) must never become CALLS
+	for _, kw := range []string{"if", "then", "else"} {
+		if fsHasRel(ents, "caller", "SCOPE.Operation", "CALLS", kw) {
+			t.Errorf("keyword %q must not produce a CALLS edge", kw)
+		}
+	}
+	// the real call (helper, applied after `then`/`else`) should be captured
+	if !fsHasRel(ents, "caller", "SCOPE.Operation", "CALLS", "helper") {
+		t.Error("expected CALLS caller→helper from then/else clause")
+	}
+}
+
+// TestFSharp_CallLineStamping proves every CALLS edge carries a 1-based body
+// line Property (#4939), matching the Nim/Erlang call_line_precision convention.
+func TestFSharp_CallLineStamping(t *testing.T) {
+	src := `module App
+
+let helper x = x * 2
+let other y = y + 1
+
+let caller n =
+    let a = helper(n)
+    let b = other n
+    a + b
+`
+	ents := runFSharp(t, src, "lines.fs")
+
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.Kind != "CALLS" {
+				continue
+			}
+			if r.Properties == nil || r.Properties["line"] == "" {
+				t.Errorf("CALLS %s→%s missing line Property (got %v)", e.Name, r.ToID, r.Properties)
+			}
+		}
+	}
+
+	// paren-call `helper(n)` is on body line 2, space-call `other n` on body line 3.
+	if r := fsRel(ents, "caller", "SCOPE.Operation", "CALLS", "helper"); r == nil {
+		t.Error("expected CALLS caller→helper")
+	} else if r.Properties["line"] != "2" {
+		t.Errorf("helper call line = %q, want 2", r.Properties["line"])
+	}
+	if r := fsRel(ents, "caller", "SCOPE.Operation", "CALLS", "other"); r == nil {
+		t.Error("expected CALLS caller→other")
+	} else if r.Properties["line"] != "3" {
+		t.Errorf("other call line = %q, want 3", r.Properties["line"])
+	}
+}
+
 // TestFSharp_MemberFunctions — member definitions extracted as SCOPE.Operation.
 func TestFSharp_MemberFunctions(t *testing.T) {
 	src := `module App

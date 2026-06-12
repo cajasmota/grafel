@@ -7,7 +7,10 @@
 //   - type declarations (record, discriminated union, class, interface, struct, alias)
 //     → Kind="SCOPE.Component"
 //   - open statements → IMPORTS edges
-//   - function applications → CALLS edges
+//   - function applications → CALLS edges. Captured call forms: paren `name(`,
+//     pipe `|> name`, compose `>> name`, and space-applied `head arg`
+//     (F#'s dominant curried-application idiom). Each CALLS edge is stamped with
+//     a 1-based body-relative `line` Property (#4939).
 //   - Module CONTAINS members
 //
 // No tree-sitter grammar for F# is available in smacker/go-tree-sitter, so
@@ -21,6 +24,7 @@ package fsharp
 import (
 	"context"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -90,6 +94,29 @@ var (
 	// compose operator: >> Module.name
 	composeCallRE = regexp.MustCompile(
 		`>>\s*([A-Za-z_][A-Za-z0-9_.]*)`,
+	)
+
+	// space-application call: F#'s dominant call idiom is curried application
+	// written `head arg1 arg2` (e.g. `createUser "ada"`, `json user next ctx`).
+	// These produce no paren/pipe match, so the head symbol is captured here.
+	//
+	// To stay conservative (F# is whitespace-sensitive and a bare identifier
+	// followed by another identifier is ambiguous with type annotations,
+	// record fields, etc.) the head must sit at a *call position* — the start
+	// of a clause — and be followed by at least one whitespace-separated
+	// argument starter. Recognised clause starters:
+	//   - line start (after indentation)        ^[ \t]*
+	//   - `=` (binding / continuation)           `let x = head arg`
+	//   - `(` `[`                                grouping / list element
+	//   - `|>` `<|` `->` `;` `,`                 pipe / lambda body / sequencing
+	//   - `return` `return!` `yield` `yield!` `do` `do!` `then` `else`
+	// The argument starter is a string/char/number literal, an opening paren or
+	// bracket, or a lower-case identifier (an upper-case follower is more likely
+	// a type/DU-case, so it is excluded to avoid false positives).
+	spaceAppRE = regexp.MustCompile(
+		`(?m)(?:^[ \t]*|[=([;,]\s*|\|>\s*|<\|\s*|->\s*|\breturn!?\s+|\byield!?\s+|\bdo!?\s+|\bthen\s+|\belse\s+)` +
+			`([a-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)` +
+			`[ \t]+(?:"|'|@"|\$"|[0-9]|\(|\[|[a-z_])`,
 	)
 )
 
@@ -484,11 +511,13 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 	seen := make(map[string]bool)
 	var out []types.RelationshipRecord
 
-	addCall := func(target string) {
+	// addCall records a CALLS edge to target, stamping the 1-based line (relative
+	// to the function body) at which the call site begins. Duplicate targets keep
+	// the FIRST line seen, matching the Nim/Erlang call_line convention (#4939).
+	addCall := func(target string, off int) {
 		if target == "" || callerName == target {
 			return
 		}
-		// Strip module qualifier if present (e.g. "List.map" → "List.map" kept as-is)
 		if fsharpKeywords[target] {
 			return
 		}
@@ -500,34 +529,73 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 			return
 		}
 		seen[target] = true
+		line := 1 + strings.Count(scrubbed[:off], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",
+			Properties: map[string]string{
+				"line": strconv.Itoa(line),
+			},
 		})
 	}
 
-	// Regular function calls: name(
-	for _, m := range callRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) >= 2 {
-			addCall(m[1])
+	// Regular function calls: name( — the capture-group start is the call-site
+	// offset used for line stamping.
+	for _, m := range callRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 {
+			addCall(scrubbed[m[2]:m[3]], m[2])
 		}
 	}
 
 	// Pipe operator: |> name or |> Module.name
-	for _, m := range pipeCallRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) >= 2 {
-			addCall(m[1])
+	for _, m := range pipeCallRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 {
+			addCall(scrubbed[m[2]:m[3]], m[2])
 		}
 	}
 
 	// Compose operator: >> name
-	for _, m := range composeCallRE.FindAllStringSubmatch(scrubbed, -1) {
-		if len(m) >= 2 {
-			addCall(m[1])
+	for _, m := range composeCallRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 {
+			addCall(scrubbed[m[2]:m[3]], m[2])
+		}
+	}
+
+	// Space-applied calls: head arg1 arg2 (F#'s dominant idiom). Gated to call
+	// positions so it does not fire on prose, type annotations, or record fields.
+	// Use a literal-preserving scrub: string/char literal bodies are blanked but
+	// the OPENING quote survives as a visible `"`, so a string argument
+	// (`createUser "ada"`) still presents an argument-starter to the scanner.
+	// Byte offsets are preserved, so head positions line up with `scrubbed`.
+	spaceScrubbed := scrubKeepingQuote(body)
+	for _, m := range spaceAppRE.FindAllStringSubmatchIndex(spaceScrubbed, -1) {
+		if len(m) >= 4 && m[2] >= 0 {
+			addCall(spaceScrubbed[m[2]:m[3]], m[2])
 		}
 	}
 
 	return out
+}
+
+// scrubKeepingQuote is like stripStringsAndComments but preserves the OPENING
+// quote of each string/char literal as a visible `"`. This lets the
+// space-application scanner recognise a string argument (`createUser "ada"`)
+// whose body would otherwise be blanked to whitespace. Byte offsets are
+// preserved exactly, so head-symbol offsets stay aligned with the standard scrub.
+func scrubKeepingQuote(src string) string {
+	scrubbed := []byte(stripStringsAndComments(src))
+	i := 0
+	for i < len(scrubbed) {
+		ch := src[i]
+		// A literal opens at a quote/char/verbatim/interpolated start where the
+		// standard scrub blanked it. Restore a single `"` marker, then let the
+		// inner bytes stay blank.
+		if (ch == '"' || ch == '\'') && scrubbed[i] == ' ' {
+			scrubbed[i] = '"'
+		}
+		i++
+	}
+	return string(scrubbed)
 }
 
 // stripStringsAndComments replaces string literals and //-line comments
