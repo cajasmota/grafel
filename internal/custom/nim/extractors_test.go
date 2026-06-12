@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/types"
 
 	_ "github.com/cajasmota/archigraph/internal/custom/nim"
 )
@@ -211,6 +212,130 @@ func TestNimNormORM_WrongLanguageNoop(t *testing.T) {
 	if len(ents) != 0 {
 		t.Fatalf("expected no entities for non-nim language, got %d", len(ents))
 	}
+}
+
+// TestNimNormORM_Deepen_4932 proves the #4932 deepening: a {.tableName.}
+// override keys the table entity and stamps table_name on the model; column
+// pragmas ({.unique.}, {.dbType.}) stamp the column; an explicit {.fk: User.}
+// pragma on a scalar field yields a REFERENCES edge + foreign_key column;
+// db.<op>(Model) call sites yield QUERIES edges model→table per operation; and a
+// db.transaction: block yields a SCOPE.Pattern/transaction_boundary.
+func TestNimNormORM_Deepen_4932(t *testing.T) {
+	src := `
+import norm/model
+import norm/sqlite
+
+type
+  User* {.tableName: "users".} = ref object of Model
+    name* {.unique.}: string
+    bio* {.dbType: "TEXT".}: string
+
+  Post* = ref object of Model
+    title*: string
+    authorId* {.fk: User.}: int64
+
+proc store(db: DbConn, p: Post) =
+  db.transaction:
+    db.insert(Post)
+    db.select(User, "name = ?", "x")
+    db.update(Post)
+`
+	e, _ := extreg.Get("custom_nim_norm_orm")
+	ents, err := e.Extract(context.Background(), fi("src/models.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	var (
+		userModel, postModel, usersTable, nameCol, bioCol, authorCol, txn *recView
+	)
+	views := make([]recView, len(ents))
+	for i, en := range ents {
+		views[i] = recView{en.Name, en.Subtype, en.Kind, en.Properties, en.Relationships}
+	}
+	pick := func(name, sub string) *recView {
+		for i := range views {
+			if views[i].name == name && views[i].sub == sub {
+				return &views[i]
+			}
+		}
+		return nil
+	}
+	userModel = pick("User", "model")
+	postModel = pick("Post", "model")
+	usersTable = pick("users", "table")
+	nameCol = pick("name", "column")
+	bioCol = pick("bio", "column")
+	authorCol = pick("authorId", "column")
+	txn = pick("db.transaction", "transaction_boundary")
+
+	// Table-name override.
+	if usersTable == nil {
+		t.Error("expected SCOPE.Schema/table keyed by override name \"users\"")
+	}
+	if userModel == nil || userModel.props["table_name"] != "users" {
+		t.Error("expected User model stamped table_name=users")
+	}
+
+	// Column pragmas.
+	if nameCol == nil || nameCol.props["unique"] != "true" {
+		t.Error("expected name column stamped unique=true")
+	}
+	if bioCol == nil || bioCol.props["db_type"] != "TEXT" {
+		t.Error("expected bio column stamped db_type=TEXT")
+	}
+
+	// Explicit {.fk: User.} pragma on a scalar field.
+	if authorCol == nil || authorCol.props["foreign_key"] != "true" || authorCol.props["fk_target"] != "User" {
+		t.Error("expected authorId column foreign_key=true fk_target=User from {.fk: User.}")
+	}
+	fkEdge := false
+	if postModel != nil {
+		for _, r := range postModel.rels {
+			if r.Kind == "REFERENCES" && r.ToID == "User" && r.Properties["fk_pragma"] == "true" {
+				fkEdge = true
+			}
+		}
+	}
+	if !fkEdge {
+		t.Error("expected REFERENCES Post→User (fk_pragma=true)")
+	}
+
+	// Query attribution: Post got insert+update → table Post; User got select → users.
+	postOps := map[string]bool{}
+	if postModel != nil {
+		for _, r := range postModel.rels {
+			if r.Kind == "QUERIES" {
+				postOps[r.Properties["operation"]] = true
+			}
+		}
+	}
+	if !postOps["insert"] || !postOps["update"] {
+		t.Errorf("expected Post QUERIES insert+update, got %v", postOps)
+	}
+	userSelect := false
+	if userModel != nil {
+		for _, r := range userModel.rels {
+			if r.Kind == "QUERIES" && r.Properties["operation"] == "select" && r.ToID == "users" {
+				userSelect = true
+			}
+		}
+	}
+	if !userSelect {
+		t.Error("expected User QUERIES select → table users")
+	}
+
+	// Transaction boundary.
+	if txn == nil || txn.kind != "SCOPE.Pattern" || txn.props["transactional"] != "true" || txn.props["framework"] != "norm" {
+		t.Error("expected SCOPE.Pattern/transaction_boundary transactional=true framework=norm")
+	}
+}
+
+// recView is a flattened entity view for table-driven assertions.
+type recView struct {
+	name, sub, kind string
+	props           map[string]string
+	rels            []types.RelationshipRecord
 }
 
 // TestNimNormORM_OptionWrappedFK proves an Option[Model]/seq[Model] field is
