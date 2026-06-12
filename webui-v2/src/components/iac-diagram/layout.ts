@@ -566,6 +566,15 @@ export async function layoutIaCDiagramElk(
     },
     defaultNodeWidth: NODE_W,
     defaultNodeHeight: NODE_H,
+    // #4887: pin one centered source/target port per LEAF resource on the
+    // leading/trailing face for the active direction (H: right/left, V:
+    // bottom/top), so ELK's routed endpoints coincide with the direction-aware
+    // centered React-Flow handles (sourcePos/targetPos set in materialize) — no
+    // side-escaping edges. Container (module/tier group) nodes are excluded by
+    // the helper (centeredPorts only pins non-container leaves); an edge crossing
+    // a container boundary still leaves/enters its leaf at the centered face while
+    // ELK routes through the container — #4862 nesting / #4866 tinting untouched.
+    centeredPorts: true,
   });
 
   // ELK routes are keyed by the elk edge id ("elk-e:<i>"); re-key by rawEdge

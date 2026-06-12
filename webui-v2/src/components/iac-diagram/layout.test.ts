@@ -269,4 +269,48 @@ describe("layoutIaCDiagramElk (#4826 — ELK backend)", () => {
     expect(nodes).toEqual([]);
     expect(edges).toEqual([]);
   });
+
+  // #4887: leaf resources opt into centered direction-aware ports, so a (even
+  // cross-container) edge leaves/enters its leaf endpoint at the centered
+  // leading/trailing face — right/left in LR, bottom/top in TB — not the side.
+  // The fixture's svc→lb edge crosses TWO module containers; ELK routes through
+  // them but the endpoints still anchor at the resources' centered faces.
+  for (const dir of ["LR", "TB"] as const) {
+    it(`anchors edges at centered leaf faces (${dir})`, async () => {
+      const { nodes, edges } = await layoutIaCDiagramElk(fixture(), dir, "module");
+      const groups = new Map(
+        nodes.filter((n) => n.type === IAC_GROUP_TYPE).map((g) => [g.id, g]),
+      );
+      // Absolute top-left of a resource = its group's pos + its parent-relative pos.
+      const absOf = (id: string) => {
+        const r = nodes.find((n) => n.id === id && n.type === IAC_NODE_TYPE)!;
+        const g = groups.get(r.parentId as string)!;
+        return {
+          x: g.position.x + r.position.x,
+          y: g.position.y + r.position.y,
+          w: Number(r.width),
+          h: Number(r.height),
+        };
+      };
+      expect(edges.length).toBe(1);
+      const ed = edges[0];
+      const pts = (ed.data as { elkPoints?: { x: number; y: number }[] }).elkPoints;
+      expect(pts && pts.length >= 2).toBe(true);
+      const start = pts![0];
+      const end = pts![pts!.length - 1];
+      const s = absOf(ed.source);
+      const t = absOf(ed.target);
+      if (dir === "LR") {
+        expect(start.x).toBeCloseTo(s.x + s.w, 1); // right-edge center
+        expect(start.y).toBeCloseTo(s.y + s.h / 2, 1);
+        expect(end.x).toBeCloseTo(t.x, 1); // left-edge center
+        expect(end.y).toBeCloseTo(t.y + t.h / 2, 1);
+      } else {
+        expect(start.x).toBeCloseTo(s.x + s.w / 2, 1); // bottom-edge center
+        expect(start.y).toBeCloseTo(s.y + s.h, 1);
+        expect(end.x).toBeCloseTo(t.x + t.w / 2, 1); // top-edge center
+        expect(end.y).toBeCloseTo(t.y, 1);
+      }
+    });
+  }
 });

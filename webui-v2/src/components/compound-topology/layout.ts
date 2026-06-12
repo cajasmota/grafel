@@ -556,6 +556,17 @@ export async function layoutCompoundTopologyElk(
     padding: { top: ZONE_PAD_TOP, right: ZONE_PAD_X, bottom: ZONE_PAD_BOTTOM, left: ZONE_PAD_X },
     defaultNodeWidth: NODE_W,
     defaultNodeHeight: NODE_H,
+    // #4887: pin one centered source/target port per LEAF node on its leading/
+    // trailing face for the layout direction (this view is horizontal → RIGHT,
+    // so source = right-edge center, target = left-edge center), matching the
+    // leaf nodes' Position.Right/Left React-Flow handles — edges leave/enter at
+    // the centered face instead of side-escaping. Zone containers (expanded
+    // zones) are NOT pinned: the helper only centers non-container leaves, so
+    // cross-zone edges still exit/enter their leaf endpoints at the centered
+    // face while ELK routes the segment through the zone boxes. Collapsed-
+    // rendered zones are sized leaves and get centered ports too, which is
+    // correct (they behave as nodes). #4862 nesting / #4866 styling untouched.
+    centeredPorts: true,
   });
 
   // ELK positions are parent-relative; convert to ABSOLUTE for materialize()
