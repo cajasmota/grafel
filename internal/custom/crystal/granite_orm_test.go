@@ -129,6 +129,128 @@ end
 	}
 }
 
+// TestCrystalGraniteORM_QueryAttribution proves Granite's class-method query DSL
+// (`Model.all/find/where/create/delete`) emits QUERIES edges model → its table
+// stamped with the canonical SQL operation, attributed only to known models.
+func TestCrystalGraniteORM_QueryAttribution(t *testing.T) {
+	src := `
+class User < Granite::Base
+  table users
+  column id : Int64, primary: true
+  column name : String
+end
+
+def handlers
+  all_users = User.all
+  u = User.find(1)
+  found = User.find_by(name: "x")
+  fresh = User.create(name: "y")
+  User.where(name: "z").first
+  User.clear
+  Unknown.find(7)
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, err := e.Extract(context.Background(), gfi("src/user.cr", "crystal", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	ops := map[string]string{} // operation -> table, collected off the User model
+	for _, en := range ents {
+		if en.Name == "User" && en.Subtype == "model" {
+			for _, r := range en.Relationships {
+				if r.Kind == "QUERIES" {
+					ops[r.Properties["operation"]] = r.Properties["table"]
+				}
+			}
+		}
+	}
+	for _, want := range []string{"select", "insert", "delete"} {
+		if ops[want] != "users" {
+			t.Errorf("expected QUERIES edge op=%q table=users, got table=%q", want, ops[want])
+		}
+	}
+	// `Unknown.find(7)` must NOT produce any edge (not a known model).
+	for _, en := range ents {
+		if en.Name == "Unknown" {
+			t.Errorf("Unknown.find must not be attributed (not a model): got entity %q/%s", en.Name, en.Subtype)
+		}
+	}
+}
+
+// TestCrystalGraniteORM_Timestamps proves the `timestamps` macro synthesises the
+// conventional created_at/updated_at Time columns stamped auto_timestamp=true.
+func TestCrystalGraniteORM_Timestamps(t *testing.T) {
+	src := `
+class Article < Granite::Base
+  table articles
+  column id : Int64, primary: true
+  column title : String
+  timestamps
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, err := e.Extract(context.Background(), gfi("src/article.cr", "crystal", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	auto := map[string]bool{}
+	for _, en := range ents {
+		if en.Subtype == "column" && en.Properties["auto_timestamp"] == "true" {
+			if en.Properties["column_type"] != "Time" {
+				t.Errorf("timestamp column %q expected column_type=Time, got %q", en.Name, en.Properties["column_type"])
+			}
+			auto[en.Name] = true
+		}
+	}
+	for _, n := range []string{"created_at", "updated_at"} {
+		if !auto[n] {
+			t.Errorf("expected auto-timestamp column %q from the timestamps macro", n)
+		}
+	}
+}
+
+// TestCrystalGraniteORM_Transaction proves a `db.transaction do … end` block
+// emits a SCOPE.Pattern/transaction_boundary entity (transactional=true).
+func TestCrystalGraniteORM_Transaction(t *testing.T) {
+	src := `
+class Account < Granite::Base
+  table accounts
+  column id : Int64, primary: true
+  column balance : Int64
+end
+
+def transfer(db)
+  db.transaction do
+    Account.create(balance: 100)
+  end
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, err := e.Extract(context.Background(), gfi("src/account.cr", "crystal", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	txFound := false
+	for _, en := range ents {
+		if en.Kind == "SCOPE.Pattern" && en.Subtype == "transaction_boundary" {
+			if en.Properties["transactional"] != "true" {
+				t.Errorf("transaction boundary missing transactional=true")
+			}
+			if en.Properties["framework"] != "granite" {
+				t.Errorf("transaction boundary missing framework=granite")
+			}
+			if en.Properties["db_handle"] != "db" {
+				t.Errorf("expected db_handle=db, got %q", en.Properties["db_handle"])
+			}
+			txFound = true
+		}
+	}
+	if !txFound {
+		t.Error("expected a SCOPE.Pattern/transaction_boundary for db.transaction do")
+	}
+}
+
 // TestCrystalGraniteORM_ImplicitTableName proves a model without an explicit
 // `table` macro keys the table by the class name.
 func TestCrystalGraniteORM_ImplicitTableName(t *testing.T) {

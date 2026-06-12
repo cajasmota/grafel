@@ -45,12 +45,25 @@
 //     has_one carrying assoc_kind + target, so the association DSL is recorded
 //     even when the target model lives in another file.
 //
-// Honest exclusions / follow-ups (no fabricated schema — #4935):
-//   - `column` macro options beyond `primary: true` (converters, nilable `?`
-//     handling, defaults), the `timestamps` helper, and `table`-less implicit
-//     pluralisation are not deepened here.
-//   - Granite query DSL (`Model.all/find/where`) query_attribution, Granite
-//     migrations, and transaction stamping are deferred to #4935.
+// Granite query DSL + transaction deepening (#4935):
+//   - the `timestamps` macro synthesises the conventional created_at/updated_at
+//     Time columns (graniteTimestampsRe), so the audit columns Granite injects at
+//     runtime are recorded.
+//   - Granite's class-method query DSL — `Model.all/find/find_by/where/first/
+//     count/create/save/update/clear/delete` — at a call site referencing a known
+//     model emits a QUERIES edge model → its table stamped with the canonical SQL
+//     operation (select/insert/update/delete), mirroring the Nim/Norm shape.
+//   - a Crystal-DB `db.transaction do … end` block emits a
+//     SCOPE.Pattern/transaction_boundary entity (transactional=true), mirroring
+//     the Nim/Norm + Kotlin/Java @Transactional boundary shape.
+//
+// Honest exclusions / follow-ups (no fabricated schema — #5032):
+//   - `column` macro options beyond `primary: true` (converters, defaults) and
+//     index declarations are not yet read.
+//   - Granite migrations (`Granite::Migrator`, createTable/exec schema ops) are
+//     not yet parsed.
+//   - `has_many through:` / polymorphic associations and the explicit
+//     `foreign_key:` override remain deferred.
 //   - Jennifer / Clear / Avram / Crecto ORMs are deferred to #4936.
 //
 // Registration key: "custom_crystal_granite_orm".
@@ -94,7 +107,37 @@ var (
 	// Group 1 = association kind; group 2 = association name (symbol/string).
 	graniteAssocRe = regexp.MustCompile(
 		`(?m)^[ \t]*(belongs_to|has_many|has_one)\s+:?["']?([a-z_]\w*)["']?`)
+
+	// graniteTimestampsRe matches the `timestamps` macro, Granite's helper that
+	// injects the conventional created_at/updated_at Time audit columns.
+	graniteTimestampsRe = regexp.MustCompile(`(?m)^[ \t]*timestamps\b`)
+
+	// graniteQueryRe matches a Granite class-method query DSL call site:
+	// `User.all`, `Post.find(1)`, `User.find_by(email: x)`, `Post.where(...)`,
+	// `User.create(...)`, `Post.delete`. Group 1 is the model class name (the
+	// receiver, recognised against the known-model set), group 2 the query verb.
+	graniteQueryRe = regexp.MustCompile(
+		`(?m)\b([A-Z]\w*)\s*\.\s*(all|find_by|find|where|first|last|count|exists\?|create|save|update|import|clear|delete)\b`)
+
+	// graniteTxRe matches a Crystal-DB transaction block header
+	// `db.transaction do` / `conn.transaction do`. Group 1 is the receiver.
+	graniteTxRe = regexp.MustCompile(
+		`(?m)^[ \t]*([A-Za-z_]\w*)\s*\.\s*transaction\s+do\b`)
 )
+
+// graniteQueryOp maps a Granite query verb to its canonical SQL operation.
+func graniteQueryOp(verb string) string {
+	switch verb {
+	case "create", "import":
+		return "insert"
+	case "save", "update":
+		return "update"
+	case "clear", "delete":
+		return "delete"
+	default: // all/find/find_by/where/first/last/count/exists?
+		return "select"
+	}
+}
 
 // graniteHasModel is a fast pre-filter: the file must reference Granite's base
 // type to be worth scanning, so we never misfire on arbitrary Crystal classes.
@@ -118,9 +161,23 @@ func (e *graniteORMExtractor) Extract(
 	if len(models) == 0 {
 		return nil, nil
 	}
+	// Set of known model names — used to attribute a `Model.<verb>` query call
+	// site to its owning model only when the receiver names a recognised model.
+	modelNames := make(map[string]bool, len(models))
+	for _, m := range models {
+		modelNames[m.name] = true
+	}
+	// queryOps maps a model name → the set of canonical SQL ops attributed to it
+	// by `Model.<verb>(…)` query DSL call sites elsewhere in the file.
+	queryOps := collectGraniteQueries(src, modelNames)
 
 	var out []types.EntityRecord
 	for _, m := range models {
+		tableName := m.table
+		if tableName == "" {
+			tableName = m.name
+		}
+
 		// 1. model entity.
 		model := newGraniteSchema(m.name, "model", file.Path, m.line,
 			"INFERRED_FROM_GRANITE_MODEL")
@@ -140,15 +197,25 @@ func (e *graniteORMExtractor) Extract(
 				},
 			})
 		}
+		// Query attribution: model → its table, one edge per attributed op.
+		if ops := queryOps[m.name]; len(ops) > 0 {
+			for _, op := range graniteQueryOpOrder(ops) {
+				rels = append(rels, types.RelationshipRecord{
+					ToID: tableName,
+					Kind: "QUERIES",
+					Properties: map[string]string{
+						"operation": op,
+						"table":     tableName,
+						"model":     m.name,
+					},
+				})
+			}
+		}
 		model.Relationships = rels
 		model.ID = model.ComputeID()
 		out = append(out, model)
 
 		// 2. table entity (explicit `table <name>` or the class name).
-		tableName := m.table
-		if tableName == "" {
-			tableName = m.name
-		}
 		table := newGraniteSchema(tableName, "table", file.Path, m.line,
 			"INFERRED_FROM_GRANITE_TABLE")
 		table.Properties["model"] = m.name
@@ -162,12 +229,19 @@ func (e *graniteORMExtractor) Extract(
 				continue
 			}
 			colSeen[c.name] = true
+			provenance := "INFERRED_FROM_GRANITE_COLUMN"
+			if c.auto {
+				provenance = "INFERRED_FROM_GRANITE_TIMESTAMPS"
+			}
 			col := newGraniteSchema(c.name, "column", file.Path, c.line,
-				"INFERRED_FROM_GRANITE_COLUMN")
+				provenance)
 			col.Properties["column_type"] = c.typ
 			col.Properties["model"] = m.name
 			if c.primary {
 				col.Properties["primary_key"] = "true"
+			}
+			if c.auto {
+				col.Properties["auto_timestamp"] = "true"
 			}
 			col.ID = col.ComputeID()
 			out = append(out, col)
@@ -190,6 +264,10 @@ func (e *graniteORMExtractor) Extract(
 			out = append(out, assoc)
 		}
 	}
+
+	// 5. transaction boundaries: one SCOPE.Pattern/transaction_boundary per
+	// `<db>.transaction do … end` block.
+	out = append(out, collectGraniteTransactions(src, file.Path)...)
 	return out, nil
 }
 
@@ -206,6 +284,7 @@ type graniteColumn struct {
 	name    string
 	typ     string
 	primary bool
+	auto    bool // synthesised by the `timestamps` macro (created_at/updated_at)
 	line    int
 }
 
@@ -247,6 +326,15 @@ func collectGraniteModels(src string) []graniteModel {
 			gm.columns = append(gm.columns, graniteColumn{
 				name: cname, typ: ctyp, primary: primary, line: cline,
 			})
+		}
+		// The `timestamps` macro injects created_at/updated_at Time audit columns.
+		if tsLoc := graniteTimestampsRe.FindStringIndex(body); tsLoc != nil {
+			tsLine := bodyStartLine + strings.Count(body[:tsLoc[0]], "\n")
+			for _, n := range []string{"created_at", "updated_at"} {
+				gm.columns = append(gm.columns, graniteColumn{
+					name: n, typ: "Time", auto: true, line: tsLine,
+				})
+			}
 		}
 		for _, am := range graniteAssocRe.FindAllStringSubmatchIndex(body, -1) {
 			akind := body[am[2]:am[3]]
@@ -290,6 +378,72 @@ func graniteClassEnd(src string, fromByte int) int {
 		pos += loc[1]
 	}
 	return len(src)
+}
+
+// collectGraniteQueries scans the whole file for Granite class-method query DSL
+// call sites (`Model.all`, `Post.find(1)`, `User.create(…)`, …) and attributes
+// each to its model → the set of canonical SQL operations. Only receivers that
+// name a recognised model in this file are attributed (honest, file-local), so
+// an arbitrary `Foo.find` on a non-model class is never falsely counted.
+func collectGraniteQueries(src string, modelNames map[string]bool) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for _, m := range graniteQueryRe.FindAllStringSubmatch(src, -1) {
+		recv, verb := m[1], m[2]
+		if !modelNames[recv] {
+			continue
+		}
+		op := graniteQueryOp(verb)
+		if out[recv] == nil {
+			out[recv] = map[string]bool{}
+		}
+		out[recv][op] = true
+	}
+	return out
+}
+
+// graniteQueryOpOrder returns the operations in a stable order for deterministic
+// edge emission.
+func graniteQueryOpOrder(ops map[string]bool) []string {
+	var out []string
+	for _, op := range []string{"select", "insert", "update", "delete"} {
+		if ops[op] {
+			out = append(out, op)
+		}
+	}
+	return out
+}
+
+// collectGraniteTransactions emits a SCOPE.Pattern/transaction_boundary entity
+// per `<db>.transaction do … end` block in the file (transactional=true),
+// mirroring the Nim/Norm + Kotlin/Java @Transactional boundary shape.
+func collectGraniteTransactions(src, path string) []types.EntityRecord {
+	idx := graniteTxRe.FindAllStringSubmatchIndex(src, -1)
+	if len(idx) == 0 {
+		return nil
+	}
+	var out []types.EntityRecord
+	for _, m := range idx {
+		recv := src[m[2]:m[3]]
+		line := strings.Count(src[:m[0]], "\n") + 1
+		ent := types.EntityRecord{
+			Name:       recv + ".transaction",
+			Kind:       "SCOPE.Pattern",
+			Subtype:    "transaction_boundary",
+			SourceFile: path,
+			Language:   "crystal",
+			StartLine:  line,
+			EndLine:    line,
+			Properties: map[string]string{
+				"framework":     "granite",
+				"transactional": "true",
+				"db_handle":     recv,
+				"provenance":    "INFERRED_FROM_GRANITE_TRANSACTION",
+			},
+		}
+		ent.ID = ent.ComputeID()
+		out = append(out, ent)
+	}
+	return out
 }
 
 // camelize converts a snake_case association name to a CamelCase model name:
