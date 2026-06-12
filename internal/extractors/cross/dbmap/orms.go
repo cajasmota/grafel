@@ -32,7 +32,7 @@ type ormEntry struct {
 
 // importTokenRE captures common import/require tokens across languages.
 var importTokenRE = regexp.MustCompile(
-	`(?mi)(?:import|from|require|use|using|package)\s+["']?([\w@][\w\-./:]*)["']?`,
+	`(?mi)(?:import|from|require|use|using|open|package)\s+["']?([\w@][\w\-./:]*)["']?`,
 )
 
 // importCallRE captures function-style import forms: `require('x')` / `import('x')`.
@@ -406,6 +406,28 @@ func detectGORM(source string) []access {
 // exactly which driver surface was used.
 func detectDatabaseSQL(source string) []access {
 	return retagRaw(detectRawSQL(source), "database_sql")
+}
+
+// detectNpgsqlFSharp delegates to the shared raw-SQL scanner for the
+// Npgsql.FSharp data driver (#5000). The driver's idiomatic surface is a
+// `Sql.query "SELECT … FROM users"` string literal (single-, double-, or
+// triple-quoted) passed into the fluent `Sql.connect … |> Sql.query …`
+// pipeline; detectRawSQL already recognises the SQL string literal and
+// parses FROM/INTO/UPDATE/JOIN table clauses, so the F# table attribution
+// is wired through the same extractor the C#/Crystal precedent uses. Every
+// hit is retagged "npgsql_fsharp" so the SCOPE.DataAccess entity records
+// exactly which driver surface was used.
+func detectNpgsqlFSharp(source string) []access {
+	return retagRaw(detectRawSQL(source), "npgsql_fsharp")
+}
+
+// detectDapperFSharp delegates to the shared raw-SQL scanner for Dapper /
+// Dapper.FSharp on the F# stack (#5000). Dapper hands a string-literal SQL
+// statement into `conn.Query<T>("SELECT … FROM …")` / `conn.Execute(...)`;
+// detectRawSQL recognises the literal and attributes the table(s). Hits are
+// retagged "dapper_fsharp".
+func detectDapperFSharp(source string) []access {
+	return retagRaw(detectRawSQL(source), "dapper_fsharp")
 }
 
 // retagRaw rewrites the ORM field of every raw-SQL hit. Used by driver-level
@@ -1087,6 +1109,24 @@ var ormOrder = []ormEntry{
 		detect: detectGoSQLDriver,
 	},
 	{
+		// Npgsql.FSharp (F# Postgres data driver, #5000). The driver's
+		// idiomatic surface is a `Sql.query "SELECT … FROM users"` string
+		// literal; the shared raw-SQL scanner attributes the table(s).
+		// Import marker: `open Npgsql.FSharp`.
+		name:        "npgsql_fsharp",
+		importHints: []string{"npgsql.fsharp"},
+		detect:      detectNpgsqlFSharp,
+	},
+	{
+		// Dapper / Dapper.FSharp string-literal SQL on the F# stack (#5000).
+		// `conn.Query<T>("SELECT … FROM …")` / `conn.Execute(...)` hand a SQL
+		// literal that the shared raw-SQL scanner parses for table clauses.
+		// Import marker: `open Dapper` (also matches Dapper.FSharp).
+		name:        "dapper_fsharp",
+		importHints: []string{"dapper.fsharp", "dapper"},
+		detect:      detectDapperFSharp,
+	},
+	{
 		// Plain JDBC (java.sql / javax.sql). Hibernate/JPA keep their own
 		// entry below; this catches Statement.executeQuery("SELECT … FROM t")
 		// style raw SQL.
@@ -1180,6 +1220,11 @@ func selectORMs(tokens map[string]bool) []ormEntry {
 	// imports "database/sql" and "github.com/lib/pq") keep only the first
 	// so the SCOPE.DataAccess entities are not duplicated under two orm tags.
 	out = dropDuplicateRawScanner(out, "database_sql", "go_sql_driver")
+	// F# data drivers (#5000) both delegate to the shared raw-SQL scanner.
+	// When a single F# file matches both `Sql.query` (Npgsql.FSharp) and
+	// Dapper, keep the Npgsql.FSharp tag so the same SQL literal does not
+	// produce duplicate ACCESSES_TABLE edges under two orm tags.
+	out = dropDuplicateRawScanner(out, "npgsql_fsharp", "dapper_fsharp")
 	return out
 }
 

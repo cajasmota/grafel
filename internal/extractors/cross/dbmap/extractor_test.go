@@ -207,6 +207,96 @@ func X(db *sql.DB) { db.Query("SELECT * FROM orders JOIN customers ON orders.cid
 }
 
 // ---------------------------------------------------------------------------
+// F# data drivers (#5000) — Npgsql.FSharp + Dapper raw-SQL table attribution
+// ---------------------------------------------------------------------------
+
+func TestNpgsqlFSharpRawSQLTables(t *testing.T) {
+	src := "module Db\n" +
+		"open Npgsql.FSharp\n" +
+		"\n" +
+		"let getUsers connStr =\n" +
+		"    connStr\n" +
+		"    |> Sql.connect\n" +
+		"    |> Sql.query \"SELECT id, name FROM users WHERE active = true\"\n" +
+		"    |> Sql.execute (fun read -> read.int \"id\")\n" +
+		"\n" +
+		"let addOrder connStr =\n" +
+		"    connStr\n" +
+		"    |> Sql.connect\n" +
+		"    |> Sql.query \"INSERT INTO orders (id, total) VALUES (@id, @total)\"\n" +
+		"    |> Sql.executeNonQuery\n" +
+		"\n" +
+		"let touch connStr =\n" +
+		"    connStr |> Sql.connect |> Sql.query \"UPDATE accounts SET balance = 0\" |> Sql.executeNonQuery\n" +
+		"\n" +
+		"let purge connStr =\n" +
+		"    connStr |> Sql.connect |> Sql.query \"DELETE FROM sessions\" |> Sql.executeNonQuery\n"
+	recs := runExtract(t, "Db.fs", "fsharp", src)
+
+	for _, tc := range []struct {
+		op, table string
+	}{
+		{OpSelect, "users"},
+		{OpInsert, "orders"},
+		{OpUpdate, "accounts"},
+		{OpDelete, "sessions"},
+	} {
+		rec := findByOpTable(t, recs, tc.op, tc.table)
+		assertAccessesTableEdge(t, rec)
+		if rec.Properties["orm"] != "npgsql_fsharp" {
+			t.Errorf("orm=%q, want npgsql_fsharp for %q", rec.Properties["orm"], rec.Name)
+		}
+	}
+}
+
+func TestNpgsqlFSharpTripleQuotedSQL(t *testing.T) {
+	src := "module Db\n" +
+		"open Npgsql.FSharp\n" +
+		"let report connStr =\n" +
+		"    connStr\n" +
+		"    |> Sql.connect\n" +
+		"    |> Sql.query \"\"\"SELECT * FROM invoices JOIN customers ON invoices.cid = customers.id\"\"\"\n" +
+		"    |> Sql.execute id\n"
+	recs := runExtract(t, "Report.fs", "fsharp", src)
+	a := findByOpTable(t, recs, OpSelect, "invoices")
+	assertAccessesTableEdge(t, a)
+	b := findByOpTable(t, recs, OpSelect, "customers")
+	assertAccessesTableEdge(t, b)
+}
+
+func TestDapperFSharpRawSQLTables(t *testing.T) {
+	src := "module Repo\n" +
+		"open Dapper\n" +
+		"open System.Data\n" +
+		"let getProducts (conn: IDbConnection) =\n" +
+		"    conn.Query<Product>(\"SELECT id, name FROM products\")\n" +
+		"let removeStale (conn: IDbConnection) =\n" +
+		"    conn.Execute(\"DELETE FROM stale_jobs\") |> ignore\n"
+	recs := runExtract(t, "Repo.fs", "fsharp", src)
+
+	sel := findByOpTable(t, recs, OpSelect, "products")
+	assertAccessesTableEdge(t, sel)
+	if sel.Properties["orm"] != "dapper_fsharp" {
+		t.Errorf("orm=%q, want dapper_fsharp", sel.Properties["orm"])
+	}
+	del := findByOpTable(t, recs, OpDelete, "stale_jobs")
+	assertAccessesTableEdge(t, del)
+}
+
+func TestNoFSharpDBImportSkipped(t *testing.T) {
+	// A plain SQL-looking string with no F# data-driver import must not
+	// produce SCOPE.DataAccess entities (import-gated, Rule #1).
+	src := "module Pure\n" +
+		"let q = \"SELECT * FROM nope\"\n"
+	recs := runExtract(t, "Pure.fs", "fsharp", src)
+	for _, r := range recs {
+		if r.Kind == KindDataAccess {
+			t.Errorf("unexpected data-access entity without DB import: %+v", r)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // SQLAlchemy
 // ---------------------------------------------------------------------------
 
