@@ -221,6 +221,69 @@ public class NotificationHub : Hub
 	}
 }
 
+func TestRealtimeSignalRHubMethodNameOverride(t *testing.T) {
+	// #5003: [HubMethodName("wire")] rebinds the client-facing method name, so
+	// the realtime endpoint path uses the wire name, not the C# method name.
+	// The HANDLES edge still points at the real C# method symbol.
+	src := `
+using Microsoft.AspNetCore.SignalR;
+
+public class ChatHub : Hub
+{
+    [HubMethodName("send")]
+    public async Task SendMessage(string user, string message)
+    {
+        await Clients.All.SendAsync("ReceiveMessage", user, message);
+    }
+
+    [Authorize]
+    [HubMethodName("broadcast")]
+    public Task Notify(string msg) => Task.CompletedTask;
+
+    public Task Ping() => Task.CompletedTask;
+}
+
+public class Startup
+{
+    public void Configure(IEndpointRouteBuilder endpoints)
+    {
+        endpoints.MapHub<ChatHub>("/chat");
+    }
+}
+`
+	res := runDetectWS(t, "csharp", "ChatHub.cs", src)
+
+	// Wire name from [HubMethodName("send")] drives the path.
+	ep := findRealtimeEndpoint(res.Entities, "http:WS:/chat/send")
+	if ep == nil {
+		t.Fatalf("expected wire-named endpoint http:WS:/chat/send; realtime=%v", realtimeEndpoints(res.Entities))
+	}
+	if ep.Properties["method"] != "SendMessage" || ep.Properties["hub_method_name"] != "send" {
+		t.Errorf("method/hub_method_name = %q/%q, want SendMessage/send", ep.Properties["method"], ep.Properties["hub_method_name"])
+	}
+	// HANDLES edge still references the real C# method symbol.
+	if !handlesEdgeTo(res.Relationships, "Class:ChatHub.SendMessage", "http:WS:/chat/send") {
+		t.Errorf("expected HANDLES edge Class:ChatHub.SendMessage -> http:WS:/chat/send")
+	}
+	// The C#-method-named path must NOT be emitted when overridden.
+	if findRealtimeEndpoint(res.Entities, "http:WS:/chat/SendMessage") != nil {
+		t.Errorf("C#-method-named endpoint http:WS:/chat/SendMessage must not be emitted when [HubMethodName] overrides it")
+	}
+
+	// Stacked attributes ([Authorize] + [HubMethodName]) still honored.
+	if findRealtimeEndpoint(res.Entities, "http:WS:/chat/broadcast") == nil {
+		t.Errorf("expected stacked-attribute wire endpoint http:WS:/chat/broadcast; realtime=%v", realtimeEndpoints(res.Entities))
+	}
+	if findRealtimeEndpoint(res.Entities, "http:WS:/chat/Notify") != nil {
+		t.Errorf("C#-method-named endpoint http:WS:/chat/Notify must not be emitted when [HubMethodName] overrides it")
+	}
+
+	// A method with no override keeps its C# name.
+	if findRealtimeEndpoint(res.Entities, "http:WS:/chat/Ping") == nil {
+		t.Errorf("expected un-overridden endpoint http:WS:/chat/Ping; realtime=%v", realtimeEndpoints(res.Entities))
+	}
+}
+
 func TestRealtimePhoenixChannel(t *testing.T) {
 	src := `
 defmodule MyAppWeb.UserSocket do

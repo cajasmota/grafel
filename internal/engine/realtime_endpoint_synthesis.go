@@ -413,8 +413,15 @@ var signalRMapHubRe = regexp.MustCompile(
 // `public Task Send(...)` / `public void Notify(...)`. The SignalR client
 // invokes these by name, so each one is a realtime endpoint
 // `<hubBasePath>/<Method>`.
+//
+// Capture 1 (optional) is the `[HubMethodName("wire")]` override: SignalR
+// exposes the method to clients under that wire name instead of the C#
+// method name, so the realtime endpoint path uses it (#5003). The attribute
+// may be stacked with other attributes between it and the method declaration
+// (e.g. `[Authorize]`), so intervening attribute lines are tolerated.
+// Capture 2 is the C# method name (always present; drives the handler ref).
 var signalRHubMethodRe = regexp.MustCompile(
-	`(?m)^\s*public\s+(?:async\s+)?(?:override\s+)?(?:Task|ValueTask|void)(?:\s*<[^>]+>)?\s+(\w+)\s*\(`,
+	`(?:(?:\[\s*HubMethodName\s*\(\s*["']([^"'\r\n]+)["']\s*\)\s*\]|\[[^\]\r\n]*\])[ \t]*[\r\n]\s*)*public\s+(?:async\s+)?(?:override\s+)?(?:Task|ValueTask|void)(?:\s*<[^>]+>)?\s+(\w+)\s*\(`,
 )
 
 func synthSignalRRealtimeEndpoints(
@@ -452,22 +459,35 @@ func synthSignalRRealtimeEndpoints(
 		}
 		body := src[bodyStart:bodyEnd]
 		for _, mm := range signalRHubMethodRe.FindAllStringSubmatch(body, -1) {
-			if len(mm) < 2 {
+			if len(mm) < 3 {
 				continue
 			}
-			method := mm[1]
+			hubMethodName := mm[1] // [HubMethodName("wire")] override, may be ""
+			method := mm[2]        // C# method name
 			// Skip lifecycle overrides — not client-invokable RPC endpoints.
 			switch method {
 			case "OnConnectedAsync", "OnDisconnectedAsync", "Dispose":
 				continue
 			}
+			// The wire/exposed name SignalR clients invoke is the
+			// [HubMethodName] override when present, else the C# method name
+			// (#5003). The endpoint path uses the wire name; the HANDLES edge
+			// still points at the real C# method symbol.
+			exposed := method
+			if hubMethodName != "" {
+				exposed = hubMethodName
+			}
+			extra := map[string]string{"hub": hubName, "method": method}
+			if hubMethodName != "" {
+				extra["hub_method_name"] = hubMethodName
+			}
 			emit(
 				realtimeVerbWS,
-				strings.TrimRight(base, "/")+"/"+method,
+				strings.TrimRight(base, "/")+"/"+exposed,
 				"signalr",
 				"signalr",
 				"Class:"+hubName+"."+method,
-				map[string]string{"hub": hubName, "method": method},
+				extra,
 			)
 		}
 	}
