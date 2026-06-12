@@ -102,6 +102,13 @@ export interface CTNodeData {
   highlight?: CTHighlight;
   /** True when a selection is active anywhere (drives dimming of "none"). */
   dimmed?: boolean;
+  /**
+   * Unified-diagram node class (Model 3, #4810): "infra" = an IaC/deployed
+   * resource, "code" = a code entity. Drives the icon/shape that visually
+   * distinguishes the two interleaved layers. Undefined outside the unified
+   * view (the other models don't differentiate).
+   */
+  nodeClass?: "infra" | "code";
   [key: string]: unknown;
 }
 
@@ -141,6 +148,13 @@ export interface CTEdgeData {
    * under the dagre fallback.
    */
   elkPoints?: ElkPoint2D[];
+  /**
+   * Unified-diagram flag (Model 3, #4810): true when this edge crosses the
+   * code↔infra boundary (e.g. a service that WRITES a queue). Drawn with
+   * emphasis so the real code-to-infra wiring stands out. Undefined outside the
+   * unified view.
+   */
+  crossBoundary?: boolean;
   [key: string]: unknown;
 }
 

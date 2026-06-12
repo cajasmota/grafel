@@ -1,8 +1,11 @@
 export { CompoundTopology } from "./CompoundTopology";
 export { CompoundLens } from "./CompoundLens";
 export { CrossLinkedTopology } from "./CrossLinkedTopology";
+export { UnifiedTopology } from "./UnifiedTopology";
 export { computeCrossLink } from "./crossLink";
 export type { CrossLinkHighlight } from "./crossLink";
+export { classifyNode, classifyNodes, isCrossBoundary, unifiedStats } from "./unify";
+export type { NodeClass, UnifiedStats } from "./unify";
 export {
   layoutCompoundTopology,
   TIER_ORDER,

@@ -23,6 +23,7 @@ import {
   ArrowUpRight,
   Network as NetworkIcon,
   Link2 as Link2Icon,
+  Layers as LayersIcon,
 } from "lucide-react";
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -34,7 +35,7 @@ import type { InsightValue } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { RefLine } from "@/components/RefLine";
 import { RepoChip } from "@/lib/repo-color";
-import { CompoundTopology, CrossLinkedTopology } from "@/components/compound-topology";
+import { CompoundTopology, CrossLinkedTopology, UnifiedTopology } from "@/components/compound-topology";
 import {
   useTopology,
   useTopologyDetail,
@@ -1732,7 +1733,9 @@ export default function TopologyScreen() {
     | "scheduled";
   const channelParam = searchParams.get("channel");
 
-  const [viewMode, setViewMode] = useState<"map" | "list" | "arch" | "crosslink">("map");
+  const [viewMode, setViewMode] = useState<
+    "map" | "list" | "arch" | "crosslink" | "unified"
+  >("map");
   const [search, setSearch] = useState("");
   const [activeBrokers, setActiveBrokers] = useState<Set<string>>(new Set());
   const [selectedId, setSelectedId] = useState<string | null>(channelParam);
@@ -2076,11 +2079,33 @@ export default function TopologyScreen() {
                 <Link2Icon size={13} />
                 Cross-link
               </button>
+              <button
+                type="button"
+                onClick={() => setViewMode("unified")}
+                className={cn(
+                  "inline-flex items-center gap-1 px-2.5 h-7 text-xs border-l border-border transition-colors",
+                  viewMode === "unified"
+                    ? "bg-surface-2 text-text"
+                    : "text-text-3 hover:bg-surface",
+                )}
+                aria-pressed={viewMode === "unified"}
+                title="Unified diagram — infra resources and the code that uses them in one architecture picture (Model 3)"
+              >
+                <LayersIcon size={13} />
+                Unified
+              </button>
             </div>
           </div>
 
           {/* Workspace */}
-          {viewMode === "crosslink" ? (
+          {viewMode === "unified" ? (
+            /* Unified infra+code architecture diagram (Model 3, #4810) — ONE
+               compound canvas interleaving IaC resources and the code that uses
+               them, with the real code↔infra usage edges drawn. */
+            <div className="flex flex-1 min-h-0">
+              <UnifiedTopology groupId={groupId} className="flex-1 min-w-0" />
+            </div>
+          ) : viewMode === "crosslink" ? (
             /* Cross-linked lenses (Model 2, #4810) — Infra | Code side-by-side;
                select a node to highlight its counterpart in the other lens. */
             <div className="flex flex-1 min-h-0">

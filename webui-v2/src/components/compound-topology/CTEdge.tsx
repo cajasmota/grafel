@@ -42,6 +42,10 @@ function CTEdgeImpl({
     });
   }
   const stroke = edgeStroke(d.type);
+  // Unified diagram (Model 3, #4810): a real code↔infra usage edge (e.g. a
+  // service that WRITES a queue) is drawn thicker/fully-opaque so the
+  // code-to-infra wiring stands out from intra-layer edges.
+  const cross = d.crossBoundary === true;
 
   return (
     <>
@@ -51,8 +55,9 @@ function CTEdgeImpl({
         markerEnd={markerEnd}
         style={{
           stroke,
-          strokeWidth: d.summary ? 2 : 1.25,
+          strokeWidth: cross ? 2.25 : d.summary ? 2 : 1.25,
           strokeDasharray: d.summary ? "6 3" : undefined,
+          opacity: cross ? 1 : 0.9,
         }}
       />
       <EdgeLabelRenderer>
