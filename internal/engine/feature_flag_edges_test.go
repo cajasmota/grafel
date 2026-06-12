@@ -1660,3 +1660,91 @@ function gate($flagName, $k) {
 		t.Errorf("dynamic PHP flag key should yield no output, got flags=%v edges=%v", flags, edges)
 	}
 }
+
+// Rust cfg! macro: cfg!(feature = "metrics") inside a function body attributes
+// to that function and emits feature:metrics with the rust-cfg SDK (#5079).
+func TestFeatureFlag_Rust_cfg_macro(t *testing.T) {
+	src := `
+fn record() {
+    if cfg!(feature = "metrics") {
+        emit();
+    }
+}
+`
+	flags, edges := runFlagPass("rust", "metrics.rs", src)
+
+	flag, ok := findFlag(flags, "metrics")
+	if !ok {
+		t.Fatalf("expected feature:metrics entity, got flags=%v", flags)
+	}
+	if flag.ID != "feature:metrics" {
+		t.Errorf("flag ID = %q, want feature:metrics", flag.ID)
+	}
+	if flag.Subtype != "rust-cfg" {
+		t.Errorf("flag SDK subtype = %q, want rust-cfg", flag.Subtype)
+	}
+
+	g, ok := findGate(edges, "metrics")
+	if !ok {
+		t.Fatalf("expected GATED_BY for metrics, got %v", edges)
+	}
+	if g.From != "Function:record" {
+		t.Errorf("GATED_BY FromID = %q, want Function:record", g.From)
+	}
+	if g.To != "feature:metrics" {
+		t.Errorf("GATED_BY ToID = %q, want feature:metrics", g.To)
+	}
+	if g.SDK != "rust-cfg" {
+		t.Errorf("GATED_BY sdk = %q, want rust-cfg", g.SDK)
+	}
+}
+
+// Rust #[cfg(feature = "ssl")] attribute gate: the feature entity + GATED_BY
+// edge are emitted (attribution lands on prior-function/file scope since the
+// attribute precedes the gated item — same caveat as .NET [FeatureGate]).
+func TestFeatureFlag_Rust_cfg_attribute(t *testing.T) {
+	src := `
+#[cfg(feature = "ssl")]
+fn connect_tls() {
+    handshake();
+}
+`
+	flags, edges := runFlagPass("rust", "tls.rs", src)
+	if _, ok := findFlag(flags, "ssl"); !ok {
+		t.Fatalf("expected feature:ssl entity, got %v", flags)
+	}
+	g, ok := findGate(edges, "ssl")
+	if !ok {
+		t.Fatalf("expected GATED_BY for ssl, got %v", edges)
+	}
+	if g.To != "feature:ssl" {
+		t.Errorf("GATED_BY ToID = %q, want feature:ssl", g.To)
+	}
+	if g.SDK != "rust-cfg" {
+		t.Errorf("GATED_BY sdk = %q, want rust-cfg", g.SDK)
+	}
+}
+
+// Rust cfg combinator: #[cfg(all(feature="a", feature="b"))] captures the FIRST
+// feature key (honest-partial — compound predicates defer the remaining keys).
+func TestFeatureFlag_Rust_cfg_combinator_firstKey(t *testing.T) {
+	src := `
+#[cfg(all(feature = "alpha", feature = "beta"))]
+fn gated() {}
+`
+	flags, _ := runFlagPass("rust", "combo.rs", src)
+	if _, ok := findFlag(flags, "alpha"); !ok {
+		t.Fatalf("expected feature:alpha (first key) entity, got %v", flags)
+	}
+}
+
+// The Rust cfg matcher is lang-gated: a stray `feature = "x"` in a non-Rust
+// file (or outside a cfg context) must NOT fabricate a flag.
+func TestFeatureFlag_Rust_cfg_langGated_noFabrication(t *testing.T) {
+	// Same text, but parsed as Python — the rust-cfg matcher must not run.
+	src := `cfg!(feature = "metrics")`
+	flags, edges := runFlagPass("python", "x.py", src)
+	if len(flags) != 0 || len(edges) != 0 {
+		t.Fatalf("rust cfg matcher must be lang-gated, got flags=%v edges=%v", flags, edges)
+	}
+}

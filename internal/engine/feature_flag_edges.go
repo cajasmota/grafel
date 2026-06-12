@@ -113,6 +113,11 @@ type flagSDKMatcher struct {
 	re     *regexp.Regexp
 	sdk    string
 	method string
+	// lang, when non-empty, restricts the matcher to a single language. Used
+	// for syntactically language-specific gating idioms (e.g. Rust
+	// `cfg!(feature=...)` conditional compilation) that would be unsafe to run
+	// against other languages. Empty = applies to every language.
+	lang string
 }
 
 // flagSDKMatchers is the cross-language matcher table. Patterns deliberately
@@ -468,6 +473,34 @@ var flagSDKMatchers = []flagSDKMatcher{
 		sdk:    "custom",
 		method: "getFlag",
 	},
+
+	// Rust conditional compilation (#5079, follow-up from #5020). Rust gates
+	// code on Cargo features at COMPILE time via `cfg`, not a runtime SDK call:
+	//
+	//	cfg!(feature = "metrics")               — boolean macro in an expression
+	//	#[cfg(feature = "ssl")]                  — attribute on the gated item
+	//	#[cfg(all(feature="a", feature="b"))]    — combinator (first feature captured)
+	//	#[cfg(not(feature = "legacy"))]          — negation (feature still captured)
+	//	#[cfg_attr(feature = "serde", ...)]      — conditional attribute application
+	//
+	// This is Rust-specific syntax (lang-gated), distinct from the runtime
+	// flag-SDK model above. The matcher requires a `cfg`/`cfg!`/`cfg_attr`
+	// opener before the `feature = "key"` token so a stray `feature = "x"` in
+	// unrelated code is not a hit. Honest-partial: a multi-feature combinator
+	// (`all(...)` / `any(...)`) captures only the FIRST feature key — the
+	// remaining keys of a compound predicate are deferred (see PR / follow-up).
+	// Attribution: a `cfg!(...)` macro inside a function body attributes to that
+	// function; a `#[cfg(...)]` attribute precedes the item it gates and so
+	// attributes to the prior function / file scope (same caveat as the .NET
+	// `[FeatureGate]` matcher above).
+	{
+		re: regexp.MustCompile(
+			`\bcfg(?:!|_attr)?\s*\([^)]*?\bfeature\s*=\s*"([^"\\]+)"`,
+		),
+		sdk:    "rust-cfg",
+		method: "cfg(feature)",
+		lang:   "rust",
+	},
 }
 
 // applyFeatureFlagEdges scans the file for flag-check call sites and appends
@@ -561,6 +594,10 @@ func scanFeatureFlags(lang, src string) []flagHit {
 	claimed := map[int]bool{}
 
 	for _, m := range flagSDKMatchers {
+		// Lang-gated matchers (e.g. Rust cfg!) only run for their language.
+		if m.lang != "" && m.lang != lang {
+			continue
+		}
 		for _, loc := range m.re.FindAllStringSubmatchIndex(src, -1) {
 			start := loc[0]
 			if claimed[start] {

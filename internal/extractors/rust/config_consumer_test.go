@@ -147,6 +147,61 @@ impl Settings {
 	}
 }
 
+func TestRustConfig_ConfigCrateGetters(t *testing.T) {
+	src := `
+fn load(cfg: &config::Config) -> Settings {
+    let host = cfg.get_string("db.host").unwrap();
+    let port = cfg.get_int("db.port").unwrap_or(5432);
+    let tls = cfg.get_bool("db.tls").unwrap_or(false);
+    Settings { host, port, tls }
+}
+`
+	recs := extractRustForConfig(t, src)
+	for _, key := range []string{"db.host", "db.port", "db.tls"} {
+		if !rustConfigKeyEntity(recs, key) {
+			t.Fatalf("missing SCOPE.Config node for %q", key)
+		}
+	}
+	edges := rustConfigEdgeFrom(recs, "load")
+	for _, key := range []string{"db.host", "db.port", "db.tls"} {
+		if edges[key] != "config_crate" {
+			t.Fatalf("%s: want pattern config_crate, got %q (edges=%v)", key, edges[key], edges)
+		}
+	}
+}
+
+func TestRustConfig_ConfigCrateTurbofish(t *testing.T) {
+	src := `
+fn load(cfg: &config::Config) -> u16 {
+    cfg.get::<u16>("server.port").unwrap()
+}
+`
+	recs := extractRustForConfig(t, src)
+	if !rustConfigKeyEntity(recs, "server.port") {
+		t.Fatal("missing SCOPE.Config node for server.port via turbofish get")
+	}
+	edges := rustConfigEdgeFrom(recs, "load")
+	if edges["server.port"] != "config_crate" {
+		t.Fatalf("server.port: want config_crate, got %q (edges=%v)", edges["server.port"], edges)
+	}
+}
+
+// A bare HashMap-style `.get("k")` must NOT be treated as a config read —
+// only the config-crate-specific typed getters / turbofish form qualify.
+func TestRustConfig_BareGetNotConfig(t *testing.T) {
+	src := `
+fn lookup(map: &std::collections::HashMap<String, String>) -> Option<&String> {
+    map.get("some-key")
+}
+`
+	recs := extractRustForConfig(t, src)
+	for i := range recs {
+		if recs[i].Kind == "SCOPE.Config" {
+			t.Fatalf("bare .get must not emit a config node, got %q", recs[i].Name)
+		}
+	}
+}
+
 func TestRustConfig_DynamicKeySkipped(t *testing.T) {
 	src := `
 use std::env;
