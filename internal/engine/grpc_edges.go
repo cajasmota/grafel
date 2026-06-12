@@ -60,7 +60,10 @@
 //     the edge records the appropriate streaming kind.
 //   - Java: if the handler parameter is StreamObserver<Req> (not just
 //     StreamObserver<Resp>), it is bidi or client-streaming.
-//   - Python / Node: not currently distinguished (default "unary").
+//   - Python: server methods infer the shape from the request parameter
+//     (`request_iterator` => client-streaming) and a `yield` in the body
+//     (=> server-streaming); both => bidi. See pyGrpcStreaming.
+//   - Node: not currently distinguished (default "unary").
 //
 // gRPC-Gateway: when a Go server method carries `// @grpc-gateway:` or
 // `gateway.RegisterServiceHandlerServer` call, the service is also
@@ -779,12 +782,49 @@ var pyClassDefRe = regexp.MustCompile(
 	`(?m)^class\s+(\w+)\s*\(([^)]*)\)\s*:`)
 
 // pyDefMethodRe captures `def method(self, ...)` in a class body.
-// Group 1: method name.
+// Group 1: method name. Group 2: the first non-self parameter name (the
+// gRPC request parameter), used to infer the streaming shape — a
+// `request_iterator` parameter signals client-streaming.
 var pyDefMethodRe = regexp.MustCompile(
-	`(?m)^\s{4,}def\s+(\w+)\s*\(self`)
+	`(?m)^\s{4,}def\s+(\w+)\s*\(\s*self\s*,\s*(\w+)`)
 
 // pyServicerBaseRe checks that a base class name contains "Servicer".
 var pyServicerBaseRe = regexp.MustCompile(`(\w+)Servicer`)
+
+// pyGrpcStreaming infers the gRPC streaming shape of a python servicer
+// method from its request-parameter name and whether its body yields.
+//
+// Conventions (grpcio-generated servicers):
+//   - client-streaming: the request parameter is named `request_iterator`
+//     (the generated stub passes an iterator, not a single message).
+//   - server-streaming: the handler `yield`s response messages rather than
+//     `return`ing a single one.
+//   - bidi: both of the above.
+//
+// reqParam is the first non-self parameter name; body is the method's
+// source slice (from `def` up to the next sibling `def`/class end).
+func pyGrpcStreaming(reqParam, body string) string {
+	clientStream := reqParam == "request_iterator"
+	serverStream := pyYieldRe.MatchString(body)
+	switch {
+	case clientStream && serverStream:
+		return "bidi_streaming"
+	case clientStream:
+		return "client_streaming"
+	case serverStream:
+		return "server_streaming"
+	default:
+		return "unary"
+	}
+}
+
+// pyYieldRe matches a `yield` statement on its own logical line (server
+// streaming), avoiding substring false positives like `yielded = ...`.
+var pyYieldRe = regexp.MustCompile(`(?m)^\s+yield\b`)
+
+// pyNextDefRe finds the start of the next method/class definition, used to
+// bound a method body when inferring server-streaming.
+var pyNextDefRe = regexp.MustCompile(`(?m)^\s{1,8}(?:async\s+)?(?:def|class)\s`)
 
 func synthesizePythonGRPC(
 	src, path string,
@@ -841,17 +881,25 @@ func synthesizePythonGRPC(
 			bodyEnd = len(src)
 		}
 		body := src[idx[1]:bodyEnd]
-		for _, mm := range pyDefMethodRe.FindAllStringSubmatch(body, -1) {
-			if len(mm) < 2 {
-				continue
-			}
-			methodName := mm[1]
+		for _, mm := range pyDefMethodRe.FindAllStringSubmatchIndex(body, -1) {
+			methodName := body[mm[2]:mm[3]]
 			if methodName == "__init__" || methodName == "__str__" {
 				continue
 			}
-			emitMethod(serviceName, methodName, "grpc_python_server", map[string]string{"streaming": "unary"})
+			reqParam := ""
+			if mm[4] >= 0 {
+				reqParam = body[mm[4]:mm[5]]
+			}
+			// Bound the method body at the next sibling def/class so a
+			// later method's `yield` is not mis-attributed to this one.
+			methodBody := body[mm[1]:]
+			if loc := pyNextDefRe.FindStringIndex(methodBody); loc != nil {
+				methodBody = methodBody[:loc[0]]
+			}
+			streaming := pyGrpcStreaming(reqParam, methodBody)
+			emitMethod(serviceName, methodName, "grpc_python_server", map[string]string{"streaming": streaming})
 			handlerQualified := implClass + "." + methodName
-			emitImplementsEdge(handlerQualified, serviceName, methodName, "unary", "grpc_python_server")
+			emitImplementsEdge(handlerQualified, serviceName, methodName, streaming, "grpc_python_server")
 		}
 	}
 

@@ -374,6 +374,65 @@ def serve():
 	requireGRPCImplements(t, rels, "UserService", "CreateUser", "python-server")
 }
 
+// TestGRPC_Python_Server_StreamingDetection verifies that the python servicer
+// streaming shape is inferred (issue #4918): a `yield`ing handler is
+// server_streaming, a `request_iterator` parameter is client_streaming, both
+// is bidi_streaming, and a plain (request, context) handler stays unary.
+func TestGRPC_Python_Server_StreamingDetection(t *testing.T) {
+	src := `import grpc
+import chat_pb2
+import chat_pb2_grpc
+
+class ChatServiceServicer(chat_pb2_grpc.ChatServiceServicer):
+    def GetMessage(self, request, context):
+        return chat_pb2.Message(text="hi")
+
+    def StreamMessages(self, request, context):
+        for m in store:
+            yield chat_pb2.Message(text=m)
+
+    def Upload(self, request_iterator, context):
+        for chunk in request_iterator:
+            save(chunk)
+        return chat_pb2.Ack()
+
+    def Chat(self, request_iterator, context):
+        for chunk in request_iterator:
+            yield chat_pb2.Message(text=chunk.text)
+
+def serve():
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    chat_pb2_grpc.add_ChatServiceServicer_to_server(ChatServiceServicer(), server)
+    server.start()
+`
+	_, rels := runGRPCDetect(t, "python", "chat_service.py", src)
+
+	want := map[string]string{
+		"GetMessage":     "unary",
+		"StreamMessages": "server_streaming",
+		"Upload":         "client_streaming",
+		"Chat":           "bidi_streaming",
+	}
+	seen := map[string]string{}
+	for _, r := range rels {
+		if r.Kind != grpcImplementsEdgeKind {
+			continue
+		}
+		for method := range want {
+			if strings.Contains(r.ToID, "/"+method) || strings.HasSuffix(r.ToID, method) {
+				seen[method] = r.Properties["streaming"]
+			}
+		}
+	}
+	for method, exp := range want {
+		if got, ok := seen[method]; !ok {
+			t.Errorf("no GRPC_IMPLEMENTS edge found for method %s", method)
+		} else if got != exp {
+			t.Errorf("method %s: expected streaming=%s, got %q", method, exp, got)
+		}
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Python — client side
 // ---------------------------------------------------------------------------
