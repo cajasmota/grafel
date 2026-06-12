@@ -30,8 +30,13 @@
 //   - CALLS    — EXEC PGM=<program>  (step → COBOL program; the bridge edge,
 //     Properties: via="EXEC PGM", external="true", cross_language="cobol")
 //   - CALLS    — EXEC PROC=<proc>    (step → procedure; via="EXEC PROC")
+//   - CALLS    — TSO CALL <member>   (IKJEFTxx terminal-monitor step → the
+//     program named on its SYSTSIN instream control card; via="TSO CALL",
+//     recovers the indirect JCL→program edge a shell utility hides)
 //   - CONTAINS — job → its steps; proc → its steps
 //   - READS_FROM / WRITES_TO — step → dataset (DD DISP governs direction)
+//   - IMPORTS  — INCLUDE MEMBER=<name> (job/proc → spliced PROCLIB/JCLLIB
+//     member; import_kind="include", a real cross-file dependency)
 //
 // Registers itself via init() and is imported by registry_gen.go.
 package jcl
@@ -86,6 +91,31 @@ var (
 	// ddDispRe captures the leading DISP disposition token (NEW/OLD/SHR/MOD).
 	// Group 1: status.
 	ddDispRe = regexp.MustCompile(`(?i)\bDISP\s*=\s*\(?\s*([A-Za-z]+)`)
+
+	// includeMemberRe matches the MEMBER= operand of an INCLUDE statement
+	// (`//   INCLUDE MEMBER=SHRPROC`). INCLUDE textually splices the named
+	// PROCLIB/JCLLIB member into the job stream at this point — a real
+	// cross-file dependency the by-name resolver can bind to the member's
+	// own JCL/proc entity. Group 1: member name.
+	includeMemberRe = regexp.MustCompile(`(?i)\bMEMBER\s*=\s*([A-Za-z$#@][A-Za-z0-9$#@]*)`)
+
+	// utilProgRe recognises the small set of z/OS "shell" utilities that do
+	// not do the real work themselves but invoke a SECOND program (or a
+	// subsystem program) named on their instream SYSTSIN/SYSIN control
+	// cards. IKJEFT01/IKJEFT1B/IKJEFT1A are the TSO/E terminal monitor
+	// program; without recognising them, a `PGM=IKJEFT01` step with a
+	// `CALL 'lib(PAYROLL)'` control card hides the real JCL→COBOL/DB2 edge.
+	utilProgRe = regexp.MustCompile(`(?i)^(IKJEFT01|IKJEFT1B|IKJEFT1A)$`)
+
+	// tsoCallParenRe matches a TSO `CALL 'dsn(MEMBER)'` control card — the
+	// load module is the parenthesised member of a load library. Group 1:
+	// member.
+	tsoCallParenRe = regexp.MustCompile(`(?i)^\s*CALL\s+'?[^'(]*\(\s*([A-Za-z$#@][A-Za-z0-9$#@]*)\s*\)`)
+
+	// tsoCallBareRe matches a TSO `CALL MEMBER` control card — the load
+	// module named directly (resolved against the TSO search order / a
+	// STEPLIB). Group 1: member.
+	tsoCallBareRe = regexp.MustCompile(`(?i)^\s*CALL\s+'?([A-Za-z$#@][A-Za-z0-9$#@]*)'?\s*$`)
 )
 
 // Extract processes a JCL source file and returns entity records.
@@ -169,6 +199,7 @@ func endsWithContinuation(stmt string) bool {
 
 func extractJCL(src, filePath string) []types.EntityRecord {
 	stmts := joinStatements(src)
+	rawLines := strings.Split(src, "\n")
 	var entities []types.EntityRecord
 
 	// Scope tracking. The current JOB owns its steps; an inline PROC (between
@@ -204,6 +235,17 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 		name := strings.ToUpper(m[1])
 		verb := strings.ToUpper(m[2])
 		operands := m[3]
+
+		// Operand-only cards (no name field) — e.g. `//  INCLUDE MEMBER=X`,
+		// `//  SET A=B`, `//  JCLLIB ORDER=(...)`. stmtRe greedily binds the
+		// operation keyword to the name group, leaving the first operand token
+		// as the "verb". When the name field holds a known statement keyword,
+		// re-shift: the name IS the verb and there is no statement name.
+		if isStatementKeyword(name) && !isStatementKeyword(verb) {
+			operands = strings.TrimSpace(m[2] + m[3])
+			verb = name
+			name = ""
+		}
 
 		switch verb {
 		case "JOB":
@@ -282,6 +324,26 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 						"cross_language": "cobol",
 					},
 				})
+				// A z/OS "shell" utility (the TSO terminal monitor IKJEFTxx)
+				// runs a SECOND program named on its SYSTSIN instream control
+				// cards. Recover that indirect JCL→program edge by scanning the
+				// step's instream block for `CALL <member>` cards.
+				if utilProgRe.MatchString(prog) {
+					for _, callee := range tsoCalledPrograms(rawLines, st.startLine) {
+						step.Properties["tso_call"] = callee
+						step.Relationships = append(step.Relationships, types.RelationshipRecord{
+							ToID: callee,
+							Kind: "CALLS",
+							Properties: map[string]string{
+								"line":           strconv.Itoa(st.startLine),
+								"via":            "TSO CALL",
+								"external":       "true",
+								"cross_language": "cobol",
+								"host_program":   prog,
+							},
+						})
+					}
+				}
 			} else if pr := execProcRe.FindStringSubmatch(operands); pr != nil {
 				// EXEC PROC=<proc> — procedure invocation.
 				proc := strings.ToUpper(pr[1])
@@ -355,6 +417,33 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				entities[currentStepIdx].EndLine = st.startLine
 			}
 			_ = dsIdx
+
+		case "INCLUDE":
+			// `//  INCLUDE MEMBER=<name>` textually splices a PROCLIB/JCLLIB
+			// member into the job stream — a real cross-file dependency. Emit
+			// an IMPORTS edge whose bare ToID is the member name, which the
+			// by-name resolver binds to that member's own JCL/proc entity
+			// (mirrors the COBOL COPY → copybook include edge). Attribute it to
+			// the enclosing JOB/PROC scope so it is not an orphan.
+			if im := includeMemberRe.FindStringSubmatch(operands); im != nil {
+				member := strings.ToUpper(im[1])
+				ownerIdx := jobIdx
+				if procIdx >= 0 {
+					ownerIdx = procIdx
+				}
+				if ownerIdx >= 0 && ownerIdx < len(entities) {
+					entities[ownerIdx].Relationships = append(entities[ownerIdx].Relationships,
+						types.RelationshipRecord{
+							ToID: member,
+							Kind: string(types.RelationshipKindImports),
+							Properties: map[string]string{
+								"line":        strconv.Itoa(st.startLine),
+								"import_kind": "include",
+								"member":      member,
+							},
+						})
+				}
+			}
 		}
 
 		// Extend the JOB's EndLine to the furthest statement seen.
@@ -396,6 +485,78 @@ func firstPositionalProc(operands string) string {
 }
 
 var procNameRe = regexp.MustCompile(`^[A-Za-z$#@][A-Za-z0-9$#@]*$`)
+
+// statementKeywords is the set of JCL operation verbs that may appear in an
+// operand-only (nameless) card, where stmtRe would otherwise mis-bind the
+// keyword to the name field. Used to re-shift name→verb for such cards.
+var statementKeywords = map[string]bool{
+	"JOB": true, "EXEC": true, "DD": true, "PROC": true, "PEND": true,
+	"INCLUDE": true, "SET": true, "JCLLIB": true, "OUTPUT": true,
+	"IF": true, "ELSE": true, "ENDIF": true,
+}
+
+func isStatementKeyword(s string) bool { return statementKeywords[s] }
+
+// sysInDDRe matches a SYSTSIN/SYSIN DD card that introduces an instream
+// control-card stream (`//SYSTSIN DD *` / `DD DATA`). These streams carry
+// the indirect program names a shell utility runs.
+var sysInDDRe = regexp.MustCompile(`(?i)^//\s*(SYSTSIN|SYSIN)\s+DD\b.*\*`)
+
+// tsoCalledPrograms scans the instream SYSTSIN/SYSIN control cards belonging
+// to the step that begins at startLine (1-indexed) and returns the load
+// modules named by `CALL <member>` cards. The scan is bounded by the next
+// statement card that starts a new step/job (a `//NAME EXEC|JOB` card),
+// honouring the `/*` instream delimiter. This recovers the JCL→program edge
+// that a "shell" utility (the TSO terminal monitor IKJEFTxx) hides behind its
+// control cards — joinStatements drops these non-`//` data lines outright.
+func tsoCalledPrograms(rawLines []string, startLine int) []string {
+	var out []string
+	seen := map[string]bool{}
+	inStream := false
+	for i := startLine; i < len(rawLines); i++ { // startLine is 1-indexed; skip the EXEC card itself
+		line := strings.TrimRight(rawLines[i], "\r")
+		if len(line) > 72 {
+			line = line[:72]
+		}
+		trimmed := strings.TrimRight(line, " ")
+		// `/*` ends the current instream block.
+		if strings.HasPrefix(trimmed, "/*") {
+			inStream = false
+			continue
+		}
+		if strings.HasPrefix(trimmed, "//*") {
+			continue // comment card
+		}
+		if strings.HasPrefix(trimmed, "//") {
+			// A statement card. If it begins a new EXEC step or a new JOB, the
+			// current step's instream is over — stop scanning.
+			if m := stmtRe.FindStringSubmatch(trimmed); m != nil {
+				v := strings.ToUpper(m[2])
+				if v == "EXEC" || v == "JOB" {
+					break
+				}
+			}
+			inStream = sysInDDRe.MatchString(trimmed)
+			continue
+		}
+		// A non-`//` line: instream data. Only parse it as a control card when
+		// we are inside a SYSTSIN/SYSIN block.
+		if !inStream {
+			continue
+		}
+		var member string
+		if cm := tsoCallParenRe.FindStringSubmatch(trimmed); cm != nil {
+			member = strings.ToUpper(cm[1])
+		} else if cm := tsoCallBareRe.FindStringSubmatch(trimmed); cm != nil {
+			member = strings.ToUpper(cm[1])
+		}
+		if member != "" && !seen[member] {
+			seen[member] = true
+			out = append(out, member)
+		}
+	}
+	return out
+}
 
 // truncSig trims a statement to a compact signature, collapsing runs of
 // blanks and bounding the length so long operand lists don't bloat the graph.

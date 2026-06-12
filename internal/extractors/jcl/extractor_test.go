@@ -285,6 +285,77 @@ func TestCrossLanguageBridge_JCLtoCOBOL(t *testing.T) {
 	}
 }
 
+// TestExtractor_IncludeImports proves an `INCLUDE MEMBER=<name>` card emits
+// an IMPORTS edge to the spliced PROCLIB/JCLLIB member (a cross-file dep).
+func TestExtractor_IncludeImports(t *testing.T) {
+	recs := run(t, "util.jcl", utilJobFixture)
+	var found types.RelationshipRecord
+	var ok bool
+	for _, rel := range relationsByKind(recs, "IMPORTS") {
+		if rel.ToID == "SHRSET" {
+			found, ok = rel, true
+		}
+	}
+	if !ok {
+		t.Fatal("expected IMPORTS edge to INCLUDE member SHRSET")
+	}
+	if found.Properties["import_kind"] != "include" {
+		t.Errorf("import_kind = %q, want include", found.Properties["import_kind"])
+	}
+	if found.Properties["member"] != "SHRSET" {
+		t.Errorf("member = %q, want SHRSET", found.Properties["member"])
+	}
+}
+
+// TestExtractor_TSOCallEdge proves the indirect JCL→program edge recovered
+// from an IKJEFT01 step's SYSTSIN `CALL 'lib(BILLING)'` instream control
+// card — the program the terminal monitor actually runs.
+func TestExtractor_TSOCallEdge(t *testing.T) {
+	recs := run(t, "util.jcl", utilJobFixture)
+	rel, ok := callTo(recs, "BILLING")
+	if !ok {
+		t.Fatal("expected CALLS edge to BILLING from TSO CALL control card")
+	}
+	if rel.Properties["via"] != "TSO CALL" {
+		t.Errorf("BILLING CALL via = %q, want 'TSO CALL'", rel.Properties["via"])
+	}
+	if rel.Properties["cross_language"] != "cobol" {
+		t.Errorf("BILLING CALL cross_language = %q, want cobol", rel.Properties["cross_language"])
+	}
+	if rel.Properties["host_program"] != "IKJEFT01" {
+		t.Errorf("BILLING CALL host_program = %q, want IKJEFT01", rel.Properties["host_program"])
+	}
+	// The bare IKJEFT01 PGM= edge must NOT leak past the next step: REPORTER
+	// is a normal program in the following step, not a TSO callee.
+	if _, leaked := callTo(recs, "REPORTER"); leaked {
+		// REPORTER is a legitimate EXEC PGM= edge — confirm it is via EXEC PGM,
+		// not mis-attributed as a TSO CALL.
+		r, _ := callTo(recs, "REPORTER")
+		if r.Properties["via"] == "TSO CALL" {
+			t.Error("REPORTER mis-attributed as a TSO CALL across the step boundary")
+		}
+	}
+}
+
+// utilJobFixture mirrors testdata/utiljob.jcl inline.
+const utilJobFixture = `//UTILJOB  JOB (ACCT),'BILLING RUN',CLASS=A,MSGCLASS=X
+//*
+//* INCLUDE a shared PROCLIB member, then run a COBOL program under the
+//* TSO terminal monitor (IKJEFT01) via a SYSTSIN CALL control card.
+//*
+//         INCLUDE MEMBER=SHRSET
+//*
+//BILLSTEP EXEC PGM=IKJEFT01,DYNAMNBR=20
+//STEPLIB  DD DSN=PROD.BILLING.LOADLIB,DISP=SHR
+//SYSTSPRT DD SYSOUT=*
+//SYSTSIN  DD *
+  CALL 'PROD.BILLING.LOADLIB(BILLING)'
+/*
+//RPTSTEP  EXEC PGM=REPORTER
+//SYSOUT   DD SYSOUT=*
+//
+`
+
 // payJobFixture mirrors testdata/payjob.jcl inline so the unit tests are
 // self-contained; the on-disk fixture exists for end-to-end pipeline runs.
 const payJobFixture = `//PAYJOB   JOB (ACCT),'PAYROLL RUN',CLASS=A,MSGCLASS=X,
