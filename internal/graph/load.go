@@ -231,6 +231,14 @@ func fbEntityToGraphEntity(e *fb.Entity) Entity {
 	if lang := string(e.Language()); lang != "" {
 		ent.Language = lang
 	}
+	// Issue #4881 — restore the entity Signature from its dedicated FB slot.
+	// Previously absent from the schema, so every entity loaded from graph.fb
+	// had Signature="" — which made SCOPE.Schema field entities (whose
+	// signature carries the field TYPE, e.g. "id: number") render with an
+	// empty type in the dashboard shape API.
+	if sig := string(e.Signature()); sig != "" {
+		ent.Signature = sig
+	}
 	// Restore Pass 4 (graph-algorithm) attributes (#1620). community_id uses
 	// a sentinel of -2 to mean "not computed"; only materialise the pointer
 	// when the algo pass actually ran so an Entity loaded from a

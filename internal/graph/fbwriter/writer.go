@@ -106,6 +106,16 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 		embRefOff = b.CreateString(e.EmbeddingRef)
 	}
 
+	// Issue #4881 — persist the entity signature through the binary graph.fb
+	// path. Created up-front (before EntityStart) per FlatBuffers child-offset
+	// ordering. Only emitted when non-empty so signature-less entities stay
+	// byte-identical to the pre-#4881 shape (modulo the FormatVersion bump).
+	var sigOff flatbuffers.UOffsetT
+	hasSig := e.Signature != ""
+	if hasSig {
+		sigOff = b.CreateString(e.Signature)
+	}
+
 	fb.EntityStart(b)
 	fb.EntityAddId(b, idOff)
 	fb.EntityAddQualifiedName(b, qnOff)
@@ -149,6 +159,11 @@ func buildEntity(b *flatbuffers.Builder, e *graph.Entity) flatbuffers.UOffsetT {
 	// stay byte-identical to the pre-#2370 shape (modulo FormatVersion bump).
 	if hasLang {
 		fb.EntityAddLanguage(b, langOff)
+	}
+	// Issue #4881 — emit signature only when present so empty-signature
+	// entities stay byte-identical to the pre-#4881 shape.
+	if hasSig {
+		fb.EntityAddSignature(b, sigOff)
 	}
 	return fb.EntityEnd(b)
 }

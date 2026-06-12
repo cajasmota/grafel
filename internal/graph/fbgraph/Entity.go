@@ -262,8 +262,16 @@ func (rcv *Entity) Language() []byte {
 	return nil
 }
 
+func (rcv *Entity) Signature() []byte {
+	o := flatbuffers.UOffsetT(rcv._tab.Offset(40))
+	if o != 0 {
+		return rcv._tab.ByteVector(o + rcv._tab.Pos)
+	}
+	return nil
+}
+
 func EntityStart(builder *flatbuffers.Builder) {
-	builder.StartObject(18)
+	builder.StartObject(19)
 }
 func EntityAddId(builder *flatbuffers.Builder, id flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(0, flatbuffers.UOffsetT(id), 0)
@@ -321,6 +329,9 @@ func EntityAddEmbeddingRef(builder *flatbuffers.Builder, embeddingRef flatbuffer
 }
 func EntityAddLanguage(builder *flatbuffers.Builder, language flatbuffers.UOffsetT) {
 	builder.PrependUOffsetTSlot(17, flatbuffers.UOffsetT(language), 0)
+}
+func EntityAddSignature(builder *flatbuffers.Builder, signature flatbuffers.UOffsetT) {
+	builder.PrependUOffsetTSlot(18, flatbuffers.UOffsetT(signature), 0)
 }
 func EntityEnd(builder *flatbuffers.Builder) flatbuffers.UOffsetT {
 	return builder.EndObject()
