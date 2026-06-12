@@ -3871,6 +3871,19 @@ func (i *Indexer) foldFileComponentDuplicates(
 	return out, pass2Rels, stats
 }
 
+// useModuleResolveIndex reports whether the M5 per-module resolver index
+// (resolve.BuildIndexFromModulesOrdered) should be used in place of the flat
+// resolve.BuildIndex. Controlled by ARCHIGRAPH_RESOLVE_MODULE_INDEX; DEFAULT
+// OFF (#4331). Truthy values: "1", "true", "yes", "on" (case-insensitive).
+func useModuleResolveIndex() bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("ARCHIGRAPH_RESOLVE_MODULE_INDEX"))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
+}
+
 // buildDocument merges entity records from every pass, dedupes by stable
 // graph-entity ID, resolves cross-file CALLS edges, then assembles the
 // final on-disk document.
@@ -4052,21 +4065,29 @@ func (i *Indexer) buildDocument(pass1, pass2 []types.EntityRecord, pass2Rels []t
 		indexEntities = append(indexEntities, merged...)
 		indexEntities = append(indexEntities, i.incrementalCarryForwardEntities...)
 	}
-	// NOTE (#4331): we intentionally call BuildIndex here, NOT the M5
-	// per-module path resolve.BuildIndexFromModules (#2182/#2184). M5 is a
-	// scale-only speed optimisation (pre-sized maps for big monorepos) and was
-	// built to be edge-set-identical to BuildIndex, but the #4331
-	// investigation found a CONCRETE divergence: M5 re-sorts entities by ID
-	// within a module, and the platform-variant merge (#1818) in
-	// byPackageOperation/byPackageComponent is order-sensitive for 3+
-	// mutually-exclusive GOOS variants of the same (pkgDir, name). That yields
-	// a different PlatformVariants fan-out topology, which clones a different
-	// set of CALLS edges downstream (refs.go ReferencesEmbeddedWithAllowlist).
-	// The guard test is TestM5_PlatformVariantParity_KnownDivergence in
-	// internal/resolve/symbol_index_parity_test.go. Until M5 preserves
-	// extraction order (or the variant merge is made order-independent) and
-	// that test asserts parity, BuildIndex stays the production resolver.
-	idx := resolve.BuildIndex(indexEntities)
+	// #4331 — resolver index construction. The production default is the
+	// flat O(N×M) resolve.BuildIndex. The M5 per-module path
+	// (resolve.BuildIndexFromModulesOrdered, #2182/#2184) is a scale-only
+	// speed optimisation for large monorepos: it partitions entities by
+	// package directory and pre-sizes the global maps in one shot. It is
+	// edge-set-identical to BuildIndex (the original sort-by-ID divergence on
+	// the platform-variant merge #1818, and the missing namespace/kotlin index
+	// tables, are both fixed in the ordered path — see
+	// internal/resolve/symbol_index.go and the full-Index parity harness in
+	// symbol_index_parity_test.go).
+	//
+	// It is wired BEHIND A DEFAULT-OFF FLAG: ARCHIGRAPH_RESOLVE_MODULE_INDEX=1
+	// routes through the M5 path; unset/anything-else keeps BuildIndex, so the
+	// default is a zero-behaviour-change no-op. Flipping the default to ON
+	// requires a live-graph edge-parity diff (reindex a real repo both ways and
+	// diff edges) in a deploy window — tracked as follow-up #4901.
+	var idx resolve.Index
+	if useModuleResolveIndex() {
+		fmt.Fprintln(os.Stderr, "resolver: using M5 per-module index (ARCHIGRAPH_RESOLVE_MODULE_INDEX=1)")
+		idx = resolve.BuildIndexFromModulesOrdered(indexEntities, resolve.ModuleKeyByPkgDir)
+	} else {
+		idx = resolve.BuildIndex(indexEntities)
+	}
 	// #2049 — Django string-FK late-binding: rewrite scope:component:ref:python:*
 	// stubs on REFERENCES edges with django_rel set, using app-label-aware
 	// byPackageComponent lookup. Runs after BuildIndex (needs the component

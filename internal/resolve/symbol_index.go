@@ -29,21 +29,41 @@
 //     register stubs they know will appear frequently, and the set resolves
 //     them in one pass rather than paying per-edge lookup cost.
 //
-// PRODUCTION STATUS (#4331): this module is UNWIRED — the production index
-// pipeline (cmd/archigraph/index.go) still calls BuildIndex, not
-// BuildIndexFromModules. M5 was designed as an edge-set-identical, scale-only
-// speed optimisation, but the #4331 investigation found it is NOT yet parity-
-// safe: BuildModuleSymbols sorts a module's entities by ID, whereas BuildIndex
-// preserves extraction order, and the platform-variant merge (#1818) in
-// byPackageOperation/byPackageComponent is order-sensitive for 3+ mutually-
-// exclusive GOOS variants of one (pkgDir, name). The differing iteration order
-// produces a different PlatformVariants fan-out topology, which clones a
-// different set of CALLS edges in ReferencesEmbeddedWithAllowlist (refs.go).
-// See TestM5_PlatformVariantParity_KnownDivergence (symbol_index_parity_test.go)
-// for the pinned divergence. To wire M5: preserve extraction order for the
-// platform-variant side-tables (or make that merge order-independent), flip the
-// guard test to assert parity, then update cmd/archigraph/index.go. M5 only
-// helps large monorepos; for small/medium codebases BuildIndex is already fine.
+// PRODUCTION STATUS (#4331): M5 is now WIRED BEHIND A DEFAULT-OFF FLAG
+// (ARCHIGRAPH_RESOLVE_MODULE_INDEX=1). cmd/archigraph/index.go still calls
+// BuildIndex by default; when the flag is set it routes through
+// BuildIndexFromModulesOrdered instead. Default = old path = zero behaviour
+// change, so merging is safe.
+//
+// THE ORIGINAL DIVERGENCE (and how it was fixed):
+// The first M5 design re-sorted each module's entities by ID
+// (BuildModuleSymbols' sort step) for O(N) collision detection. BuildIndex,
+// by contrast, preserves extraction order, and the platform-variant merge
+// (#1818) in byPackageOperation/byPackageComponent is ORDER-SENSITIVE for 3+
+// mutually-exclusive GOOS variants of one (pkgDir, name): pairwise canonical-
+// chaining produces a different PlatformVariants fan-out depending on which
+// variant is seen first. That fan-out is consumed by
+// ReferencesEmbeddedWithAllowlist (refs.go) to clone CALLS edges, so a
+// different topology = a different output edge set. A second gap: the original
+// insertModuleEntry did NOT populate byNamespaceMember (#4374, C#),
+// byKotlinPkgMember / byKotlinPkgFunc (#4375, Kotlin) — three index tables
+// BuildIndex fills.
+//
+// BOTH are fixed for the wired path:
+//   - BuildModuleSymbolsOrdered preserves extraction order (no ID sort), so
+//     the order-sensitive platform-variant merge sees variants in the same
+//     order BuildIndex does (variants of one (pkgDir,name) are always in the
+//     same module, so per-module extraction order is sufficient).
+//   - insertModuleEntry now populates byNamespaceMember / byKotlinPkgMember /
+//     byKotlinPkgFunc, matching BuildIndex.
+//
+// TestM5_PlatformVariantParity_Ordered (symbol_index_parity_test.go) now
+// asserts FULL Index parity (including PlatformVariants) for the ordered path,
+// and TestM5_OrderedFullIndexParity_Representative diffs the entire Index on a
+// representative multi-language fixture. The legacy sort-by-ID
+// BuildIndexFromModules is retained for the scale benchmarks and still carries
+// the pinned divergence guard. Flipping the default to ON requires a live-graph
+// edge-parity diff (reindex a real repo both ways) — tracked as follow-up #4901.
 package resolve
 
 import (
@@ -239,6 +259,9 @@ func MergeModuleBatch(si *SymbolIndex, offset, batchSize int) (Index, int) {
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
+		byNamespaceMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string, total/4+1),
 		PlatformVariants:   make(map[string][]string),
 	}
@@ -329,6 +352,106 @@ func BuildIndexFromModules(modules map[ModuleKey][]types.EntityRecord, batchSize
 	return acc
 }
 
+// BuildModuleSymbolsOrdered is the parity-safe sibling of BuildModuleSymbols:
+// it preserves the caller's extraction order instead of re-sorting entries by
+// ID. Extraction order matters because the platform-variant merge (#1818) in
+// byPackageOperation/byPackageComponent is order-sensitive for 3+ mutually-
+// exclusive GOOS variants of the same (pkgDir, name). Variants of one
+// (pkgDir, name) always live in the same module, so preserving per-module
+// extraction order is sufficient to reproduce BuildIndex's PlatformVariants
+// topology exactly.
+func BuildModuleSymbolsOrdered(key ModuleKey, entities []types.EntityRecord) *ModuleSymbols {
+	ms := &ModuleSymbols{
+		Key:         key,
+		entityCount: len(entities),
+		entries:     make([]moduleEntry, 0, len(entities)),
+	}
+	for k := range entities {
+		e := &entities[k]
+		if e.ID == "" || e.Name == "" {
+			continue
+		}
+		sf := normalizePath(e.SourceFile)
+		trimmed := strings.TrimPrefix(e.Kind, scopeKindPrefix)
+		if trimmed == e.Kind {
+			trimmed = ""
+		}
+		me := moduleEntry{
+			id:            e.ID,
+			name:          e.Name,
+			kind:          e.Kind,
+			kindTrimmed:   trimmed,
+			sourceFile:    sf,
+			qualifiedName: e.QualifiedName,
+			refProp:       extractIndexableRef(e),
+			dotName:       strings.IndexByte(e.Name, dottedNameSep) >= 0,
+			properties:    e.Properties,
+		}
+		ms.entries = append(ms.entries, me)
+	}
+	// NOTE: deliberately NO sort — extraction order is preserved for parity.
+	return ms
+}
+
+// BuildIndexFromModulesOrdered is the parity-safe, production-wired entry point
+// for M5 (#4331). Unlike BuildIndexFromModules it does NOT sort entities by ID
+// (BuildModuleSymbolsOrdered), and it processes modules in first-seen extraction
+// order rather than sorted-key order. Combined with the namespace/kotlin index
+// tables now populated by insertModuleEntry, this produces an Index that is
+// edge-set-identical to BuildIndex on the same entity set — verified by the
+// full-Index parity harness in symbol_index_parity_test.go.
+//
+// moduleKeyOf decides which module an entity belongs to (typically its package
+// directory). The only correctness requirement is that all platform-variant
+// siblings of one (pkgDir, name) map to the SAME module — using pkgDir (or any
+// finer-than-pkgDir partition that keeps a directory whole) satisfies that.
+func BuildIndexFromModulesOrdered(entities []types.EntityRecord, moduleKeyOf func(types.EntityRecord) ModuleKey) Index {
+	if len(entities) == 0 {
+		return emptyIndex()
+	}
+	// Partition preserving extraction order within and across modules. We track
+	// first-seen module order so the merge visits modules in a deterministic,
+	// extraction-faithful order (matters for cross-module first-writer-wins on
+	// byQualifiedName refProps).
+	buckets := make(map[ModuleKey][]types.EntityRecord)
+	order := make([]ModuleKey, 0)
+	for k := range entities {
+		key := moduleKeyOf(entities[k])
+		if _, seen := buckets[key]; !seen {
+			order = append(order, key)
+		}
+		buckets[key] = append(buckets[key], entities[k])
+	}
+
+	si := &SymbolIndex{}
+	for _, key := range order {
+		si.Add(BuildModuleSymbolsOrdered(key, buckets[key]))
+	}
+
+	total := len(entities)
+	acc := accumulatorIndex(total)
+	pkgOpTag := make(map[string]map[string]string)
+	pkgCompTag := make(map[string]map[string]string)
+	pkgOpSrc := make(map[string]map[string]string)
+	pkgCompSrc := make(map[string]map[string]string)
+	for _, ms := range si.modules {
+		for i := range ms.entries {
+			me := &ms.entries[i]
+			insertModuleEntry(&acc, me, pkgOpTag, pkgCompTag, pkgOpSrc, pkgCompSrc)
+		}
+	}
+	return acc
+}
+
+// ModuleKeyByPkgDir is the default module-partition function for
+// BuildIndexFromModulesOrdered: it groups entities by the directory of their
+// (slash-normalised) SourceFile. Entities with no SourceFile fall into a single
+// "" bucket, matching how BuildIndex treats them (their location-keyed indexes
+// are skipped anyway).
+func ModuleKeyByPkgDir(e types.EntityRecord) ModuleKey {
+	return ModuleKey(pkgDirOf(normalizePath(e.SourceFile)))
+}
+
 // accumulatorIndex returns a pre-sized Index suitable for the multi-batch
 // accumulator path.
 func accumulatorIndex(totalEntities int) Index {
@@ -349,6 +472,9 @@ func accumulatorIndex(totalEntities int) Index {
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
+		byNamespaceMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string, cap4),
 		PlatformVariants:   make(map[string][]string),
 	}
@@ -371,6 +497,9 @@ func emptyIndex() Index {
 		byPackageMember:    make(map[string]map[string]map[string]string),
 		byPackageOperation: make(map[string]map[string]string),
 		byPackageComponent: make(map[string]map[string]string),
+		byNamespaceMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgMember:  make(map[string]map[string]map[string]string),
+		byKotlinPkgFunc:    make(map[string]map[string]string),
 		byQualifiedName:    make(map[string]string),
 		PlatformVariants:   make(map[string][]string),
 	}
@@ -562,6 +691,65 @@ func insertModuleEntry(
 					} else {
 						pkgScopeBucket[member] = me.id
 					}
+				}
+
+				// byNamespaceMember (#4374, C#) — namespace-scoped member
+				// index. Mirrors BuildIndex: index "<Type>.<member>" entities
+				// that carry csharp_namespace under [namespace][Type][member].
+				if me.properties != nil {
+					if nsName := me.properties["csharp_namespace"]; nsName != "" {
+						nsBucket := idx.byNamespaceMember[nsName]
+						if nsBucket == nil {
+							nsBucket = make(map[string]map[string]string)
+							idx.byNamespaceMember[nsName] = nsBucket
+						}
+						nsScopeBucket := nsBucket[scope]
+						if nsScopeBucket == nil {
+							nsScopeBucket = make(map[string]string)
+							nsBucket[scope] = nsScopeBucket
+						}
+						if existing, ok := nsScopeBucket[member]; ok && existing != me.id {
+							nsScopeBucket[member] = ""
+						} else {
+							nsScopeBucket[member] = me.id
+						}
+					}
+				}
+			}
+		}
+	}
+
+	// Kotlin package-scoped indexes (#4375). Mirrors BuildIndex: Kotlin
+	// function entities carry a BARE Name plus kotlin_package /
+	// kotlin_enclosing_type properties.
+	if me.properties != nil && isOperationKind(me.kind) {
+		if pkg := me.properties["kotlin_package"]; pkg != "" && me.name != "" {
+			if typ := me.properties["kotlin_enclosing_type"]; typ != "" {
+				pkgBucket := idx.byKotlinPkgMember[pkg]
+				if pkgBucket == nil {
+					pkgBucket = make(map[string]map[string]string)
+					idx.byKotlinPkgMember[pkg] = pkgBucket
+				}
+				typeBucket := pkgBucket[typ]
+				if typeBucket == nil {
+					typeBucket = make(map[string]string)
+					pkgBucket[typ] = typeBucket
+				}
+				if existing, ok := typeBucket[me.name]; ok && existing != me.id {
+					typeBucket[me.name] = ""
+				} else {
+					typeBucket[me.name] = me.id
+				}
+			} else {
+				funcBucket := idx.byKotlinPkgFunc[pkg]
+				if funcBucket == nil {
+					funcBucket = make(map[string]string)
+					idx.byKotlinPkgFunc[pkg] = funcBucket
+				}
+				if existing, ok := funcBucket[me.name]; ok && existing != me.id {
+					funcBucket[me.name] = ""
+				} else {
+					funcBucket[me.name] = me.id
 				}
 			}
 		}
