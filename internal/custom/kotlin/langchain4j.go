@@ -67,10 +67,19 @@ func (e *langchain4jKotlinExtractor) Extract(ctx context.Context, file extractor
 	var entities []types.EntityRecord
 	seen := make(map[string]bool)
 
+	// confidence_overlay (#4974, parity with Java #3093): every langchain4j
+	// entity below is produced by regex pattern match over Kotlin source, so the
+	// extractor stamps a top-level EntityRecord.Confidence directly rather than
+	// relying solely on the framework-blind per-binding substrate overlay.
+	regexConf := types.BaseConfidence(types.SourceRegexPattern)
+
 	add := func(ent types.EntityRecord) {
 		key := ent.Kind + ":" + ent.Name
 		if seen[key] {
 			return
+		}
+		if ent.Confidence == 0 {
+			ent.Confidence = regexConf
 		}
 		seen[key] = true
 		entities = append(entities, ent)

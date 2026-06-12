@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	extreg "github.com/cajasmota/archigraph/internal/extractor"
+	"github.com/cajasmota/archigraph/internal/types"
 
 	_ "github.com/cajasmota/archigraph/internal/custom/kotlin"
 )
@@ -213,5 +214,45 @@ func TestLangChain4jNoMatch(t *testing.T) {
 	ents := extract(t, "custom_kotlin_langchain4j", fi("User.kt", "kotlin", src))
 	if len(ents) != 0 {
 		t.Errorf("expected no entities, got %d", len(ents))
+	}
+}
+
+// confidence_overlay (#4974, parity with Java #3093): the langchain4j extractor
+// stamps a top-level EntityRecord.Confidence directly. All entities are regex
+// pattern matches, so the stamped value is BaseConfidence(SourceRegexPattern)=0.7.
+func TestLangChain4jConfidenceStamp(t *testing.T) {
+	src := `
+@AiService
+interface AssistantService {
+    @SystemMessage("You are helpful")
+    fun chat(message: String): String
+}
+
+class Tools {
+    @Tool("Search the web")
+    fun webSearch(query: String): String = ""
+}
+
+class MyAgent {
+    private val model: ChatLanguageModel = OpenAiChatModel.builder().build()
+}
+`
+	e, ok := extreg.Get("custom_kotlin_langchain4j")
+	if !ok {
+		t.Fatal("extractor custom_kotlin_langchain4j not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("Mixed.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	if len(ents) == 0 {
+		t.Fatal("expected langchain4j entities, got none")
+	}
+	want := types.BaseConfidence(types.SourceRegexPattern)
+	for _, ent := range ents {
+		if ent.Confidence != want {
+			t.Errorf("entity %s/%s: Confidence = %v, want %v (regex_pattern)",
+				ent.Kind, ent.Name, ent.Confidence, want)
+		}
 	}
 }
