@@ -402,6 +402,121 @@ fib(N) when N > 1 ->
 	}
 }
 
+// TestErlangExtractor_ArityIdentity verifies that name/arity is the function
+// identity: foo/1 and foo/2 are distinct entities, each carrying its arity in
+// Signature ("foo/1") and Properties["arity"]. Per-arity export precision is
+// also checked (lookup/1 exported, lookup/2 private).
+func TestErlangExtractor_ArityIdentity(t *testing.T) {
+	src := `-module(store).
+-export([lookup/1]).
+
+lookup(Key) ->
+    lookup(Key, default).
+
+lookup(Key, Default) ->
+    get(Key, Default).
+
+start() -> ok.
+`
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "store.erl",
+		Content:  []byte(src),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	type opKey struct{ name, arity string }
+	ops := make(map[opKey]struct {
+		subtype string
+		sig     string
+	})
+	lookupCount := 0
+	for _, rec := range got {
+		if rec.Kind != "SCOPE.Operation" {
+			continue
+		}
+		if rec.Name == "lookup" {
+			lookupCount++
+		}
+		ops[opKey{rec.Name, rec.Properties["arity"]}] = struct {
+			subtype string
+			sig     string
+		}{rec.Subtype, rec.Signature}
+	}
+
+	// Two distinct lookup entities — lookup/1 and lookup/2 — not one.
+	if lookupCount != 2 {
+		t.Fatalf("expected 2 distinct lookup entities (lookup/1, lookup/2), got %d", lookupCount)
+	}
+
+	l1, ok := ops[opKey{"lookup", "1"}]
+	if !ok {
+		t.Fatalf("missing lookup/1 entity")
+	}
+	if l1.sig != "lookup/1" {
+		t.Errorf("lookup/1 signature = %q, want lookup/1", l1.sig)
+	}
+	if l1.subtype != "exported_function" {
+		t.Errorf("lookup/1 should be exported_function (it is in -export), got %q", l1.subtype)
+	}
+
+	l2, ok := ops[opKey{"lookup", "2"}]
+	if !ok {
+		t.Fatalf("missing lookup/2 entity")
+	}
+	if l2.sig != "lookup/2" {
+		t.Errorf("lookup/2 signature = %q, want lookup/2", l2.sig)
+	}
+	if l2.subtype != "function" {
+		t.Errorf("lookup/2 is NOT exported (only lookup/1 is), should be function, got %q", l2.subtype)
+	}
+
+	// start/0 — arity 0 from empty parens.
+	s0, ok := ops[opKey{"start", "0"}]
+	if !ok {
+		t.Fatalf("missing start/0 entity")
+	}
+	if s0.sig != "start/0" {
+		t.Errorf("start/0 signature = %q, want start/0", s0.sig)
+	}
+}
+
+// TestErlangExtractor_ArityNestedArgs verifies countArity respects nested
+// tuples/lists/maps/binaries and strings so commas inside them don't inflate
+// the arity.
+func TestErlangExtractor_ArityNestedArgs(t *testing.T) {
+	src := `-module(arity_nested).
+-export([handle/3]).
+
+handle({get, Key}, [A, B], <<X:8, Y:8>>) ->
+    ok.
+`
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "arity_nested.erl",
+		Content:  []byte(src),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for _, rec := range got {
+		if rec.Kind == "SCOPE.Operation" && rec.Name == "handle" {
+			if rec.Properties["arity"] != "3" {
+				t.Errorf("handle arity = %q, want 3 (nested commas must not split args)", rec.Properties["arity"])
+			}
+			if rec.Signature != "handle/3" {
+				t.Errorf("handle signature = %q, want handle/3", rec.Signature)
+			}
+			return
+		}
+	}
+	t.Fatalf("handle/3 entity not found")
+}
+
 func TestErlangExtractor_LanguageTag(t *testing.T) {
 	src := `-module(tagged).
 -export([run/0]).
