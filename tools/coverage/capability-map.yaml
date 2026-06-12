@@ -18188,3 +18188,164 @@ records:
           - file: internal/engine/serverless_framework_edges_test.go
         issues_implemented: ["3519"]
         verified_at: "2026-05-30"
+
+  # ---- #4927: cross-language engine orchestration edges (coverage audit) ----
+
+  analysis.orchestration.scheduled-jobs:
+    capabilities:
+      resource_extraction:
+        # #728/#1404: append-only detector pass synthesising SCOPE.ScheduledJob
+        # entities across 12+ scheduled-job frameworks (Celery/APScheduler/
+        # schedule, node-cron/Bull, Spring/Quarkus @Scheduled, Quartz, robfig/
+        # cron, EventBridge rate()/cron(), K8s CronJob, GH-Actions schedule:,
+        # Sidekiq/Resque). Registered as a pass in detector.go.
+        status: full
+        symbols:
+          - file: internal/engine/scheduled_jobs_edges.go
+            functions: [applyScheduledJobEdges, synthesizePyCelery, synthesizePyAPScheduler, synthesizeNodeCron, synthesizeNodeBull]
+        tests:
+          - file: internal/engine/scheduled_jobs_edges_test.go
+        issues_implemented: ["728", "1404"]
+        verified_at: "2026-06-12"
+      dependency_attribution:
+        # TRIGGERS job->handler + #1404 Celery PUBLISHES_TO + ENQUEUES.
+        status: full
+        symbols:
+          - file: internal/engine/scheduled_jobs_edges.go
+            functions: [applyScheduledJobEdges, synthesizeCeleryCallSiteEdges]
+        tests:
+          - file: internal/engine/scheduled_jobs_edges_test.go
+        issues_implemented: ["728", "1404"]
+        verified_at: "2026-06-12"
+
+  analysis.orchestration.state-machine:
+    capabilities:
+      resource_extraction:
+        # #3704: SCOPE.State entities for XState/AASM/Spring-StateMachine/
+        # Python-transitions. Registered as a pass in detector.go.
+        status: full
+        symbols:
+          - file: internal/engine/state_machine_edges.go
+            functions: [applyStateMachineEdges, synthesizeXState, synthesizeAASM, synthesizeSpringStateMachine, newFSMEmitter]
+        tests:
+          - file: internal/engine/state_machine_edges_test.go
+        issues_implemented: ["3704"]
+        verified_at: "2026-06-12"
+      dependency_attribution:
+        # TRANSITIONS_TO source-state->target-state carrying the event prop.
+        status: full
+        symbols:
+          - file: internal/engine/state_machine_edges.go
+            functions: [applyStateMachineEdges, newFSMEmitter]
+        tests:
+          - file: internal/engine/state_machine_edges_test.go
+        issues_implemented: ["3704"]
+        verified_at: "2026-06-12"
+
+  analysis.orchestration.workflow:
+    capabilities:
+      resource_extraction:
+        # #934: SCOPE.Workflow/Activity/StateMachine for Temporal/Cadence/
+        # Step-Functions. Registered as a pass in detector.go.
+        status: full
+        symbols:
+          - file: internal/engine/workflow_edges.go
+            functions: [applyWorkflowEdges, synthesizePyWorkflow, synthesizeGoWorkflow, workflowSynthesisSupportsLanguage]
+        tests:
+          - file: internal/engine/workflow_edges_test.go
+        issues_implemented: ["934"]
+        verified_at: "2026-06-12"
+      dependency_attribution:
+        # STARTS_WORKFLOW / EXECUTES_ACTIVITY / STEPFUNCTION_STEP_INVOKES.
+        status: full
+        symbols:
+          - file: internal/engine/workflow_edges.go
+            functions: [applyWorkflowEdges]
+        tests:
+          - file: internal/engine/workflow_edges_test.go
+        issues_implemented: ["934"]
+        verified_at: "2026-06-12"
+
+  analysis.orchestration.bullmq:
+    capabilities:
+      producer_extraction:
+        # #2865: PUBLISHES_TO for new Queue/queue.add/FlowProducer.add.
+        # Registered as a pass in detector.go.
+        status: full
+        symbols:
+          - file: internal/engine/bullmq_edges.go
+            functions: [applyBullMQEdges, bullmqSynthesisSupportsLanguage]
+        tests:
+          - file: internal/engine/bullmq_edges_test.go
+        issues_implemented: ["2865"]
+        verified_at: "2026-06-12"
+      consumer_extraction:
+        # SUBSCRIBES_TO for new Worker/queue.process.
+        status: full
+        symbols:
+          - file: internal/engine/bullmq_edges.go
+            functions: [applyBullMQEdges]
+        tests:
+          - file: internal/engine/bullmq_edges_test.go
+        issues_implemented: ["2865"]
+        verified_at: "2026-06-12"
+      topic_attribution:
+        # Synthetic SCOPE.Queue keyed bullmq:<name> for cross-repo topic join.
+        status: full
+        symbols:
+          - file: internal/engine/bullmq_edges.go
+            functions: [applyBullMQEdges, bullmqQueueID]
+        tests:
+          - file: internal/engine/bullmq_edges_test.go
+        issues_implemented: ["2865"]
+        verified_at: "2026-06-12"
+
+  analysis.orchestration.feature-flags:
+    capabilities:
+      resource_extraction:
+        # #3628 area #17: SCOPE.FeatureFlag per distinct flag key
+        # (LaunchDarkly/Unleash/OpenFeature/.NET FeatureManagement/...).
+        # Registered as a pass in detector.go.
+        status: full
+        symbols:
+          - file: internal/engine/feature_flag_edges.go
+            functions: [applyFeatureFlagEdges, scanFeatureFlags, buildFeatureFlagID]
+        tests:
+          - file: internal/engine/feature_flag_edges_test.go
+        issues_implemented: ["3628", "3706"]
+        verified_at: "2026-06-12"
+      dependency_attribution:
+        # GATED_BY enclosing-fn->flag (flag blast-radius).
+        status: full
+        symbols:
+          - file: internal/engine/feature_flag_edges.go
+            functions: [applyFeatureFlagEdges, buildFeatureFlagCallerID]
+        tests:
+          - file: internal/engine/feature_flag_edges_test.go
+        issues_implemented: ["3628", "3706"]
+        verified_at: "2026-06-12"
+
+  analysis.orchestration.plugin-system:
+    capabilities:
+      resource_extraction:
+        # #3628 area #25: SCOPE.Plugin per (ecosystem, name) across Webpack/
+        # Vite/Rollup/Babel/ESLint/pytest/setuptools/Maven/Gradle. Registered
+        # as a pass in detector.go.
+        status: full
+        symbols:
+          - file: internal/engine/plugin_system_edges.go
+            functions: [applyPluginSystemEdges, scanPlugins, scanBundlerPlugins, bundlerSystemFor]
+        tests:
+          - file: internal/engine/plugin_system_edges_test.go
+        issues_implemented: ["3628"]
+        verified_at: "2026-06-12"
+      dependency_attribution:
+        # REGISTERS_PLUGIN config-file->plugin.
+        status: full
+        symbols:
+          - file: internal/engine/plugin_system_edges.go
+            functions: [applyPluginSystemEdges]
+        tests:
+          - file: internal/engine/plugin_system_edges_test.go
+        issues_implemented: ["3628"]
+        verified_at: "2026-06-12"
