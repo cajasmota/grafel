@@ -3,6 +3,7 @@ package csharp
 import (
 	"context"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -63,7 +64,130 @@ var (
 	hfIJobImplRe = regexp.MustCompile(
 		`(?m)class\s+(\w+)\s*:\s*[^{]*\bI(?:Background)?Job\b`,
 	)
+
+	// Dynamic / non-literal RecurringJob.AddOrUpdate — the job-id and/or lambda
+	// body cannot be statically resolved (captured variable id, method-group, or
+	// a lambda body that is not the simple `Type.Method(` / `x => x.Method(` shape).
+	// Matched only after the literal recurring patterns have had their chance, so
+	// these stay an honest unresolved producer rather than silently dropping.
+	hfRecurringAnyRe = regexp.MustCompile(
+		`(?s)RecurringJob\.AddOrUpdate\s*(?:<\s*\w+\s*>\s*)?\(`,
+	)
+	// Dynamic / non-literal BackgroundJob.Enqueue / Schedule — same idea: the call
+	// exists but the target method is not a resolvable literal lambda.
+	hfEnqueueAnyRe = regexp.MustCompile(
+		`(?s)BackgroundJob\.(Enqueue|Schedule|ContinueJobWith|ContinueWith)\s*(?:<\s*\w+\s*>\s*)?\(`,
+	)
+
+	// Hangfire Cron.* fluent helpers, e.g. Cron.Daily, Cron.Hourly,
+	// Cron.Minutely, Cron.MinuteInterval(5), Cron.Weekly(DayOfWeek.Monday, 3).
+	hfCronHelperRe = regexp.MustCompile(
+		`Cron\.(\w+)\s*(?:\(\s*([^)]*)\s*\))?`,
+	)
+	// A raw 5- or 6-field cron string literal, e.g. "0 12 * * *".
+	hfCronRawRe = regexp.MustCompile(
+		`["']((?:[\d*/,\-?A-Za-z]+\s+){4,5}[\d*/,\-?A-Za-z]+)["']`,
+	)
 )
+
+// hfCronHelperExpr maps a Hangfire `Cron.*` helper (and optional first arg) to
+// its canonical NCrontab expression (5-field: minute hour day-of-month month
+// day-of-week), mirroring the Hangfire.Cron static helpers. Unknown helpers and
+// interval helpers (which depend on runtime args) return an empty string and a
+// best-effort schedule label so the node stays honest.
+func hfCronHelperExpr(helper, arg string) (expr, label string) {
+	switch helper {
+	case "Never":
+		return "", "never"
+	case "Yearly", "Monthly", "Weekly", "Daily", "Hourly", "Minutely":
+		// Default (no-arg) forms have fixed canonical expressions. The
+		// argument-bearing overloads shift the fixed fields, which we can't
+		// resolve from non-literal args, so we only emit the canonical default.
+		if strings.TrimSpace(arg) != "" {
+			return "", strings.ToLower(helper)
+		}
+		switch helper {
+		case "Yearly":
+			return "0 0 1 1 *", "yearly"
+		case "Monthly":
+			return "0 0 1 * *", "monthly"
+		case "Weekly":
+			return "0 0 * * 0", "weekly"
+		case "Daily":
+			return "0 0 * * *", "daily"
+		case "Hourly":
+			return "0 * * * *", "hourly"
+		case "Minutely":
+			return "* * * * *", "minutely"
+		}
+	case "MinuteInterval", "HourInterval", "DayInterval", "MonthInterval":
+		// Interval helpers expand from a runtime count; record the label only.
+		return "", "interval"
+	}
+	return "", ""
+}
+
+// hfParseSchedule extracts a Hangfire cron expression and schedule label from
+// the trailing schedule argument of a RecurringJob.AddOrUpdate call (the slice
+// of source after the lambda body, bounded to the statement's closing paren).
+func hfParseSchedule(tail string) (cronExpr, scheduleType string) {
+	if m := hfCronHelperRe.FindStringSubmatch(tail); m != nil {
+		expr, label := hfCronHelperExpr(m[1], m[2])
+		if expr != "" {
+			return expr, "cron"
+		}
+		if label != "" {
+			return "", label
+		}
+	}
+	if m := hfCronRawRe.FindStringSubmatch(tail); m != nil {
+		return m[1], "cron"
+	}
+	return "", ""
+}
+
+// hfApplySchedule parses the schedule argument from tail and, when found, stamps
+// cron_expression / schedule_type onto the entity.
+func hfApplySchedule(e *types.EntityRecord, tail string) {
+	cronExpr, scheduleType := hfParseSchedule(tail)
+	if scheduleType != "" {
+		setProps(e, "schedule_type", scheduleType)
+	}
+	if cronExpr != "" {
+		setProps(e, "cron_expression", cronExpr)
+	}
+}
+
+// hfStatementTail returns the source from offset up to the next ';' (or end of
+// source), so cron/id parsing for one call doesn't bleed into a later statement.
+func hfStatementTail(src string, offset int) string {
+	if offset >= len(src) {
+		return ""
+	}
+	rest := src[offset:]
+	if semi := strings.IndexByte(rest, ';'); semi >= 0 {
+		return rest[:semi]
+	}
+	return rest
+}
+
+// hfFirstStringArg returns the first single/double-quoted string literal in tail,
+// used as the job-id for dynamic recurring calls when the lambda is non-literal
+// but the id itself is a literal.
+func hfFirstStringArg(tail string) string {
+	// The job-id precedes the lambda; bound the search to before the first
+	// "=>" so a trailing raw-cron string literal isn't mistaken for the id.
+	scope := tail
+	if arrow := strings.Index(scope, "=>"); arrow >= 0 {
+		scope = scope[:arrow]
+	}
+	if m := hfFirstStringRe.FindStringSubmatch(scope); m != nil {
+		return m[1]
+	}
+	return ""
+}
+
+var hfFirstStringRe = regexp.MustCompile(`["']([^"']+)["']`)
 
 func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/csharp")
@@ -83,6 +207,10 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	src := string(file.Content)
 	var out []types.EntityRecord
 	seen := make(map[string]bool)
+	// resolvedCalls records the source offset of every RecurringJob/BackgroundJob
+	// call that a literal pattern resolved, so the dynamic fallback (sections 8/9)
+	// only fires for genuinely non-literal call-sites.
+	resolvedCalls := make(map[int]bool)
 
 	add := func(ent types.EntityRecord) {
 		key := ent.Kind + ":" + ent.Name + ":" + ent.Subtype
@@ -109,6 +237,7 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE",
 		)
+		resolvedCalls[idx[0]] = true
 		add(ent)
 	}
 
@@ -128,6 +257,7 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE_TYPED",
 		)
+		resolvedCalls[idx[0]] = true
 		add(ent)
 	}
 
@@ -148,6 +278,8 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_RECURRING",
 		)
+		hfApplySchedule(&ent, hfStatementTail(src, idx[1]))
+		resolvedCalls[idx[0]] = true
 		add(ent)
 	}
 
@@ -168,6 +300,8 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_RECURRING_TYPED",
 		)
+		hfApplySchedule(&ent, hfStatementTail(src, idx[1]))
+		resolvedCalls[idx[0]] = true
 		add(ent)
 	}
 
@@ -186,6 +320,56 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 			"task_id", taskID,
 			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_SCHEDULE",
+		)
+		resolvedCalls[idx[0]] = true
+		add(ent)
+	}
+
+	// 8. Dynamic / non-literal RecurringJob.AddOrUpdate — job-id or lambda body
+	//    not statically resolvable (captured-var id, method-group, dynamic args).
+	//    Emitted as an honest unresolved producer so the call is still in-graph.
+	for _, idx := range hfRecurringAnyRe.FindAllStringIndex(src, -1) {
+		if resolvedCalls[idx[0]] {
+			continue
+		}
+		line := lineOf(src, idx[0])
+		tail := hfStatementTail(src, idx[1])
+		jobID := hfFirstStringArg(tail)
+		name := "RecurringJob@line" + intStr(line)
+		if jobID != "" {
+			name = "recurring:" + jobID
+		}
+		ent := makeEntity(name, "SCOPE.Pattern", "recurring_job", file.Path, file.Language, line)
+		setProps(&ent,
+			"framework", "hangfire",
+			"pattern_type", "recurring_dynamic",
+			"resolution", "unresolved",
+			"edge_kind", "PRODUCES",
+			"provenance", "INFERRED_FROM_HANGFIRE_RECURRING_DYNAMIC",
+		)
+		if jobID != "" {
+			setProps(&ent, "task_id", "task:hangfire:recurring:"+jobID)
+		}
+		hfApplySchedule(&ent, tail)
+		add(ent)
+	}
+
+	// 9. Dynamic / non-literal BackgroundJob.Enqueue / Schedule — target method
+	//    not a resolvable literal lambda (captured delegate, method-group, etc.).
+	for _, idx := range hfEnqueueAnyRe.FindAllStringSubmatchIndex(src, -1) {
+		if resolvedCalls[idx[0]] {
+			continue
+		}
+		op := src[idx[2]:idx[3]]
+		line := lineOf(src, idx[0])
+		ent := makeEntity("BackgroundJob."+op+"@line"+intStr(line), "SCOPE.Operation", "task_enqueue", file.Path, file.Language, line)
+		setProps(&ent,
+			"framework", "hangfire",
+			"pattern_type", "enqueue_dynamic",
+			"resolution", "unresolved",
+			"job_op", op,
+			"edge_kind", "PRODUCES",
+			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE_DYNAMIC",
 		)
 		add(ent)
 	}
