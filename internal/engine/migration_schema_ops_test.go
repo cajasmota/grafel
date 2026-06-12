@@ -167,6 +167,34 @@ func TestTypeORMAddColumn(t *testing.T) {
 	assertModifies(t, doc, "t1", "svc", "users", "add_column", "email")
 }
 
+// TestAllographerAlterDropMigration proves a Nim Allographer SCOPE.Evolution
+// migration-op entity (framework=allographer, #5029) derives a MODIFIES_TABLE
+// edge for both a column-scoped alter op and a table-level drop.
+func TestAllographerAlterDropMigration(t *testing.T) {
+	add := graph.Entity{
+		ID: "a1", Name: "add_column:users.bio", Kind: string(types.EntityKindEvolution),
+		Subtype: "add_column",
+		Properties: map[string]string{
+			"framework": "allographer", "migration_op": "add_column",
+			"table": "users", "column": "bio",
+		},
+	}
+	drop := graph.Entity{
+		ID: "a2", Name: "drop_table:posts", Kind: string(types.EntityKindEvolution),
+		Subtype: "drop_table",
+		Properties: map[string]string{
+			"framework": "allographer", "migration_op": "drop_table", "table": "posts",
+		},
+	}
+	doc := docOf("svc", add, drop)
+	st := ApplyMigrationSchemaOps(doc)
+	if st.Skipped {
+		t.Fatal("skipped")
+	}
+	assertModifies(t, doc, "a1", "svc", "users", "add_column", "bio")
+	assertModifies(t, doc, "a2", "svc", "posts", "drop_table", "")
+}
+
 // ---- Flyway / Liquibase SQL ------------------------------------------------
 
 func TestFlywaySQLCreateTable(t *testing.T) {

@@ -766,3 +766,104 @@ type
 		t.Error("expected Option[User] field to yield REFERENCES Comment→User")
 	}
 }
+
+// --- Allographer alter()/drop() migrations (#5029) --------------------------
+
+// TestNimAllographerMigrations_AlterDropOps proves Allographer schema().alter()
+// and schema().drop() ops synthesise SCOPE.Evolution migration-op entities
+// (framework=allographer) with the normalised op subtype + table/column props
+// the engine migration-schema-ops pass keys on.
+func TestNimAllographerMigrations_AlterDropOps(t *testing.T) {
+	src := `
+import allographer/schema_builder
+
+schema().alter(
+  table("users").add(Column().string("bio")),
+  table("users").change(Column().string("name")),
+  table("users").renameColumn("name", "full_name"),
+  table("posts").deleteColumn("legacy"),
+  renameTable("posts", "articles"),
+)
+
+schema().drop("comments")
+schema().drop(table("tags"))
+`
+	e, ok := extreg.Get("custom_nim_allographer_migrations")
+	if !ok {
+		t.Fatal("custom_nim_allographer_migrations not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("src/migrate.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	views := viewsOf(ents)
+	for _, en := range ents {
+		if en.Kind != "SCOPE.Evolution" {
+			t.Errorf("unexpected kind %q for %q", en.Kind, en.Name)
+		}
+		if en.Properties["framework"] != "allographer" {
+			t.Errorf("entity %q missing framework=allographer", en.Name)
+		}
+	}
+
+	// add_column users.bio
+	if v := pickView(views, "add_column:users.bio", "add_column"); v == nil ||
+		v.props["table"] != "users" || v.props["column"] != "bio" || v.props["migration_op"] != "add_column" {
+		t.Errorf("expected add_column users.bio, got %+v", v)
+	}
+	// alter_column users.name (change)
+	if v := pickView(views, "alter_column:users.name", "alter_column"); v == nil ||
+		v.props["table"] != "users" || v.props["column"] != "name" {
+		t.Errorf("expected alter_column users.name, got %+v", v)
+	}
+	// rename_column users.name
+	if v := pickView(views, "rename_column:users.name", "rename_column"); v == nil ||
+		v.props["table"] != "users" || v.props["column"] != "name" {
+		t.Errorf("expected rename_column users.name, got %+v", v)
+	}
+	// drop_column posts.legacy
+	if v := pickView(views, "drop_column:posts.legacy", "drop_column"); v == nil ||
+		v.props["table"] != "posts" || v.props["column"] != "legacy" {
+		t.Errorf("expected drop_column posts.legacy, got %+v", v)
+	}
+	// rename_table posts
+	if v := pickView(views, "rename_table:posts", "rename_table"); v == nil ||
+		v.props["table"] != "posts" {
+		t.Errorf("expected rename_table posts, got %+v", v)
+	}
+	// drop_table comments (string form) + tags (table()-wrapped form)
+	if v := pickView(views, "drop_table:comments", "drop_table"); v == nil ||
+		v.props["table"] != "comments" {
+		t.Errorf("expected drop_table comments, got %+v", v)
+	}
+	if v := pickView(views, "drop_table:tags", "drop_table"); v == nil ||
+		v.props["table"] != "tags" {
+		t.Errorf("expected drop_table tags, got %+v", v)
+	}
+}
+
+// TestNimAllographerMigrations_NonMigrationNoop proves a create-only schema (no
+// alter/drop) and arbitrary Nim are ignored by the migration extractor.
+func TestNimAllographerMigrations_NonMigrationNoop(t *testing.T) {
+	e, _ := extreg.Get("custom_nim_allographer_migrations")
+	createOnly := `
+import allographer/schema_builder
+schema().create(table("users", [Column().string("name")]))
+`
+	if ents, _ := e.Extract(context.Background(), fi("src/schema.nim", "nim", createOnly)); len(ents) != 0 {
+		t.Fatalf("expected no migration entities for a create-only schema, got %d", len(ents))
+	}
+	arbitrary := `proc alter() = discard` + "\n" + `echo "no schema here"`
+	if ents, _ := e.Extract(context.Background(), fi("src/util.nim", "nim", arbitrary)); len(ents) != 0 {
+		t.Fatalf("expected no entities for arbitrary nim, got %d", len(ents))
+	}
+}
+
+// TestNimAllographerMigrations_WrongLanguageNoop gates on language=="nim".
+func TestNimAllographerMigrations_WrongLanguageNoop(t *testing.T) {
+	src := `schema().drop("users")`
+	e, _ := extreg.Get("custom_nim_allographer_migrations")
+	if ents, _ := e.Extract(context.Background(), fi("src/migrate.nim", "go", src)); len(ents) != 0 {
+		t.Fatalf("expected no entities for non-nim language, got %d", len(ents))
+	}
+}

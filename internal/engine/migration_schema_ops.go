@@ -297,6 +297,19 @@ func evolutionOp(e *graph.Entity, p map[string]string) []migrationSchemaOp {
 			return nil
 		}
 		return []migrationSchemaOp{{op: op, table: table, column: p["column"]}}
+	// Nim Allographer alter()/drop() migration op (#5029). The op subtype is the
+	// already-normalised op name (add_column|drop_column|rename_column|
+	// alter_column|drop_table|rename_table) so we read it directly.
+	case "allographer":
+		op := e.Subtype
+		if op == "" {
+			return nil
+		}
+		table := p["table"]
+		if table == "" {
+			return nil
+		}
+		return []migrationSchemaOp{{op: op, table: table, column: p["column"]}}
 	}
 	return nil
 }
