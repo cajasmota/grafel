@@ -43,7 +43,40 @@ var (
 	reLc4jKotlinRAG = regexp.MustCompile(
 		`(?m)(?:private\s+|protected\s+|internal\s+|public\s+)?(?:val|var)\s+(\w+)\s*:\s*(EmbeddingStoreContentRetriever|EmbeddingStoreIngestor|EmbeddingStore|ContentRetriever)`,
 	)
+
+	// #5012: runtime chain_composition wiring. Capture an
+	// `AiServices.builder(IFace::class.java)` ... `.build()` (or
+	// `.create(...)`) assembly assigned to a `val/var <svc> = ...`, so the
+	// whole call chain — including newline-separated fluent calls — is one
+	// match group we can scan for individual wiring methods.
+	reLc4jKotlinServiceWiring = regexp.MustCompile(
+		`(?s)(?:(?:private|protected|internal|public)\s+)?(?:val|var)\s+(\w+)\s*(?::[^=]+)?=\s*` +
+			`AiServices\s*\.\s*(?:builder|create)\s*\((?:[^)]*)\)((?:\s*\.\s*\w+\s*\([^)]*\))*)`,
+	)
+	// Individual fluent builder steps inside the captured chain. The arg may be
+	// an identifier reference (field/var we wired earlier), a class literal, or
+	// an inline expression; we capture the leading identifier when present.
+	reLc4jKotlinWireStep = regexp.MustCompile(
+		`\.\s*(chatLanguageModel|streamingChatLanguageModel|tools|chatMemory|chatMemoryProvider|contentRetriever|retriever|retrievalAugmentor|systemMessageProvider|moderationModel|toolProvider)\s*\(\s*([A-Za-z_]\w*)?`,
+	)
 )
+
+// lc4jWireKindToTarget maps a builder method to the wiring edge property that
+// classifies the composed component. Kept here so the edge Properties carry a
+// stable, queryable wire role parallel to the Java structural classification.
+var lc4jWireRole = map[string]string{
+	"chatLanguageModel":          "chat_model",
+	"streamingChatLanguageModel": "streaming_chat_model",
+	"tools":                      "tools",
+	"toolProvider":               "tool_provider",
+	"chatMemory":                 "chat_memory",
+	"chatMemoryProvider":         "chat_memory_provider",
+	"contentRetriever":           "content_retriever",
+	"retriever":                  "content_retriever",
+	"retrievalAugmentor":         "retrieval_augmentor",
+	"systemMessageProvider":      "system_message_provider",
+	"moderationModel":            "moderation_model",
+}
 
 func (e *langchain4jKotlinExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/kotlin")
@@ -148,6 +181,65 @@ func (e *langchain4jKotlinExtractor) Extract(ctx context.Context, file extractor
 		setProps(&ent, "framework", "langchain4j", "provenance", "INFERRED_FROM_LANGCHAIN4J_RAG",
 			"rag_type", ragType)
 		add(ent)
+	}
+
+	// 8. #5012: runtime AiServices builder chain_composition wiring.
+	// `val assistant = AiServices.builder(Assistant::class.java)
+	//      .chatLanguageModel(model).tools(tools).chatMemory(memory).build()`
+	// emits a SCOPE.Service entity for the assembled service carrying USES
+	// edges to each wired component (by referenced identifier name), giving the
+	// runtime composition graph parity with Java langchain4j chain_composition.
+	for _, m := range reLc4jKotlinServiceWiring.FindAllStringSubmatchIndex(src, -1) {
+		svcName := src[m[2]:m[3]]
+		chain := src[m[4]:m[5]]
+
+		svc := makeEntity(svcName, "SCOPE.Service", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&svc, "framework", "langchain4j",
+			"provenance", "INFERRED_FROM_LANGCHAIN4J_AI_SERVICES_BUILDER",
+			"assembly", "AiServices.builder")
+
+		var rels []types.RelationshipRecord
+		wired := make(map[string]bool)
+		for _, sm := range reLc4jKotlinWireStep.FindAllStringSubmatchIndex(chain, -1) {
+			method := chain[sm[2]:sm[3]]
+			role := lc4jWireRole[method]
+			if role == "" {
+				continue
+			}
+			setProps(&svc, "wire."+role, "true")
+
+			// Capture the referenced component identifier when the argument is a
+			// plain reference (model, tools, memory). Inline expressions /
+			// class-literal-only args still record the wire role above but emit
+			// no resolvable USES edge target.
+			if sm[4] < 0 {
+				continue
+			}
+			target := chain[sm[4]:sm[5]]
+			edgeKey := role + "|" + target
+			if wired[edgeKey] {
+				continue
+			}
+			wired[edgeKey] = true
+			rels = append(rels, types.RelationshipRecord{
+				ToID: target,
+				Kind: "USES",
+				Properties: map[string]string{
+					"framework": "langchain4j",
+					"wire_role": role,
+					"method":    method,
+					"service":   svcName,
+				},
+				Confidence: regexConf,
+			})
+		}
+		if len(rels) > 0 {
+			svc.Relationships = append(svc.Relationships, rels...)
+		}
+		// Service entities keyed by Kind+Name; if a same-named @AiService
+		// interface was already added, the wiring assembly is a distinct var so
+		// dedupe on the (kind,name) key only collides when identical — acceptable.
+		add(svc)
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
