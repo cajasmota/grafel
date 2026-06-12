@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 
@@ -60,12 +61,54 @@ func (c CoordinatorConfig) concurrency() int {
 	if c.Concurrency > 0 {
 		return c.Concurrency
 	}
+	// Emergency runtime override (no redeploy needed once this build ships):
+	// ARCHIGRAPH_EXTRACT_CONCURRENCY caps the number of concurrent extract
+	// subprocesses. Used to throttle the daemon on shared/contended machines
+	// where a high-churn repo (merge-every-few-minutes) would otherwise drive
+	// continuous full-reindex fan-out (#3648).
+	if n := envPositiveInt("ARCHIGRAPH_EXTRACT_CONCURRENCY"); n > 0 {
+		return n
+	}
 	n := runtime.NumCPU() / 2
 	if n < 1 {
 		n = 1
 	}
 	if n > 4 {
 		n = 4
+	}
+	return n
+}
+
+// extractGOMAXPROCS returns the per-subprocess GOMAXPROCS cap. Each extract
+// subprocess is a full archigraph process; without this it inherits the
+// daemon's GOMAXPROCS (= host core count) and the Go runtime spins one OS
+// thread per core. With concurrency() subprocesses running in parallel the
+// effective CPU draw becomes concurrency × hostCores, which is the observed
+// runaway (#3648: ~7 of 12 cores during back-to-back reindexes).
+//
+// Bounding each child to a small GOMAXPROCS keeps total extract CPU at roughly
+// concurrency × cap cores, leaving headroom for the consuming repo's CI.
+//
+//	ARCHIGRAPH_EXTRACT_GOMAXPROCS overrides the per-child value.
+//	Default: 2 (so 4 children × 2 = ~8 worker threads worst-case, vs the
+//	         previous unbounded 4 × hostCores).
+func extractGOMAXPROCS() int {
+	if n := envPositiveInt("ARCHIGRAPH_EXTRACT_GOMAXPROCS"); n > 0 {
+		return n
+	}
+	return 2
+}
+
+// envPositiveInt reads a strictly-positive integer from the named env var.
+// Returns 0 when unset, empty, non-numeric, or <= 0.
+func envPositiveInt(name string) int {
+	raw := os.Getenv(name)
+	if raw == "" {
+		return 0
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n <= 0 {
+		return 0
 	}
 	return n
 }
@@ -204,6 +247,11 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 	var mu sync.Mutex
 
 	sem := make(chan struct{}, cfg.concurrency())
+	// Per-subprocess GOMAXPROCS cap (#3648). Computed once; applied to every
+	// child's environment so the Go runtime in each extract subprocess does not
+	// scale its thread pool to the full host core count.
+	childGOMAXPROCS := strconv.Itoa(extractGOMAXPROCS())
+	childEnv := append(os.Environ(), "GOMAXPROCS="+childGOMAXPROCS)
 	var wg sync.WaitGroup
 	var firstErr error
 	var firstErrOnce sync.Once
@@ -245,6 +293,11 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 			}
 
 			cmd := exec.CommandContext(ctx, bin, args...)
+			// Bound the child's Go runtime to extractGOMAXPROCS() cores so
+			// concurrent extract subprocesses can't collectively saturate the
+			// host (#3648). GOMAXPROCS is appended last so it wins over any
+			// inherited value.
+			cmd.Env = childEnv
 			cmd.Stderr = stderr
 			stdout, perr := cmd.StdoutPipe()
 			if perr != nil {

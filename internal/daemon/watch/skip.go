@@ -30,6 +30,15 @@ var SkipDirs = map[string]struct{}{
 	".git":        {},
 	".hg":         {},
 	".svn":        {},
+	// Agent scratch / linked git worktrees (#3648). Tools like Claude Code
+	// keep ephemeral checkouts under .claude/worktrees/, each a full repo
+	// tree with its own ~500MB node_modules. These are high-churn (a fresh
+	// branch every few minutes) and must never be walked or watched — doing
+	// so multiplies the watch set and feeds continuous reindex thrash on the
+	// parent repo. node_modules below is already skipped by basename, but
+	// skipping .claude outright also drops the worktrees' source trees, which
+	// otherwise rely solely on the consuming repo gitignoring .claude/worktrees.
+	".claude": {},
 	// JS / TS
 	"node_modules":  {},
 	".next":         {},

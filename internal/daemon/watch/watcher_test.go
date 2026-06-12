@@ -3,6 +3,7 @@ package watch
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -18,6 +19,7 @@ func TestShouldSkipDir(t *testing.T) {
 		"internal":     false,
 		".archigraph":  true,
 		"dist":         true,
+		".claude":      true, // #3648: agent scratch / linked worktrees
 	}
 	for in, want := range cases {
 		if got := ShouldSkipDir(in); got != want {
@@ -36,6 +38,10 @@ func TestShouldSkipPath(t *testing.T) {
 		"/repo/a.log":                      true,
 		"/repo/a.swp":                      true,
 		"/repo/cmd/foo/main_test.go":       false,
+		// #3648: agent worktrees under .claude/ must be dropped at any depth,
+		// including the high-churn node_modules nested inside each worktree.
+		"/repo/.claude/worktrees/agent-x/src/main.ts":               true,
+		"/repo/.claude/worktrees/agent-x/node_modules/foo/index.js": true,
 	}
 	for in, want := range cases {
 		if got := ShouldSkipPath(in); got != want {
@@ -196,6 +202,82 @@ func TestSkipDirRespected(t *testing.T) {
 	if got := calls.Load(); got != 1 {
 		t.Errorf("expected 1 sink call for src write, got %d", got)
 	}
+}
+
+// TestClaudeWorktreeNotWatched is the #3648 regression guard: edits inside a
+// .claude/worktrees/<agent> checkout (the scratch worktrees Claude Code creates,
+// each a full repo tree with its own node_modules) must NEVER reach the sink.
+// Before .claude was added to SkipDirs, the worktrees' source trees were walked
+// and watched, so every agent merge fed a full-reindex of the parent repo.
+func TestClaudeWorktreeNotWatched(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping in short mode")
+	}
+	repo := t.TempDir()
+	// A worktree source tree AND its nested node_modules, mirroring the live layout.
+	wtSrc := filepath.Join(repo, ".claude", "worktrees", "agent-x", "src")
+	wtNM := filepath.Join(repo, ".claude", "worktrees", "agent-x", "node_modules", "pkg")
+	if err := os.MkdirAll(wtSrc, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(wtNM, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	src := filepath.Join(repo, "src")
+	if err := os.MkdirAll(src, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	var calls atomic.Int32
+	w, err := newTestWatcher(100*time.Millisecond, func(string, bool) {
+		calls.Add(1)
+	})
+	if err != nil {
+		t.Fatalf("new: %v", err)
+	}
+	defer w.Stop()
+	if _, err := w.AddRepo(repo); err != nil {
+		t.Fatalf("add: %v", err)
+	}
+
+	// The worktree directory must not have been subscribed at all.
+	for _, d := range w.Repos() {
+		_ = d
+	}
+	w.mu.Lock()
+	for dir := range w.dirToRepo {
+		if filepathHasClaude(dir) {
+			w.mu.Unlock()
+			t.Fatalf("watcher subscribed a .claude path it should have skipped: %s", dir)
+		}
+	}
+	w.mu.Unlock()
+
+	// Writes inside the worktree (source AND node_modules) must be ignored.
+	if err := os.WriteFile(filepath.Join(wtSrc, "feature.ts"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(wtNM, "index.js"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if got := calls.Load(); got != 0 {
+		t.Errorf("expected 0 sink calls for .claude/worktrees writes, got %d", got)
+	}
+
+	// Sanity: a real source write still triggers exactly one reindex.
+	if err := os.WriteFile(filepath.Join(src, "main.go"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if got := calls.Load(); got != 1 {
+		t.Errorf("expected 1 sink call for src write, got %d", got)
+	}
+}
+
+func filepathHasClaude(p string) bool {
+	return strings.Contains(filepath.ToSlash(p), "/.claude/") ||
+		strings.HasSuffix(filepath.ToSlash(p), "/.claude")
 }
 
 // TestBulkDetection verifies that a burst exceeding BulkThreshold in one
