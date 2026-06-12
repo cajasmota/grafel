@@ -1194,11 +1194,19 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 		// `this.<field>` REFERENCES edges have a resolvable target.
 		if parentClass != "" {
 			emittedName := parentClass + "." + name
-			sig := name
-			// Include a type annotation in the signature when present.
-			if typeNode := n.ChildByFieldName("type"); typeNode != nil {
-				sig = name + ": " + x.nodeText(typeNode)
-			}
+			// Issue #4881 — build a "name[?]: type" signature so the dashboard
+			// shape walker (internal/dashboard/shape_tree.go parseFieldSignature)
+			// can recover the field TYPE and nullability. Earlier this path
+			// concatenated `name + ": " + x.nodeText(typeNode)`, but the
+			// type_annotation node text already carries the leading ": "
+			// (e.g. ": number"), so the signature came out as "building: : number"
+			// — a malformed double colon that parseFieldSignature read back as an
+			// empty/garbage type, leaving live DTO fields with type="" on the
+			// dashboard. Mirror the interface/object-type emitter
+			// (emitSchemaMemberFields, #4856): strip the leading colon and fold
+			// in the optional `?` marker so all three field paths (class,
+			// interface, object-type-alias) produce the identical convention.
+			sig := schemaFieldSignature(name, x.fieldIsOptional(n), x.fieldTypeAnnotation(n))
 			// Issue #4858 — attach class-validator constraints (if any) as
 			// structured metadata so the dashboard can render them as chips.
 			if validations := x.fieldValidations(n); len(validations) > 0 {
@@ -1527,6 +1535,53 @@ func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
 //   - index_signature (`[key: string]: any`) and call/construct signatures have
 //     no member name and are skipped (gracefully, no crash) — they describe the
 //     container, not an addressable field.
+// schemaFieldSignature renders the canonical SCOPE.Schema/field signature
+// "name[?]: type" shared by every JS/TS field-emission path (class fields,
+// interface property signatures, object-type-alias members). Keeping a single
+// renderer guarantees the dashboard shape walker
+// (internal/dashboard/shape_tree.go parseFieldSignature) reads type and
+// nullability identically regardless of which AST shape produced the field.
+// `ann` is the bare type text (no leading colon); empty `ann` yields a
+// name-only signature.
+func schemaFieldSignature(name string, optional bool, ann string) string {
+	sig := name
+	if optional {
+		sig += "?"
+	}
+	if ann != "" {
+		sig += ": " + ann
+	}
+	return sig
+}
+
+// fieldTypeAnnotation returns the bare type text of a member's `: <type>`
+// annotation (the "type" field, a type_annotation node) with the leading
+// colon and surrounding whitespace stripped, or "" when the member is
+// untyped. Works for public_field_definition, property_signature and
+// method_signature alike.
+func (x *extractor) fieldTypeAnnotation(member *sitter.Node) string {
+	typeNode := member.ChildByFieldName("type")
+	if typeNode == nil {
+		return ""
+	}
+	// type_annotation text includes the leading ": " — fold it out so the
+	// caller can re-add a single canonical ": ".
+	ann := strings.TrimSpace(x.nodeText(typeNode))
+	ann = strings.TrimPrefix(ann, ":")
+	return strings.TrimSpace(ann)
+}
+
+// fieldIsOptional reports whether a member declares the TypeScript optional
+// marker `?` (e.g. `name?: string`) as a direct child token.
+func (x *extractor) fieldIsOptional(member *sitter.Node) bool {
+	for j := 0; j < int(member.ChildCount()); j++ {
+		if ch := member.Child(j); ch != nil && ch.Type() == "?" {
+			return true
+		}
+	}
+	return false
+}
+
 func (x *extractor) emitSchemaMemberFields(body *sitter.Node, owner string) ([]string, []types.RelationshipRecord) {
 	if body == nil || owner == "" {
 		return nil, nil
@@ -1558,29 +1613,10 @@ func (x *extractor) emitSchemaMemberFields(body *sitter.Node, owner string) ([]s
 		seen[fieldName] = true
 		fields = append(fields, fieldName)
 
-		// Signature mirrors the class field convention ("name: type"), with an
-		// optional-marker "?" when the property_signature carries one, so the
-		// dashboard parses type / nullability identically to class DTO fields.
-		sig := fieldName
-		optional := false
-		for j := 0; j < int(member.ChildCount()); j++ {
-			if ch := member.Child(j); ch != nil && ch.Type() == "?" {
-				optional = true
-				break
-			}
-		}
-		if optional {
-			sig += "?"
-		}
-		if typeNode := member.ChildByFieldName("type"); typeNode != nil {
-			// type_annotation text includes the leading ": " — fold it in.
-			ann := strings.TrimSpace(x.nodeText(typeNode))
-			ann = strings.TrimPrefix(ann, ":")
-			ann = strings.TrimSpace(ann)
-			if ann != "" {
-				sig += ": " + ann
-			}
-		}
+		// Signature mirrors the class field convention ("name[?]: type") so the
+		// dashboard parses type / nullability identically to class DTO fields
+		// (#4856 / #4881 — shared renderer keeps all three field paths aligned).
+		sig := schemaFieldSignature(fieldName, x.fieldIsOptional(member), x.fieldTypeAnnotation(member))
 
 		emittedName := owner + "." + fieldName
 		x.emit(emittedName, "SCOPE.Schema", member, "field", sig)

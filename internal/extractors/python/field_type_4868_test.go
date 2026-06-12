@@ -20,6 +20,8 @@ class CreateAddressBody:
     line1: str = ""
     effective_at: datetime | None = None
     count = 0
+    building: int
+    group: int | None
 `)
 	p := sitter.NewParser()
 	p.SetLanguage(tspython.GetLanguage())
@@ -57,6 +59,15 @@ class CreateAddressBody:
 	// Unannotated field keeps the bare-name signature (no fabricated type).
 	if got := sig["count"]; got != "count" {
 		t.Errorf("count signature: want %q, got %q", "count", got)
+	}
+	// #4881 generalization — annotation-ONLY fields (PEP-526 declaration with no
+	// default value, the common live DTO shape) must also carry the type so the
+	// dashboard shape row is non-empty, matching the JS/TS extractor fix.
+	if got := sig["building"]; got != "building: int" {
+		t.Errorf("building signature: want %q, got %q", "building: int", got)
+	}
+	if got := sig["group"]; got != "group: int | None" {
+		t.Errorf("group signature: want %q, got %q", "group: int | None", got)
 	}
 }
 
