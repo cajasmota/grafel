@@ -38,7 +38,7 @@ one is a separate detail page.
 | [`lang.python.framework.graphene`](./lang.python.framework.graphene.md) | python | framework | 15 full, 25 partial, 9 missing |
 | [`lang.python.framework.strawberry-graphql`](./lang.python.framework.strawberry-graphql.md) | python | framework | 16 full, 24 partial, 9 missing |
 | [`lang.ruby.framework.graphql-ruby`](./lang.ruby.framework.graphql-ruby.md) | ruby | framework | 8 full, 18 partial, 23 missing |
-| [`lang.rust.framework.async-graphql`](./lang.rust.framework.async-graphql.md) | rust | framework | 12 full, 10 partial, 27 missing |
+| [`lang.rust.framework.async-graphql`](./lang.rust.framework.async-graphql.md) | rust | framework | 12 full, 11 partial, 26 missing |
 
 ## Provenance
 

@@ -69,6 +69,12 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// (extends #4420/#4429). Append-only supplemental pass: it never replaces the
 	// struct/enum Component entities the walk already emitted.
 	emitRustConstValueSets(file.Tree.RootNode(), file.Content, file.Path, &entities)
+	// Issue #5020 — config-consumption topology: literal env/config-crate key
+	// reads (env::var / dotenvy::var / figment Env::prefixed) become shared
+	// SCOPE.Config config-key nodes + DEPENDS_ON_CONFIG edges from the reading
+	// function, the config-change blast radius (parity with go/java/php/python).
+	// Append-only supplemental pass; entities[0] is the file entity.
+	emitConfigConsumerEdges(file.Tree.RootNode(), file.Content, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "rust")
 	extractor.TagEntitiesLanguage(entities, "rust")
