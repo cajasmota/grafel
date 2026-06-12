@@ -900,6 +900,51 @@ function DetailSlider({
   );
 }
 
+/** The inline-depth range for the Flowchart Depth control (#4883). Depth 1 is
+ *  the handler CFG only; each step inlines one more hop of in-repo callees. The
+ *  ceiling mirrors the backend cfgMaxInlineDepth. */
+const CFG_MIN_DEPTH = 1;
+const CFG_MAX_DEPTH = 8;
+
+/** DepthSlider — the Flowchart-view Depth control (#4883). A discrete slider
+ *  mapping the inline call-hop count to the backend `depth` param. Independent
+ *  of the Detail slider (within-function granularity) and the Tree's own depth
+ *  control: this one inlines callee CFGs at each in-repo call site. */
+function DepthSlider({
+  value,
+  onChange,
+}: {
+  value: number;
+  onChange: (d: number) => void;
+}) {
+  const hint =
+    value <= 1
+      ? "Handler control flow only"
+      : `Inlines callee control flow ${value - 1} call-hop${value - 1 > 1 ? "s" : ""} deep`;
+  return (
+    <div className="inline-flex items-center gap-2">
+      <span className="text-[11px] text-text-4 uppercase tracking-wide">Depth</span>
+      <input
+        type="range"
+        min={CFG_MIN_DEPTH}
+        max={CFG_MAX_DEPTH}
+        step={1}
+        value={value}
+        onChange={(e) => onChange(Number(e.target.value))}
+        className="w-28 accent-[var(--accent)] cursor-pointer"
+        aria-label="Flowchart inline depth"
+        title={hint}
+      />
+      <span
+        className="text-xs font-medium text-text-2 w-[88px] tabular-nums"
+        title={hint}
+      >
+        {value === 1 ? "Handler" : `Depth ${value}`}
+      </span>
+    </div>
+  );
+}
+
 function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathDetail; initialVerb?: string; groupId: string }) {
   const authForDetail = useAuthFor();
   // Real polyglot data can omit array/object fields entirely. Normalize once so
@@ -962,6 +1007,10 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
   // affects the Flowchart view (independent of the Tree's own depth control).
   const [flowView, setFlowView] = useState<"tree" | "flowchart">("tree");
   const [cfgDetail, setCfgDetail] = useState<ControlFlowDetail>("decisions");
+  // #4883 — interprocedural inline depth for the Flowchart view (1 = handler
+  // CFG only; >=2 splices callee CFGs at in-repo call sites). Separate control
+  // from cfgDetail (within-function granularity).
+  const [cfgDepth, setCfgDepth] = useState<number>(1);
   const dagVerb = verbFilter !== "all" ? verbFilter : detail.verbs[0];
 
   // Filter verb-scoped data. Backend slice fields can arrive as JSON null, so
@@ -1426,9 +1475,14 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
                 </button>
               </div>
 
-              {/* Detail slider — only meaningful for the Flowchart view. */}
+              {/* Depth + Detail sliders — only meaningful for the Flowchart
+                  view. Depth (#4883) inlines callee CFGs hop-by-hop; Detail
+                  (#4819) controls within-function granularity. */}
               {flowView === "flowchart" && (
-                <DetailSlider value={cfgDetail} onChange={setCfgDetail} />
+                <>
+                  <DepthSlider value={cfgDepth} onChange={setCfgDepth} />
+                  <DetailSlider value={cfgDetail} onChange={setCfgDetail} />
+                </>
               )}
             </div>
             {/* Maximize / restore toggle (#4479). Sits left of the Dialog's own
@@ -1459,6 +1513,7 @@ function DetailPane({ detail: rawDetail, initialVerb, groupId }: { detail: PathD
                 pathHash={detail.path_hash}
                 verb={dagVerb}
                 detail={cfgDetail}
+                depth={cfgDepth}
                 enabled={dagOpen && flowView === "flowchart"}
                 className="h-full"
               />

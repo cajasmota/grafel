@@ -83,4 +83,17 @@ describe("control-flow api detail mapping", () => {
     await api.getPathControlFlow("grp", "abc123", { detail: "decisions" });
     expect(String(fetchMock.mock.calls[0][0])).not.toContain("verb=");
   });
+
+  it("maps the inline depth into the control-flow query param (#4883)", async () => {
+    // depth=1 is the default (handler-only) → param omitted to keep the URL terse.
+    let fetchMock = mockFetch();
+    await api.getPathControlFlow("grp", "abc123", { detail: "decisions", depth: 1 });
+    expect(String(fetchMock.mock.calls[0][0])).not.toContain("depth=");
+    vi.restoreAllMocks();
+
+    // depth>=2 (inline callee CFGs) is sent.
+    fetchMock = mockFetch();
+    await api.getPathControlFlow("grp", "abc123", { detail: "decisions", depth: 3 });
+    expect(String(fetchMock.mock.calls[0][0])).toContain("depth=3");
+  });
 });

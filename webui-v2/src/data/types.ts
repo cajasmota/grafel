@@ -2676,6 +2676,25 @@ export interface ControlFlowNode {
   condition?: string;
   /** Side-effect annotations on process nodes — data detail and up. */
   effects?: ControlFlowEffect[];
+  /** Inlined-function frame this node belongs to (#4883), keyed by frame id
+   *  ("f0" = the handler, "f1"…= inlined callees). Drives the per-hop boundary
+   *  box / divider. Absent for a depth-1 (handler-only) graph. */
+  func?: string;
+  /** A call node whose in-repo callee couldn't be resolved/recursed into — an
+   *  external/library/cross-repo call rendered as a leaf terminal (#4883). */
+  external?: boolean;
+}
+
+/** One inlined-function frame in the interprocedural CFG (#4883) — lets the
+ *  renderer delineate each inlined hop's boundary. f0 is always the handler. */
+export interface ControlFlowFunction {
+  func: string;
+  name: string;
+  kind?: string;
+  file?: string;
+  line?: number;
+  depth: number;
+  cyclomatic_complexity?: number;
 }
 
 /** One directed control-flow edge between two node ids. */
@@ -2714,6 +2733,12 @@ export interface ControlFlowResponse {
   branch_count: number;
   nodes: ControlFlowNode[];
   edges: ControlFlowEdge[];
+  /** Resolved inline depth (#4883): 1 = handler CFG only, >=2 = callee CFGs
+   *  inlined at in-repo call sites to that hop count. */
+  depth?: number;
+  /** Inlined-function frames in inline order (#4883); f0 is the handler. Present
+   *  when depth >= 2 (or always at depth 1 as a single frame). */
+  functions?: ControlFlowFunction[];
 }
 
 // ---------------------------------------------------------------------------

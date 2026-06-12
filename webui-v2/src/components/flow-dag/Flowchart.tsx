@@ -82,6 +82,9 @@ export interface FlowchartProps {
   pathHash?: string | null;
   verb?: string;
   detail: ControlFlowDetail;
+  /** #4883 — interprocedural inline depth (1 = handler CFG only; >=2 splices
+   *  callee CFGs at in-repo call sites). */
+  depth?: number;
   /** Whether the internal fetch is enabled (only when modal open + view active). */
   enabled?: boolean;
   className?: string;
@@ -99,12 +102,20 @@ function FlowchartInner({
   pathHash,
   verb,
   detail,
+  depth = 1,
   enabled = true,
   className,
 }: FlowchartProps) {
   const [direction, setDirection] = useState<FlowDagDirection>("TB");
 
-  const query = useControlFlow(groupId, pathHash ?? null, detail, verb, enabled);
+  const query = useControlFlow(
+    groupId,
+    pathHash ?? null,
+    detail,
+    depth,
+    verb,
+    enabled,
+  );
   const data: ControlFlowResponse | undefined = query.data;
   const isLoading = query.isLoading;
   const error = query.error;
@@ -114,8 +125,30 @@ function FlowchartInner({
   const built = useMemo(() => {
     if (!data || data.nodes.length === 0) return null;
     const handles = handlePositions(direction);
+
+    // #4883 — map each inlined-function frame id ("f0","f1",…) to a stable color
+    // index + its boundary label, so a node knows which hop it belongs to and the
+    // FIRST node of each inlined (non-handler) frame can show the divider label.
+    const frames = data.functions ?? [];
+    const frameIndexOf = new Map<string, number>();
+    const frameNameOf = new Map<string, string>();
+    frames.forEach((f, i) => {
+      frameIndexOf.set(f.func, i);
+      frameNameOf.set(f.func, f.name);
+    });
+    const seenFrame = new Set<string>();
+
     const nodes: RFNode<FlowchartNodeData>[] = data.nodes.map((n) => {
       const box = boxFor(n.shape);
+      const fid = n.func ?? "";
+      const frameIndex = frameIndexOf.get(fid) ?? 0;
+      // Label the boundary on the first node we encounter of each inlined frame
+      // (frame index > 0 = a spliced callee, not the handler).
+      let frameLabel: string | undefined;
+      if (fid && frameIndex > 0 && !seenFrame.has(fid)) {
+        seenFrame.add(fid);
+        frameLabel = frameNameOf.get(fid);
+      }
       return {
         id: n.id,
         type: FLOWCHART_NODE_TYPE,
@@ -132,6 +165,10 @@ function FlowchartInner({
           line: n.line,
           sourcePos: handles.source,
           targetPos: handles.target,
+          func: n.func,
+          frameIndex,
+          frameLabel,
+          external: n.external,
         },
       };
     });
@@ -260,12 +297,24 @@ function FlowchartInner({
           </span>
         )}
 
-        {data?.handler && (
+        {data && (data.path || data.verb) && (
           <span
-            className="ml-auto inline-flex items-center gap-1.5 text-xs text-text-3 font-mono truncate max-w-[45%]"
-            title={`${data.handler.name}${data.handler.file ? ` — ${data.handler.file}:${data.handler.line ?? ""}` : ""}`}
+            className="ml-auto inline-flex items-baseline gap-1.5 text-xs font-mono truncate max-w-[55%]"
+            title={
+              data.handler
+                ? `handler: ${data.handler.name}${data.handler.file ? ` — ${data.handler.file}:${data.handler.line ?? ""}` : ""}`
+                : `${data.verb} ${data.path}`
+            }
           >
-            <span className="font-semibold text-text-2 truncate">{data.handler.name}</span>
+            {/* #4883 — the header shows the ENDPOINT verb + path (like the Tree
+                view), with the handler function name as a subtitle. */}
+            {data.verb && (
+              <span className="font-semibold uppercase text-accent">{data.verb}</span>
+            )}
+            <span className="font-semibold text-text-2 truncate">{data.path}</span>
+            {data.handler && (
+              <span className="text-text-4 truncate">· {data.handler.name}</span>
+            )}
           </span>
         )}
       </div>

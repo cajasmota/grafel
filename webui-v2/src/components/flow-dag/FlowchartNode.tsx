@@ -33,6 +33,33 @@ export interface FlowchartNodeData extends Record<string, unknown> {
   /** Handle faces for the active layout direction. */
   sourcePos: Position;
   targetPos: Position;
+  /** #4883 — inlined-function frame id this node belongs to ("f0"=handler). */
+  func?: string;
+  /** #4883 — a 0-based color index for the node's frame (0 = handler, no tint). */
+  frameIndex?: number;
+  /** #4883 — set on the FIRST node of an inlined (non-handler) frame so the
+   *  renderer can label the boundary (e.g. "↳ OrderService.fetch"). */
+  frameLabel?: string;
+  /** #4883 — a call node whose callee is external/library (a leaf terminal). */
+  external?: boolean;
+}
+
+/** Per-frame accent colors for inlined-function boundaries (#4883). Index 0 is
+ *  the handler (no tint); inlined frames cycle through these. */
+const FRAME_COLORS = [
+  "transparent",
+  "var(--accent)",
+  "#7c9cff",
+  "#d4a72c",
+  "#3fb27f",
+  "#c678dd",
+  "#e06c75",
+  "#56b6c2",
+];
+
+function frameColor(idx: number | undefined): string {
+  if (!idx || idx <= 0) return "transparent";
+  return FRAME_COLORS[idx % FRAME_COLORS.length] || "var(--accent)";
 }
 
 /** Small icon per effect family so a process step badges "DB write" etc. */
@@ -80,8 +107,42 @@ function FlowchartNodeImpl({ data }: NodeProps) {
       ? "var(--accent)"
       : "var(--text-3)";
 
+  // #4883 — inlined-function frame tint: a colored left rail + optional boundary
+  // label on the frame's entry node, so a hop's nodes read as one group.
+  const fColor = frameColor(d.frameIndex);
+  const tinted = fColor !== "transparent";
+
   return (
     <div className="relative w-full h-full flex items-center justify-center">
+      {tinted && (
+        <span
+          className="absolute left-0 top-0 bottom-0 w-[3px] rounded-l"
+          style={{ background: fColor }}
+          aria-hidden
+        />
+      )}
+      {d.frameLabel && (
+        <span
+          className="absolute -top-4 left-0 inline-flex items-center gap-0.5 text-[8px] font-medium uppercase tracking-wide truncate max-w-[140%] pointer-events-none"
+          style={{ color: fColor }}
+          title={`inlined: ${d.frameLabel}`}
+        >
+          ↳ {d.frameLabel}
+        </span>
+      )}
+      {d.external && (
+        <span
+          className="absolute -top-3.5 right-0 rounded px-1 text-[8px] font-semibold uppercase tracking-wide border pointer-events-none"
+          style={{
+            color: "var(--text-4)",
+            borderColor: "var(--border)",
+            background: "var(--surface-2)",
+          }}
+          title="External / library call — control flow stops here"
+        >
+          ext
+        </span>
+      )}
       <Handle
         type="target"
         position={d.targetPos}

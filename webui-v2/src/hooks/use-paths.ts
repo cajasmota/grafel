@@ -100,24 +100,29 @@ export const controlFlowQueryKey = (
   groupId: string,
   hash: string,
   detail: ControlFlowDetail,
+  depth: number,
   verb?: string,
-) => ["paths", groupId, "control-flow", hash, detail, verb ?? ""] as const;
+) => ["paths", groupId, "control-flow", hash, detail, depth, verb ?? ""] as const;
 
 /**
  * Fetch the endpoint handler's control-flow graph for the Flowchart view.
  * Enabled only when the modal is open and the Flowchart view is selected, so the
- * Tree view never pays for a CFG it isn't showing.
+ * Tree view never pays for a CFG it isn't showing. The #4883 `depth` param
+ * controls interprocedural inlining (1 = handler-only); TanStack caches each
+ * (detail, depth) pair so sliding either control back is instant.
  */
 export function useControlFlow(
   groupId: string,
   pathHash: string | null,
   detail: ControlFlowDetail,
+  depth: number,
   verb: string | undefined,
   enabled: boolean,
 ) {
   return useQuery({
-    queryKey: controlFlowQueryKey(groupId, pathHash ?? "", detail, verb),
-    queryFn: () => api.getPathControlFlow(groupId, pathHash!, { detail, verb }),
+    queryKey: controlFlowQueryKey(groupId, pathHash ?? "", detail, depth, verb),
+    queryFn: () =>
+      api.getPathControlFlow(groupId, pathHash!, { detail, depth, verb }),
     enabled: !!groupId && !!pathHash && enabled,
     staleTime: 60_000,
   });

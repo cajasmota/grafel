@@ -69,6 +69,15 @@ type v2CFGNode struct {
 	Condition string `json:"condition,omitempty"`
 	// Effects annotate a process node (data detail+).
 	Effects []v2CFGEffect `json:"effects,omitempty"`
+	// Func is the inlined-function frame this node belongs to (#4883), keyed by
+	// the per-hop frame id ("f0" = the handler, "f1"…= inlined callees). The
+	// frontend uses it to draw a group box / labelled divider per inlined hop.
+	// Empty/"f0" for the handler's own nodes (depth 1).
+	Func string `json:"func,omitempty"`
+	// External marks a call node whose in-repo callee could not be resolved /
+	// recursed into (a third-party / library / cross-repo call); it is a leaf
+	// terminal of the interprocedural CFG (#4883). The frontend badges these.
+	External bool `json:"external,omitempty"`
 }
 
 // v2CFGEdge is one directed control-flow edge between two node IDs. Kind is one
@@ -106,6 +115,30 @@ type v2ControlFlowResponse struct {
 	BranchCount int         `json:"branch_count"`
 	Nodes       []v2CFGNode `json:"nodes"`
 	Edges       []v2CFGEdge `json:"edges"`
+	// Depth echoes the resolved inline depth (#4883): 1 = handler CFG only,
+	// >=2 = callee CFGs inlined at in-repo call sites to that hop count.
+	Depth int `json:"depth"`
+	// Functions are the inlined-function frames (#4883), in inline order, so the
+	// UI can label each group box / divider. f0 is always the handler.
+	Functions []v2CFGFunction `json:"functions,omitempty"`
+}
+
+// v2CFGFunction describes one inlined-function frame in the interprocedural CFG
+// (#4883) so the renderer can delineate the boundary of each inlined hop.
+type v2CFGFunction struct {
+	// Func is the frame id ("f0","f1",…) matching v2CFGNode.Func.
+	Func string `json:"func"`
+	// Name is the function/method name.
+	Name string `json:"name"`
+	// Kind is the (scope-stripped) entity kind.
+	Kind string `json:"kind,omitempty"`
+	// File / Line locate the function definition.
+	File string `json:"file,omitempty"`
+	Line int    `json:"line,omitempty"`
+	// Depth is the inline hop this frame was spliced at (0 = handler).
+	Depth int `json:"depth"`
+	// Cyclomatic is this frame's own cyclomatic complexity.
+	Cyclomatic int `json:"cyclomatic_complexity,omitempty"`
 }
 
 // v2CFGHandler describes the handler function the CFG was built from.
@@ -150,6 +183,7 @@ func (s *Server) handleV2PathControlFlow(w http.ResponseWriter, r *http.Request)
 
 	q := r.URL.Query()
 	detail := normalizeCFGDetail(q.Get("detail"))
+	depth := normalizeCFGDepth(q.Get("depth"))
 	wantVerb := strings.ToUpper(strings.TrimSpace(q.Get("verb")))
 
 	// Resolve the endpoint root for (path hash, verb) — same resolver the
@@ -165,6 +199,7 @@ func (s *Server) handleV2PathControlFlow(w http.ResponseWriter, r *http.Request)
 		Path:   root.path,
 		Verb:   root.verb,
 		Detail: detail,
+		Depth:  depth,
 		Nodes:  []v2CFGNode{},
 		Edges:  []v2CFGEdge{},
 	}
@@ -198,16 +233,23 @@ func (s *Server) handleV2PathControlFlow(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	// REUSE the one CFG builder (internal/substrate) — never reimplemented here.
-	g := substrate.BuildControlFlowGraphCached(dashPrefixedID(root.repo.Slug, handler.ID), lang, src, start)
-	resp.Supported = g.Supported
-	resp.Cyclomatic = g.Cyclomatic
-	resp.BranchCount = g.BranchCount
-	if !g.Supported {
+	// Build the INTERPROCEDURAL (inlined) CFG (#4883): the handler's own CFG at
+	// depth 1, then at each in-repo CALL site splice the callee's CFG, recursing
+	// to `depth`. The inliner REUSES the one substrate CFG builder per frame and
+	// the downstream-DAG's controller→service→repo CALLS resolution so the two
+	// surfaces never drift. depth==1 collapses to exactly the old single-function
+	// CFG.
+	in := newCFGInliner(grp, root.repo, depth)
+	combined := in.build(handler, lang, src, start, detail)
+	resp.Supported = combined.Supported
+	resp.Cyclomatic = combined.Cyclomatic
+	resp.BranchCount = combined.BranchCount
+	if !combined.Supported {
 		resp.Note = "flowchart not available for this language yet (validated: python, jsts); showing a degenerate graph."
 	}
-	resp.Nodes = cfgNodesToWire(g.Nodes, detail)
-	resp.Edges = cfgEdgesToWire(g.Edges)
+	resp.Nodes = combined.Nodes
+	resp.Edges = combined.Edges
+	resp.Functions = combined.Functions
 
 	writeV2JSON(w, http.StatusOK, v2OK(resp))
 }
@@ -305,6 +347,25 @@ func normalizeCFGDetail(s string) string {
 	default:
 		return "decisions"
 	}
+}
+
+// cfgMaxInlineDepth bounds the interprocedural inlining (#4883) so a deep /
+// recursive call graph can never blow the payload or the request budget. The
+// cycle-guard (visited-set) already prevents infinite recursion; this is the
+// belt-and-braces hop cap, matching the downstream-DAG's depth ceiling spirit.
+const cfgMaxInlineDepth = 8
+
+// normalizeCFGDepth clamps the inline-depth query param to [1, cfgMaxInlineDepth],
+// defaulting to 1 (handler-only CFG — the pre-#4883 behaviour).
+func normalizeCFGDepth(s string) int {
+	n := atoiSafe(strings.TrimSpace(s))
+	if n < 1 {
+		return 1
+	}
+	if n > cfgMaxInlineDepth {
+		return cfgMaxInlineDepth
+	}
+	return n
 }
 
 // cfgDetailRank gives a numeric ordering so the serialiser can gate fields by

@@ -557,11 +557,13 @@ export const api = {
   getPathControlFlow: (
     groupId: string,
     pathHash: string,
-    params?: { detail?: ControlFlowDetail; verb?: string },
+    params?: { detail?: ControlFlowDetail; verb?: string; depth?: number },
   ) => {
     const qs = new URLSearchParams();
     if (params?.detail) qs.set("detail", params.detail);
     if (params?.verb) qs.set("verb", params.verb);
+    // #4883: inline depth (call-hops to splice). 1 = handler CFG only.
+    if (params?.depth && params.depth > 1) qs.set("depth", String(params.depth));
     const suffix = qs.toString() ? `?${qs.toString()}` : "";
     return requestV2<ControlFlowResponse>(
       `/groups/${encodeURIComponent(groupId)}/paths/${encodeURIComponent(pathHash)}/control-flow${suffix}`,
