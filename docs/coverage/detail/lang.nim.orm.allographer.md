@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 5030 | — | The Allographer rdb() query builder (`rdb().table("users").select(...).get()`) is not yet attributed to its table — query-builder attribution is deferred to follow-up #5030. This record covers the schema_builder surface only. |
+| Query attribution | ✅ `full` | `2026-06-13` | 5030 | `internal/custom/nim/allographer_query.go`<br>`internal/custom/nim/extractors_test.go` | The Allographer rdb() query builder (`rdb().table("t")...<op>()`) is attributed to its table by the query extractor (custom_nim_allographer_query, pre-filtered by nimAllographerHasQuery so schema-only files and arbitrary Nim are ignored). Each `rdb()` head bounds one query chain; the `.table("...")` anchor gives the table identity (the same key the schema-builder table uses, so query->table converges by name) and the terminal builder method classifies the op: `.get()/.first()/.find(/.pluck(/.count(/.max(/.min(/.avg(/.sum(` -> select; `.insert(/.insertId(/.insertID(` -> insert; `.update(` -> update; `.delete(` -> delete. One SCOPE.Schema/table per distinct table carries a QUERIES edge table->table (bare table name, resolved by the shared resolver) per distinct operation (operation + table props), reusing the SCOPE.Schema Kind + QUERIES edge the Norm/Debby query-attribution extractors use (no new kind). Proven by TestNimAllographerQuery_AttributesOps (users select+insert, posts update+delete asserted) + TestNimAllographerQuery_NonQueryNoop + TestNimAllographerQuery_WrongLanguageNoop. Honest remainder (follow-up #5116): join targets, raw SQL, and dynamic (non-literal) table names are not attributed. |
 
 ### Migrations
 
@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | — `not_applicable` | — | — | — | Allographer transactions are run via the rdb() query-builder transaction API, not a syntactic block on the schema builder this record covers. There is no schema-builder-level transaction boundary to stamp; query-builder transaction stamping is out of scope here (see #5030). |
+| Transaction function stamping | 🟢 `partial` | — | 5030 | `internal/custom/nim/allographer_query.go`<br>`internal/custom/nim/extractors_test.go` | Allographer transactions are run via the rdb() query-builder transaction API (`rdb().transaction(proc() = ...)`). The query extractor bounds each `rdb().transaction(...)` block with a balanced-paren scan (txnBlockEnd) and stamps transaction=true on the QUERIES edge of every rdb() query whose chain head falls inside that block, so the transaction boundary is recorded on the queries it encloses. Proven by TestNimAllographerQuery_AttributesOps (accounts.update + ledger.insert inside an rdb().transaction(...) asserted transaction=true). Partial (honest): the boundary is stamped on the enclosed queries rather than synthesised as a standalone SCOPE.Operation transaction entity — that, plus nested/named transactions, is follow-up #5116. |
 
 ## Provenance
 

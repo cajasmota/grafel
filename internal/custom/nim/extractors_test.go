@@ -867,3 +867,111 @@ func TestNimAllographerMigrations_WrongLanguageNoop(t *testing.T) {
 		t.Fatalf("expected no entities for non-nim language, got %d", len(ents))
 	}
 }
+
+// --- Allographer rdb() query-builder attribution (#5030) --------------------
+
+// TestNimAllographerQuery_AttributesOps proves rdb().table("t")...<op>() chains
+// synthesise a SCOPE.Schema/table (framework=allographer) carrying a QUERIES edge
+// table->table per distinct operation (select/insert/update/delete), and stamps
+// transaction=true on queries inside an rdb().transaction(...) block.
+func TestNimAllographerQuery_AttributesOps(t *testing.T) {
+	src := `
+import allographer/query_builder
+
+let users = rdb().table("users").select("id", "name").where("age", ">", 18).get()
+let first = rdb().table("users").where("id", "=", 1).first()
+discard rdb().table("users").insert(%*{"name": "Ada"})
+discard rdb().table("posts").where("id", "=", 1).update(%*{"title": "x"})
+discard rdb().table("posts").where("draft", "=", true).delete()
+
+rdb().transaction(proc() =
+  discard rdb().table("accounts").where("id", "=", 1).update(%*{"bal": 0})
+  discard rdb().table("ledger").insert(%*{"acct": 1})
+)
+`
+	e, ok := extreg.Get("custom_nim_allographer_query")
+	if !ok {
+		t.Fatal("custom_nim_allographer_query not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("src/repo.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	views := viewsOf(ents)
+	for _, en := range ents {
+		if en.Kind != "SCOPE.Schema" {
+			t.Errorf("unexpected kind %q for %q", en.Kind, en.Name)
+		}
+		if en.Properties["framework"] != "allographer" {
+			t.Errorf("entity %q missing framework=allographer", en.Name)
+		}
+	}
+
+	// hasOp asserts a QUERIES edge table->table with operation op (and optional
+	// transaction stamp) exists on the table entity.
+	hasOp := func(table, op string, txn bool) bool {
+		v := pickView(views, table, "table")
+		if v == nil {
+			return false
+		}
+		for _, r := range v.rels {
+			if r.Kind != "QUERIES" || r.ToID != table {
+				continue
+			}
+			if r.Properties["operation"] != op || r.Properties["table"] != table {
+				continue
+			}
+			if txn != (r.Properties["transaction"] == "true") {
+				continue
+			}
+			return true
+		}
+		return false
+	}
+
+	if !hasOp("users", "select", false) {
+		t.Error("expected users QUERIES select")
+	}
+	if !hasOp("users", "insert", false) {
+		t.Error("expected users QUERIES insert")
+	}
+	if !hasOp("posts", "update", false) {
+		t.Error("expected posts QUERIES update")
+	}
+	if !hasOp("posts", "delete", false) {
+		t.Error("expected posts QUERIES delete")
+	}
+	// Transaction-stamped queries.
+	if !hasOp("accounts", "update", true) {
+		t.Error("expected accounts QUERIES update transaction=true")
+	}
+	if !hasOp("ledger", "insert", true) {
+		t.Error("expected ledger QUERIES insert transaction=true")
+	}
+}
+
+// TestNimAllographerQuery_NonQueryNoop proves a schema-only file (no rdb()) and
+// arbitrary Nim are ignored by the query extractor.
+func TestNimAllographerQuery_NonQueryNoop(t *testing.T) {
+	e, _ := extreg.Get("custom_nim_allographer_query")
+	schemaOnly := `
+import allographer/schema_builder
+schema().create(table("users", [Column().string("name")]))
+`
+	if ents, _ := e.Extract(context.Background(), fi("src/schema.nim", "nim", schemaOnly)); len(ents) != 0 {
+		t.Fatalf("expected no query entities for a schema-only file, got %d", len(ents))
+	}
+	arbitrary := `proc rdb() = discard` + "\n" + `echo "no table here"`
+	if ents, _ := e.Extract(context.Background(), fi("src/util.nim", "nim", arbitrary)); len(ents) != 0 {
+		t.Fatalf("expected no entities for arbitrary nim, got %d", len(ents))
+	}
+}
+
+// TestNimAllographerQuery_WrongLanguageNoop gates on language=="nim".
+func TestNimAllographerQuery_WrongLanguageNoop(t *testing.T) {
+	src := `discard rdb().table("users").get()`
+	e, _ := extreg.Get("custom_nim_allographer_query")
+	if ents, _ := e.Extract(context.Background(), fi("src/repo.nim", "go", src)); len(ents) != 0 {
+		t.Fatalf("expected no entities for non-nim language, got %d", len(ents))
+	}
+}
