@@ -2,7 +2,9 @@
 //
 // Extracted entities:
 //   - module attributes (-module(foo).)           → Kind="SCOPE.Component", Subtype="module"
+//   - OTP modules (-behaviour(gen_server).)        → Subtype refined to gen_server_module / supervisor_module / application_module / otp_module; Properties["otp_behaviour"], Tags ["otp", "otp:gen_server", ...]
 //   - function clauses (name(Args) -> body.)       → Kind="SCOPE.Operation", Subtype="function" / "exported_function"
+//   - OTP callbacks (handle_call/3, init/1, ...)   → Subtype="otp_callback", Properties["otp_callback_of"]
 //   - record attributes (-record(Foo, {...}).)     → Kind="SCOPE.Component", Subtype="record"
 //   - include attributes (-include("foo.hrl").)   → IMPORTS relationships
 //
@@ -92,7 +94,47 @@ var (
 	exportItemRE = regexp.MustCompile(
 		`([a-z_][a-zA-Z0-9_@]*)\s*/\s*(\d+)`,
 	)
+
+	// behaviourRE matches -behaviour(gen_server). / -behavior(gen_server).
+	// (both British and American spellings are valid Erlang). Group 1: the
+	// behaviour atom (e.g. gen_server, supervisor, application, gen_statem,
+	// gen_event, gen_fsm).
+	behaviourRE = regexp.MustCompile(
+		`(?m)^-behaviou?r\s*\(\s*([a-z][a-zA-Z0-9_@]*)\s*\)\s*\.`,
+	)
 )
+
+// otpCallbacks maps each OTP behaviour to the canonical callback function
+// names it requires. Functions whose name is a known callback of a behaviour
+// the module implements are tagged so supervision-tree / message-dispatch
+// analysis can find them. Source: OTP design principles (gen_server,
+// gen_statem, gen_event, supervisor, application, gen_fsm).
+var otpCallbacks = map[string]map[string]bool{
+	"gen_server": {
+		"init": true, "handle_call": true, "handle_cast": true,
+		"handle_info": true, "terminate": true, "code_change": true,
+		"format_status": true,
+	},
+	"gen_statem": {
+		"init": true, "callback_mode": true, "handle_event": true,
+		"terminate": true, "code_change": true, "format_status": true,
+	},
+	"gen_event": {
+		"init": true, "handle_event": true, "handle_call": true,
+		"handle_info": true, "terminate": true, "code_change": true,
+		"format_status": true,
+	},
+	"gen_fsm": {
+		"init": true, "handle_event": true, "handle_sync_event": true,
+		"handle_info": true, "terminate": true, "code_change": true,
+	},
+	"supervisor": {
+		"init": true,
+	},
+	"application": {
+		"start": true, "stop": true, "prep_stop": true, "config_change": true,
+	},
+}
 
 // erlangKeywords are tokens that match funcHead or call patterns but are NOT
 // real function names or call targets.
@@ -151,6 +193,33 @@ type clauseMatch struct {
 func extractErlang(src, filePath string) []types.EntityRecord {
 	var entities []types.EntityRecord
 
+	// ── 0. OTP behaviours ──────────────────────────────────────────────────
+	// -behaviour(gen_server). attributes declare the module as an OTP process.
+	// Collect them so the module entity (and its callbacks) can be stamped.
+	var behaviours []string
+	behaviourSet := make(map[string]bool)
+	for _, m := range behaviourRE.FindAllStringSubmatch(src, -1) {
+		b := m[1]
+		if behaviourSet[b] {
+			continue
+		}
+		behaviourSet[b] = true
+		behaviours = append(behaviours, b)
+	}
+	sort.Strings(behaviours)
+
+	// callbackOf maps a function name to the behaviour(s) it is a callback of
+	// for the behaviours this module actually implements.
+	callbackOf := make(map[string][]string)
+	for _, b := range behaviours {
+		for cb := range otpCallbacks[b] {
+			callbackOf[cb] = append(callbackOf[cb], b)
+		}
+	}
+	for cb := range callbackOf {
+		sort.Strings(callbackOf[cb])
+	}
+
 	// ── 1. Module declaration ──────────────────────────────────────────────
 	moduleName := ""
 	moduleIdx := -1
@@ -158,7 +227,7 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 		moduleName = src[m[2]:m[3]]
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		moduleIdx = len(entities)
-		entities = append(entities, types.EntityRecord{
+		modRec := types.EntityRecord{
 			Name:               moduleName,
 			Kind:               "SCOPE.Component",
 			Subtype:            "module",
@@ -168,7 +237,24 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 			EndLine:            strings.Count(src, "\n") + 1,
 			Signature:          "-module(" + moduleName + ").",
 			EnrichmentRequired: false,
-		})
+		}
+		if len(behaviours) > 0 {
+			// Stamp the OTP behaviour(s) so supervision-tree / dispatch
+			// analysis can identify gen_server/supervisor/application modules
+			// without re-parsing. The module subtype is refined to the most
+			// specific OTP role (preferring a single behaviour) and the full
+			// list is preserved in Properties + Tags.
+			modRec.Subtype = otpModuleSubtype(behaviours)
+			if modRec.Properties == nil {
+				modRec.Properties = map[string]string{}
+			}
+			modRec.Properties["otp_behaviour"] = strings.Join(behaviours, ",")
+			modRec.Tags = append(modRec.Tags, "otp")
+			for _, b := range behaviours {
+				modRec.Tags = append(modRec.Tags, "otp:"+b)
+			}
+		}
+		entities = append(entities, modRec)
 	}
 
 	// ── 2. Record declarations ─────────────────────────────────────────────
@@ -277,6 +363,17 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 			EnrichmentRequired: false,
 			Relationships:      callRels,
 		}
+
+		// Tag OTP callback functions (handle_call/2-3, init/1, ...) so message
+		// dispatch (call/cast/info) and supervision callbacks are discoverable.
+		if bs := callbackOf[fi.name]; len(bs) > 0 {
+			rec.Subtype = "otp_callback"
+			if rec.Properties == nil {
+				rec.Properties = map[string]string{}
+			}
+			rec.Properties["otp_callback_of"] = strings.Join(bs, ",")
+			rec.Tags = append(rec.Tags, "otp_callback")
+		}
 		opIdx := len(entities)
 		entities = append(entities, rec)
 
@@ -298,6 +395,25 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+// otpModuleSubtype refines a module's subtype based on the OTP behaviour(s)
+// it implements. A module with a single behaviour gets the canonical role
+// subtype (e.g. gen_server → "gen_server_module"); a module implementing
+// multiple behaviours is tagged generically as "otp_module" (the precise
+// list is preserved in Properties["otp_behaviour"]).
+func otpModuleSubtype(behaviours []string) string {
+	if len(behaviours) == 1 {
+		switch behaviours[0] {
+		case "gen_server", "gen_statem", "gen_event", "gen_fsm":
+			return behaviours[0] + "_module"
+		case "supervisor":
+			return "supervisor_module"
+		case "application":
+			return "application_module"
+		}
+	}
+	return "otp_module"
+}
 
 // isInsideAttribute returns true when the match at matchStart is preceded
 // (on the same logical source context) by a '-' attribute marker. Since
