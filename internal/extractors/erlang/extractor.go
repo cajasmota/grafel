@@ -5,6 +5,7 @@
 //   - OTP modules (-behaviour(gen_server).)        → Subtype refined to gen_server_module / supervisor_module / application_module / otp_module; Properties["otp_behaviour"], Tags ["otp", "otp:gen_server", ...]
 //   - function clauses (name(Args) -> body.)       → Kind="SCOPE.Operation", Subtype="function" / "exported_function"
 //   - OTP callbacks (handle_call/3, init/1, ...)   → Subtype="otp_callback", Properties["otp_callback_of"]
+//   - gen_server dispatch callbacks                → Properties["otp_dispatch_tags"] + Tags ["otp_msg:<tag>", ...] (the recovered per-clause message tags)
 //   - record attributes (-record(Foo, {...}).)     → Kind="SCOPE.Component", Subtype="record"
 //   - include attributes (-include("foo.hrl").)   → IMPORTS relationships
 //
@@ -12,6 +13,7 @@
 //   - IMPORTS — every -include/-include_lib attribute
 //   - CALLS   — Module:Function and bare Function invocations inside function bodies
 //   - CONTAINS — module entity links to each exported function
+//   - SUPERVISES — supervisor module → each child module named in its init/1 child spec list
 //
 // No tree-sitter grammar for Erlang is available in smacker/go-tree-sitter.
 // This extractor uses line-oriented regex parsing, matching the Nim extractor
@@ -102,6 +104,27 @@ var (
 	behaviourRE = regexp.MustCompile(
 		`(?m)^-behaviou?r\s*\(\s*([a-z][a-zA-Z0-9_@]*)\s*\)\s*\.`,
 	)
+
+	// childSpecMapStartRE matches the `start => {Mod, Fun, Args}` MFA inside a
+	// modern map-form child spec (#{id => ..., start => {Mod, fn, []}}).
+	// Group 1: the child module atom (the M of the start MFA).
+	childSpecMapStartRE = regexp.MustCompile(
+		`start\s*=>\s*\{\s*([a-z][a-zA-Z0-9_@]*)\s*,`,
+	)
+
+	// childSpecMapIDRE captures the `id => atom` key of a map-form child spec
+	// so the SUPERVISES edge can carry the child id. Group 1: the id atom.
+	childSpecMapIDRE = regexp.MustCompile(
+		`id\s*=>\s*([a-z][a-zA-Z0-9_@]*)`,
+	)
+
+	// childSpecTupleRE matches a legacy tuple child spec head:
+	//   {Id, {M, F, A}, Restart, Shutdown, Type, Modules}
+	// Group 1: the child id atom; Group 2: the child module atom (M of the MFA).
+	// The id may be an atom; the inner {M, F, A} carries the module.
+	childSpecTupleRE = regexp.MustCompile(
+		`\{\s*([a-z][a-zA-Z0-9_@]*)\s*,\s*\{\s*([a-z][a-zA-Z0-9_@]*)\s*,`,
+	)
 )
 
 // otpCallbacks maps each OTP behaviour to the canonical callback function
@@ -180,11 +203,13 @@ type funcInfo struct {
 	startLine int
 	endLine   int
 	calls     []string // raw call targets extracted from all clauses
+	argHeads  []string // per-clause argument text (the "(...)" of each clause head)
 }
 
 // clauseMatch holds the parsed data for a single function clause head match.
 type clauseMatch struct {
 	name      string
+	args      string // the parenthesised argument text of the clause head, e.g. "({get, Key}, _From, State)"
 	line      int
 	matchEnd  int // byte offset after the '->'
 	matchByte int // byte offset of the match start
@@ -332,6 +357,7 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 		line := strings.Count(src[:m[0]], "\n") + 1
 		clauses = append(clauses, clauseMatch{
 			name:      name,
+			args:      src[m[4]:m[5]], // group 2: the "(...)" arg text
 			line:      line,
 			matchEnd:  m[1],
 			matchByte: m[0],
@@ -373,6 +399,24 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 			}
 			rec.Properties["otp_callback_of"] = strings.Join(bs, ",")
 			rec.Tags = append(rec.Tags, "otp_callback")
+
+			// ── message-tag dispatch ─────────────────────────────────────
+			// For the request-dispatching callbacks (handle_call/cast/info),
+			// recover the message TAG of each clause — the first pattern
+			// element of the first argument, e.g. `{get, Key}` → "get",
+			// bare `flush` → "flush". This makes per-message-tag handling
+			// distinguishable on the callback entity (and lets a caller's
+			// gen_server:call(?SERVER, {get, _}) be associated with the
+			// clause that handles tag `get`).
+			if isDispatchCallback(fi.name) {
+				tags := dispatchTags(fi.argHeads)
+				if len(tags) > 0 {
+					rec.Properties["otp_dispatch_tags"] = strings.Join(tags, ",")
+					for _, tg := range tags {
+						rec.Tags = append(rec.Tags, "otp_msg:"+tg)
+					}
+				}
+			}
 		}
 		opIdx := len(entities)
 		entities = append(entities, rec)
@@ -389,7 +433,222 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 		_ = opIdx
 	}
 
+	// ── 7. Supervision-tree child_spec edges ───────────────────────────────
+	// When this module is a `supervisor`, its `init/1` returns the child spec
+	// list. Parse each child spec (modern map or legacy tuple form) and emit a
+	// SUPERVISES edge from the supervisor module entity → each child module so
+	// the supervision hierarchy is a traversable subgraph.
+	if moduleIdx >= 0 && behaviourSet["supervisor"] {
+		var initBody string
+		for _, fi := range funcs {
+			if fi.name == "init" {
+				initBody = strings.Join(fi.calls, "\n")
+				break
+			}
+		}
+		if initBody != "" {
+			for _, c := range parseChildSpecs(initBody) {
+				rel := types.RelationshipRecord{
+					ToID: c.module,
+					Kind: "SUPERVISES",
+					Properties: map[string]string{
+						"provenance": "otp_child_spec",
+					},
+				}
+				if c.id != "" {
+					rel.Properties["child_id"] = c.id
+				}
+				entities[moduleIdx].Relationships = append(
+					entities[moduleIdx].Relationships, rel)
+			}
+		}
+	}
+
 	return entities
+}
+
+// childSpec is a single supervised child recovered from a supervisor's
+// init/1 child-spec list.
+type childSpec struct {
+	id     string // the spec's id atom (empty if not recoverable)
+	module string // the child module (the M of the start MFA)
+}
+
+// isDispatchCallback reports whether a callback name is one of the gen_server /
+// gen_event request-dispatching callbacks whose first argument carries a
+// message tag worth recovering.
+func isDispatchCallback(name string) bool {
+	switch name {
+	case "handle_call", "handle_cast", "handle_info", "handle_event",
+		"handle_sync_event":
+		return true
+	}
+	return false
+}
+
+// dispatchTags recovers, in clause order and de-duplicated, the message tag of
+// each dispatch-callback clause. The tag is the first pattern element of the
+// first argument: `{get, Key}` → "get", a bare atom `flush` → "flush". Wildcard
+// catch-all clauses (`_Request`, `_Msg`, `_`) and variable first args (which
+// start uppercase or `_`) are skipped — they carry no concrete tag.
+func dispatchTags(argHeads []string) []string {
+	var tags []string
+	seen := make(map[string]bool)
+	for _, ah := range argHeads {
+		tag := firstArgTag(ah)
+		if tag == "" || seen[tag] {
+			continue
+		}
+		seen[tag] = true
+		tags = append(tags, tag)
+	}
+	return tags
+}
+
+// firstArgTag extracts the message tag from a clause's parenthesised argument
+// text `(...)`. It isolates the first top-level argument, then:
+//   - `{tag, ...}` tuple  → "tag" (first element, must be a lowercase atom)
+//   - bare lowercase atom → the atom itself
+//   - variable / wildcard → "" (no concrete tag)
+func firstArgTag(argText string) string {
+	inner := strings.TrimSpace(argText)
+	inner = strings.TrimPrefix(inner, "(")
+	inner = strings.TrimSuffix(inner, ")")
+	first := splitTopLevelFirst(inner)
+	first = strings.TrimSpace(first)
+	if first == "" {
+		return ""
+	}
+	if strings.HasPrefix(first, "{") {
+		// Tuple pattern: take the first element.
+		body := strings.TrimPrefix(first, "{")
+		elem := splitTopLevelFirst(body)
+		elem = strings.TrimSpace(elem)
+		if isAtom(elem) {
+			return elem
+		}
+		return ""
+	}
+	if isAtom(first) {
+		return first
+	}
+	return ""
+}
+
+// splitTopLevelFirst returns the substring up to the first top-level comma,
+// respecting nesting of (), {}, [], <<>>. The remainder (other arguments /
+// tuple elements) is discarded.
+func splitTopLevelFirst(s string) string {
+	depth := 0
+	for i := 0; i < len(s); i++ {
+		switch s[i] {
+		case '(', '{', '[':
+			depth++
+		case ')', '}', ']':
+			if depth > 0 {
+				depth--
+			}
+		case ',':
+			if depth == 0 {
+				return s[:i]
+			}
+		}
+	}
+	return s
+}
+
+// isAtom reports whether s is a bare unquoted Erlang atom (lowercase start,
+// alnum/_/@ tail) and not a known keyword.
+func isAtom(s string) bool {
+	if s == "" {
+		return false
+	}
+	c := s[0]
+	if c < 'a' || c > 'z' {
+		return false
+	}
+	for i := 1; i < len(s); i++ {
+		ch := s[i]
+		if !(ch >= 'a' && ch <= 'z' || ch >= 'A' && ch <= 'Z' ||
+			ch >= '0' && ch <= '9' || ch == '_' || ch == '@') {
+			return false
+		}
+	}
+	return !erlangKeywords[s]
+}
+
+// parseChildSpecs scans a supervisor init/1 body for child specs and returns
+// the recovered children, de-duplicated by module (keeping the first id seen).
+// Both the modern map form (#{id => ..., start => {Mod, F, A}}) and the legacy
+// tuple form ({Id, {M, F, A}, ...}) are recognised. Comments and string/atom
+// literals are scrubbed first so MFAs inside them are not matched.
+func parseChildSpecs(body string) []childSpec {
+	scrubbed := stripCommentsAndStrings(body)
+	var out []childSpec
+	seen := make(map[string]bool)
+
+	add := func(module, id string) {
+		if module == "" || erlangKeywords[module] || seen[module] {
+			return
+		}
+		seen[module] = true
+		out = append(out, childSpec{id: id, module: module})
+	}
+
+	// Modern map form: a `#{... start => {Mod, ...}}` map. We pair each map's
+	// `start => {Mod,` with the nearest preceding `id => Atom` (if any) within
+	// the same map by scanning map starts.
+	for _, seg := range mapSegments(scrubbed) {
+		sm := childSpecMapStartRE.FindStringSubmatch(seg)
+		if sm == nil {
+			continue
+		}
+		id := ""
+		if im := childSpecMapIDRE.FindStringSubmatch(seg); im != nil {
+			id = im[1]
+		}
+		add(sm[1], id)
+	}
+
+	// Legacy tuple form: {Id, {M, F, A}, ...}.
+	for _, tm := range childSpecTupleRE.FindAllStringSubmatch(scrubbed, -1) {
+		add(tm[2], tm[1])
+	}
+
+	sort.Slice(out, func(i, j int) bool { return out[i].module < out[j].module })
+	return out
+}
+
+// mapSegments splits a body into the text of each `#{ ... }` map literal,
+// respecting nested braces, so each child-spec map is matched in isolation
+// (a `start =>` is paired with the `id =>` of the same map, not a sibling).
+func mapSegments(s string) []string {
+	var segs []string
+	for i := 0; i < len(s); i++ {
+		if s[i] == '#' && i+1 < len(s) && s[i+1] == '{' {
+			depth := 0
+			j := i + 1
+			for ; j < len(s); j++ {
+				switch s[j] {
+				case '{':
+					depth++
+				case '}':
+					depth--
+					if depth == 0 {
+						break
+					}
+				}
+				if depth == 0 {
+					break
+				}
+			}
+			if j < len(s) {
+				segs = append(segs, s[i:j+1])
+				i = j
+			}
+		}
+	}
+	return segs
 }
 
 // ---------------------------------------------------------------------------
@@ -455,6 +714,7 @@ func groupClauses(src string, clauses []clauseMatch) []funcInfo {
 		if acc, exists := accMap[c.name]; exists {
 			acc.fi.endLine = endLine
 			acc.fi.calls = append(acc.fi.calls, body)
+			acc.fi.argHeads = append(acc.fi.argHeads, c.args)
 		} else {
 			accMap[c.name] = &accumulator{
 				fi: funcInfo{
@@ -462,6 +722,7 @@ func groupClauses(src string, clauses []clauseMatch) []funcInfo {
 					startLine: c.line,
 					endLine:   endLine,
 					calls:     []string{body},
+					argHeads:  []string{c.args},
 				},
 				firstIdx: i,
 			}

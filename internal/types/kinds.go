@@ -1285,6 +1285,17 @@ const (
 	//                   call. The DesignDecision→Section anchoring uses the
 	//                   existing CONTAINS edge; no new hierarchy kind. OPT-IN.
 	RelationshipKindRationaleFor RelationshipKind = "RATIONALE_FOR"
+
+	// #4929 (follow-up #4903): Erlang/OTP supervision-tree edge. Emitted from a
+	// supervisor module entity → each child module named in its `init/1` child
+	// spec list. The child spec may be a modern map
+	// (`#{id => ..., start => {Mod, Fun, Args}}`) or the legacy tuple
+	// (`{Id, {M, F, A}, Restart, Shutdown, Type, Modules}`); in both forms the
+	// child module is the `M` of the `start` MFA. Properties on the edge:
+	// child_id (the spec's id), provenance ("otp_child_spec"). Makes the OTP
+	// supervision hierarchy a traversable subgraph rather than being buried
+	// inside the supervisor's init body.
+	RelationshipKindSupervises RelationshipKind = "SUPERVISES"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -1445,6 +1456,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindInstantiates,
 		// #4308/#4309 agent-driven semantic doc ingestion (opt-in, emit/apply):
 		RelationshipKindRationaleFor,
+		// #4929 Erlang/OTP supervision-tree child_spec edge:
+		RelationshipKindSupervises,
 	}
 }
 

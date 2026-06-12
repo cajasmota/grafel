@@ -3,6 +3,7 @@ package erlang_test
 import (
 	"context"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -605,6 +606,132 @@ init([]) ->
 			t.Errorf("init should be a supervisor callback, got %q", rec.Properties["otp_callback_of"])
 		}
 	}
+}
+
+// supTreeFixture is a supervisor whose init/1 returns a child spec list using
+// both the modern map form and the legacy tuple form, so the SUPERVISES edge
+// extraction is exercised against both shapes.
+const supTreeFixture = `-module(top_sup).
+-behaviour(supervisor).
+-export([start_link/0, init/1]).
+
+start_link() ->
+    supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+init([]) ->
+    SupFlags = #{strategy => one_for_one, intensity => 5, period => 10},
+    Worker = #{id => cache_server,
+               start => {cache_server, start_link, []},
+               restart => permanent,
+               type => worker},
+    Logger = #{id => logger_srv,
+               start => {logger_srv, start_link, []}},
+    Legacy = {db_pool, {db_pool, start_link, []}, permanent, 5000, worker, [db_pool]},
+    {ok, {SupFlags, [Worker, Logger, Legacy]}}.
+`
+
+// TestErlangExtractor_SupervisionTreeEdges verifies SUPERVISES edges are
+// emitted from the supervisor module to every child module declared in its
+// init/1 child spec list, across both map and tuple spec forms.
+func TestErlangExtractor_SupervisionTreeEdges(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "top_sup.erl",
+		Content:  []byte(supTreeFixture),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var sup bool
+	supervised := map[string]string{} // module -> child_id
+	for _, rec := range got {
+		if rec.Name == "top_sup" && rec.Kind == "SCOPE.Component" {
+			sup = true
+			for _, rel := range rec.Relationships {
+				if rel.Kind == "SUPERVISES" {
+					supervised[rel.ToID] = rel.Properties["child_id"]
+					if rel.Properties["provenance"] != "otp_child_spec" {
+						t.Errorf("SUPERVISES %s: expected provenance otp_child_spec, got %q",
+							rel.ToID, rel.Properties["provenance"])
+					}
+				}
+			}
+		}
+	}
+	if !sup {
+		t.Fatal("supervisor module top_sup not found")
+	}
+	want := map[string]string{
+		"cache_server": "cache_server",
+		"logger_srv":   "logger_srv",
+		"db_pool":      "db_pool",
+	}
+	for mod, id := range want {
+		gotID, ok := supervised[mod]
+		if !ok {
+			t.Errorf("expected SUPERVISES edge to child module %q, missing", mod)
+			continue
+		}
+		if gotID != id {
+			t.Errorf("child %q: expected child_id %q, got %q", mod, id, gotID)
+		}
+	}
+	if len(supervised) != len(want) {
+		t.Errorf("expected exactly %d SUPERVISES edges, got %d: %v",
+			len(want), len(supervised), supervised)
+	}
+}
+
+// TestErlangExtractor_MessageTagDispatch verifies per-message-tag dispatch is
+// recovered on the gen_server handle_call/handle_cast callbacks.
+func TestErlangExtractor_MessageTagDispatch(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "cache_server.erl",
+		Content:  []byte(genServerFixture),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	wantTags := map[string]string{
+		"handle_call": "get",            // {get, Key} → get; catch-all skipped
+		"handle_cast": "put,delete,flush", // {put,..},{delete,..},flush in clause order
+	}
+	seen := map[string]bool{}
+	for _, rec := range got {
+		if rec.Kind != "SCOPE.Operation" {
+			continue
+		}
+		want, ok := wantTags[rec.Name]
+		if !ok {
+			continue
+		}
+		seen[rec.Name] = true
+		if rec.Properties["otp_dispatch_tags"] != want {
+			t.Errorf("%s: expected otp_dispatch_tags=%q, got %q",
+				rec.Name, want, rec.Properties["otp_dispatch_tags"])
+		}
+		// Each tag should also surface as an otp_msg:<tag> tag.
+		for _, tg := range splitComma(want) {
+			if !hasTag(rec.Tags, "otp_msg:"+tg) {
+				t.Errorf("%s: expected tag otp_msg:%s, got %v", rec.Name, tg, rec.Tags)
+			}
+		}
+	}
+	for cb := range wantTags {
+		if !seen[cb] {
+			t.Errorf("dispatch callback %q not found", cb)
+		}
+	}
+}
+
+func splitComma(s string) []string {
+	if s == "" {
+		return nil
+	}
+	return strings.Split(s, ",")
 }
 
 func hasTag(tags []string, want string) bool {
