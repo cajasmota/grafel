@@ -3,7 +3,7 @@
 // Extracted entities:
 //   - module attributes (-module(foo).)           → Kind="SCOPE.Component", Subtype="module"
 //   - OTP modules (-behaviour(gen_server).)        → Subtype refined to gen_server_module / supervisor_module / application_module / otp_module; Properties["otp_behaviour"], Tags ["otp", "otp:gen_server", ...]
-//   - function clauses (name(Args) -> body.)       → Kind="SCOPE.Operation", Subtype="function" / "exported_function"
+//   - function clauses (name(Args) -> body.)       → Kind="SCOPE.Operation", Subtype="function" / "exported_function"; identity is name/arity (foo/1 and foo/2 are distinct entities; Signature="name/arity", Properties["arity"])
 //   - OTP callbacks (handle_call/3, init/1, ...)   → Subtype="otp_callback", Properties["otp_callback_of"]
 //   - gen_server dispatch callbacks                → Properties["otp_dispatch_tags"] + Tags ["otp_msg:<tag>", ...] (the recovered per-clause message tags)
 //   - record attributes (-record(Foo, {...}).)     → Kind="SCOPE.Component", Subtype="record"
@@ -196,9 +196,13 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // Core extraction
 // ---------------------------------------------------------------------------
 
-// funcInfo collects data about a single logical function (grouped by name across all clauses).
+// funcInfo collects data about a single logical function (grouped by name AND
+// arity across all clauses). In Erlang a function's identity is name/arity:
+// foo/1 and foo/2 are two distinct functions, so clauses are grouped on the
+// (name, arity) pair, not name alone.
 type funcInfo struct {
 	name      string
+	arity     int
 	exported  bool
 	startLine int
 	endLine   int
@@ -209,10 +213,54 @@ type funcInfo struct {
 // clauseMatch holds the parsed data for a single function clause head match.
 type clauseMatch struct {
 	name      string
+	arity     int    // number of arguments in this clause head (Erlang identity component)
 	args      string // the parenthesised argument text of the clause head, e.g. "({get, Key}, _From, State)"
 	line      int
 	matchEnd  int // byte offset after the '->'
 	matchByte int // byte offset of the match start
+}
+
+// countArity returns the number of top-level arguments in a clause head's
+// parenthesised argument text "(...)". Nested tuples/lists/maps/binaries and
+// strings are respected so that, e.g., ({get, Key}, _From, State) is arity 3,
+// () is arity 0. Commas inside nested () {} [] <<>> "" '' do not split args.
+func countArity(argText string) int {
+	inner := strings.TrimSpace(argText)
+	inner = strings.TrimPrefix(inner, "(")
+	inner = strings.TrimSuffix(inner, ")")
+	if strings.TrimSpace(inner) == "" {
+		return 0
+	}
+	scrubbed := stripCommentsAndStrings(inner)
+	count := 1
+	depth := 0
+	for i := 0; i < len(scrubbed); i++ {
+		switch scrubbed[i] {
+		case '(', '{', '[':
+			depth++
+		case ')', '}', ']':
+			if depth > 0 {
+				depth--
+			}
+		case '<':
+			if i+1 < len(scrubbed) && scrubbed[i+1] == '<' {
+				depth++
+				i++
+			}
+		case '>':
+			if i+1 < len(scrubbed) && scrubbed[i+1] == '>' {
+				if depth > 0 {
+					depth--
+				}
+				i++
+			}
+		case ',':
+			if depth == 0 {
+				count++
+			}
+		}
+	}
+	return count
 }
 
 func extractErlang(src, filePath string) []types.EntityRecord {
@@ -330,12 +378,17 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 		})
 	}
 
-	// ── 4. Parse exported function names ──────────────────────────────────
-	exported := make(map[string]bool)
+	// ── 4. Parse exported function name/arity pairs ───────────────────────
+	// Erlang exports are Name/Arity pairs (foo/1, foo/2). Track the precise
+	// pair so foo/1 can be exported while foo/2 is private; keep the bare-name
+	// set as a fallback for arity-less callers/lookups.
+	exported := make(map[string]bool)          // any arity of this name is exported
+	exportedAr := make(map[string]bool)        // "name/arity" exported
 	for _, m := range exportRE.FindAllStringSubmatch(src, -1) {
 		list := m[1]
 		for _, em := range exportItemRE.FindAllStringSubmatch(list, -1) {
 			exported[em[1]] = true
+			exportedAr[em[1]+"/"+em[2]] = true
 		}
 	}
 
@@ -355,9 +408,11 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 			continue
 		}
 		line := strings.Count(src[:m[0]], "\n") + 1
+		args := src[m[4]:m[5]] // group 2: the "(...)" arg text
 		clauses = append(clauses, clauseMatch{
 			name:      name,
-			args:      src[m[4]:m[5]], // group 2: the "(...)" arg text
+			arity:     countArity(args),
+			args:      args,
 			line:      line,
 			matchEnd:  m[1],
 			matchByte: m[0],
@@ -369,8 +424,13 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 
 	// ── 6. Emit function entities ──────────────────────────────────────────
 	for _, fi := range funcs {
+		// Erlang identity is name/arity: a function is exported only if THIS
+		// arity appears in an -export list (foo/1 exported, foo/2 private is a
+		// real and common distinction). Fall back to the bare-name set only is
+		// avoided — arity precision is the point of this pass.
+		nameAr := fi.name + "/" + strconv.Itoa(fi.arity)
 		subtype := "function"
-		if exported[fi.name] {
+		if exportedAr[nameAr] {
 			subtype = "exported_function"
 		}
 
@@ -385,9 +445,12 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 			Language:           "erlang",
 			StartLine:          fi.startLine,
 			EndLine:            fi.endLine,
-			Signature:          fi.name + "/...",
+			Signature:          nameAr,
 			EnrichmentRequired: false,
 			Relationships:      callRels,
+			Properties: map[string]string{
+				"arity": strconv.Itoa(fi.arity),
+			},
 		}
 
 		// Tag OTP callback functions (handle_call/2-3, init/1, ...) so message
@@ -421,7 +484,10 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 		opIdx := len(entities)
 		entities = append(entities, rec)
 
-		// Attach CONTAINS from the module entity.
+		// Attach CONTAINS from the module entity. The structural-ref is keyed
+		// by bare name (BuildOperationStructuralRef carries no arity), so the
+		// bare-name export set is used here — a module CONTAINS each exported
+		// function name (any arity of which is exported).
 		if moduleIdx >= 0 && exported[fi.name] {
 			toID := extractor.BuildOperationStructuralRef("erlang", filePath, fi.name)
 			entities[moduleIdx].Relationships = append(entities[moduleIdx].Relationships,
@@ -686,15 +752,18 @@ func isInsideAttribute(src string, matchStart int) bool {
 	return strings.HasPrefix(strings.TrimSpace(line), "-")
 }
 
-// groupClauses groups clause matches by function name, computing start/end lines
-// and accumulating call text from each clause body.
+// groupClauses groups clause matches by function IDENTITY (name AND arity),
+// computing start/end lines and accumulating call text from each clause body.
+// In Erlang foo/1 and foo/2 are distinct functions, so clauses are keyed on the
+// (name, arity) pair — only consecutive clauses of the same name/arity (the
+// `;`-separated clause group) collapse into one funcInfo entity.
 func groupClauses(src string, clauses []clauseMatch) []funcInfo {
 	if len(clauses) == 0 {
 		return nil
 	}
 
-	// Build a map from name to the accumulated info.
-	// We need to preserve order of first occurrence.
+	// Build a map from "name/arity" to the accumulated info.
+	// We preserve order of first occurrence of each distinct name/arity.
 	type accumulator struct {
 		fi       funcInfo
 		firstIdx int
@@ -711,14 +780,16 @@ func groupClauses(src string, clauses []clauseMatch) []funcInfo {
 		body := src[c.matchEnd:bodyEnd]
 		endLine := c.line + strings.Count(body, "\n")
 
-		if acc, exists := accMap[c.name]; exists {
+		key := c.name + "/" + strconv.Itoa(c.arity)
+		if acc, exists := accMap[key]; exists {
 			acc.fi.endLine = endLine
 			acc.fi.calls = append(acc.fi.calls, body)
 			acc.fi.argHeads = append(acc.fi.argHeads, c.args)
 		} else {
-			accMap[c.name] = &accumulator{
+			accMap[key] = &accumulator{
 				fi: funcInfo{
 					name:      c.name,
+					arity:     c.arity,
 					startLine: c.line,
 					endLine:   endLine,
 					calls:     []string{body},
@@ -726,14 +797,14 @@ func groupClauses(src string, clauses []clauseMatch) []funcInfo {
 				},
 				firstIdx: i,
 			}
-			order = append(order, c.name)
+			order = append(order, key)
 		}
 	}
 
 	// Return in order of first appearance.
 	result := make([]funcInfo, 0, len(order))
-	for _, name := range order {
-		result = append(result, accMap[name].fi)
+	for _, key := range order {
+		result = append(result, accMap[key].fi)
 	}
 	return result
 }
