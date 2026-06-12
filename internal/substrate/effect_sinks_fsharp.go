@@ -96,24 +96,89 @@ var fsharpEFWriteRe = regexp.MustCompile(
 		`ExecuteDelete|ExecuteDeleteAsync)\s*\(`,
 )
 
-// fsharpDapperReadRe matches Dapper / Dapper.FSharp read primitives.
+// fsharpDapperReceiverNames is the static receiver-name heuristic for Dapper
+// connections (the conventional names an IDbConnection binding carries). It is
+// the FALLBACK; receiver-type resolution (fsharpDapperTypedReceivers) augments
+// it at sniff time with any binding statically typed/constructed as a
+// (System.)Data IDbConnection so differently-named connections are also caught.
+const fsharpDapperReceiverNames = `conn|connection|db|_conn|_db|cnn|dbConn|dbConnection|_connection`
+
+// fsharpDapperUnambiguousReadVerbs are the Dapper methods whose name alone
+// fixes them as a read (Query*/Select*/Get*). These never run write SQL.
+const fsharpDapperUnambiguousReadVerbs = `Query|QueryAsync|QueryFirst|QueryFirstAsync|QueryFirstOrDefault|` +
+	`QueryFirstOrDefaultAsync|QuerySingle|QuerySingleAsync|` +
+	`QuerySingleOrDefault|QuerySingleOrDefaultAsync|QueryMultiple|` +
+	`QueryMultipleAsync|SelectAsync|GetAsync|GetListAsync`
+
+// fsharpDapperUnambiguousWriteVerbs are the Dapper.FSharp CRUD helpers whose
+// name alone fixes them as a write (Insert/Update/Delete extension methods).
+const fsharpDapperUnambiguousWriteVerbs = `InsertAsync|UpdateAsync|DeleteAsync`
+
+// fsharpDapperAmbiguousVerbs are the Dapper methods that run ARBITRARY SQL and
+// so are read-or-write depending on the verb of the SQL string argument:
+// Execute/ExecuteAsync (stored-proc reads AND DML writes), and ExecuteScalar/
+// ExecuteReader (often a SELECT count/aggregate, but can wrap any statement).
+const fsharpDapperAmbiguousVerbs = `Execute|ExecuteAsync|ExecuteScalar|ExecuteScalarAsync|` +
+	`ExecuteReader|ExecuteReaderAsync`
+
+// fsharpDapperReadRe matches Dapper / Dapper.FSharp NAME-UNAMBIGUOUS read
+// primitives (the Query*/Select*/Get* family) plus the Dapper.FSharp
+// `select { ... }` CE. The receiver alternation is rendered at sniff time so
+// type-resolved receivers can be folded in (see sniffEffectsFSharp).
 var fsharpDapperReadRe = regexp.MustCompile(
-	`\b(?:conn|connection|db|_conn|_db|cnn)\s*\.\s*` +
-		`(?:Query|QueryAsync|QueryFirst|QueryFirstAsync|QueryFirstOrDefault|` +
-		`QueryFirstOrDefaultAsync|QuerySingle|QuerySingleAsync|` +
-		`QuerySingleOrDefault|QuerySingleOrDefaultAsync|QueryMultiple|` +
-		`QueryMultipleAsync|SelectAsync|GetAsync|GetListAsync)\b` +
+	`\b(?:` + fsharpDapperReceiverNames + `)\s*\.\s*` +
+		`(?:` + fsharpDapperUnambiguousReadVerbs + `)\b` +
 		`|\bselect\s*\{\s*(?:for\b|table\b)`,
 )
 
-// fsharpDapperWriteRe matches Dapper / Dapper.FSharp write primitives.
+// fsharpDapperWriteRe matches Dapper / Dapper.FSharp NAME-UNAMBIGUOUS write
+// primitives (Insert/Update/Delete extension methods) plus the Dapper.FSharp
+// `insert`/`update`/`delete` CEs. The ambiguous Execute* family is handled
+// separately by fsharpDapperExecuteRe + leading-verb inspection.
 var fsharpDapperWriteRe = regexp.MustCompile(
-	`\b(?:conn|connection|db|_conn|_db|cnn)\s*\.\s*` +
-		`(?:Execute|ExecuteAsync|ExecuteScalar|ExecuteScalarAsync|` +
-		`ExecuteReader|ExecuteReaderAsync|InsertAsync|UpdateAsync|` +
-		`DeleteAsync)\b` +
+	`\b(?:` + fsharpDapperReceiverNames + `)\s*\.\s*` +
+		`(?:` + fsharpDapperUnambiguousWriteVerbs + `)\b` +
 		`|\b(?:insert|update|delete)\s*\{\s*(?:for\b|into\b|table\b)`,
 )
+
+// fsharpDapperExecuteRe matches the AMBIGUOUS Dapper Execute* family. Group 1
+// captures the first string-literal argument (`@?"""..."""` / `@?"..."`) when
+// present, so the leading SQL verb can be inspected to classify read vs write.
+// The receiver alternation is rendered at sniff time (type-resolved receivers
+// folded in). When no inspectable literal is present the call defaults to a
+// write (conservative — DML is the common Execute use and over-recording a
+// write is safer than missing one).
+var fsharpDapperExecuteRe = regexp.MustCompile(
+	`\b(?:` + fsharpDapperReceiverNames + `)\s*\.\s*` +
+		`(?:` + fsharpDapperAmbiguousVerbs + `)\s*` +
+		`(?:<[^>]*>)?\s*\(\s*(?:@?"""(?s:(.*?))"""|@?"((?:[^"\\]|\\.)*)")?`,
+)
+
+// fsharpSQLReadVerbRe matches a SQL statement whose leading verb is a read
+// (SELECT / WITH ... SELECT). Leading whitespace/comments are tolerated.
+var fsharpSQLReadVerbRe = regexp.MustCompile(
+	`(?is)^\s*(?:--[^\n]*\n\s*|/\*.*?\*/\s*)*(?:SELECT|WITH)\b`,
+)
+
+// fsharpDapperReceiverTypeRe resolves receiver-type bindings: an F# parameter
+// or value statically annotated as a (System.Data) IDbConnection-family type,
+// or constructed via `new SqlConnection(...)` / `new NpgsqlConnection(...)`.
+// Group 1 / group 2 capture the bound NAME so differently-named connections
+// (e.g. `database`, `pg`, `sqlite`) are recognised regardless of the static
+// name heuristic. Recognised types: IDbConnection and the concrete ADO.NET
+// connection classes (SqlConnection, NpgsqlConnection, SqliteConnection,
+// MySqlConnection, OracleConnection, DbConnection, SqliteConnection).
+var fsharpDapperReceiverTypeRe = regexp.MustCompile(
+	`\(\s*([A-Za-z_][\w']*)\s*:\s*(?:[\w.]+\.)?` + fsharpDapperConnTypes + `\b` +
+		`|\b(?:let|use)\s+(?:mutable\s+)?([A-Za-z_][\w']*)\s*` +
+		`(?::\s*(?:[\w.]+\.)?` + fsharpDapperConnTypes + `\b[^=]*)?` +
+		`=\s*(?:new\s+)?(?:[\w.]+\.)?` + fsharpDapperConnTypes + `\s*\(`,
+)
+
+// fsharpDapperConnTypes is the IDbConnection-family type alternation.
+const fsharpDapperConnTypes = `(?:IDbConnection|DbConnection|SqlConnection|NpgsqlConnection|` +
+	`SqliteConnection|SQLiteConnection|MySqlConnection|MySqlConnector\.MySqlConnection|` +
+	`OracleConnection|OdbcConnection|OleDbConnection|FbConnection)`
 
 // SQLProvider (F# type provider) recognition (#4999, follow-up #4941).
 //
@@ -176,6 +241,63 @@ var fsharpNpgsqlWriteRe = regexp.MustCompile(
 	`\bSql\s*\.\s*query\s+(?:@?"""|@?")\s*(?i:INSERT|UPDATE|DELETE|CREATE|DROP|ALTER|TRUNCATE|MERGE|UPSERT)\b`,
 )
 
+// fsharpResolveDapperReceivers returns the per-call regexes for the Dapper
+// read / write / Execute primitives, with the receiver-name alternation
+// EXTENDED by any binding statically resolved to an IDbConnection-family type
+// (#5001). When no typed receivers are present the package-level regexes are
+// reused (no allocation). This drops the reliance on the bare name heuristic
+// so differently-named connections are also classified.
+func fsharpResolveDapperReceivers(content string) (readRe, writeRe, execRe *regexp.Regexp) {
+	extra := fsharpTypedDapperReceiverNames(content)
+	if len(extra) == 0 {
+		return fsharpDapperReadRe, fsharpDapperWriteRe, fsharpDapperExecuteRe
+	}
+	recv := fsharpDapperReceiverNames
+	for _, n := range extra {
+		recv += `|` + regexp.QuoteMeta(n)
+	}
+	readRe = regexp.MustCompile(
+		`\b(?:` + recv + `)\s*\.\s*` +
+			`(?:` + fsharpDapperUnambiguousReadVerbs + `)\b` +
+			`|\bselect\s*\{\s*(?:for\b|table\b)`,
+	)
+	writeRe = regexp.MustCompile(
+		`\b(?:` + recv + `)\s*\.\s*` +
+			`(?:` + fsharpDapperUnambiguousWriteVerbs + `)\b` +
+			`|\b(?:insert|update|delete)\s*\{\s*(?:for\b|into\b|table\b)`,
+	)
+	execRe = regexp.MustCompile(
+		`\b(?:` + recv + `)\s*\.\s*` +
+			`(?:` + fsharpDapperAmbiguousVerbs + `)\s*` +
+			`(?:<[^>]*>)?\s*\(\s*(?:@?"""(?s:(.*?))"""|@?"((?:[^"\\]|\\.)*)")?`,
+	)
+	return readRe, writeRe, execRe
+}
+
+// fsharpTypedDapperReceiverNames scans for IDbConnection-family bindings whose
+// name is NOT already in the static heuristic, returning the de-duplicated
+// extra names to fold into the receiver alternation.
+func fsharpTypedDapperReceiverNames(content string) []string {
+	seen := map[string]bool{
+		"conn": true, "connection": true, "db": true, "_conn": true,
+		"_db": true, "cnn": true, "dbConn": true, "dbConnection": true,
+		"_connection": true,
+	}
+	var out []string
+	for _, m := range fsharpDapperReceiverTypeRe.FindAllStringSubmatch(content, -1) {
+		name := m[1]
+		if name == "" {
+			name = m[2]
+		}
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		out = append(out, name)
+	}
+	return out
+}
+
 func sniffEffectsFSharp(content string) []EffectMatch {
 	if content == "" {
 		return nil
@@ -186,8 +308,14 @@ func sniffEffectsFSharp(content string) []EffectMatch {
 	out = appendFSharpMatches(out, content, headers, fsharpEFReadRe, EffectDBRead, "efcore.dbset.read", 0.85)
 	out = appendFSharpMatches(out, content, headers, fsharpEFQueryCERe, EffectDBRead, "efcore.query-ce", 0.8)
 	out = appendFSharpMatches(out, content, headers, fsharpEFWriteRe, EffectDBWrite, "efcore.write", 0.85)
-	out = appendFSharpMatches(out, content, headers, fsharpDapperReadRe, EffectDBRead, "dapper.read", 0.85)
-	out = appendFSharpMatches(out, content, headers, fsharpDapperWriteRe, EffectDBWrite, "dapper.write", 0.85)
+	dapperReadRe, dapperWriteRe, dapperExecRe := fsharpResolveDapperReceivers(content)
+	out = appendFSharpMatches(out, content, headers, dapperReadRe, EffectDBRead, "dapper.read", 0.85)
+	out = appendFSharpMatches(out, content, headers, dapperWriteRe, EffectDBWrite, "dapper.write", 0.85)
+	// Dapper ambiguous Execute* family (#5001): classify read vs write by the
+	// leading SQL verb of the string-literal argument; type-resolved receivers
+	// (#5001) extend the static name heuristic so differently-named
+	// IDbConnection bindings (`database`, `pg`, ...) are also caught.
+	out = appendFSharpDapperExecuteMatches(out, content, headers, dapperExecRe)
 	out = appendFSharpMatches(out, content, headers, fsharpNpgsqlReadRe, EffectDBRead, "npgsql.fsharp.read", 0.9)
 	out = appendFSharpMatches(out, content, headers, fsharpNpgsqlWriteRe, EffectDBWrite, "npgsql.fsharp.write", 0.9)
 	// SQLProvider type-provider (#4999): direct table enumeration -> db_read,
@@ -216,6 +344,49 @@ func appendFSharpSQLProviderMatches(out []EffectMatch, content string, headers [
 			Line:       line,
 			Effect:     eff,
 			Sink:       s,
+			Confidence: conf,
+		})
+	}
+	return out
+}
+
+// appendFSharpDapperExecuteMatches classifies the ambiguous Dapper Execute*
+// family (#5001). The string-literal argument's leading SQL verb decides the
+// effect: SELECT / WITH (... SELECT) -> db_read; any other (or no inspectable)
+// literal -> db_write. A read carries higher confidence (the verb is explicit);
+// a defaulted write (no literal to inspect — e.g. a SQL value bound elsewhere)
+// drops confidence to reflect the heuristic fallback. The Sink tag records the
+// classification basis (`dapper.execute.read` / `.write` / `.write?`).
+func appendFSharpDapperExecuteMatches(out []EffectMatch, content string, headers []funcHeader, execRe *regexp.Regexp) []EffectMatch {
+	for _, m := range execRe.FindAllStringSubmatchIndex(content, -1) {
+		line := lineOfOffset(content, m[0])
+		fn := nearestHeader(headers, line)
+		// Group 1 = triple-quoted literal body, group 2 = quoted literal body.
+		lit := ""
+		if m[2] >= 0 {
+			lit = content[m[2]:m[3]]
+		} else if m[4] >= 0 {
+			lit = content[m[4]:m[5]]
+		}
+		eff := EffectDBWrite
+		sink := "dapper.execute.write"
+		conf := 0.85
+		switch {
+		case lit == "":
+			// No inspectable literal (SQL bound elsewhere / a stored proc
+			// name): default to write, but flag the lower-confidence guess.
+			sink = "dapper.execute.write?"
+			conf = 0.7
+		case fsharpSQLReadVerbRe.MatchString(lit):
+			eff = EffectDBRead
+			sink = "dapper.execute.read"
+			conf = 0.9
+		}
+		out = append(out, EffectMatch{
+			Function:   fn,
+			Line:       line,
+			Effect:     eff,
+			Sink:       sink,
 			Confidence: conf,
 		})
 	}

@@ -98,6 +98,104 @@ let dapperInsert (conn: IDbConnection) o =
 	}
 }
 
+// TestSniffEffectsFSharp_DapperExecuteVerb proves the AMBIGUOUS Dapper
+// Execute* family (#5001) is classified by the leading SQL verb of its
+// string-literal argument: a SELECT/WITH Execute is a read, a DML Execute is
+// a write, and an Execute with no inspectable literal defaults to a write.
+func TestSniffEffectsFSharp_DapperExecuteVerb(t *testing.T) {
+	src := `module Data
+
+let countOrders (conn: IDbConnection) =
+    conn.ExecuteScalar<int>("SELECT count(*) FROM orders")
+
+let cteReport (conn: IDbConnection) =
+    conn.Execute("""
+        WITH recent AS (SELECT * FROM orders)
+        SELECT * FROM recent
+    """)
+
+let deleteStale (conn: IDbConnection) =
+    conn.Execute("DELETE FROM orders WHERE stale = 1")
+
+let runProc (conn: IDbConnection) sql =
+    conn.Execute(sql, commandType = CommandType.StoredProcedure)
+`
+	got := fsharpEffectsByFn(src)
+	if !got["countOrders"][EffectDBRead] || got["countOrders"][EffectDBWrite] {
+		t.Errorf("countOrders expected db_read only (SELECT), got %v", got["countOrders"])
+	}
+	if !got["cteReport"][EffectDBRead] || got["cteReport"][EffectDBWrite] {
+		t.Errorf("cteReport expected db_read only (WITH...SELECT), got %v", got["cteReport"])
+	}
+	if !got["deleteStale"][EffectDBWrite] || got["deleteStale"][EffectDBRead] {
+		t.Errorf("deleteStale expected db_write only (DELETE), got %v", got["deleteStale"])
+	}
+	// No inspectable literal -> conservative write default.
+	if !got["runProc"][EffectDBWrite] {
+		t.Errorf("runProc expected db_write (no-literal default), got %v", got["runProc"])
+	}
+
+	// The classification basis is recorded in the Sink tag.
+	sinks := fsharpSinksByFn(src)
+	if !sinks["countOrders"]["dapper.execute.read"] {
+		t.Errorf("countOrders expected sink dapper.execute.read, got %v", sinks["countOrders"])
+	}
+	if !sinks["deleteStale"]["dapper.execute.write"] {
+		t.Errorf("deleteStale expected sink dapper.execute.write, got %v", sinks["deleteStale"])
+	}
+	if !sinks["runProc"]["dapper.execute.write?"] {
+		t.Errorf("runProc expected sink dapper.execute.write?, got %v", sinks["runProc"])
+	}
+}
+
+// TestSniffEffectsFSharp_DapperReceiverType proves receiver-type resolution
+// (#5001): a Dapper call on a binding statically typed/constructed as an
+// IDbConnection-family connection is classified even when its NAME is outside
+// the conventional heuristic (conn/db/...).
+func TestSniffEffectsFSharp_DapperReceiverType(t *testing.T) {
+	src := `module Data
+open System.Data
+open Microsoft.Data.SqlClient
+
+let loadAll (database: IDbConnection) =
+    database.QueryAsync<Order>("select * from orders")
+
+let writeOne (database: IDbConnection) o =
+    database.Execute("insert into orders values (@Id)", o)
+
+let scopedRead () =
+    use sqlite = new SqliteConnection(connStr)
+    sqlite.Query<Order>("select * from orders")
+`
+	got := fsharpEffectsByFn(src)
+	if !got["loadAll"][EffectDBRead] {
+		t.Errorf("loadAll expected db_read on typed `database` receiver, got %v", got["loadAll"])
+	}
+	if !got["writeOne"][EffectDBWrite] {
+		t.Errorf("writeOne expected db_write on typed `database` receiver, got %v", got["writeOne"])
+	}
+	if !got["scopedRead"][EffectDBRead] {
+		t.Errorf("scopedRead expected db_read on `new SqliteConnection` binding, got %v", got["scopedRead"])
+	}
+}
+
+// TestSniffEffectsFSharp_DapperReceiverTypeNoLeak proves a call on a
+// SIMILARLY-named but UNtyped binding does not earn a Dapper effect (the
+// type resolver only credits resolved IDbConnection bindings; the static
+// heuristic still gates the rest).
+func TestSniffEffectsFSharp_DapperReceiverTypeNoLeak(t *testing.T) {
+	src := `module Pure
+
+let report (repository: OrderRepository) =
+    repository.Query<Order>("anything")
+`
+	for _, m := range sniffEffectsFSharp(src) {
+		if m.Effect == EffectDBRead || m.Effect == EffectDBWrite {
+			t.Errorf("untyped `repository` must not earn a db effect, got %v (%s)", m.Effect, m.Sink)
+		}
+	}
+}
+
 // TestSniffEffectsFSharp_NpgsqlFSharp proves Npgsql.FSharp `Sql.query`
 // literals are classified by their leading SQL verb.
 func TestSniffEffectsFSharp_NpgsqlFSharp(t *testing.T) {
