@@ -561,3 +561,157 @@ func main() {
 		t.Fatalf("no nats signal: expected empty, got ents=%v rels=%v", ents, rels)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Rust — async-nats
+// ---------------------------------------------------------------------------
+
+// TestNATS_Rust_Publish covers async-nats client.publish("subject", payload).await.
+func TestNATS_Rust_Publish(t *testing.T) {
+	src := `use async_nats;
+
+async fn publish_order(client: &async_nats::Client, data: Vec<u8>) -> Result<(), async_nats::Error> {
+    client.publish("orders.created", data.into()).await?;
+    Ok(())
+}
+`
+	ents, rels := runNATSDetect(t, "rust", "orders.rs", src)
+	subID := natsSubjectID("orders.created")
+	if natsSubjectByID(ents, subID) == nil {
+		t.Fatalf("expected SCOPE.Queue for orders.created, ents=%v", ents)
+	}
+	pubs := relsByKind(rels, publishesToEdgeKind)
+	if len(pubs) == 0 {
+		t.Fatalf("expected PUBLISHES_TO edge, rels=%v", rels)
+	}
+	if !strings.Contains(pubs[0].to, subID) {
+		t.Fatalf("PUBLISHES_TO ToID = %q, want to contain %q", pubs[0].to, subID)
+	}
+	if pubs[0].props["broker"] != "nats" {
+		t.Fatalf("broker = %q, want nats", pubs[0].props["broker"])
+	}
+	if pubs[0].props["messaging_layer"] != "async-nats" {
+		t.Fatalf("messaging_layer = %q, want async-nats", pubs[0].props["messaging_layer"])
+	}
+	if !strings.Contains(pubs[0].from, "publish_order") {
+		t.Fatalf("caller = %q, want to contain publish_order", pubs[0].from)
+	}
+}
+
+// TestNATS_Rust_Subscribe covers async-nats client.subscribe("subject").await.
+func TestNATS_Rust_Subscribe(t *testing.T) {
+	src := `use async_nats;
+
+async fn start_consumer(client: &async_nats::Client) -> Result<(), async_nats::Error> {
+    let mut subscriber = client.subscribe("orders.created").await?;
+    while let Some(message) = subscriber.next().await {
+        handle(message);
+    }
+    Ok(())
+}
+`
+	ents, rels := runNATSDetect(t, "rust", "consumer.rs", src)
+	subID := natsSubjectID("orders.created")
+	if natsSubjectByID(ents, subID) == nil {
+		t.Fatalf("expected SCOPE.Queue for orders.created, ents=%v", ents)
+	}
+	subs := relsByKind(rels, subscribesToEdgeKind)
+	if len(subs) == 0 {
+		t.Fatalf("expected SUBSCRIBES_TO edge, rels=%v", rels)
+	}
+	if subs[0].props["messaging_layer"] != "async-nats" {
+		t.Fatalf("messaging_layer = %q, want async-nats", subs[0].props["messaging_layer"])
+	}
+}
+
+// TestNATS_Rust_QueueSubscribe covers client.queue_subscribe("subject", "queue").await.
+func TestNATS_Rust_QueueSubscribe(t *testing.T) {
+	src := `use async_nats;
+
+async fn start_worker(client: &async_nats::Client) -> Result<(), async_nats::Error> {
+    let mut sub = client.queue_subscribe("jobs.process", "worker-pool").await?;
+    while let Some(msg) = sub.next().await {
+        handle_job(msg);
+    }
+    Ok(())
+}
+`
+	ents, rels := runNATSDetect(t, "rust", "worker.rs", src)
+	subID := natsSubjectID("jobs.process")
+	q := natsSubjectByID(ents, subID)
+	if q == nil {
+		t.Fatalf("expected SCOPE.Queue for jobs.process, ents=%v", ents)
+	}
+	if q.props["queue_group"] != "worker-pool" {
+		t.Fatalf("queue_group = %q, want worker-pool", q.props["queue_group"])
+	}
+	subs := relsByKind(rels, subscribesToEdgeKind)
+	if len(subs) == 0 {
+		t.Fatalf("expected SUBSCRIBES_TO edge, rels=%v", rels)
+	}
+	if subs[0].props["queue_group"] != "worker-pool" {
+		t.Fatalf("edge queue_group = %q, want worker-pool", subs[0].props["queue_group"])
+	}
+}
+
+// TestNATS_Rust_Request covers client.request("subject", payload).await (request/reply).
+func TestNATS_Rust_Request(t *testing.T) {
+	src := `use async_nats;
+
+async fn ask(client: &async_nats::Client) -> Result<(), async_nats::Error> {
+    let response = client.request("rpc.echo", "ping".into()).await?;
+    Ok(())
+}
+`
+	_, rels := runNATSDetect(t, "rust", "rpc.rs", src)
+	pubs := relsByKind(rels, publishesToEdgeKind)
+	if len(pubs) == 0 {
+		t.Fatalf("expected PUBLISHES_TO edge for request, rels=%v", rels)
+	}
+	if pubs[0].props["pattern"] != "request_reply" {
+		t.Fatalf("pattern = %q, want request_reply", pubs[0].props["pattern"])
+	}
+}
+
+// TestNATS_Rust_JetStream covers a JetStream context flagging jetstream=true.
+func TestNATS_Rust_JetStream(t *testing.T) {
+	src := `use async_nats::jetstream;
+
+async fn publish_event(jetstream: jetstream::Context, data: Vec<u8>) -> Result<(), async_nats::Error> {
+    jetstream.publish("events.stream", data.into()).await?;
+    Ok(())
+}
+`
+	ents, rels := runNATSDetect(t, "rust", "stream.rs", src)
+	subID := natsSubjectID("events.stream")
+	q := natsSubjectByID(ents, subID)
+	if q == nil {
+		t.Fatalf("expected SCOPE.Queue for events.stream, ents=%v", ents)
+	}
+	if q.props["jetstream"] != "true" {
+		t.Fatalf("jetstream prop = %q, want true", q.props["jetstream"])
+	}
+	pubs := relsByKind(rels, publishesToEdgeKind)
+	if len(pubs) == 0 {
+		t.Fatalf("expected PUBLISHES_TO edge, rels=%v", rels)
+	}
+	if pubs[0].props["jetstream"] != "true" {
+		t.Fatalf("edge jetstream = %q, want true", pubs[0].props["jetstream"])
+	}
+	if pubs[0].props["messaging_layer"] != "nats-jetstream-rust" {
+		t.Fatalf("messaging_layer = %q, want nats-jetstream-rust", pubs[0].props["messaging_layer"])
+	}
+}
+
+// TestNATS_Rust_NoSignal verifies a Rust file without async-nats markers is ignored.
+func TestNATS_Rust_NoSignal(t *testing.T) {
+	src := `fn main() {
+    let client = redis::Client::open("redis://localhost").unwrap();
+    client.publish("some.channel", "hi");
+}
+`
+	ents, rels := runNATSDetect(t, "rust", "noise.rs", src)
+	if len(ents) != 0 || len(rels) != 0 {
+		t.Fatalf("no async-nats signal: expected empty, got ents=%v rels=%v", ents, rels)
+	}
+}

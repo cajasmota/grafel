@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # rust
 
-**Frameworks**: 15 · **Tools**: 6 · **ORMs**: 15 · **Other**: 3
+**Frameworks**: 15 · **Tools**: 6 · **ORMs**: 15 · **Other**: 4
 
 Back to [summary](../summary.md).
 
@@ -91,6 +91,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
 |---|---|---|---|---|
+| [async-nats (NATS)](../detail/lang.rust.framework.async-nats.md) | 🟢 | 🟢 | 🟢 | |
 | [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | 🟢 | 🟢 | 🟢 | |
 | [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | 🟢 | 🟢 | 🟢 | |
 

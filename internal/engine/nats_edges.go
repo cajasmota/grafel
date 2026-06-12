@@ -18,6 +18,11 @@
 //   - Java: connection.publish(subject, data),
 //     subscription = connection.subscribe(subject),
 //     dispatcher.subscribe(subject, handler)
+//   - Rust async-nats: client.publish("subject", payload).await,
+//     client.subscribe("subject").await,
+//     client.queue_subscribe("subject", "queue").await,
+//     client.request("subject", payload).await,
+//     jetstream.publish("subject", payload).await
 //   - NATS JetStream: js.publish(subject, ...), js.subscribe(subject, ...)
 //     — emits jetstream=true property
 //   - NATS Streaming (STAN, deprecated): stan.Publish / stan.QueueSubscribe
@@ -46,7 +51,7 @@ import (
 // synthetics for `lang`.
 func natsSynthesisSupportsLanguage(lang string) bool {
 	switch lang {
-	case "java", "kotlin", "javascript", "typescript", "python", "go":
+	case "java", "kotlin", "javascript", "typescript", "python", "go", "rust":
 		return true
 	default:
 		return false
@@ -139,6 +144,8 @@ func applyNATSEdges(args DetectorPassArgs) DetectorPassResult {
 		synthesizeJavaNATS(src, emitSubject, emitEdge)
 	case "go":
 		synthesizeGoNATS(src, emitSubject, emitEdge)
+	case "rust":
+		synthesizeRustNATS(src, emitSubject, emitEdge)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -774,5 +781,162 @@ func synthesizeJavaNATS(
 			"messaging_layer": "nats-jetstream-java",
 			"jetstream":       "true",
 		})
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Rust — async-nats
+// ---------------------------------------------------------------------------
+//
+// async-nats core API (the `client` may be any variable name, so we anchor on
+// the method name rather than the receiver):
+//   - client.publish("subject", payload).await
+//   - client.subscribe("subject").await
+//   - client.queue_subscribe("subject", "queue").await
+//   - client.request("subject", payload).await       (request/reply)
+//   - jetstream.publish("subject", payload).await     (JetStream context)
+//
+// HONEST PARTIAL: only literal string subjects are resolved. async-nats
+// accepts `impl ToSubject` (String, &str, Subject), so non-literal subjects
+// (variables, format!()) are skipped — same literal-only stance as the
+// rdkafka/lapin Rust passes. Caller attribution is same-file nearest-fn via
+// findEnclosingRustFnName.
+
+// rustNATSPublishRe captures `.publish("subject", ...)`.
+// Group 1 = subject.
+var rustNATSPublishRe = regexp.MustCompile(`\.publish\s*\(\s*"([^"\n\r]+)"`)
+
+// rustNATSSubscribeRe captures `.subscribe("subject")`.
+// Group 1 = subject.
+var rustNATSSubscribeRe = regexp.MustCompile(`\.subscribe\s*\(\s*"([^"\n\r]+)"`)
+
+// rustNATSQueueSubscribeRe captures `.queue_subscribe("subject", "queue")`.
+// Groups: 1=subject, 2=queue-group.
+var rustNATSQueueSubscribeRe = regexp.MustCompile(`\.queue_subscribe\s*\(\s*"([^"\n\r]+)"\s*,\s*"([^"\n\r]+)"`)
+
+// rustNATSRequestRe captures `.request("subject", ...)` — request/reply.
+// Group 1 = subject.
+var rustNATSRequestRe = regexp.MustCompile(`\.request\s*\(\s*"([^"\n\r]+)"`)
+
+// rustNATSJetStreamRe detects whether a JetStream context is in play in this
+// file, so we can flag publishes/subscribes accordingly.
+var rustNATSJetStreamRe = regexp.MustCompile(`jetstream`)
+
+func synthesizeRustNATS(
+	src string,
+	emitSubject func(subjectID, subject string, props map[string]string),
+	emitEdge func(callerKind, callerName, subjectID, edgeKind string, props map[string]string),
+) {
+	// Require an async-nats signal to avoid colliding with other libraries
+	// that expose .publish/.subscribe (e.g. redis pubsub). async-nats is
+	// imported as `async_nats` / `async-nats` (crate) and types live under it.
+	hasNATS := strings.Contains(src, "async_nats") || strings.Contains(src, "async-nats") ||
+		strings.Contains(src, "nats::") || strings.Contains(src, "Subject")
+	if !hasNATS {
+		return
+	}
+
+	jetstream := rustNATSJetStreamRe.MatchString(src)
+
+	enclosing := func(offset int) string {
+		return findEnclosingRustFnName(src, offset)
+	}
+
+	layer := "async-nats"
+	if jetstream {
+		layer = "nats-jetstream-rust"
+	}
+
+	// queue_subscribe must run before the generic subscribe pass so its
+	// offset can be skipped (queue_subscribe also matches .subscribe(...)
+	// loosely? No — distinct method name, but the trailing `subscribe`
+	// substring of `queue_subscribe` is NOT matched by rustNATSSubscribeRe
+	// because that regex anchors on `.subscribe(` with a leading dot, and
+	// `.queue_subscribe(` has no `.subscribe(` boundary. Still, run it first
+	// for clarity and to emit the queue_group property).
+	for _, m := range rustNATSQueueSubscribeRe.FindAllStringSubmatchIndex(src, -1) {
+		subject := src[m[2]:m[3]]
+		queueGroup := src[m[4]:m[5]]
+		if !looksLikeNATSSubject(subject) {
+			continue
+		}
+		subID := natsSubjectID(subject)
+		props := map[string]string{"queue_group": queueGroup}
+		if jetstream {
+			props["jetstream"] = "true"
+		}
+		emitSubject(subID, subject, props)
+		caller := enclosing(m[0])
+		edgeProps := map[string]string{
+			"messaging_layer": layer,
+			"queue_group":     queueGroup,
+		}
+		if jetstream {
+			edgeProps["jetstream"] = "true"
+		}
+		emitEdge("Function", caller, subID, subscribesToEdgeKind, edgeProps)
+	}
+
+	// .publish("subject", ...)
+	for _, m := range rustNATSPublishRe.FindAllStringSubmatchIndex(src, -1) {
+		subject := src[m[2]:m[3]]
+		if !looksLikeNATSSubject(subject) {
+			continue
+		}
+		subID := natsSubjectID(subject)
+		props := map[string]string{}
+		if jetstream {
+			props["jetstream"] = "true"
+		}
+		emitSubject(subID, subject, props)
+		caller := enclosing(m[0])
+		edgeProps := map[string]string{"messaging_layer": layer}
+		if jetstream {
+			edgeProps["jetstream"] = "true"
+		}
+		emitEdge("Function", caller, subID, publishesToEdgeKind, edgeProps)
+	}
+
+	// .subscribe("subject")
+	for _, m := range rustNATSSubscribeRe.FindAllStringSubmatchIndex(src, -1) {
+		subject := src[m[2]:m[3]]
+		if !looksLikeNATSSubject(subject) {
+			continue
+		}
+		subID := natsSubjectID(subject)
+		props := map[string]string{}
+		if jetstream {
+			props["jetstream"] = "true"
+		}
+		emitSubject(subID, subject, props)
+		caller := enclosing(m[0])
+		edgeProps := map[string]string{"messaging_layer": layer}
+		if jetstream {
+			edgeProps["jetstream"] = "true"
+		}
+		emitEdge("Function", caller, subID, subscribesToEdgeKind, edgeProps)
+	}
+
+	// .request("subject", ...) — request/reply
+	for _, m := range rustNATSRequestRe.FindAllStringSubmatchIndex(src, -1) {
+		subject := src[m[2]:m[3]]
+		if !looksLikeNATSSubject(subject) {
+			continue
+		}
+		subID := natsSubjectID(subject)
+		props := map[string]string{"pattern": "request_reply"}
+		if jetstream {
+			props["jetstream"] = "true"
+		}
+		emitSubject(subID, subject, props)
+		caller := enclosing(m[0])
+		edgeProps := map[string]string{
+			"messaging_layer": layer,
+			"pattern":         "request_reply",
+		}
+		if jetstream {
+			edgeProps["jetstream"] = "true"
+		}
+		emitEdge("Function", caller, subID, publishesToEdgeKind, edgeProps)
 	}
 }

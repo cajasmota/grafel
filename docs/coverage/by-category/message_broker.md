@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 56 records · **C/C++**: 3 · **C#**: 5 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 2
+**Total**: 57 records · **C/C++**: 3 · **C#**: 5 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 3
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -67,6 +67,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [python](../by-language/python.md) | [Django signals (intra-repo pub/sub)](../detail/msg.django-signals.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [ORM model lifecycle-hook → handler TRIGGERS (Django signals, SQLAlchemy events)](../detail/msg.orm-lifecycle-hooks-py.md) | ✅ | ✅ | ✅ | ✅ | |
 | [ruby](../by-language/ruby.md) | [ORM model lifecycle-hook → handler TRIGGERS (ActiveRecord callbacks)](../detail/msg.orm-lifecycle-hooks-ruby.md) | ✅ | ✅ | ✅ | ✅ | |
+| [rust](../by-language/rust.md) | [async-nats (NATS)](../detail/lang.rust.framework.async-nats.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [rust](../by-language/rust.md) | [lapin (AMQP/RabbitMQ)](../detail/lang.rust.framework.lapin.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [rust](../by-language/rust.md) | [rdkafka (Kafka)](../detail/lang.rust.framework.rdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 
