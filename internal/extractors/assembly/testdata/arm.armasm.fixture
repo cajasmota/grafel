@@ -1,0 +1,24 @@
+; ARM armasm (legacy) structured-directive fixture (#4950).
+; Exercises AREA section framing, name PROC/ENDP and FUNCTION/ENDFUNC
+; procedure framing, EXPORT/IMPORT linkage, and GET/INCLUDE includes.
+
+        GET     macros.inc
+        INCLUDE defs.inc
+
+        EXPORT  main
+        IMPORT  printf
+
+        AREA    .text, CODE, READONLY
+
+main    PROC
+        bl      compute
+        bl      printf
+        bx      lr
+        ENDP
+
+compute FUNCTION
+        add     r0, r0, #1
+        bx      lr
+        ENDFUNC
+
+        END

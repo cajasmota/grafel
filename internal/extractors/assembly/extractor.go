@@ -116,13 +116,48 @@ var (
 	// includeRE matches gas `.include "file"` and NASM `%include "file"`.
 	includeRE = regexp.MustCompile(`(?m)^\s*(?:\.include|%include)\s+["']([^"']+)["']`)
 
+	// masmIncludeRE matches the MASM/armasm structured include spellings (no
+	// leading dot/percent, quotes optional): MASM `INCLUDE file` / `INCLUDELIB
+	// lib`, and armasm `GET file` / `INCLUDE file` (#4950). The path runs to
+	// end-of-line (comments are already scrubbed). INCLUDELIB names an import
+	// library; both are modelled as IMPORTS so the linkage surfaces.
+	masmIncludeRE = regexp.MustCompile(`(?mi)^\s*(?:include|includelib|get)\s+["']?([^"'\s][^"'\n]*?)["']?\s*$`)
+
 	// globlRE matches exported-symbol directives:
 	//   .globl name      .global name      .global name1, name2
 	globlRE = regexp.MustCompile(`(?m)^\s*\.glob[a]?l\s+(.+)$`)
 
+	// publicRE matches the MASM/armasm exported-symbol spellings (#4950):
+	//   PUBLIC name1, name2     (MASM)     EXPORT name     (armasm)
+	// Case-insensitive; a PUBLIC line may list several comma-separated names.
+	publicRE = regexp.MustCompile(`(?mi)^\s*(?:public|export|global)\s+(.+)$`)
+
 	// externRE matches external-symbol directives:
 	//   .extern name      extern name      (NASM)
 	externRE = regexp.MustCompile(`(?m)^\s*\.?extern\s+([A-Za-z_][A-Za-z0-9_]*)`)
+
+	// masmExternRE matches the MASM/armasm external-symbol spellings (#4950):
+	//   EXTERN name:type   EXTRN name:type   (MASM, optional :PROC/:DWORD type)
+	//   IMPORT name        (armasm)
+	// Case-insensitive; a list may be comma-separated. The optional `:type`
+	// suffix per name is stripped by splitMasmSymbolList.
+	masmExternRE = regexp.MustCompile(`(?mi)^\s*(?:extern|extrn|import)\s+(.+)$`)
+
+	// procStartRE matches the MASM/armasm structured-procedure opener (#4950):
+	//   name PROC            (MASM / armasm)
+	//   name FUNCTION        (armasm alias)
+	// The leading token is the procedure name (no trailing colon). PROC may be
+	// followed by attributes (NEAR/FAR/visibility) which we ignore.
+	procStartRE = regexp.MustCompile(`(?i)^\s*([A-Za-z_$][A-Za-z0-9_$]*)\s+(?:proc|function)\b`)
+
+	// procEndRE matches the MASM/armasm procedure terminator (#4950):
+	//   name ENDP   (MASM/armasm)    name ENDFUNC / ENDFUNC   (armasm)
+	procEndRE = regexp.MustCompile(`(?i)^\s*(?:([A-Za-z_$][A-Za-z0-9_$]*)\s+)?(?:endp|endfunc)\b`)
+
+	// areaRE matches the armasm section directive (#4950):
+	//   AREA <name>, CODE, READONLY      AREA |.text|, DATA
+	// The name may be bar-delimited (|.text|); group 1 is the raw name.
+	areaRE = regexp.MustCompile(`(?i)^\s*area\s+\|?([^,|\s]+)\|?`)
 
 	// equRE matches constant definitions across dialects:
 	//   .equ NAME, value     .set NAME, value
@@ -323,14 +358,43 @@ func collectExported(scrubbed string) map[string]bool {
 			out[name] = true
 		}
 	}
+	// MASM PUBLIC / armasm EXPORT (and the `GLOBAL name` spelling) — #4950.
+	for _, m := range publicRE.FindAllStringSubmatch(scrubbed, -1) {
+		for _, name := range splitMasmSymbolList(m[1]) {
+			out[name] = true
+		}
+	}
 	return out
 }
 
-// collectExternal returns the set of symbols declared .extern/extern.
+// collectExternal returns the set of symbols declared .extern/extern, plus the
+// MASM EXTERN/EXTRN and armasm IMPORT structured spellings (#4950).
 func collectExternal(scrubbed string) map[string]bool {
 	out := map[string]bool{}
 	for _, m := range externRE.FindAllStringSubmatch(scrubbed, -1) {
 		out[m[1]] = true
+	}
+	for _, m := range masmExternRE.FindAllStringSubmatch(scrubbed, -1) {
+		for _, name := range splitMasmSymbolList(m[1]) {
+			out[name] = true
+		}
+	}
+	return out
+}
+
+// splitMasmSymbolList parses a MASM/armasm symbol list, stripping the optional
+// per-name `:type` attribute (e.g. `EXTERN printf:PROC, exit:PROC` →
+// {printf, exit}) and trailing scrubbed-comment whitespace.
+func splitMasmSymbolList(s string) []string {
+	var out []string
+	for _, f := range splitSymbolList(s) {
+		if colon := strings.IndexByte(f, ':'); colon > 0 {
+			f = f[:colon]
+		}
+		f = strings.TrimSpace(f)
+		if f != "" && isLabelLike(f) {
+			out = append(out, f)
+		}
 	}
 	return out
 }
@@ -360,7 +424,12 @@ func splitSymbolList(s string) []string {
 func buildIncludeEntities(filePath, scrubbed, lang string) []types.EntityRecord {
 	seen := map[string]bool{}
 	var out []types.EntityRecord
-	for _, m := range includeRE.FindAllStringSubmatch(scrubbed, -1) {
+
+	// gas `.include` / NASM `%include`, then the MASM/armasm structured
+	// INCLUDE/INCLUDELIB/GET spellings (#4950). Both feed the same dedupe set.
+	matches := includeRE.FindAllStringSubmatch(scrubbed, -1)
+	matches = append(matches, masmIncludeRE.FindAllStringSubmatch(scrubbed, -1)...)
+	for _, m := range matches {
 		inc := strings.TrimSpace(m[1])
 		if inc == "" || seen[inc] {
 			continue
@@ -432,6 +501,10 @@ var sectionShorthands = map[string]string{
 func sectionName(line string) string {
 	t := strings.TrimSpace(line)
 	if m := sectionRE.FindStringSubmatch(line); m != nil {
+		return m[1]
+	}
+	// armasm `AREA <name>, CODE|DATA` section framing (#4950).
+	if m := areaRE.FindStringSubmatch(line); m != nil {
 		return m[1]
 	}
 	// Bare shorthand directives: ".text", ".data", possibly with trailing
@@ -531,6 +604,39 @@ func buildProcedureEntities(lines []string, filePath, lang, dialect string, expo
 
 	for i, raw := range lines {
 		line := raw
+
+		// MASM/armasm structured procedure framing (#4950): `name PROC` /
+		// `name FUNCTION` opens a procedure with no trailing colon, which
+		// labelRE would miss. `name ENDP` / `ENDFUNC` closes it (we record the
+		// EndLine and clear the current procedure so a following body line is
+		// not mis-attributed). These spellings coexist with colon-labels.
+		if m := procStartRE.FindStringSubmatch(line); m != nil {
+			name := m[1]
+			rec := types.EntityRecord{
+				Name:       name,
+				Kind:       "SCOPE.Operation",
+				Subtype:    "procedure",
+				SourceFile: filePath,
+				Language:   lang,
+				StartLine:  i + 1,
+				EndLine:    i + 1,
+				Signature:  strings.TrimSpace(line),
+				Properties: map[string]string{"dialect": dialect, "framing": "proc"},
+			}
+			if exported[name] {
+				rec.Properties["exported"] = "true"
+			}
+			curIdx = len(out)
+			out = append(out, rec)
+			continue
+		}
+		if procEndRE.MatchString(line) {
+			if curIdx >= 0 {
+				out[curIdx].EndLine = i + 1
+			}
+			curIdx = -1
+			continue
+		}
 
 		if name := labelName(line); name != "" {
 			// A global/exported label (or any top-level label) starts a new

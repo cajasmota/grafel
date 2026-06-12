@@ -1,0 +1,27 @@
+; MASM (Microsoft Macro Assembler) structured-directive fixture (#4950).
+; Exercises name PROC/ENDP framing, PUBLIC/EXTERN symbol directives, and
+; INCLUDE/INCLUDELIB linkage — none of which use the gas leading-dot spelling.
+
+INCLUDE windows.inc
+INCLUDELIB kernel32.lib
+
+PUBLIC main, helper
+EXTERN printf:PROC, ExitProcess:PROC
+
+KMAX EQU 100
+
+.code
+
+main PROC
+    call helper
+    call printf
+    call ExitProcess
+    ret
+main ENDP
+
+helper PROC
+    mov  eax, KMAX
+    ret
+helper ENDP
+
+END

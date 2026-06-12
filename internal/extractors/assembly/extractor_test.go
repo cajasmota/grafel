@@ -649,6 +649,113 @@ func TestResolverBindsBranchAndCrossFile(t *testing.T) {
 	}
 }
 
+// importedModules returns the set of source_module values across all IMPORTS
+// edges in the record set (#4950 INCLUDE/GET linkage assertions).
+func importedModules(recs []types.EntityRecord) map[string]bool {
+	out := map[string]bool{}
+	for _, r := range recs {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "IMPORTS" {
+				out[rel.Properties["source_module"]] = true
+			}
+		}
+	}
+	return out
+}
+
+// MASM structured directives (#4950) --------------------------------------
+
+func TestExtractMASMStructured(t *testing.T) {
+	src := loadFixture(t, "x86_64.masm.fixture")
+	recs := extractAssembly(src, "win.asm", "assembly")
+
+	// name PROC / ENDP framing yields procedures even without a trailing colon.
+	for _, p := range []string{"main", "helper"} {
+		r := byName(recs, p)
+		if r == nil || r.Kind != "SCOPE.Operation" || r.Subtype != "procedure" {
+			t.Fatalf("PROC %q not a procedure: %v", p, r)
+		}
+		if r.Properties["framing"] != "proc" {
+			t.Errorf("PROC %q framing=%q want proc", p, r.Properties["framing"])
+		}
+	}
+	if m := byName(recs, "main"); m == nil || m.Properties["exported"] != "true" {
+		t.Errorf("main should be exported via PUBLIC: %v", m)
+	}
+
+	// PROC body is bounded by ENDP — helper's call to printf must attribute to
+	// helper-or-main, never leak to a stale procedure. Verify main's CALLS.
+	cc := callTargets(byName(recs, "main"))
+	if _, ok := cc["helper"]; !ok {
+		t.Errorf("main should CALL helper; got %v", cc)
+	}
+	// EXTERN printf:PROC → external locality on the printf call.
+	if e, ok := cc["printf"]; !ok {
+		t.Errorf("main should CALL printf; got %v", cc)
+	} else if e.Properties["locality"] != "external" {
+		t.Errorf("printf locality=%q want external (EXTERN)", e.Properties["locality"])
+	}
+	if e, ok := cc["ExitProcess"]; !ok {
+		t.Errorf("main should CALL ExitProcess; got %v", cc)
+	} else if e.Properties["locality"] != "external" {
+		t.Errorf("ExitProcess locality=%q want external (EXTERN)", e.Properties["locality"])
+	}
+
+	// INCLUDE / INCLUDELIB → IMPORTS edges.
+	imps := importedModules(recs)
+	for _, want := range []string{"windows.inc", "kernel32.lib"} {
+		if !imps[want] {
+			t.Errorf("missing IMPORTS for %q; got %v", want, imps)
+		}
+	}
+	// EQU constant still parses alongside the structured directives.
+	if c := byName(recs, "KMAX"); c == nil || c.Kind != "SCOPE.Constant" {
+		t.Errorf("KMAX EQU should be a constant; got %v", c)
+	}
+}
+
+// ARM armasm structured directives (#4950) --------------------------------
+
+func TestExtractARMArmasmStructured(t *testing.T) {
+	src := loadFixture(t, "arm.armasm.fixture")
+	recs := extractAssembly(src, "arm.s", "assembly")
+
+	// name PROC and name FUNCTION both open procedures.
+	for _, p := range []string{"main", "compute"} {
+		r := byName(recs, p)
+		if r == nil || r.Subtype != "procedure" {
+			t.Fatalf("armasm proc %q missing: %v", p, r)
+		}
+	}
+	if m := byName(recs, "main"); m == nil || m.Properties["exported"] != "true" {
+		t.Errorf("main should be exported via EXPORT: %v", m)
+	}
+
+	// AREA |.text|, CODE → section component.
+	if s := byName(recs, ".text"); s == nil || s.Subtype != "section" {
+		t.Errorf("AREA .text should be a section; got %v", s)
+	}
+
+	// IMPORT printf → external locality on the printf call.
+	cc := callTargets(byName(recs, "main"))
+	if e, ok := cc["printf"]; !ok {
+		t.Errorf("main should CALL printf; got %v", cc)
+	} else if e.Properties["locality"] != "external" {
+		t.Errorf("printf locality=%q want external (IMPORT)", e.Properties["locality"])
+	}
+	if _, ok := cc["compute"]; !ok {
+		t.Errorf("main should CALL compute; got %v", cc)
+	}
+
+	// GET / INCLUDE → IMPORTS edges.
+	imps := importedModules(recs)
+	for _, want := range []string{"macros.inc", "defs.inc"} {
+		if !imps[want] {
+			t.Errorf("missing IMPORTS for %q; got %v", want, imps)
+		}
+	}
+}
+
 // Full pipeline through Extract (language tagging) -------------------------
 
 func TestExtractTagsLanguage(t *testing.T) {
