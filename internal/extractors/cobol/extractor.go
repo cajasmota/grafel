@@ -95,8 +95,8 @@ var (
 	// goToTargetsRe captures the whole target list of a GO TO statement up to
 	// the terminating period / DEPENDING clause, so `GO TO A B C DEPENDING ON X`
 	// yields each of A, B, C as a branch target.
-	goToTargetsRe   = regexp.MustCompile(`(?i)\bGO\s*TO\s+([A-Za-z][A-Za-z0-9- ]*?)(?:\s+DEPENDING\b|\.|$)`)
-	cobolIdentRe    = regexp.MustCompile(`[A-Za-z][A-Za-z0-9-]*`)
+	goToTargetsRe = regexp.MustCompile(`(?i)\bGO\s*TO\s+([A-Za-z][A-Za-z0-9- ]*?)(?:\s+DEPENDING\b|\.|$)`)
+	cobolIdentRe  = regexp.MustCompile(`[A-Za-z][A-Za-z0-9-]*`)
 
 	// callRe matches `CALL '<program>'` / `CALL "<program>"` dynamic calls.
 	// Group 1: literal program name (without quotes).
@@ -275,6 +275,12 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 	// span many lines; we buffer its body until END-EXEC, then extract.
 	var execBuf *execBlock
 
+	// CICS TS/TD queue + BMS/MFS screen-map entity dedup (#4947). A queue or
+	// map referenced by several commands yields a single datastore/view entity
+	// but one data-flow / render edge per access.
+	cicsQueueIdx := map[string]int{}
+	cicsMapIdx := map[string]int{}
+
 	// FILE-CONTROL / SELECT tracking (#4908). When inside FILE-CONTROL we
 	// buffer each SELECT statement to its terminating period (the VSAM
 	// ORGANIZATION / ACCESS / RECORD KEY clauses usually trail on continuation
@@ -354,6 +360,74 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 		case "CICS":
 			for _, c := range extractCICSTransfers(blk.text) {
 				attachCall(entities, currentParagraphIdx, programIdx, cicsCallEdge(c, blk.startLine))
+			}
+			// CICS TS/TD queue I/O (#4947): emit a resolvable queue datastore +
+			// READS_FROM (READQ) / WRITES_TO (WRITEQ, DELETEQ) data-flow edge
+			// from the enclosing paragraph (else the program).
+			fromRef := sqlFunctionRef(filePath, fnRefName())
+			ioIdx := currentParagraphIdx
+			if ioIdx < 0 {
+				ioIdx = programIdx
+			}
+			for _, q := range extractCICSQueues(blk.text) {
+				key := q.qtype + ":" + strings.ToUpper(q.name)
+				if _, ok := cicsQueueIdx[key]; !ok {
+					cicsQueueIdx[key] = len(entities)
+					entities = append(entities, buildCICSQueueEntity(filePath, q, blk.startLine))
+				}
+				qEnt := entities[cicsQueueIdx[key]]
+				kind := "READS_FROM"
+				if q.verb == "WRITEQ" || q.verb == "DELETEQ" {
+					kind = "WRITES_TO"
+				}
+				if ioIdx >= 0 {
+					props := map[string]string{
+						"line":  strconv.Itoa(blk.startLine),
+						"queue": q.name,
+						"via":   "EXEC-CICS-" + q.verb,
+					}
+					if q.dynamic {
+						props["dynamic_ref"] = "true"
+					}
+					entities[ioIdx].Relationships = append(entities[ioIdx].Relationships,
+						types.RelationshipRecord{
+							FromID:     fromRef,
+							ToID:       qEnt.QualifiedName,
+							Kind:       kind,
+							Properties: props,
+						})
+				}
+			}
+			// CICS BMS/MFS screen maps (#4947): SEND MAP → RENDERS, RECEIVE MAP
+			// → REFERENCES, both binding the paragraph to a SCOPE.View/screen.
+			for _, mp := range extractCICSMaps(blk.text) {
+				key := strings.ToUpper(mp.name)
+				if _, ok := cicsMapIdx[key]; !ok {
+					cicsMapIdx[key] = len(entities)
+					entities = append(entities, buildCICSMapEntity(filePath, mp, blk.startLine))
+				}
+				mEnt := entities[cicsMapIdx[key]]
+				kind := "RENDERS"
+				if mp.verb == "RECEIVE" {
+					kind = "REFERENCES"
+				}
+				if ioIdx >= 0 {
+					props := map[string]string{
+						"line": strconv.Itoa(blk.startLine),
+						"map":  mp.name,
+						"via":  "EXEC-CICS-" + mp.verb,
+					}
+					if mp.dynamic {
+						props["dynamic_ref"] = "true"
+					}
+					entities[ioIdx].Relationships = append(entities[ioIdx].Relationships,
+						types.RelationshipRecord{
+							FromID:     fromRef,
+							ToID:       mEnt.QualifiedName,
+							Kind:       kind,
+							Properties: props,
+						})
+				}
 			}
 		}
 	}

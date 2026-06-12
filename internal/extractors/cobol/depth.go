@@ -427,6 +427,174 @@ func extractCICSTransfers(body string) []cicsCmd {
 }
 
 // ---------------------------------------------------------------------------
+// EXEC CICS TS/TD queue + BMS/MFS screen-map depth — #4947
+//
+// READQ/WRITEQ/DELETEQ TS|TD carry an fs_effect but, until now, no resolvable
+// queue entity — so cross-program coupling through a shared temporary-storage
+// (TS) or transient-data (TD) queue was invisible (unlike native VSAM SELECT,
+// #4908). We emit one SCOPE.Datastore/queue entity per queue name and wire a
+// READS_FROM (READQ) / WRITES_TO (WRITEQ, DELETEQ) edge from the enclosing
+// paragraph, mirroring the file-I/O data-flow model. The queue NAME may be a
+// literal ('ORDERQ') or a data-item holding the queue name at run time — the
+// latter is flagged dynamic_ref so the by-name resolver does not over-bind.
+//
+// SEND/RECEIVE MAP surface the BMS (CICS) / MFS (IMS) screen map as a
+// SCOPE.View/screen entity. SEND MAP renders output to the terminal (a RENDERS
+// edge, paragraph → screen); RECEIVE MAP reads operator input back (a
+// REFERENCES edge). This makes the online-transaction presentation layer — the
+// 3270/terminal screens a CICS/IMS program drives — a first-class node.
+// ---------------------------------------------------------------------------
+
+var (
+	// cicsQueueRe matches a TS/TD queue verb and captures its QUEUE / QNAME
+	// operand. The operand may be a literal ('NAME') or a data-item reference.
+	// Group 1: verb (READQ|WRITEQ|DELETEQ); group 2: TS|TD; group 3: operand.
+	cicsQueueRe = regexp.MustCompile(
+		`(?is)\b(READQ|WRITEQ|DELETEQ)\s+(TS|TD)\b[^.]*?\b(?:QUEUE|QNAME)\s*\(\s*('?[A-Za-z0-9$#@][A-Za-z0-9$#@_.-]*'?)\s*\)`,
+	)
+
+	// cicsMapRe matches SEND/RECEIVE MAP('NAME') and optionally MAPSET('SET').
+	// Group 1: verb (SEND|RECEIVE); group 2: map name (literal or data-item).
+	cicsMapRe = regexp.MustCompile(
+		`(?is)\b(SEND|RECEIVE)\b[^.]*?\bMAP\s*\(\s*('?[A-Za-z0-9$#@][A-Za-z0-9$#@_.-]*'?)\s*\)`,
+	)
+
+	// cicsMapsetRe captures the MAPSET operand on the same command (the BMS map
+	// physically lives in a load-module mapset; recorded for resolution).
+	cicsMapsetRe = regexp.MustCompile(
+		`(?is)\bMAPSET\s*\(\s*('?[A-Za-z0-9$#@][A-Za-z0-9$#@_.-]*'?)\s*\)`,
+	)
+)
+
+// cicsQueueOp is a detected TS/TD queue access.
+type cicsQueueOp struct {
+	verb    string // READQ | WRITEQ | DELETEQ
+	qtype   string // TS | TD
+	name    string // queue name (literal text, quotes stripped) or data-item
+	dynamic bool   // true when the operand is a data-item, not a literal
+}
+
+// cicsMapOp is a detected BMS/MFS screen-map access.
+type cicsMapOp struct {
+	verb    string // SEND | RECEIVE
+	name    string // map name (literal text, quotes stripped) or data-item
+	mapset  string // MAPSET name when present
+	dynamic bool   // true when the map operand is a data-item, not a literal
+}
+
+// unquoteOperand strips matching single quotes from a CICS operand and reports
+// whether the operand was a quoted literal (vs a data-item reference).
+func unquoteOperand(s string) (val string, literal bool) {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 && strings.HasPrefix(s, "'") && strings.HasSuffix(s, "'") {
+		return s[1 : len(s)-1], true
+	}
+	return s, false
+}
+
+// extractCICSQueues scans a CICS block body for TS/TD queue verbs.
+func extractCICSQueues(body string) []cicsQueueOp {
+	var out []cicsQueueOp
+	for _, m := range cicsQueueRe.FindAllStringSubmatch(body, -1) {
+		name, literal := unquoteOperand(m[3])
+		out = append(out, cicsQueueOp{
+			verb:    strings.ToUpper(m[1]),
+			qtype:   strings.ToUpper(m[2]),
+			name:    name,
+			dynamic: !literal,
+		})
+	}
+	return out
+}
+
+// extractCICSMaps scans a CICS block body for SEND/RECEIVE MAP commands.
+func extractCICSMaps(body string) []cicsMapOp {
+	var out []cicsMapOp
+	mapset := ""
+	if sm := cicsMapsetRe.FindStringSubmatch(body); sm != nil {
+		if v, _ := unquoteOperand(sm[1]); v != "" {
+			mapset = v
+		}
+	}
+	for _, m := range cicsMapRe.FindAllStringSubmatch(body, -1) {
+		name, literal := unquoteOperand(m[2])
+		out = append(out, cicsMapOp{
+			verb:    strings.ToUpper(m[1]),
+			name:    name,
+			mapset:  mapset,
+			dynamic: !literal,
+		})
+	}
+	return out
+}
+
+// cicsQueueRefName is the canonical name used for a TS/TD queue datastore. A
+// dynamic (data-item) operand keeps the data-item name so the same variable
+// across programs still couples; a literal keeps the literal queue name.
+func cicsQueueRef(filePath, qtype, name string) string {
+	return "scope:datastore:cobol:" + filepath.ToSlash(filePath) + "#queue:" + qtype + ":" + strings.ToUpper(name)
+}
+
+// cicsMapRef is the canonical identity for a BMS/MFS screen-map View entity.
+func cicsMapRef(filePath, name string) string {
+	return "scope:view:cobol:" + filepath.ToSlash(filePath) + "#map:" + strings.ToUpper(name)
+}
+
+// buildCICSQueueEntity emits the SCOPE.Datastore/queue entity for a TS/TD queue.
+func buildCICSQueueEntity(filePath string, q cicsQueueOp, line int) types.EntityRecord {
+	props := map[string]string{
+		"queue":      q.name,
+		"queue_type": q.qtype, // TS (temporary storage) or TD (transient data)
+		"storage":    "cics-" + strings.ToLower(q.qtype) + "-queue",
+		"provenance": "INFERRED_FROM_EXEC_CICS",
+	}
+	if q.dynamic {
+		props["dynamic_ref"] = "true"
+	}
+	return types.EntityRecord{
+		Name:          q.name,
+		Kind:          "SCOPE.Datastore",
+		Subtype:       "queue",
+		QualifiedName: cicsQueueRef(filePath, q.qtype, q.name),
+		SourceFile:    filePath,
+		Language:      "cobol",
+		StartLine:     line,
+		EndLine:       line,
+		Signature:     "EXEC CICS " + q.verb + " " + q.qtype + " QUEUE(" + q.name + ")",
+		Properties:    props,
+		QualityScore:  0.75,
+	}
+}
+
+// buildCICSMapEntity emits the SCOPE.View/screen entity for a BMS/MFS map.
+func buildCICSMapEntity(filePath string, mp cicsMapOp, line int) types.EntityRecord {
+	props := map[string]string{
+		"map":        mp.name,
+		"ui":         "bms", // BMS (CICS 3270) / MFS (IMS) screen map
+		"provenance": "INFERRED_FROM_EXEC_CICS",
+	}
+	if mp.mapset != "" {
+		props["mapset"] = mp.mapset
+	}
+	if mp.dynamic {
+		props["dynamic_ref"] = "true"
+	}
+	return types.EntityRecord{
+		Name:          mp.name,
+		Kind:          "SCOPE.View",
+		Subtype:       "screen",
+		QualifiedName: cicsMapRef(filePath, mp.name),
+		SourceFile:    filePath,
+		Language:      "cobol",
+		StartLine:     line,
+		EndLine:       line,
+		Signature:     "EXEC CICS " + mp.verb + " MAP(" + mp.name + ")",
+		Properties:    props,
+		QualityScore:  0.75,
+	}
+}
+
+// ---------------------------------------------------------------------------
 // FILE-CONTROL / VSAM file-control extraction — #4908
 //
 // ENVIRONMENT DIVISION ▸ INPUT-OUTPUT SECTION ▸ FILE-CONTROL declares the

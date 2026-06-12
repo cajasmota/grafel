@@ -540,6 +540,159 @@ func TestExtractor_CICSProgramTransfer(t *testing.T) {
 	}
 }
 
+// TestExtractor_CICSQueues proves EXEC CICS READQ/WRITEQ TS surface a
+// resolvable SCOPE.Datastore/queue and wire READS_FROM / WRITES_TO data-flow
+// edges (cross-program queue coupling, #4947).
+func TestExtractor_CICSQueues(t *testing.T) {
+	src := loadFixture(t, "orderui.cbl")
+	recs := run(t, "orderui.cbl", src)
+
+	queues := findByKind(recs, "SCOPE.Datastore", "queue")
+	if len(queues) != 1 {
+		t.Fatalf("expected 1 queue datastore, got %d", len(queues))
+	}
+	q := queues[0]
+	// The QUEUE operand is a data-item (WS-MSG-QUEUE), so dynamic_ref is set.
+	if q.Properties["queue_type"] != "TS" {
+		t.Errorf("queue_type = %q, want TS", q.Properties["queue_type"])
+	}
+	if q.Properties["storage"] != "cics-ts-queue" {
+		t.Errorf("storage = %q, want cics-ts-queue", q.Properties["storage"])
+	}
+	if q.Properties["dynamic_ref"] != "true" {
+		t.Errorf("expected dynamic_ref=true for data-item queue operand")
+	}
+
+	// READQ TS → READS_FROM; WRITEQ TS → WRITES_TO, both binding the queue.
+	var readOK, writeOK bool
+	for _, rel := range relationsByKind(recs, "READS_FROM") {
+		if rel.ToID == q.QualifiedName && rel.Properties["via"] == "EXEC-CICS-READQ" {
+			readOK = true
+		}
+	}
+	for _, rel := range relationsByKind(recs, "WRITES_TO") {
+		if rel.ToID == q.QualifiedName && rel.Properties["via"] == "EXEC-CICS-WRITEQ" {
+			writeOK = true
+		}
+	}
+	if !readOK {
+		t.Error("expected READS_FROM edge for READQ TS queue")
+	}
+	if !writeOK {
+		t.Error("expected WRITES_TO edge for WRITEQ TS queue")
+	}
+}
+
+// TestExtractor_CICSScreenMaps proves EXEC CICS SEND/RECEIVE MAP surface a
+// SCOPE.View/screen entity with RENDERS (SEND) / REFERENCES (RECEIVE) edges
+// (BMS/MFS presentation layer, #4947).
+func TestExtractor_CICSScreenMaps(t *testing.T) {
+	src := loadFixture(t, "orderui.cbl")
+	recs := run(t, "orderui.cbl", src)
+
+	maps := findByKind(recs, "SCOPE.View", "screen")
+	if len(maps) != 1 {
+		t.Fatalf("expected 1 screen map view, got %d", len(maps))
+	}
+	m := maps[0]
+	if m.Name != "ORDMAP" {
+		t.Errorf("map name = %q, want ORDMAP", m.Name)
+	}
+	if m.Properties["ui"] != "bms" {
+		t.Errorf("ui = %q, want bms", m.Properties["ui"])
+	}
+	// RECEIVE MAP('ORDMAP') → REFERENCES (operator input read back).
+	var refOK bool
+	for _, rel := range relationsByKind(recs, "REFERENCES") {
+		if rel.ToID == m.QualifiedName && rel.Properties["via"] == "EXEC-CICS-RECEIVE" {
+			refOK = true
+		}
+	}
+	if !refOK {
+		t.Error("expected REFERENCES edge for RECEIVE MAP ORDMAP")
+	}
+}
+
+// TestExtractor_CICSScreenMapSend proves SEND MAP emits a RENDERS edge.
+func TestExtractor_CICSScreenMapSend(t *testing.T) {
+	src := "       IDENTIFICATION DIVISION.\n" +
+		"       PROGRAM-ID. SCRNTEST.\n" +
+		"       PROCEDURE DIVISION.\n" +
+		"       SHOW-SCREEN.\n" +
+		"           EXEC CICS SEND MAP('MENUMAP') MAPSET('MENUSET')\n" +
+		"               FROM(WS-MENU-AREA)\n" +
+		"           END-EXEC.\n"
+	recs := run(t, "scrn.cbl", src)
+
+	maps := findByKind(recs, "SCOPE.View", "screen")
+	if len(maps) != 1 {
+		t.Fatalf("expected 1 screen map view, got %d", len(maps))
+	}
+	m := maps[0]
+	if m.Name != "MENUMAP" {
+		t.Errorf("map name = %q, want MENUMAP", m.Name)
+	}
+	if m.Properties["mapset"] != "MENUSET" {
+		t.Errorf("mapset = %q, want MENUSET", m.Properties["mapset"])
+	}
+	if m.Properties["dynamic_ref"] == "true" {
+		t.Error("literal map operand must not be flagged dynamic_ref")
+	}
+	var renderOK bool
+	for _, rel := range relationsByKind(recs, "RENDERS") {
+		if rel.ToID == m.QualifiedName && rel.Properties["via"] == "EXEC-CICS-SEND" {
+			renderOK = true
+		}
+	}
+	if !renderOK {
+		t.Error("expected RENDERS edge for SEND MAP MENUMAP")
+	}
+}
+
+// TestExtractor_CICSQueueLiteralAndTD proves a literal TS/TD queue operand
+// yields a non-dynamic queue and DELETEQ is a write-class mutation.
+func TestExtractor_CICSQueueLiteralAndTD(t *testing.T) {
+	src := "       IDENTIFICATION DIVISION.\n" +
+		"       PROGRAM-ID. QTEST.\n" +
+		"       PROCEDURE DIVISION.\n" +
+		"       PROC-Q.\n" +
+		"           EXEC CICS WRITEQ TD QUEUE('LOGQ')\n" +
+		"               FROM(WS-REC)\n" +
+		"           END-EXEC\n" +
+		"           EXEC CICS DELETEQ TS QUEUE('TMPQ')\n" +
+		"           END-EXEC.\n"
+	recs := run(t, "qtest.cbl", src)
+
+	byName := map[string]types.EntityRecord{}
+	for _, q := range findByKind(recs, "SCOPE.Datastore", "queue") {
+		byName[q.Name] = q
+	}
+	logq, ok := byName["LOGQ"]
+	if !ok {
+		t.Fatal("expected LOGQ TD queue")
+	}
+	if logq.Properties["queue_type"] != "TD" {
+		t.Errorf("LOGQ queue_type = %q, want TD", logq.Properties["queue_type"])
+	}
+	if logq.Properties["dynamic_ref"] == "true" {
+		t.Error("literal LOGQ operand must not be dynamic_ref")
+	}
+	// DELETEQ TS → WRITES_TO (a mutation of the queue).
+	tmpq, ok := byName["TMPQ"]
+	if !ok {
+		t.Fatal("expected TMPQ TS queue")
+	}
+	var delOK bool
+	for _, rel := range relationsByKind(recs, "WRITES_TO") {
+		if rel.ToID == tmpq.QualifiedName && rel.Properties["via"] == "EXEC-CICS-DELETEQ" {
+			delOK = true
+		}
+	}
+	if !delOK {
+		t.Error("expected WRITES_TO edge for DELETEQ TS TMPQ")
+	}
+}
+
 // TestExtractor_DataHierarchy proves 01/05 nesting binds child fields to their
 // parent group (parent property + CONTAINS edge) and captures REDEFINES/OCCURS.
 func TestExtractor_DataHierarchy(t *testing.T) {
