@@ -645,3 +645,124 @@ let processAsync () =
 		}
 	}
 }
+
+// fsSchemaRef builds the canonical Format A schema-field structural ref the
+// extractor emits for a type→member CONTAINS edge (#4942).
+func fsSchemaRef(filePath, dotted string) string {
+	return extractor.BuildSchemaFieldStructuralRef("fsharp", filePath, dotted)
+}
+
+// TestFSharp_RecordFields — #4942: record FIELDS are emitted as individual
+// SCOPE.Schema/field sub-entities (dotted "<Type>.<field>") with the parent
+// record CONTAINING each one.
+func TestFSharp_RecordFields(t *testing.T) {
+	src := `module Domain
+
+type Person = {
+    Name: string
+    Age: int
+    mutable Score: float
+}
+`
+	ents := runFSharp(t, src, "person.fs")
+
+	for _, f := range []struct{ name, typ string }{
+		{"Person.Name", "string"},
+		{"Person.Age", "int"},
+		{"Person.Score", "float"},
+	} {
+		fe := fsFind(ents, f.name, "SCOPE.Schema")
+		if fe == nil {
+			t.Fatalf("expected record field %q as SCOPE.Schema", f.name)
+		}
+		if fe.Subtype != "field" {
+			t.Errorf("field %q subtype=%q, want field", f.name, fe.Subtype)
+		}
+		if fe.Properties["member_type"] != f.typ {
+			t.Errorf("field %q member_type=%q, want %q", f.name, fe.Properties["member_type"], f.typ)
+		}
+		if fe.Properties["parent_class"] != "Person" {
+			t.Errorf("field %q parent_class=%q, want Person", f.name, fe.Properties["parent_class"])
+		}
+		// CONTAINS edge from the owner type to the field.
+		if !fsHasRel(ents, "Person", "SCOPE.Component", "CONTAINS", fsSchemaRef("person.fs", f.name)) {
+			t.Errorf("expected Person CONTAINS %q", f.name)
+		}
+	}
+}
+
+// TestFSharp_DUCases — #4942: DU CASES are emitted as individual
+// SCOPE.Schema/du_case sub-entities, with payload types captured from `of T`.
+func TestFSharp_DUCases(t *testing.T) {
+	src := `module Shapes
+
+type Shape =
+    | Circle of float
+    | Rectangle of float * float
+    | Point
+`
+	ents := runFSharp(t, src, "shapes.fs")
+
+	for _, c := range []struct{ name, typ string }{
+		{"Shape.Circle", "float"},
+		{"Shape.Rectangle", "float * float"},
+		{"Shape.Point", ""},
+	} {
+		ce := fsFind(ents, c.name, "SCOPE.Schema")
+		if ce == nil {
+			t.Fatalf("expected DU case %q as SCOPE.Schema", c.name)
+		}
+		if ce.Subtype != "du_case" {
+			t.Errorf("case %q subtype=%q, want du_case", c.name, ce.Subtype)
+		}
+		if ce.Properties["member_type"] != c.typ {
+			t.Errorf("case %q member_type=%q, want %q", c.name, ce.Properties["member_type"], c.typ)
+		}
+		if !fsHasRel(ents, "Shape", "SCOPE.Component", "CONTAINS", fsSchemaRef("shapes.fs", c.name)) {
+			t.Errorf("expected Shape CONTAINS %q", c.name)
+		}
+	}
+}
+
+// TestFSharp_SingleLineRecord — #4942: a single-line record body
+// `{ X: int; Y: int }` still yields one field entity per `;`-separated field.
+func TestFSharp_SingleLineRecord(t *testing.T) {
+	src := `module Geo
+
+type Point = { X: int; Y: int }
+`
+	ents := runFSharp(t, src, "geo.fs")
+	for _, name := range []string{"Point.X", "Point.Y"} {
+		if fsFind(ents, name, "SCOPE.Schema") == nil {
+			t.Errorf("expected single-line record field %q", name)
+		}
+	}
+}
+
+// TestFSharp_TypeAlias — #4942: a pure type alias `type Foo = Bar` classifies
+// as the "alias" subtype, distinct from the catch-all "type", and emits no
+// spurious field/case sub-entities.
+func TestFSharp_TypeAlias(t *testing.T) {
+	src := `module Aliases
+
+type UserId = int
+type Name = string
+type Pair = int * string
+`
+	ents := runFSharp(t, src, "aliases.fs")
+	for _, name := range []string{"UserId", "Name", "Pair"} {
+		te := fsFind(ents, name, "SCOPE.Component")
+		if te == nil {
+			t.Fatalf("expected alias type %q", name)
+		}
+		if te.Subtype != "alias" {
+			t.Errorf("alias %q subtype=%q, want alias", name, te.Subtype)
+		}
+	}
+	// No sub-entities for aliases.
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Schema" {
+			t.Errorf("alias produced unexpected schema sub-entity %q", e.Name)
+		}
+	}
+}

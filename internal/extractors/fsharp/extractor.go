@@ -335,6 +335,11 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 			})
 		}
 
+		// #4942: emit DU cases / record fields as SCOPE.Schema sub-entities,
+		// with a type→member CONTAINS edge each.
+		memberEnts, memberRels := extractTypeMembers(name, subtype, body, filePath, startLine)
+		rels = append(rels, memberRels...)
+
 		entities = append(entities, types.EntityRecord{
 			Name:       name,
 			Kind:       "SCOPE.Component",
@@ -349,6 +354,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 			},
 			Relationships: rels,
 		})
+		entities = append(entities, memberEnts...)
 	}
 
 	return entities
@@ -377,6 +383,11 @@ func classifyTypeSubtype(decl, body string) string {
 	}
 	if strings.Contains(decl, "struct") {
 		return "struct"
+	}
+	// #4942: a pure alias (`type Foo = Bar`, `type Id = int`) is a distinct
+	// subtype, not the catch-all "type".
+	if isAliasBody(body) {
+		return "alias"
 	}
 	return "type"
 }
