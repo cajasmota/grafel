@@ -111,6 +111,86 @@ describe("layoutWithElk", () => {
   });
 });
 
+describe("centeredPorts (#4874)", () => {
+  // With centered ports the edge route must START at the source node's centered
+  // LEADING-face point and END at the target node's centered TRAILING-face point,
+  // so ELK's bendPoints coincide with React Flow's centered handles.
+  it("anchors the route at the centered right/left faces for RIGHT", async () => {
+    const nodes: ElkLayoutNode[] = [
+      { id: "a", width: 120, height: 40, lane: 0 },
+      { id: "b", width: 120, height: 40, lane: 1 },
+    ];
+    const edges: ElkLayoutEdge[] = [{ id: "e1", source: "a", target: "b" }];
+
+    const { nodes: pos, edges: routes } = await layoutWithElk(nodes, edges, {
+      direction: "RIGHT",
+      centeredPorts: true,
+    });
+    const a = pos.get("a")!;
+    const b = pos.get("b")!;
+    const route = routes.get("e1")!;
+    const start = route.points[0];
+    const end = route.points[route.points.length - 1];
+
+    // Source leaves the RIGHT-edge center of a; target enters the LEFT-edge
+    // center of b. (1px tolerance for ELK's float coords.)
+    expect(start.x).toBeCloseTo(a.x + a.width, 1);
+    expect(start.y).toBeCloseTo(a.y + a.height / 2, 1);
+    expect(end.x).toBeCloseTo(b.x, 1);
+    expect(end.y).toBeCloseTo(b.y + b.height / 2, 1);
+  });
+
+  it("anchors the route at the centered bottom/top faces for DOWN", async () => {
+    const nodes: ElkLayoutNode[] = [
+      { id: "a", width: 120, height: 40, lane: 0 },
+      { id: "b", width: 120, height: 40, lane: 1 },
+    ];
+    const edges: ElkLayoutEdge[] = [{ id: "e1", source: "a", target: "b" }];
+
+    const { nodes: pos, edges: routes } = await layoutWithElk(nodes, edges, {
+      direction: "DOWN",
+      centeredPorts: true,
+    });
+    const a = pos.get("a")!;
+    const b = pos.get("b")!;
+    const route = routes.get("e1")!;
+    const start = route.points[0];
+    const end = route.points[route.points.length - 1];
+
+    // Source leaves the BOTTOM-edge center of a; target enters the TOP-edge
+    // center of b (horizontally centered).
+    expect(start.x).toBeCloseTo(a.x + a.width / 2, 1);
+    expect(start.y).toBeCloseTo(a.y + a.height, 1);
+    expect(end.x).toBeCloseTo(b.x + b.width / 2, 1);
+    expect(end.y).toBeCloseTo(b.y, 1);
+  });
+
+  it("shares ONE centered source trunk for multiple outgoing edges (DOWN)", async () => {
+    // a → b and a → c: both must leave from a's single bottom-center port.
+    const nodes: ElkLayoutNode[] = [
+      { id: "a", width: 120, height: 40, lane: 0 },
+      { id: "b", width: 120, height: 40, lane: 1 },
+      { id: "c", width: 120, height: 40, lane: 1 },
+    ];
+    const edges: ElkLayoutEdge[] = [
+      { id: "e1", source: "a", target: "b" },
+      { id: "e2", source: "a", target: "c" },
+    ];
+    const { nodes: pos, edges: routes } = await layoutWithElk(nodes, edges, {
+      direction: "DOWN",
+      centeredPorts: true,
+    });
+    const a = pos.get("a")!;
+    const s1 = routes.get("e1")!.points[0];
+    const s2 = routes.get("e2")!.points[0];
+    // Both outgoing edges start at the SAME centered bottom-center trunk point.
+    expect(s1.x).toBeCloseTo(a.x + a.width / 2, 1);
+    expect(s1.y).toBeCloseTo(a.y + a.height, 1);
+    expect(s2.x).toBeCloseTo(s1.x, 1);
+    expect(s2.y).toBeCloseTo(s1.y, 1);
+  });
+});
+
 describe("orthogonalPath", () => {
   it("returns null for <2 points (caller falls back to smoothstep)", () => {
     expect(orthogonalPath([])).toBeNull();

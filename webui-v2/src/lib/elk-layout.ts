@@ -121,6 +121,19 @@ export interface ElkLayoutOptions {
   defaultNodeWidth?: number;
   defaultNodeHeight?: number;
   /**
+   * #4874: pin every node's edge endpoints to a SINGLE centered port on its
+   * leading (outgoing) / trailing (incoming) face, chosen by `direction`:
+   *   - RIGHT → source on the right-edge center, target on the left-edge center
+   *   - DOWN  → source on the bottom-edge center, target on the top-edge center
+   *   - LEFT/UP → mirror images of the above
+   * Every node gets exactly one fixed source port and one fixed target port
+   * (FIXED_POS), so ELK's routed bendPoints start/end at the same centered point
+   * React Flow draws its <Handle> at — no diagonal stub from handle to route, and
+   * a node's many outgoing edges all leave from the one centered trunk and split
+   * via the orthogonal bus instead of fanning from offset side points.
+   */
+  centeredPorts?: boolean;
+  /**
    * Optional tier-lane ordering hint. Given a node id, return its lane rank
    * (lower ⇒ earlier along `direction`). Nodes are pinned into ordered lanes so
    * e.g. client·edge·auth·compute·data·messaging·external read left→right. When
@@ -135,7 +148,7 @@ export interface ElkLayoutOptions {
 }
 
 const DEFAULTS: Required<
-  Omit<ElkLayoutOptions, "laneOf" | "extraLayoutOptions" | "padding">
+  Omit<ElkLayoutOptions, "laneOf" | "extraLayoutOptions" | "padding" | "centeredPorts">
 > & { padding: NonNullable<ElkLayoutOptions["padding"]> } = {
   direction: "RIGHT",
   algorithm: "layered",
@@ -221,11 +234,69 @@ export function orthogonalPath(
  * the nested ElkNode tree ELK expects. Edges are attached at the lowest common
  * ancestor of their endpoints so cross-container edges route correctly.
  */
+/**
+ * Centered source/target port coordinates (relative to a node's top-left) for a
+ * given flow direction (#4874). The SOURCE port sits on the node's LEADING face
+ * (where the flow exits) and the TARGET port on its TRAILING face (where the flow
+ * enters), each at the face's midpoint — matching React Flow's centered handles.
+ */
+function centeredPortGeom(
+  direction: ElkDirection,
+  width: number,
+  height: number,
+): { source: { x: number; y: number }; target: { x: number; y: number } } {
+  switch (direction) {
+    case "RIGHT":
+      return {
+        source: { x: width, y: height / 2 }, // right-edge center
+        target: { x: 0, y: height / 2 }, // left-edge center
+      };
+    case "LEFT":
+      return {
+        source: { x: 0, y: height / 2 }, // left-edge center
+        target: { x: width, y: height / 2 }, // right-edge center
+      };
+    case "UP":
+      return {
+        source: { x: width / 2, y: 0 }, // top-edge center
+        target: { x: width / 2, y: height }, // bottom-edge center
+      };
+    case "DOWN":
+    default:
+      return {
+        source: { x: width / 2, y: height }, // bottom-edge center
+        target: { x: width / 2, y: 0 }, // top-edge center
+      };
+  }
+}
+
+/**
+ * ELK port `side` for the source/target port under a given flow direction. The
+ * source leaves on the leading face, the target enters on the trailing face.
+ */
+function portSideFor(direction: ElkDirection, role: "source" | "target"): string {
+  const leading: Record<ElkDirection, string> = {
+    RIGHT: "EAST",
+    LEFT: "WEST",
+    DOWN: "SOUTH",
+    UP: "NORTH",
+  };
+  const trailing: Record<ElkDirection, string> = {
+    RIGHT: "WEST",
+    LEFT: "EAST",
+    DOWN: "NORTH",
+    UP: "SOUTH",
+  };
+  return role === "source" ? leading[direction] : trailing[direction];
+}
+
 function buildElkTree(
   nodes: ElkLayoutNode[],
   edges: ElkLayoutEdge[],
   opts: Required<Pick<ElkLayoutOptions, "defaultNodeWidth" | "defaultNodeHeight">> & {
     laneOf?: ElkLayoutOptions["laneOf"];
+    centeredPorts?: boolean;
+    direction: ElkDirection;
   },
 ): ElkNode {
   const byId = new Map<string, ElkLayoutNode>();
@@ -235,16 +306,13 @@ function buildElkTree(
   const elkById = new Map<string, ElkNode>();
   for (const n of nodes) {
     const isContainer = n.isContainer ?? false;
+    const width = finite(n.width, opts.defaultNodeWidth);
+    const height = finite(n.height, opts.defaultNodeHeight);
     const shell: ElkNode = {
       id: n.id,
       children: [],
       edges: [],
-      ...(isContainer
-        ? {}
-        : {
-            width: finite(n.width, opts.defaultNodeWidth),
-            height: finite(n.height, opts.defaultNodeHeight),
-          }),
+      ...(isContainer ? {} : { width, height }),
     };
     // Per-node lane hint → ELK position constraint within its layer.
     const lane = opts.laneOf?.(n.id) ?? n.lane;
@@ -254,6 +322,35 @@ function buildElkTree(
         // Pins the node's layer (rank) so lanes stay ordered along direction.
         "elk.layered.layering.layerChoiceConstraint": String(lane),
       };
+    }
+    // #4874: pin a single centered source + target port per leaf node so ELK's
+    // routed endpoints land exactly where React Flow draws the centered handle.
+    if (opts.centeredPorts && !isContainer) {
+      const g = centeredPortGeom(opts.direction, width, height);
+      shell.layoutOptions = {
+        ...shell.layoutOptions,
+        // FIXED_POS honours the explicit port (x,y) we set below verbatim.
+        "elk.portConstraints": "FIXED_POS",
+      };
+      shell.ports = [
+        {
+          id: `${n.id}__src`,
+          x: g.source.x,
+          y: g.source.y,
+          width: 0,
+          height: 0,
+          // Direction the port faces, so the router leaves/arrives cleanly.
+          layoutOptions: { "elk.port.side": portSideFor(opts.direction, "source") },
+        },
+        {
+          id: `${n.id}__tgt`,
+          x: g.target.x,
+          y: g.target.y,
+          width: 0,
+          height: 0,
+          layoutOptions: { "elk.port.side": portSideFor(opts.direction, "target") },
+        },
+      ] as ElkNode["ports"];
     }
     elkById.set(n.id, shell);
   }
@@ -286,6 +383,13 @@ function buildElkTree(
     return undefined;
   };
 
+  // #4874: when ports are pinned, anchor edges to the centered source/target
+  // PORT id (not the node id) so ELK routes from/to the exact centered point.
+  const srcRef = (id: string): string =>
+    opts.centeredPorts && !(byId.get(id)?.isContainer ?? false) ? `${id}__src` : id;
+  const tgtRef = (id: string): string =>
+    opts.centeredPorts && !(byId.get(id)?.isContainer ?? false) ? `${id}__tgt` : id;
+
   for (const e of edges) {
     if (!byId.has(e.source) || !byId.has(e.target)) continue;
     const common = lca(e.source, e.target);
@@ -298,13 +402,13 @@ function buildElkTree(
       // Walk up from the source to the first common container, else root.
       const target: ElkExtendedEdge = {
         id: e.id,
-        sources: [e.source],
-        targets: [e.target],
+        sources: [srcRef(e.source)],
+        targets: [tgtRef(e.target)],
       };
       root.edges!.push(target);
       continue;
     }
-    host.edges!.push({ id: e.id, sources: [e.source], targets: [e.target] });
+    host.edges!.push({ id: e.id, sources: [srcRef(e.source)], targets: [tgtRef(e.target)] });
   }
 
   return root;
@@ -417,6 +521,8 @@ export async function layoutWithElk(
     defaultNodeWidth: o.defaultNodeWidth,
     defaultNodeHeight: o.defaultNodeHeight,
     laneOf: options.laneOf,
+    centeredPorts: options.centeredPorts,
+    direction: o.direction,
   });
   root.layoutOptions = graphLayoutOptions(o, options.extraLayoutOptions);
 

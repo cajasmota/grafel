@@ -177,6 +177,9 @@ function FlowchartInner({
       edgeRouting: "ORTHOGONAL",
       nodeSpacing: 34,
       layerSpacing: 64,
+      // #4874: centered leading/trailing-face ports so ELK's routed endpoints
+      // line up with the direction-aware centered handles (no side-escaping).
+      centeredPorts: true,
     })
       .then(({ nodes: positions, edges: routes }) => {
         if (cancelled || myRun !== runId.current) return;

@@ -621,6 +621,11 @@ export async function layoutTreeElk(
     layerSpacing: shape?.layerSpacing ?? 90,
     defaultNodeWidth: w,
     defaultNodeHeight: h,
+    // #4874: pin one centered source/target port per node on the leading/trailing
+    // face for the active direction, so ELK's routed endpoints coincide with the
+    // centered React Flow handles (no side-escaping edges; the many outgoing edges
+    // leave from one centered trunk and split via the orthogonal bus).
+    centeredPorts: true,
   });
 
   // ELK positions are top-left already (flat graph → parent-relative == absolute).
