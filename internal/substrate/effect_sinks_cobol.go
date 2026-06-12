@@ -13,9 +13,12 @@
 //     / service calls treated as the COBOL analog of an outbound
 //     request (the closest effect in the lattice for CICS
 //     inter-program / service control transfers)
-//   - mutation : MOVE ... TO <ident> / SET <ident> / COMPUTE <ident> — an
-//     observable working-storage state write (low confidence; the
-//     most common COBOL statement so it is intentionally weak)
+//   - mutation : MOVE ... TO <ident> / SET <ident> / COMPUTE <ident> /
+//     ADD|SUBTRACT|MULTIPLY|DIVIDE ... GIVING <ident> /
+//     STRING|UNSTRING ... INTO <ident> / INITIALIZE <ident> /
+//     INSPECT ... REPLACING (#4946) — an observable working-storage
+//     state write (low confidence; the most common COBOL statement
+//     so it is intentionally weak)
 //
 // Function attribution binds each sink to the nearest preceding PARAGRAPH
 // header (a lone identifier + period in Area A inside PROCEDURE DIVISION).
@@ -88,11 +91,25 @@ var cobolCICSFSWriteRe = regexp.MustCompile(
 	`(?is)EXEC\s+CICS\b[^.]*?\b(?:WRITEQ|WRITE|REWRITE|DELETEQ|DELETE)\b`,
 )
 
-// cobolMutationRe matches working-storage state writes.
+// cobolMutationRe matches working-storage state writes. Beyond the core
+// MOVE/SET/COMPUTE writes (#2743), it covers the arithmetic GIVING forms and
+// the string / table mutation verbs (#4946):
+//
+//   - ADD/SUBTRACT/MULTIPLY/DIVIDE ... GIVING <ident> — the GIVING target is
+//     the written receiving field (the non-GIVING form mutates the trailing
+//     operand and is covered by the leading-verb alternatives).
+//   - STRING ... INTO <ident> / UNSTRING ... INTO <ident> — concatenation /
+//     split write into a receiving data item.
+//   - INITIALIZE <ident> — resets one or more data items to their default.
+//   - INSPECT <ident> ... REPLACING — in-place character substitution write.
 var cobolMutationRe = regexp.MustCompile(
 	`(?im)\bMOVE\b[^.]*?\bTO\s+[A-Za-z]` +
 		`|\bSET\s+[A-Za-z][A-Za-z0-9-]*\s+TO\b` +
-		`|\bCOMPUTE\s+[A-Za-z]`,
+		`|\bCOMPUTE\s+[A-Za-z]` +
+		`|\b(?:ADD|SUBTRACT|MULTIPLY|DIVIDE)\b[^.]*?\bGIVING\s+[A-Za-z]` +
+		`|\b(?:STRING|UNSTRING)\b[^.]*?\bINTO\s+[A-Za-z]` +
+		`|\bINITIALIZE\s+[A-Za-z]` +
+		`|\bINSPECT\b[^.]*?\bREPLACING\b`,
 )
 
 func sniffEffectsCobol(content string) []EffectMatch {
@@ -108,7 +125,7 @@ func sniffEffectsCobol(content string) []EffectMatch {
 	out = appendCobolMatches(out, content, headers, cobolCICSRe, EffectHTTPOut, "EXEC-CICS.LINK/XCTL/WEB", 0.85)
 	out = appendCobolMatches(out, content, headers, cobolCICSFSReadRe, EffectFSRead, "EXEC-CICS.READ/READQ", 0.9)
 	out = appendCobolMatches(out, content, headers, cobolCICSFSWriteRe, EffectFSWrite, "EXEC-CICS.WRITE/WRITEQ/REWRITE", 0.9)
-	out = appendCobolMatches(out, content, headers, cobolMutationRe, EffectMutation, "MOVE...TO/SET/COMPUTE", 0.6)
+	out = appendCobolMatches(out, content, headers, cobolMutationRe, EffectMutation, "MOVE/SET/COMPUTE/ARITH-GIVING/STRING/INITIALIZE/INSPECT", 0.6)
 	return out
 }
 
