@@ -89,7 +89,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DB effect | 🟢 `partial` | `2026-06-02` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_ruby.go` | Ruby effect sniffer fires db_read (User.find_by/.where) + db_write (User.create!) on graphql-ruby resolver bodies, bound to the resolver def. Framework-agnostic per-language dispatch (#3948). |
+| DB effect | 🟢 `partial` | `2026-06-11` | 3948 | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_cross_orm_read_4692_test.go`<br>`internal/substrate/effect_sinks_ruby.go` | Ruby effect sniffer fires db_read (User.find_by/.where) + db_write (User.create!) on graphql-ruby resolver bodies, bound to the resolver def. Framework-agnostic per-language dispatch (#3948). #4692 read-reach: ambiguous AR terminals (.first/.last/.find/.all/.count/.select/.take/.any?/.many?/.none?) credited db_read on a Model-class receiver (User.first) or a relation-typed local (rel=User.where(...); rel.all; fixpoint over reassignment) via rubyARReadMatches, so layered-repo reads reach; the same verb on a plain Array/Hash (items.first(3), h.find{...}) stays pure. Distinctive AR verbs (.where/.find_by/.pluck/.exists?/.includes) stay bare. |
 
 ### Substrate
 

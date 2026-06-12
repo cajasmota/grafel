@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 44 records · **C/C++**: 3 · **C#**: 1 · **elixir**: 2 · **JS/TS**: 3 · **multi**: 21 · **python**: 6 · **ruby**: 6 · **rust**: 2
+**Total**: 54 records · **C/C++**: 3 · **C#**: 3 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 2
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -12,6 +12,8 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | Language | Name | Consumer extraction | Status | Notes |
 |---|---|---|---|---|
 | [C#](../by-language/csharp.md) | [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | 🟢 | 🟢 | |
+| [C#](../by-language/csharp.md) | [Quartz.NET (.NET job scheduler)](../detail/msg.quartz-net.md) | ✅ | 🟢 | |
+| [go](../by-language/go.md) | [robfig/cron (Go scheduler)](../detail/msg.go-cron.md) | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [node-schedule (Node scheduled jobs)](../detail/msg.node-schedule.md) | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [APScheduler (Python advanced scheduler)](../detail/msg.apscheduler.md) | 🟢 | 🟢 | |
 | [ruby](../by-language/ruby.md) | [rufus-scheduler (Ruby in-process scheduler)](../detail/msg.rufus-scheduler.md) | 🟢 | 🟢 | |
@@ -21,9 +23,12 @@ Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Consumer extraction | Producer extraction | Topic attribution | Status | Notes |
 |---|---|---|---|---|---|---|
+| [go](../by-language/go.md) | [asynq (Go task queue)](../detail/msg.asynq.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
+| [php](../by-language/php.md) | [Laravel Queue (queued Jobs / dispatch)](../detail/msg.broker.laravel-queue.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [Celery (Python task queue)](../detail/msg.celery.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | ✅ | ✅ | — | ✅ | |
+| [ruby](../by-language/ruby.md) | [Rails ActiveJob (queue abstraction)](../detail/msg.broker.activejob.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [ruby](../by-language/ruby.md) | [Resque (Ruby task queue)](../detail/msg.resque.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [ruby](../by-language/ruby.md) | [Sidekiq (Ruby task queue)](../detail/msg.sidekiq.md) | 🟢 | 🟢 | — | 🟢 | |
 
@@ -34,7 +39,11 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [C/C++](../by-language/c-cpp.md) | [MQTT (Paho C/C++ / Mosquitto)](../detail/lang.c-cpp.framework.mqtt.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [C/C++](../by-language/c-cpp.md) | [ZeroMQ (libzmq/cppzmq)](../detail/lang.c-cpp.framework.zeromq.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [C/C++](../by-language/c-cpp.md) | [librdkafka (C/C++ Kafka client)](../detail/lang.c-cpp.framework.librdkafka.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [C#](../by-language/csharp.md) | [MediatR (.NET in-process CQRS / mediator)](../detail/msg.mediatr.md) | ✅ | ✅ | ✅ | ✅ | |
 | [elixir](../by-language/elixir.md) | [Broadway (Elixir data pipelines)](../detail/lang.elixir.framework.broadway.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [go](../by-language/go.md) | [Kafka — Go (Sarama / segmentio/kafka-go)](../detail/msg.broker.kafka-go.md) | 🟢 | ✅ | 🟢 | 🟢 | |
+| [go](../by-language/go.md) | [NATS — Go (nats.go / JetStream)](../detail/msg.broker.nats-go.md) | ✅ | ✅ | ✅ | ✅ | |
+| [go](../by-language/go.md) | [RabbitMQ — Go (amqp091-go)](../detail/msg.broker.rabbitmq-go.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [ORM model lifecycle-hook → handler TRIGGERS (TypeORM, Sequelize, Mongoose)](../detail/msg.orm-lifecycle-hooks-jsts.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [AMQP (generic)](../detail/msg.broker.amqp.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [AWS EventBridge](../detail/msg.broker.eventbridge.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
@@ -44,6 +53,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Apache Pulsar](../detail/msg.broker.pulsar.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Azure Event Grid](../detail/msg.broker.eventgrid.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Azure Service Bus / Event Hubs](../detail/msg.broker.azure-service-bus.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [multi](../by-language/multi.md) | [BullMQ / Bull cross-repo queue topic attribution](../detail/analysis.orchestration.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [CloudEvents](../detail/msg.broker.cloudevents.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Debezium (CDC)](../detail/msg.broker.debezium.md) | ✅ | ✅ | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [GCP Pub/Sub](../detail/msg.broker.gcp-pubsub.md) | 🟢 | 🟢 | 🟢 | 🟢 | |

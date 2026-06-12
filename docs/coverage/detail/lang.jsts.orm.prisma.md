@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries_jsts.go` | — |
+| Query attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/orm_queries_jsts.go`<br>`internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_querybuilder_4335_4336_test.go` | #4335 Prisma fluent delegate data-access effects: prisma.<model>.findMany/findUnique/findFirst -> db_read; create/createMany/update/upsert/delete -> db_write; $queryRaw/$queryRawUnsafe -> db_read, $executeRaw/$executeRawUnsafe -> db_write. find*/create* distinctive (bare); raw escape-hatches matched on the prisma delegate. effect_sinks_jsts.go. |
 
 ### Migrations
 

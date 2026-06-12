@@ -38,7 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ✅ `full` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3255) | `internal/custom/golang/dto.go`<br>`internal/custom/golang/dto_test.go` | — |
+| DTO extraction | ✅ `full` | `2026-06-11` | — | `internal/custom/golang/dto.go`<br>`internal/custom/golang/dto_field_members.go`<br>`internal/custom/golang/dto_field_members_test.go`<br>`internal/custom/golang/dto_test.go` | #4715: each request/response DTO struct field is emitted as a SCOPE.Schema/field member (field_name from json tag, normalized field_type, parent_class, optional from omitempty/pointer/non-required validate|binding rule, validators as @rule markers + parseable Signature) with a CONTAINS edge to the struct — the SAME uniform shape as the JS (#4635) and Python/Java (#4613) DTO field members. emitGoDTOFieldMembers in dto_field_members.go; value-asserted by TestGoDTO_FieldMembers (type/optional/validators/CONTAINS). DTO struct resolution stays same-file heuristic (partial where not proven by a per-framework fixture). |
 | Request validation | 🟢 `partial` | `2026-05-29` | 3213 | `internal/custom/golang/helpers.go` | binding call sites captured (c.ShouldBindJSON/BindJSON/Bind etc); struct-tag validation chain (go-playground/validator binding:"required" tags) not analyzed; no data-flow tracing of validated vs unvalidated paths |
 
 ### Middleware

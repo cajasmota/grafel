@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/orm_queries.go` | — |
-| Resource extraction | 🟢 `partial` | `2026-05-28` | — | `internal/extractors/sql` | — |
+| Resource extraction | 🟢 `partial` | `2026-06-11` | 4295 | `internal/extractors/sql/sql.go`<br>`internal/extractors/sql/sql_4295_test.go` | Offline DDL extraction (#4295): CREATE TABLE → SCOPE.Datastore table + SCOPE.Schema column members (CONTAINS) carrying col_type, nullable, is_primary_key, is_unique, default flags. FK edges (inline REFERENCES, table-level FOREIGN KEY, ALTER TABLE ADD CONSTRAINT) → column→table REFERENCES; query-only .sql mints no table (negative test). Partial pending LIVE information_schema introspection (follow-up to #4295) and migration-DSL forms (raw .sql + ALTER covered). |
 
 ## Related extraction records
 
@@ -22,6 +22,8 @@ one is a separate detail page.
 
 | Record | Language | Kind | Status |
 |--------|----------|------|--------|
+| [`lang.c-cpp.orm.sqlite-direct-c-api`](./lang.c-cpp.orm.sqlite-direct-c-api.md) | C/C++ | orm | 6 missing, 5 n/a |
+| [`lang.c-cpp.orm.sqlitecpp`](./lang.c-cpp.orm.sqlitecpp.md) | C/C++ | orm | 6 missing, 5 n/a |
 | [`lang.csharp.driver.sqlite`](./lang.csharp.driver.sqlite.md) | C# | driver | 4 missing, 7 n/a |
 | [`lang.elixir.orm.ecto-sqlite3`](./lang.elixir.orm.ecto-sqlite3.md) | elixir | orm | 6 full, 1 partial, 3 missing, 1 n/a |
 | [`lang.go.driver.sqlite`](./lang.go.driver.sqlite.md) | go | driver | 1 full, 3 partial, 3 missing, 4 n/a |

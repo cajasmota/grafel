@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # JS/TS
 
-**Frameworks**: 33 · **Tools**: 21 · **ORMs**: 19 · **Other**: 4
+**Frameworks**: 33 · **Tools**: 21 · **ORMs**: 19 · **Other**: 8
 
 Back to [summary](../summary.md).
 
@@ -27,8 +27,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [AdonisJS](../detail/lang.jsts.framework.adonisjs.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 6/11 | |
-| [Express](../detail/lang.jsts.framework.express.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 9/12 | |
-| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
+| [Express](../detail/lang.jsts.framework.express.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 10/13 | |
+| [Fastify](../detail/lang.jsts.framework.fastify.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 8/13 | |
 | [Feathers](../detail/lang.jsts.framework.feathers.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
 | [Hapi](../detail/lang.jsts.framework.hapi.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
 | [Hono](../detail/lang.jsts.framework.hono.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 7/12 | |
@@ -180,3 +180,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Env resolution | File parsing | Notes |
 |---|---|---|---|
 | [tsconfig.json](../detail/config.tsconfig.md) | — | ✅ | |
+
+
+### Validation
+
+| Name | Testing | Other capabilities | Notes |
+|---|---|---|---|
+| [Joi (@hapi/joi)](../detail/lang.jsts.validation.joi.md) | 🟢 1/1 | 🟡 1/5 | |
+| [Yup](../detail/lang.jsts.validation.yup.md) | 🟢 1/1 | 🟡 1/5 | |
+| [Zod](../detail/lang.jsts.validation.zod.md) | 🟢 1/1 | 🟡 1/5 | |
+| [class-validator (NestJS DTOs)](../detail/lang.jsts.validation.class-validator.md) | 🟢 1/1 | 🟡 3/5 | |

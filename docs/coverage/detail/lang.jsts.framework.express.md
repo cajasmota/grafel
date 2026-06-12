@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -119,6 +119,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | 3046 | `internal/substrate/taint_sites_jsts.go`<br>`internal/substrate/taint_sites_test.go` | Framework-blind via jstsSourceReqRe (req.*/request.*/ctx.request.*). Covers Express/Fastify/Koa req.body/query/params/headers/cookies well. Hapi request.payload and Hono c.req.json()/c.req.param() not matched by current regex. |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3046 | `internal/substrate/template_pattern_jsts.go`<br>`internal/substrate/template_pattern_test.go` | Framework-blind: sniffTemplatePatternsJSTS covers i18n t(), log.*(), and SQL string literals across all JS/TS. Framework-specific templating (Koa ctx.render, Hono c.html) not covered. |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3046 | `internal/links/taint_flow.go`<br>`internal/links/taint_flow_test.go` | Framework-blind: taint_flow.go propagates source-to-sink paths identified by sniffTaintJSTS. Quality inherits from partial taint_source/sink coverage; Hapi/Hono-specific sources are underdetected. |
+
+## Framework-specific
+
+### Express Contract
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Effective contract | 🟢 `partial` | `2026-06-11` | [link](https://github.com/cajasmota/archigraph/issues/4710) | `internal/authposture/express.go`<br>`internal/mcp/effective_contract_express.go`<br>`internal/mcp/effective_contract_express_4710_test.go`<br>`internal/mcp/effective_contract_fw_common.go`<br>`internal/mcp/effective_contract_registry.go` | #4710: the expressContractResolver in the framework-pluggable effective_contract registry (#4601) composes the per-endpoint contract for Express/Fastify/Koa/Hapi/Hono from signals already on the graph (re-extracts nothing): request fields from the handler's VALIDATES->dto:<schema> (zod/joi/celebrate, #3073/#4635) field members + Fastify schema.body via request_body_type + path/query scalars; per-branch numeric response statuses from the JSTS branch analyzer (res.status(NNN).json/reply.code(NNN), substrate analyzeBranchesJSTS); auth posture from the new authposture express resolver (passport/requireAuth/role-middleware). PARTIAL by design — Express is the loosest stack: untyped req.body with NO validation schema yields no request fields (nothing recoverable), and most Express apps carry no structured RBAC so auth resolves authenticated-only/unknown. Value-asserting test TestEffectiveContract_Express_FullContract: zod body fields + 404/409 branch statuses + authenticated posture. |
 
 ## Provenance
 

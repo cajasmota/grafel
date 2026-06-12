@@ -12,7 +12,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | Dependency attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/orm_queries.go` | — |
-| Resource extraction | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/database_index/language.yaml`<br>`internal/extractors/sql` | — |
+| Resource extraction | 🟢 `partial` | `2026-06-11` | 4295 | `internal/engine/rules/database_index/language.yaml`<br>`internal/extractors/sql/sql.go`<br>`internal/extractors/sql/sql_4295_test.go` | Offline DDL extraction (#4295): CREATE TABLE → SCOPE.Datastore table + SCOPE.Schema column members (CONTAINS) carrying col_type, nullable, is_primary_key, is_unique, default flags. FK edges (inline REFERENCES, table-level FOREIGN KEY, ALTER TABLE ADD CONSTRAINT) → column→table REFERENCES. Postgres SERIAL/array types and table-level PRIMARY KEY/UNIQUE constraints stamped onto member columns; query-only .sql mints no table (negative test). Partial pending LIVE information_schema introspection (follow-up to #4295) and migration-DSL forms (Rails/Django migration DSLs deferred; raw .sql + ALTER covered). |
 
 ## Related extraction records
 

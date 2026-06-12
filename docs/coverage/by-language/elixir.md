@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # elixir
 
-**Frameworks**: 14 · **Tools**: 5 · **ORMs**: 10 · **Other**: 3
+**Frameworks**: 14 · **Tools**: 9 · **ORMs**: 10 · **Other**: 5
 
 Back to [summary](../summary.md).
 
@@ -58,10 +58,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|---|
+| [Bypass](../detail/test.bypass.md) | 🔴 | — | — | — | 🔴 | |
 | [ExUnit](../detail/test.exunit.md) | ✅ | — | — | — | ✅ | |
+| [Faker / ExMachina](../detail/test.faker.md) | 🔴 | — | — | — | 🔴 | |
 | [Hex](../detail/build.hex.md) | 🟢 | — | — | — | 🟢 | |
 | [Mix (mix.exs)](../detail/build.mix.md) | ✅ | — | — | — | ✅ | |
+| [Mox](../detail/test.mox.md) | 🔴 | — | — | — | 🔴 | |
 | [StreamData (property tests)](../detail/test.streamdata.md) | ✅ | — | — | — | ✅ | |
+| [Wallaby](../detail/test.wallaby.md) | 🔴 | — | — | — | 🔴 | |
 | [mix.exs](../detail/pkg.mix.md) | — | — | — | 🔴 | — | |
 
 ## ORMs
@@ -87,6 +91,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
+| [Elixir (base language)](../detail/lang.elixir.base.md) | [language](../by-category/language.md) | ✅ | |
+| [Nebulex (cache)](../detail/db.nebulex.md) | [databases](../by-category/databases.md) | 🔴 | |
 | [Ueberauth (Elixir OAuth)](../detail/lang.elixir.framework.ueberauth.md) | [security](../by-category/security.md) | 🔴 | |
 
 ### Brokers

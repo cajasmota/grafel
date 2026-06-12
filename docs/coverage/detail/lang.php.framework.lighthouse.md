@@ -38,7 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ✅ `full` | `2026-05-31` | — | `internal/custom/php/lighthouse.go`<br>`internal/custom/php/lighthouse_test.go` | — |
+| DTO extraction | ✅ `full` | `2026-06-12` | — | `internal/custom/php/lighthouse.go`<br>`internal/custom/php/lighthouse_test.go`<br>`internal/extractors/php/field_members.go`<br>`internal/extractors/php/issue4854_field_membership_test.go` |  #4854: the framework/ORM-gated custom emitters only emitted field members for HTTP/ORM-bound DTOs; the GENERAL primary-pass now emits a SCOPE.Schema/field entity + class->field CONTAINS for EVERY typed property and promoted constructor parameter (Name '<Class>.<prop>', '$' stripped, dedups by Name in MergeWithCustom), plus an EXTENDS edge to an in-file parent class (interfaces excluded), so any PHP data class projects field rows in the dashboard shape tree — closing the same gap #4845/#4851 fixed for JS/TS and #4850/#4855 for Go. emitPhpFieldMembers + attachPhpExtends in php/field_members.go; value-asserted by TestPhpTypedPropertiesAndPromotedParamsAreContained/TestPhpBaseClassEmitsExtends. |
 | Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Middleware

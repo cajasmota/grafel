@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # C#
 
-**Frameworks**: 16 · **Tools**: 7 · **ORMs**: 14 · **Other**: 1
+**Frameworks**: 16 · **Tools**: 7 · **ORMs**: 14 · **Other**: 3
 
 Back to [summary](../summary.md).
 
@@ -111,3 +111,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Consumer extraction | Notes |
 |---|---|---|
 | [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | 🟢 | |
+| [Quartz.NET (.NET job scheduler)](../detail/msg.quartz-net.md) | ✅ | |
+
+
+### Brokers
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [MediatR (.NET in-process CQRS / mediator)](../detail/msg.mediatr.md) | ✅ | ✅ | ✅ | |

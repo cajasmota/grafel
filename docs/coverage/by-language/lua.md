@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # lua
 
-**Frameworks**: 4 · **Tools**: 0 · **ORMs**: 0 · **Other**: 0
+**Frameworks**: 4 · **Tools**: 0 · **ORMs**: 0 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -27,6 +27,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [Apache APISIX](../detail/lang.lua.framework.apisix.md) | 🟡 2/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/12 | |
-| [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🟡 3/12 | |
+| [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/6 | ✅ 1/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/24 | 🟡 7/12 | |
 | [Lapis](../detail/lang.lua.framework.lapis.md) | 🟡 3/6 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
 | [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟡 3/6 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
+
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [Lua (base language)](../detail/lang.lua.base.md) | [language](../by-category/language.md) | ✅ | |

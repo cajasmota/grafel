@@ -1,58 +1,124 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
-# `lang.fsharp.framework.giraffe` — Giraffe
+# `lang.fsharp.framework.giraffe` — Giraffe / Saturn (F# HTTP)
 
 Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [F#](../by-language/fsharp.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 3
+- **Capability cells:** 49
 
 ## Capabilities
 
 
 ### Routing
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Endpoint deprecation versioning | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint pagination posture | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint response codes | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint synthesis | ✅ `full` | `2026-06-12` | 4906 | `internal/engine/http_endpoint_giraffe.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/httproutes/canonicalize.go` | #4906 (was wrongly 'missing'): synthesizeGiraffeRoutes (#4749) scans an F# source for Giraffe verb-combinator chains `GET >=> route "/users"` / `routef "/users/%i"` / routeCi variants (giraffeRouteRe) and Saturn `router { get "/users/:id" handler }` verb operations (saturnRouteRe), synthesising one canonical http_endpoint_definition per (verb,path) via httproutes.Canonicalize(FrameworkGiraffe) — routef printf placeholders (%i/%s/%O/...) rewritten to `{}` and Saturn `:name` colon-params handled. Wired into applyHTTPEndpointSynthesis at http_endpoint_synthesis.go (the F# producer-side branch, gated by giraffeHasRoute so arbitrary F# files are skipped). Proven by TestGiraffe_BasicRoute / _RoutefTypedParam / _SaturnRouter / _CanonicalizeFormat / _InterpolatedRouteDropped / _NonWebFileIgnored. Honest exclusions (see route_extraction): interpolated/variable paths, subRoute/forward mount-prefix folding, routeStartsWith/routex. |
+| Handler attribution | 🟢 `partial` | `2026-06-12` | 4906 | `internal/custom/fsharp/tests_route_e2e.go`<br>`internal/engine/http_endpoint_giraffe.go` | #4906: Giraffe handlers are `let`-bound HttpHandler values composed with `>=>` and Saturn handlers are bare idents after the path — name-references, not `obj.method()` receiver calls, and the F# base extractor names `let` entities bare with no class-qualified receiver. The synthesised endpoint carries the route; the test->endpoint route-hit linkage (custom/fsharp/tests_route_e2e.go -> linkE2ERouteTestsToEndpoints) binds tests to endpoints by ROUTE STRING. A named-handler IMPLEMENTS edge from endpoint to the resolved `let` handler is the documented partial gap (follow-up). |
+| Route extraction | 🟢 `partial` | `2026-06-12` | 4906 | `internal/engine/http_endpoint_giraffe.go` | #4906 (was wrongly 'missing'): static Giraffe `route`/`routef`/`routeCi` and Saturn `get/post/put/delete/...`(+f) verb+path registrations are recovered by synthesizeGiraffeRoutes. PARTIAL-WITH-GAPS (honest): interpolated / variable paths (`route basePath`, `$"{x}"`) are dropped (only string-literal paths emit, proven by TestGiraffe_InterpolatedRouteDropped); `subRoute "/api" (...)` / `forward "/api" (...)` mount prefixes are NOT folded into nested child routes (children emit at their un-prefixed path); Giraffe `routeStartsWith` / `routex` (regex) variants beyond route/routef/routeCi are not handled. Prefix-folding + routex are documented follow-ups. |
 
-### Security
+### View
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| View rendering | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Validation
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Middleware
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Middleware coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Schema
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Type graph extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+
+### Type System
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Enum extraction | 🟢 `partial` | `2026-06-12` | 4906 | `internal/extractors/fsharp/extractor.go`<br>`internal/extractors/fsharp/fsharp_test.go` | #4906: the F# enum analog is the discriminated union — classifyTypeSubtype emits SCOPE.Component subtype=discriminated_union for `type T = A | B | C` (`= |` / body-leading `|`), proven by TestFSharp_TypeSubtypes. Partial: the DU CASES (A/B/C) are not emitted as individual entities, and a CLI-style `enum` (`type T = | A = 0`) is not distinguished from a DU. Case-level extraction is a follow-up. |
+| Interface extraction | 🟢 `partial` | `2026-06-12` | 4906 | `internal/extractors/fsharp/extractor.go`<br>`internal/extractors/fsharp/fsharp_test.go` | #4906: classifyTypeSubtype emits SCOPE.Component subtype=interface for `type T = interface ... end` (and class/struct for those bodies), proven by TestFSharp_TypeSubtypes. Partial: abstract-member surfaces and interface-IMPLEMENTS edges are not yet modelled. |
+| Type alias extraction | 🟢 `partial` | `2026-06-12` | 4906 | `internal/extractors/fsharp/extractor.go` | #4906: a `type Foo = Bar` alias is emitted as a SCOPE.Component (subtype per classifyTypeSubtype). Partial-honest: a pure alias falls through to the default 'type' subtype (no distinct 'alias' subtype), so alias-vs-nominal-type is not yet distinguished — a follow-up. |
+| Type extraction | 🟢 `partial` | `2026-06-12` | 4906 | `internal/extractors/fsharp/extractor.go`<br>`internal/extractors/fsharp/fsharp_test.go` | #4906 (was wrongly 'missing'): typeRE emits every F# `type T = ...` declaration as a SCOPE.Component, with classifyTypeSubtype distinguishing record (`= {`) / discriminated_union (`= |`) / interface / class / struct, and a type CONTAINS its more-indented members. Proven by TestFSharp_TypeDiscovery + TestFSharp_TypeSubtypes. Partial: record fields / DU cases are not emitted as sub-entities and generic type-param constraints are not modelled. |
+
+### DI
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DI binding extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI injection point | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| DI scope resolution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Testing
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Tests linkage | ✅ `full` | `2026-06-11` | — | `internal/custom/fsharp/tests_route_e2e.go`<br>`internal/engine/http_endpoint_giraffe.go`<br>`internal/engine/httproutes/canonicalize.go` | Test->endpoint route-hit linkage (#4749, F# slice of tail epic; mirrors Crystal/Kemal #4760 and Swift/Vapor #4755): http_endpoint_giraffe.go synthesizes canonical http_endpoint_definition entities from F# web route registrations — Giraffe `GET >=> route "/users" >=> handler` / `routef "/users/%i"` combinator chains (inside `choose [ ... ]`) and Saturn `router { get "/users/:id" handler }` blocks — with FrameworkGiraffe canonicalisation that rewrites Giraffe routef printf placeholders (%i/%s/%O/...) to the positional `{}` wildcard and handles Saturn `:name` colon params. custom/fsharp/tests_route_e2e.go emits one test_suite per F# test file carrying e2e_route_calls from ASP.NET Core TestServer HttpClient verb helpers (client.GetAsync("/path") / PostAsync / ... and HttpRequestMessage(HttpMethod.X, "/path")); the shared language-agnostic engine.linkE2ERouteTestsToEndpoints pass then emits the TESTS edge to the exercised endpoint (proven by TestGiraffe_E2ERouteTestLinkage + TestGiraffe_BasicRoute/_RoutefTypedParam/_SaturnRouter + TestFSharpRouteE2E_*). F# test DSLs use anonymous closure blocks (Expecto `testCase "..." <| fun _ -> ...` / `testList`; xUnit `[<Fact>]`), so the test_suite is the scope-owner carrying the route hits (F# analog of Ruby #4684 / JS #4680 / Crystal #4760). Local-variable/receiver typing (#4749 part a) is N/A: F# is functional — Giraffe handlers are `let`-bound HttpHandler values composed with `>=>`, not obj.method() receiver calls, and the fsharp base extractor names `let` entities by their bare name with no class-qualified receiver resolver to consume a receiver_type stamp; route-string linkage is the coverage mechanism (mirrors functional Elixir #4688 / Crystal #4760). Honest exclusions: interpolated/variable paths, subRoute/forward mount-prefix folding, and Giraffe routeCi/routeStartsWith/routex variants are documented follow-ups. |
 
 ### Observability
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Log extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Metric extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Trace extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Data
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| DB effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ### Substrate
 
-| Capability | Status | Verified at | Verified SHA | Issue | Cites | Notes |
-|------------|--------|-------------|--------------|-------|-------|-------|
-| `request_shape_extraction` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2777) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_t3.go` | — |
-| `response_shape_extraction` | — `not_applicable` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2777) | — | — |
-| `schema_drift_detection` | ⚠️ `partial` | `2026-05-28` | — | [link](https://github.com/cajasmota/archigraph/issues/2777) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_t3.go` | — |
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Confidence overlay | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Config consumption | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Constant propagation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Dead code detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Def use chain extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Env fallback recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Error flow | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Feature flag gating | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Fs effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| HTTP effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Import resolution quality | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Module cycle detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Mutation effect | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Pure function tagging | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Reachability analysis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request sink dataflow | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Schema drift detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint sink detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Taint source detection | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Template pattern catalog | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Vulnerability finding | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 
 ## Provenance
 

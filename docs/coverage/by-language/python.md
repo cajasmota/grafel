@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # python
 
-**Frameworks**: 23 · **Tools**: 15 · **ORMs**: 18 · **Other**: 10
+**Frameworks**: 25 · **Tools**: 15 · **ORMs**: 18 · **Other**: 10
 
 Back to [summary](../summary.md).
 
@@ -32,7 +32,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Django](../detail/lang.python.framework.django.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 9/12 | |
 | [Django REST Framework](../detail/lang.python.framework.django-drf.md) | 🟡 5/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 25/25 | 🟡 14/17 | |
 | [Falcon](../detail/lang.python.framework.falcon.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
-| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 10/11 | |
+| [FastAPI](../detail/lang.python.framework.fastapi.md) | ✅ 6/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 11/12 | |
 | [Flask](../detail/lang.python.framework.flask.md) | 🟡 4/6 | ✅ 1/1 | ✅ 4/4 | ✅ 1/1 | 🟢 24/24 | 🟡 10/13 | |
 | [Graphene GraphQL](../detail/lang.python.framework.graphene.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/13 | |
 | [Hug](../detail/lang.python.framework.hug.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
@@ -45,6 +45,20 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Strawberry GraphQL](../detail/lang.python.framework.strawberry-graphql.md) | 🟡 3/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/13 | |
 | [Tornado](../detail/lang.python.framework.tornado.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
 | [aiohttp](../detail/lang.python.framework.aiohttp.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/24 | 🟡 8/12 | |
+
+
+### UI Frontend
+
+| Name | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [gql (GraphQL client)](../detail/lang.python.framework.gql-client.md) | 🟡 2/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/8 | |
+
+
+### RPC Framework
+
+| Name | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|
+| [gRPC-Python (grpcio / grpc.aio)](../detail/lang.python.framework.grpc.md) | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🟡 1/25 | 🟡 3/14 | |
 
 
 ### AI Integration

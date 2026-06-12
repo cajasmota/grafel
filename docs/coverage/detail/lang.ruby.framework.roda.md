@@ -18,9 +18,9 @@ Auto-generated. Back to [summary](../summary.md).
 | Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
 | Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
 | Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
-| Endpoint synthesis | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/frameworks/roda.yaml` | — |
-| Handler attribution | 🟢 `partial` | `2026-05-28` | — | `internal/engine/rules/ruby/frameworks/roda.yaml` | — |
-| Route extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/routes.go` | — |
+| Endpoint synthesis | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_ruby_graperoda_producer.go`<br>`internal/engine/http_endpoint_synthesis.go`<br>`internal/engine/rules/ruby/frameworks/roda.yaml` | #4417: Roda routing-tree routes (r.get/r.post leaf verbs inside r.on/r.is branch blocks) synthesize one http_endpoint_definition per leaf verb via synthesizeRoda; r.on/r.is branch matchers compose into the path. String literals are static segments; String/Integer/Float class matchers and :sym captures normalize to {param}. Best-effort over the dynamic tree (regexp/array matchers skipped). Anonymous block handler → inlineHandlerRefKind → same-file IMPLEMENTS bridge (mirrors Sinatra #4385). |
+| Handler attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/http_endpoint_ruby_graperoda_producer.go`<br>`internal/engine/http_endpoint_synthesis.go` | #4417: each Roda leaf verb is an anonymous inline block handler; synthesizeRoda signals inlineHandlerRefKind so the endpoint bridges to a synthesized <inline VERB /path> Operation via a same-file IMPLEMENTS edge (no graph island). |
+| Route extraction | ✅ `full` | `2026-06-11` | — | `internal/custom/ruby/routes.go`<br>`internal/engine/http_endpoint_ruby_graperoda_producer.go` | #4417: synthesizeRoda walks the r.on/r.is routing tree composing branch segments into the route path and emits an http_endpoint_definition per leaf verb (verb-level inline matchers like r.get Integer contribute a trailing capture). Complements the SCOPE-entity route extraction in routes.go. |
 
 ### View
 
@@ -38,7 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/validation.go` | — |
+| DTO extraction | 🟢 `partial` | `2026-06-12` | backfill:dictionary-completeness | `internal/custom/ruby/validation.go`<br>`internal/extractors/ruby/field_members.go`<br>`internal/extractors/ruby/issue4854_field_membership_test.go` |  #4854: Ruby has no static field declarations, so prior to this only the framework-bound validation custom emitter surfaced orphan dto_field nodes (no CONTAINS). The GENERAL primary-pass now emits a SCOPE.Schema/field entity + class->field CONTAINS per attr_accessor/attr_reader/attr_writer symbol (the only declaratively-present members), synthesises a SCOPE.Component data class + field members for 'Const = Struct.new(:a,:b)' / 'Data.define(:a,:b)', and adds an EXTENDS edge to an in-file superclass, so a plain Ruby model projects field rows in the dashboard shape tree — closing the same gap #4845/#4851 fixed for JS/TS and #4850/#4855 for Go. emitRubyAttrFields/emitRubyStructDefine + attachRubyExtends in ruby/field_members.go; value-asserted by TestRubyAttrAccessorFieldsAreContained/TestRubyStructDefineFieldsAreContained/TestRubySuperclassEmitsExtends. |
 | Request validation | 🟢 `partial` | `2026-05-30` | backfill:dictionary-completeness | `internal/custom/ruby/validation.go` | — |
 
 ### Middleware

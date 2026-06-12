@@ -15,7 +15,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Model extraction | 🔴 `missing` | `2026-06-02` | [link](https://github.com/cajasmota/archigraph/issues/3645) | — | YAML detection-only; dead custom_extractor never ran in Go; no native query-topology extractor. |
+| Model extraction | ✅ `full` | `2026-06-11` | [link](https://github.com/cajasmota/archigraph/issues/4283) | `internal/extractors/java/nosql_model.go`<br>`internal/extractors/java/nosql_model_test.go` | Native Go pass (#4283): a class-level @Document(collection="users")/@Document("users") emits a SCOPE.Schema model entity (Subtype "schema") named after the class, collection name on the `collection` property and `store=mongodb`. Field membership reuses the base extractor's SCOPE.Schema/field children via CONTAINS (BuildSchemaFieldStructuralRef); @Field("e") override names + @Id recorded in model Properties (field.<n>.column / field.<n>.id). Complements the existing query_attribution pass (#4271) which already reads the same @Document annotation. Honest limit: dynamic/non-literal collection -> model emitted without a `collection` property. |
 | Model lifecycle extraction | 🔴 `missing` | — | 3628 | — | — |
 | Schema extraction | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/archigraph/issues/3586) | `internal/custom/java/extractors_test.go`<br>`internal/custom/java/spring_ecosystem.go` | — |
 

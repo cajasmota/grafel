@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # C/C++
 
-**Frameworks**: 19 · **Tools**: 16 · **ORMs**: 7 · **Other**: 4
+**Frameworks**: 20 · **Tools**: 16 · **ORMs**: 10 · **Other**: 4
 
 Back to [summary](../summary.md).
 
@@ -36,6 +36,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Pistache](../detail/lang.c-cpp.framework.pistache.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/11 | |
 | [RESTinio](../detail/lang.c-cpp.framework.restinio.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/11 | |
 | [Restbed](../detail/lang.c-cpp.framework.restbed.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 6/11 | |
+| [cpp-httplib (yhirose)](../detail/lang.c-cpp.framework.cpp-httplib.md) | 🟡 2/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 | [cpprestsdk (Casablanca)](../detail/lang.c-cpp.framework.cpprestsdk.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | ✅ 1/1 | 🟡 23/25 | 🟡 6/11 | |
 | [libev](../detail/lang.c-cpp.framework.libev.md) | 🔴 0/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/8 | |
 | [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/3 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/8 | |
@@ -96,8 +97,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/6 | |
 | [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/10 | |
 | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/6 | |
+| [SQLite (direct C API)](../detail/lang.c-cpp.orm.sqlite-direct-c-api.md) | 🔴 0/6 | |
+| [SQLiteCpp](../detail/lang.c-cpp.orm.sqlitecpp.md) | 🔴 0/6 | |
 | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/6 | |
 | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/6 | |
+| [nanodbc (ODBC)](../detail/lang.c-cpp.orm.nanodbc.md) | 🔴 0/6 | |
 | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/4 | |
 | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/6 | |
 

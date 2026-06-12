@@ -38,7 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/fw_validation.go` | Detects Json/Form/MsgPack<T> extractors and Deserialize derives |
+| DTO extraction | ✅ `full` | `2026-06-12` | — | `internal/custom/rust/fw_validation.go`<br>`internal/extractors/rust/issue4854_field_membership_test.go`<br>`internal/extractors/rust/struct_fields.go` | Detects Json/Form/MsgPack<T> extractors and Deserialize derives #4854: the serde/utoipa/ORM-gated custom emitters only emitted field members for bound DTOs; the GENERAL primary-pass now emits a SCOPE.Schema/field entity + struct->field CONTAINS for EVERY named struct field (serde rename wire name honoured, serde skip excluded, Name '<Struct>.<wire>' dedups by Name in MergeWithCustom) and for named fields of struct-style enum variants ('<Enum>.<Variant>.<field>'), so any Rust data struct projects field rows in the dashboard shape tree — closing the same gap #4845/#4851 fixed for JS/TS and #4850/#4855 for Go. Rust has no inheritance so there is no EXTENDS. emitRustStructFields/emitRustEnumVariantFields in rust/struct_fields.go; value-asserted by TestRustStructFieldsAreContained/TestRustEnumVariantFieldsAreContained. |
 | Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/rust/fw_validation.go` | Detects impl FromRequest guards, Json/Form extractors, validator derives |
 
 ### Middleware
@@ -75,7 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/extractors/cross/testmap/frameworks.go` | — |
+| Tests linkage | ✅ `full` | `2026-06-11` | — | `internal/custom/rust/tests_route_e2e.go`<br>`internal/custom/rust/tests_route_e2e_test.go`<br>`internal/engine/http_endpoint_e2e_testmap.go`<br>`internal/engine/http_endpoint_e2e_testmap_4749_test.go`<br>`internal/extractors/cross/testmap/frameworks.go` | #4749 (Rust slice of epic #4615 test->endpoint coverage linkage): route-hit linkage stamps e2e_route_calls from Actix test::TestRequest::<verb>().uri(path)+call_service, Axum/tower app.oneshot(Request::<verb>(path))/Request::builder().method(Method::X).uri(path), Rocket client.<verb>(path).dispatch(), and reqwest test-server client.<verb>(format!({}/path, addr)); the shared linkE2ERouteTestsToEndpoints pass emits the endpoint TESTS edge. Rust tests are NAMED #[test]/#[tokio::test]/#[actix_web::test] fns (no closure DSL -> no scope-owner). Local-variable handler-receiver typing N/A: Rust handlers are free functions wired by path, not constructed/called in-test. Variable-only routes dropped. Value-asserted in tests_route_e2e_test.go + http_endpoint_e2e_testmap_4749_test.go. |
 
 ### Observability
 
@@ -89,6 +89,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
+| DB effect | 🟢 `partial` | `2026-06-11` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_cross_orm_read_4692_test.go`<br>`internal/substrate/effect_sinks_rust.go` | #4737 (Rust slice of the #4692 cross-ORM receiver-typed read-reach audit): the ambiguous Diesel/sea-orm read terminals (.first/.find/.filter/.select/.all/.one + .order/.limit/.offset/.join) that collide with Rust Iterator combinators are now credited db_read ONLY on a query/table/Entity-typed receiver (Diesel schema::table root, .into_boxed()/QueryDsl chain, sea-orm Entity::find()) -- propagated across let q2 = q.filter(...) chains to a fixpoint and matched inline off a query root (users::table.filter(...).first(conn)). The distinctive terminals (sqlx::query!, .fetch_*, diesel::select/sql_query, .load/.get_result(s), .find_by_id/.stream/.paginate) stay bare on any receiver. vec.iter().filter(...).find(...) / slice.first() stay PURE (over-credit guard). Value-asserted in TestRustDieselSeaOrmTypedRead_4737 / TestRustIteratorNoFalsePositive_4737 / TestRustRepoReadChainSink_4737. |
 
 ### Substrate
 
@@ -97,7 +98,6 @@ Auto-generated. Back to [summary](../summary.md).
 | Confidence overlay | ✅ `full` | `2026-05-28` | — | `internal/graph/graph.go`<br>`internal/mcp/tools.go`<br>`internal/types/confidence.go` | — |
 | Config consumption | 🔴 `missing` | — | 3641 | — | — |
 | Constant propagation | ✅ `full` | `2026-05-27` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/rust.go`<br>`internal/substrate/substrate.go` | — |
-| DB effect | 🟢 `partial` | `2026-05-28` | — | `internal/links/effect_propagation.go`<br>`internal/substrate/effect_sinks_rust.go` | — |
 | Dead code detection | 🟢 `partial` | `2026-05-28` | — | `internal/links/reachability.go`<br>`internal/mcp/dead_code.go`<br>`internal/substrate/entry_points.go`<br>`internal/substrate/entry_points_rust.go` | — |
 | Def use chain extraction | 🟢 `partial` | — | backfill:dictionary-completeness | `internal/links/def_use_pass.go`<br>`internal/substrate/def_use_rust.go` | — |
 | Env fallback recognition | ✅ `full` | `2026-05-27` | — | `internal/links/constant_propagation.go`<br>`internal/substrate/rust.go`<br>`internal/substrate/substrate.go` | — |

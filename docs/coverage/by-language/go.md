@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # go
 
-**Frameworks**: 21 · **Tools**: 8 · **ORMs**: 17 · **Other**: 0
+**Frameworks**: 21 · **Tools**: 8 · **ORMs**: 17 · **Other**: 5
 
 Back to [summary](../summary.md).
 
@@ -104,3 +104,29 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 4/7 | |
 | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟡 6/8 | |
 | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟡 6/9 | |
+
+
+## Other
+
+
+### Schedulers
+
+| Name | Consumer extraction | Notes |
+|---|---|---|
+| [robfig/cron (Go scheduler)](../detail/msg.go-cron.md) | 🟢 | |
+
+
+### Task Queues
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [asynq (Go task queue)](../detail/msg.asynq.md) | 🟢 | 🟢 | 🟢 | |
+
+
+### Brokers
+
+| Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
+|---|---|---|---|---|
+| [Kafka — Go (Sarama / segmentio/kafka-go)](../detail/msg.broker.kafka-go.md) | 🟢 | ✅ | 🟢 | |
+| [NATS — Go (nats.go / JetStream)](../detail/msg.broker.nats-go.md) | ✅ | ✅ | ✅ | |
+| [RabbitMQ — Go (amqp091-go)](../detail/msg.broker.rabbitmq-go.md) | 🟢 | 🟢 | 🟢 | |

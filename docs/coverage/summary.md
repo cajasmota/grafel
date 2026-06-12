@@ -1,30 +1,35 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # archigraph capabilities
 
-**Languages**: 39 (20 active · 19 placeholder) · **Frameworks**: 230 · **ORMs**: 156 · **Tools**: 111 · **Other**: 161
+**Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 244 · **ORMs**: 167 · **Tools**: 120 · **Other**: 196
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-| [JS/TS](by-language/jsts.md) | 33 | 21 | 19 | 4 |
+| [JS/TS](by-language/jsts.md) | 33 | 21 | 19 | 8 |
+| [python](by-language/python.md) | 25 | 15 | 18 | 10 |
 | [java](by-language/java.md) | 23 | 10 | 15 | 4 |
-| [python](by-language/python.md) | 23 | 15 | 18 | 10 |
-| [go](by-language/go.md) | 21 | 8 | 17 | 0 |
-| [C/C++](by-language/c-cpp.md) | 19 | 16 | 7 | 4 |
-| [kotlin](by-language/kotlin.md) | 17 | 0 | 7 | 0 |
-| [C#](by-language/csharp.md) | 16 | 7 | 14 | 1 |
-| [php](by-language/php.md) | 16 | 6 | 14 | 0 |
-| [elixir](by-language/elixir.md) | 14 | 5 | 10 | 3 |
+| [go](by-language/go.md) | 21 | 8 | 17 | 5 |
+| [C/C++](by-language/c-cpp.md) | 20 | 16 | 10 | 4 |
+| [kotlin](by-language/kotlin.md) | 18 | 0 | 7 | 1 |
+| [C#](by-language/csharp.md) | 16 | 7 | 14 | 3 |
+| [php](by-language/php.md) | 16 | 6 | 14 | 1 |
+| [elixir](by-language/elixir.md) | 14 | 9 | 10 | 5 |
 | [rust](by-language/rust.md) | 14 | 6 | 15 | 3 |
-| [scala](by-language/scala.md) | 14 | 3 | 6 | 0 |
-| [ruby](by-language/ruby.md) | 9 | 6 | 14 | 7 |
-| [swift](by-language/swift.md) | 5 | 1 | 0 | 0 |
-| [lua](by-language/lua.md) | 4 | 0 | 0 | 0 |
-| [dart](by-language/dart.md) | 2 | 1 | 0 | 0 |
-| [assembly](by-language/assembly.md) | 0 | 0 | 0 | 4 |
-| [COBOL](by-language/cobol.md) | 0 | 0 | 0 | 4 |
-| [groovy](by-language/groovy.md) | 0 | 1 | 0 | 0 |
+| [scala](by-language/scala.md) | 14 | 3 | 7 | 1 |
+| [ruby](by-language/ruby.md) | 9 | 6 | 14 | 8 |
+| [swift](by-language/swift.md) | 5 | 1 | 0 | 1 |
+| [clojure](by-language/clojure.md) | 4 | 4 | 5 | 1 |
+| [lua](by-language/lua.md) | 4 | 0 | 0 | 1 |
+| [dart](by-language/dart.md) | 3 | 1 | 0 | 1 |
+| [crystal](by-language/crystal.md) | 1 | 0 | 1 | 1 |
+| [erlang](by-language/erlang.md) | 1 | 0 | 0 | 2 |
+| [F#](by-language/fsharp.md) | 1 | 1 | 0 | 1 |
+| [groovy](by-language/groovy.md) | 1 | 1 | 0 | 1 |
+| [nim](by-language/nim.md) | 1 | 0 | 1 | 1 |
+| [assembly](by-language/assembly.md) | 0 | 0 | 0 | 5 |
+| [COBOL](by-language/cobol.md) | 0 | 0 | 0 | 5 |
 | [javascript](by-language/javascript.md) | 0 | 0 | 0 | 1 |
 | [JCL](by-language/jcl.md) | 0 | 0 | 0 | 1 |
 
@@ -33,14 +38,14 @@
 | Category | Records | Full | Partial | Missing |
 |---|---:|---:|---:|---:|
 | [Databases](by-category/databases.md) | 12 | 0 | 12 | 0 |
-| [Platform / k8s](by-category/platform.md) | 34 | 14 | 20 | 0 |
-| [Message Brokers](by-category/message_broker.md) | 21 | 9 | 10 | 2 |
+| [Platform / k8s](by-category/platform.md) | 39 | 19 | 20 | 0 |
+| [Message Brokers](by-category/message_broker.md) | 22 | 10 | 10 | 2 |
 | [CI/CD](by-category/ci_cd.md) | 12 | 1 | 8 | 3 |
 | [Security](by-category/security.md) | 11 | 4 | 0 | 7 |
 | [Observability](by-category/observability.md) | 13 | 1 | 5 | 7 |
 | [Protocols](by-category/protocol.md) | 12 | 5 | 4 | 3 |
 | [Build Systems](by-category/build_system.md) | 4 | 3 | 0 | 1 |
-| **Total** | 119 | 37 | 59 | 23 |
+| **Total** | 125 | 43 | 59 | 23 |
 
 ### Platform subcategories
 
@@ -51,8 +56,8 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [IaC / Provisioning](by-category/platform.md#iac--provisioning) | 8 | AWS CDK, AWS CloudFormation, Ansible, Azure Bicep, … |
 | [Containers & Orchestration](by-category/platform.md#containers--orchestration) | 5 | Dockerfile, Helm charts, Kubernetes manifests, Kustomize, … |
 | [Config Files](by-category/platform.md#config-files) | 7 | .env, .ini, .properties, .toml, … |
-| [Workflow / DAG & State Machines](by-category/platform.md#workflow--dag--state-machines) | 7 | Apache Airflow, Argo Workflows, Celery canvas, Python transitions, … |
-| [App Topology & Integration](by-category/platform.md#app-topology--integration) | 10 | API-gateway route topology, AWS CDK, AWS CloudFormation, Helm charts, … |
+| [Workflow / DAG & State Machines](by-category/platform.md#workflow--dag--state-machines) | 8 | Apache Airflow, Argo Workflows, Celery canvas, Python transitions, … |
+| [App Topology & Integration](by-category/platform.md#app-topology--integration) | 14 | API-gateway route topology, AWS CDK, AWS CloudFormation, Feature-flag gating topology, … |
 | [External Service Integration](by-category/platform.md#external-service-integration) | 1 | Third-party SDK service dependencies |
 | [Localization / i18n](by-category/platform.md#localization--i18n) | 1 | i18n translation-key usage |
 | [Frontend Routing](by-category/platform.md#frontend-routing) | 1 | Frontend route |
@@ -64,15 +69,10 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | Language |
 |---|
 | [Bicep](by-language/bicep.md) |
-| [Clojure](by-language/clojure.md) |
-| [Crystal](by-language/crystal.md) |
 | [Elm](by-language/elm.md) |
-| [Erlang](by-language/erlang.md) |
-| [F#](by-language/fsharp.md) |
 | [Haskell](by-language/haskell.md) |
 | [Idris](by-language/idris.md) |
 | [Lisp](by-language/lisp.md) |
-| [Nim](by-language/nim.md) |
 | [OCaml](by-language/ocaml.md) |
 | [Pony](by-language/pony.md) |
 | [ReScript](by-language/rescript.md) |
@@ -83,4 +83,4 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 230 frameworks · 111 tools · 156 ORMs · 161 other
+Total: 244 frameworks · 120 tools · 167 ORMs · 196 other

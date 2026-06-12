@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 156 records · **C/C++**: 7 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 15 · **JS/TS**: 19 · **kotlin**: 7 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 6
+**Total**: 167 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 1 · **C#**: 14 · **elixir**: 10 · **go**: 17 · **java**: 15 · **JS/TS**: 19 · **kotlin**: 7 · **nim**: 1 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -14,10 +14,19 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C/C++](../by-language/c-cpp.md) | [MySQL Connector/C++](../detail/lang.c-cpp.driver.mysql-connector-cpp.md) | 🟡 3/6 | |
 | [C/C++](../by-language/c-cpp.md) | [ODB](../detail/lang.c-cpp.orm.odb.md) | 🟡 7/10 | |
 | [C/C++](../by-language/c-cpp.md) | [SOCI](../detail/lang.c-cpp.orm.soci.md) | 🟡 3/6 | |
+| [C/C++](../by-language/c-cpp.md) | [SQLite (direct C API)](../detail/lang.c-cpp.orm.sqlite-direct-c-api.md) | 🔴 0/6 | |
+| [C/C++](../by-language/c-cpp.md) | [SQLiteCpp](../detail/lang.c-cpp.orm.sqlitecpp.md) | 🔴 0/6 | |
 | [C/C++](../by-language/c-cpp.md) | [libpqxx (PostgreSQL)](../detail/lang.c-cpp.driver.libpqxx.md) | 🟡 3/6 | |
 | [C/C++](../by-language/c-cpp.md) | [mongocxx](../detail/lang.c-cpp.driver.mongocxx.md) | 🟡 3/6 | |
+| [C/C++](../by-language/c-cpp.md) | [nanodbc (ODBC)](../detail/lang.c-cpp.orm.nanodbc.md) | 🔴 0/6 | |
 | [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/4 | |
 | [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/6 | |
+| [clojure](../by-language/clojure.md) | [DataScript](../detail/lang.clojure.driver.datascript.md) | 🔴 0/11 | |
+| [clojure](../by-language/clojure.md) | [Datomic](../detail/lang.clojure.driver.datomic.md) | 🔴 0/11 | |
+| [clojure](../by-language/clojure.md) | [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🔴 0/11 | |
+| [clojure](../by-language/clojure.md) | [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🔴 0/11 | |
+| [clojure](../by-language/clojure.md) | [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🔴 0/11 | |
+| [crystal](../by-language/crystal.md) | [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | 🟡 5/10 | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 2/5 | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 2/5 | |
 | [C#](../by-language/csharp.md) | [Dapper](../detail/lang.csharp.orm.dapper.md) | 🟡 3/6 | |
@@ -68,11 +77,11 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [java](../by-language/java.md) | [MyBatis](../detail/lang.java.orm.mybatis.md) | 🟡 7/10 | |
 | [java](../by-language/java.md) | [Neo4j (Java driver)](../detail/lang.java.orm.neo4j.md) | 🟡 5/8 | |
 | [java](../by-language/java.md) | [Quarkus Panache (SQL + Reactive + MongoDB)](../detail/lang.java.orm.panache.md) | 🟡 7/10 | |
-| [java](../by-language/java.md) | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | 🟡 1/6 | |
+| [java](../by-language/java.md) | [Spring Data Cassandra](../detail/lang.java.orm.spring-data-cassandra.md) | 🟡 2/6 | |
 | [java](../by-language/java.md) | [Spring Data Elasticsearch](../detail/lang.java.orm.spring-data-elastic.md) | 🟡 1/6 | |
 | [java](../by-language/java.md) | [Spring Data JPA](../detail/lang.java.orm.spring-data-jpa.md) | 🟡 7/10 | |
-| [java](../by-language/java.md) | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | 🟡 1/6 | |
-| [java](../by-language/java.md) | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | 🟡 1/6 | |
+| [java](../by-language/java.md) | [Spring Data MongoDB](../detail/lang.java.orm.spring-data-mongo.md) | 🟡 2/6 | |
+| [java](../by-language/java.md) | [Spring Data Redis](../detail/lang.java.orm.spring-data-redis.md) | 🟡 2/6 | |
 | [java](../by-language/java.md) | [jOOQ](../detail/lang.java.orm.jooq.md) | 🟡 6/9 | |
 | [JS/TS](../by-language/jsts.md) | [@elastic/elasticsearch](../detail/lang.jsts.driver.elastic.md) | 🟡 1/4 | |
 | [JS/TS](../by-language/jsts.md) | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | 🟡 1/4 | |
@@ -100,6 +109,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [kotlin](../by-language/kotlin.md) | [Room (Android)](../detail/lang.kotlin.orm.room.md) | 🟡 7/10 | |
 | [kotlin](../by-language/kotlin.md) | [SQLDelight](../detail/lang.kotlin.orm.sqldelight.md) | 🟡 7/10 | |
 | [kotlin](../by-language/kotlin.md) | [Spring Data (Kotlin)](../detail/lang.kotlin.orm.spring-data.md) | 🟡 8/11 | |
+| [nim](../by-language/nim.md) | [Norm (Nim ORM)](../detail/lang.nim.orm.norm.md) | 🟡 4/9 | |
 | [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟡 1/4 | |
 | [php](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟡 8/11 | |
 | [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟡 8/11 | |
@@ -161,6 +171,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟡 1/4 | |
 | [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 4/7 | |
 | [rust](../by-language/rust.md) | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟡 1/4 | |
+| [scala](../by-language/scala.md) | [Anorm](../detail/lang.scala.orm.anorm.md) | 🟡 3/6 | |
 | [scala](../by-language/scala.md) | [Doobie](../detail/lang.scala.orm.doobie.md) | 🟡 3/6 | |
 | [scala](../by-language/scala.md) | [Elastic4s](../detail/lang.scala.orm.elastic4s.md) | 🟡 3/6 | |
 | [scala](../by-language/scala.md) | [Quill](../detail/lang.scala.orm.quill.md) | 🟡 5/8 | |

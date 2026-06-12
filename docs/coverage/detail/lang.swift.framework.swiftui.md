@@ -37,9 +37,9 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Enum extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Interface extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Type alias extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Enum extraction | 🟢 `partial` | — | 4913 | `internal/extractors/swift/types.go`<br>`internal/extractors/swift/types_test.go` | #4913: the base Swift tree-sitter extractor (types.go, buildEnumValueSet) now emits a SCOPE.Enum value-set per `enum` declaration via extractor.EnumEntity(kind_hint=swift_enum) IN ADDITION to the nominal SCOPE.Component(enum) — one member per `case` identifier (comma-grouped `case a, b` -> two members), with `case x = <literal>` raw values (int/string/bool) lifted to member values. Value-asserted: TestSwiftTypes_PlainEnumValueSet (Direction -> north,south,east,west + Component survives), TestSwiftTypes_RawValueEnum (HTTPStatus -> ok=200,notFound=404), TestSwiftTypes_StringRawValueEnum (quote-stripped). PARTIAL: associated-value case payload types and computed raw values are not modelled. |
+| Interface extraction | 🔴 `missing` | — | 4913 | — | #4913: Swift has no `interface` keyword — the nearest construct is `protocol`, which IS extracted as SCOPE.Component(subtype=protocol) by the base walk (swift.go protocol_declaration), but it is not emitted as a type-system interface-alias node, so this dictionary cell stays missing. See lang.swift.base core_extraction for the protocol Component coverage. |
+| Type alias extraction | 🟢 `partial` | — | 4913 | `internal/extractors/swift/types.go`<br>`internal/extractors/swift/types_test.go` | #4913: `typealias Name = <type>` (types.go, buildTypeAlias) now emits SCOPE.Schema(subtype=type_alias) with type_body, parity with the python/rust/go/dart type_alias shape, via tree-sitter typealias_declaration so the full RHS (function types `(Int) -> Void`, generics) is captured — superseding the loose vapor-only reSwiftTypealias->Component v1. Value-asserted: TestSwiftTypes_TypeAlias (UserID -> Int, Handler -> (Int) -> Void). PARTIAL: generic where-clause and protocol-composition aliases are stored as raw type_body text without further decomposition. |
 
 ### Lifecycle
 

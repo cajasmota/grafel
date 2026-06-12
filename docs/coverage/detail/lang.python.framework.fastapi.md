@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [python](../by-language/python.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Backend HTTP
-- **Capability cells:** 49
+- **Capability cells:** 50
 
 ## Capabilities
 
@@ -38,7 +38,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| DTO extraction | ✅ `full` | `2026-06-02` | — | `internal/custom/python/fastapi.go`<br>`internal/custom/python/fastapi_reqresp.go` | fastapi_reqresp.go extracts Pydantic BaseModel body params and response_model=/return annotations for all FastAPI route decorators AND emits traversable endpoint→DTO graph edges (#3629): each endpoint SCOPE.Operation carries ACCEPTS_INPUT → request DTO (body param) and RETURNS → response DTO (response_model= or return annotation), ToID=Class:<Name> structural ref the resolver binds by name. Previously DTO entities were emitted but no edges, so expand/traces/payload_drift could not follow endpoint→DTO; now they can (parity with Java Spring). fastapi.go extracts APIRouter, Depends(), per-route metadata. Pydantic v1/v2 unwrapping via unwrapType; Depends/Query/Path injection tokens skipped. Tests: TestFastAPIReqResp_AcceptsInputEdge, TestFastAPIReqResp_ReturnsEdgeResponseModel, TestFastAPIReqResp_ReturnsEdgeAnnotation, TestFastAPIReqResp_PrimitiveParamNoEdge, TestFastAPIReqResp_FullFixture. |
+| DTO extraction | ✅ `full` | `2026-06-11` | 4476 | `internal/custom/python/fastapi.go`<br>`internal/custom/python/fastapi_reqresp.go` | fastapi_reqresp.go extracts Pydantic BaseModel body params and response_model=/return annotations for all FastAPI route decorators AND emits traversable endpoint→DTO graph edges (#3629): each endpoint SCOPE.Operation carries ACCEPTS_INPUT → request DTO (body param) and RETURNS → response DTO (response_model= or return annotation), ToID=Class:<Name> structural ref the resolver binds by name. Previously DTO entities were emitted but no edges, so expand/traces/payload_drift could not follow endpoint→DTO; now they can (parity with Java Spring). #4476 — query-model & dependency Pydantic request DTOs are now covered too: a model bound via `q: FilterParams = Depends()`, `q = Depends(FilterParams)`, `q = Query(...)` (whole-object) or `Annotated[FilterParams, Query()]` emits ACCEPTS_INPUT → Class:<Model> (match_source=dependency_query_model, the FastAPI analog of the NestJS @Query() DTO) — previously these injected params were skipped wholesale. Conservative: a Depends() resolving to a provider FUNCTION (Depends(get_db)/lowercase) emits no edge. fastapi.go extracts APIRouter, Depends(), per-route metadata. Pydantic v1/v2 unwrapping via unwrapType (now also unwraps Annotated[...]); Path/Header/Cookie/Form scalar injection tokens skipped. Tests: TestFastAPIReqResp_AcceptsInputEdge, TestFastAPIReqResp_ReturnsEdgeResponseModel, TestFastAPIReqResp_ReturnsEdgeAnnotation, TestFastAPIReqResp_PrimitiveParamNoEdge, TestFastAPIReqResp_DependsQueryModelEdge, TestFastAPIReqResp_DependsExplicitModelEdge, TestFastAPIReqResp_AnnotatedQueryModelEdge, TestFastAPIReqResp_DependsProviderNoEdge, TestFastAPIReqResp_FullFixture. |
 | Request validation | ✅ `full` | `2026-05-30` | — | `internal/custom/python/fastapi.go`<br>`internal/custom/python/fastapi_reqresp.go`<br>`internal/custom/python/http_reqresp_generic.go` | fastapi.go extracts Depends() injection tokens (dependency-injection as validation). fastapi_reqresp.go extracts Pydantic body-parameter type annotations (ACCEPTS_INPUT) proving request validation at the type level. http_reqresp_generic.go handles pydantic model_validate/parse_obj/from_orm calls in handler bodies. Tests: TestFastAPI_Depends, TestFastAPIReqResp_AcceptsInput, TestFastAPIReqResp_FullFixture. |
 
 ### Middleware
@@ -75,7 +75,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Tests linkage | ✅ `full` | `2026-05-29` | 3051 | `internal/engine/tests_edges.go` | pytest.go extracts test funcs; multi-hop TESTS pass (#2987) links test-client calls through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go |
+| Tests linkage | ✅ `full` | `2026-05-29` | 3051 | `internal/custom/python/pytest.go`<br>`internal/engine/http_endpoint_e2e_testmap.go`<br>`internal/engine/tests_edges.go`<br>`internal/extractors/python/extractor.go` | pytest.go extracts test funcs; multi-hop TESTS pass (#2987) links test-client calls through ROUTES_TO to handlers; framework fixture tests in tests_edges_test.go. #4681 (epic #4615) — test→endpoint coverage-linkage for Python: (1) local-variable receiver typing in extractor.go (localReceiverTypes/receiverClass) types `v = ProposalViewSet(); v.get_counts(...)` so the enclosing named test_* function emits a resolved CALLS edge to ProposalViewSet.get_counts (mirrors TS/JS #4671); Python test_* funcs are already named call-bearing entities so NO synthetic test-scope owner is needed (unlike TS/JS). (2) route-hit test-client linkage (DRF self.client.get(url) / APIClient().post(url) / FastAPI TestClient(app).get / Flask app.test_client().get / pytest client.get) already lands a TESTS edge to the matching http_endpoint_definition via pytest.go e2e_route_calls -> http_endpoint_e2e_testmap.go (#4369). ComputeCoverage credits the endpoint via test->CALLS->handler + handler<-definition (no coverage-side change). Honest exclusion: shape-only assertion specs that never call the handler or hit a route get NO edge. Tests: issue4681_localvar_receiver_test.go (ViewSet/CBV/serializer + factory & shape-only negatives). |
 
 ### Observability
 
@@ -119,6 +119,14 @@ Auto-generated. Back to [summary](../summary.md).
 | Taint source detection | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
 | Template pattern catalog | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/template_pattern_pass.go`<br>`internal/substrate/template_pattern_python.go` | — |
 | Vulnerability finding | 🟢 `partial` | `2026-05-29` | 3045 | `internal/links/taint_flow.go`<br>`internal/substrate/taint_sites_python.go` | — |
+
+## Framework-specific
+
+### FastAPI Contract
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Effective contract | ✅ `full` | `2026-06-11` | [link](https://github.com/cajasmota/archigraph/issues/4709) | `internal/authposture/fastapi.go`<br>`internal/mcp/effective_contract_fastapi.go`<br>`internal/mcp/effective_contract_fastapi_4709_test.go`<br>`internal/mcp/effective_contract_fw_common.go`<br>`internal/mcp/effective_contract_registry.go`<br>`internal/substrate/branches.go` | #4709: the fastAPIContractResolver in the framework-pluggable effective_contract registry (#4601) composes the per-endpoint full contract for a FastAPI path-op from signals already on the graph (re-extracts nothing): request fields from the request_body_type Pydantic model (#4613) field members + Query/Path/Header scalars; per-branch response statuses from the Python branch analyzer (raised HTTPException(status_code=NNN) — branches.go pyHTTPStatusNumRe extended to status_code= here — plus the decorator status_code= success default and response_model= shape); auth posture from the new authposture fastapi resolver (Depends(get_current_user)/Security(scopes=[...])). Value-asserting test TestEffectiveContract_FastAPI_FullContract: Pydantic body fields + 201/404/409 branch statuses + response_model + authenticated posture. GAP: Query/Path scalar types are not on the flat props (names only). |
 
 ## Provenance
 

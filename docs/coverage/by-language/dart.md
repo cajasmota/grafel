@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # dart
 
-**Frameworks**: 2 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
+**Frameworks**: 3 · **Tools**: 1 · **ORMs**: 0 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -22,18 +22,25 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 ## Frameworks
 
 
+### Backend HTTP
+
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [shelf_router / dart_frog / conduit (Dart HTTP)](../detail/lang.dart.framework.shelf.md) | 🟡 3/6 | 🔴 0/1 | 🟡 3/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
+
+
 ### UI Frontend
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [Flutter](../detail/lang.dart.framework.flutter.md) | 🔴 0/3 | 🟢 1/1 | 🟡 14/24 | 🟡 5/8 | |
+| [Flutter](../detail/lang.dart.framework.flutter.md) | 🟢 3/3 | 🟢 1/1 | 🟡 14/24 | 🟡 5/8 | |
 
 
 ### Mobile
 
 | Name | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|
-| [graphql_flutter (GraphQL client)](../detail/lang.dart.framework.graphql-flutter.md) | 🔴 0/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
+| [graphql_flutter (GraphQL client)](../detail/lang.dart.framework.graphql-flutter.md) | 🟢 3/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/9 | |
 
 
 ## Tools
@@ -41,3 +48,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|---|
 | [pubspec.yaml](../detail/pkg.pubspec.md) | — | — | 🔴 | ✅ | — | |
+
+## Other
+
+| Name | Category | Status | Notes |
+|---|---|---|---|
+| [Dart (base language)](../detail/lang.dart.base.md) | [language](../by-category/language.md) | ✅ | |

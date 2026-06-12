@@ -15,38 +15,38 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Endpoint deprecation versioning | 🔴 `missing` | — | 3628 | — | — |
-| Endpoint pagination posture | 🔴 `missing` | `2026-06-02` | 3628 | `internal/engine/http_endpoint_pagination.go`<br>`internal/engine/http_endpoint_pagination_patterns.go`<br>`internal/engine/http_endpoint_pagination_test.go`<br>`internal/engine/http_endpoint_synthesis.go` | #3628: applyEndpointPagination stamps paginated/pagination_style/pagination_params via the cross-language parameters/parameter_schema fallback (limit+offset/page/cursor shape). No framework-specific pagination-class/ORM signal yet for this framework. |
-| Endpoint response codes | 🔴 `missing` | — | 3818 | — | — |
-| Endpoint synthesis | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Handler attribution | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Route extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Endpoint deprecation versioning | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
+| Endpoint pagination posture | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
+| Endpoint response codes | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
+| Endpoint synthesis | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
+| Handler attribution | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
+| Route extraction | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
 
 ### View
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| View rendering | 🔴 `missing` | — | view_rendering:#3628-not-yet-extracted | — | — |
+| View rendering | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
 
 ### Auth
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Auth coverage | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
 
 ### Validation
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
 | DTO extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request validation | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Request validation | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
 
 ### Middleware
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Middleware coverage | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Rate limit stamping | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
+| Middleware coverage | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
+| Rate limit stamping | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
 
 ### Testing
 
@@ -122,7 +122,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Pure function tagging | 🟢 `partial` | `2026-06-04` | — | `internal/links/pure_function_pass.go`<br>`internal/substrate/def_use_kotlin.go`<br>`internal/substrate/structural_kotlin_wave1_test.go` | #3872: the pure-function pass (internal/links/pure_function_pass.go, "zero per-language code") walks every function-like entity and tags those with no stamped effect set. Koin functions are tagged identically to siblings; the def-use proof for a module { single { … } } DSL fun body establishes the function entities it walks. PARTIAL (mirrors siblings): no Koin-specific memoization fixture asserted end-to-end yet. |
 | Reachability analysis | 🟢 `partial` | `2026-06-04` | — | `internal/links/reachability.go`<br>`internal/substrate/entry_points_kotlin.go`<br>`internal/substrate/structural_kotlin_wave1_test.go` | #3872: the framework-blind reachability BFS (internal/links/reachability.go) seeds on the Kotlin entry-point sniffer (internal/substrate/entry_points_kotlin.go); for Koin the seed is the public top-level module-defining fun. Value-asserting test asserts the EXACT library_export entry-point Ident for this framework’s idiom. |
 | Request shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
-| Request sink dataflow | 🔴 `missing` | — | 3958 | — | No dataflow sniffer covers this framework's request-binding forms yet. The Java sniffer (internal/substrate/dataflow_java.go, #3958) targets Spring MVC/WebFlux @RequestBody/@RequestParam/@PathVariable; Kotlin/Scala have no sniffer at all (no "kotlin"/"scala" slug registered). request_sink_dataflow remains a follow-up for these JVM frameworks. |
+| Request sink dataflow | — `not_applicable` | `2026-06-12` | 4924 | `internal/custom/kotlin/koin.go` | lang.kotlin.framework.koin is a dependency-injection container, not an HTTP server framework — server-side routing/handler/endpoint/auth/middleware/rate-limit/validation/view-rendering concerns do not apply (parity with Arrow). #4924: these inflated Kotlin 'missing' metrics. DI binding/injection-point/scope extraction is the real surface. |
 | Response shape extraction | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Sanitizer recognition | 🔴 `missing` | — | backfill:dictionary-completeness | — | — |
 | Schema drift detection | 🟢 `partial` | `2026-06-04` | [link](https://github.com/cajasmota/archigraph/issues/2771) | `internal/links/payload_drift.go`<br>`internal/mcp/payload_drift_tool.go`<br>`internal/substrate/payload_shapes.go`<br>`internal/substrate/payload_shapes_kotlin.go` | #3872: the framework-agnostic payload-drift pass dispatches sniffPayloadShapesKotlin by LANGUAGE slug (LanguageForPath->PayloadShapeSnifferFor), so Koin producer/consumer shapes feed the same drift join as siblings. PARTIAL (mirrors siblings): no Koin-specific drift fixture asserted end-to-end yet. |

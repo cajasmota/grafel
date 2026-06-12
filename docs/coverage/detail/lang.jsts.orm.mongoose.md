@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries_jsts.go` | — |
+| Query attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/orm_queries_jsts_mongoose_populate.go`<br>`internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_querybuilder_4335_4336_test.go` | #4336 Mongoose aggregate-fluent data-access effects: Model.aggregate([...]).lookup({...}) and Model.find().populate('field') -> db_read (distinctive aggregate/lookup/populate names bare-matched). Complements the JOINS_COLLECTION populate edge. effect_sinks_jsts.go jstsDBReadRe. |
 
 ### Migrations
 

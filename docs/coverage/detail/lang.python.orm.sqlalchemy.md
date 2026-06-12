@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-06-02` | — | `internal/engine/orm_queries_python.go`<br>`internal/extractors/cross/dbmap/orms.go`<br>`internal/extractors/cross/dbmap/query_builders.go`<br>`internal/extractors/cross/dbmap/query_builders_test.go` | ORM session.query attribution via orm_queries_python. #3628 area #3 ADDS the SQLAlchemy Core builder surface: select(table_obj) and table_obj.insert()/update()/delete() resolve the Table('name',...) object to its literal → ACCESSES_TABLE edges. Proven by TestSQLAlchemyCore* in query_builders_test.go. |
+| Query attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/orm_queries_python.go`<br>`internal/extractors/cross/dbmap/query_builders.go`<br>`internal/substrate/effect_sinks_python.go`<br>`internal/substrate/effect_sinks_querybuilder_4335_4336_test.go` | #4336 SQLAlchemy Core fluent-builder data-access effects: conn.execute(select(...)) / session.execute(text('SELECT ...')) -> db_read; conn.execute(insert()/update()/delete()) / text('INSERT|UPDATE|DELETE ...') -> db_write. Read/write disambiguated by the STATEMENT CONSTRUCTOR passed to .execute(), not the verb. Complements the #3628 ACCESSES_TABLE attribution. effect_sinks_python.go. |
 
 ### Migrations
 

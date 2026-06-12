@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | ✅ `full` | `2026-05-28` | — | `internal/engine/orm_queries_jsts.go` | — |
+| Query attribution | ✅ `full` | `2026-06-11` | — | `internal/engine/orm_queries_jsts.go`<br>`internal/substrate/effect_sinks_jsts.go`<br>`internal/substrate/effect_sinks_querybuilder_4335_4336_test.go` | #4335 fluent QueryBuilder data-access effects: createQueryBuilder('x').where().leftJoinAndSelect().getMany()/getOne()/getRawMany() -> db_read; .update()/.delete()...execute() -> db_write. Credited ONLY on a createQueryBuilder()-typed receiver (seeded + propagated across .where/.leftJoin/... shaper reassignments to a fixpoint) so plain array/Promise .execute()/.first() stays pure. Distinctive getMany/getRawMany bare; ambiguous execute/first gated. effect_sinks_jsts.go jstsBuilderDataAccessMatches. |
 
 ### Migrations
 
