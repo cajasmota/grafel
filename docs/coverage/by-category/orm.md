@@ -157,9 +157,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [ruby](../by-language/ruby.md) | [pg (Ruby driver)](../detail/lang.ruby.driver.postgres.md) | 🟡 1/4 | |
 | [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🟡 1/4 | |
 | [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🟡 1/4 | |
-| [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 7/10 | |
+| [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 8/10 | |
 | [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 4/7 | |
-| [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 8/11 | |
+| [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 9/11 | |
 | [rust](../by-language/rust.md) | [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/11 | |
 | [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/4 | |
 | [rust](../by-language/rust.md) | [cdrs / scylla-rust-driver](../detail/lang.rust.driver.cassandra.md) | 🟡 1/4 | |
@@ -168,9 +168,9 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [rust](../by-language/rust.md) | [mysql / mysql_async](../detail/lang.rust.driver.mysql.md) | 🟡 1/4 | |
 | [rust](../by-language/rust.md) | [neo4rs](../detail/lang.rust.driver.neo4j.md) | 🟡 3/6 | |
 | [rust](../by-language/rust.md) | [redis-rs](../detail/lang.rust.driver.redis.md) | 🟡 1/4 | |
-| [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 1/4 | |
+| [rust](../by-language/rust.md) | [rusqlite](../detail/lang.rust.orm.rusqlite.md) | 🟡 2/4 | |
 | [rust](../by-language/rust.md) | [sqlite (Rust)](../detail/lang.rust.driver.sqlite.md) | 🟡 1/4 | |
-| [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 4/7 | |
+| [rust](../by-language/rust.md) | [sqlx (Rust)](../detail/lang.rust.orm.sqlx.md) | 🟡 5/7 | |
 | [rust](../by-language/rust.md) | [tokio-postgres / postgres](../detail/lang.rust.driver.postgres.md) | 🟡 1/4 | |
 | [scala](../by-language/scala.md) | [Anorm](../detail/lang.scala.orm.anorm.md) | 🟡 3/6 | |
 | [scala](../by-language/scala.md) | [Doobie](../detail/lang.scala.orm.doobie.md) | 🟡 3/6 | |

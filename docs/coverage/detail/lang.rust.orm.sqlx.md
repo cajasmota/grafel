@@ -45,7 +45,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | 🔴 `missing` | — | 3628-transaction-function-stamping | — | — |
+| Transaction function stamping | ✅ `full` | `2026-06-12` | 5021 | `internal/custom/rust/transactions.go`<br>`internal/custom/rust/transactions_test.go` | #5021: sqlx `pool.begin()` / `conn.begin()` plus `tx.commit()` / `tx.rollback()` emit one SCOPE.Pattern/transaction_boundary stamping transactional=true, framework=sqlx, transaction_api=sqlx_begin|sqlx_commit, the db_handle receiver, and the enclosing fn via `function`. No transitive propagation (a fn receiving a Transaction handle is not stamped). Proven by TestRustTx_SqlxBegin. |
 
 ## Provenance
 
