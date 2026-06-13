@@ -283,9 +283,11 @@ impl Helper {
 	}
 }
 
-// TestJunTG_UnresolvedFieldNoEdge asserts a field referencing a type not declared
-// in the same file makes NO edge (honest same-file limit).
-func TestJunTG_UnresolvedFieldNoEdge(t *testing.T) {
+// TestJunTG_CrossFileEdge (#5109 axis b) asserts a field referencing a
+// capitalized object type NOT declared in the same file now emits a by-name
+// cross-file GRAPH_RELATES edge (cross_file=true) that the resolver binds via
+// its global by-name index to the target file's own type node.
+func TestJunTG_CrossFileEdge(t *testing.T) {
 	path := "partial.rs"
 	src := `
 use juniper::*;
@@ -294,13 +296,139 @@ use juniper::*;
 struct User {
     id: i32,
     external: Vec<RemoteThing>,
+    lower: Vec<notatype>,
 }
 `
 	ents := runJunTG(t, path, "rust", src)
-	if countJunTGEdges(ents) != 0 {
-		t.Errorf("unresolved cross-file type must produce no edge, got %d", countJunTGEdges(ents))
+	userRef := junTGRef(path, "User")
+	// External capitalized type -> by-name cross-file edge.
+	e := findJunTG(ents, userRef, "Kind:SCOPE.Schema:RemoteThing", "external")
+	if e == nil {
+		t.Fatal("missing cross-file User.external -> RemoteThing GRAPH_RELATES edge")
+	}
+	if e.Properties["cross_file"] != "true" {
+		t.Errorf("cross-file edge want cross_file=true, got %q", e.Properties["cross_file"])
+	}
+	if e.Properties["cardinality"] != "to_many" {
+		t.Errorf("cross-file edge want to_many, got %q", e.Properties["cardinality"])
+	}
+	// A lowercase same-file-unknown token is NOT a type -> no edge.
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Properties["field_name"] == "lower" {
+				t.Error("lowercase non-type token must not produce a cross-file edge")
+			}
+		}
 	}
 	if countJunTGNodes(ents, "User") != 1 {
 		t.Errorf("User node should still be emitted, got %d", countJunTGNodes(ents, "User"))
+	}
+}
+
+// TestJunTG_FieldAndTypeRename (#5109 axis a) asserts #[graphql(name = "...")]
+// on a type and on a field overrides the Rust ident in the recorded GraphQL
+// names and in the node/edge structural identity.
+func TestJunTG_FieldAndTypeRename(t *testing.T) {
+	path := "rename.rs"
+	src := `
+use juniper::*;
+
+#[derive(GraphQLObject)]
+#[graphql(name = "Account")]
+struct UserAccount {
+    id: i32,
+    #[graphql(name = "primaryOrders")]
+    orders: Vec<Order>,
+}
+
+#[derive(GraphQLObject)]
+struct Order { id: i32 }
+`
+	ents := runJunTG(t, path, "rust", src)
+	// Type renamed UserAccount -> Account.
+	if countJunTGNodes(ents, "Account") != 1 {
+		t.Fatalf("renamed type node Account expected once, got %d", countJunTGNodes(ents, "Account"))
+	}
+	if countJunTGNodes(ents, "UserAccount") != 0 {
+		t.Errorf("Rust ident UserAccount must not be the node name, got %d", countJunTGNodes(ents, "UserAccount"))
+	}
+	// Field renamed orders -> primaryOrders; edge keyed on GraphQL names.
+	accRef := junTGRef(path, "Account")
+	e := findJunTG(ents, accRef, junTGRef(path, "Order"), "primaryOrders")
+	if e == nil {
+		t.Fatal("missing renamed Account.primaryOrders -> Order edge")
+	}
+	if e.Properties["graphql_field"] != "Account.primaryOrders" {
+		t.Errorf("want graphql_field=Account.primaryOrders, got %q", e.Properties["graphql_field"])
+	}
+	// The Rust field name must not survive as the field_name.
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Properties["graphql_field"] == "Account.orders" {
+				t.Error("un-renamed Account.orders edge must not exist")
+			}
+		}
+	}
+}
+
+// TestJunTG_Interface (#5109 axis c) asserts a #[graphql_interface(for=[...])]
+// trait becomes an interface type node, implementing objects get
+// relation=implements GRAPH_RELATES edges, and a field typed as the interface
+// is a recognized edge target.
+func TestJunTG_Interface(t *testing.T) {
+	path := "iface.rs"
+	src := `
+use juniper::*;
+
+#[graphql_interface(for = [Human, Droid])]
+trait Character {
+    fn id(&self) -> i32;
+    fn friends(&self) -> Vec<Character>;
+}
+
+#[derive(GraphQLObject)]
+struct Human { id: i32 }
+
+#[derive(GraphQLObject)]
+struct Droid { id: i32 }
+
+#[derive(GraphQLObject)]
+struct Crew {
+    captain: Character,
+}
+`
+	ents := runJunTG(t, path, "rust", src)
+	// Interface node exists and is marked.
+	if countJunTGNodes(ents, "Character") != 1 {
+		t.Fatalf("interface node Character expected once, got %d", countJunTGNodes(ents, "Character"))
+	}
+	var ifaceMarked bool
+	for _, e := range ents {
+		if e.Name == "Character" && e.Properties["graphql_kind"] == "interface" {
+			ifaceMarked = true
+		}
+	}
+	if !ifaceMarked {
+		t.Error("Character node must carry graphql_kind=interface")
+	}
+	charRef := junTGRef(path, "Character")
+	// Implements edges Human->Character and Droid->Character.
+	for _, obj := range []string{"Human", "Droid"} {
+		found := false
+		for i := range ents {
+			for _, r := range ents[i].Relationships {
+				if r.ToID == charRef && r.FromID == junTGRef(path, obj) &&
+					r.Properties["relation"] == "implements" {
+					found = true
+				}
+			}
+		}
+		if !found {
+			t.Errorf("missing %s -> Character implements edge", obj)
+		}
+	}
+	// A field typed as the interface (Crew.captain: Character) is a target.
+	if findJunTG(ents, junTGRef(path, "Crew"), charRef, "captain") == nil {
+		t.Error("missing Crew.captain -> Character interface-target edge")
 	}
 }
