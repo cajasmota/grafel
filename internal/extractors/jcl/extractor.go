@@ -105,7 +105,22 @@ var (
 	// ddDsnRe matches the DSN= / DSNAME= operand of a DD statement.
 	// Group 1: dataset name (may be a qualified name like PROD.PAYROLL.MASTER
 	// or a temp name like &&TEMP).
-	ddDsnRe = regexp.MustCompile(`(?i)\bDSN(?:AME)?\s*=\s*([&A-Za-z0-9$#@.()-]+)`)
+	ddDsnRe = regexp.MustCompile(`(?i)\bDSN(?:AME)?\s*=\s*([&A-Za-z0-9$#@.()+-]+)`)
+
+	// gdgGenRe matches a GDG relative-generation suffix on a dataset name —
+	// `PROD.GDG(+1)` (next generation, a write), `(0)` (current), `(-1)`
+	// (prior generation, a read of an existing gen). Group 1: the GDG base
+	// (generation-data-group base name); group 2: the signed relative
+	// generation number (e.g. +1, 0, -1). A bare member that is not a signed
+	// integer (a PDS member, see pdsMemberRe) does not match.
+	gdgGenRe = regexp.MustCompile(`^(.+)\(([+-]?\d+)\)$`)
+
+	// pdsMemberRe matches a partitioned-data-set member reference —
+	// `DSN=PROD.LOADLIB(PAYROLL)` names the PAYROLL member of the PROD.LOADLIB
+	// library. Group 1: the library (PDS) name; group 2: the member name (1-8
+	// national/alphanumeric chars). A signed-integer parenthetical is a GDG
+	// generation (gdgGenRe), not a member.
+	pdsMemberRe = regexp.MustCompile(`^(.+)\(([A-Za-z$#@][A-Za-z0-9$#@]{0,7})\)$`)
 
 	// ddDispRe captures the leading DISP disposition token (NEW/OLD/SHR/MOD).
 	// Group 1: status.
@@ -183,6 +198,29 @@ var (
 	// Group 1: the raw order list (without the surrounding parens).
 	jcllibOrderRe = regexp.MustCompile(`(?i)\bORDER\s*=\s*\(([^)]*)\)`)
 	jcllibOneRe   = regexp.MustCompile(`(?i)\bORDER\s*=\s*([A-Za-z0-9$#@.]+)`)
+
+	// condRe matches a `COND=(code,op[,stepname])` operand on an EXEC card —
+	// the classic JCL step-skip predicate: the step is SKIPPED when the
+	// relation `<code> <op> <prior-step return code>` is TRUE (e.g.
+	// `COND=(4,LT,STEP1)` skips this step when 4 < STEP1's RC). Group 1: the
+	// comparison code; group 2: the operator (LT/LE/EQ/NE/GE/GT); group 3: the
+	// optional referenced step name (empty → tested against every prior step).
+	condRe = regexp.MustCompile(`(?i)\bCOND\s*=\s*\(\s*(\d+)\s*,\s*(LT|LE|EQ|NE|GE|GT)\s*(?:,\s*([A-Za-z$#@][A-Za-z0-9$#@.]*)\s*)?\)`)
+
+	// condOnlyRe matches the COND=EVEN / COND=ONLY abnormal-termination forms
+	// (run this step EVEN if a prior step abended / ONLY if one did). Group 1:
+	// the keyword.
+	condOnlyRe = regexp.MustCompile(`(?i)\bCOND\s*=\s*(EVEN|ONLY)\b`)
+
+	// ifCondRe matches the predicate of a `// IF (cond) THEN` control card.
+	// Group 1: the raw condition text between the parentheses (e.g.
+	// `STEP1.RC = 0`). The THEN keyword is optional in submitted JCL.
+	ifCondRe = regexp.MustCompile(`(?i)^\s*\(?(.*?)\)?\s*(?:\bTHEN\b)?\s*$`)
+
+	// restartRe matches the `RESTART=stepname` operand on a JOB card — the JOB
+	// is re-submitted starting at the named step; all steps BEFORE it are
+	// skipped. Group 1: the restart step (may be `proc.step` qualified).
+	restartRe = regexp.MustCompile(`(?i)\bRESTART\s*=\s*([A-Za-z$#@][A-Za-z0-9$#@.]*)`)
 )
 
 // symbolTable holds JCL symbolic-parameter values seeded by `// SET` cards and
@@ -340,6 +378,23 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 	currentStepIdx := -1
 	stepSeq := 0 // disambiguates anonymous steps for stable names
 
+	// #5043 concatenation tracking. A named DD opens a logical DD; nameless
+	// `//  DD DSN=...` continuation cards extend it. currentDDName is the open
+	// logical DD's ddname; ddConcatSeq counts the concatenants after the first.
+	currentDDName := ""
+	ddConcatSeq := 0
+
+	// #5044 conditional-flow tracking. stepNames preserves EXEC step order so a
+	// COND=/IF predicate can be wired to the prior step(s) and a RESTART= entry
+	// point can skip the steps before it. The open `// IF (cond) THEN` block's
+	// condition (ifCond) and branch (ifBranch: "then"/"else") tag the steps
+	// declared inside it.
+	var stepNames []string            // EXEC step names in declaration order
+	stepRefByName := map[string]int{} // step name → entity index
+	ifCond := ""                      // open IF predicate, "" when none
+	ifBranch := ""                    // "then" / "else" inside an open IF
+	restartStep := ""                 // RESTART= target step (upper), "" when none
+
 	// Symbolic-parameter table (#5042). Seeded job-wide by `// SET` cards and
 	// by a PROC statement's SYMBOL= default operands; an EXEC proc invocation's
 	// SYMBOL= operands override for that step. `&SYM` references in PGM=/PROC=/
@@ -409,7 +464,15 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 			jobIdx = len(entities)
 			procIdx = -1
 			currentStepIdx = -1
-			entities = append(entities, types.EntityRecord{
+			// #5044 RESTART=stepname: the job is re-submitted starting at the
+			// named step; all earlier steps are skipped. Record the restart
+			// point on the JOB and arm step-skip flagging for the steps below.
+			jobProps := map[string]string{}
+			if rm := restartRe.FindStringSubmatch(operands); rm != nil {
+				restartStep = strings.ToUpper(rm[1])
+				jobProps["restart"] = restartStep
+			}
+			job := types.EntityRecord{
 				Name:       name,
 				Kind:       "SCOPE.Component",
 				Subtype:    "job",
@@ -418,7 +481,11 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				StartLine:  st.startLine,
 				EndLine:    st.startLine,
 				Signature:  truncSig(st.text),
-			})
+			}
+			if len(jobProps) > 0 {
+				job.Properties = jobProps
+			}
+			entities = append(entities, job)
 
 		case "PROC":
 			// An inline PROC definition: `//NAME PROC ...`. A named PROC opens
@@ -472,10 +539,87 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				Properties: map[string]string{},
 			}
 
+			// A new step closes any open DD concatenation.
+			currentDDName = ""
+			ddConcatSeq = 0
+
 			// An EXEC proc,SYMBOL=override invocation overrides the symbol table
 			// for the proc body that follows. PGM/PROC keyword operands are
 			// harmlessly re-learned but are never referenced as &symbols.
 			symbols.learnPairs(operands)
+
+			// #5044 conditional flow — COND= step-skip predicate on the EXEC.
+			// `COND=(code,op[,step])` SKIPS this step when the relation holds
+			// against a prior step's return code; COND=EVEN/ONLY are the
+			// abnormal-termination forms. Record the predicate on the step and,
+			// when a specific prior step is named (or the immediately-preceding
+			// step is the implicit referent), emit a conditional PRECEDES edge
+			// FROM the referenced step TO this one carrying the condition.
+			if cm := condRe.FindStringSubmatch(operands); cm != nil {
+				code := cm[1]
+				op := strings.ToUpper(cm[2])
+				refStep := strings.ToUpper(cm[3])
+				step.Properties["cond"] = code + "," + op
+				if refStep != "" {
+					step.Properties["cond_step"] = refStep
+				}
+				condProps := map[string]string{
+					"line":      strconv.Itoa(st.startLine),
+					"flow":      "conditional",
+					"cond_code": code,
+					"cond_op":   op,
+					"cond_kind": "COND",
+					"to_step":   stepName,
+				}
+				// Wire FROM the named prior step (its RC is tested) to this step.
+				if refStep != "" {
+					if fromIdx, ok := stepRefByName[refStep]; ok {
+						ref := extractor.BuildOperationStructuralRef("jcl", filePath, stepName)
+						entities[fromIdx].Relationships = append(entities[fromIdx].Relationships,
+							types.RelationshipRecord{
+								ToID:       ref,
+								Kind:       string(types.RelationshipKindPrecedes),
+								Properties: condProps,
+							})
+					}
+				} else if len(stepNames) > 0 {
+					// No step named: tested against every prior step; attribute
+					// the predicate to the immediately-preceding step's edge.
+					prev := stepNames[len(stepNames)-1]
+					if fromIdx, ok := stepRefByName[prev]; ok {
+						condProps["cond_scope"] = "all_prior"
+						ref := extractor.BuildOperationStructuralRef("jcl", filePath, stepName)
+						entities[fromIdx].Relationships = append(entities[fromIdx].Relationships,
+							types.RelationshipRecord{
+								ToID:       ref,
+								Kind:       string(types.RelationshipKindPrecedes),
+								Properties: condProps,
+							})
+					}
+				}
+			} else if om := condOnlyRe.FindStringSubmatch(operands); om != nil {
+				step.Properties["cond"] = strings.ToUpper(om[1])
+			}
+
+			// #5044 — a step declared inside an open `// IF (cond) THEN ... ELSE`
+			// block carries the predicate + branch so its conditional grouping
+			// is visible (the IF/ELSE/ENDIF cards themselves emit no entity).
+			if ifCond != "" {
+				step.Properties["if_cond"] = ifCond
+				step.Properties["if_branch"] = ifBranch
+			}
+
+			// #5044 RESTART= step-skip: a JOB RESTART=stepX skips every step
+			// before stepX. Flag steps preceding the restart point as skipped on
+			// restart; flag the restart step itself as the entry point.
+			if restartStep != "" {
+				up := strings.ToUpper(stepName)
+				if up == restartStep {
+					step.Properties["restart_entry"] = "true"
+				} else if !restartReached(stepNames, restartStep) {
+					step.Properties["restart_skipped"] = "true"
+				}
+			}
 
 			// EXEC PGM=<program> — the cross-language bridge edge to COBOL.
 			if pm := execPgmRe.FindStringSubmatch(operands); pm != nil {
@@ -501,8 +645,8 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 					for _, callee := range scan.calls {
 						step.Properties["sysin_call"] = callee.member
 						step.Relationships = append(step.Relationships, types.RelationshipRecord{
-							ToID: callee.member,
-							Kind: "CALLS",
+							ToID:       callee.member,
+							Kind:       "CALLS",
 							Properties: callsProps(st.startLine, callee, prog),
 						})
 					}
@@ -562,7 +706,9 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				})
 			}
 
+			stepRefByName[strings.ToUpper(stepName)] = len(entities)
 			entities = append(entities, step)
+			stepNames = append(stepNames, strings.ToUpper(stepName))
 			// CONTAINS: job/proc → step.
 			ref := extractor.BuildOperationStructuralRef("jcl", filePath, stepName)
 			addContains(ownerForStep(), ref, stepName)
@@ -571,6 +717,21 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 			// A DD statement binds a dataset to the current step. Only DSN-
 			// bearing DDs name a real dataset (SYSOUT/DUMMY/instream `*` DDs
 			// have no DSN and are skipped for dataset-entity emission).
+			//
+			// #5043: a DD card may be the first card of a CONCATENATION — it is
+			// followed by one or more NAMELESS `//  DD DSN=...` continuation
+			// cards that add further datasets to the SAME logical DD (read in
+			// sequence). We track the logical DD's ddname: a named DD opens a
+			// new logical DD; a nameless DD card extends the most-recent one.
+			// Every concatenant carries Properties["ddname"] (the logical DD)
+			// and, beyond the first, concatenation_position / concatenated=true
+			// so the multi-DSN membership is visible on the graph.
+			if name != "" {
+				currentDDName = name
+				ddConcatSeq = 0
+			} else if currentDDName != "" {
+				ddConcatSeq++ // a nameless concatenation continuation card
+			}
 			dm := ddDsnRe.FindStringSubmatch(operands)
 			if dm == nil {
 				continue
@@ -580,14 +741,37 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 			// the outcome on the dataset entity Properties so a substitution /
 			// unresolved-symbol is visible on the node.
 			dsnProps := map[string]string{}
-			dsn := strings.ToUpper(strings.TrimRight(applySymbols(dm[1], dsnProps, "dataset"), "."))
+			rawDsn := strings.ToUpper(strings.TrimRight(applySymbols(dm[1], dsnProps, "dataset"), "."))
 			disp := ""
 			if dispM := ddDispRe.FindStringSubmatch(operands); dispM != nil {
 				disp = strings.ToUpper(dispM[1])
 			}
-			dsIdx := len(entities)
+
+			// #5043: split GDG relative generations and PDS members so the
+			// dataset identity carries the right granularity. A GDG `(+1)`
+			// resolves to the base name (the generation-data group) with a
+			// relative-generation property; `(+1)` also implies a write of a
+			// freshly-created generation. A PDS `LIB(MEMBER)` is modelled as a
+			// distinct library + member: the entity Name is the LIB(MEMBER)
+			// granular identity, with library / member properties.
+			dsn := rawDsn
+			gran := datasetGranularity(rawDsn)
+			for k, v := range gran.props {
+				dsnProps[k] = v
+			}
+			if gran.name != "" {
+				dsn = gran.name
+			}
+
 			dsProps := map[string]string{"dsn": dsn, "disp": disp}
-			for k, v := range dsnProps { // symbolic_source / symbolic_unresolved
+			if currentDDName != "" {
+				dsProps["ddname"] = currentDDName
+			}
+			if ddConcatSeq > 0 {
+				dsProps["concatenated"] = "true"
+				dsProps["concatenation_position"] = strconv.Itoa(ddConcatSeq)
+			}
+			for k, v := range dsnProps { // symbolic_source / symbolic_unresolved / gdg_* / pds_*
 				dsProps[k] = v
 			}
 			entities = append(entities, types.EntityRecord{
@@ -602,22 +786,36 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				Properties: dsProps,
 			})
 			// Attribute the dataset access to the current step. NEW/MOD =
-			// write; OLD/SHR/default = read. A dataset is also CONTAINS-ed by
-			// the step so it isn't an orphan node.
+			// write; OLD/SHR/default = read. A GDG (+n) relative generation is
+			// a freshly-created generation → a write even absent DISP=NEW. A
+			// dataset is also CONTAINS-ed by the step so it isn't an orphan.
 			if currentStepIdx >= 0 {
 				kind := string(types.RelationshipKindReadsFrom)
-				if disp == "NEW" || disp == "MOD" {
+				if disp == "NEW" || disp == "MOD" || gran.props["gdg_write"] == "true" {
 					kind = string(types.RelationshipKindWritesTo)
 				}
+				edgeProps := map[string]string{"dataset": dsn, "disp": disp}
+				if currentDDName != "" {
+					edgeProps["ddname"] = currentDDName
+				}
+				if ddConcatSeq > 0 {
+					edgeProps["concatenated"] = "true"
+				}
+				if g := gran.props["gdg_generation"]; g != "" {
+					edgeProps["gdg_generation"] = g
+					edgeProps["gdg_base"] = gran.props["gdg_base"]
+				}
+				if m := gran.props["pds_member"]; m != "" {
+					edgeProps["pds_member"] = m
+					edgeProps["pds_library"] = gran.props["pds_library"]
+				}
 				entities[currentStepIdx].Relationships = append(entities[currentStepIdx].Relationships,
-					types.RelationshipRecord{ToID: dsn, Kind: kind,
-						Properties: map[string]string{"dataset": dsn, "disp": disp}})
+					types.RelationshipRecord{ToID: dsn, Kind: kind, Properties: edgeProps})
 			}
 			// Extend the enclosing step's EndLine.
 			if currentStepIdx >= 0 && st.startLine > entities[currentStepIdx].EndLine {
 				entities[currentStepIdx].EndLine = st.startLine
 			}
-			_ = dsIdx
 
 		case "INCLUDE":
 			// `//  INCLUDE MEMBER=<name>` textually splices a PROCLIB/JCLLIB
@@ -679,6 +877,31 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 					}
 				}
 			}
+
+		case "IF":
+			// #5044 — `// IF (cond) THEN` opens a conditional block. Steps
+			// declared until the matching ELSE/ENDIF are tagged with this
+			// predicate + the "then" branch (the IF card emits no entity;
+			// the grouping is carried on the contained steps' Properties).
+			ifCond = strings.TrimSpace(ifCondRe.ReplaceAllString(operands, "$1"))
+			ifBranch = "then"
+			currentDDName = ""
+			ddConcatSeq = 0
+
+		case "ELSE":
+			// The complementary branch of the open IF block.
+			if ifCond != "" {
+				ifBranch = "else"
+			}
+			currentDDName = ""
+			ddConcatSeq = 0
+
+		case "ENDIF":
+			// Close the conditional block.
+			ifCond = ""
+			ifBranch = ""
+			currentDDName = ""
+			ddConcatSeq = 0
 		}
 
 		// Extend the JOB's EndLine to the furthest statement seen.
@@ -688,6 +911,63 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 	}
 
 	return entities
+}
+
+// datasetGran is the resolved granularity of a DSN operand: a refined entity
+// Name (when GDG/PDS granularity applies) plus the properties that record the
+// generation / library+member split. name=="" means the raw DSN stands.
+type datasetGran struct {
+	name  string
+	props map[string]string
+}
+
+// datasetGranularity splits #5043 GDG relative generations and PDS members
+// out of a (symbol-resolved, upper-cased) DSN. A GDG `PROD.GDG(+1)` yields the
+// base group name + gdg_base / gdg_generation properties (and gdg_write=true
+// for a `(+n)` next-generation create). A PDS `PROD.LOADLIB(PAYROLL)` keeps the
+// granular `LIB(MEMBER)` identity as the entity Name plus pds_library /
+// pds_member properties. A plain DSN returns an empty datasetGran.
+func datasetGranularity(dsn string) datasetGran {
+	g := datasetGran{props: map[string]string{}}
+	if !strings.HasSuffix(dsn, ")") {
+		return g
+	}
+	// GDG relative generation: the parenthetical is a signed integer.
+	if m := gdgGenRe.FindStringSubmatch(dsn); m != nil {
+		base := strings.TrimRight(m[1], ".")
+		gen := m[2]
+		g.name = base // the dataset identity is the GDG base group
+		g.props["gdg_base"] = base
+		g.props["gdg_generation"] = gen
+		// A positive relative generation `(+n)` creates a new generation — a
+		// write — even when DISP is omitted/defaulted.
+		if strings.HasPrefix(gen, "+") {
+			g.props["gdg_write"] = "true"
+		}
+		return g
+	}
+	// PDS member: the parenthetical is a member name.
+	if m := pdsMemberRe.FindStringSubmatch(dsn); m != nil {
+		lib := strings.TrimRight(m[1], ".")
+		member := m[2]
+		g.name = lib + "(" + member + ")" // granular library+member identity
+		g.props["pds_library"] = lib
+		g.props["pds_member"] = member
+		return g
+	}
+	return g
+}
+
+// restartReached reports whether the RESTART= target step has already appeared
+// in the steps seen so far — i.e. the restart entry point is at or before the
+// current position, so the current step is NOT skipped on restart.
+func restartReached(seen []string, target string) bool {
+	for _, s := range seen {
+		if s == target {
+			return true
+		}
+	}
+	return false
 }
 
 // firstPositionalProc returns a positional procedure name on an EXEC
