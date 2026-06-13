@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 172 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 1 · **C#**: 16 · **elixir**: 10 · **go**: 17 · **java**: 15 · **JS/TS**: 19 · **kotlin**: 7 · **nim**: 4 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
+**Total**: 176 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 5 · **C#**: 16 · **elixir**: 10 · **go**: 17 · **java**: 15 · **JS/TS**: 19 · **kotlin**: 7 · **nim**: 4 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -26,7 +26,11 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [clojure](../by-language/clojure.md) | [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🔴 0/11 | |
 | [clojure](../by-language/clojure.md) | [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🔴 0/11 | |
 | [clojure](../by-language/clojure.md) | [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🔴 0/11 | |
+| [crystal](../by-language/crystal.md) | [Avram (Lucky Crystal ORM)](../detail/lang.crystal.orm.avram.md) | 🟡 5/9 | |
+| [crystal](../by-language/crystal.md) | [Clear (Crystal ORM)](../detail/lang.crystal.orm.clear.md) | 🟡 5/9 | |
+| [crystal](../by-language/crystal.md) | [Crecto (Crystal ORM)](../detail/lang.crystal.orm.crecto.md) | 🟡 5/9 | |
 | [crystal](../by-language/crystal.md) | [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | ✅ 10/10 | |
+| [crystal](../by-language/crystal.md) | [Jennifer (Crystal ORM)](../detail/lang.crystal.orm.jennifer.md) | 🟡 5/9 | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 2/5 | |
 | [C#](../by-language/csharp.md) | [AutoMapper (.NET object-object mapper)](../detail/lang.csharp.mapper.automapper.md) | ✅ 1/1 | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 2/5 | |
