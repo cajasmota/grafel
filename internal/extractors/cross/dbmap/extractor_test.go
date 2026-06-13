@@ -297,6 +297,103 @@ func TestNoFSharpDBImportSkipped(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// EF Core (F#) DbSet table attribution (#5106, follow-up #5000)
+// ---------------------------------------------------------------------------
+
+// Happy path: DbSet member access + `query { for ... }` CE -> tables via the
+// DbSet member name (EF convention) and the [<Table>]/ToTable overrides.
+func TestEFCoreFSharpDbSetTables(t *testing.T) {
+	src := "module Data\n" +
+		"open Microsoft.EntityFrameworkCore\n" +
+		"\n" +
+		"[<Table(\"app_orders\")>]\n" +
+		"type Order = { Id: int; Total: decimal }\n" +
+		"type User = { Id: int; Name: string }\n" +
+		"type Audit = { Id: int }\n" +
+		"\n" +
+		"type AppDbContext() =\n" +
+		"    inherit DbContext()\n" +
+		"    [<DefaultValue>] val mutable Users : DbSet<User>\n" +
+		"    member val Orders : DbSet<Order> = null with get, set\n" +
+		"    member val Audits : DbSet<Audit> = null with get, set\n" +
+		"    override _.OnModelCreating(modelBuilder: ModelBuilder) =\n" +
+		"        modelBuilder.Entity<Audit>().ToTable(\"audit_log\") |> ignore\n" +
+		"\n" +
+		"let listUsers (ctx: AppDbContext) =\n" +
+		"    ctx.Users.Where(fun u -> u.Id > 0).ToList()\n" +
+		"\n" +
+		"let findOrders (ctx: AppDbContext) =\n" +
+		"    query { for o in ctx.Orders do select o }\n" +
+		"\n" +
+		"let addUser (ctx: AppDbContext) (u: User) =\n" +
+		"    ctx.Users.Add(u) |> ignore\n" +
+		"    ctx.SaveChanges() |> ignore\n" +
+		"\n" +
+		"let dropAudits (ctx: AppDbContext) =\n" +
+		"    ctx.Audits.RemoveRange(ctx.Audits) |> ignore\n"
+	recs := runExtract(t, "Data.fs", "fsharp", src)
+
+	// member-name convention: ctx.Users.ToList() -> SELECT Users.
+	sel := findByOpTable(t, recs, OpSelect, "Users")
+	assertAccessesTableEdge(t, sel)
+	if sel.Properties["orm"] != "efcore_fsharp" {
+		t.Errorf("orm=%q, want efcore_fsharp", sel.Properties["orm"])
+	}
+
+	// [<Table("app_orders")>] override + query CE read on ctx.Orders.
+	q := findByOpTable(t, recs, OpSelect, "app_orders")
+	assertAccessesTableEdge(t, q)
+
+	// write: ctx.Users.Add(...) -> INSERT Users.
+	ins := findByOpTable(t, recs, OpInsert, "Users")
+	assertAccessesTableEdge(t, ins)
+
+	// Fluent ToTable("audit_log") override + RemoveRange -> DELETE audit_log.
+	del := findByOpTable(t, recs, OpDelete, "audit_log")
+	assertAccessesTableEdge(t, del)
+}
+
+// Wrong-language no-op: the same DbSet/LINQ shapes in a non-F# file (no
+// `open Microsoft.EntityFrameworkCore` F# import token) yield nothing.
+func TestEFCoreFSharpWrongLanguageNoop(t *testing.T) {
+	// A C#-style file: no `open` import, so the F# import gate never fires and
+	// the efcore_fsharp entry is not selected.
+	src := "namespace App;\n" +
+		"public class AppDbContext {\n" +
+		"    public DbSet<User> Users { get; set; }\n" +
+		"}\n" +
+		"public class Repo {\n" +
+		"    public void List(AppDbContext ctx) { ctx.Users.ToList(); }\n" +
+		"}\n"
+	recs := runExtract(t, "Repo.cs", "csharp", src)
+	for _, r := range recs {
+		if r.Properties["orm"] == "efcore_fsharp" {
+			t.Errorf("unexpected efcore_fsharp entity in non-F# file: %+v", r)
+		}
+	}
+}
+
+// No-match no-op: an EF-imported F# file with a DbContext but no DbSet member
+// access (and accesses to non-DbSet members) yields no efcore_fsharp tables.
+func TestEFCoreFSharpNoMatchNoop(t *testing.T) {
+	src := "module Data\n" +
+		"open Microsoft.EntityFrameworkCore\n" +
+		"type AppDbContext() =\n" +
+		"    inherit DbContext()\n" +
+		"    [<DefaultValue>] val mutable Users : DbSet<User>\n" +
+		"\n" +
+		"let ping (ctx: AppDbContext) =\n" +
+		"    // accesses a NON-DbSet member -> must not attribute a table.\n" +
+		"    ctx.Database.CanConnect()\n"
+	recs := runExtract(t, "Data.fs", "fsharp", src)
+	for _, r := range recs {
+		if r.Properties["orm"] == "efcore_fsharp" {
+			t.Errorf("unexpected efcore_fsharp table for non-DbSet access: %+v", r)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // SQLAlchemy
 // ---------------------------------------------------------------------------
 

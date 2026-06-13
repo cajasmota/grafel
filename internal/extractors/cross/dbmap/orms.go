@@ -1127,6 +1127,19 @@ var ormOrder = []ormEntry{
 		detect:      detectDapperFSharp,
 	},
 	{
+		// EF Core (F#) DbSet table attribution (#5106, follow-up #5000). The
+		// table is named by the DbSet MEMBER (`ctx.Users.Where(...)`, the
+		// `query { for u in ctx.Users ... }` CE, `ctx.Users.Add(...)`), not a
+		// SQL string literal, so it cannot flow through detectRawSQL. The
+		// detector resolves member -> table (EF Core property-name convention,
+		// overridden by `[<Table("...")>]` / Fluent `ToTable("...")`) and emits
+		// ACCESSES_TABLE with the read/write op. Import marker:
+		// `open Microsoft.EntityFrameworkCore`.
+		name:        "efcore_fsharp",
+		importHints: []string{"microsoft.entityframeworkcore"},
+		detect:      detectEFCoreFSharp,
+	},
+	{
 		// Plain JDBC (java.sql / javax.sql). Hibernate/JPA keep their own
 		// entry below; this catches Statement.executeQuery("SELECT … FROM t")
 		// style raw SQL.
