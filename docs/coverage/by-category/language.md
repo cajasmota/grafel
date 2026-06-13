@@ -9,7 +9,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 |---|---|---|---|---|---|---|---|---|---|
 | [assembly](../by-language/assembly.md) | [ARM armasm](../detail/lang.assembly.toolchain.armasm.md) | ✅ | 🟢 | — | — | — | ✅ | 🟢 | |
 | [assembly](../by-language/assembly.md) | [GNU as (gas)](../detail/lang.assembly.toolchain.gnu-as.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |
-| [assembly](../by-language/assembly.md) | [MASM](../detail/lang.assembly.toolchain.masm.md) | ✅ | 🟢 | — | — | — | ✅ | 🟢 | |
+| [assembly](../by-language/assembly.md) | [MASM](../detail/lang.assembly.toolchain.masm.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |
 | [assembly](../by-language/assembly.md) | [NASM](../detail/lang.assembly.toolchain.nasm.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |
 | [assembly](../by-language/assembly.md) | [RISC-V as (gas)](../detail/lang.assembly.toolchain.riscv.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |
 | [clojure](../by-language/clojure.md) | [Clojure (base language)](../detail/lang.clojure.base.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |

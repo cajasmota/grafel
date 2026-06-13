@@ -159,6 +159,29 @@ var (
 	// The name may be bar-delimited (|.text|); group 1 is the raw name.
 	areaRE = regexp.MustCompile(`(?i)^\s*area\s+\|?([^,|\s]+)\|?`)
 
+	// masmStructRE matches the MASM STRUCT/STRUC record-type opener (#5055):
+	//   name STRUCT          name STRUC          (both spellings)
+	// Group 1 is the record-type name (no trailing colon). An optional
+	// alignment/non-unique argument may follow STRUCT and is ignored. Closed by
+	// a matching `name ENDS`. Modelled as SCOPE.Component(subtype=struct) to
+	// parallel the struct/record types extracted for high-level langs (cpp/
+	// csharp emit SCOPE.Component subtype=struct; erlang subtype=record).
+	masmStructRE = regexp.MustCompile(`(?i)^\s*([A-Za-z_$@?][A-Za-z0-9_$@?]*)\s+struct?\b`)
+
+	// masmSegmentRE matches the MASM SEGMENT directive opener (#5055):
+	//   name SEGMENT                       (full segment definition)
+	//   _DATA SEGMENT WORD PUBLIC 'DATA'   (with attributes — ignored)
+	// Group 1 is the segment name; closed by a matching `name ENDS`. Modelled
+	// as SCOPE.Component(subtype=section) to parallel the .text/.data sections
+	// and the armasm AREA directive.
+	masmSegmentRE = regexp.MustCompile(`(?i)^\s*([A-Za-z_$@?][A-Za-z0-9_$@?]*)\s+segment\b`)
+
+	// masmEndsRE matches the MASM `name ENDS` terminator (#5055) that closes a
+	// STRUCT/STRUC or SEGMENT block. The leading name is the block being closed.
+	// `ENDS` (segment/struct end) is distinct from `ENDP` (procedure end) and
+	// `END` (module end), so a dedicated anchored pattern avoids false hits.
+	masmEndsRE = regexp.MustCompile(`(?i)^\s*([A-Za-z_$@?][A-Za-z0-9_$@?]*)\s+ends\b`)
+
 	// equRE matches constant definitions across dialects:
 	//   .equ NAME, value     .set NAME, value
 	//   NAME = value
@@ -285,6 +308,7 @@ func extractAssembly(src, filePath, lang string) []types.EntityRecord {
 
 	entities = append(entities, buildIncludeEntities(filePath, scrubbed, lang)...)
 	entities = append(entities, buildSectionEntities(lines, filePath, lang)...)
+	entities = append(entities, buildMasmBlockEntities(lines, filePath, lang, dialect)...)
 	entities = append(entities, buildConstantEntities(scrubbed, filePath, lang)...)
 	entities = append(entities, buildProcedureEntities(lines, filePath, lang, dialect, exported, external)...)
 
@@ -516,6 +540,85 @@ func sectionName(line string) string {
 	}
 	_ = t
 	return ""
+}
+
+// -----------------------------------------------------------------------
+// MASM STRUCT / SEGMENT blocks (#5055)
+// -----------------------------------------------------------------------
+
+// buildMasmBlockEntities emits an entity for each MASM `name STRUCT`/`name
+// STRUC` record-type definition and each `name SEGMENT` segment directive,
+// both terminated by a matching `name ENDS`. A single linear scan tracks the
+// one open block (MASM does not nest STRUCT/SEGMENT in practice) so the
+// trailing `name ENDS` line can stamp the block's EndLine before the entity is
+// emitted.
+//
+//   - `name STRUCT` / `name STRUC` → SCOPE.Component(subtype=struct), paralleling
+//     the struct/record types extracted for high-level langs (cpp/csharp emit
+//     SCOPE.Component subtype=struct; erlang subtype=record). #5055.
+//   - `name SEGMENT`              → SCOPE.Component(subtype=section), paralleling
+//     the .text/.data sections and the armasm AREA directive.
+//
+// These spellings have no leading dot or trailing colon, so neither the
+// section nor the label/procedure paths claim them; the ENDS terminator is
+// `name ENDS`, distinct from procedure `ENDP` and module `END`.
+func buildMasmBlockEntities(lines []string, filePath, lang, dialect string) []types.EntityRecord {
+	var out []types.EntityRecord
+
+	// openBlock tracks the single currently-open STRUCT/SEGMENT, if any.
+	type openBlock struct {
+		name      string
+		kind      string // "struct" | "section"
+		startLine int
+		signature string
+	}
+	var open *openBlock
+
+	flush := func(endLine int) {
+		if open == nil {
+			return
+		}
+		out = append(out, types.EntityRecord{
+			Name:       open.name,
+			Kind:       "SCOPE.Component",
+			Subtype:    open.kind,
+			SourceFile: filePath,
+			Language:   lang,
+			StartLine:  open.startLine,
+			EndLine:    endLine,
+			Signature:  open.signature,
+			Properties: map[string]string{"dialect": dialect, "framing": "masm"},
+		})
+		open = nil
+	}
+
+	for i, raw := range lines {
+		line := raw
+
+		// `name ENDS` closes the open STRUCT or SEGMENT. Tested first because a
+		// SEGMENT name reused as the ENDS leading token must not be re-read as a
+		// new opener. ENDS is anchored (not ENDP/END), so this is unambiguous.
+		if m := masmEndsRE.FindStringSubmatch(line); m != nil {
+			flush(i + 1)
+			continue
+		}
+		if m := masmStructRE.FindStringSubmatch(line); m != nil {
+			flush(i + 1) // close any unterminated prior block defensively
+			open = &openBlock{name: m[1], kind: "struct", startLine: i + 1, signature: strings.TrimSpace(line)}
+			continue
+		}
+		if m := masmSegmentRE.FindStringSubmatch(line); m != nil {
+			flush(i + 1)
+			open = &openBlock{name: m[1], kind: "section", startLine: i + 1, signature: strings.TrimSpace(line)}
+			continue
+		}
+	}
+	// An unterminated block (no closing ENDS) still emits, spanning to its
+	// opener line, so a malformed/truncated file does not silently drop it.
+	if open != nil {
+		flush(open.startLine)
+	}
+	return out
 }
 
 // -----------------------------------------------------------------------

@@ -712,6 +712,77 @@ func TestExtractMASMStructured(t *testing.T) {
 	if c := byName(recs, "KMAX"); c == nil || c.Kind != "SCOPE.Constant" {
 		t.Errorf("KMAX EQU should be a constant; got %v", c)
 	}
+
+	// #5055 — `name STRUCT`/`ENDS` record type → SCOPE.Component(subtype=struct).
+	if s := byName(recs, "POINT"); s == nil {
+		t.Fatalf("POINT STRUCT not extracted")
+	} else {
+		if s.Kind != "SCOPE.Component" || s.Subtype != "struct" {
+			t.Errorf("POINT STRUCT kind/subtype = %q/%q want SCOPE.Component/struct", s.Kind, s.Subtype)
+		}
+		if s.Properties["framing"] != "masm" {
+			t.Errorf("POINT framing = %q want masm", s.Properties["framing"])
+		}
+		// ENDS must bound the struct span beyond its opener line.
+		if s.EndLine <= s.StartLine {
+			t.Errorf("POINT STRUCT span not closed by ENDS: start=%d end=%d", s.StartLine, s.EndLine)
+		}
+	}
+
+	// #5055 — `name SEGMENT`/`ENDS` directive → SCOPE.Component(subtype=section).
+	if seg := byName(recs, "_DATA"); seg == nil {
+		t.Fatalf("_DATA SEGMENT not extracted")
+	} else {
+		if seg.Kind != "SCOPE.Component" || seg.Subtype != "section" {
+			t.Errorf("_DATA SEGMENT kind/subtype = %q/%q want SCOPE.Component/section", seg.Kind, seg.Subtype)
+		}
+		if seg.EndLine <= seg.StartLine {
+			t.Errorf("_DATA SEGMENT span not closed by ENDS: start=%d end=%d", seg.StartLine, seg.EndLine)
+		}
+	}
+}
+
+// #5055 — STRUCT/SEGMENT no-op guards -------------------------------------
+
+// masmStructComponents returns SCOPE.Component records whose framing=masm,
+// i.e. the STRUCT/SEGMENT blocks introduced by #5055.
+func masmBlockComponents(recs []types.EntityRecord) []types.EntityRecord {
+	var out []types.EntityRecord
+	for _, r := range recs {
+		if r.Kind == "SCOPE.Component" && r.Properties["framing"] == "masm" {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
+// A non-MASM fixture (gas x86-64) contains no MASM STRUCT/SEGMENT blocks, so
+// the #5055 path must be a no-op for it — wrong-dialect input yields nothing.
+func TestMasmBlocksWrongDialectNoOp(t *testing.T) {
+	src := loadFixture(t, "x86_64_gas.s.fixture")
+	recs := extractAssembly(src, "boot.s", "assembly")
+	if blocks := masmBlockComponents(recs); len(blocks) != 0 {
+		t.Errorf("gas fixture should yield no MASM STRUCT/SEGMENT blocks; got %v", blocks)
+	}
+}
+
+// MASM source with PROC framing but no STRUCT/SEGMENT directives yields no
+// #5055 block components — no spurious matches on PROC/EQU/INCLUDE lines.
+func TestMasmBlocksNoMatchNoOp(t *testing.T) {
+	src := `INCLUDE windows.inc
+PUBLIC main
+KMAX EQU 100
+.code
+main PROC
+    call printf
+    ret
+main ENDP
+END
+`
+	recs := extractAssembly(src, "nomatch.asm", "assembly")
+	if blocks := masmBlockComponents(recs); len(blocks) != 0 {
+		t.Errorf("MASM without STRUCT/SEGMENT should yield no block components; got %v", blocks)
+	}
 }
 
 // ARM armasm structured directives (#4950) --------------------------------
