@@ -842,6 +842,85 @@ schema().drop(table("tags"))
 	}
 }
 
+// TestNimAllographerMigrations_FKAndColumnTypeAndDynamicTable proves the #5111
+// follow-up: (1) an FK chain added/dropped inside alter() yields a REFERENCES
+// edge + foreign_key props (add) or a drop_foreign op (drop); (2) add()/change()
+// re-extract the new column TYPE into new_column_type; (3) a const/let/var-bound
+// string-literal table name in drop(IDENT)/table(IDENT) is resolved to the
+// literal, while a truly dynamic (unbound) identifier is skipped.
+func TestNimAllographerMigrations_FKAndColumnTypeAndDynamicTable(t *testing.T) {
+	src := `
+import allographer/schema_builder
+
+const usersTbl = "users"
+let postsTbl = "posts"
+
+schema().alter(
+  table("posts").add(Column().integer("author_id").foreign("author_id").reference("id").on("users")),
+  table("posts").change(Column().string("title")),
+  table(postsTbl).dropForeign("author_id"),
+)
+
+schema().drop(usersTbl)
+schema().drop(unknownDynamicTbl)
+`
+	e, ok := extreg.Get("custom_nim_allographer_migrations")
+	if !ok {
+		t.Fatal("custom_nim_allographer_migrations not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("src/migrate.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	views := viewsOf(ents)
+
+	// (1a) add_column posts.author_id with FK -> users REFERENCES edge + props.
+	v := pickView(views, "add_column:posts.author_id", "add_column")
+	if v == nil {
+		t.Fatal("expected add_column posts.author_id op")
+	}
+	if v.props["foreign_key"] != "true" || v.props["fk_target"] != "users" || v.props["fk_column"] != "id" {
+		t.Errorf("expected FK props (foreign_key/fk_target=users/fk_column=id), got %+v", v.props)
+	}
+	if v.props["new_column_type"] != "integer" {
+		t.Errorf("expected new_column_type=integer, got %q", v.props["new_column_type"])
+	}
+	foundRef := false
+	for _, r := range v.rels {
+		if r.Kind == "REFERENCES" && r.ToID == "users" &&
+			r.Properties["fk_field"] == "author_id" && r.Properties["references"] == "id" {
+			foundRef = true
+		}
+	}
+	if !foundRef {
+		t.Errorf("expected REFERENCES edge posts->users (fk_field=author_id, references=id), got %+v", v.rels)
+	}
+
+	// (1b) drop_foreign posts.author_id op.
+	if v := pickView(views, "drop_foreign:posts.author_id", "drop_foreign"); v == nil ||
+		v.props["table"] != "posts" || v.props["column"] != "author_id" {
+		t.Errorf("expected drop_foreign posts.author_id, got %+v", v)
+	}
+
+	// (2) change() re-extracts new column type.
+	if v := pickView(views, "alter_column:posts.title", "alter_column"); v == nil ||
+		v.props["new_column_type"] != "string" {
+		t.Errorf("expected alter_column posts.title new_column_type=string, got %+v", v)
+	}
+
+	// (3) dynamic table name bound to a const string literal is resolved.
+	if v := pickView(views, "drop_table:users", "drop_table"); v == nil ||
+		v.props["table"] != "users" {
+		t.Errorf("expected drop_table users (resolved from const usersTbl), got %+v", v)
+	}
+	// (3b) an unbound dynamic identifier yields NO op (no fabrication).
+	for _, en := range ents {
+		if en.Properties["table"] == "unknownDynamicTbl" {
+			t.Errorf("unbound dynamic table name should be skipped, got entity %q", en.Name)
+		}
+	}
+}
+
 // TestNimAllographerMigrations_NonMigrationNoop proves a create-only schema (no
 // alter/drop) and arbitrary Nim are ignored by the migration extractor.
 func TestNimAllographerMigrations_NonMigrationNoop(t *testing.T) {
