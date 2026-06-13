@@ -32,8 +32,25 @@
 //	    - new XxxClient(...) — instantiation of a generated ClientBase proxy.
 //	  These are the WCF analogue of an outbound RPC call into a [ServiceContract].
 //
+//	Deepening (#5091):
+//	  - Binding config props: new BasicHttpBinding/NetTcpBinding/WSHttpBinding(...)
+//	    captured as transport_binding entities carrying endpoint_address (from a
+//	    co-located new EndpointAddress("...")) and security_mode (from
+//	    Security.Mode = SecurityMode.X or a *SecurityMode.X ctor arg).
+//	  - CreateChannel attribution: `var f = new ChannelFactory<IContract>(...)` +
+//	    `f.CreateChannel()` → a create_channel client_codegen entity with a USES
+//	    edge -> contract:<IContract>, attributing the produced channel to its
+//	    factory's contract.
+//	  - [FaultContract(typeof(X))] → a schema_extraction fault entity; when it
+//	    decorates an operation, a USES edge -> operation:<Op>.
+//	  - [ServiceBehavior(InstanceContextMode=..., ConcurrencyMode=...)] /
+//	    [OperationBehavior] → transport_binding entities with instancing/
+//	    concurrency metadata.
+//	  - [PrincipalPermission(...)] → an auth_coverage entity (declarative WCF
+//	    authorization demand).
+//
 // Registration key: "custom_csharp_wcf"
-// Issues #4968, #5004.
+// Issues #4968, #5004, #5091.
 package csharp
 
 import (
@@ -120,6 +137,81 @@ var (
 	reWCFClientCtor = regexp.MustCompile(
 		`new\s+([\w.]*Client)\s*\(`,
 	)
+
+	// --- #5091 deepening ---
+
+	// `var factory = new ChannelFactory<IContract>(...)` — captures the LHS
+	// variable so a later `factory.CreateChannel()` can be attributed back to
+	// the factory's contract. Capture 1 = var name, 2 = contract type arg.
+	reWCFChannelFactoryAssign = regexp.MustCompile(
+		`(?:var|ChannelFactory\s*<[\w.]+>)\s+(\w+)\s*=\s*new\s+ChannelFactory\s*<\s*([\w.]+)\s*>`,
+	)
+
+	// `factory.CreateChannel()` — the channel-producing call. Capture 1 = the
+	// receiver variable, attributed back to its ChannelFactory<T> via the
+	// assignment map above.
+	reWCFCreateChannel = regexp.MustCompile(
+		`(\w+)\s*\.\s*CreateChannel\s*\(`,
+	)
+
+	// Binding construction with optional endpoint address: the binding kind is
+	// captured generically, the address (next string arg in a ChannelFactory /
+	// EndpointAddress ctor) separately. Capture 1 = binding type.
+	reWCFBinding = regexp.MustCompile(
+		`new\s+(BasicHttpBinding|NetTcpBinding|WSHttpBinding|NetNamedPipeBinding|WebHttpBinding|NetMsmqBinding|WSDualHttpBinding)\s*\(`,
+	)
+
+	// SecurityMode on a binding: `binding.Security.Mode = SecurityMode.Transport;`
+	// or `new BasicHttpBinding(BasicHttpSecurityMode.Transport)`. Capture 1 =
+	// the mode token.
+	reWCFSecurityMode = regexp.MustCompile(
+		`(?:Security\s*\.\s*Mode\s*=\s*SecurityMode\s*\.\s*(\w+)|(?:BasicHttp|WSHttp|NetTcp)SecurityMode\s*\.\s*(\w+))`,
+	)
+
+	// Endpoint address: `new EndpointAddress("net.tcp://...")` or the address
+	// string passed to a ChannelFactory ctor. Capture 1 = the URI literal.
+	reWCFEndpointAddress = regexp.MustCompile(
+		`new\s+EndpointAddress\s*\(\s*["']([^"'\r\n]+)["']`,
+	)
+
+	// [FaultContract(typeof(X))] on an operation — a declared SOAP fault.
+	// Capture 1 = the fault type. We also want the operation it sits above, but
+	// since [FaultContract] always co-occurs with [OperationContract], the
+	// operation is captured by reWCFOperationContractWithFault below.
+	reWCFFaultContract = regexp.MustCompile(
+		`\[FaultContract\s*\(\s*typeof\s*\(\s*([\w.]+)\s*\)\s*\)\s*\]`,
+	)
+
+	// [FaultContract(typeof(X))] ... [OperationContract] ... Op(...) — binds a
+	// fault type to the operation it decorates. The attribute order is
+	// conventionally FaultContract then OperationContract (or vice-versa);
+	// allow either stacking. Capture 1 = fault type, 2 = operation name.
+	reWCFFaultOnOperation = regexp.MustCompile(
+		`\[FaultContract\s*\(\s*typeof\s*\(\s*([\w.]+)\s*\)\s*\)\s*\]\s*(?:\[[^\]\r\n]*\]\s*)*\[OperationContract\b[^\]]*\]\s*(?:public\s+|internal\s+)?(?:async\s+)?[\w.<>\[\]]+(?:\s*<[^>]+>)?\s+(\w+)\s*\(`,
+	)
+
+	// [ServiceBehavior(...)] on a service impl — instancing/concurrency config.
+	// Capture 1 = the attribute argument list (parsed for InstanceContextMode /
+	// ConcurrencyMode props).
+	reWCFServiceBehavior = regexp.MustCompile(
+		`\[ServiceBehavior\s*\(([^\]]*)\)\s*\]`,
+	)
+
+	// [OperationBehavior(...)] on an operation method. Capture 1 = method name.
+	reWCFOperationBehavior = regexp.MustCompile(
+		`\[OperationBehavior\b[^\]]*\]\s*(?:public\s+|internal\s+)?(?:async\s+)?[\w.<>\[\]]+(?:\s*<[^>]+>)?\s+(\w+)\s*\(`,
+	)
+
+	// [PrincipalPermission(...)] — declarative role/identity demand on an
+	// operation. Capture 1 = the attribute argument list (Role/Name).
+	reWCFPrincipalPermission = regexp.MustCompile(
+		`\[PrincipalPermission\s*\(([^\]]*)\)\s*\]`,
+	)
+
+	// Parse InstanceContextMode=/ConcurrencyMode= out of a [ServiceBehavior]
+	// argument list.
+	reWCFInstanceMode    = regexp.MustCompile(`InstanceContextMode\s*=\s*InstanceContextMode\s*\.\s*(\w+)`)
+	reWCFConcurrencyMode = regexp.MustCompile(`ConcurrencyMode\s*=\s*ConcurrencyMode\s*\.\s*(\w+)`)
 )
 
 // ---------------------------------------------------------------------------
@@ -149,7 +241,9 @@ func (e *wcfExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 	// Cheap gate: only WCF files carry these attributes / host types / client
 	// proxy idioms.
 	if !regexpAny(src, "[ServiceContract", "[OperationContract", "[DataContract",
-		"ServiceHost", "AddServiceModel", "ChannelFactory", "ClientBase") {
+		"ServiceHost", "AddServiceModel", "ChannelFactory", "ClientBase",
+		"[FaultContract", "[ServiceBehavior", "[OperationBehavior",
+		"[PrincipalPermission", "Binding", "CreateChannel") {
 		return nil, nil
 	}
 
@@ -306,6 +400,148 @@ func (e *wcfExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		ent := makeEntity("client:"+clientName, "SCOPE.Component", "client_codegen", file.Path, "csharp", line)
 		setProps(&ent, "framework", "wcf", "provenance", "INFERRED_FROM_CLIENT_CTOR",
 			"client_class", clientName, "proxy_kind", "client_ctor")
+		add(ent)
+	}
+
+	// -------------------------------------------------------------------------
+	// #5091 — binding config props + CreateChannel attribution + FaultContract +
+	// service/operation behaviors + declarative auth.
+	// -------------------------------------------------------------------------
+
+	// File-level binding configuration: the binding kind, an explicit endpoint
+	// address, and a security mode are captured into ONE transport_binding
+	// SCOPE.Pattern entity per binding kind so address/mode are queryable
+	// (previously bindings were only detected structurally). Honest: address +
+	// mode are file-scoped hints attached to the binding, not per-endpoint
+	// resolved.
+	bindingAddr := ""
+	if m := reWCFEndpointAddress.FindStringSubmatch(src); len(m) >= 2 {
+		bindingAddr = m[1]
+	}
+	bindingMode := ""
+	if m := reWCFSecurityMode.FindStringSubmatch(src); len(m) >= 1 {
+		for i := 1; i < len(m); i++ {
+			if m[i] != "" {
+				bindingMode = m[i]
+				break
+			}
+		}
+	}
+	for _, m := range reWCFBinding.FindAllStringSubmatchIndex(src, -1) {
+		binding := src[m[2]:m[3]]
+		line := lineOf(src, m[0])
+		ent := makeEntity("binding:"+binding+":"+itoa(line), "SCOPE.Pattern", "transport_binding", file.Path, "csharp", line)
+		setProps(&ent, "framework", "wcf", "provenance", "INFERRED_FROM_BINDING",
+			"binding_type", binding)
+		if bindingAddr != "" {
+			setProps(&ent, "endpoint_address", bindingAddr)
+		}
+		if bindingMode != "" {
+			setProps(&ent, "security_mode", bindingMode)
+		}
+		add(ent)
+	}
+
+	// CreateChannel attribution: map `var f = new ChannelFactory<IContract>(...)`
+	// var names to their contract, then attribute each `f.CreateChannel()` call
+	// back to that factory's contract via a USES edge on a created-channel
+	// entity. A CreateChannel on an unknown receiver is skipped (honest).
+	factoryVarContract := map[string]string{}
+	for _, m := range reWCFChannelFactoryAssign.FindAllStringSubmatch(src, -1) {
+		if len(m) >= 3 {
+			factoryVarContract[m[1]] = leafType(m[2])
+		}
+	}
+	for _, m := range reWCFCreateChannel.FindAllStringSubmatchIndex(src, -1) {
+		recv := src[m[2]:m[3]]
+		contract := factoryVarContract[recv]
+		if contract == "" {
+			continue
+		}
+		line := lineOf(src, m[0])
+		ent := makeEntity("create_channel:"+recv+":"+contract, "SCOPE.Component", "client_codegen", file.Path, "csharp", line)
+		setProps(&ent, "framework", "wcf", "provenance", "INFERRED_FROM_CREATE_CHANNEL",
+			"contract_type", contract, "proxy_kind", "create_channel", "factory_var", recv)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "contract:" + contract,
+			Kind: string(types.RelationshipKindUses),
+			Properties: map[string]string{
+				"contract_type": contract,
+				"framework":     "wcf",
+				"proxy_kind":    "create_channel",
+				"line":          itoa(line),
+			},
+		})
+		add(ent)
+	}
+
+	// [FaultContract(typeof(X))] — declared SOAP faults. We emit one fault entity
+	// per declaration, and when it sits on an operation, bind the fault type to
+	// that operation as a USES edge -> the operation. This is incremental
+	// fault-contract metadata on top of the framework-agnostic exception_flow.
+	faultOnOp := map[string]string{} // fault offset-marker not needed; map fault->op
+	for _, m := range reWCFFaultOnOperation.FindAllStringSubmatch(src, -1) {
+		if len(m) >= 3 {
+			faultOnOp[m[1]] = m[2]
+		}
+	}
+	for _, m := range reWCFFaultContract.FindAllStringSubmatchIndex(src, -1) {
+		fault := leafType(src[m[2]:m[3]])
+		if fault == "" {
+			continue
+		}
+		line := lineOf(src, m[0])
+		ent := makeEntity("fault_contract:"+fault+":"+itoa(line), "SCOPE.Schema", "schema_extraction", file.Path, "csharp", line)
+		setProps(&ent, "framework", "wcf", "provenance", "INFERRED_FROM_FAULT_CONTRACT",
+			"fault_type", fault)
+		if op := faultOnOp[src[m[2]:m[3]]]; op != "" {
+			setProps(&ent, "operation_name", op)
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				ToID: "operation:" + op,
+				Kind: string(types.RelationshipKindUses),
+				Properties: map[string]string{
+					"fault_type": fault,
+					"framework":  "wcf",
+					"line":       itoa(line),
+				},
+			})
+		}
+		add(ent)
+	}
+
+	// [ServiceBehavior(InstanceContextMode=..., ConcurrencyMode=...)] — service
+	// instancing/concurrency metadata captured onto a transport_binding entity.
+	for _, m := range reWCFServiceBehavior.FindAllStringSubmatchIndex(src, -1) {
+		args := src[m[2]:m[3]]
+		line := lineOf(src, m[0])
+		ent := makeEntity("service_behavior:"+itoa(line), "SCOPE.Pattern", "transport_binding", file.Path, "csharp", line)
+		setProps(&ent, "framework", "wcf", "provenance", "INFERRED_FROM_SERVICE_BEHAVIOR")
+		if mm := reWCFInstanceMode.FindStringSubmatch(args); len(mm) >= 2 {
+			setProps(&ent, "instance_context_mode", mm[1])
+		}
+		if mm := reWCFConcurrencyMode.FindStringSubmatch(args); len(mm) >= 2 {
+			setProps(&ent, "concurrency_mode", mm[1])
+		}
+		add(ent)
+	}
+
+	// [OperationBehavior(...)] — per-operation behavior metadata.
+	for _, m := range reWCFOperationBehavior.FindAllStringSubmatchIndex(src, -1) {
+		op := src[m[2]:m[3]]
+		line := lineOf(src, m[0])
+		ent := makeEntity("operation_behavior:"+op, "SCOPE.Pattern", "transport_binding", file.Path, "csharp", line)
+		setProps(&ent, "framework", "wcf", "provenance", "INFERRED_FROM_OPERATION_BEHAVIOR",
+			"operation_name", op)
+		add(ent)
+	}
+
+	// [PrincipalPermission(...)] — declarative WCF authorization demand.
+	for _, m := range reWCFPrincipalPermission.FindAllStringSubmatchIndex(src, -1) {
+		args := src[m[2]:m[3]]
+		line := lineOf(src, m[0])
+		ent := makeEntity("principal_permission:"+itoa(line), "SCOPE.Pattern", "auth_coverage", file.Path, "csharp", line)
+		setProps(&ent, "framework", "wcf", "provenance", "INFERRED_FROM_PRINCIPAL_PERMISSION",
+			"demand", strings.TrimSpace(args))
 		add(ent)
 	}
 

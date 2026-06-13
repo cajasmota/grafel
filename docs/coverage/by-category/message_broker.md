@@ -82,7 +82,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [elixir](../by-language/elixir.md) | [Phoenix Channels](../detail/msg.phoenix-channels.md) | 🔴 | ✅ | ✅ | 🟢 | 🔴 | |
 | [multi](../by-language/multi.md) | [GraphQL subscriptions](../detail/msg.graphql-subscriptions.md) | ✅ | ✅ | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Server-Sent Events](../detail/msg.sse.md) | ✅ | ✅ | — | — | ✅ | |
-| [multi](../by-language/multi.md) | [SignalR](../detail/msg.signalr.md) | 🔴 | ✅ | — | — | 🔴 | |
+| [multi](../by-language/multi.md) | [SignalR](../detail/msg.signalr.md) | 🔴 | ✅ | — | ✅ | 🔴 | |
 | [multi](../by-language/multi.md) | [WebSocket](../detail/msg.websocket.md) | ✅ | ✅ | ✅ | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [Django Channels](../detail/msg.django-channels.md) | — | — | ✅ | — | ✅ | |
 | [ruby](../by-language/ruby.md) | [Rails ActionCable](../detail/msg.actioncable.md) | — | — | ✅ | — | ✅ | |
