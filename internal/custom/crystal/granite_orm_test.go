@@ -292,6 +292,230 @@ end
 	}
 }
 
+// TestCrystalGraniteORM_AssociationOptions proves `has_many … through:`,
+// polymorphic (`as:`/`polymorphic: true`), and an explicit `foreign_key:`/
+// `class_name:` override are read onto the association entity + FK edge (#5032).
+func TestCrystalGraniteORM_AssociationOptions(t *testing.T) {
+	src := `
+class Membership < Granite::Base
+  table memberships
+  column id : Int64, primary: true
+end
+
+class Team < Granite::Base
+  table teams
+  column id : Int64, primary: true
+
+  has_many :memberships
+  has_many :users, through: :memberships
+  has_many :comments, as: :commentable
+end
+
+class Comment < Granite::Base
+  table comments
+  column id : Int64, primary: true
+
+  belongs_to :commentable, polymorphic: true
+  belongs_to :author, class_name: Account, foreign_key: author_id
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, err := e.Extract(context.Background(), gfi("src/team.cr", "crystal", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+
+	// through: on has_many :users.
+	through := ""
+	usersTarget := ""
+	polyAs := ""
+	polyFlag := ""
+	fkField := ""
+	classNameTarget := ""
+	for _, en := range ents {
+		if en.Subtype != "association" {
+			continue
+		}
+		switch en.Name {
+		case "users":
+			through = en.Properties["through"]
+			usersTarget = en.Properties["target"]
+		case "comments":
+			polyAs = en.Properties["poly_as"]
+		case "commentable":
+			polyFlag = en.Properties["polymorphic"]
+		case "author":
+			fkField = en.Properties["foreign_key"]
+			classNameTarget = en.Properties["target"]
+		}
+	}
+	if through != "memberships" {
+		t.Errorf("expected has_many :users through=memberships, got %q", through)
+	}
+	if usersTarget != "User" {
+		t.Errorf("expected has_many :users target=User (singularised), got %q", usersTarget)
+	}
+	if polyAs != "commentable" {
+		t.Errorf("expected has_many :comments poly_as=commentable, got %q", polyAs)
+	}
+	if polyFlag != "true" {
+		t.Errorf("expected belongs_to :commentable polymorphic=true, got %q", polyFlag)
+	}
+	if fkField != "author_id" {
+		t.Errorf("expected belongs_to :author foreign_key=author_id, got %q", fkField)
+	}
+	if classNameTarget != "Account" {
+		t.Errorf("expected belongs_to :author class_name target Account, got %q", classNameTarget)
+	}
+
+	// FK edge for belongs_to :author honours the override.
+	fkEdge := false
+	for _, en := range ents {
+		if en.Name == "Comment" && en.Subtype == "model" {
+			for _, r := range en.Relationships {
+				if r.Kind == "REFERENCES" && r.ToID == "Account" && r.Properties["fk_field"] == "author_id" {
+					fkEdge = true
+				}
+			}
+		}
+	}
+	if !fkEdge {
+		t.Error("expected REFERENCES edge Comment→Account (fk_field=author_id) from the foreign_key/class_name override")
+	}
+}
+
+// TestCrystalGraniteORM_ColumnOptions proves `default:`, `converter:`, and
+// `unique: true` column options are stamped (#5032 schema_extraction).
+func TestCrystalGraniteORM_ColumnOptions(t *testing.T) {
+	src := `
+class Setting < Granite::Base
+  table settings
+  column id : Int64, primary: true
+  column status : String, default: "active"
+  column data : JSON::Any, converter: Granite::Converters::Json(JSON::Any, String)
+  column slug : String, unique: true
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, _ := e.Extract(context.Background(), gfi("src/setting.cr", "crystal", src))
+	gotDefault, gotConverter, gotUnique := "", "", ""
+	for _, en := range ents {
+		if en.Subtype != "column" {
+			continue
+		}
+		switch en.Name {
+		case "status":
+			gotDefault = en.Properties["column_default"]
+		case "data":
+			gotConverter = en.Properties["converter"]
+		case "slug":
+			gotUnique = en.Properties["unique"]
+		}
+	}
+	if gotDefault != `"active"` {
+		t.Errorf("expected status column_default=\"active\", got %q", gotDefault)
+	}
+	if gotConverter == "" {
+		t.Errorf("expected data column converter stamped, got empty")
+	}
+	if gotUnique != "true" {
+		t.Errorf("expected slug column unique=true, got %q", gotUnique)
+	}
+}
+
+// TestCrystalGraniteORM_Lifecycle proves lifecycle callbacks (before_save,
+// after_create) and the validate macro emit SCOPE.Operation/function entities
+// stamped callback_type + model (#5032 model_lifecycle_extraction).
+func TestCrystalGraniteORM_Lifecycle(t *testing.T) {
+	src := `
+class User < Granite::Base
+  table users
+  column id : Int64, primary: true
+  column email : String
+
+  before_save :normalize_email
+  after_create :send_welcome
+  validate :email, "is required"
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, _ := e.Extract(context.Background(), gfi("src/user.cr", "crystal", src))
+	cbTypes := map[string]string{} // callback_type -> method
+	for _, en := range ents {
+		if en.Kind == "SCOPE.Operation" && en.Properties["framework"] == "granite" &&
+			en.Properties["provenance"] == "INFERRED_FROM_GRANITE_CALLBACK" {
+			if en.Properties["model"] != "User" {
+				t.Errorf("callback %q expected model=User, got %q", en.Name, en.Properties["model"])
+			}
+			cbTypes[en.Properties["callback_type"]] = en.Properties["callback_method"]
+		}
+	}
+	if cbTypes["before_save"] != "normalize_email" {
+		t.Errorf("expected before_save :normalize_email, got %q", cbTypes["before_save"])
+	}
+	if cbTypes["after_create"] != "send_welcome" {
+		t.Errorf("expected after_create :send_welcome, got %q", cbTypes["after_create"])
+	}
+	if _, ok := cbTypes["validate"]; !ok {
+		t.Error("expected a validate lifecycle entity")
+	}
+}
+
+// TestCrystalGraniteORM_Migrations proves `<Model>.migrator.create`/`.drop` and
+// raw CREATE/DROP TABLE exec SQL emit SCOPE.Evolution migration-op entities
+// (#5032 migration_parsing / migration_schema_ops).
+func TestCrystalGraniteORM_Migrations(t *testing.T) {
+	src := `
+class User < Granite::Base
+  table users
+  column id : Int64, primary: true
+end
+
+def setup
+  User.migrator.create
+  User.migrator.drop
+  Granite::Base.exec("CREATE TABLE audits (id BIGINT)")
+  Granite::Base.exec("DROP TABLE IF EXISTS legacy")
+  Unknown.migrator.create
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, _ := e.Extract(context.Background(), gfi("src/migrate.cr", "crystal", src))
+	ops := map[string]string{} // "op:table" -> migration_op
+	for _, en := range ents {
+		if en.Kind == "SCOPE.Evolution" && en.Properties["framework"] == "granite" {
+			ops[en.Properties["migration_op"]+":"+en.Properties["table"]] = en.Subtype
+		}
+	}
+	for _, want := range []string{"create_table:User", "drop_table:User", "create_table:audits", "drop_table:legacy"} {
+		if _, ok := ops[want]; !ok {
+			t.Errorf("expected SCOPE.Evolution migration op %q, got %v", want, ops)
+		}
+	}
+	// Unknown.migrator.create is NOT a declared model → not attributed.
+	if _, bad := ops["create_table:Unknown"]; bad {
+		t.Error("Unknown.migrator.create must not be attributed (not a declared model)")
+	}
+}
+
+// TestCrystalGraniteORM_MigrationNoMatchNoop proves a Granite model file with no
+// migration/exec calls emits no SCOPE.Evolution entity (honest no-match no-op).
+func TestCrystalGraniteORM_MigrationNoMatchNoop(t *testing.T) {
+	src := `
+class User < Granite::Base
+  table users
+  column id : Int64, primary: true
+end
+`
+	e, _ := extreg.Get("custom_crystal_granite_orm")
+	ents, _ := e.Extract(context.Background(), gfi("src/user.cr", "crystal", src))
+	for _, en := range ents {
+		if en.Kind == "SCOPE.Evolution" {
+			t.Errorf("expected no migration entity for a model with no schema ops, got %q", en.Name)
+		}
+	}
+}
+
 // TestCrystalGraniteORM_WrongLanguageNoop gates on language=="crystal".
 func TestCrystalGraniteORM_WrongLanguageNoop(t *testing.T) {
 	src := `class User < Granite::Base

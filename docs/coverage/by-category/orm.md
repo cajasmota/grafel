@@ -26,7 +26,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [clojure](../by-language/clojure.md) | [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🔴 0/11 | |
 | [clojure](../by-language/clojure.md) | [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🔴 0/11 | |
 | [clojure](../by-language/clojure.md) | [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🔴 0/11 | |
-| [crystal](../by-language/crystal.md) | [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | 🟡 7/10 | |
+| [crystal](../by-language/crystal.md) | [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | ✅ 10/10 | |
 | [C#](../by-language/csharp.md) | [AWSSDK.DynamoDBv2](../detail/lang.csharp.driver.dynamodb.md) | 🟡 2/5 | |
 | [C#](../by-language/csharp.md) | [AutoMapper (.NET object-object mapper)](../detail/lang.csharp.mapper.automapper.md) | ✅ 1/1 | |
 | [C#](../by-language/csharp.md) | [CassandraCSharpDriver](../detail/lang.csharp.driver.cassandra.md) | 🟡 2/5 | |

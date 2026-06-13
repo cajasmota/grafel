@@ -57,13 +57,31 @@
 //     SCOPE.Pattern/transaction_boundary entity (transactional=true), mirroring
 //     the Nim/Norm + Kotlin/Java @Transactional boundary shape.
 //
-// Honest exclusions / follow-ups (no fabricated schema — #5032):
-//   - `column` macro options beyond `primary: true` (converters, defaults) and
-//     index declarations are not yet read.
-//   - Granite migrations (`Granite::Migrator`, createTable/exec schema ops) are
-//     not yet parsed.
-//   - `has_many through:` / polymorphic associations and the explicit
-//     `foreign_key:` override remain deferred.
+// Granite deepening — migrations, through/polymorphic, FK override, lifecycle,
+// column options (#5032):
+//   - the `column <name> : <Type>, primary: true, auto: false, converter: …`
+//     option tail is now read: a `default: <v>` stamps column_default, a
+//     `converter: <C>` stamps converter, and `unique: true` stamps unique=true.
+//   - `has_many :posts, through: :memberships` stamps through (the join model)
+//     and `has_one/has_many/belongs_to :x, polymorphic: true` / `, as: :owner`
+//     stamps polymorphic=true + the polymorphic interface (poly_as) on the
+//     association entity.
+//   - an explicit `belongs_to :user, foreign_key: author_id : Int64` /
+//     `belongs_to user : User` override (and a `primary_key:`/class-name target)
+//     overrides the FK field + target on both the association entity and the
+//     REFERENCES edge — so the FK is exact rather than convention-derived.
+//   - Granite lifecycle callbacks — `before_save`/`after_create`/… and the
+//     `validate "msg" { … }` macro — each emit a SCOPE.Operation/function
+//     entity (callback_type + owning model), mirroring the Rails ActiveRecord
+//     callback shape.
+//   - Granite migrations: a `<Model>.migrator.create`/`.drop` call and raw
+//     `CREATE TABLE`/`DROP TABLE`/`ALTER TABLE` schema-op SQL inside a
+//     `Granite::Base.exec("…")` (or a model `.exec`) each emit a shared
+//     SCOPE.Evolution migration-op entity (create_table/drop_table/alter_table)
+//     mirroring the Nim Allographer + JS knex migration shape.
+//
+// Honest exclusions / follow-ups (no fabricated schema):
+//   - column index DECLARATIONS (separate `index` macro) are still not read.
 //   - Jennifer / Clear / Avram / Crecto ORMs are deferred to #4936.
 //
 // Registration key: "custom_crystal_granite_orm".
@@ -97,16 +115,57 @@ var (
 	graniteTableRe = regexp.MustCompile(
 		`(?m)^[ \t]*table\s+:?["']?([A-Za-z_]\w*)["']?`)
 
-	// graniteColumnRe matches a `column <name> : <Type>[, primary: true]` macro.
+	// graniteColumnRe matches a `column <name> : <Type>[, opts…]` macro.
 	// Group 1 = column name; group 2 = column type (`?` nilable marker trimmed
-	// by the caller); group 3 = the trailing options (scanned for `primary`).
+	// by the caller); group 3 = the trailing options (scanned for primary/
+	// default/converter/unique).
 	graniteColumnRe = regexp.MustCompile(
 		`(?m)^[ \t]*column\s+([a-z_]\w*)\s*:\s*([A-Za-z_][\w:]*\??)\s*(,.*)?$`)
 
+	// graniteColDefaultRe / graniteColConverterRe read the `default:`/`converter:`
+	// column options out of the option tail captured by graniteColumnRe group 3.
+	graniteColDefaultRe   = regexp.MustCompile(`\bdefault\s*:\s*([^,]+?)\s*(?:,|$)`)
+	graniteColConverterRe = regexp.MustCompile(`\bconverter\s*:\s*([A-Za-z_][\w:]*)`)
+	graniteColUniqueRe    = regexp.MustCompile(`\bunique\s*:\s*true\b`)
+
 	// graniteAssocRe matches a belongs_to / has_many / has_one association macro.
-	// Group 1 = association kind; group 2 = association name (symbol/string).
+	// Group 1 = association kind; group 2 = association name (symbol/string);
+	// group 3 = the trailing option tail (through:/polymorphic:/as:/foreign_key:/
+	// class_name:). A `belongs_to user : User`-style typed form is captured by the
+	// optional ` : Type` after the name.
 	graniteAssocRe = regexp.MustCompile(
-		`(?m)^[ \t]*(belongs_to|has_many|has_one)\s+:?["']?([a-z_]\w*)["']?`)
+		`(?m)^[ \t]*(belongs_to|has_many|has_one)\s+:?["']?([a-z_]\w*)["']?(?:\s*:\s*([A-Za-z_][\w:]*))?\s*(,.*)?$`)
+
+	// Association option recognisers, applied to the assoc option tail.
+	graniteAssocThroughRe   = regexp.MustCompile(`\bthrough\s*:\s*:?["']?([a-z_]\w*)`)
+	graniteAssocPolyRe      = regexp.MustCompile(`\bpolymorphic\s*:\s*true\b`)
+	graniteAssocAsRe        = regexp.MustCompile(`\bas\s*:\s*:?["']?([a-z_]\w*)`)
+	graniteAssocFKRe        = regexp.MustCompile(`\bforeign_key\s*:\s*:?["']?([a-z_]\w*)`)
+	graniteAssocClassNameRe = regexp.MustCompile(`\bclass_name\s*:\s*:?["']?([A-Za-z_][\w:]*)`)
+	granitePrimaryKeyOptRe  = regexp.MustCompile(`\bprimary_key\s*:\s*:?["']?([a-z_]\w*)`)
+
+	// graniteCallbackRe matches a Granite/ActiveRecord-style lifecycle callback
+	// macro (`before_save :method` / `after_create do … end`). Group 1 = the
+	// callback macro; group 2 = the (optional) target method symbol.
+	graniteCallbackRe = regexp.MustCompile(
+		`(?m)^[ \t]*(before_save|after_save|before_create|after_create|before_update|after_update|before_destroy|after_destroy|before_commit|after_commit|after_initialize|after_find)\b(?:\s+:?["']?([a-z_]\w*))?`)
+
+	// graniteValidateRe matches Granite's `validate "message" { … }` /
+	// `validate :field, "message"` validation macro. Group 1 = the field symbol
+	// when the `validate :field, …` form is used (else empty).
+	graniteValidateRe = regexp.MustCompile(
+		`(?m)^[ \t]*validate\b(?:\s+:?["']?([a-z_]\w*))?`)
+
+	// graniteMigratorRe matches a `<Model>.migrator.create`/`.drop` schema op.
+	// Group 1 = the model receiver; group 2 = the op (create|drop).
+	graniteMigratorRe = regexp.MustCompile(
+		`(?m)\b([A-Z]\w*)\s*\.\s*migrator\s*\.\s*(create|drop)\b`)
+
+	// graniteSchemaSQLRe matches a raw schema-op SQL string passed to an `.exec`
+	// call (`Granite::Base.exec("CREATE TABLE users (…)")`). Group 1 = the op
+	// keyword(s); group 2 = the target table name (quotes/backticks trimmed).
+	graniteSchemaSQLRe = regexp.MustCompile(
+		`(?is)\.exec\s*\(\s*["'` + "`" + `]\s*(CREATE\s+TABLE(?:\s+IF\s+NOT\s+EXISTS)?|DROP\s+TABLE(?:\s+IF\s+EXISTS)?|ALTER\s+TABLE)\s+["'` + "`" + `]?([A-Za-z_]\w*)`)
 
 	// graniteTimestampsRe matches the `timestamps` macro, Granite's helper that
 	// injects the conventional created_at/updated_at Time audit columns.
@@ -143,6 +202,16 @@ func graniteQueryOp(verb string) string {
 // type to be worth scanning, so we never misfire on arbitrary Crystal classes.
 func graniteHasModel(content string) bool {
 	return strings.Contains(content, "Granite::Base")
+}
+
+// graniteOptTrue reports whether the column option tail sets `<key>: true`.
+func graniteOptTrue(opts, key string) bool {
+	switch key {
+	case "unique":
+		return graniteColUniqueRe.MatchString(opts)
+	default:
+		return false
+	}
 }
 
 func (e *graniteORMExtractor) Extract(
@@ -186,15 +255,28 @@ func (e *graniteORMExtractor) Extract(
 			if a.kind != "belongs_to" {
 				continue
 			}
-			// belongs_to :user → REFERENCES User (CamelCased singular target).
-			target := camelize(a.name)
+			// belongs_to :user → REFERENCES User (CamelCased singular target),
+			// unless an explicit class_name:/typed target or foreign_key: override
+			// is given (#5032), in which case the override wins for an exact edge.
+			target := graniteAssocTarget(a)
+			fkField := a.name
+			if a.fkField != "" {
+				fkField = a.fkField
+			}
+			relProps := map[string]string{
+				"fk_field": fkField,
+				"to_model": target,
+			}
+			if a.primaryKy != "" {
+				relProps["primary_key"] = a.primaryKy
+			}
+			if a.poly {
+				relProps["polymorphic"] = "true"
+			}
 			rels = append(rels, types.RelationshipRecord{
-				ToID: target,
-				Kind: "REFERENCES",
-				Properties: map[string]string{
-					"fk_field": a.name,
-					"to_model": target,
-				},
+				ToID:       target,
+				Kind:       "REFERENCES",
+				Properties: relProps,
 			})
 		}
 		// Query attribution: model → its table, one edge per attributed op.
@@ -243,6 +325,15 @@ func (e *graniteORMExtractor) Extract(
 			if c.auto {
 				col.Properties["auto_timestamp"] = "true"
 			}
+			if c.def != "" {
+				col.Properties["column_default"] = c.def
+			}
+			if c.converter != "" {
+				col.Properties["converter"] = c.converter
+			}
+			if c.unique {
+				col.Properties["unique"] = "true"
+			}
 			col.ID = col.ComputeID()
 			out = append(out, col)
 		}
@@ -259,39 +350,139 @@ func (e *graniteORMExtractor) Extract(
 				"INFERRED_FROM_GRANITE_ASSOCIATION")
 			assoc.Properties["assoc_kind"] = a.kind
 			assoc.Properties["model"] = m.name
-			assoc.Properties["target"] = camelize(a.name)
+			assoc.Properties["target"] = graniteAssocTarget(a)
+			if a.through != "" {
+				assoc.Properties["through"] = a.through
+			}
+			if a.poly {
+				assoc.Properties["polymorphic"] = "true"
+			}
+			if a.polyAs != "" {
+				assoc.Properties["poly_as"] = a.polyAs
+			}
+			if a.fkField != "" {
+				assoc.Properties["foreign_key"] = a.fkField
+			}
+			if a.primaryKy != "" {
+				assoc.Properties["primary_key"] = a.primaryKy
+			}
 			assoc.ID = assoc.ComputeID()
 			out = append(out, assoc)
+		}
+
+		// 4b. lifecycle callbacks → SCOPE.Operation/function (mirrors the Rails
+		// ActiveRecord callback shape; #5032 model_lifecycle_extraction).
+		cbSeen := make(map[string]bool)
+		for _, cb := range m.callbacks {
+			key := cb.kind + ":" + cb.method
+			if cbSeen[key] {
+				continue
+			}
+			cbSeen[key] = true
+			name := m.name + "." + cb.kind
+			if cb.method != "" {
+				name += ":" + cb.method
+			}
+			ent := types.EntityRecord{
+				Name:       name,
+				Kind:       "SCOPE.Operation",
+				Subtype:    "function",
+				SourceFile: file.Path,
+				Language:   "crystal",
+				StartLine:  cb.line,
+				EndLine:    cb.line,
+				Properties: map[string]string{
+					"framework":     "granite",
+					"provenance":    "INFERRED_FROM_GRANITE_CALLBACK",
+					"callback_type": cb.kind,
+					"model":         m.name,
+				},
+			}
+			if cb.method != "" {
+				ent.Properties["callback_method"] = cb.method
+			}
+			ent.ID = ent.ComputeID()
+			out = append(out, ent)
 		}
 	}
 
 	// 5. transaction boundaries: one SCOPE.Pattern/transaction_boundary per
 	// `<db>.transaction do … end` block.
 	out = append(out, collectGraniteTransactions(src, file.Path)...)
+
+	// 6. migration schema ops: `<Model>.migrator.create`/`.drop` calls + raw
+	// CREATE/DROP/ALTER TABLE SQL passed to `.exec(...)` (#5032).
+	out = append(out, collectGraniteMigrations(src, file.Path, modelNames)...)
 	return out, nil
+}
+
+// graniteAssocTarget resolves the target model class for an association: an
+// explicit `class_name:`/typed `belongs_to x : T` override wins, otherwise the
+// CamelCased (singularised for plural has_many) association name.
+func graniteAssocTarget(a graniteAssoc) string {
+	if a.target != "" {
+		return a.target
+	}
+	name := a.name
+	if a.kind == "has_many" {
+		name = graniteSingular(name)
+	}
+	return camelize(name)
+}
+
+// graniteSingular is a small, honest pluralisation inverse for the common
+// `has_many :posts` → Post case (trailing `ies` → `y`, `ses`/`xes` → drop `es`,
+// plain trailing `s` → drop). Irregulars are left as-is (no fabricated mapping).
+func graniteSingular(s string) string {
+	switch {
+	case strings.HasSuffix(s, "ies") && len(s) > 3:
+		return s[:len(s)-3] + "y"
+	case strings.HasSuffix(s, "ses") || strings.HasSuffix(s, "xes") || strings.HasSuffix(s, "zes"):
+		return s[:len(s)-2]
+	case strings.HasSuffix(s, "s") && len(s) > 1:
+		return s[:len(s)-1]
+	default:
+		return s
+	}
 }
 
 // graniteModel is a parsed Granite model with its table, columns, associations.
 type graniteModel struct {
-	name    string
-	table   string
-	line    int
-	columns []graniteColumn
-	assocs  []graniteAssoc
+	name      string
+	table     string
+	line      int
+	columns   []graniteColumn
+	assocs    []graniteAssoc
+	callbacks []graniteCallback
 }
 
 type graniteColumn struct {
-	name    string
-	typ     string
-	primary bool
-	auto    bool // synthesised by the `timestamps` macro (created_at/updated_at)
-	line    int
+	name      string
+	typ       string
+	primary   bool
+	auto      bool // synthesised by the `timestamps` macro (created_at/updated_at)
+	def       string
+	converter string
+	unique    bool
+	line      int
 }
 
 type graniteAssoc struct {
-	kind string // belongs_to / has_many / has_one
-	name string
-	line int
+	kind      string // belongs_to / has_many / has_one
+	name      string
+	through   string // join model for `has_many … through:`
+	poly      bool   // `polymorphic: true`
+	polyAs    string // `as: :owner` polymorphic interface
+	fkField   string // explicit `foreign_key:` / typed `belongs_to x : T` override
+	target    string // explicit target model (class_name: / typed override)
+	primaryKy string // explicit `primary_key:` override
+	line      int
+}
+
+type graniteCallback struct {
+	kind   string // before_save / after_create / … / validate
+	method string // target method symbol (may be empty for block/anonymous form)
+	line   int
 }
 
 // collectGraniteModels finds every `class T < Granite::Base` declaration and the
@@ -321,11 +512,20 @@ func collectGraniteModels(src string) []graniteModel {
 			if cm[6] >= 0 {
 				opts = body[cm[6]:cm[7]]
 			}
-			primary := strings.Contains(opts, "primary")
-			cline := bodyStartLine + strings.Count(body[:cm[0]], "\n")
-			gm.columns = append(gm.columns, graniteColumn{
-				name: cname, typ: ctyp, primary: primary, line: cline,
-			})
+			col := graniteColumn{
+				name:    cname,
+				typ:     ctyp,
+				primary: strings.Contains(opts, "primary"),
+				unique:  graniteOptTrue(opts, "unique"),
+				line:    bodyStartLine + strings.Count(body[:cm[0]], "\n"),
+			}
+			if dm := graniteColDefaultRe.FindStringSubmatch(opts); dm != nil {
+				col.def = strings.TrimSpace(dm[1])
+			}
+			if cv := graniteColConverterRe.FindStringSubmatch(opts); cv != nil {
+				col.converter = cv[1]
+			}
+			gm.columns = append(gm.columns, col)
 		}
 		// The `timestamps` macro injects created_at/updated_at Time audit columns.
 		if tsLoc := graniteTimestampsRe.FindStringIndex(body); tsLoc != nil {
@@ -337,12 +537,59 @@ func collectGraniteModels(src string) []graniteModel {
 			}
 		}
 		for _, am := range graniteAssocRe.FindAllStringSubmatchIndex(body, -1) {
-			akind := body[am[2]:am[3]]
-			aname := body[am[4]:am[5]]
-			aline := bodyStartLine + strings.Count(body[:am[0]], "\n")
-			gm.assocs = append(gm.assocs, graniteAssoc{
-				kind: akind, name: aname, line: aline,
-			})
+			a := graniteAssoc{
+				kind: body[am[2]:am[3]],
+				name: body[am[4]:am[5]],
+				line: bodyStartLine + strings.Count(body[:am[0]], "\n"),
+			}
+			// `belongs_to user : User` typed form → explicit target class.
+			if am[6] >= 0 {
+				a.target = body[am[6]:am[7]]
+			}
+			opts := ""
+			if am[8] >= 0 {
+				opts = body[am[8]:am[9]]
+			}
+			if tm := graniteAssocThroughRe.FindStringSubmatch(opts); tm != nil {
+				a.through = tm[1]
+			}
+			if graniteAssocPolyRe.MatchString(opts) {
+				a.poly = true
+			}
+			if asm := graniteAssocAsRe.FindStringSubmatch(opts); asm != nil {
+				a.poly = true
+				a.polyAs = asm[1]
+			}
+			if fm := graniteAssocFKRe.FindStringSubmatch(opts); fm != nil {
+				a.fkField = fm[1]
+			}
+			if cm := graniteAssocClassNameRe.FindStringSubmatch(opts); cm != nil {
+				a.target = cm[1]
+			}
+			if pm := granitePrimaryKeyOptRe.FindStringSubmatch(opts); pm != nil {
+				a.primaryKy = pm[1]
+			}
+			gm.assocs = append(gm.assocs, a)
+		}
+		for _, cb := range graniteCallbackRe.FindAllStringSubmatchIndex(body, -1) {
+			c := graniteCallback{
+				kind: body[cb[2]:cb[3]],
+				line: bodyStartLine + strings.Count(body[:cb[0]], "\n"),
+			}
+			if cb[4] >= 0 {
+				c.method = body[cb[4]:cb[5]]
+			}
+			gm.callbacks = append(gm.callbacks, c)
+		}
+		for _, vm := range graniteValidateRe.FindAllStringSubmatchIndex(body, -1) {
+			c := graniteCallback{
+				kind: "validate",
+				line: bodyStartLine + strings.Count(body[:vm[0]], "\n"),
+			}
+			if vm[2] >= 0 {
+				c.method = body[vm[2]:vm[3]]
+			}
+			gm.callbacks = append(gm.callbacks, c)
 		}
 		models = append(models, gm)
 	}
@@ -442,6 +689,74 @@ func collectGraniteTransactions(src, path string) []types.EntityRecord {
 		}
 		ent.ID = ent.ComputeID()
 		out = append(out, ent)
+	}
+	return out
+}
+
+// collectGraniteMigrations emits a shared SCOPE.Evolution migration-op entity
+// per Granite schema op: a `<Model>.migrator.create`/`.drop` call (the model's
+// table is the op target) and a raw `CREATE/DROP/ALTER TABLE <name>` SQL string
+// passed to an `.exec(...)` call. Mirrors the Nim Allographer + JS knex
+// migration shape so the engine migration-schema-ops pass can converge op→table.
+func collectGraniteMigrations(src, path string, modelNames map[string]bool) []types.EntityRecord {
+	var out []types.EntityRecord
+	seen := make(map[string]bool)
+	emit := func(op, table string, line int) {
+		if table == "" {
+			return
+		}
+		name := op + ":" + table
+		if seen[name] {
+			return
+		}
+		seen[name] = true
+		ent := types.EntityRecord{
+			Name:       name,
+			Kind:       "SCOPE.Evolution",
+			Subtype:    op,
+			SourceFile: path,
+			Language:   "crystal",
+			StartLine:  line,
+			EndLine:    line,
+			Properties: map[string]string{
+				"framework":    "granite",
+				"migration_op": op,
+				"table":        table,
+				"provenance":   "INFERRED_FROM_GRANITE_MIGRATION",
+			},
+		}
+		ent.ID = ent.ComputeID()
+		out = append(out, ent)
+	}
+
+	// `<Model>.migrator.create`/`.drop` — the op targets the model name (the
+	// shared resolver binds it to the model's table convergence node). Only a
+	// receiver naming a model declared in the file is attributed (honest).
+	for _, m := range graniteMigratorRe.FindAllStringSubmatchIndex(src, -1) {
+		recv := src[m[2]:m[3]]
+		if !modelNames[recv] {
+			continue
+		}
+		verb := src[m[4]:m[5]]
+		op := "create_table"
+		if verb == "drop" {
+			op = "drop_table"
+		}
+		emit(op, recv, strings.Count(src[:m[0]], "\n")+1)
+	}
+
+	// Raw schema-op SQL: `.exec("CREATE TABLE users (…)")` / DROP / ALTER.
+	for _, m := range graniteSchemaSQLRe.FindAllStringSubmatchIndex(src, -1) {
+		kw := strings.ToUpper(strings.Fields(src[m[2]:m[3]])[0])
+		table := src[m[4]:m[5]]
+		op := "alter_table"
+		switch kw {
+		case "CREATE":
+			op = "create_table"
+		case "DROP":
+			op = "drop_table"
+		}
+		emit(op, table, strings.Count(src[:m[0]], "\n")+1)
 	}
 	return out
 }
