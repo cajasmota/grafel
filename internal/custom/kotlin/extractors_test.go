@@ -551,6 +551,179 @@ class PromptFactory {
 	}
 }
 
+// #5103: nested-field placeholders `{{user.name}}` resolve the LEADING
+// identifier to its fun parameter while recording the dotted field path.
+func TestLangChain4jPromptTemplateNestedField(t *testing.T) {
+	src := `
+interface Assistant {
+    @SystemMessage("Greet {{user.name}} from {{user.address.city}} as a {{role}}.")
+    fun chat(user: Customer, @V("role") position: String): String
+}
+`
+	e, _ := extreg.Get("custom_kotlin_langchain4j")
+	ents, err := e.Extract(context.Background(), fi("Assistant.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	var sys *types.EntityRecord
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Pattern" && ents[i].Name == "chat.system_message" {
+			sys = &ents[i]
+		}
+	}
+	if sys == nil {
+		t.Fatal("expected chat.system_message prompt pattern")
+	}
+	// Leading identifier `user` binds the `user` param by name; `role` -> position.
+	if got := sys.Properties["template_var.user"]; got != "user" {
+		t.Errorf("template_var.user: got %q, want %q", got, "user")
+	}
+	if got := sys.Properties["template_var.role"]; got != "position" {
+		t.Errorf("template_var.role: got %q, want %q", got, "position")
+	}
+	// `user` deduped to one var even though referenced via two field paths.
+	if got := sys.Properties["template_var_count"]; got != "2" {
+		t.Errorf("template_var_count: got %q, want 2 (user,role)", got)
+	}
+	// Nested-field paths recorded for `user`.
+	if got := sys.Properties["template_var_path.user"]; got != "user.name,user.address.city" {
+		t.Errorf("template_var_path.user: got %q", got)
+	}
+	if got := sys.Properties["has_nested_fields"]; got != "true" {
+		t.Errorf("has_nested_fields: got %q, want true", got)
+	}
+	if got := sys.Properties["template_nested_fields"]; got != "user.name,user.address.city" {
+		t.Errorf("template_nested_fields: got %q", got)
+	}
+	// The DEPENDS_ON edge for `user` carries the nested-field marker + path.
+	var userEdge *types.RelationshipRecord
+	for i := range sys.Relationships {
+		if sys.Relationships[i].Properties["template_var"] == "user" {
+			userEdge = &sys.Relationships[i]
+		}
+	}
+	if userEdge == nil {
+		t.Fatal("expected DEPENDS_ON edge for user")
+	}
+	if userEdge.ToID != "user" {
+		t.Errorf("user edge ToID: got %q, want user", userEdge.ToID)
+	}
+	if userEdge.Properties["nested_field"] != "true" {
+		t.Errorf("user edge nested_field: got %q, want true", userEdge.Properties["nested_field"])
+	}
+	if userEdge.Properties["field_path"] != "user.name,user.address.city" {
+		t.Errorf("user edge field_path: got %q", userEdge.Properties["field_path"])
+	}
+	// The plain `role` var carries no nested-field marker.
+	for i := range sys.Relationships {
+		r := sys.Relationships[i]
+		if r.Properties["template_var"] == "role" && r.Properties["nested_field"] != "" {
+			t.Errorf("role edge should not be marked nested_field, got %q", r.Properties["nested_field"])
+		}
+	}
+}
+
+// #5103: resource-loaded templates `PromptTemplate.from(loadResource("x.txt"))`
+// are captured structurally with template_source=resource + the resource path;
+// the external body is not read so no template vars are resolved.
+func TestLangChain4jPromptTemplateResource(t *testing.T) {
+	src := `
+class PromptFactory {
+    fun build(): PromptTemplate {
+        val sys = PromptTemplate.from(loadResource("prompts/system.txt"))
+        return sys
+    }
+}
+`
+	e, _ := extreg.Get("custom_kotlin_langchain4j")
+	ents, err := e.Extract(context.Background(), fi("PromptFactory.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	var rt *types.EntityRecord
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Pattern" && ents[i].Name == "sys.prompt_template" {
+			rt = &ents[i]
+		}
+	}
+	if rt == nil {
+		t.Fatal("expected sys.prompt_template SCOPE.Pattern (resource-loaded)")
+	}
+	if got := rt.Properties["provenance"]; got != "INFERRED_FROM_LANGCHAIN4J_PROMPT_TEMPLATE_RESOURCE" {
+		t.Errorf("provenance: got %q", got)
+	}
+	if got := rt.Properties["template_source"]; got != "resource" {
+		t.Errorf("template_source: got %q, want resource", got)
+	}
+	if got := rt.Properties["template_resource"]; got != "prompts/system.txt" {
+		t.Errorf("template_resource: got %q, want prompts/system.txt", got)
+	}
+	// External body is not read -> no template var props / edges.
+	if got := rt.Properties["template_vars"]; got != "" {
+		t.Errorf("resource template should not resolve vars, got template_vars=%q", got)
+	}
+	if len(rt.Relationships) != 0 {
+		t.Errorf("resource template should emit no edges, got %d", len(rt.Relationships))
+	}
+	// A literal-string PromptTemplate must NOT be misclassified as a resource.
+	for i := range ents {
+		if ents[i].Properties["template_source"] == "resource" && ents[i].Name != "sys.prompt_template" {
+			t.Errorf("unexpected resource template: %s", ents[i].Name)
+		}
+	}
+}
+
+// #5103 no-op: wrong language yields nothing; a string literal that merely
+// resembles a resource path inside a literal template is not a resource template.
+func TestLangChain4jPromptTemplateResourceNoOp(t *testing.T) {
+	e, _ := extreg.Get("custom_kotlin_langchain4j")
+
+	// Wrong language: a Java file with the same syntax is ignored.
+	javaSrc := `
+class PromptFactory {
+    fun build() {
+        val sys = PromptTemplate.from(loadResource("prompts/system.txt"))
+    }
+}
+`
+	ents, err := e.Extract(context.Background(), fi("PromptFactory.java", "java", javaSrc))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	if len(ents) != 0 {
+		t.Errorf("wrong-language file should yield no entities, got %d", len(ents))
+	}
+
+	// No-match: a literal template (no resource loader) stays a literal template,
+	// and an unrelated PromptTemplate.from with a plain string is not a resource.
+	litSrc := `
+class F {
+    val a = PromptTemplate.from("Hello {{name}}")
+}
+`
+	ents2, err := e.Extract(context.Background(), fi("F.kt", "kotlin", litSrc))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	for _, en := range ents2 {
+		if en.Properties["template_source"] == "resource" {
+			t.Errorf("literal template misclassified as resource: %s", en.Name)
+		}
+	}
+	var lit *types.EntityRecord
+	for i := range ents2 {
+		if ents2[i].Name == "a.prompt_template" {
+			lit = &ents2[i]
+		}
+	}
+	if lit == nil {
+		t.Fatal("expected literal a.prompt_template")
+	}
+	if lit.Properties["has_nested_fields"] != "" {
+		t.Errorf("plain {{name}} should not be marked nested, got %q", lit.Properties["has_nested_fields"])
+	}
+}
+
 // confidence_overlay (#4974, parity with Java #3093): the langchain4j extractor
 // stamps a top-level EntityRecord.Confidence directly. All entities are regex
 // pattern matches, so the stamped value is BaseConfidence(SourceRegexPattern)=0.7.

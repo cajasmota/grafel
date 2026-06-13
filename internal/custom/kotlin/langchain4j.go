@@ -3,6 +3,7 @@ package kotlin
 import (
 	"context"
 	"regexp"
+	"strings"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -62,11 +63,38 @@ var (
 			`PromptTemplate\s*\.\s*from\s*\(\s*(?:"""(.*?)"""|"((?:[^"\\]|\\.)*)")`,
 	)
 
+	// #5103: resource-loaded prompt template. `PromptTemplate.from(...)` where
+	// the argument is NOT a string literal but a resource loader call —
+	// `loadResource("x.txt")`, `readResource(...)`, classpath/Files/Paths reads,
+	// or a `*Resource(...)` helper. The template body lives in an external file
+	// we don't read, so it is captured structurally with template_source=resource
+	// and the referenced resource path (when a string literal argument is
+	// present). Group 1 = optional binding name, group 2 = loader call expression,
+	// group 3 = first string-literal argument inside the loader (the resource
+	// path, when present).
+	reLc4jKotlinPromptTemplateResource = regexp.MustCompile(
+		`(?s)(?:(?:private|protected|internal|public)\s+)?(?:(?:val|var)\s+(\w+)\s*(?::[^=]+)?=\s*)?` +
+			`PromptTemplate\s*\.\s*from\s*\(\s*` +
+			`(\w*(?:Resource|resource|getResourceAsStream|readText|readAllBytes|readString)\w*\s*\((?:[^()]|\([^()]*\))*\))`,
+	)
+	// First string-literal argument inside a resource-loader call (the resource
+	// path). Group 1 = the path.
+	reLc4jKotlinResourceArg = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
+
 	// Template placeholders. langchain4j uses `{{var}}` (mustache-style) by
 	// default; the older `{var}` single-brace form is also accepted by
 	// PromptTemplate. We match both and normalize to the inner identifier.
-	reLc4jKotlinTplVarDouble = regexp.MustCompile(`\{\{\s*([A-Za-z_]\w*)\s*\}\}`)
-	reLc4jKotlinTplVarSingle = regexp.MustCompile(`\{\s*([A-Za-z_]\w*)\s*\}`)
+	//
+	// #5103: a placeholder may carry a dotted nested-field path —
+	// `{{user.name}}` / `{{order.items.size}}`. The leading identifier is the
+	// template variable that resolves to a fun parameter; the remaining segments
+	// are a field access path on that parameter object. Group 1 = leading
+	// identifier (the binding key), group 2 = the optional `.field.subfield`
+	// remainder (nested-field path, empty for a plain `{{var}}`).
+	reLc4jKotlinTplVarDouble = regexp.MustCompile(`\{\{\s*([A-Za-z_]\w*)((?:\s*\.\s*[A-Za-z_]\w*)*)\s*\}\}`)
+	reLc4jKotlinTplVarSingle = regexp.MustCompile(`\{\s*([A-Za-z_]\w*)((?:\s*\.\s*[A-Za-z_]\w*)*)\s*\}`)
+	// Strips interior whitespace from a captured `.a . b` nested-field remainder.
+	reLc4jKotlinWS = regexp.MustCompile(`\s+`)
 
 	// A single Kotlin parameter, optionally carrying an `@V("name")` /
 	// `@V(value = "name")` binding annotation that renames it for the template.
@@ -265,6 +293,33 @@ func (e *langchain4jKotlinExtractor) Extract(ctx context.Context, file extractor
 		add(ent)
 	}
 
+	// 4d. #5103: resource-loaded PromptTemplate.from(loadResource("x.txt")).
+	// The template body lives in an external classpath/file resource we don't
+	// read, so the placeholders cannot be resolved here. We still emit the
+	// SCOPE.Pattern structurally with template_source=resource and the resource
+	// path (when the loader carries a string-literal argument) so the graph
+	// records that a resource-backed prompt template exists.
+	rtIdx := 0
+	for _, m := range reLc4jKotlinPromptTemplateResource.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		if name == "" {
+			rtIdx++
+			name = "resourceTemplate" + itoa(rtIdx)
+		}
+		loader := src[m[4]:m[5]]
+		ent := makeEntity(name+".prompt_template", "SCOPE.Pattern", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "framework", "langchain4j",
+			"provenance", "INFERRED_FROM_LANGCHAIN4J_PROMPT_TEMPLATE_RESOURCE",
+			"prompt_type", "prompt_template",
+			"template_source", "resource",
+			"resource_loader", truncTemplate(loader))
+		// The first string literal inside the loader call is the resource path.
+		if pm := reLc4jKotlinResourceArg.FindStringSubmatch(loader); pm != nil {
+			setProps(&ent, "template_resource", pm[1])
+		}
+		add(ent)
+	}
+
 	// 5. ChatLanguageModel fields -> SCOPE.Component
 	for _, m := range reLc4jKotlinChatModel.FindAllStringSubmatchIndex(src, -1) {
 		fieldName := src[m[2]:m[3]]
@@ -437,11 +492,26 @@ func addTemplateVarsAndEdges(ent *types.EntityRecord, tpl, params string, conf f
 	}
 
 	// Collect placeholders in source order, dedup, preferring the {{var}} form.
+	// #5103: each placeholder is keyed by its leading identifier (the binding
+	// key) but may carry a nested-field path remainder (`{{user.name}}` ->
+	// key=user, field path=user.name). We dedup on the leading identifier so a
+	// param object referenced via several fields binds once, and we record the
+	// distinct nested-field paths seen for that key.
 	var vars []string
 	seenVar := make(map[string]bool)
+	nestedPaths := make(map[string][]string) // leading id -> dotted paths (e.g. user.name)
+	seenPath := make(map[string]bool)
 	collect := func(re *regexp.Regexp) {
 		for _, vm := range re.FindAllStringSubmatch(tpl, -1) {
 			name := vm[1]
+			// vm[2] = optional ".field.sub" remainder; strip interior whitespace.
+			if rest := reLc4jKotlinWS.ReplaceAllString(vm[2], ""); rest != "" {
+				full := name + rest
+				if !seenPath[full] {
+					seenPath[full] = true
+					nestedPaths[name] = append(nestedPaths[name], full)
+				}
+			}
 			if seenVar[name] {
 				continue
 			}
@@ -460,6 +530,7 @@ func addTemplateVarsAndEdges(ent *types.EntityRecord, tpl, params string, conf f
 	}
 
 	joined := ""
+	var allNested []string
 	for i, v := range vars {
 		if i > 0 {
 			joined += ","
@@ -467,16 +538,27 @@ func addTemplateVarsAndEdges(ent *types.EntityRecord, tpl, params string, conf f
 		joined += v
 		boundParam := bind[v]
 		setProps(ent, "template_var."+v, boundParam)
+		// #5103: record the nested-field path(s) referenced through this var so
+		// queries can see `{{user.name}}` resolves field `name` on param `user`.
+		paths := nestedPaths[v]
+		edgeProps := map[string]string{
+			"framework":     "langchain4j",
+			"binding":       "prompt_template_variable",
+			"template_var":  v,
+			"resolved_from": "method_param",
+		}
+		if len(paths) > 0 {
+			pj := strings.Join(paths, ",")
+			setProps(ent, "template_var_path."+v, pj)
+			edgeProps["nested_field"] = "true"
+			edgeProps["field_path"] = pj
+			allNested = append(allNested, paths...)
+		}
 		if boundParam != "" {
 			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
-				ToID: boundParam,
-				Kind: "DEPENDS_ON",
-				Properties: map[string]string{
-					"framework":     "langchain4j",
-					"binding":       "prompt_template_variable",
-					"template_var":  v,
-					"resolved_from": "method_param",
-				},
+				ToID:       boundParam,
+				Kind:       "DEPENDS_ON",
+				Properties: edgeProps,
 				Confidence: conf,
 			})
 		}
@@ -484,6 +566,10 @@ func addTemplateVarsAndEdges(ent *types.EntityRecord, tpl, params string, conf f
 	setProps(ent, "template", truncTemplate(tpl),
 		"template_vars", joined,
 		"template_var_count", itoa(len(vars)))
+	if len(allNested) > 0 {
+		setProps(ent, "template_nested_fields", strings.Join(allNested, ","),
+			"has_nested_fields", "true")
+	}
 }
 
 // addWireEdge resolves one langchain4j wiring argument (#5083) and records the
