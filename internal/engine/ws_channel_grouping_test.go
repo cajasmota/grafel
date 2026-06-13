@@ -255,6 +255,153 @@ end
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SignalR outbound server→client push (csharp) — #5095
+// ---------------------------------------------------------------------------
+
+// signalREdge reports whether a BROADCASTS_TO edge Function:<caller> →
+// SCOPE.Channel:<room> exists carrying the given scope + pushed method props.
+func signalREdge(rels []types.RelationshipRecord, caller, channelID, scope, method string) bool {
+	for _, r := range rels {
+		if r.Kind == string(types.RelationshipKindBroadcastsTo) &&
+			r.FromID == "Function:"+caller && r.ToID == channelID &&
+			r.Properties["signalr_scope"] == scope && r.Properties["method"] == method {
+			return true
+		}
+	}
+	return false
+}
+
+func TestSignalROutboundScopes(t *testing.T) {
+	src := `
+using Microsoft.AspNetCore.SignalR;
+
+public class ChatHub : Hub
+{
+    public async Task SendMessage(string user, string message)
+    {
+        await Clients.All.SendAsync("ReceiveMessage", user, message);
+        await Clients.Caller.SendAsync("Ack");
+        await Clients.Group("lobby").SendAsync("RoomMessage", message);
+    }
+}
+`
+	ents, rels := runWSChannelDetect(t, "csharp", "ChatHub.cs", src)
+
+	// Clients.All → signalr:all
+	if !hasChannelNode(ents, "SCOPE.Channel:signalr:all", "channel:signalr:all") {
+		t.Fatalf("missing signalr:all node; ents=%v", ents)
+	}
+	if !signalREdge(rels, "SendMessage", "SCOPE.Channel:signalr:all", "All", "ReceiveMessage") {
+		t.Errorf("missing BROADCASTS_TO(SendMessage → signalr:all, All/ReceiveMessage); rels=%v", rels)
+	}
+	// Clients.Caller → signalr:caller
+	if !signalREdge(rels, "SendMessage", "SCOPE.Channel:signalr:caller", "Caller", "Ack") {
+		t.Errorf("missing BROADCASTS_TO(SendMessage → signalr:caller, Caller/Ack); rels=%v", rels)
+	}
+	// Clients.Group("lobby") → literal group folded into node id
+	if !hasChannelNode(ents, "SCOPE.Channel:signalr:group:lobby", "channel:signalr:group:lobby") {
+		t.Fatalf("missing signalr:group:lobby node; ents=%v", ents)
+	}
+	if !signalREdge(rels, "SendMessage", "SCOPE.Channel:signalr:group:lobby", "Group", "RoomMessage") {
+		t.Errorf("missing BROADCASTS_TO(SendMessage → signalr:group:lobby, Group/RoomMessage); rels=%v", rels)
+	}
+	// The literal group arg rides on the edge.
+	foundArg := false
+	for _, r := range rels {
+		if r.ToID == "SCOPE.Channel:signalr:group:lobby" && r.Properties["scope_arg"] == "lobby" {
+			foundArg = true
+		}
+	}
+	if !foundArg {
+		t.Errorf("expected scope_arg=lobby on the group broadcast edge; rels=%v", rels)
+	}
+}
+
+func TestSignalROutboundHubContext(t *testing.T) {
+	// A service holding IHubContext<XHub> pushes via _hubContext.Clients.*.
+	src := `
+public class NotificationService
+{
+    private readonly IHubContext<ChatHub> _hub;
+
+    public async Task Notify(string msg)
+    {
+        await _hub.Clients.All.SendAsync("Notify", msg);
+    }
+}
+`
+	ents, rels := runWSChannelDetect(t, "csharp", "NotificationService.cs", src)
+	if !hasChannelNode(ents, "SCOPE.Channel:signalr:all", "channel:signalr:all") {
+		t.Fatalf("missing signalr:all node from IHubContext push; ents=%v", ents)
+	}
+	if !signalREdge(rels, "Notify", "SCOPE.Channel:signalr:all", "All", "Notify") {
+		t.Errorf("missing BROADCASTS_TO(Notify → signalr:all, All/Notify); rels=%v", rels)
+	}
+}
+
+func TestSignalROutboundDynamicGroupDegrades(t *testing.T) {
+	// A dynamic Group(variable) must NOT guess a group name — it degrades to the
+	// bare scope node and carries no scope_arg (honest-partial).
+	src := `
+using Microsoft.AspNetCore.SignalR;
+
+public class ChatHub : Hub
+{
+    public async Task SendToRoom(string room, string message)
+    {
+        await Clients.Group(room).SendAsync("RoomMessage", message);
+    }
+}
+`
+	ents, rels := runWSChannelDetect(t, "csharp", "ChatHub.cs", src)
+	// Bare-scope node only; no guessed group name.
+	if !hasChannelNode(ents, "SCOPE.Channel:signalr:group", "channel:signalr:group") {
+		t.Fatalf("expected degraded signalr:group node; ents=%v", ents)
+	}
+	for _, e := range ents {
+		if e.ID == "SCOPE.Channel:signalr:group:room" {
+			t.Errorf("dynamic Group(room) must NOT produce a literal-named node")
+		}
+	}
+	for _, r := range rels {
+		if r.ToID == "SCOPE.Channel:signalr:group" && r.Properties["scope_arg"] != "" {
+			t.Errorf("dynamic group must carry no scope_arg; got %q", r.Properties["scope_arg"])
+		}
+	}
+}
+
+func TestSignalROutboundWrongLangNoOp(t *testing.T) {
+	// The same text in a non-csharp file must be a no-op (lang-gated switch).
+	src := `await Clients.All.SendAsync("ReceiveMessage", user);`
+	ents, rels := runWSChannelDetect(t, "javascript", "x.js", src)
+	for _, e := range ents {
+		if e.Kind == channelKind && len(e.ID) >= len("SCOPE.Channel:signalr") &&
+			e.ID[:len("SCOPE.Channel:signalr")] == "SCOPE.Channel:signalr" {
+			t.Errorf("SignalR outbound must not fire on javascript; ents=%v", ents)
+		}
+	}
+	_ = rels
+}
+
+func TestSignalROutboundNoMatchNoOp(t *testing.T) {
+	// A csharp file with no SignalR push idiom emits nothing.
+	src := `
+public class Helper
+{
+    public void Run()
+    {
+        var clients = GetClients();
+        clients.Process();
+    }
+}
+`
+	ents, rels := runWSChannelDetect(t, "csharp", "Helper.cs", src)
+	if len(ents) != 0 || len(rels) != 0 {
+		t.Errorf("non-SignalR csharp must be a no-op; ents=%v rels=%v", ents, rels)
+	}
+}
+
 // All emitted edges must use a registered relationship kind, and all nodes a
 // registered entity kind (producer-boundary contract).
 func TestWSChannelKindsRegistered(t *testing.T) {

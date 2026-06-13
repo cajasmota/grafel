@@ -65,7 +65,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|
-| [WCF](../detail/lang.csharp.framework.wcf.md) | 🔴 0/1 | ✅ 3/3 | ✅ 1/1 | 🔴 0/25 | 🟡 4/14 | |
+| [WCF](../detail/lang.csharp.framework.wcf.md) | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🔴 0/25 | 🟡 4/14 | |
 | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 10/10 | |
 
 

@@ -17,20 +17,20 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Federation extraction | — `not_applicable` | — | — | — | Apollo GraphQL Federation directives do not exist in SOAP/WCF RPC. |
 | Procedure extraction | 🟢 `partial` | — | 4968 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | [ServiceContract] interfaces/classes -> service:<Name>; [OperationContract] methods -> operation:<Name>; emitted as SCOPE.Schema/procedure_extraction (#4968). |
-| Schema extraction | 🟢 `partial` | — | 4968 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | [DataContract] classes -> datacontract:<Name>; [DataMember] properties -> datamember entities; SCOPE.Schema/schema_extraction (#4968). |
+| Schema extraction | 🟢 `partial` | — | 4968 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | [DataContract] classes -> datacontract:<Name>; [DataMember] properties -> datamember entities; SCOPE.Schema/schema_extraction (#4968). #5091: [FaultContract(typeof(X))] declared SOAP faults -> fault_contract:<Fault>:<line> schema_extraction carrying fault_type; when the attribute decorates an operation, a USES edge -> operation:<Op> binds the fault to it (incremental fault-contract metadata on top of the framework-agnostic exception_flow throw/catch surface). |
 | Type graph extraction | — `not_applicable` | — | — | — | GraphQL SDL object-type graph concept; WCF data contracts are modelled under schema_extraction, no GraphQL object-type relationship graph. |
 
 ### Codegen
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Client codegen | 🟢 `partial` | — | 5004 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | WCF client proxies -> SCOPE.Component/client_codegen (mirrors grpc_net.go): new ChannelFactory<IContract>(...) -> channel_factory:<Contract> with a USES edge -> contract:<Contract>; class XxxClient : ClientBase<IContract> -> client_base:<Name> + USES -> contract:<Contract>; new XxxClient(...) -> client:<Name> (common non-proxy *Client types like HttpClient excluded). Honest-partial: App.config/code binding address+mode props, channelFactory.CreateChannel() call-site attribution, and [FaultContract] error_flow deferred (#5004). |
+| Client codegen | 🟢 `partial` | — | 5091 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | WCF client proxies -> SCOPE.Component/client_codegen (mirrors grpc_net.go): new ChannelFactory<IContract>(...) -> channel_factory:<Contract> with a USES edge -> contract:<Contract>; class XxxClient : ClientBase<IContract> -> client_base:<Name> + USES -> contract:<Contract>; new XxxClient(...) -> client:<Name> (common non-proxy *Client types like HttpClient excluded). #5091: channelFactory.CreateChannel() call-site attribution — a `var f = new ChannelFactory<IContract>(...)` assignment maps the factory var, and each `f.CreateChannel()` -> create_channel:<var>:<Contract> SCOPE.Component/client_codegen + USES -> contract:<Contract> (a CreateChannel on a receiver with no in-file factory assignment is skipped, honest-partial). Honest-partial: cross-file factory-var tracking and App.config client-endpoint binding sections deferred. |
 
 ### Transport
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transport binding | 🟢 `partial` | — | 4968 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | new ServiceHost(typeof(X)) self-host + CoreWCF AddServiceModelServices()/AddServiceEndpoint<TSvc,TContract>() -> SCOPE.Pattern/transport_binding (#4968). |
+| Transport binding | 🟢 `partial` | — | 5091 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | new ServiceHost(typeof(X)) self-host + CoreWCF AddServiceModelServices()/AddServiceEndpoint<TSvc,TContract>() -> SCOPE.Pattern/transport_binding (#4968). #5091: code binding config props — new BasicHttpBinding/NetTcpBinding/WSHttpBinding/NetNamedPipeBinding/etc -> binding:<type>:<line> transport_binding carrying binding_type, endpoint_address (from a co-located new EndpointAddress("...")) and security_mode (Security.Mode = SecurityMode.X or a *SecurityMode.X ctor arg); [ServiceBehavior(InstanceContextMode=..., ConcurrencyMode=...)] -> service_behavior transport_binding with instance_context_mode/concurrency_mode; [OperationBehavior] -> operation_behavior:<Op> transport_binding. Honest-partial: address+mode are file-scoped hints attached to each binding, not per-endpoint resolved; App.config <system.serviceModel> XML binding sections deferred. |
 
 ### Routing
 
@@ -53,7 +53,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | 🔴 `missing` | — | 4968 | — | — |
+| Auth coverage | 🟢 `partial` | — | 5091 | `internal/custom/csharp/wcf.go`<br>`internal/custom/csharp/wcf_test.go` | #5091: [PrincipalPermission(SecurityAction.Demand, Role=...)] declarative WCF authorization demands -> SCOPE.Pattern/auth_coverage carrying the demand argument list. Honest-partial: message-security mode on bindings and per-operation [PrincipalPermission]-to-operation binding deferred. |
 
 ### Validation
 

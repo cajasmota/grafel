@@ -135,6 +135,37 @@ var wsRoomPhoenixEndpointBroadcastRe = regexp.MustCompile(
 // attribution (indexEnclosingFunctions has no elixir lane). Capture 1 = name.
 var elixirDefRe = regexp.MustCompile(`(?m)^\s*defp?\s+([a-z_][\w?!]*)`)
 
+// ---------------------------------------------------------------------------
+// SignalR server→client push (csharp) — #5095, follow-up #5003
+// ---------------------------------------------------------------------------
+
+// wsRoomSignalRSendRe captures the SignalR *outbound* (server→client push)
+// idiom inside a Hub method or an `IHubContext<XHub>`-holding service:
+//
+//	Clients.All.SendAsync("evt", ...)
+//	Clients.Caller.SendAsync("evt", ...)
+//	Clients.Others.InvokeAsync("evt", ...)
+//	Clients.Group("g").SendAsync("evt", ...)
+//	Clients.Client(id).SendAsync("evt", ...)
+//	Clients.User("u").SendAsync("evt", ...)
+//	_hubContext.Clients.All.SendAsync("evt", ...)
+//
+// Capture 1 = scope selector (All|Caller|Others|Group|Client|User|GroupExcept
+// |AllExcept|OthersInGroup). Capture 2 (optional) = the RAW first argument to a
+// parameterised scope (`Group("g")` / `Client(id)`), captured WITH its quotes
+// (or unquoted for a variable) so the literal-vs-dynamic decision is made on
+// the original token. Empty for the parameterless scopes (All/Caller/Others).
+// Capture 3 = the pushed client method / event name (the first SendAsync/
+// InvokeAsync string argument, always quoted-literal).
+//
+// The `.Clients.` prefix (vs a bare `Clients.`) is tolerated so an
+// `IHubContext` field access matches too. The trailing `.SendAsync(`/
+// `.InvokeAsync(` with a literal first arg anchors this to a real outbound
+// push and rejects unrelated `Clients.` access.
+var wsRoomSignalRSendRe = regexp.MustCompile(
+	`\bClients\s*\.\s*(All|Caller|Others|Group|Client|User|GroupExcept|AllExcept|OthersInGroup)\s*(?:\(\s*([^,()\r\n]*?)\s*(?:,[^)]*)?\))?\s*\.\s*(?:SendAsync|InvokeAsync|SendCoreAsync)\s*\(\s*["']([^"'\r\n]+)["']`,
+)
+
 // applyWSChannelGrouping is the per-file entry point. Append-only.
 func applyWSChannelGrouping(args DetectorPassArgs) DetectorPassResult {
 	lang := args.Lang
@@ -197,6 +228,62 @@ func applyWSChannelGrouping(args DetectorPassArgs) DetectorPassResult {
 		})
 	}
 
+	// emitExtra is emit's variant that attaches per-call extra properties to the
+	// edge (e.g. the SignalR pushed-event method name + scope). It shares the
+	// same dedupe maps and node-emission behaviour; extra props are edge-only so
+	// the converging channel node stays scope-identified, not method-identified.
+	emitExtra := func(room, caller, framework, transport string, edgeKind types.RelationshipKind, line int, extra map[string]string) {
+		room = strings.TrimSpace(room)
+		if room == "" || caller == "" {
+			return
+		}
+		nodeID := channelKind + ":" + room
+		if !seenNode[nodeID] {
+			seenNode[nodeID] = true
+			entities = append(entities, types.EntityRecord{
+				ID:         nodeID,
+				Name:       "channel:" + room,
+				Kind:       channelKind,
+				SourceFile: path,
+				Language:   lang,
+				Properties: map[string]string{
+					"channel":      room,
+					"framework":    framework,
+					"transport":    transport,
+					"pattern_type": "ws_channel_grouping",
+					"line":         strconv.Itoa(line),
+				},
+				EnrichmentRequired: false,
+				EnrichmentStatus:   types.StatusPending,
+				QualityScore:       0.8,
+			})
+		}
+		// Dedupe key folds in the extra method name so two distinct pushed
+		// events to the same scope from the same fn are both recorded.
+		key := string(edgeKind) + "\x00" + "Function:" + caller + "\x00" + nodeID + "\x00" + extra["method"]
+		if seenEdge[key] {
+			return
+		}
+		seenEdge[key] = true
+		props := map[string]string{
+			"channel":      room,
+			"framework":    framework,
+			"transport":    transport,
+			"pattern_type": "ws_channel_grouping",
+		}
+		for k, v := range extra {
+			if v != "" {
+				props[k] = v
+			}
+		}
+		relationships = append(relationships, types.RelationshipRecord{
+			FromID:     "Function:" + caller,
+			ToID:       nodeID,
+			Kind:       string(edgeKind),
+			Properties: props,
+		})
+	}
+
 	lineAt := func(off int) int { return strings.Count(src[:off], "\n") + 1 }
 
 	switch lang {
@@ -208,6 +295,8 @@ func applyWSChannelGrouping(args DetectorPassArgs) DetectorPassResult {
 		synthesizeDjangoChannelsGroups(src, indexEnclosingFunctions(lang, src), emit, lineAt)
 	case "elixir":
 		synthesizePhoenixRooms(src, emit, lineAt)
+	case "csharp":
+		synthesizeSignalROutbound(src, indexEnclosingFunctions(lang, src), emitExtra, lineAt)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -371,6 +460,93 @@ func synthesizePhoenixRooms(src string, emit channelEmitFn, lineAt func(int) int
 		}
 		emit(room, caller, "phoenix_channels", "channels", types.RelationshipKindBroadcastsTo, lineAt(m[0]))
 	}
+}
+
+// ---------------------------------------------------------------------------
+// SignalR outbound synthesizer (csharp) — #5095
+// ---------------------------------------------------------------------------
+
+// channelExtraEmitFn is emitExtra's closure shape: emit plus per-call edge
+// properties.
+type channelExtraEmitFn func(room, caller, framework, transport string, edgeKind types.RelationshipKind, line int, extra map[string]string)
+
+// synthesizeSignalROutbound models SignalR server→client push calls
+// (`Clients.<scope>.SendAsync("evt", ...)`) as BROADCASTS_TO edges onto a
+// per-scope `SCOPE.Channel:signalr:<scope>` convergence node, so the graph can
+// answer "which events does the server push, and to which client scope". The
+// pushed event/method name + scope ride on the edge as properties.
+//
+// The channel node is keyed by client *scope* (All / Caller / Others / a named
+// Group / a Client / a User), not by event — multiple events to the same scope
+// converge on one node, mirroring the room-convergence model the JS/Ruby/Python
+// lanes use. A parameterised scope with a stable literal argument
+// (`Group("lobby")`) folds the literal into the node id (`signalr:group:lobby`)
+// so per-group broadcasts stay distinct; a dynamic argument
+// (`Group(roomVar)` / `Client(id)`) degrades to the bare scope node
+// (`signalr:group`) rather than guessing a wrong group name.
+func synthesizeSignalROutbound(src string, funcs []funcSpan, emit channelExtraEmitFn, lineAt func(int) int) {
+	// File-context gate: require a SignalR push signal so a stray `Clients.`
+	// access in an unrelated file is a no-op.
+	if !strings.Contains(src, "Clients.") ||
+		(!strings.Contains(src, "SendAsync") &&
+			!strings.Contains(src, "InvokeAsync") &&
+			!strings.Contains(src, "SendCoreAsync")) {
+		return
+	}
+
+	for _, m := range wsRoomSignalRSendRe.FindAllStringSubmatchIndex(src, -1) {
+		scope := src[m[2]:m[3]]
+		rawArg := ""
+		if m[4] >= 0 {
+			rawArg = strings.TrimSpace(src[m[4]:m[5]])
+		}
+		method := src[m[6]:m[7]]
+
+		// Resolve the scope argument: a quoted literal (`Group("lobby")`) folds
+		// into the node id; a bare variable / interpolated value
+		// (`Group(roomVar)`) is dynamic and degrades to the bare scope node
+		// rather than guessing a wrong group name (honest-partial).
+		litArg, isLiteral := signalRLiteralArg(rawArg)
+
+		// Build the per-scope channel node id.
+		room := "signalr:" + strings.ToLower(scope)
+		if isLiteral && litArg != "" {
+			room += ":" + litArg
+		}
+
+		caller := enclosingFuncAt(funcs, m[0])
+		if caller == "" {
+			continue
+		}
+		extra := map[string]string{
+			"signalr_scope": scope,
+			"method":        method,
+		}
+		if isLiteral && litArg != "" {
+			extra["scope_arg"] = litArg
+		}
+		emit(room, caller, "signalr", "signalr", types.RelationshipKindBroadcastsTo, lineAt(m[0]), extra)
+	}
+}
+
+// signalRLiteralArg inspects a raw scope argument (captured WITH any quotes).
+// A single/double-quoted string is a stable literal — its unquoted value and
+// true are returned. Anything else (a bare identifier, a method call, an
+// interpolated string) is dynamic — "" and false are returned.
+func signalRLiteralArg(raw string) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if len(raw) < 2 {
+		return "", false
+	}
+	q := raw[0]
+	if (q != '"' && q != '\'') || raw[len(raw)-1] != q {
+		return "", false
+	}
+	inner := raw[1 : len(raw)-1]
+	if inner == "" || strings.ContainsAny(inner, "${}") || strings.Contains(inner, "#{") {
+		return "", false
+	}
+	return inner, true
 }
 
 // indexElixirDefs returns def/defp spans for enclosing-fn attribution.
