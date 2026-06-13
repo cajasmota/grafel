@@ -78,7 +78,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | 🟡 1/4 | |
+| [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | 🟡 2/4 | |
 
 
 ## Tools

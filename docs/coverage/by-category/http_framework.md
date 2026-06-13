@@ -295,7 +295,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 
 | Language | Name | Other capabilities | Notes |
 |---|---|---|---|
-| [java](../by-language/java.md) | [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | 🟡 1/4 | |
+| [java](../by-language/java.md) | [LangChain4J (LLM agent framework)](../detail/lang.java.framework.langchain4j.md) | 🟡 2/4 | |
 | [JS/TS](../by-language/jsts.md) | [LangChain.js](../detail/lang.jsts.framework.langchain.md) | 🟢 4/4 | |
 | [kotlin](../by-language/kotlin.md) | [LangChain4J (Kotlin)](../detail/lang.kotlin.framework.langchain4j.md) | ✅ 4/4 | |
 | [python](../by-language/python.md) | [LangChain (LLM agent framework)](../detail/lang.python.framework.langchain.md) | 🟢 4/4 | |
