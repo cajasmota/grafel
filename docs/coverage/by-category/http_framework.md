@@ -30,7 +30,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [clojure](../by-language/clojure.md) | [Pedestal](../detail/lang.clojure.framework.pedestal.md) | 🔴 0/7 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 | [clojure](../by-language/clojure.md) | [Reitit](../detail/lang.clojure.framework.reitit.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 | [clojure](../by-language/clojure.md) | [Ring](../detail/lang.clojure.framework.ring.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
-| [crystal](../by-language/crystal.md) | [Kemal (Crystal HTTP)](../detail/lang.crystal.framework.kemal.md) | 🟡 3/7 | 🔴 0/1 | 🟡 1/4 | ✅ 1/1 | 🟡 13/24 | 🟡 3/10 | |
+| [crystal](../by-language/crystal.md) | [Kemal (Crystal HTTP)](../detail/lang.crystal.framework.kemal.md) | 🟡 3/7 | 🔴 0/1 | 🟡 3/4 | ✅ 1/1 | 🟡 13/24 | 🟡 3/10 | |
 | [C#](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 3/7 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 25/25 | 🟡 10/11 | |
 | [C#](../by-language/csharp.md) | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | 🟡 3/7 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 25/25 | 🟡 10/11 | |
 | [C#](../by-language/csharp.md) | [Carter](../detail/lang.csharp.framework.carter.md) | 🟡 3/7 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 25/25 | 🟡 10/11 | |

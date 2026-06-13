@@ -266,6 +266,7 @@ func extractCrystal(src, filePath string) []types.EntityRecord {
 	}
 
 	// ── 3. Method / macro declarations ───────────────────────────────────
+	knownTypes := knownTypeNames(scopes)
 	emitOperation := func(name, subtype string, matchStart, afterKeyword int) {
 		startLine := strings.Count(src[:matchStart], "\n") + 1
 		bodyEnd := findEndKeyword(src, afterKeyword)
@@ -293,8 +294,28 @@ func extractCrystal(src, filePath string) []types.EntityRecord {
 			Signature:          name + "()",
 			EnrichmentRequired: false,
 		}
+		// #4937 — Type.method receiver resolution: stamp the owning type so a
+		// downstream consumer can resolve a bare `def foo` to `Owner.foo`.
+		if recvType := receiverTypeForMethod(scopes, matchStart, bodyEnd); recvType != "" {
+			rec.Properties = map[string]string{"receiver_type": recvType}
+		}
+		// #4937 — macro-generated method visibility: count def/define_method
+		// heads (incl. interpolated `def {{name}}`) the plain def scanner skips
+		// inside the macro body, and flag `{% for %}`-driven code-gen.
+		if subtype == "macro" {
+			if cnt, iterates := macroGenStats(body); cnt > 0 {
+				if rec.Properties == nil {
+					rec.Properties = map[string]string{}
+				}
+				rec.Properties["macro_generated"] = "true"
+				rec.Properties["generated_method_count"] = strconv.Itoa(cnt)
+				if iterates {
+					rec.Properties["generated_via"] = "macro_for_iteration"
+				}
+			}
+		}
 		rec.Relationships = append(rec.Relationships,
-			extractCallRelationships(body, name)...)
+			extractCallRelationships(body, name, knownTypes)...)
 		opIdx := len(entities)
 		entities = append(entities, rec)
 
@@ -319,6 +340,11 @@ func extractCrystal(src, filePath string) []types.EntityRecord {
 		name := src[m[2]:m[3]]
 		emitOperation(name, "macro", m[0], m[1])
 	}
+
+	// ── 4. #4937 depth: enum / alias / Spectator spec suite ──────────────
+	entities = append(entities, extractEnums(src, filePath)...)
+	entities = append(entities, extractAliases(src, filePath)...)
+	entities = append(entities, extractSpecSuite(src, filePath)...)
 
 	return entities
 }
@@ -407,7 +433,7 @@ func enclosingScope(scopes []scopeSpan, methodStart, methodEnd int) *scopeSpan {
 
 // extractCallRelationships scans a method/macro body for invocation heads and
 // returns one CALLS edge per unique callee.
-func extractCallRelationships(body, callerName string) []types.RelationshipRecord {
+func extractCallRelationships(body, callerName string, knownTypes map[string]bool) []types.RelationshipRecord {
 	if body == "" || callerName == "" {
 		return nil
 	}
@@ -451,8 +477,16 @@ func extractCallRelationships(body, callerName string) []types.RelationshipRecor
 		seen[k] = true
 		// Compute line number by counting newlines up to match position
 		lineNum := 1 + strings.Count(body[:m[0]], "\n")
+		// #4937 — Type.method receiver resolution: when the receiver root names
+		// a known in-file type (PascalCase class/struct/module), the call is a
+		// class-method invocation; resolve the target to the dotted
+		// `Type.method` form so it binds cross-file to the type's method.
+		toID := callee
+		if recvRoot != "" && knownTypes[recvRoot] {
+			toID = recvRoot + "." + callee
+		}
 		rel := types.RelationshipRecord{
-			ToID: callee,
+			ToID: toID,
 			Kind: "CALLS",
 			Properties: map[string]string{
 				"line": strconv.Itoa(lineNum),
@@ -460,6 +494,9 @@ func extractCallRelationships(body, callerName string) []types.RelationshipRecor
 		}
 		if recvRoot != "" {
 			rel.Properties["receiver_root"] = recvRoot
+			if knownTypes[recvRoot] {
+				rel.Properties["receiver_type"] = recvRoot
+			}
 		}
 		rels = append(rels, rel)
 	}
