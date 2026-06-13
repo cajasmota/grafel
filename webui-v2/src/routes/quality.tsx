@@ -65,6 +65,7 @@ import {
   TabCount,
   DefTerm,
   CoverageProvenanceBanner,
+  CoverageKindIndicator,
   useSetInsight,
 } from "@/components/ui";
 import type { InsightValue } from "@/components/ui";
@@ -829,6 +830,7 @@ function ReachabilitySurface({
   if (view.kind === "all-tested") {
     return (
       <div className="flex flex-wrap items-center gap-2 text-sm">
+        <CoverageKindIndicator state={{ reachabilityAvailable: true }} />
         <Badge tone="success" className="inline-flex items-center gap-1">
           <CheckCircle2 size={11} />
           {view.label}
@@ -861,6 +863,10 @@ function ReachabilitySurface({
           <span className="ml-1 text-text-4 tabular-nums font-normal text-xs">
             {view.orphans} of {view.total}
           </span>
+          <CoverageKindIndicator
+            state={{ reachabilityAvailable: true }}
+            className="ml-1 font-normal"
+          />
         </CardTitle>
         <span className="text-text-4 tabular-nums text-xs">
           {view.reachablePct.toFixed(1)}% test-reachable
@@ -995,6 +1001,9 @@ function CoverageTab({ groupId }: { groupId: string }) {
         // line %, shown distinctly from the reach-coverage gauge below so the
         // two numbers are never conflated.
         <div className="flex flex-wrap items-center gap-2 text-sm">
+          {/* Coverage-kind indicator (#5067) — the authoritative LINE
+              treatment, distinct from the Reach chip on the tree below. */}
+          <CoverageKindIndicator state={coverageProvenance} />
           <Badge tone="success">
             Line coverage {lineCov.coverage_pct.toFixed(1)}%
           </Badge>
@@ -1047,6 +1056,14 @@ function CoverageTab({ groupId }: { groupId: string }) {
                   {treeUncoveredCount} uncovered
                 </span>
               )}
+              {/* Per-surface coverage-kind indicator (#5067). This tree is
+                  ALWAYS graph-derived reach coverage (`coverage_pct`), even
+                  when an ingested line % exists above — force the "Reach" chip
+                  so the tree's numbers are never mistaken for the line %. */}
+              <CoverageKindIndicator
+                state={{ reachabilityAvailable: true }}
+                className="ml-1 font-normal"
+              />
             </CardTitle>
             {treeCarriesUncovered ? (
               severityFilter

@@ -239,6 +239,62 @@ export function resolveCoverageProvenance(
 }
 
 /**
+ * Compact, render-ready descriptor for the per-row / per-node coverage-kind
+ * INDICATOR (#5067). Where the full {@link CoverageProvenanceBanner} explains a
+ * whole surface, this drives a small inline chip that sits next to an
+ * individual coverage number (a file-tree row, a module row, an endpoint row,
+ * and — where cheap — a diagram node) so the user can always tell WHICH of the
+ * three coverages that specific "%" is. It is a strict projection of
+ * {@link resolveCoverageProvenance}: same precedence, same tones, just trimmed
+ * to what fits in a chip. Pure + DOM-free so the branch selection is unit
+ * testable under the default (node) vitest environment.
+ */
+export interface CoverageKindIndicator {
+  kind: CoverageProvenanceKind;
+  /** Visual tone (shared with the banner / Badge tones). */
+  tone: "success" | "info" | "neutral";
+  /** Ultra-short chip label, e.g. "Line" / "Reach" / "Capability". */
+  short: string;
+  /** Slightly longer label for wider chips / aria, e.g. "Line coverage". */
+  label: string;
+  /**
+   * Whether this chip represents a real, measured/authoritative line "%". Only
+   * `kind === "line"` is authoritative; reachability and capability are NOT and
+   * the caller should render their "%" (if any) as non-authoritative. Lets a
+   * row avoid painting a misleading green "80%" for a non-line source.
+   */
+  authoritative: boolean;
+  /** Tooltip — the one-line `method` from the full provenance descriptor. */
+  title: string;
+}
+
+const KIND_SHORT: Record<CoverageProvenanceKind, string> = {
+  line: "Line",
+  reachability: "Reach",
+  capability: "Capability",
+};
+
+/**
+ * Resolve the per-row/per-node coverage-kind indicator. Thin projection over
+ * {@link resolveCoverageProvenance} so the precedence (line ▸ reachability ▸
+ * capability) and tones stay in ONE place and cannot drift between the banner
+ * and the inline chips.
+ */
+export function resolveCoverageKindIndicator(
+  state: CoverageSourceState | null | undefined,
+): CoverageKindIndicator {
+  const p = resolveCoverageProvenance(state);
+  return {
+    kind: p.kind,
+    tone: p.tone,
+    short: KIND_SHORT[p.kind],
+    label: p.label,
+    authoritative: p.kind === "line",
+    title: p.method,
+  };
+}
+
+/**
  * Group-level ingested line-coverage roll-up, as surfaced by the dashboard
  * `/quality/coverage` endpoint's optional `line_coverage` field (#5066). Mirror
  * of the Go `LineCoverageSummary` wire shape. Kept here (rather than importing

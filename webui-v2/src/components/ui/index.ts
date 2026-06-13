@@ -31,5 +31,7 @@ export { InsightBanner } from "./insight-banner";
 export type { InsightBannerProps, InsightBannerAgent } from "./insight-banner";
 export { CoverageProvenanceBanner } from "./coverage-provenance-banner";
 export type { CoverageProvenanceBannerProps } from "./coverage-provenance-banner";
+export { CoverageKindIndicator } from "./coverage-kind-indicator";
+export type { CoverageKindIndicatorProps } from "./coverage-kind-indicator";
 export { InsightProvider, useInsight, useSetInsight } from "./insight-context";
 export type { InsightValue } from "./insight-context";
