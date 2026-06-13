@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 246 records · **C/C++**: 20 · **clojure**: 4 · **crystal**: 1 · **C#**: 17 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 1 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 15 · **scala**: 14 · **swift**: 5
+**Total**: 247 records · **C/C++**: 20 · **clojure**: 4 · **crystal**: 1 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 1 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 15 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -305,3 +305,10 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [python](../by-language/python.md) | [Celery (task queue)](../detail/lang.python.framework.celery.md) | 🟢 1/1 | 🟢 24/24 | ✅ 7/7 | |
 | [python](../by-language/python.md) | [Dramatiq (task queue)](../detail/lang.python.framework.dramatiq.md) | 🟢 1/1 | 🟢 24/24 | 🟢 5/5 | |
 | [python](../by-language/python.md) | [RQ (Redis Queue)](../detail/lang.python.framework.rq.md) | 🟢 1/1 | 🟢 24/24 | 🟢 6/6 | |
+
+
+## Resilience
+
+| Language | Name | HTTP client binding | Resilience policy extraction | Notes |
+|---|---|---|---|---|
+| [C#](../by-language/csharp.md) | [Polly (.NET resilience / fault-handling)](../detail/lang.csharp.framework.polly.md) | ✅ | ✅ | |

@@ -50,7 +50,7 @@ categories:
     capabilities: [call_line_precision, discriminates_on, navigates_to, core_extraction, import_resolution_quality, db_effect, fs_effect, http_effect]
   http_framework:
     capabilities: [endpoint_synthesis, handler_attribution, auth_coverage, middleware_coverage]
-    subcategory_order: [http_backend, jvm_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration, task_queue]
+    subcategory_order: [http_backend, jvm_backend, ui_frontend, meta_framework, mobile, desktop, rpc_framework, static_site, ai_integration, task_queue, resilience]
   orm:
     capabilities: [model_extraction, query_attribution, migration_parsing, migration_schema_ops]
     subcategory_order: [orm_mapper]
@@ -640,6 +640,14 @@ subcategories:
         keys: [tests_linkage]
       - name: Substrate
         keys: [constant_propagation, env_fallback_recognition, config_consumption, error_flow, feature_flag_gating, import_resolution_quality, confidence_overlay, reachability_analysis, dead_code_detection, db_effect, http_effect, fs_effect, mutation_effect, request_shape_extraction, response_shape_extraction, schema_drift_detection, taint_source_detection, taint_sink_detection, sanitizer_recognition, vulnerability_finding, pure_function_tagging, module_cycle_detection, def_use_chain_extraction, template_pattern_catalog]
+
+  resilience:
+    display: "Resilience"
+    parent_category: http_framework
+    capabilities:
+      - resilience_policy_extraction
+      - http_client_binding
+    groups: []
 
   orm_mapper:
     display: "ORM / Data Mapper"
