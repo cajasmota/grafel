@@ -280,6 +280,168 @@ class AssistantConfig {
 	}
 }
 
+// chain_composition inline-arg resolution (#5083): a fluent builder wired with
+// inline-constructed components (`OpenAiChatModel.builder().build()`,
+// `MyTools()`) materializes a synthetic SCOPE.Component target for the
+// constructed type and points the USES edge at it (arg_kind=inline_component),
+// instead of dropping the edge for lack of a bare identifier.
+func TestLangChain4jServiceWiringInlineArgs(t *testing.T) {
+	src := `
+class AssistantConfig {
+    fun assistant(): Assistant {
+        val assistant = AiServices.builder(Assistant::class.java)
+            .chatLanguageModel(OpenAiChatModel.builder().apiKey("x").build())
+            .tools(MyTools())
+            .build()
+        return assistant
+    }
+}
+`
+	e, ok := extreg.Get("custom_kotlin_langchain4j")
+	if !ok {
+		t.Fatal("extractor custom_kotlin_langchain4j not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("Config.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+
+	var svc *types.EntityRecord
+	comps := map[string]*types.EntityRecord{}
+	for i := range ents {
+		switch {
+		case ents[i].Kind == "SCOPE.Service" && ents[i].Name == "assistant":
+			svc = &ents[i]
+		case ents[i].Kind == "SCOPE.Component":
+			comps[ents[i].Name] = &ents[i]
+		}
+	}
+	if svc == nil {
+		t.Fatal("expected assembled SCOPE.Service 'assistant'")
+	}
+
+	// USES edges should target the constructed TYPE names, classified inline.
+	want := map[string]string{"OpenAiChatModel": "chat_model", "MyTools": "tools"}
+	got := map[string]string{}
+	for _, r := range svc.Relationships {
+		if r.Kind != "USES" {
+			continue
+		}
+		got[r.ToID] = r.Properties["wire_role"]
+		if r.Properties["arg_kind"] != "inline_component" {
+			t.Errorf("edge to %q: arg_kind=%q want inline_component", r.ToID, r.Properties["arg_kind"])
+		}
+	}
+	for target, role := range want {
+		if got[target] != role {
+			t.Errorf("inline wiring edge to %q: got role %q want %q (edges=%v)", target, got[target], role, got)
+		}
+		if comps[target] == nil {
+			t.Errorf("expected materialized SCOPE.Component %q for inline arg", target)
+			continue
+		}
+		if comps[target].Properties["provenance"] != "INFERRED_FROM_LANGCHAIN4J_INLINE_COMPONENT" {
+			t.Errorf("component %q wrong provenance: %s", target, comps[target].Properties["provenance"])
+		}
+	}
+}
+
+// chain_composition AiServices.create() positional overload (#5083): the
+// positional `create(IFace, model, tools)` shorthand has its model/tools args
+// traced into USES edges with the same wire roles as the fluent builder.
+func TestLangChain4jServiceCreatePositional(t *testing.T) {
+	src := `
+class Factory {
+    fun build(model: ChatLanguageModel, tools: Any): Assistant {
+        val assistant = AiServices.create(Assistant::class.java, model, tools)
+        return assistant
+    }
+}
+`
+	e, ok := extreg.Get("custom_kotlin_langchain4j")
+	if !ok {
+		t.Fatal("extractor custom_kotlin_langchain4j not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("Factory.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+
+	var svc *types.EntityRecord
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Service" && ents[i].Name == "assistant" {
+			svc = &ents[i]
+		}
+	}
+	if svc == nil {
+		t.Fatal("expected SCOPE.Service 'assistant' from AiServices.create")
+	}
+	if svc.Properties["provenance"] != "INFERRED_FROM_LANGCHAIN4J_AI_SERVICES_CREATE" {
+		t.Errorf("wrong provenance: %s", svc.Properties["provenance"])
+	}
+	want := map[string]string{"model": "chat_model", "tools": "tools"}
+	got := map[string]string{}
+	for _, r := range svc.Relationships {
+		if r.Kind != "USES" {
+			continue
+		}
+		got[r.ToID] = r.Properties["wire_role"]
+		if r.Properties["arg_kind"] != "identifier" {
+			t.Errorf("edge to %q: arg_kind=%q want identifier", r.ToID, r.Properties["arg_kind"])
+		}
+	}
+	for target, role := range want {
+		if got[target] != role {
+			t.Errorf("create wiring edge to %q: got %q want %q (edges=%v)", target, got[target], role, got)
+		}
+	}
+	// The interface ::class.java literal (arg 0) must NOT become a USES edge.
+	if _, bad := got["Assistant"]; bad {
+		t.Errorf("interface positional arg leaked into a USES edge: %v", got)
+	}
+}
+
+// create() with an inline-constructed model arg (#5083): the positional model
+// slot resolves an inline constructor to a synthetic component target too.
+func TestLangChain4jServiceCreateInlineModel(t *testing.T) {
+	src := `
+val assistant = AiServices.create(Assistant::class.java, OpenAiChatModel.builder().build())
+`
+	e, _ := extreg.Get("custom_kotlin_langchain4j")
+	ents, err := e.Extract(context.Background(), fi("Top.kt", "kotlin", src))
+	if err != nil {
+		t.Fatalf("extract error: %v", err)
+	}
+	var svc *types.EntityRecord
+	var haveComp bool
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Service" && ents[i].Name == "assistant" {
+			svc = &ents[i]
+		}
+		if ents[i].Kind == "SCOPE.Component" && ents[i].Name == "OpenAiChatModel" {
+			haveComp = true
+		}
+	}
+	if svc == nil {
+		t.Fatal("expected SCOPE.Service 'assistant'")
+	}
+	if !haveComp {
+		t.Error("expected materialized SCOPE.Component 'OpenAiChatModel' for inline create arg")
+	}
+	var found bool
+	for _, r := range svc.Relationships {
+		if r.Kind == "USES" && r.ToID == "OpenAiChatModel" && r.Properties["wire_role"] == "chat_model" {
+			found = true
+			if r.Properties["arg_kind"] != "inline_component" {
+				t.Errorf("arg_kind=%q want inline_component", r.Properties["arg_kind"])
+			}
+		}
+	}
+	if !found {
+		t.Errorf("expected USES->OpenAiChatModel chat_model edge (rels=%v)", svc.Relationships)
+	}
+}
+
 // prompt_template_extraction template-variable resolution (#5013, parity with
 // Java langchain4j): @SystemMessage/@UserMessage inline templates have their
 // {{var}} placeholders resolved against @V("var") / un-annotated fun params,

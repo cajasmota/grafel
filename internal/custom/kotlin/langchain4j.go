@@ -86,19 +86,40 @@ var (
 	)
 
 	// #5012: runtime chain_composition wiring. Capture an
-	// `AiServices.builder(IFace::class.java)` ... `.build()` (or
-	// `.create(...)`) assembly assigned to a `val/var <svc> = ...`, so the
-	// whole call chain — including newline-separated fluent calls — is one
-	// match group we can scan for individual wiring methods.
+	// `AiServices.builder(IFace::class.java)` ... `.build()` assembly assigned
+	// to a `val/var <svc> = ...`, so the whole call chain — including
+	// newline-separated fluent calls — is one match group we can scan for
+	// individual wiring methods. The `.create(...)` positional overload is
+	// handled by a dedicated pass below (#5083) so its positional args are
+	// resolved rather than discarded.
 	reLc4jKotlinServiceWiring = regexp.MustCompile(
 		`(?s)(?:(?:private|protected|internal|public)\s+)?(?:val|var)\s+(\w+)\s*(?::[^=]+)?=\s*` +
-			`AiServices\s*\.\s*(?:builder|create)\s*\((?:[^)]*)\)((?:\s*\.\s*\w+\s*\([^)]*\))*)`,
+			`AiServices\s*\.\s*builder\s*\((?:[^)]*)\)((?:\s*\.\s*\w+\s*\((?:[^()]|\([^()]*\))*\))*)`,
 	)
-	// Individual fluent builder steps inside the captured chain. The arg may be
-	// an identifier reference (field/var we wired earlier), a class literal, or
-	// an inline expression; we capture the leading identifier when present.
+	// #5083: `AiServices.create(IFace::class.java, model, tools)` positional
+	// overload. Group 1 = optional binding name, group 2 = the raw argument
+	// list between the create(...) parens (tolerating one level of nested
+	// parens so `create(IFace::class.java, OpenAiChatModel.builder().build())`
+	// is captured whole).
+	reLc4jKotlinServiceCreate = regexp.MustCompile(
+		`(?s)(?:(?:private|protected|internal|public)\s+)?(?:val|var)\s+(\w+)\s*(?::[^=]+)?=\s*` +
+			`AiServices\s*\.\s*create\s*\(((?:[^()]|\([^()]*\))*)\)`,
+	)
+	// Individual fluent builder steps inside the captured chain. The whole
+	// argument expression is captured in group 2 (tolerating one nested paren
+	// level) so both bare identifiers and inline constructor/builder
+	// expressions are recoverable; classifyWireArg decides how to resolve it.
 	reLc4jKotlinWireStep = regexp.MustCompile(
-		`\.\s*(chatLanguageModel|streamingChatLanguageModel|tools|chatMemory|chatMemoryProvider|contentRetriever|retriever|retrievalAugmentor|systemMessageProvider|moderationModel|toolProvider)\s*\(\s*([A-Za-z_]\w*)?`,
+		`\.\s*(chatLanguageModel|streamingChatLanguageModel|tools|chatMemory|chatMemoryProvider|contentRetriever|retriever|retrievalAugmentor|systemMessageProvider|moderationModel|toolProvider)\s*\(\s*((?:[^()]|\([^()]*\))*?)\s*\)`,
+	)
+
+	// #5083: a bare identifier reference (whole arg is just `model`).
+	reLc4jKotlinBareIdent = regexp.MustCompile(`^[A-Za-z_]\w*$`)
+	// #5083: an inline constructed component. Matches both the builder form
+	// `OpenAiChatModel.builder()...build()` and the direct-constructor form
+	// `MyTools()` / `MyTools(arg)`. Group 1 = the constructed/owning type name.
+	reLc4jKotlinInlineCtor = regexp.MustCompile(
+		`^([A-Z]\w*)\s*(?:\.\s*\w+\s*\(|\()`,
 	)
 )
 
@@ -289,8 +310,8 @@ func (e *langchain4jKotlinExtractor) Extract(ctx context.Context, file extractor
 			"provenance", "INFERRED_FROM_LANGCHAIN4J_AI_SERVICES_BUILDER",
 			"assembly", "AiServices.builder")
 
-		var rels []types.RelationshipRecord
 		wired := make(map[string]bool)
+		var inlineEnts []types.EntityRecord
 		for _, sm := range reLc4jKotlinWireStep.FindAllStringSubmatchIndex(chain, -1) {
 			method := chain[sm[2]:sm[3]]
 			role := lc4jWireRole[method]
@@ -299,38 +320,59 @@ func (e *langchain4jKotlinExtractor) Extract(ctx context.Context, file extractor
 			}
 			setProps(&svc, "wire."+role, "true")
 
-			// Capture the referenced component identifier when the argument is a
-			// plain reference (model, tools, memory). Inline expressions /
-			// class-literal-only args still record the wire role above but emit
-			// no resolvable USES edge target.
-			if sm[4] < 0 {
-				continue
+			arg := ""
+			if sm[4] >= 0 {
+				arg = chain[sm[4]:sm[5]]
 			}
-			target := chain[sm[4]:sm[5]]
-			edgeKey := role + "|" + target
-			if wired[edgeKey] {
-				continue
-			}
-			wired[edgeKey] = true
-			rels = append(rels, types.RelationshipRecord{
-				ToID: target,
-				Kind: "USES",
-				Properties: map[string]string{
-					"framework": "langchain4j",
-					"wire_role": role,
-					"method":    method,
-					"service":   svcName,
-				},
-				Confidence: regexConf,
-			})
-		}
-		if len(rels) > 0 {
-			svc.Relationships = append(svc.Relationships, rels...)
+			// #5083: resolve the wiring argument whether it is a bare
+			// identifier (model), an inline-constructed component
+			// (OpenAiChatModel.builder().build() / MyTools()), or empty.
+			addWireEdge(&svc, &inlineEnts, role, method, svcName, arg, file.Path, file.Language, lineOf(src, m[0]), regexConf, wired)
 		}
 		// Service entities keyed by Kind+Name; if a same-named @AiService
 		// interface was already added, the wiring assembly is a distinct var so
 		// dedupe on the (kind,name) key only collides when identical — acceptable.
 		add(svc)
+		for i := range inlineEnts {
+			add(inlineEnts[i])
+		}
+	}
+
+	// 9. #5083: `AiServices.create(IFace::class.java, model, tools)` positional
+	// overload. langchain4j's `create` shorthand binds the first positional arg
+	// to the AI-service interface, the second to the chat model, and (when
+	// present) the third to the tools object. We trace the same wire roles as
+	// the fluent builder so both assembly styles yield a comparable composition
+	// graph.
+	for _, m := range reLc4jKotlinServiceCreate.FindAllStringSubmatchIndex(src, -1) {
+		svcName := src[m[2]:m[3]]
+		argList := src[m[4]:m[5]]
+
+		svc := makeEntity(svcName, "SCOPE.Service", "", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&svc, "framework", "langchain4j",
+			"provenance", "INFERRED_FROM_LANGCHAIN4J_AI_SERVICES_CREATE",
+			"assembly", "AiServices.create")
+
+		args := splitTopLevelArgs(argList)
+		// Positional role schedule, mirroring AiServices.create overloads:
+		//   create(iface)                       -> [iface]
+		//   create(iface, model)                -> [_, chat_model]
+		//   create(iface, model, tools)         -> [_, chat_model, tools]
+		posRoles := []string{"", "chat_model", "tools"}
+		posMethods := []string{"", "chatLanguageModel", "tools"}
+		wired := make(map[string]bool)
+		var inlineEnts []types.EntityRecord
+		for i, a := range args {
+			if i == 0 || i >= len(posRoles) || posRoles[i] == "" {
+				continue // arg 0 is the interface ::class.java literal
+			}
+			setProps(&svc, "wire."+posRoles[i], "true")
+			addWireEdge(&svc, &inlineEnts, posRoles[i], posMethods[i], svcName, a, file.Path, file.Language, lineOf(src, m[0]), regexConf, wired)
+		}
+		add(svc)
+		for i := range inlineEnts {
+			add(inlineEnts[i])
+		}
 	}
 
 	span.SetAttributes(attribute.Int("entity_count", len(entities)))
@@ -442,6 +484,134 @@ func addTemplateVarsAndEdges(ent *types.EntityRecord, tpl, params string, conf f
 	setProps(ent, "template", truncTemplate(tpl),
 		"template_vars", joined,
 		"template_var_count", itoa(len(vars)))
+}
+
+// addWireEdge resolves one langchain4j wiring argument (#5083) and records the
+// corresponding USES edge on the assembled service entity. The argument may be:
+//
+//   - a bare identifier ("model"): the edge points at the referenced
+//     field/var by name, exactly as the original #5012 wiring did;
+//   - an inline-constructed component ("OpenAiChatModel.builder().build()",
+//     "MyTools()"): a synthetic SCOPE.Component entity is materialized for the
+//     constructed type so the wiring has a resolvable target, and the USES edge
+//     points at that type name;
+//   - empty / unrecognized: only the `wire.<role>` flag (already set by the
+//     caller) is recorded — no USES edge.
+//
+// `arg_kind` on the edge ("identifier" | "inline_component") records how the
+// target was resolved so downstream queries can distinguish structural
+// references from materialized inline components. Inline component entities are
+// appended to inlineEnts for the caller to add() after the service.
+func addWireEdge(svc *types.EntityRecord, inlineEnts *[]types.EntityRecord,
+	role, method, svcName, arg, filePath, language string, line int, conf float64,
+	wired map[string]bool) {
+
+	target, argKind := classifyWireArg(arg)
+	if target == "" {
+		return // empty or unresolvable inline expression: wire.<role> flag only
+	}
+	edgeKey := role + "|" + target
+	if wired[edgeKey] {
+		return
+	}
+	wired[edgeKey] = true
+
+	if argKind == "inline_component" {
+		// Materialize the inline-constructed component so the USES edge has a
+		// real target. Keyed by Kind+Name; the caller's add() dedupes against
+		// an identically-named field/var component if one already exists.
+		comp := makeEntity(target, "SCOPE.Component", "", filePath, language, line)
+		setProps(&comp, "framework", "langchain4j",
+			"provenance", "INFERRED_FROM_LANGCHAIN4J_INLINE_COMPONENT",
+			"wire_role", role, "constructed", "true")
+		*inlineEnts = append(*inlineEnts, comp)
+	}
+
+	svc.Relationships = append(svc.Relationships, types.RelationshipRecord{
+		ToID: target,
+		Kind: "USES",
+		Properties: map[string]string{
+			"framework": "langchain4j",
+			"wire_role": role,
+			"method":    method,
+			"service":   svcName,
+			"arg_kind":  argKind,
+		},
+		Confidence: conf,
+	})
+}
+
+// classifyWireArg inspects a wiring argument expression and returns the
+// resolved USES-edge target plus how it was resolved (#5083):
+//
+//   - "model"                          -> ("model", "identifier")
+//   - "OpenAiChatModel.builder()..."   -> ("OpenAiChatModel", "inline_component")
+//   - "MyTools()" / "MyTools(cfg)"      -> ("MyTools", "inline_component")
+//   - anything else (literal, lambda)  -> ("", "")
+func classifyWireArg(arg string) (target, kind string) {
+	arg = trimSpace(arg)
+	if arg == "" {
+		return "", ""
+	}
+	if reLc4jKotlinBareIdent.MatchString(arg) {
+		return arg, "identifier"
+	}
+	if m := reLc4jKotlinInlineCtor.FindStringSubmatch(arg); m != nil {
+		return m[1], "inline_component"
+	}
+	return "", ""
+}
+
+// splitTopLevelArgs splits a comma-separated argument list at top-level commas
+// only, so a nested call like `OpenAiChatModel.builder().build()` or a generic
+// `listOf(a, b)` is not split apart. Tracks (), <>, and string literals.
+func splitTopLevelArgs(s string) []string {
+	var args []string
+	depth := 0
+	inStr := byte(0)
+	start := 0
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case inStr != 0:
+			if c == '\\' {
+				i++ // skip escaped char
+			} else if c == inStr {
+				inStr = 0
+			}
+		case c == '"' || c == '\'':
+			inStr = c
+		case c == '(' || c == '<' || c == '[':
+			depth++
+		case c == ')' || c == '>' || c == ']':
+			if depth > 0 {
+				depth--
+			}
+		case c == ',' && depth == 0:
+			args = append(args, trimSpace(s[start:i]))
+			start = i + 1
+		}
+	}
+	if start < len(s) {
+		if a := trimSpace(s[start:]); a != "" {
+			args = append(args, a)
+		}
+	}
+	return args
+}
+
+// trimSpace trims ASCII whitespace without pulling in the strings package for a
+// single caller (helpers.go already imports strings, but this file does not).
+func trimSpace(s string) string {
+	lo := 0
+	for lo < len(s) && (s[lo] == ' ' || s[lo] == '\t' || s[lo] == '\n' || s[lo] == '\r') {
+		lo++
+	}
+	hi := len(s)
+	for hi > lo && (s[hi-1] == ' ' || s[hi-1] == '\t' || s[hi-1] == '\n' || s[hi-1] == '\r') {
+		hi--
+	}
+	return s[lo:hi]
 }
 
 // truncTemplate caps the stored template body so a large prompt does not bloat
