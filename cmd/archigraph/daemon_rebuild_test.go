@@ -12,6 +12,7 @@ package main
 import (
 	"errors"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -243,3 +244,63 @@ func TestDaemonRebuild_InvalidatesCacheExplicitly(t *testing.T) {
 		t.Errorf("expected 2 rebuilt repos, got %d", len(rebuilt))
 	}
 }
+
+// TestRebuildPerRepoTimeoutSurfacesStalledRepo is the #5143 Part-B regression
+// guard: one stuck repo must NOT wedge the whole group rebuild for the full RPC
+// timeout. With a short per-repo timeout, the stalled repo is surfaced as a
+// typed timeout error while the other repos still index and are returned as
+// partial results.
+func TestRebuildPerRepoTimeoutSurfacesStalledRepo(t *testing.T) {
+	group := setupTestGroup(t, "stall-group", []string{"fast1", "stuck", "fast2"})
+	// Tiny per-repo timeout so the test is fast.
+	t.Setenv("ARCHIGRAPH_REBUILD_REPO_TIMEOUT", "100ms")
+
+	release := make(chan struct{})
+	t.Cleanup(func() { close(release) }) // unblock the stuck goroutine at test end
+
+	var fastDone int32
+	mockIndexFn := func(repoPath, _, slug string, _ []string, _, _ bool, _ ...IndexOption) error {
+		if slug == "stuck" {
+			<-release // block far longer than the per-repo timeout
+			return nil
+		}
+		atomic.AddInt32(&fastDone, 1)
+		return nil
+	}
+
+	start := time.Now()
+	// Serial path (conc=1) so the stuck repo is hit in the middle of the batch.
+	rebuilt, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group}, mockIndexFn, noopLinksFn)
+	elapsed := time.Since(start)
+
+	// Must return promptly (well under any multi-minute wedge), bounded by the
+	// single 100ms per-repo timeout plus the two fast repos.
+	if elapsed > 10*time.Second {
+		t.Fatalf("rebuild took %s — per-repo timeout did not unblock the group", elapsed)
+	}
+	// The stuck repo surfaces as an error naming it.
+	if err == nil || !contains(err.Error(), "stuck") || !contains(err.Error(), "timed out") {
+		t.Fatalf("expected a timeout error naming the stuck repo, got: %v", err)
+	}
+	// The two fast repos still ran and are returned as partial results.
+	if got := atomic.LoadInt32(&fastDone); got != 2 {
+		t.Errorf("fast repos completed = %d, want 2 (the stall must not starve the others)", got)
+	}
+	if len(rebuilt) != 2 {
+		t.Errorf("partial rebuilt list = %d repos, want 2 (fast1 + fast2)", len(rebuilt))
+	}
+}
+
+// TestRebuildPerRepoTimeoutDisabled verifies the bound can be turned off.
+func TestRebuildPerRepoTimeoutDisabled(t *testing.T) {
+	t.Setenv("ARCHIGRAPH_REBUILD_REPO_TIMEOUT", "0")
+	if d := resolvePerRepoRebuildTimeout(); d != 0 {
+		t.Fatalf("resolvePerRepoRebuildTimeout()=%s, want 0 when disabled", d)
+	}
+	t.Setenv("ARCHIGRAPH_REBUILD_REPO_TIMEOUT", "15m")
+	if d := resolvePerRepoRebuildTimeout(); d != 15*time.Minute {
+		t.Fatalf("resolvePerRepoRebuildTimeout()=%s, want 15m", d)
+	}
+}
+
+func contains(s, sub string) bool { return strings.Contains(s, sub) }

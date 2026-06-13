@@ -127,6 +127,33 @@ func defaultRebuildConcurrency() int {
 	return computeRebuildConcurrency(systemTotalMemoryMB())
 }
 
+// defaultPerRepoRebuildTimeout bounds how long a SINGLE repo's index may run
+// inside a group rebuild before it is surfaced as a stalled repo and skipped
+// (#5143). Without it, one slow/stuck repo wedges the whole group rebuild for
+// the full 2h RPC timeout with no indication of which repo is stuck — the
+// reported symptom (35m+ "no result yet", upvate-core-backend stale). The
+// group still serializes repos and returns partial results for the rest.
+//
+// Generous default so a genuinely large repo isn't killed; tune via
+// ARCHIGRAPH_REBUILD_REPO_TIMEOUT (Go duration, e.g. "20m"). Zero/negative
+// disables the per-repo bound.
+const defaultPerRepoRebuildTimeout = 30 * time.Minute
+
+// resolvePerRepoRebuildTimeout returns the effective per-repo timeout, honoring
+// ARCHIGRAPH_REBUILD_REPO_TIMEOUT. A value of "0" (or any non-positive
+// duration) disables the bound and returns 0.
+func resolvePerRepoRebuildTimeout() time.Duration {
+	if v := os.Getenv("ARCHIGRAPH_REBUILD_REPO_TIMEOUT"); v != "" {
+		if d, err := time.ParseDuration(v); err == nil {
+			if d <= 0 {
+				return 0
+			}
+			return d
+		}
+	}
+	return defaultPerRepoRebuildTimeout
+}
+
 // resolveEnvRebuildConcurrency reads ARCHIGRAPH_REBUILD_CONCURRENCY (then
 // ARCHIGRAPH_MAX_CONCURRENT_GROUPS as a legacy fallback) and returns the
 // effective concurrency value, falling back to the auto-tuned default when
@@ -864,11 +891,13 @@ func daemonRebuildFuncCore(
 		conc = 1
 	}
 
+	perRepoTimeout := resolvePerRepoRebuildTimeout()
+
 	// indexOne executes the index function for a single repo and returns its
 	// result. It is shared by both the serial and parallel paths so the logic
 	// (panic recovery, wipe, incremental opts, progress slugs, slug tag) stays
 	// in one place.
-	indexOne := func(idx int, rw repoWork) repoResult {
+	indexOneInner := func(idx int, rw repoWork) repoResult {
 		t0 := time.Now()
 		var indexErr error
 		func() {
@@ -908,6 +937,38 @@ func daemonRebuildFuncCore(
 			slug: rw.r.Slug,
 			err:  indexErr,
 			took: time.Since(t0),
+		}
+	}
+
+	// indexOne wraps indexOneInner with a per-repo wall-clock timeout (#5143).
+	// A single slow/stuck repo no longer wedges the whole group rebuild for the
+	// 2h RPC timeout: it is surfaced (which repo + how long) and returned as a
+	// typed timeout failure so the group continues with the remaining repos and
+	// returns partial results. The orphaned index goroutine is left to finish
+	// in the background (matching the existing RPC-timeout semantics) rather
+	// than killed mid-write.
+	indexOne := func(idx int, rw repoWork) repoResult {
+		if perRepoTimeout <= 0 {
+			return indexOneInner(idx, rw)
+		}
+		t0 := time.Now()
+		done := make(chan repoResult, 1)
+		go func() { done <- indexOneInner(idx, rw) }()
+		timer := time.NewTimer(perRepoTimeout)
+		defer timer.Stop()
+		select {
+		case res := <-done:
+			return res
+		case <-timer.C:
+			fmt.Fprintf(os.Stderr,
+				"archigraph: rebuild %s STALLED — no result after %s; surfacing as timeout and continuing with remaining repos (group=%s)\n",
+				rw.r.Slug, perRepoTimeout, args.Group)
+			return repoResult{
+				path: rw.r.Path,
+				slug: rw.r.Slug,
+				err:  fmt.Errorf("repo index timed out after %s (still running in background)", perRepoTimeout),
+				took: time.Since(t0),
+			}
 		}
 	}
 
