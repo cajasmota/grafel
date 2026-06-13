@@ -74,7 +74,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Other capabilities | Notes |
 |---|---|---|
 | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 8/10 | |
-| [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 4/7 | |
+| [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 5/7 | |
 | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 10/11 | |
 | [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/11 | |
 | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/4 | |

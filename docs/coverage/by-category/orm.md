@@ -162,7 +162,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [ruby](../by-language/ruby.md) | [redis-rb](../detail/lang.ruby.driver.redis.md) | 🟡 1/4 | |
 | [ruby](../by-language/ruby.md) | [sqlite3 (Ruby driver)](../detail/lang.ruby.driver.sqlite.md) | 🟡 1/4 | |
 | [rust](../by-language/rust.md) | [Diesel](../detail/lang.rust.orm.diesel.md) | 🟡 8/10 | |
-| [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 4/7 | |
+| [rust](../by-language/rust.md) | [Rbatis](../detail/lang.rust.orm.rbatis.md) | 🟡 5/7 | |
 | [rust](../by-language/rust.md) | [SeaORM](../detail/lang.rust.orm.seaorm.md) | 🟡 10/11 | |
 | [rust](../by-language/rust.md) | [SeaQuery](../detail/lang.rust.framework.sea-query.md) | 🟡 3/11 | |
 | [rust](../by-language/rust.md) | [aws-sdk-dynamodb (Rust)](../detail/lang.rust.driver.dynamodb.md) | 🟡 1/4 | |
