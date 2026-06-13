@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | — | 4978 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/nanodbc.yaml` | Regex (custom_cpp_nanodbc): nanodbc::execute/prepare(conn, "SQL"), nanodbc::statement(conn, "SQL"), conn.execute("SQL") → query with classified sql_verb + sql_text + best-effort sql_table. String-literal SQL only; runtime-built/variable SQL is a cross-file dataflow gap (#4978). Detection still via nanodbc.yaml. |
+| Query attribution | 🟢 `partial` | — | 5026 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/nanodbc.yaml` | Regex (custom_cpp_nanodbc): nanodbc::execute/prepare(conn, "SQL"), nanodbc::statement(conn, "SQL"), conn.execute("SQL") → query with classified sql_verb + sql_text + sql_table (first FROM/INTO/UPDATE/JOIN/TABLE) + sql_tables (ALL referenced tables for multi-table JOINs/CTEs/subqueries, #5026). #5026 also resolves intra-file variable-built SQL: std::string sql="..."; / auto/const char* decls, sql+=/<< concatenation, and the nanodbc prepared-then-bound two-step (statement stmt(conn); stmt.prepare(sql)) — bare identifiers are resolved against a file-local var→SQL map gated by a SQL-verb looksLikeSQL guard so non-SQL strings (log messages, paths) aren't attributed. partial: cross-FILE dataflow (SQL built in another translation unit) remains a gap. Detection still via nanodbc.yaml. |
 
 ### Migrations
 

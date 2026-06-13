@@ -162,3 +162,135 @@ func TestSQLiteCAPINoMatch(t *testing.T) {
 		t.Errorf("expected no entities for non-sqlite3 source, got %d", len(ents))
 	}
 }
+
+// ============================================================================
+// #5026 — variable-built SQL, prepared-then-bound, multi-table sql_tables
+// ============================================================================
+
+// nanodbc prepared-then-bound two-step form: SQL is a std::string variable,
+// then stmt.prepare(sql). Must resolve the variable to its SQL text.
+func TestNanodbcPreparedThenBoundVar(t *testing.T) {
+	src := `
+#include <nanodbc/nanodbc.h>
+void run(nanodbc::connection& conn) {
+	std::string sql = "SELECT id FROM orders WHERE status = ?";
+	nanodbc::statement stmt(conn);
+	stmt.prepare(sql);
+}
+`
+	ents := extract(t, "custom_cpp_nanodbc", fi("dao.cpp", "cpp", src))
+	q := queryByVerb(ents, "SELECT")
+	if q == nil {
+		t.Fatalf("expected SELECT from variable-built SQL, got %v", queryVerbs(ents))
+	}
+	if got := q.Props["sql_table"]; got != "orders" {
+		t.Errorf("sql_table = %q, want orders", got)
+	}
+	if got := q.Props["sql_text"]; got == "" {
+		t.Error("expected resolved sql_text from the variable")
+	}
+}
+
+// nanodbc free-function form with a variable arg, where the SQL is assembled
+// across multiple concatenation statements (sql = ...; sql += ...).
+func TestNanodbcConcatenatedVar(t *testing.T) {
+	src := `
+#include <nanodbc/nanodbc.h>
+void run(nanodbc::connection& conn) {
+	std::string sql = "INSERT INTO audit_log (msg)";
+	sql += " VALUES ('x')";
+	nanodbc::execute(conn, sql);
+}
+`
+	ents := extract(t, "custom_cpp_nanodbc", fi("dao.cpp", "cpp", src))
+	q := queryByVerb(ents, "INSERT")
+	if q == nil {
+		t.Fatalf("expected INSERT from concatenated SQL, got %v", queryVerbs(ents))
+	}
+	if got := q.Props["sql_table"]; got != "audit_log" {
+		t.Errorf("sql_table = %q, want audit_log", got)
+	}
+}
+
+// SQLiteCpp with a variable passed to db.exec(sql).
+func TestSQLiteCppVar(t *testing.T) {
+	src := `
+#include <SQLiteCpp/SQLiteCpp.h>
+void run(SQLite::Database& db) {
+	std::string sql = "DELETE FROM cache";
+	db.exec(sql);
+}
+`
+	ents := extract(t, "custom_cpp_sqlitecpp", fi("store.cpp", "cpp", src))
+	if q := queryByVerb(ents, "DELETE"); q == nil {
+		t.Fatalf("expected DELETE from variable SQL, got %v", queryVerbs(ents))
+	} else if got := q.Props["sql_table"]; got != "cache" {
+		t.Errorf("sql_table = %q, want cache", got)
+	}
+}
+
+// SQLite C API with a std::string variable + .c_str() at the call site.
+func TestSQLiteCAPIVarCStr(t *testing.T) {
+	src := `
+#include <sqlite3.h>
+void run(sqlite3* db) {
+	std::string sql = "UPDATE settings SET v = 1";
+	sqlite3_exec(db, sql.c_str(), NULL, NULL, NULL);
+}
+`
+	ents := extract(t, "custom_cpp_sqlite_capi", fi("db.c", "cpp", src))
+	if q := queryByVerb(ents, "UPDATE"); q == nil {
+		t.Fatalf("expected UPDATE from variable SQL, got %v", queryVerbs(ents))
+	} else if got := q.Props["sql_table"]; got != "settings" {
+		t.Errorf("sql_table = %q, want settings", got)
+	}
+}
+
+// Multi-table JOIN: sql_table keeps the first table (back-compat) while
+// sql_tables records ALL referenced tables.
+func TestSQLTablesMultiTable(t *testing.T) {
+	src := `
+#include <sqlite3.h>
+void run(sqlite3* db) {
+	sqlite3_stmt* st;
+	sqlite3_prepare_v2(db,
+		"SELECT u.id FROM users u JOIN orders o ON o.uid = u.id JOIN items i ON i.oid = o.id",
+		-1, &st, NULL);
+}
+`
+	ents := extract(t, "custom_cpp_sqlite_capi", fi("db.c", "cpp", src))
+	q := queryByVerb(ents, "SELECT")
+	if q == nil {
+		t.Fatalf("expected SELECT, got %v", queryVerbs(ents))
+	}
+	if got := q.Props["sql_table"]; got != "users" {
+		t.Errorf("sql_table = %q, want users (first match)", got)
+	}
+	if got := q.Props["sql_tables"]; got != "users,orders,items" {
+		t.Errorf("sql_tables = %q, want users,orders,items", got)
+	}
+}
+
+// Wrong-language no-op: a non-C/C++ language must not be processed even when the
+// content otherwise looks like a wrapper call.
+func TestSQLWrappersWrongLanguageNoOp(t *testing.T) {
+	src := `nanodbc::execute(conn, "SELECT 1 FROM t");`
+	if ents := extract(t, "custom_cpp_nanodbc", fi("dao.go", "go", src)); len(ents) != 0 {
+		t.Errorf("expected no entities for wrong language, got %d", len(ents))
+	}
+}
+
+// No-match no-op for the variable path: a string variable that isn't SQL (a log
+// message) must NOT be attributed even when passed to a wrapper call.
+func TestSQLWrappersNonSQLVarNoOp(t *testing.T) {
+	src := `
+#include <nanodbc/nanodbc.h>
+void run(nanodbc::connection& conn) {
+	std::string note = "just a log message, not sql";
+	conn.execute(note);
+}
+`
+	if ents := extract(t, "custom_cpp_nanodbc", fi("dao.cpp", "cpp", src)); len(ents) != 0 {
+		t.Errorf("expected no entities for non-SQL variable, got %d (%v)", len(ents), queryVerbs(ents))
+	}
+}

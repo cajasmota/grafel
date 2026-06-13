@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | — | 4978 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/sqlitecpp.yaml` | Regex (custom_cpp_sqlitecpp): SQLite::Statement(db, "SQL") and db.exec("SQL") → query with classified sql_verb + sql_text + best-effort sql_table. Gated on SQLiteCpp/SQLite:: signal. String-literal SQL only; runtime-built/variable SQL is a cross-file dataflow gap (#4978). Detection still via sqlitecpp.yaml. |
+| Query attribution | 🟢 `partial` | — | 5026 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/sqlitecpp.yaml` | Regex (custom_cpp_sqlitecpp): SQLite::Statement(db, "SQL") and db.exec("SQL") → query with classified sql_verb + sql_text + sql_table (first table) + sql_tables (ALL referenced tables for multi-table JOINs/CTEs/subqueries, #5026). Gated on SQLiteCpp/SQLite:: signal. #5026 also resolves intra-file variable-built SQL: std::string sql="..." decls, +=/<< concatenation, SQLite::Statement(db, sql) / db.exec(sql) — bare identifiers resolved against a file-local var→SQL map gated by a SQL-verb guard. partial: cross-FILE dataflow remains a gap. Detection still via sqlitecpp.yaml. |
 
 ### Migrations
 

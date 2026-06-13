@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🟢 `partial` | — | 4978 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/sqlite_direct_c_api.yaml` | Regex (custom_cpp_sqlite_capi): sqlite3_prepare_v2/v3/16(db, "SQL", …) and sqlite3_exec(db, "SQL", …) → query with classified sql_verb + sql_text + best-effort sql_table. String-literal SQL only; runtime-built/variable SQL is a cross-file dataflow gap (#4978). Detection still via sqlite_direct_c_api.yaml. |
+| Query attribution | 🟢 `partial` | — | 5026 | `internal/custom/cpp/orm_sql_wrappers.go`<br>`internal/engine/rules/cpp/orms/sqlite_direct_c_api.yaml` | Regex (custom_cpp_sqlite_capi): sqlite3_prepare_v2/v3/16(db, "SQL", …) and sqlite3_exec(db, "SQL", …) → query with classified sql_verb + sql_text + sql_table (first table) + sql_tables (ALL referenced tables for multi-table JOINs/CTEs/subqueries, #5026). #5026 also resolves intra-file variable-built SQL: std::string sql="..." decls, +=/<< concatenation, and the call-site .c_str()/.data() form (sqlite3_exec(db, sql.c_str(), …)) — bare identifiers resolved against a file-local var→SQL map gated by a SQL-verb guard. partial: cross-FILE dataflow remains a gap. Detection still via sqlite_direct_c_api.yaml. |
 
 ### Migrations
 
