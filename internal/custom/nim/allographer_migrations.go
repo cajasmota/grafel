@@ -33,14 +33,19 @@
 //     drop_table), with props: framework, migration_op (the raw builder method),
 //     table, and column (when the op is column-scoped).
 //
-// Honest exclusions / follow-ups (#5111):
-//   - `schema().alter` accepts the same Column() builder chains as create; we
-//     capture the column NAME + the op, not the full column type re-declaration
-//     for change()/alter ops (the engine pass keys on op+table+column).
-//   - foreign-key add/drop inside an alter() block is not yet a REFERENCES edge
-//     (the create-time FK path in allographer_orm.go is unchanged).
-//   - dynamic table names (a variable, not a string literal) are skipped — no
-//     fabricated op.
+// FK + column-type + dynamic-table evolution (#5111):
+//   - a `.foreign("col").reference("refCol").on("refTable")` chain added inside
+//     an alter() add()/change() block yields a REFERENCES edge op-entity ->
+//     referenced table (same fk_field/to_table/references props the create-time
+//     path emits) and stamps foreign_key=true / fk_target / fk_column on the op.
+//     A `.dropForeign("col")` chain inside alter() yields a drop_foreign op.
+//   - change()/add() ops now re-extract the new column TYPE re-declared in the
+//     `Column().<type>("col")` chain into the `new_column_type` property (the
+//     builder method name: string/integer/…), so the type delta is preserved.
+//   - dynamic table names bound to a string-literal `const`/`let`/`var`
+//     (`const tbl = "users"` … `schema().drop(tbl)` / `table(tbl)`) are
+//     resolved to the literal; truly dynamic (non-literal) names are still
+//     skipped (no fabricated op).
 //
 // Registration key: "custom_nim_allographer_migrations".
 package nim
@@ -48,6 +53,7 @@ package nim
 import (
 	"context"
 	"regexp"
+	"sort"
 	"strings"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -59,6 +65,18 @@ func init() {
 }
 
 type nimAllographerMigrationsExtractor struct{}
+
+// migOp is a fully-described migration op (#5111): beyond op/table/column it
+// carries the re-extracted new column type and any FK chain added in alter().
+type migOp struct {
+	op            string
+	table         string
+	column        string
+	line          int
+	newColumnType string // builder method re-declared in a change()/add() Column() chain
+	fkTable       string // .on("table") target of an FK added inside alter()
+	fkColumn      string // .reference("col") target
+}
 
 func (e *nimAllographerMigrationsExtractor) Language() string {
 	return "custom_nim_allographer_migrations"
@@ -88,7 +106,22 @@ var (
 	nimAlloDeleteColumnRe = regexp.MustCompile(`\.\s*deleteColumn\s*\(\s*"([^"]+)"`)
 	nimAlloRenameColumnRe = regexp.MustCompile(`\.\s*renameColumn\s*\(\s*"([^"]+)"`)
 	// column-name literal inside an add()/change() chain: Column().<type>("col").
-	nimAlloChainColumnRe = regexp.MustCompile(`\bColumn\s*(?:\(\s*\))?\s*\.\s*[A-Za-z_][A-Za-z0-9_]*\s*\(\s*"([^"]+)"`)
+	// Group 1 = the builder method (column type), group 2 = the column name.
+	nimAlloChainColumnRe = regexp.MustCompile(`\bColumn\s*(?:\(\s*\))?\s*\.\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(\s*"([^"]+)"`)
+
+	// FK chain links inside an alter() add()/change() block (mirror allographer_orm.go).
+	nimAlloMigOnRe        = regexp.MustCompile(`\.\s*on\s*\(\s*"([^"]+)"`)
+	nimAlloMigReferenceRe = regexp.MustCompile(`\.\s*reference\s*\(\s*"([^"]+)"`)
+	nimAlloMigForeignRe   = regexp.MustCompile(`\.\s*foreign\s*\(\s*"([^"]+)"`)
+	// .dropForeign("col") — FK removal inside alter().
+	nimAlloDropForeignRe = regexp.MustCompile(`\.\s*dropForeign\s*\(\s*"([^"]+)"`)
+
+	// schema().drop(IDENT) / table(IDENT) — non-literal (bare identifier) forms
+	// whose name must be resolved from a const/let/var string-literal binding.
+	nimAlloDropIdentRe   = regexp.MustCompile(`\bschema\s*\(\s*\)\s*\.\s*drop\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)`)
+	nimAlloTableIdentRe  = regexp.MustCompile(`\btable\s*\(\s*([A-Za-z_][A-Za-z0-9_]*)\s*\)`)
+	// const/let/var binding of an identifier to a string literal: `const x = "users"`.
+	nimAlloStrBindingRe = regexp.MustCompile(`\b(?:const|let|var)\s+([A-Za-z_][A-Za-z0-9_]*)\s*(?::[^\n=]+)?=\s*"([^"]+)"`)
 )
 
 // nimAllographerHasMigration is a fast pre-filter: the file must reference the
@@ -116,40 +149,72 @@ func (e *nimAllographerMigrationsExtractor) Extract(
 		return nil, nil
 	}
 
+	// bindings maps a const/let/var identifier to its string-literal value so a
+	// `schema().drop(tbl)` / `table(tbl)` referencing it can be resolved (#5111).
+	bindings := make(map[string]string)
+	for _, m := range nimAlloStrBindingRe.FindAllStringSubmatch(src, -1) {
+		bindings[m[1]] = m[2]
+	}
+
 	var out []types.EntityRecord
 	seen := make(map[string]bool)
-	emit := func(op, table, column string, line int) {
-		if table == "" || op == "" {
+	// emitFull is the full op emitter; emit is the column-less convenience form.
+	emitFull := func(o migOp) {
+		if o.table == "" || o.op == "" {
 			return
 		}
-		name := op + ":" + table
-		if column != "" {
-			name += "." + column
+		name := o.op + ":" + o.table
+		if o.column != "" {
+			name += "." + o.column
 		}
-		key := name
-		if seen[key] {
+		if seen[name] {
 			return
 		}
-		seen[key] = true
+		seen[name] = true
 		props := map[string]string{
 			"framework":    "allographer",
-			"migration_op": op,
-			"table":        table,
+			"migration_op": o.op,
+			"table":        o.table,
 			"provenance":   "INFERRED_FROM_ALLOGRAPHER_MIGRATION",
 		}
-		if column != "" {
-			props["column"] = column
+		if o.column != "" {
+			props["column"] = o.column
 		}
-		out = append(out, types.EntityRecord{
+		// #5111: re-extract the new column TYPE declared in the Column() chain.
+		if o.newColumnType != "" {
+			props["new_column_type"] = o.newColumnType
+		}
+		rec := types.EntityRecord{
 			Name:       name,
 			Kind:       "SCOPE.Evolution",
-			Subtype:    op,
+			Subtype:    o.op,
 			SourceFile: file.Path,
 			Language:   "nim",
-			StartLine:  line,
-			EndLine:    line,
+			StartLine:  o.line,
+			EndLine:    o.line,
 			Properties: props,
-		})
+		}
+		// #5111: an FK added inside alter() yields a REFERENCES edge op -> ref
+		// table (same shape the create-time path in allographer_orm.go emits).
+		if o.fkTable != "" && o.fkTable != o.table {
+			props["foreign_key"] = "true"
+			props["fk_target"] = o.fkTable
+			if o.fkColumn != "" {
+				props["fk_column"] = o.fkColumn
+			}
+			relProps := map[string]string{"fk_field": o.column, "to_table": o.fkTable}
+			if o.fkColumn != "" {
+				relProps["references"] = o.fkColumn
+			}
+			rec.Relationships = []types.RelationshipRecord{{
+				ToID: o.fkTable, Kind: "REFERENCES", Properties: relProps,
+			}}
+			rec.ID = rec.ComputeID()
+		}
+		out = append(out, rec)
+	}
+	emit := func(op, table, column string, line int) {
+		emitFull(migOp{op: op, table: table, column: column, line: line})
 	}
 
 	// --- schema().drop("table") / schema().drop(table("table")) --------------
@@ -166,66 +231,112 @@ func (e *nimAllographerMigrationsExtractor) Extract(
 		table := src[m[2]:m[3]]
 		emit("drop_table", table, "", nimLineOf(src, m[0]))
 	}
+	// schema().drop(IDENT) — resolve a const/let/var-bound string-literal table
+	// name to its literal (#5111); skip truly dynamic (unbound) identifiers.
+	for _, m := range nimAlloDropIdentRe.FindAllStringSubmatchIndex(src, -1) {
+		ident := src[m[2]:m[3]]
+		if lit, ok := bindings[ident]; ok {
+			emit("drop_table", lit, "", nimLineOf(src, m[0]))
+		}
+	}
 
 	// --- schema().alter( ... ) -----------------------------------------------
 	for _, h := range nimAlloAlterHeadRe.FindAllStringIndex(src, -1) {
 		openIdx := h[1] - 1 // index of the '(' that opens alter(
 		body := balancedParen(src, openIdx)
 		bodyBase := nimLineOf(src, h[0])
-		parseAlterBody(body, bodyBase, emit)
+		parseAlterBody(body, bodyBase, bindings, emitFull)
 	}
 
 	return out, nil
 }
 
 // parseAlterBody scans an alter() block body for per-table op chains. Each
-// `table("name")` anchors a chain bounded by the next `table(` / `renameTable(`
-// (or end of body); the builder method on that chain is the op.
-func parseAlterBody(body string, lineBase int, emit func(op, table, column string, line int)) {
+// `table("name")` (or `table(IDENT)` resolved via bindings) anchors a chain
+// bounded by the next table(...) / renameTable( (or end of body); the builder
+// method on that chain is the op. add()/change() chains re-extract the new
+// column type and any FK chain; a .dropForeign("col") yields a drop_foreign op.
+func parseAlterBody(body string, lineBase int, bindings map[string]string, emit func(migOp)) {
 	// renameTable("old","new") ops are table-level and not anchored by table().
 	for _, m := range nimAlloRenameTableRe.FindAllStringSubmatchIndex(body, -1) {
 		old := body[m[2]:m[3]]
 		line := lineBase + strings.Count(body[:m[0]], "\n")
-		emit("rename_table", old, "", line)
+		emit(migOp{op: "rename_table", table: old, line: line})
 	}
 
-	// Find every table("name") anchor and bound its chain.
-	anchors := nimAlloAlterTableRe.FindAllStringSubmatchIndex(body, -1)
-	for i, m := range anchors {
-		table := body[m[2]:m[3]]
-		chainStart := m[1]
+	// Collect every table anchor: string-literal table("name") + identifier
+	// table(IDENT) forms (resolved via bindings), merged in source order so chain
+	// bounds are correct regardless of which form precedes which.
+	type anchor struct {
+		start, end int    // byte span of the table(...) match
+		table      string // resolved table name ("" if unresolved identifier)
+	}
+	var anchors []anchor
+	for _, m := range nimAlloAlterTableRe.FindAllStringSubmatchIndex(body, -1) {
+		anchors = append(anchors, anchor{start: m[0], end: m[1], table: body[m[2]:m[3]]})
+	}
+	for _, m := range nimAlloTableIdentRe.FindAllStringSubmatchIndex(body, -1) {
+		ident := body[m[2]:m[3]]
+		anchors = append(anchors, anchor{start: m[0], end: m[1], table: bindings[ident]})
+	}
+	sort.Slice(anchors, func(i, j int) bool { return anchors[i].start < anchors[j].start })
+
+	for i, a := range anchors {
+		if a.table == "" { // unresolved dynamic table identifier — no fabricated op
+			continue
+		}
+		table := a.table
+		chainStart := a.end
 		chainEnd := len(body)
 		if i+1 < len(anchors) {
-			chainEnd = anchors[i+1][0]
+			chainEnd = anchors[i+1].start
 		}
 		// renameTable(...) boundaries also terminate a chain.
 		if rt := nimAlloRenameTableRe.FindStringIndex(body[chainStart:chainEnd]); rt != nil {
 			chainEnd = chainStart + rt[0]
 		}
 		chain := body[chainStart:chainEnd]
-		line := lineBase + strings.Count(body[:m[0]], "\n")
+		line := lineBase + strings.Count(body[:a.start], "\n")
 
 		switch {
+		case nimAlloDropForeignRe.MatchString(chain):
+			cm := nimAlloDropForeignRe.FindStringSubmatch(chain)
+			emit(migOp{op: "drop_foreign", table: table, column: cm[1], line: line})
 		case nimAlloDeleteColumnRe.MatchString(chain):
 			cm := nimAlloDeleteColumnRe.FindStringSubmatch(chain)
-			emit("drop_column", table, cm[1], line)
+			emit(migOp{op: "drop_column", table: table, column: cm[1], line: line})
 		case nimAlloRenameColumnRe.MatchString(chain):
 			cm := nimAlloRenameColumnRe.FindStringSubmatch(chain)
-			emit("rename_column", table, cm[1], line)
+			emit(migOp{op: "rename_column", table: table, column: cm[1], line: line})
 		case nimAlloAddRe.MatchString(chain):
-			col := ""
-			if cm := nimAlloChainColumnRe.FindStringSubmatch(chain); cm != nil {
-				col = cm[1]
-			}
-			emit("add_column", table, col, line)
+			emit(alterColumnOp("add_column", table, chain, line))
 		case nimAlloChangeRe.MatchString(chain):
-			col := ""
-			if cm := nimAlloChainColumnRe.FindStringSubmatch(chain); cm != nil {
-				col = cm[1]
-			}
-			emit("alter_column", table, col, line)
+			emit(alterColumnOp("alter_column", table, chain, line))
 		}
 	}
+}
+
+// alterColumnOp builds an add_column/alter_column migOp from a Column() chain,
+// re-extracting the column name + new column TYPE (#5111) and any FK chain
+// (.foreign(...).reference(...).on(...)) so an alter-time FK yields a REFERENCES
+// edge. An FK column with no explicit type defaults its type from .foreign.
+func alterColumnOp(op, table, chain string, line int) migOp {
+	o := migOp{op: op, table: table, line: line}
+	if cm := nimAlloChainColumnRe.FindStringSubmatch(chain); cm != nil {
+		o.newColumnType = cm[1] // builder method = column type
+		o.column = cm[2]
+	}
+	// FK chain added inside alter(): .foreign("col").reference("c").on("table").
+	if fm := nimAlloMigForeignRe.FindStringSubmatch(chain); fm != nil && o.column == "" {
+		o.column = fm[1] // a bare .foreign("col") carries the column name
+	}
+	if om := nimAlloMigOnRe.FindStringSubmatch(chain); om != nil {
+		o.fkTable = om[1]
+	}
+	if rm := nimAlloMigReferenceRe.FindStringSubmatch(chain); rm != nil {
+		o.fkColumn = rm[1]
+	}
+	return o
 }
 
 // nimLineOf returns the 1-based line number of the byte offset in src.
