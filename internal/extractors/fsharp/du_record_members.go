@@ -97,6 +97,7 @@ type memberInfo struct {
 	typ         string   // payload type (DU `of T`) or field type annotation
 	lineOffset  int      // line offset relative to the type declaration start
 	validations []string // #5049: DataAnnotations chips from preceding [<...>] attributes
+	attrLines   []string // #5130: raw [<...>] attribute lines (custom-validator detection)
 }
 
 // parseRecordFields parses the body of an F# record type, returning one entry
@@ -152,6 +153,7 @@ func parseRecordFields(body string) []memberInfo {
 			mi := memberInfo{name: name, typ: typ, lineOffset: lineNo}
 			if attrs := append(append([]string{}, pendingAttrs...), inlineAttrs...); len(attrs) > 0 {
 				mi.validations = fsValidationChips(attrs)
+				mi.attrLines = attrs // #5130: kept for custom-validator detection
 			}
 			out = append(out, mi)
 			pendingAttrs = nil

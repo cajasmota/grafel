@@ -258,6 +258,9 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		calls = append(calls, collectCEUsage(body, builderBindings)...)
 		// #5077: active-pattern match-SITE edges — `| Even ->` → case sub-entity.
 		calls = append(calls, collectMatchSiteEdges(body, filePath, apCases)...)
+		// #5130: Validus / FsToolkit.ErrorHandling validator-pipeline VALIDATES
+		// edges (`validate { }` / `validation { }` / Check.*/Validation.*).
+		calls = append(calls, collectValidatorPipelineEdges(body, startLine)...)
 
 		entities = append(entities, types.EntityRecord{
 			Name:       name,
@@ -299,6 +302,8 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		calls := collectCalls(body, name, startLine)
 		calls = append(calls, collectCEUsage(body, builderBindings)...)
 		calls = append(calls, collectMatchSiteEdges(body, filePath, apCases)...)
+		// #5130: validator-pipeline VALIDATES edges in member bodies too.
+		calls = append(calls, collectValidatorPipelineEdges(body, startLine)...)
 
 		memberProps := map[string]string{
 			"imports": strings.Join(imports, ","),
@@ -328,6 +333,11 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 			Relationships: calls,
 		})
 	}
+
+	// #5130: pre-scan the file for the set of RECORD type names so a record
+	// field whose type is another in-file record can materialise an owner→nested
+	// VALIDATES edge (nested_model_extraction).
+	recordTypes := collectRecordTypeNames(src)
 
 	// 4. type declarations → SCOPE.Component
 	typeSeen := make(map[string]bool)
@@ -381,6 +391,26 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		// with a type→member CONTAINS edge each.
 		memberEnts, memberRels := extractTypeMembers(name, subtype, body, filePath, startLine)
 		rels = append(rels, memberRels...)
+
+		// #5130: type-level validation edges — nested-record VALIDATES
+		// (nested_model), [<CustomValidation(...)>] field validators, and
+		// IValidatableObject custom validators. Only records carry nested/custom
+		// field validators; IValidatableObject can sit on any type.
+		var fieldRefs []fsFieldRef
+		if subtype == "record" {
+			for _, mi := range parseRecordFields(body) {
+				fieldRefs = append(fieldRefs, fsFieldRef{
+					name:       mi.name,
+					typ:        mi.typ,
+					attrLines:  mi.attrLines,
+					lineOffset: mi.lineOffset,
+				})
+			}
+		}
+		rels = append(rels, collectTypeValidatorEdges(
+			name, filePath, fieldRefs, recordTypes,
+			fsTypeImplementsIValidatable(body), startLine,
+		)...)
 
 		typeProps := map[string]string{
 			"imports": strings.Join(imports, ","),

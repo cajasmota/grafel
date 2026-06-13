@@ -1256,3 +1256,255 @@ func TestFSharp_CE_WrongLanguageNoOp(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #5130 — Validus / FsToolkit.ErrorHandling validators + nested/custom
+// DataAnnotations.
+// ---------------------------------------------------------------------------
+
+// fsFindRel returns the first relationship of the given kind/ToID on the named
+// entity, or nil.
+func fsFindRel(ents []types.EntityRecord, name, kind, edgeKind, toID string) *types.RelationshipRecord {
+	for i := range ents {
+		if ents[i].Name != name || ents[i].Kind != kind {
+			continue
+		}
+		for j := range ents[i].Relationships {
+			r := &ents[i].Relationships[j]
+			if r.Kind == edgeKind && r.ToID == toID {
+				return r
+			}
+		}
+	}
+	return nil
+}
+
+// TestFSharp_ValidusPipeline — #5130: a `validate { ... }` Validus computation
+// expression with Check.* combinators emits a VALIDATES edge from the enclosing
+// operation to validator:validus, stamped with the combinators.
+func TestFSharp_ValidusPipeline(t *testing.T) {
+	src := `module Validation
+
+open Validus
+
+let validateUser (dto: UserDto) =
+    validate {
+        let! _ = Check.String.notEmpty dto.Name
+        and! _ = Check.String.betweenLen 2 50 dto.Name
+        and! _ = Check.Int.greaterThan 0 dto.Age
+        return dto
+    }
+`
+	ents := runFSharp(t, src, "validation.fs")
+	r := fsFindRel(ents, "validateUser", "SCOPE.Operation", "VALIDATES", "validator:validus")
+	if r == nil {
+		t.Fatal("expected validateUser VALIDATES validator:validus")
+	}
+	if r.Properties["library"] != "validus" {
+		t.Errorf("library=%q, want validus", r.Properties["library"])
+	}
+	if r.Properties["computation_expression"] != "true" {
+		t.Errorf("expected computation_expression=true, got %q", r.Properties["computation_expression"])
+	}
+	combos := r.Properties["combinators"]
+	for _, want := range []string{"Check.String.notEmpty", "Check.String.betweenLen", "Check.Int.greaterThan"} {
+		if !strings.Contains(combos, want) {
+			t.Errorf("combinators=%q, want to contain %q", combos, want)
+		}
+	}
+	if r.Properties["line"] == "" {
+		t.Error("expected a line property on the VALIDATES edge")
+	}
+}
+
+// TestFSharp_ValidatorGroup — #5130: a Validus ValidatorGroup / validateField
+// pipeline (no CE) is recognised via its combinators.
+func TestFSharp_ValidatorGroup(t *testing.T) {
+	src := `module Validation
+
+open Validus
+
+let nameValidator =
+    ValidatorGroup("Name")
+        .And(validateField "Name" (Check.String.notEmpty))
+        .Build()
+`
+	ents := runFSharp(t, src, "group.fs")
+	r := fsFindRel(ents, "nameValidator", "SCOPE.Operation", "VALIDATES", "validator:validus")
+	if r == nil {
+		t.Fatal("expected nameValidator VALIDATES validator:validus")
+	}
+	if !strings.Contains(r.Properties["combinators"], "ValidatorGroup") {
+		t.Errorf("combinators=%q, want ValidatorGroup", r.Properties["combinators"])
+	}
+}
+
+// TestFSharp_FsToolkitValidation — #5130: a `validation { ... }` FsToolkit CE
+// with Validation.* combinators emits a VALIDATES edge to validator:fstoolkit.
+func TestFSharp_FsToolkitValidation(t *testing.T) {
+	src := `module Validation
+
+open FsToolkit.ErrorHandling
+
+let validateForm (input: FormInput) =
+    validation {
+        let! name = input.Name |> Result.requireNotNull "name required"
+        and! age = Validation.ofResult (parseAge input.Age)
+        return { Name = name; Age = age }
+    }
+`
+	ents := runFSharp(t, src, "form.fs")
+	r := fsFindRel(ents, "validateForm", "SCOPE.Operation", "VALIDATES", "validator:fstoolkit")
+	if r == nil {
+		t.Fatal("expected validateForm VALIDATES validator:fstoolkit")
+	}
+	if r.Properties["computation_expression"] != "true" {
+		t.Errorf("expected computation_expression=true, got %q", r.Properties["computation_expression"])
+	}
+	if !strings.Contains(r.Properties["combinators"], "Validation.ofResult") {
+		t.Errorf("combinators=%q, want Validation.ofResult", r.Properties["combinators"])
+	}
+}
+
+// TestFSharp_NestedModelValidates — #5130: a record field whose type is another
+// record defined in the same file materialises an owner→nested VALIDATES edge
+// (via=nested_model) — the F# analog of [<ValidateComplexType>].
+func TestFSharp_NestedModelValidates(t *testing.T) {
+	src := `module Dto
+
+type Address = {
+    Street: string
+    City: string
+}
+
+type Order = {
+    Id: int
+    ShipTo: Address
+    BillTo: Address option
+}
+`
+	ents := runFSharp(t, src, "order.fs")
+	r := fsFindRel(ents, "Order", "SCOPE.Component", "VALIDATES", "Address")
+	if r == nil {
+		t.Fatal("expected Order VALIDATES Address (nested_model)")
+	}
+	if r.Properties["via"] != "nested_model" {
+		t.Errorf("via=%q, want nested_model", r.Properties["via"])
+	}
+	// Only ONE edge per distinct nested type even though two fields reference it.
+	count := 0
+	for i := range ents {
+		if ents[i].Name == "Order" && ents[i].Kind == "SCOPE.Component" {
+			for _, rel := range ents[i].Relationships {
+				if rel.Kind == "VALIDATES" && rel.ToID == "Address" {
+					count++
+				}
+			}
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 nested VALIDATES edge to Address, got %d", count)
+	}
+}
+
+// TestFSharp_CustomValidationAttr — #5130: a [<CustomValidation(typeof<T>, "M")>]
+// field attribute emits an owner→validator:dataannotations VALIDATES edge
+// (via=custom_validation) stamped with the validator type + method.
+func TestFSharp_CustomValidationAttr(t *testing.T) {
+	src := `module Dto
+
+type SignupDto = {
+    [<CustomValidation(typeof<UserValidators>, "ValidateAge")>]
+    Age: int
+}
+`
+	ents := runFSharp(t, src, "signup.fs")
+	r := fsFindRel(ents, "SignupDto", "SCOPE.Component", "VALIDATES", "validator:dataannotations")
+	if r == nil {
+		t.Fatal("expected SignupDto VALIDATES validator:dataannotations (custom_validation)")
+	}
+	if r.Properties["via"] != "custom_validation" {
+		t.Errorf("via=%q, want custom_validation", r.Properties["via"])
+	}
+	if r.Properties["validator_type"] != "UserValidators" {
+		t.Errorf("validator_type=%q, want UserValidators", r.Properties["validator_type"])
+	}
+	if r.Properties["method"] != "ValidateAge" {
+		t.Errorf("method=%q, want ValidateAge", r.Properties["method"])
+	}
+	// The custom-validation attribute must NOT leak into the field validation chips.
+	if fe := fsFind(ents, "SignupDto.Age", "SCOPE.Schema"); fe == nil {
+		t.Fatal("expected field SignupDto.Age")
+	} else if v, ok := fe.Properties["validations"]; ok {
+		t.Errorf("Age should have no chips from CustomValidation, got %q", v)
+	}
+}
+
+// TestFSharp_IValidatableObject — #5130: a type implementing IValidatableObject
+// emits an owner→validator:dataannotations VALIDATES edge (via=ivalidatableobject).
+func TestFSharp_IValidatableObject(t *testing.T) {
+	src := `module Dto
+
+open System.ComponentModel.DataAnnotations
+
+type RegistrationDto =
+    { Password: string
+      Confirm: string }
+
+    interface IValidatableObject with
+        member this.Validate(ctx) =
+            seq { if this.Password <> this.Confirm then yield ValidationResult("mismatch") }
+`
+	ents := runFSharp(t, src, "registration.fs")
+	r := fsFindRel(ents, "RegistrationDto", "SCOPE.Component", "VALIDATES", "validator:dataannotations")
+	if r == nil {
+		t.Fatal("expected RegistrationDto VALIDATES validator:dataannotations (ivalidatableobject)")
+	}
+	if r.Properties["via"] != "ivalidatableobject" {
+		t.Errorf("via=%q, want ivalidatableobject", r.Properties["via"])
+	}
+}
+
+// TestFSharp_Validator_WrongLanguageNoOp — #5130: a non-F# file (or a C#-shaped
+// validate block) does not produce F# VALIDATES edges (the extractor is only
+// invoked for .fs content, and a plain record with no validator surface emits
+// nothing).
+func TestFSharp_Validator_WrongLanguageNoOp(t *testing.T) {
+	src := `module Dto
+
+// Plain record, no validators of any kind.
+type Plain = {
+    Name: string
+    Count: int
+}
+
+let doWork x = x + 1
+`
+	ents := runFSharp(t, src, "plain.fs")
+	for i := range ents {
+		for _, r := range ents[i].Relationships {
+			if r.Kind == "VALIDATES" {
+				t.Errorf("unexpected VALIDATES edge on no-validator input from %q -> %q", ents[i].Name, r.ToID)
+			}
+		}
+	}
+}
+
+// TestFSharp_Validator_NoMatchNoOp — #5130: an ordinary record `{ ... }` block
+// and a bare Result.* error-handling body (no `validation { }` CE, no
+// Validation.* combinator) must NOT be over-claimed as a validator pipeline.
+func TestFSharp_Validator_NoMatchNoOp(t *testing.T) {
+	src := `module Logic
+
+open FsToolkit.ErrorHandling
+
+// Result.* WITHOUT the validation CE is ordinary error handling, not
+// applicative validation accumulation.
+let parse s =
+    s |> Result.map int |> Result.mapError string
+`
+	ents := runFSharp(t, src, "logic.fs")
+	if r := fsFindRel(ents, "parse", "SCOPE.Operation", "VALIDATES", "validator:fstoolkit"); r != nil {
+		t.Error("bare Result.* should NOT be claimed as an FsToolkit validation pipeline")
+	}
+}

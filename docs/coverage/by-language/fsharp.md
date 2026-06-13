@@ -52,4 +52,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Testing | Other capabilities | Notes |
 |---|---|---|---|
-| [DataAnnotations (F# records)](../detail/lang.fsharp.validation.dataannotations.md) | 🔴 0/1 | 🟡 2/4 | |
+| [DataAnnotations (F# records)](../detail/lang.fsharp.validation.dataannotations.md) | 🟢 1/1 | ✅ 4/4 | |
