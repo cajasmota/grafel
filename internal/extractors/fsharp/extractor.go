@@ -10,7 +10,8 @@
 //   - function applications → CALLS edges. Captured call forms: paren `name(`,
 //     pipe `|> name`, compose `>> name`, and space-applied `head arg`
 //     (F#'s dominant curried-application idiom). Each CALLS edge is stamped with
-//     a 1-based body-relative `line` Property (#4939).
+//     a 1-based FILE-ABSOLUTE `line` Property (#5034; promoted from the prior
+//     body-relative convention of #4939).
 //   - Module CONTAINS members
 //
 // No tree-sitter grammar for F# is available in smacker/go-tree-sitter, so
@@ -238,7 +239,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		body := extractIndentBody(src, m[1], len(indent))
 		endLine := startLine + strings.Count(body, "\n")
-		calls := collectCalls(body, name)
+		calls := collectCalls(body, name, startLine)
 		// #5048: computation-expression usage (`async { }` / custom builders)
 		// inside the body → USES edges to the builder symbol.
 		calls = append(calls, collectCEUsage(body)...)
@@ -280,7 +281,7 @@ func extractFSharp(src, filePath string) []types.EntityRecord {
 		startLine := strings.Count(src[:m[0]], "\n") + 1
 		body := extractIndentBody(src, m[1], len(indent))
 		endLine := startLine + strings.Count(body, "\n")
-		calls := collectCalls(body, name)
+		calls := collectCalls(body, name, startLine)
 		calls = append(calls, collectCEUsage(body)...)
 
 		entities = append(entities, types.EntityRecord{
@@ -535,7 +536,12 @@ func countIndent(line string) int {
 }
 
 // collectCalls extracts CALLS edges from a function body.
-func collectCalls(body, callerName string) []types.RelationshipRecord {
+//
+// bodyStartLine is the 1-based FILE line at which the body's first line sits
+// (i.e. the enclosing operation's StartLine). The stamped `line` Property is
+// file-absolute: bodyStartLine + (body-relative line - 1), so a clickable
+// jump-to-call-site is possible without a separate body-offset lookup (#5034).
+func collectCalls(body, callerName string, bodyStartLine int) []types.RelationshipRecord {
 	if body == "" {
 		return nil
 	}
@@ -544,9 +550,9 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 	seen := make(map[string]bool)
 	var out []types.RelationshipRecord
 
-	// addCall records a CALLS edge to target, stamping the 1-based line (relative
-	// to the function body) at which the call site begins. Duplicate targets keep
-	// the FIRST line seen, matching the Nim/Erlang call_line convention (#4939).
+	// addCall records a CALLS edge to target, stamping the FILE-ABSOLUTE 1-based
+	// line at which the call site begins (#5034 — promoted from the prior
+	// body-relative convention). Duplicate targets keep the FIRST line seen.
 	addCall := func(target string, off int) {
 		if target == "" || callerName == target {
 			return
@@ -562,7 +568,7 @@ func collectCalls(body, callerName string) []types.RelationshipRecord {
 			return
 		}
 		seen[target] = true
-		line := 1 + strings.Count(scrubbed[:off], "\n")
+		line := bodyStartLine + strings.Count(scrubbed[:off], "\n")
 		out = append(out, types.RelationshipRecord{
 			ToID: target,
 			Kind: "CALLS",

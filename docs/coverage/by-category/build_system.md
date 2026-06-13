@@ -38,7 +38,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [elixir](../by-language/elixir.md) | [Mox](../detail/test.mox.md) | 🔴 | 🔴 | |
 | [elixir](../by-language/elixir.md) | [StreamData (property tests)](../detail/test.streamdata.md) | ✅ | ✅ | |
 | [elixir](../by-language/elixir.md) | [Wallaby](../detail/test.wallaby.md) | 🔴 | 🔴 | |
-| [F#](../by-language/fsharp.md) | [Expecto / xUnit (F#)](../detail/test.fsharp-expecto.md) | 🔴 | 🟢 | |
+| [F#](../by-language/fsharp.md) | [Expecto / xUnit (F#)](../detail/test.fsharp-expecto.md) | 🔴 | ✅ | |
 | [go](../by-language/go.md) | [Ginkgo](../detail/test.ginkgo.md) | 🟢 | ✅ | |
 | [go](../by-language/go.md) | [Gomega](../detail/test.gomega.md) | 🟢 | ✅ | |
 | [go](../by-language/go.md) | [Mage](../detail/build.mage.md) | ✅ | ✅ | |

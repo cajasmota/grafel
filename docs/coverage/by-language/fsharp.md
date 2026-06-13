@@ -33,7 +33,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|---|
-| [Expecto / xUnit (F#)](../detail/test.fsharp-expecto.md) | 🔴 | — | — | — | 🟢 | |
+| [Expecto / xUnit (F#)](../detail/test.fsharp-expecto.md) | 🔴 | — | — | — | ✅ | |
 
 ## Other
 

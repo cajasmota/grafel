@@ -29,6 +29,52 @@ var directCallRE = regexp.MustCompile(
 	`\b([A-Za-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)\s*\(`,
 )
 
+// fsharpSpaceAppRE captures an F# SPACE-APPLIED call head (`createUser "ada"`),
+// the dominant curried-application idiom that produces no paren/pipe match and
+// is therefore invisible to directCallRE. This is a faithful port of the base
+// F# extractor's spaceAppRE (internal/extractors/fsharp/extractor.go #4939) so
+// the cross-language test→SUT resolver picks up the same call sites the
+// extractor records on the production side (#5034).
+//
+// To stay conservative (F# is whitespace-sensitive; a bare identifier followed
+// by another identifier is ambiguous with type annotations / record fields) the
+// head must sit at a CLAUSE-STARTER position and be followed by at least one
+// whitespace-separated ARGUMENT-STARTER. Recognised clause starters: line start
+// (after indentation), `=`, `(`, `[`, `;`, `,`, `|>`, `<|`, `->`, and the block
+// keywords return/yield/do/then/else. The argument starter is a string/char/
+// number literal, an opening paren/bracket, or a lower-case identifier (an
+// upper-case follower is more likely a type/DU-case, so it is excluded).
+//
+// This pass is gated to F# test functions only (tf.lang == "fsharp"); it never
+// runs on other languages' bodies, so it cannot regress their false-positive
+// rates. Captured heads are still filtered through the shared isStopword
+// denylist (Expecto/Unquote/FsUnit/xUnit assertion combinators are stop-worded
+// in #4906), so test-harness combinators never surface as the SUT.
+var fsharpSpaceAppRE = regexp.MustCompile(
+	`(?m)(?:^[ \t]*|[=([;,]\s*|\|>\s*|<\|\s*|->\s*|\breturn!?\s+|\byield!?\s+|\bdo!?\s+|\bthen\s+|\belse\s+)` +
+		`([a-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)` +
+		`[ \t]+(?:"|'|@"|\$"|[0-9]|\(|\[|[a-z_])`,
+)
+
+// fsharpKeywordHeads are F# keywords/combinators that fsharpSpaceAppRE can match
+// in a head position but are never production-call targets. Mirrors the base
+// extractor's fsharpKeywords gate so the resolver does not emit a TESTS edge to
+// `if`, `let`, `match`, etc. when they are followed by an argument starter.
+var fsharpKeywordHeads = map[string]bool{
+	"if": true, "elif": true, "else": true, "then": true,
+	"while": true, "for": true, "do": true, "done": true,
+	"match": true, "with": true, "when": true,
+	"try": true, "finally": true,
+	"raise": true, "failwith": true, "failwithf": true,
+	"return": true, "yield": true, "and": true, "or": true, "not": true,
+	"let": true, "in": true, "fun": true, "function": true,
+	"type": true, "open": true, "module": true, "namespace": true,
+	"new": true, "use": true, "using": true,
+	"async": true, "seq": true, "query": true,
+	"upcast": true, "downcast": true, "typeof": true, "typedefof": true,
+	"sizeof": true, "nameof": true, "mutable": true, "rec": true,
+}
+
 // mockSetupRE captures common mock-library setup lines. The first capture
 // group is the qualified production identifier being stubbed.
 //
@@ -702,6 +748,41 @@ func resolveCalls(tf testFunction, prodFile, convSymbol string, importedSyms map
 			}
 		}
 		upgrade(qname, conf)
+	}
+
+	// Pass 1b (F# only): space-applied calls (`createUser "ada"`). F#'s dominant
+	// curried-application idiom is not paren-captured by directCallRE, so an F#
+	// test that exercises the SUT via space application yields no direct-call
+	// signal without this port of the extractor's gated head-symbol scan (#5034).
+	// Gated to tf.lang == "fsharp" so other languages' false-positive rates are
+	// untouched. Heads are filtered through the F# keyword gate AND the shared
+	// isStopword denylist (Expecto/FsUnit/xUnit combinators), then subjected to
+	// the same import-aware high/medium gate as Pass 1.
+	if tf.lang == "fsharp" {
+		for _, m := range fsharpSpaceAppRE.FindAllStringSubmatch(tf.body, -1) {
+			if len(m) < 2 {
+				continue
+			}
+			qname := m[1]
+			if fsharpKeywordHeads[headIdent(qname)] {
+				continue
+			}
+			if isStopword(qname) || isStopword(tailIdent(qname)) {
+				continue
+			}
+			tail := tailIdent(qname)
+			if len(tail) < 3 {
+				continue
+			}
+			conf := "high"
+			if gateImports {
+				head := headIdent(qname)
+				if !importedSyms[head] && !importedSyms[qname] {
+					conf = "medium"
+				}
+			}
+			upgrade(qname, conf)
+		}
 	}
 
 	// Pass 2: mock targets → medium (may upgrade to high if already present).

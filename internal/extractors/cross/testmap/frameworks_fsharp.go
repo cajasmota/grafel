@@ -153,7 +153,7 @@ func detectFSharpExpecto(source string) []testFunction {
 		}
 		seen[name] = true
 		body := extractNimBlockBody(source, m[0])
-		out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
+		out = append(out, testFunction{qname: name, body: body, describeSubject: subject, lang: "fsharp"})
 	}
 
 	// xUnit / NUnit attribute-decorated `let` bindings. We require a test
@@ -178,7 +178,7 @@ func detectFSharpExpecto(source string) []testFunction {
 			}
 			seen[name] = true
 			body := extractNimBlockBody(source, m[0])
-			out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
+			out = append(out, testFunction{qname: name, body: body, describeSubject: subject, lang: "fsharp"})
 		}
 	}
 

@@ -403,8 +403,10 @@ let caller flag =
 	}
 }
 
-// TestFSharp_CallLineStamping proves every CALLS edge carries a 1-based body
-// line Property (#4939), matching the Nim/Erlang call_line_precision convention.
+// TestFSharp_CallLineStamping proves every CALLS edge carries a 1-based
+// FILE-ABSOLUTE line Property (#5034; promoted from the body-relative #4939
+// convention). The line points directly at the call site in the file, so a
+// jump-to-source is possible without a separate body-offset lookup.
 func TestFSharp_CallLineStamping(t *testing.T) {
 	src := `module App
 
@@ -429,16 +431,17 @@ let caller n =
 		}
 	}
 
-	// paren-call `helper(n)` is on body line 2, space-call `other n` on body line 3.
+	// `let caller n =` is FILE line 6. paren-call `helper(n)` is on file line 7,
+	// space-call `other n` on file line 8 (file-absolute, not body-relative).
 	if r := fsRel(ents, "caller", "SCOPE.Operation", "CALLS", "helper"); r == nil {
 		t.Error("expected CALLS caller→helper")
-	} else if r.Properties["line"] != "2" {
-		t.Errorf("helper call line = %q, want 2", r.Properties["line"])
+	} else if r.Properties["line"] != "7" {
+		t.Errorf("helper call line = %q, want 7 (file-absolute)", r.Properties["line"])
 	}
 	if r := fsRel(ents, "caller", "SCOPE.Operation", "CALLS", "other"); r == nil {
 		t.Error("expected CALLS caller→other")
-	} else if r.Properties["line"] != "3" {
-		t.Errorf("other call line = %q, want 3", r.Properties["line"])
+	} else if r.Properties["line"] != "8" {
+		t.Errorf("other call line = %q, want 8 (file-absolute)", r.Properties["line"])
 	}
 }
 

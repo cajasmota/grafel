@@ -19,6 +19,7 @@ type testFunction struct {
 	qname           string // fully qualified test function name
 	body            string // textual body used for call/mock scanning
 	describeSubject string // RSpec/Minitest: the described class/module name (e.g. "User", "UsersController")
+	lang            string // optional source language ("fsharp", …); gates language-specific resolver passes (#5034)
 }
 
 // testedCall is an internal record describing a single (test function,
