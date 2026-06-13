@@ -320,6 +320,16 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 	cicsQueueIdx := map[string]int{}
 	cicsMapIdx := map[string]int{}
 
+	// Micro Focus / ACUCOBOL dialect terminal screens (#5046). A native
+	// DISPLAY ... UPON CRT / ACCEPT ... FROM CRT or a bare DISPLAY/ACCEPT of a
+	// SCREEN-SECTION-declared screen yields a single SCOPE.View/screen entity
+	// with RENDERS (DISPLAY) / REFERENCES (ACCEPT) edges. screenSectionNames
+	// holds the SCREEN SECTION 01-level screen records (upper-cased) so the bare
+	// DISPLAY/ACCEPT <name> form only resolves a real screen.
+	dialectScreenIdx := map[string]int{}
+	screenSectionNames := map[string]bool{}
+	inScreenSection := false
+
 	// FILE-CONTROL / SELECT tracking (#4908). When inside FILE-CONTROL we
 	// buffer each SELECT statement to its terminating period (the VSAM
 	// ORGANIZATION / ACCESS / RECORD KEY clauses usually trail on continuation
@@ -415,6 +425,9 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 			}
 			for _, q := range extractCICSQueues(blk.text) {
 				key := q.qtype + ":" + strings.ToUpper(q.name)
+				if q.sysid != "" {
+					key += "@" + strings.ToUpper(q.sysid)
+				}
 				if _, ok := cicsQueueIdx[key]; !ok {
 					cicsQueueIdx[key] = len(entities)
 					entities = append(entities, buildCICSQueueEntity(filePath, q, blk.startLine))
@@ -432,6 +445,9 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					}
 					if q.dynamic {
 						props["dynamic_ref"] = "true"
+					}
+					if q.sysid != "" {
+						props["sysid"] = q.sysid
 					}
 					entities[ioIdx].Relationships = append(entities[ioIdx].Relationships,
 						types.RelationshipRecord{
@@ -532,6 +548,7 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 			inFileControl = false
 			inProcedureDivision = div == "PROCEDURE"
 			inDataItemArea = false
+			inScreenSection = false
 			currentParagraphIdx = -1
 			currentParagraphName = ""
 			dataStack = dataStack[:0]
@@ -557,8 +574,24 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 			hasSectionKeyword(ln.upper, "LINKAGE") ||
 			hasSectionKeyword(ln.upper, "LOCAL-STORAGE") {
 			inDataItemArea = true
+			inScreenSection = false
 		} else if hasSectionKeyword(ln.upper, "FILE") && strings.Contains(ln.upper, "SECTION") {
 			inDataItemArea = true
+			inScreenSection = false
+		} else if hasSectionKeyword(ln.upper, "SCREEN") && strings.Contains(ln.upper, "SECTION") {
+			// Micro Focus / ACUCOBOL SCREEN SECTION (#5046): collect 01-level
+			// screen record names so a bare DISPLAY/ACCEPT <name> in the
+			// PROCEDURE DIVISION is recognised as terminal screen I/O.
+			inDataItemArea = true
+			inScreenSection = true
+		}
+		// A 01-level item inside the SCREEN SECTION names a screen record.
+		if inScreenSection {
+			if m := dataItemRe.FindStringSubmatch(ln.code); m != nil {
+				if m[1] == "01" && !strings.EqualFold(m[2], "FILLER") {
+					screenSectionNames[strings.ToUpper(m[2])] = true
+				}
+			}
 		}
 
 		// ── FILE-CONTROL / SELECT (#4908) ────────────────────────────────
@@ -942,6 +975,35 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 				}
 				for _, wm := range fileWriteRe.FindAllStringSubmatch(ln.code, -1) {
 					attachFileIO(wm[2], "WRITES_TO")
+				}
+
+				// Micro Focus / ACUCOBOL dialect terminal screen I/O (#5046):
+				// DISPLAY ... UPON CRT / ACCEPT ... FROM CRT, or a bare
+				// DISPLAY/ACCEPT of a SCREEN-SECTION screen. DISPLAY → RENDERS,
+				// ACCEPT → REFERENCES, binding the paragraph to a SCOPE.View/screen
+				// — the native (non-CICS) presentation layer, mirroring CICS maps.
+				for _, sc := range extractDialectScreens(ln.code, screenSectionNames) {
+					key := strings.ToUpper(sc.name)
+					if _, ok := dialectScreenIdx[key]; !ok {
+						dialectScreenIdx[key] = len(entities)
+						entities = append(entities, buildDialectScreenEntity(filePath, sc, ln.num))
+					}
+					scEnt := entities[dialectScreenIdx[key]]
+					kind := "RENDERS"
+					if sc.verb == "ACCEPT" {
+						kind = "REFERENCES"
+					}
+					entities[ioIdx].Relationships = append(entities[ioIdx].Relationships,
+						types.RelationshipRecord{
+							FromID: sqlFunctionRef(filePath, fnRefName()),
+							ToID:   scEnt.QualifiedName,
+							Kind:   kind,
+							Properties: map[string]string{
+								"line": strconv.Itoa(ln.num),
+								"map":  sc.name,
+								"via":  sc.via,
+							},
+						})
 				}
 			}
 		}

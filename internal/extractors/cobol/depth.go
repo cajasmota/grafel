@@ -449,8 +449,20 @@ var (
 	// cicsQueueRe matches a TS/TD queue verb and captures its QUEUE / QNAME
 	// operand. The operand may be a literal ('NAME') or a data-item reference.
 	// Group 1: verb (READQ|WRITEQ|DELETEQ); group 2: TS|TD; group 3: operand.
+	// QUEUE/QNAME is the TS form; #5046 adds DESTID, the TD transient-data
+	// destination-id operand (Micro Focus/ACUCOBOL + IBM TD use DESTID rather
+	// than QUEUE), so a `WRITEQ TD DESTID('LOGQ')` resolves the same datastore.
 	cicsQueueRe = regexp.MustCompile(
-		`(?is)\b(READQ|WRITEQ|DELETEQ)\s+(TS|TD)\b[^.]*?\b(?:QUEUE|QNAME)\s*\(\s*('?[A-Za-z0-9$#@][A-Za-z0-9$#@_.-]*'?)\s*\)`,
+		`(?is)\b(READQ|WRITEQ|DELETEQ)\s+(TS|TD)\b[^.]*?\b(?:QUEUE|QNAME|DESTID)\s*\(\s*('?[A-Za-z0-9$#@][A-Za-z0-9$#@_.-]*'?)\s*\)`,
+	)
+
+	// cicsQueueSysidRe captures the SYSID/SYSTEM remote-region operand on a
+	// READQ/WRITEQ command (#5046). When present the queue lives in (or is routed
+	// to) another CICS region — the cross-region coupling key — recorded as a
+	// `sysid` property so the queue does not silently collapse a remote queue
+	// onto a same-named local one. Group 1: the SYSID/SYSTEM operand.
+	cicsQueueSysidRe = regexp.MustCompile(
+		`(?is)\b(?:SYSID|SYSTEM)\s*\(\s*('?[A-Za-z0-9$#@][A-Za-z0-9$#@_.-]*'?)\s*\)`,
 	)
 
 	// cicsMapRe matches SEND/RECEIVE MAP('NAME') and optionally MAPSET('SET').
@@ -464,7 +476,112 @@ var (
 	cicsMapsetRe = regexp.MustCompile(
 		`(?is)\bMAPSET\s*\(\s*('?[A-Za-z0-9$#@][A-Za-z0-9$#@_.-]*'?)\s*\)`,
 	)
+
+	// --- Micro Focus / ACUCOBOL dialect screen I/O (#5046) ------------------
+	// Non-CICS terminal handling. Micro Focus & ACUCOBOL drive the terminal via
+	// native COBOL verbs rather than EXEC CICS SEND/RECEIVE MAP:
+	//   DISPLAY <item> UPON CRT          → render to the screen (RENDERS)
+	//   ACCEPT  <item> FROM CRT          → read operator input back (REFERENCES)
+	//   DISPLAY <screen-name>            → render a SCREEN SECTION screen
+	//   ACCEPT  <screen-name>            → read a SCREEN SECTION screen
+	// The bare DISPLAY/ACCEPT <name> forms are only treated as screen I/O when
+	// <name> was declared in the SCREEN SECTION (collected at parse time), which
+	// keeps ordinary console DISPLAY/ACCEPT from being mis-modelled as screens.
+
+	// dialectScreenUponRe matches `DISPLAY <op> UPON CRT[-UNDER]` (MF/ACU) — the
+	// screen operand is group 1. The UPON CRT clause unambiguously marks a
+	// terminal write, so no SCREEN SECTION cross-check is needed.
+	dialectScreenUponRe = regexp.MustCompile(
+		`(?is)\bDISPLAY\s+([A-Za-z0-9$#@][A-Za-z0-9$#@_-]*)\b[^.]*?\bUPON\s+CRT(?:-UNDER)?\b`,
+	)
+
+	// dialectScreenFromRe matches `ACCEPT <op> FROM CRT` (MF/ACU) — the screen
+	// operand is group 1.
+	dialectScreenFromRe = regexp.MustCompile(
+		`(?is)\bACCEPT\s+([A-Za-z0-9$#@][A-Za-z0-9$#@_-]*)\b[^.]*?\bFROM\s+CRT\b`,
+	)
+
+	// dialectScreenVerbRe matches a bare `DISPLAY <name>` / `ACCEPT <name>`; the
+	// <name> is only a screen when it was declared in the SCREEN SECTION. Group
+	// 1: verb (DISPLAY|ACCEPT); group 2: operand.
+	dialectScreenVerbRe = regexp.MustCompile(
+		`(?is)\b(DISPLAY|ACCEPT)\s+([A-Za-z0-9$#@][A-Za-z0-9$#@_-]*)\b`,
+	)
 )
+
+// dialectScreenOp is a detected Micro Focus / ACUCOBOL terminal screen access
+// expressed via native COBOL DISPLAY/ACCEPT (not EXEC CICS) — #5046.
+type dialectScreenOp struct {
+	verb string // DISPLAY | ACCEPT
+	name string // screen / data-item name
+	via  string // UPON-CRT | FROM-CRT | SCREEN-SECTION
+}
+
+// extractDialectScreens scans a single PROCEDURE-DIVISION source line for the
+// Micro Focus / ACUCOBOL screen I/O forms. `screenNames` is the set of
+// SCREEN-SECTION-declared screen records (upper-cased) used to qualify the bare
+// DISPLAY/ACCEPT <name> form. Returns the screen accesses found on the line.
+func extractDialectScreens(line string, screenNames map[string]bool) []dialectScreenOp {
+	var out []dialectScreenOp
+	seen := map[string]bool{} // verb+name dedup within the line
+	add := func(verb, name, via string) {
+		k := verb + ":" + strings.ToUpper(name)
+		if seen[k] {
+			return
+		}
+		seen[k] = true
+		out = append(out, dialectScreenOp{verb: verb, name: name, via: via})
+	}
+	for _, m := range dialectScreenUponRe.FindAllStringSubmatch(line, -1) {
+		add("DISPLAY", m[1], "UPON-CRT")
+	}
+	for _, m := range dialectScreenFromRe.FindAllStringSubmatch(line, -1) {
+		add("ACCEPT", m[1], "FROM-CRT")
+	}
+	// Bare DISPLAY/ACCEPT <name> only when <name> is a known SCREEN SECTION
+	// screen (ACUCOBOL/MF screen records). This avoids treating console
+	// DISPLAY 'msg' / ACCEPT WS-FIELD as a screen.
+	if len(screenNames) > 0 {
+		for _, m := range dialectScreenVerbRe.FindAllStringSubmatch(line, -1) {
+			if screenNames[strings.ToUpper(m[2])] {
+				add(strings.ToUpper(m[1]), m[2], "SCREEN-SECTION")
+			}
+		}
+	}
+	return out
+}
+
+// dialectScreenRef is the canonical identity for a Micro Focus / ACUCOBOL
+// terminal screen View entity. It shares the `scope:view:cobol:...#map:` shape
+// of the CICS BMS map so by-name resolution and the View kind are uniform.
+func dialectScreenRef(filePath, name string) string {
+	return "scope:view:cobol:" + filepath.ToSlash(filePath) + "#screen:" + strings.ToUpper(name)
+}
+
+// buildDialectScreenEntity emits the SCOPE.View/screen entity for a Micro Focus
+// / ACUCOBOL terminal screen (#5046). `ui` distinguishes it from the CICS BMS
+// map (which uses ui=bms); the dialect-native screen uses ui=crt.
+func buildDialectScreenEntity(filePath string, op dialectScreenOp, line int) types.EntityRecord {
+	props := map[string]string{
+		"map":        op.name,
+		"ui":         "crt", // Micro Focus / ACUCOBOL terminal (non-CICS) screen
+		"dialect":    "micro-focus-acucobol",
+		"provenance": "INFERRED_FROM_SCREEN_IO",
+	}
+	return types.EntityRecord{
+		Name:          op.name,
+		Kind:          "SCOPE.View",
+		Subtype:       "screen",
+		QualifiedName: dialectScreenRef(filePath, op.name),
+		SourceFile:    filePath,
+		Language:      "cobol",
+		StartLine:     line,
+		EndLine:       line,
+		Signature:     op.verb + " " + op.name + " (" + op.via + ")",
+		Properties:    props,
+		QualityScore:  0.7,
+	}
+}
 
 // cicsQueueOp is a detected TS/TD queue access.
 type cicsQueueOp struct {
@@ -472,6 +589,7 @@ type cicsQueueOp struct {
 	qtype   string // TS | TD
 	name    string // queue name (literal text, quotes stripped) or data-item
 	dynamic bool   // true when the operand is a data-item, not a literal
+	sysid   string // SYSID/SYSTEM remote region (#5046), empty when local
 }
 
 // cicsMapOp is a detected BMS/MFS screen-map access.
@@ -492,9 +610,17 @@ func unquoteOperand(s string) (val string, literal bool) {
 	return s, false
 }
 
-// extractCICSQueues scans a CICS block body for TS/TD queue verbs.
+// extractCICSQueues scans a CICS block body for TS/TD queue verbs. The body is
+// a single EXEC CICS ... END-EXEC command, so a SYSID/SYSTEM operand anywhere in
+// the command applies to the queue access it carries (#5046).
 func extractCICSQueues(body string) []cicsQueueOp {
 	var out []cicsQueueOp
+	sysid := ""
+	if sm := cicsQueueSysidRe.FindStringSubmatch(body); sm != nil {
+		if v, _ := unquoteOperand(sm[1]); v != "" {
+			sysid = v
+		}
+	}
 	for _, m := range cicsQueueRe.FindAllStringSubmatch(body, -1) {
 		name, literal := unquoteOperand(m[3])
 		out = append(out, cicsQueueOp{
@@ -502,6 +628,7 @@ func extractCICSQueues(body string) []cicsQueueOp {
 			qtype:   strings.ToUpper(m[2]),
 			name:    name,
 			dynamic: !literal,
+			sysid:   sysid,
 		})
 	}
 	return out
@@ -531,8 +658,14 @@ func extractCICSMaps(body string) []cicsMapOp {
 // cicsQueueRefName is the canonical name used for a TS/TD queue datastore. A
 // dynamic (data-item) operand keeps the data-item name so the same variable
 // across programs still couples; a literal keeps the literal queue name.
-func cicsQueueRef(filePath, qtype, name string) string {
-	return "scope:datastore:cobol:" + filepath.ToSlash(filePath) + "#queue:" + qtype + ":" + strings.ToUpper(name)
+func cicsQueueRef(filePath, qtype, name, sysid string) string {
+	id := "scope:datastore:cobol:" + filepath.ToSlash(filePath) + "#queue:" + qtype + ":" + strings.ToUpper(name)
+	if sysid != "" {
+		// A SYSID-routed queue is a distinct (remote) datastore (#5046) so it
+		// does not collapse onto a same-named local queue.
+		id += "@" + strings.ToUpper(sysid)
+	}
+	return id
 }
 
 // cicsMapRef is the canonical identity for a BMS/MFS screen-map View entity.
@@ -551,16 +684,28 @@ func buildCICSQueueEntity(filePath string, q cicsQueueOp, line int) types.Entity
 	if q.dynamic {
 		props["dynamic_ref"] = "true"
 	}
+	// SYSID/SYSTEM remote-region routing (#5046): the queue lives in another
+	// CICS region — the cross-region coupling key.
+	sigOperand := "QUEUE(" + q.name + ")"
+	if q.qtype == "TD" {
+		// TD destinations are addressed via DESTID — reflect that in the signature.
+		sigOperand = "DESTID(" + q.name + ")"
+	}
+	if q.sysid != "" {
+		props["sysid"] = q.sysid
+		props["remote"] = "true"
+		sigOperand += " SYSID(" + q.sysid + ")"
+	}
 	return types.EntityRecord{
 		Name:          q.name,
 		Kind:          "SCOPE.Datastore",
 		Subtype:       "queue",
-		QualifiedName: cicsQueueRef(filePath, q.qtype, q.name),
+		QualifiedName: cicsQueueRef(filePath, q.qtype, q.name, q.sysid),
 		SourceFile:    filePath,
 		Language:      "cobol",
 		StartLine:     line,
 		EndLine:       line,
-		Signature:     "EXEC CICS " + q.verb + " " + q.qtype + " QUEUE(" + q.name + ")",
+		Signature:     "EXEC CICS " + q.verb + " " + q.qtype + " " + sigOperand,
 		Properties:    props,
 		QualityScore:  0.75,
 	}
