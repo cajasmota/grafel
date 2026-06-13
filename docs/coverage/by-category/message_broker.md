@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 60 records · **C/C++**: 3 · **C#**: 8 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 3
+**Total**: 61 records · **C/C++**: 3 · **C#**: 9 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 3
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -11,6 +11,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 
 | Language | Name | Consumer extraction | Status | Notes |
 |---|---|---|---|---|
+| [C#](../by-language/csharp.md) | [Coravel (.NET task scheduler / queue / mailer)](../detail/msg.coravel.md) | ✅ | ✅ | |
 | [C#](../by-language/csharp.md) | [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | 🟢 | 🟢 | |
 | [C#](../by-language/csharp.md) | [Quartz.NET (.NET job scheduler)](../detail/msg.quartz-net.md) | ✅ | ✅ | |
 | [go](../by-language/go.md) | [robfig/cron (Go scheduler)](../detail/msg.go-cron.md) | 🟢 | 🟢 | |

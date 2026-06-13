@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # C#
 
-**Frameworks**: 17 · **Tools**: 7 · **ORMs**: 16 · **Other**: 8
+**Frameworks**: 18 · **Tools**: 7 · **ORMs**: 16 · **Other**: 9
 
 Back to [summary](../summary.md).
 
@@ -69,6 +69,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [grpc-dotnet](../detail/lang.csharp.framework.grpc-net.md) | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 10/10 | |
 
 
+### Resilience
+
+| Name | HTTP client binding | Resilience policy extraction | Notes |
+|---|---|---|---|
+| [Polly (.NET resilience / fault-handling)](../detail/lang.csharp.framework.polly.md) | ✅ | ✅ | |
+
+
 ## Tools
 
 | Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
@@ -113,6 +120,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Consumer extraction | Notes |
 |---|---|---|
+| [Coravel (.NET task scheduler / queue / mailer)](../detail/msg.coravel.md) | ✅ | |
 | [Hangfire RecurringJob (.NET scheduled jobs)](../detail/msg.hangfire-recurring.md) | 🟢 | |
 | [Quartz.NET (.NET job scheduler)](../detail/msg.quartz-net.md) | ✅ | |
 
