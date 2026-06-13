@@ -842,6 +842,193 @@ func TestErlangExtractor_MessageTagDispatch(t *testing.T) {
 	}
 }
 
+// typeSystemFixture exercises -spec/-type/-opaque/-callback + -import + -define.
+const typeSystemFixture = `-module(typed).
+-behaviour(my_behaviour).
+
+-import(lists, [reverse/1, map/2]).
+
+-export([encode/1, encode/2, decode/1]).
+
+-define(VERSION, 3).
+-define(TAG, encode).
+
+-type result(T) :: {ok, T} | {error, term()}.
+-opaque handle() :: reference().
+
+-callback init(Args :: list()) -> {ok, state()}.
+-callback handle(Req :: term(), state()) -> {reply, term(), state()}.
+
+-spec encode(binary()) -> result(binary()).
+encode(Data) ->
+    reverse(Data).
+
+-spec encode(binary(), Opts :: list()) -> result(binary()).
+encode(Data, _Opts) ->
+    map(fun(X) -> X end, Data).
+
+-spec decode(binary()) -> {ok, term()}.
+decode(Bin) ->
+    Bin.
+`
+
+func TestErlangExtractor_TypeDefinitions(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path: "typed.erl", Content: []byte(typeSystemFixture), Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	subtypeByName := map[string]string{}
+	for _, rec := range got {
+		if rec.Kind == "SCOPE.Component" && (rec.Subtype == "type" || rec.Subtype == "opaque_type") {
+			subtypeByName[rec.Name] = rec.Subtype
+		}
+	}
+	if subtypeByName["result"] != "type" {
+		t.Errorf("expected result → type, got %q", subtypeByName["result"])
+	}
+	if subtypeByName["handle"] != "opaque_type" {
+		t.Errorf("expected handle → opaque_type, got %q", subtypeByName["handle"])
+	}
+}
+
+func TestErlangExtractor_CallbackContracts(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path: "typed.erl", Content: []byte(typeSystemFixture), Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	cbs := map[string]string{} // name/arity → present
+	for _, rec := range got {
+		if rec.Kind == "SCOPE.Operation" && rec.Subtype == "callback_spec" {
+			cbs[rec.Signature] = rec.Properties["callback_spec"]
+			if !hasTag(rec.Tags, "otp_callback_contract") {
+				t.Errorf("callback %s missing otp_callback_contract tag", rec.Signature)
+			}
+		}
+	}
+	if _, ok := cbs["init/1"]; !ok {
+		t.Errorf("expected callback init/1, got %v", cbs)
+	}
+	if _, ok := cbs["handle/2"]; !ok {
+		t.Errorf("expected callback handle/2, got %v", cbs)
+	}
+}
+
+func TestErlangExtractor_SpecAttachment(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path: "typed.erl", Content: []byte(typeSystemFixture), Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// -spec binds arity-precisely: encode/1 and encode/2 carry distinct specs.
+	specBySig := map[string]string{}
+	for _, rec := range got {
+		if rec.Kind == "SCOPE.Operation" && rec.Subtype != "callback_spec" {
+			if s := rec.Properties["spec"]; s != "" {
+				specBySig[rec.Signature] = s
+			}
+		}
+	}
+	if !strings.Contains(specBySig["encode/1"], "encode(binary()) -> result(binary())") {
+		t.Errorf("encode/1 spec wrong: %q", specBySig["encode/1"])
+	}
+	if !strings.Contains(specBySig["encode/2"], "encode(binary(), Opts") {
+		t.Errorf("encode/2 spec wrong: %q", specBySig["encode/2"])
+	}
+	if !strings.Contains(specBySig["decode/1"], "decode(binary()) -> {ok, term()}") {
+		t.Errorf("decode/1 spec wrong: %q", specBySig["decode/1"])
+	}
+}
+
+func TestErlangExtractor_ImportResolution(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path: "typed.erl", Content: []byte(typeSystemFixture), Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// IMPORTS edges for the function imports.
+	var importTargets []string
+	for _, rec := range got {
+		for _, rel := range rec.Relationships {
+			if rel.Kind == "IMPORTS" && rel.Properties["import_kind"] == "function" {
+				importTargets = append(importTargets, rel.ToID)
+			}
+		}
+	}
+	wantImp := map[string]bool{"lists:reverse": false, "lists:map": false}
+	for _, it := range importTargets {
+		if _, ok := wantImp[it]; ok {
+			wantImp[it] = true
+		}
+	}
+	for k, seen := range wantImp {
+		if !seen {
+			t.Errorf("missing function IMPORTS edge %q (got %v)", k, importTargets)
+		}
+	}
+	// Bare calls to imported funcs resolve to "lists:reverse"/"lists:map".
+	var encodeCalls []string
+	for _, rec := range got {
+		if rec.Name == "encode" && rec.Properties["arity"] == "1" {
+			for _, rel := range rec.Relationships {
+				if rel.Kind == "CALLS" {
+					encodeCalls = append(encodeCalls, rel.ToID)
+				}
+			}
+		}
+	}
+	found := false
+	for _, c := range encodeCalls {
+		if c == "lists:reverse" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected encode/1 bare call reverse(...) resolved to lists:reverse, got %v", encodeCalls)
+	}
+}
+
+func TestErlangExtractor_MacroExpansion(t *testing.T) {
+	src := `-module(srv).
+-export([go/0]).
+-define(SERVER, ?MODULE).
+
+go() ->
+    gen_server:call(?SERVER, ping).
+`
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path: "srv.erl", Content: []byte(src), Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// ?SERVER → ?MODULE → srv; the qualified call gen_server:call is still
+	// recovered (macro expansion must not break the call scan).
+	var found bool
+	for _, rec := range got {
+		if rec.Name == "go" {
+			for _, rel := range rec.Relationships {
+				if rel.Kind == "CALLS" && rel.ToID == "gen_server:call" {
+					found = true
+				}
+			}
+		}
+	}
+	if !found {
+		t.Error("expected gen_server:call CALLS edge after macro expansion")
+	}
+}
+
 func splitComma(s string) []string {
 	if s == "" {
 		return nil

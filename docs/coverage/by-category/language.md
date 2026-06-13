@@ -21,7 +21,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [crystal](../by-language/crystal.md) | [Crystal](../detail/lang.crystal.core.md) | 🟢 | ✅ | — | — | — | 🟢 | 🟢 | |
 | [dart](../by-language/dart.md) | [Dart (base language)](../detail/lang.dart.base.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |
 | [elixir](../by-language/elixir.md) | [Elixir (base language)](../detail/lang.elixir.base.md) | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | |
-| [erlang](../by-language/erlang.md) | [Erlang](../detail/lang.erlang.core.md) | ✅ | ✅ | — | — | — | 🟢 | 🟢 | |
+| [erlang](../by-language/erlang.md) | [Erlang](../detail/lang.erlang.core.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |
 | [erlang](../by-language/erlang.md) | [Erlang/OTP behaviours](../detail/lang.erlang.runtime.otp.md) | — | ✅ | — | — | — | — | ✅ | |
 | [F#](../by-language/fsharp.md) | [F#](../detail/lang.fsharp.core.md) | ✅ | ✅ | — | — | — | 🟢 | 🟢 | |
 | [groovy](../by-language/groovy.md) | [Groovy (base language)](../detail/lang.groovy.base.md) | ✅ | ✅ | — | — | — | ✅ | ✅ | |

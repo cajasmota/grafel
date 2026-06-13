@@ -125,6 +125,47 @@ var (
 	childSpecTupleRE = regexp.MustCompile(
 		`\{\s*([a-z][a-zA-Z0-9_@]*)\s*,\s*\{\s*([a-z][a-zA-Z0-9_@]*)\s*,`,
 	)
+
+	// typeRE matches a -type / -opaque type definition.
+	//   -type my_type() :: ...      / -opaque handle() :: ...
+	//   -type result(T) :: {ok, T} | {error, term()}.
+	// Group 1: the attribute keyword (type|opaque); Group 2: the type name;
+	// Group 3: the parenthesised type parameters "(...)".
+	typeRE = regexp.MustCompile(
+		`(?m)^-(type|opaque)\s+([a-z][a-zA-Z0-9_@]*)\s*(\([^)]*\))\s*::`,
+	)
+
+	// specRE matches a -spec function-signature attribute head.
+	//   -spec foo(A) -> B.
+	//   -spec mod:foo(A, B) -> C when A :: integer().
+	// Group 1 (optional): a leading "module:" qualifier (rare, stripped);
+	// Group 2: the function name; Group 3: the parenthesised argument list
+	// "(...)" of the (first) signature clause, used to recover the arity so
+	// the spec binds to the right name/arity SCOPE.Operation.
+	specRE = regexp.MustCompile(
+		`(?m)^-spec\s+(?:([a-z][a-zA-Z0-9_@]*)\s*:\s*)?([a-z][a-zA-Z0-9_@]*)\s*(\([^;]*?\))\s*->`,
+	)
+
+	// callbackRE matches a -callback behaviour-contract attribute head.
+	//   -callback init(Args :: term()) -> {ok, State}.
+	// Group 1: the callback function name; Group 2: the parenthesised
+	// argument list "(...)" used to recover the callback's arity.
+	callbackRE = regexp.MustCompile(
+		`(?m)^-callback\s+([a-z][a-zA-Z0-9_@]*)\s*(\([^;]*?\))\s*->`,
+	)
+
+	// importRE matches -import(Mod, [f/1, g/2]).
+	// Group 1: the source module atom; Group 2: the import-list content.
+	importRE = regexp.MustCompile(
+		`(?m)^-import\s*\(\s*([a-z][a-zA-Z0-9_@]*)\s*,\s*\[([^\]]*)\]\s*\)\s*\.`,
+	)
+
+	// defineSimpleRE matches a -define(NAME, Value). object macro (no args).
+	// Group 1: the macro name; Group 2: the replacement text. The replacement
+	// is captured up to the trailing `).` of the attribute.
+	defineSimpleRE = regexp.MustCompile(
+		`(?m)^-define\s*\(\s*([A-Za-z_][A-Za-z0-9_@]*)\s*,\s*(.*?)\s*\)\s*\.\s*$`,
+	)
 )
 
 // otpCallbacks maps each OTP behaviour to the canonical callback function
@@ -263,8 +304,17 @@ func countArity(argText string) int {
 	return count
 }
 
-func extractErlang(src, filePath string) []types.EntityRecord {
+func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 	var entities []types.EntityRecord
+
+	// ── -1. Macro definitions + expansion ──────────────────────────────────
+	// Object macros (-define(NAME, Val).) are recovered first, then every
+	// `?NAME` use is expanded in a working copy so that macro-wrapped call
+	// targets and atoms are recovered by the downstream scanners. The raw
+	// source is preserved (rawSrc) for line/offset reporting of attributes that
+	// are parsed verbatim, but functions/calls/specs scan the expanded copy.
+	macros := parseObjectMacros(rawSrc)
+	src := expandMacros(rawSrc, macros)
 
 	// ── 0. OTP behaviours ──────────────────────────────────────────────────
 	// -behaviour(gen_server). attributes declare the module as an OTP process.
@@ -378,6 +428,44 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 		})
 	}
 
+	// ── 3b. Function imports: -import(Mod, [f/1, g/2]). ─────────────────────
+	// Each imported function is recorded as an IMPORTS edge (import_kind=
+	// function) carrying the source module, and a lookup table maps the bare
+	// imported name (and name/arity) → source module so that bare call sites
+	// inside this module resolve to "mod:fn" instead of an unqualified name.
+	importedFn := make(map[string]string)   // bare name → source module
+	importedFnAr := make(map[string]string) // "name/arity" → source module
+	for _, m := range importRE.FindAllStringSubmatchIndex(src, -1) {
+		mod := src[m[2]:m[3]]
+		list := src[m[4]:m[5]]
+		for _, em := range exportItemRE.FindAllStringSubmatch(list, -1) {
+			fn := em[1]
+			ar := em[2]
+			importedFn[fn] = mod
+			importedFnAr[fn+"/"+ar] = mod
+			entities = append(entities, types.EntityRecord{
+				Name:       fn,
+				Kind:       "SCOPE.Component",
+				SourceFile: filePath,
+				Language:   "erlang",
+				Relationships: []types.RelationshipRecord{
+					{
+						FromID: filePath,
+						ToID:   mod + ":" + fn,
+						Kind:   "IMPORTS",
+						Properties: map[string]string{
+							"local_name":    fn,
+							"source_module": mod,
+							"imported_name": fn,
+							"arity":         ar,
+							"import_kind":   "function",
+						},
+					},
+				},
+			})
+		}
+	}
+
 	// ── 4. Parse exported function name/arity pairs ───────────────────────
 	// Erlang exports are Name/Arity pairs (foo/1, foo/2). Track the precise
 	// pair so foo/1 can be exported while foo/2 is private; keep the bare-name
@@ -422,6 +510,80 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 	// Group consecutive clauses by name.
 	funcs := groupClauses(src, clauses)
 
+	// ── 5b. -spec signatures, keyed by name/arity ──────────────────────────
+	// A -spec attribute carries the type signature of a function; after #4930
+	// functions are arity-keyed entities, so a spec recovered as name/arity
+	// (from its argument-list arity) binds to the matching SCOPE.Operation.
+	specByNameAr := make(map[string]string) // "name/arity" → full -spec text
+	for _, m := range specRE.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[4]:m[5]]
+		argText := src[m[6]:m[7]]
+		// The spec attribute runs from '-spec' to the terminating '.'; capture
+		// the whole signature for the Properties payload.
+		full := specText(src, m[0])
+		key := name + "/" + strconv.Itoa(countArity(argText))
+		if _, exists := specByNameAr[key]; !exists {
+			specByNameAr[key] = full
+		}
+	}
+
+	// ── 5c. -type / -opaque type definitions → SCOPE.Component/type ─────────
+	for _, m := range typeRE.FindAllStringSubmatchIndex(src, -1) {
+		kw := src[m[2]:m[3]]   // "type" | "opaque"
+		name := src[m[4]:m[5]] // type name
+		params := src[m[6]:m[7]]
+		startLine := strings.Count(src[:m[0]], "\n") + 1
+		full := specText(src, m[0])
+		endLine := startLine + strings.Count(full, "\n")
+		subtype := "type"
+		if kw == "opaque" {
+			subtype = "opaque_type"
+		}
+		entities = append(entities, types.EntityRecord{
+			Name:       name,
+			Kind:       "SCOPE.Component",
+			Subtype:    subtype,
+			SourceFile: filePath,
+			Language:   "erlang",
+			StartLine:  startLine,
+			EndLine:    endLine,
+			Signature:  "-" + kw + " " + name + params,
+			Properties: map[string]string{
+				"type_kind": kw,
+				"type_arity": strconv.Itoa(countArity(params)),
+			},
+		})
+	}
+
+	// ── 5d. -callback behaviour contracts → SCOPE.Operation/otp_callback_spec
+	// A -callback attribute declares the contract a behaviour requires of its
+	// implementing modules. It is emitted as a SCOPE.Operation marked as a
+	// callback contract (this module DEFINES the behaviour), keyed by
+	// name/arity so it does not collide with a same-named real function.
+	for _, m := range callbackRE.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		argText := src[m[4]:m[5]]
+		arity := countArity(argText)
+		startLine := strings.Count(src[:m[0]], "\n") + 1
+		full := specText(src, m[0])
+		endLine := startLine + strings.Count(full, "\n")
+		entities = append(entities, types.EntityRecord{
+			Name:       name,
+			Kind:       "SCOPE.Operation",
+			Subtype:    "callback_spec",
+			SourceFile: filePath,
+			Language:   "erlang",
+			StartLine:  startLine,
+			EndLine:    endLine,
+			Signature:  name + "/" + strconv.Itoa(arity),
+			Properties: map[string]string{
+				"arity":         strconv.Itoa(arity),
+				"callback_spec": full,
+			},
+			Tags: []string{"otp_callback_contract"},
+		})
+	}
+
 	// ── 6. Emit function entities ──────────────────────────────────────────
 	for _, fi := range funcs {
 		// Erlang identity is name/arity: a function is exported only if THIS
@@ -434,8 +596,9 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 			subtype = "exported_function"
 		}
 
-		// Collect CALLS.
-		callRels := collectCallsFromText(fi.calls, fi.name)
+		// Collect CALLS — bare calls to -import'ed functions are resolved to
+		// "mod:fn" using the import tables so they bind to the source module.
+		callRels := collectCallsFromText(fi.calls, fi.name, importedFn, importedFnAr)
 
 		rec := types.EntityRecord{
 			Name:               fi.name,
@@ -451,6 +614,13 @@ func extractErlang(src, filePath string) []types.EntityRecord {
 			Properties: map[string]string{
 				"arity": strconv.Itoa(fi.arity),
 			},
+		}
+
+		// Attach the -spec signature (arity-keyed) when one is declared for
+		// this function, so the typed contract lives on the operation entity.
+		if spec, ok := specByNameAr[nameAr]; ok {
+			rec.Properties["spec"] = spec
+			rec.Tags = append(rec.Tags, "has_spec")
 		}
 
 		// Tag OTP callback functions (handle_call/2-3, init/1, ...) so message
@@ -813,21 +983,23 @@ func groupClauses(src string, clauses []clauseMatch) []funcInfo {
 // Erlang calls can be:
 //   - Qualified: module:function(...)  → ToID = "module:function"
 //   - Bare: function(...)              → ToID = "function"
-func collectCallsFromText(bodies []string, callerName string) []types.RelationshipRecord {
+func collectCallsFromText(bodies []string, callerName string, importedFn, importedFnAr map[string]string) []types.RelationshipRecord {
 	seen := make(map[string]bool)
 	var rels []types.RelationshipRecord
 
-	addCall := func(target string, lineNum int) {
+	addCall := func(target string, lineNum int, props map[string]string) {
 		if target == "" || target == callerName || seen[target] {
 			return
 		}
 		seen[target] = true
+		p := map[string]string{"line": strconv.Itoa(lineNum)}
+		for k, v := range props {
+			p[k] = v
+		}
 		rels = append(rels, types.RelationshipRecord{
-			ToID: target,
-			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(lineNum),
-			},
+			ToID:       target,
+			Kind:       "CALLS",
+			Properties: p,
 		})
 	}
 
@@ -845,10 +1017,12 @@ func collectCallsFromText(bodies []string, callerName string) []types.Relationsh
 				continue
 			}
 			lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
-			addCall(mod+":"+fn, lineNum)
+			addCall(mod+":"+fn, lineNum, nil)
 		}
 
-		// Bare calls name( — only lowercase-starting names.
+		// Bare calls name( — only lowercase-starting names. A bare call whose
+		// name was -import'ed resolves to the source module ("mod:fn") so it
+		// binds to the imported function, not a local one.
 		for _, m := range callBareRE.FindAllStringSubmatchIndex(scrubbed, -1) {
 			if len(m) < 4 || m[2] < 0 || m[3] < 0 {
 				continue
@@ -858,13 +1032,137 @@ func collectCallsFromText(bodies []string, callerName string) []types.Relationsh
 				continue
 			}
 			lineNum := 1 + strings.Count(scrubbed[:m[0]], "\n")
-			addCall(fn, lineNum)
+			if mod, ok := importedFn[fn]; ok {
+				addCall(mod+":"+fn, lineNum, map[string]string{
+					"resolved_via":  "import",
+					"imported_from": mod,
+				})
+				continue
+			}
+			addCall(fn, lineNum, nil)
 		}
 	}
 
 	// Sort for determinism.
 	sort.Slice(rels, func(i, j int) bool { return rels[i].ToID < rels[j].ToID })
 	return rels
+}
+
+// ---------------------------------------------------------------------------
+// Macro support (-define / ?NAME expansion)
+// ---------------------------------------------------------------------------
+
+// parseObjectMacros recovers object-form macros (-define(NAME, Value).) from
+// the source. Only argument-less object macros are tracked — function-form
+// macros (-define(NAME(A), ...)) are intentionally skipped because their
+// parameterised expansion is out of scope for the regex extractor; their
+// `?NAME(...)` uses are left intact (and still scanned as ordinary calls).
+// ?MODULE is seeded to the declared module name so `?MODULE`/`?SERVER` chains
+// resolve.
+func parseObjectMacros(src string) map[string]string {
+	macros := make(map[string]string)
+	if m := moduleRE.FindStringSubmatch(src); m != nil {
+		macros["MODULE"] = m[1]
+	}
+	for _, m := range defineSimpleRE.FindAllStringSubmatch(src, -1) {
+		name := m[1]
+		val := strings.TrimSpace(m[2])
+		// A `?OTHER` reference in the value is resolved transitively below.
+		macros[name] = val
+	}
+	// Resolve macros whose value is itself a single macro reference (e.g.
+	// -define(SERVER, ?MODULE).), up to a small fixed depth to avoid cycles.
+	for i := 0; i < 5; i++ {
+		changed := false
+		for name, val := range macros {
+			if strings.HasPrefix(val, "?") {
+				ref := strings.TrimPrefix(val, "?")
+				if rv, ok := macros[ref]; ok && rv != val {
+					macros[name] = rv
+					changed = true
+				}
+			}
+		}
+		if !changed {
+			break
+		}
+	}
+	return macros
+}
+
+// macroUseRE matches a `?NAME` macro use (object-macro form: not immediately
+// followed by '(' which would be a function-macro application).
+var macroUseRE = regexp.MustCompile(`\?([A-Za-z_][A-Za-z0-9_@]*)`)
+
+// expandMacros replaces every object-macro use `?NAME` whose NAME is a known
+// object macro with its recovered replacement text, so macro-wrapped call
+// targets/atoms (e.g. gen_server:call(?SERVER, ...)) are recovered by the
+// downstream scanners. Unknown macros and function-macro applications
+// (`?NAME(...)`) are left untouched. Line count is preserved (replacements are
+// single-line values) so reported line numbers stay accurate.
+func expandMacros(src string, macros map[string]string) string {
+	if len(macros) == 0 {
+		return src
+	}
+	return macroUseRE.ReplaceAllStringFunc(src, func(use string) string {
+		name := strings.TrimPrefix(use, "?")
+		if v, ok := macros[name]; ok && !strings.ContainsAny(v, "\n") {
+			return v
+		}
+		return use
+	})
+}
+
+// specText returns the text of an attribute starting at byte offset start,
+// running to the terminating top-level '.' (period followed by whitespace/EOL
+// or EOF), with interior newlines collapsed to single spaces. Strings, quoted
+// atoms and comments are respected so a '.' inside them does not terminate.
+func specText(src string, start int) string {
+	depth := 0
+	end := len(src)
+	i := start
+	for i < len(src) {
+		ch := src[i]
+		switch ch {
+		case '%':
+			for i < len(src) && src[i] != '\n' {
+				i++
+			}
+			continue
+		case '"', '\'':
+			q := ch
+			i++
+			for i < len(src) && src[i] != q {
+				if src[i] == '\\' && i+1 < len(src) {
+					i += 2
+					continue
+				}
+				i++
+			}
+			i++
+			continue
+		case '(', '{', '[':
+			depth++
+		case ')', '}', ']':
+			if depth > 0 {
+				depth--
+			}
+		case '.':
+			if depth == 0 {
+				// Erlang clause/attribute terminator: '.' at end-of-token.
+				if i+1 >= len(src) || src[i+1] == '\n' || src[i+1] == ' ' ||
+					src[i+1] == '\t' || src[i+1] == '\r' {
+					end = i + 1
+					i = len(src)
+					continue
+				}
+			}
+		}
+		i++
+	}
+	raw := src[start:end]
+	// Collapse interior whitespace runs (incl. newlines) to single spaces.
+	return strings.Join(strings.Fields(raw), " ")
 }
 
 // stripCommentsAndStrings replaces Erlang %-line-comments and string/atom
