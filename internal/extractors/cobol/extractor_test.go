@@ -896,6 +896,179 @@ func TestExtractor_CICSQueueLiteralAndTD(t *testing.T) {
 	}
 }
 
+// TestExtractor_CICSTDQueueDestidSysid proves the #5046 TD-queue variants: a
+// WRITEQ/READQ TD addressed via DESTID('NAME') (rather than QUEUE/QNAME)
+// resolves a SCOPE.Datastore/queue, and a SYSID('REGION') operand marks the
+// queue remote (distinct identity + sysid property + edge prop).
+func TestExtractor_CICSTDQueueDestidSysid(t *testing.T) {
+	src := loadFixture(t, "dialectui.cbl")
+	recs := run(t, "dialectui.cbl", src)
+
+	byName := map[string]types.EntityRecord{}
+	for _, q := range findByKind(recs, "SCOPE.Datastore", "queue") {
+		byName[q.Name] = q
+	}
+	// DESTID('AUDTQ') resolves a local TD queue.
+	audtq, ok := byName["AUDTQ"]
+	if !ok {
+		t.Fatal("expected AUDTQ TD queue via DESTID")
+	}
+	if audtq.Properties["queue_type"] != "TD" {
+		t.Errorf("AUDTQ queue_type = %q, want TD", audtq.Properties["queue_type"])
+	}
+	if audtq.Properties["sysid"] != "" || audtq.Properties["remote"] == "true" {
+		t.Errorf("AUDTQ must be local, got sysid=%q remote=%q",
+			audtq.Properties["sysid"], audtq.Properties["remote"])
+	}
+	var audtWrite bool
+	for _, rel := range relationsByKind(recs, "WRITES_TO") {
+		if rel.ToID == audtq.QualifiedName && rel.Properties["via"] == "EXEC-CICS-WRITEQ" {
+			audtWrite = true
+		}
+	}
+	if !audtWrite {
+		t.Error("expected WRITES_TO edge for WRITEQ TD DESTID AUDTQ")
+	}
+
+	// DESTID('LOGQ') + SYSID('PRD2') resolves a remote TD queue.
+	logq, ok := byName["LOGQ"]
+	if !ok {
+		t.Fatal("expected LOGQ TD queue via DESTID")
+	}
+	if logq.Properties["sysid"] != "PRD2" {
+		t.Errorf("LOGQ sysid = %q, want PRD2", logq.Properties["sysid"])
+	}
+	if logq.Properties["remote"] != "true" {
+		t.Errorf("LOGQ remote = %q, want true", logq.Properties["remote"])
+	}
+	if !strings.Contains(logq.QualifiedName, "@PRD2") {
+		t.Errorf("remote LOGQ qualified name must carry @PRD2: %q", logq.QualifiedName)
+	}
+	var logRemoteEdge bool
+	for _, rel := range relationsByKind(recs, "WRITES_TO") {
+		if rel.ToID == logq.QualifiedName && rel.Properties["sysid"] == "PRD2" {
+			logRemoteEdge = true
+		}
+	}
+	if !logRemoteEdge {
+		t.Error("expected WRITES_TO edge for remote LOGQ carrying sysid=PRD2")
+	}
+
+	// A dynamic DESTID(WS-ID) READQ resolves a data-item queue flagged dynamic.
+	wsq, ok := byName["WS-ID"]
+	if !ok {
+		t.Fatal("expected WS-ID dynamic TD queue via DESTID")
+	}
+	if wsq.Properties["dynamic_ref"] != "true" {
+		t.Error("dynamic DESTID(WS-ID) must be dynamic_ref")
+	}
+	var wsRead bool
+	for _, rel := range relationsByKind(recs, "READS_FROM") {
+		if rel.ToID == wsq.QualifiedName && rel.Properties["via"] == "EXEC-CICS-READQ" {
+			wsRead = true
+		}
+	}
+	if !wsRead {
+		t.Error("expected READS_FROM edge for READQ TD DESTID WS-ID")
+	}
+}
+
+// TestExtractor_DialectScreenIO proves the #5046 Micro Focus / ACUCOBOL native
+// terminal screen I/O: DISPLAY ... UPON CRT and a bare DISPLAY of a SCREEN
+// SECTION screen yield a SCOPE.View/screen entity with a RENDERS edge; ACCEPT
+// yields REFERENCES. The ui property is `crt` (distinguishing it from CICS bms).
+func TestExtractor_DialectScreenIO(t *testing.T) {
+	src := loadFixture(t, "dialectui.cbl")
+	recs := run(t, "dialectui.cbl", src)
+
+	byName := map[string]types.EntityRecord{}
+	for _, v := range findByKind(recs, "SCOPE.View", "screen") {
+		byName[v.Name] = v
+	}
+	// SCREEN SECTION screen MAIN-SCREEN driven by bare DISPLAY/ACCEPT.
+	ms, ok := byName["MAIN-SCREEN"]
+	if !ok {
+		t.Fatal("expected MAIN-SCREEN dialect screen view")
+	}
+	if ms.Properties["ui"] != "crt" {
+		t.Errorf("MAIN-SCREEN ui = %q, want crt", ms.Properties["ui"])
+	}
+	if ms.Properties["dialect"] != "micro-focus-acucobol" {
+		t.Errorf("MAIN-SCREEN dialect = %q", ms.Properties["dialect"])
+	}
+	// DISPLAY ... UPON CRT screen target WS-REC.
+	wsv, ok := byName["WS-REC"]
+	if !ok {
+		t.Fatal("expected WS-REC dialect screen view via UPON CRT")
+	}
+
+	var rendersMS, refsMS, rendersWS, refsWS bool
+	for _, rel := range relationsByKind(recs, "RENDERS") {
+		if rel.ToID == ms.QualifiedName && rel.Properties["via"] == "SCREEN-SECTION" {
+			rendersMS = true
+		}
+		if rel.ToID == wsv.QualifiedName && rel.Properties["via"] == "UPON-CRT" {
+			rendersWS = true
+		}
+	}
+	for _, rel := range relationsByKind(recs, "REFERENCES") {
+		if rel.ToID == ms.QualifiedName {
+			refsMS = true
+		}
+		if rel.ToID == wsv.QualifiedName && rel.Properties["via"] == "FROM-CRT" {
+			refsWS = true
+		}
+	}
+	if !rendersMS {
+		t.Error("expected RENDERS edge for DISPLAY MAIN-SCREEN")
+	}
+	if !refsMS {
+		t.Error("expected REFERENCES edge for ACCEPT MAIN-SCREEN")
+	}
+	if !rendersWS {
+		t.Error("expected RENDERS edge for DISPLAY WS-REC UPON CRT")
+	}
+	if !refsWS {
+		t.Error("expected REFERENCES edge for ACCEPT WS-REC FROM CRT")
+	}
+}
+
+// TestExtractor_DialectScreenWrongLanguageNoop proves a non-COBOL source (here
+// driven through the COBOL extractor with no COBOL structure) yields no dialect
+// screen views — the screen modelling only fires on real COBOL screen I/O.
+func TestExtractor_DialectScreenWrongLanguageNoop(t *testing.T) {
+	// A JavaScript-ish snippet: no PROCEDURE DIVISION, no SCREEN SECTION, no
+	// EXEC CICS — the COBOL extractor must produce zero screen/queue entities.
+	src := "function render() {\n" +
+		"  display(mainScreen);\n" +
+		"  accept(wsRec);\n" +
+		"}\n"
+	recs := run(t, "notcobol.js", src)
+	if n := len(findByKind(recs, "SCOPE.View", "screen")); n != 0 {
+		t.Errorf("expected 0 screen views for non-COBOL source, got %d", n)
+	}
+	if n := len(findByKind(recs, "SCOPE.Datastore", "queue")); n != 0 {
+		t.Errorf("expected 0 queues for non-COBOL source, got %d", n)
+	}
+}
+
+// TestExtractor_DialectScreenNoMatchNoop proves an ordinary console
+// DISPLAY/ACCEPT (no UPON CRT, no SCREEN SECTION screen) is NOT mis-modelled as
+// a terminal screen — only the dialect-specific forms produce a View.
+func TestExtractor_DialectScreenNoMatchNoop(t *testing.T) {
+	src := "       IDENTIFICATION DIVISION.\n" +
+		"       PROGRAM-ID. CONS.\n" +
+		"       PROCEDURE DIVISION.\n" +
+		"       MAIN.\n" +
+		"           DISPLAY 'HELLO WORLD'\n" +
+		"           DISPLAY WS-COUNTER\n" +
+		"           ACCEPT WS-REPLY.\n"
+	recs := run(t, "cons.cbl", src)
+	if n := len(findByKind(recs, "SCOPE.View", "screen")); n != 0 {
+		t.Errorf("expected 0 screen views for plain console DISPLAY/ACCEPT, got %d", n)
+	}
+}
+
 // TestExtractor_DataHierarchy proves 01/05 nesting binds child fields to their
 // parent group (parent property + CONTAINS edge) and captures REDEFINES/OCCURS.
 func TestExtractor_DataHierarchy(t *testing.T) {
