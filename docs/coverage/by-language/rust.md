@@ -35,10 +35,10 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Salvo](../detail/lang.rust.framework.salvo.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [Tide](../detail/lang.rust.framework.tide.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [Tonic](../detail/lang.rust.framework.tonic.md) | 🟡 3/6 | 🔴 0/1 | 🟢 4/4 | 🔴 0/1 | 🟡 10/24 | 🟡 4/12 | |
-| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/5 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
+| [Tower (service abstraction)](../detail/lang.rust.framework.tower.md) | 🟡 3/4 | ✅ 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 8/12 | |
 | [Warp](../detail/lang.rust.framework.warp.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [async-graphql](../detail/lang.rust.framework.async-graphql.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 11/24 | 🟡 6/13 | |
-| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 4/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
+| [hyper](../detail/lang.rust.framework.hyper.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [juniper](../detail/lang.rust.framework.juniper.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 3/24 | 🟡 1/13 | |
 | [ntex](../detail/lang.rust.framework.ntex.md) | 🟡 5/6 | 🟢 1/1 | ✅ 4/4 | 🟢 1/1 | 🟡 23/24 | 🟡 7/12 | |
 | [utoipa](../detail/lang.rust.framework.utoipa.md) | 🟡 3/6 | 🔴 0/1 | ✅ 4/4 | 🔴 0/1 | 🟡 10/24 | 🟡 4/12 | |

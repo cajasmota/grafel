@@ -50,7 +50,12 @@
 // `.route("/p", verb(handler))`, actix `#[get("/p")]`, rocket `#[get("/p")]`.
 // The remaining handler-named frameworks (poem/warp/tide/gotham/salvo) reuse the
 // SAME handler→verdict map via the producer route regexes, exactly as
-// endpoint_response_codes.go does. hyper/tower are DEFERRED (no named handler).
+// endpoint_response_codes.go does. hyper (#5101) is also recovered: a
+// `match (method, path)` arm either NAMES a handler (resolved via the shared
+// handler→verdict map) or is an INLINE block whose body carries the pagination
+// idiom directly (resolved on the arm-body window, clipped at the next arm).
+// tower has no verb+path route DSL of its own (pagination posture is app-level),
+// so it is structurally not_applicable — same disposition as response_codes.
 //
 // Honest-partial (NEVER fabricated): a handler with NO resolvable pagination
 // shape is NOT re-emitted (the plain route op from the producer extractor
@@ -499,8 +504,9 @@ func (e *rustEndpointPaginationExtractor) extractMacroFramework(src string, file
 // poem / warp / tide / gotham / salvo attribute a route to a named handler whose
 // body lives elsewhere in the file (the axum situation). Identical recipe:
 // build a handler→verdict map once, re-run each producer route regex, stamp the
-// verdict onto routes that name a resolving handler. hyper/tower are DEFERRED
-// (no named handler). Mirrors endpoint_response_codes.go extractHandlerNamed.
+// verdict onto routes that name a resolving handler. hyper is recovered below via
+// its match-arm dispatch (#5101); tower has no route DSL (not_applicable).
+// Mirrors endpoint_response_codes.go extractHandlerNamed.
 func (e *rustEndpointPaginationExtractor) extractHandlerNamed(src string, file extractor.FileInput) []types.EntityRecord {
 	handlerVerdicts := map[string]rustPaginationVerdict{}
 	for _, fm := range rustDepFnRe.FindAllStringSubmatchIndex(src, -1) {
@@ -602,6 +608,55 @@ func (e *rustEndpointPaginationExtractor) extractHandlerNamed(src string, file e
 				continue
 			}
 			emit("warp", method, path, handler, m[0])
+		}
+	}
+
+	// hyper — #5101. `match (req.method(), path) { (&Method::GET, "/p") => handler(req) }`.
+	// Two arm shapes, mirroring endpoint_response_codes.go's hyper recovery:
+	//   1. NAMED-handler arm (`=> handler(req)`) — the RHS names a handler whose
+	//      body lives elsewhere; resolve via the shared handlerVerdicts map (the
+	//      map is already built above from every fn body), exactly like axum/poem.
+	//   2. INLINE-block arm (`=> { … .limit().offset() … }`) — the pagination idiom
+	//      is written directly in the arm body (no separate handler fn). Resolve the
+	//      arm body window directly, hard-clipped at the NEXT match arm so a sibling
+	//      arm's pagination signal never bleeds in. Reuses rustHyperRespArmRe /
+	//      rustHyperRespInlineArmRe / rustHyperArmBoundaryRe (endpoint_response_codes.go).
+	// Honest-partial holds: an arm whose handler/body resolves no clear pagination
+	// shape is NOT re-emitted (the producer route op stands).
+	if strings.Contains(src, "Method::") {
+		// Named-handler arms: `=> handler(req)`. emit() looks the handler up in the
+		// shared verdict map and skips it (no-op) when unresolved.
+		for _, m := range rustHyperRespArmRe.FindAllStringSubmatchIndex(src, -1) {
+			method := strings.ToUpper(src[m[2]:m[3]])
+			path := rustNormalizePath(src[m[4]:m[5]])
+			handler := src[m[6]:m[7]]
+			emit("hyper", method, path, handler, m[0])
+		}
+		// Inline-block arms: `=> { … }`. Resolve the arm body window directly.
+		for _, m := range rustHyperRespInlineArmRe.FindAllStringSubmatchIndex(src, -1) {
+			method := strings.ToUpper(src[m[2]:m[3]])
+			path := rustNormalizePath(src[m[4]:m[5]])
+			name := method + " " + path
+			if seen[name] {
+				continue
+			}
+			// m[1] is just past the matched `{`; clip the window at the next arm so a
+			// sibling arm's pagination signal never bleeds into this verdict.
+			window := rustRespBodyWindow(src, m[1])
+			if loc := rustHyperArmBoundaryRe.FindStringIndex(window); loc != nil {
+				window = window[:loc[0]]
+			}
+			verdict, ok := rustResolvePagination(src, window, window)
+			if !ok {
+				continue
+			}
+			seen[name] = true
+			ent := makeEntity(name, "SCOPE.Operation", "endpoint", file.Path, file.Language, lineOf(src, m[0]))
+			setProps(&ent, "framework", "hyper",
+				"provenance", "INFERRED_FROM_HYPER_PAGINATION",
+				"http_method", method, "route_pattern", path)
+			rustStampPagination(&ent, verdict)
+			out = append(out, ent)
 		}
 	}
 

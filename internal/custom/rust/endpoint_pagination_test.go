@@ -262,3 +262,110 @@ fn app() -> Router { Router::new().route("/top", get(top)) }
 		t.Errorf("lone .limit() must NOT be stamped, got %+v", ents)
 	}
 }
+
+// --- hyper: match-arm dispatch (#5101) ---------------------------------------
+
+// hyper — NAMED-handler arm: `(&Method::GET, "/p") => handler(req)`. The arm RHS
+// names a handler whose body carries the pagination idiom (diesel limit+offset),
+// resolved via the shared handler->verdict map.
+func TestRustPagination_HyperNamedHandler(t *testing.T) {
+	src := `
+async fn list_users(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    let rows = users::table.limit(20).offset(40).load::<User>(&mut conn).unwrap();
+    Ok(Response::new(Body::from(serde_json::to_string(&rows).unwrap())))
+}
+async fn create_user(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    Ok(Response::new(Body::empty()))
+}
+async fn router(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/users") => list_users(req).await,
+        (&Method::POST, "/users") => create_user(req).await,
+        _ => not_found(),
+    }
+}
+`
+	ents := extract(t, "custom_rust_endpoint_pagination", fi("hyper.rs", "rust", src))
+
+	get := findRustDep(ents, "SCOPE.Operation", "GET /users")
+	if get == nil {
+		t.Fatalf("expected GET /users, got %+v", ents)
+	}
+	propEq(t, get, "paginated", "true")
+	propEq(t, get, "pagination_style", "offset")
+	propEq(t, get, "pagination_params", "limit,offset")
+	propEq(t, get, "framework", "hyper")
+
+	// honest-partial: create_user has no pagination shape -> not stamped.
+	if findRustDep(ents, "SCOPE.Operation", "POST /users") != nil {
+		t.Errorf("POST /users handler has no pagination shape; must NOT be stamped, got %+v", ents)
+	}
+}
+
+// hyper — INLINE-block arm: the pagination idiom (typed Query<Struct>) is written
+// directly in the arm body, no separate handler fn, clipped at the next arm so a
+// sibling arm's signal does not bleed in.
+func TestRustPagination_HyperInlineArm(t *testing.T) {
+	src := `
+#[derive(Deserialize)]
+struct Page { page: u32 }
+async fn router(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/feed") => {
+            let q: Query<Page> = parse_query(req.uri());
+            Ok(Response::new(Body::empty()))
+        }
+        (&Method::GET, "/health") => {
+            Ok(Response::new(Body::from("ok")))
+        }
+        _ => Ok(Response::new(Body::empty())),
+    }
+}
+`
+	ents := extract(t, "custom_rust_endpoint_pagination", fi("hyper_inline.rs", "rust", src))
+
+	feed := findRustDep(ents, "SCOPE.Operation", "GET /feed")
+	if feed == nil {
+		t.Fatalf("expected GET /feed, got %+v", ents)
+	}
+	propEq(t, feed, "paginated", "true")
+	propEq(t, feed, "pagination_style", "page")
+	propEq(t, feed, "pagination_params", "page")
+	propEq(t, feed, "framework", "hyper")
+
+	// honest-partial: the /health arm has no pagination shape -> not stamped, and
+	// the clip prevents /feed's signal from leaking into it.
+	if findRustDep(ents, "SCOPE.Operation", "GET /health") != nil {
+		t.Errorf("GET /health arm has no pagination shape; must NOT be stamped, got %+v", ents)
+	}
+}
+
+// hyper — wrong language is a no-op (the extractor only runs on rust files).
+func TestRustPagination_HyperWrongLanguageNoOp(t *testing.T) {
+	src := `(&Method::GET, "/users") => list_users(req).await,
+fn list_users() { users::table.limit(20).offset(40); }`
+	ents := extract(t, "custom_rust_endpoint_pagination", fi("hyper.go", "go", src))
+	if len(ents) != 0 {
+		t.Errorf("non-rust file must produce no entities, got %+v", ents)
+	}
+}
+
+// hyper — honest-partial: a match-arm whose handler/body has no pagination shape
+// is NOT re-emitted (no fabricated pagination).
+func TestRustPagination_HyperNoPaginationNotStamped(t *testing.T) {
+	src := `
+async fn list_users(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    Ok(Response::new(Body::from("ok")))
+}
+async fn router(req: Request<Body>) -> Result<Response<Body>, hyper::Error> {
+    match (req.method(), req.uri().path()) {
+        (&Method::GET, "/users") => list_users(req).await,
+        _ => not_found(),
+    }
+}
+`
+	ents := extract(t, "custom_rust_endpoint_pagination", fi("hyper_none.rs", "rust", src))
+	if findRustDep(ents, "SCOPE.Operation", "GET /users") != nil {
+		t.Errorf("hyper arm with no pagination shape must NOT be stamped, got %+v", ents)
+	}
+}
