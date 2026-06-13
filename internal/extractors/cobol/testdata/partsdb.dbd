@@ -1,0 +1,20 @@
+*--------------------------------------------------------------------*
+* PARTSDB.DBD — IMS DBDGEN macro deck fixture (#5057).                *
+* Declares the IMS database/segment hierarchy: PARTROOT (root) with   *
+* a key FIELD PARTKEY, child segment PARTDETL, grandchild PARTSPEC.   *
+* Proves DBD/SEGM/FIELD become a SCOPE.Datastore/ims-database +       *
+* SCOPE.Schema/ims-segment tree with CONTAINS parent->child edges and *
+* key FIELDs. A segment is the IMS analog of a relational table.      *
+*--------------------------------------------------------------------*
+         DBD   NAME=PARTSDB,ACCESS=HDAM,                              X
+               RMNAME=(DFSHDC40,1,500,824)
+         SEGM  NAME=PARTROOT,BYTES=50,PARENT=0
+         FIELD NAME=(PARTKEY,SEQ,U),BYTES=17,START=1,TYPE=C
+         FIELD NAME=PARTDESC,BYTES=33,START=18,TYPE=C
+         SEGM  NAME=PARTDETL,BYTES=80,PARENT=PARTROOT
+         FIELD NAME=(DETLKEY,SEQ,U),BYTES=8,START=1,TYPE=C
+         SEGM  NAME=PARTSPEC,BYTES=40,PARENT=PARTDETL
+         FIELD NAME=SPECTEXT,BYTES=40,START=1,TYPE=C
+         DBDGEN
+         FINISH
+         END

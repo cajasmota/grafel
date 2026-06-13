@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -1058,4 +1059,261 @@ func loadFixture(t *testing.T, name string) string {
 		t.Fatalf("reading fixture %s: %v", name, err)
 	}
 	return string(b)
+}
+
+// ===========================================================================
+// IMS DBD/PSB hierarchy (#5057) + DL/I data-name SSA / func-code (#5054) +
+// IO-PCB message-queue binding (#5053).
+// ===========================================================================
+
+// findBySubtype returns entities of a given kind+subtype.
+func findBySubtype(recs []types.EntityRecord, kind, subtype string) []types.EntityRecord {
+	return findByKind(recs, kind, subtype)
+}
+
+// segmentEntity returns the ims-segment SCOPE.Schema entity for a segment name.
+func segmentEntity(recs []types.EntityRecord, seg string) (types.EntityRecord, bool) {
+	for _, r := range findBySubtype(recs, "SCOPE.Schema", "ims-segment") {
+		if r.Name == seg {
+			return r, true
+		}
+	}
+	return types.EntityRecord{}, false
+}
+
+// hasContainsChild reports whether parent entity has a CONTAINS edge to child.
+func hasContainsChild(parent types.EntityRecord, child string) bool {
+	for _, rel := range parent.Relationships {
+		if rel.Kind == "CONTAINS" && rel.Properties["child"] == child {
+			return true
+		}
+	}
+	return false
+}
+
+// TestExtractor_IMSDBDHierarchy proves a DBDGEN macro deck yields the IMS
+// database + segment hierarchy (#5057): a SCOPE.Datastore/ims-database, one
+// SCOPE.Schema/ims-segment per SEGM with CONTAINS parent->child edges, and key
+// FIELDs CONTAINed by their segment.
+func TestExtractor_IMSDBDHierarchy(t *testing.T) {
+	src := loadFixture(t, "partsdb.dbd")
+	recs := run(t, "partsdb.dbd", src)
+
+	dbs := findBySubtype(recs, "SCOPE.Datastore", "ims-database")
+	if len(dbs) != 1 || dbs[0].Name != "PARTSDB" {
+		t.Fatalf("expected one ims-database PARTSDB, got %v", dbs)
+	}
+	// Database CONTAINS its root segment PARTROOT.
+	if !hasContainsChild(dbs[0], "PARTROOT") {
+		t.Errorf("expected ims-database CONTAINS root segment PARTROOT: %v", dbs[0].Relationships)
+	}
+
+	for _, seg := range []string{"PARTROOT", "PARTDETL", "PARTSPEC"} {
+		if _, ok := segmentEntity(recs, seg); !ok {
+			t.Errorf("expected ims-segment entity %s", seg)
+		}
+	}
+	// Hierarchy: PARTROOT CONTAINS PARTDETL CONTAINS PARTSPEC.
+	root, _ := segmentEntity(recs, "PARTROOT")
+	if !hasContainsChild(root, "PARTDETL") {
+		t.Errorf("expected PARTROOT CONTAINS PARTDETL: %v", root.Relationships)
+	}
+	detl, _ := segmentEntity(recs, "PARTDETL")
+	if !hasContainsChild(detl, "PARTSPEC") {
+		t.Errorf("expected PARTDETL CONTAINS PARTSPEC: %v", detl.Relationships)
+	}
+	if root.Properties["root"] != "true" {
+		t.Errorf("expected PARTROOT marked root=true: %v", root.Properties)
+	}
+	if detl.Properties["parent"] != "PARTROOT" {
+		t.Errorf("expected PARTDETL parent=PARTROOT: %v", detl.Properties)
+	}
+	// Key FIELD PARTKEY is a CONTAINed field marked key=true.
+	if !hasContainsChild(root, "PARTKEY") {
+		t.Errorf("expected PARTROOT CONTAINS field PARTKEY")
+	}
+	var keyMarked bool
+	for _, r := range findBySubtype(recs, "SCOPE.Schema", "field") {
+		if r.Name == "PARTKEY" && r.Properties["key"] == "true" {
+			keyMarked = true
+		}
+	}
+	if !keyMarked {
+		t.Error("expected PARTKEY field marked key=true (SEQ)")
+	}
+}
+
+// TestExtractor_IMSPSBView proves a PSBGEN macro deck yields the program's PCB
+// view (#5057): an IO-PCB (TYPE=TP) flagged io_pcb (#5053), a DB-PCB with an
+// ACCESSES_TABLE edge to its DBDNAME database, SENSEG ACCESSES_TABLE edges to
+// segments, and the PGMNAME binding.
+func TestExtractor_IMSPSBView(t *testing.T) {
+	src := loadFixture(t, "partspsb.psb")
+	recs := run(t, "partspsb.psb", src)
+
+	pcbs := findBySubtype(recs, "SCOPE.Component", "ims-pcb")
+	if len(pcbs) != 2 {
+		t.Fatalf("expected 2 ims-pcb entities, got %d: %v", len(pcbs), pcbs)
+	}
+	var ioPCB, dbPCB *types.EntityRecord
+	for i := range pcbs {
+		switch pcbs[i].Properties["pcb_type"] {
+		case "TP":
+			ioPCB = &pcbs[i]
+		case "DB":
+			dbPCB = &pcbs[i]
+		}
+	}
+	if ioPCB == nil || ioPCB.Properties["io_pcb"] != "true" {
+		t.Fatalf("expected a TP PCB flagged io_pcb=true: %v", pcbs)
+	}
+	if dbPCB == nil {
+		t.Fatal("expected a DB PCB")
+	}
+	if dbPCB.Properties["dbdname"] != "PARTSDB" {
+		t.Errorf("expected DB-PCB dbdname=PARTSDB: %v", dbPCB.Properties)
+	}
+	// DB-PCB ACCESSES_TABLE -> the DBD database + the SENSEG segments.
+	var toDB, toRoot, toDetl bool
+	for _, rel := range dbPCB.Relationships {
+		if rel.Kind != "ACCESSES_TABLE" {
+			continue
+		}
+		switch {
+		case rel.Properties["dbdname"] == "PARTSDB":
+			toDB = true
+		case rel.Properties["segment"] == "PARTROOT":
+			toRoot = true
+		case rel.Properties["segment"] == "PARTDETL":
+			toDetl = true
+		}
+	}
+	if !toDB {
+		t.Error("expected DB-PCB ACCESSES_TABLE -> PARTSDB database")
+	}
+	if !toRoot || !toDetl {
+		t.Error("expected SENSEG ACCESSES_TABLE edges to PARTROOT + PARTDETL")
+	}
+	// PGMNAME binds the PSB to its serving program.
+	if dbPCB.Properties["pgmname"] != "IMSPART2" {
+		t.Errorf("expected pgmname=IMSPART2 on the PCB: %v", dbPCB.Properties)
+	}
+}
+
+// TestExtractor_IMSDataNameSSA proves the data-name form of the DL/I function
+// code + SSA segment resolves through WORKING-STORAGE VALUE tracing (#5054):
+// CALL 'CBLTDLI' USING WS-FUNC-GU DB-PCB IO WS-SSA-ROOT, where WS-FUNC-GU VALUE
+// 'GU' and WS-SSA-ROOT VALUE 'PARTROOT(...', surfaces SELECT PARTROOT.
+func TestExtractor_IMSDataNameSSA(t *testing.T) {
+	src := loadFixture(t, "imspart2.cbl")
+	recs := run(t, "imspart2.cbl", src)
+
+	// data-name GU + data-name SSA 'PARTROOT(...' -> SELECT PARTROOT.
+	if !dliSegmentFor(recs, "SELECT", "PARTROOT") {
+		t.Error("expected data-name SSA to resolve SELECT PARTROOT via WS VALUE trace")
+	}
+	// data-name ISRT + data-name SSA 'PARTDETL' -> INSERT PARTDETL.
+	if !dliSegmentFor(recs, "INSERT", "PARTDETL") {
+		t.Error("expected data-name SSA to resolve INSERT PARTDETL via WS VALUE trace")
+	}
+	// The resolution is tagged resolved_via=ws-value (not an inline literal).
+	var taggedWS bool
+	for _, r := range findDataAccess(recs, "ims-dli") {
+		if r.Properties["segment"] == "PARTROOT" && r.Properties["resolved_via"] == "ws-value" {
+			taggedWS = true
+		}
+	}
+	if !taggedWS {
+		t.Error("expected resolved_via=ws-value on the data-name SSA segment access")
+	}
+}
+
+// TestExtractor_IMSIOPCBMessageQueue proves a CALL against the IO-PCB binds a
+// SCOPE.Datastore/message-queue (#5053) with READS_FROM (GU) / WRITES_TO (ISRT)
+// edges, distinguished from a DB-PCB segment access by PCB data-name.
+func TestExtractor_IMSIOPCBMessageQueue(t *testing.T) {
+	src := loadFixture(t, "imspart2.cbl")
+	recs := run(t, "imspart2.cbl", src)
+
+	mqs := findBySubtype(recs, "SCOPE.Datastore", "message-queue")
+	if len(mqs) == 0 {
+		t.Fatal("expected at least one ims message-queue datastore for IO-PCB calls")
+	}
+	var sawRead, sawWrite bool
+	for _, r := range mqs {
+		if r.Properties["pcb"] != "IO-PCB" {
+			t.Errorf("expected message-queue bound to IO-PCB: %v", r.Properties)
+		}
+		for _, rel := range r.Relationships {
+			switch rel.Kind {
+			case "READS_FROM":
+				sawRead = true
+			case "WRITES_TO":
+				sawWrite = true
+			}
+		}
+	}
+	if !sawRead {
+		t.Error("expected READS_FROM edge for IO-PCB GU (message read)")
+	}
+	if !sawWrite {
+		t.Error("expected WRITES_TO edge for IO-PCB ISRT (message send)")
+	}
+	// An IO-PCB call must NOT create a DB segment SCOPE.DataAccess.
+	for _, r := range findDataAccess(recs, "ims-dli") {
+		if strings.Contains(r.Properties["via"], "IOPCB") {
+			t.Errorf("IO-PCB call leaked into a DB segment access: %v", r.Properties)
+		}
+	}
+}
+
+// TestExtractor_IMSMacroDeck_WrongLanguageNoOp proves the DBD/PSB macro-deck
+// parser is a no-op for non-IMS-deck input: an ordinary COBOL program is parsed
+// as a program (not a macro deck), and unrelated source yields no IMS entities.
+func TestExtractor_IMSMacroDeck_WrongLanguageNoOp(t *testing.T) {
+	// A real COBOL program with a PROGRAM-ID must NOT be parsed as a deck.
+	prog := "" +
+		"       IDENTIFICATION DIVISION.\n" +
+		"       PROGRAM-ID. NOTADECK.\n" +
+		"       PROCEDURE DIVISION.\n" +
+		"       MAIN-PARA.\n" +
+		"           DISPLAY 'HELLO'.\n"
+	recs := run(t, "notadeck.cbl", prog)
+	if len(findBySubtype(recs, "SCOPE.Datastore", "ims-database")) != 0 {
+		t.Error("COBOL program misparsed as a DBD macro deck")
+	}
+	if len(findBySubtype(recs, "SCOPE.Component", "ims-pcb")) != 0 {
+		t.Error("COBOL program misparsed as a PSB macro deck")
+	}
+	// Non-COBOL content with a .dbd-shaped name but no DBD macro yields nothing.
+	js := "const DBD = { name: 'PARTSDB' };\n"
+	recs2 := run(t, "config.js", js)
+	if len(findBySubtype(recs2, "SCOPE.Datastore", "ims-database")) != 0 {
+		t.Error("non-deck JS content produced an ims-database entity")
+	}
+}
+
+// TestExtractor_IMSDLINoMatchNoOp proves a COBOL program with no DL/I CALL and
+// no VALUE-traced SSA produces no IMS segment / message-queue entities.
+func TestExtractor_IMSDLINoMatchNoOp(t *testing.T) {
+	src := "" +
+		"       IDENTIFICATION DIVISION.\n" +
+		"       PROGRAM-ID. NOIMS.\n" +
+		"       DATA DIVISION.\n" +
+		"       WORKING-STORAGE SECTION.\n" +
+		"       01  WS-FUNC PIC X(04) VALUE 'GU  '.\n" +
+		"       PROCEDURE DIVISION.\n" +
+		"       MAIN-PARA.\n" +
+		"           CALL 'AUDITLOG' USING WS-FUNC.\n"
+	recs := run(t, "noims.cbl", src)
+	if len(findDataAccess(recs, "ims-dli")) != 0 {
+		t.Error("no CBLTDLI call but got an ims-dli segment access")
+	}
+	if len(findBySubtype(recs, "SCOPE.Datastore", "message-queue")) != 0 {
+		t.Error("no IO-PCB call but got a message-queue datastore")
+	}
+	// The ordinary CALL is still emitted.
+	if !hasCallTo(recs, "AUDITLOG") {
+		t.Error("expected the ordinary CALL 'AUDITLOG' edge to survive")
+	}
 }

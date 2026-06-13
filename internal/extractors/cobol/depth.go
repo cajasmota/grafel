@@ -764,18 +764,10 @@ var (
 	// (COBOL/TDLI), AIBTDLI (AIB interface), or the assembler-style ASMTDLI /
 	// PLITDLI variants — capturing the module name.
 	dliCallModuleRe = regexp.MustCompile(`(?i)\bCALL\s+['"]((?:CBL|AIB|ASM|PLI)TDLI)['"]`)
-	// dliFuncLiteralRe captures an inline DL/I function-code literal in a
-	// CBLTDLI USING list (CALL 'CBLTDLI' USING 'GU' ...). The 4-char form
-	// (e.g. 'GHU ', 'ISRT') and the data-name form are both common; only the
-	// literal form is classified here (the data-name form stays generic).
-	dliFuncLiteralRe = regexp.MustCompile(`(?i)\bUSING\b[^.]*?['"]\s*(GU|GN|GHU|GNP|GHN|GHNP|ISRT|REPL|DLET)\s*['"]`)
-	// dliSSASegRe captures a segment name from an inline SSA literal in the
-	// USING list. A qualified SSA names the segment then a key in parens
-	// (USING ... 'PARTROOT(PARTKEY  ='); an unqualified SSA is just the bare
-	// 8-char segment name (USING ... 'PARTDETL'). The leading 1-8 char token
-	// of the quoted literal is the segment; function-code literals (GU/ISRT…)
-	// are excluded by dliFuncCodeReserved. Trailing key/blanks are tolerated.
-	dliSSASegRe = regexp.MustCompile(`(?i)['"]\s*([A-Za-z][A-Za-z0-9#@$-]{0,7})\s*(?:\(|['"]|\s)`)
+	// (The inline-only func-code / SSA-literal regexes were folded into the
+	// positional USING-argument parser in ims.go — parseDLIUsingArgs +
+	// segmentFromSSA — which handles both the inline-literal form (#4948) and
+	// the data-name form via WORKING-STORAGE VALUE tracing (#5054).)
 )
 
 // dliOpFor maps a DL/I function code to the primary DML operation, mirroring
@@ -875,46 +867,10 @@ var dliFuncCodeReserved = map[string]bool{
 	"GHNP": true, "ISRT": true, "REPL": true, "DLET": true,
 }
 
-// extractDLICall classifies a `CALL 'CBLTDLI'/'AIBTDLI' USING ...` statement.
-// The function code (when an inline literal) maps to a DML operation; the
-// segment is recovered only from an inline SSA literal (the data-name SSA form
-// is not statically resolvable here). Returns nil when no segment is
-// recoverable — the abstract db_effect (effect_sinks_cobol.go) still records
-// the read/write, so the call is never wholly invisible. `line` is the source
-// line; `module` is the matched DL/I interface module.
-func extractDLICall(filePath, fnQName, code, module string, line int) []types.EntityRecord {
-	op := "EXEC"
-	if m := dliFuncLiteralRe.FindStringSubmatch(code); m != nil {
-		op = dliOpFor(m[1])
-	}
-	fnRef := sqlFunctionRef(filePath, fnQName)
-
-	// Scan only the USING argument list for SSA literals — strip the leading
-	// `CALL '<module>'` so the interface-module name is never mistaken for a
-	// segment.
-	args := code
-	if loc := dliCallModuleRe.FindStringIndex(args); loc != nil {
-		args = args[loc[1]:]
-	}
-
-	// Recover a segment name from an inline SSA literal: the leading token of
-	// a quoted `'SEG(...'` (qualified) or `'SEG'` (unqualified) operand in the
-	// USING list. Skip function-code literals (e.g. 'GHU ').
-	segments := map[string]bool{}
-	for _, m := range dliSSASegRe.FindAllStringSubmatch(args, -1) {
-		seg := strings.ToUpper(strings.TrimSpace(m[1]))
-		if seg == "" || dliFuncCodeReserved[seg] {
-			continue
-		}
-		segments[seg] = true
-	}
-
-	var out []types.EntityRecord
-	for seg := range segments {
-		out = append(out, buildDLISegmentEntity(filePath, fnQName, fnRef, op, seg, line, "CALL-"+strings.ToUpper(module)))
-	}
-	return out
-}
+// (The inline-literal-only CALL classifier extractDLICall was superseded by
+// extractDLICallResolved in ims.go, which adds working-storage VALUE tracing
+// for the data-name SSA / function-code form (#5054) and IO-PCB message-queue
+// binding (#5053) while preserving the inline-literal behaviour of #4948.)
 
 // cicsCallEdge builds the CALLS relationship for a CICS program/transaction
 // transfer. external=true (cross-program); via=EXEC-CICS-<VERB>.

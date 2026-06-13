@@ -605,6 +605,12 @@ var extensionLanguageMap = map[string]string{
 	".cbl":   "cobol",
 	".cobol": "cobol",
 	".cpy":   "cobol",
+	// IMS DBDGEN/PSBGEN macro decks (#5057). These assembler-macro source decks
+	// declare the IMS database/segment hierarchy (.dbd) and a program's PCB view
+	// (.psb); the cobol extractor's isIMSMacroDeck branch parses them into the
+	// IMS schema entities the COBOL DL/I segment access (#4948) resolves against.
+	".dbd": "cobol",
+	".psb": "cobol",
 	// JCL — IBM Job Control Language. The mainframe batch-orchestration DSL
 	// that drives z/OS JES2/JES3 job submission; EXEC PGM= steps name the
 	// COBOL programs a job invokes. Routed to the jcl extractor, which emits

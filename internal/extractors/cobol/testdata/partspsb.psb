@@ -1,0 +1,15 @@
+*--------------------------------------------------------------------*
+* PARTSPSB.PSB — IMS PSBGEN macro deck fixture (#5057).               *
+* Declares a program's PCB view: an IO-PCB (TYPE=TP, message queue)   *
+* and a DB-PCB over PARTSDB sensitive to PARTROOT/PARTDETL.           *
+* Proves PCB -> SCOPE.Component/ims-pcb (io_pcb flag on the TP PCB,    *
+* #5053), DBDNAME -> ACCESSES_TABLE database, SENSEG -> ACCESSES_TABLE *
+* segment, PGMNAME -> the serving program.                            *
+*--------------------------------------------------------------------*
+         PCB   TYPE=TP,EXPRESS=YES
+         PCB   TYPE=DB,DBDNAME=PARTSDB,PROCOPT=A,KEYLEN=25,           X
+               PCBNAME=PARTPCB
+         SENSEG NAME=PARTROOT,PARENT=0
+         SENSEG NAME=PARTDETL,PARENT=PARTROOT
+         PSBGEN LANG=COBOL,PGMNAME=IMSPART2
+         END

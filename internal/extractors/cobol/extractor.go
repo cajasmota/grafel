@@ -130,6 +130,11 @@ var (
 	// dataPicRe captures the PICTURE clause string (PIC / PICTURE).
 	dataPicRe = regexp.MustCompile(`\bPIC(?:TURE)?\s+(?:IS\s+)?([A-Z0-9()VSX$.,/+\-]+)`)
 
+	// dataValueLitRe captures a `VALUE '<lit>'` clause on a data item so the
+	// data-name form of an IMS DL/I function code / SSA segment resolves via the
+	// traced literal (#5054). Group 1: the quoted literal (quotes excluded).
+	dataValueLitRe = regexp.MustCompile(`(?i)\bVALUE\s+(?:IS\s+)?['"]([^'"]*)['"]`)
+
 	// paragraphRe matches a PROCEDURE DIVISION paragraph header: an
 	// identifier in Area A terminated by a period, alone on the line.
 	// Group 1: paragraph name. The leading-whitespace bound is intentionally
@@ -259,8 +264,21 @@ func splitLines(src string) []codeLine {
 // ---------------------------------------------------------------------------
 
 func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
+	// IMS DBD/PSB (DBDGEN/PSBGEN) macro decks are not COBOL programs — they
+	// declare the IMS database/segment hierarchy + a program's PCB view. Route
+	// them to the dedicated macro-deck parser (#5057).
+	if isIMSMacroDeck(filePath, src) {
+		return extractIMSMacroDeck(src, filePath)
+	}
+
 	lines := splitLines(src)
 	var entities []types.EntityRecord
+
+	// wsValues traces WORKING-STORAGE / LINKAGE `VALUE '<lit>'` clauses
+	// (upper-cased data-name → literal) so the data-name form of an IMS DL/I
+	// function code / SSA segment resolves to the same operation + segment as
+	// the inline-literal form (#5054).
+	wsValues := map[string]string{}
 
 	// Program scope: the index of the current PROGRAM-ID entity (-1 = none).
 	programIdx := -1
@@ -664,6 +682,13 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					// No PICTURE clause on an ordinary item ⇒ group item.
 					props["group"] = "true"
 				}
+				// Trace a VALUE '<lit>' clause for IMS DL/I data-name SSA /
+				// function-code resolution (#5054). Preserve the literal's
+				// original case (segment / func-code literals are upper-cased at
+				// the use site).
+				if vm := dataValueLitRe.FindStringSubmatch(ln.code); vm != nil {
+					wsValues[strings.ToUpper(fieldName)] = vm[1]
+				}
 				// Maintain the level stack and bind this item to its parent
 				// group (the nearest enclosing item with a lower level number).
 				// Levels 88 (condition) / 66 (renames) attach to the current
@@ -837,8 +862,12 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 			// IMS segment as a SCOPE.DataAccess entity (when statically
 			// recoverable from an inline SSA literal) with an ACCESSES_TABLE edge.
 			if dm := dliCallModuleRe.FindStringSubmatch(ln.code); dm != nil {
+				// #5054 resolves the data-name function code + SSA segment via the
+				// traced WORKING-STORAGE VALUE clauses; #5053 binds an IO-PCB
+				// (message) call to a SCOPE.Datastore/message-queue. The inline
+				// literal form (#4948) is still handled by the same path.
 				entities = append(entities,
-					extractDLICall(filePath, fnRefName(), ln.code, dm[1], ln.num)...)
+					extractDLICallResolved(filePath, fnRefName(), ln.code, dm[1], ln.num, wsValues)...)
 			}
 
 			// CALL <data-item> (dynamic call via a variable). Only when no
