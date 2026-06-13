@@ -647,3 +647,284 @@ const payJobFixture = `//PAYJOB   JOB (ACCT),'PAYROLL RUN',CLASS=A,MSGCLASS=X,
 //SYSUT2   DD DSN=PROD.PAYROLL.ARCHIVE,DISP=(NEW,CATLG)
 //         PEND
 `
+
+// ---------------------------------------------------------------------------
+// #5043 multi-DSN per DD — concatenated DDs, GDG generations, PDS members.
+// ---------------------------------------------------------------------------
+
+// multiDsnFixture mirrors testdata/multidsn.jcl inline.
+const multiDsnFixture = `//DSNJOB   JOB (ACCT),'MULTI DSN',CLASS=A,MSGCLASS=X
+//*
+//LOADSTEP EXEC PGM=LOADER
+//INDD     DD DSN=PROD.PART.ONE,DISP=SHR
+//         DD DSN=PROD.PART.TWO,DISP=SHR
+//         DD DSN=PROD.PART.THREE,DISP=SHR
+//GDGIN    DD DSN=PROD.HISTORY.GDG(-1),DISP=SHR
+//GDGOUT   DD DSN=PROD.HISTORY.GDG(+1),DISP=(NEW,CATLG)
+//PGMLIB   DD DSN=PROD.LOADLIB(PAYROLL),DISP=SHR
+//SYSOUT   DD SYSOUT=*
+//
+`
+
+func relForTo(recs []types.EntityRecord, kind, to string) (types.RelationshipRecord, bool) {
+	for _, rel := range relationsByKind(recs, kind) {
+		if rel.ToID == to {
+			return rel, true
+		}
+	}
+	return types.RelationshipRecord{}, false
+}
+
+func datasetByName(recs []types.EntityRecord, name string) (types.EntityRecord, bool) {
+	for _, r := range findByKind(recs, "SCOPE.Datastore", "dataset") {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return types.EntityRecord{}, false
+}
+
+// TestExtractor_ConcatenatedDD proves a single logical DD (INDD) with two
+// nameless continuation DD cards emits THREE dataset entities + three read
+// edges, all carrying ddname=INDD; the continuants are flagged concatenated.
+func TestExtractor_ConcatenatedDD(t *testing.T) {
+	recs := run(t, "multidsn.jcl", multiDsnFixture)
+	for _, dsn := range []string{"PROD.PART.ONE", "PROD.PART.TWO", "PROD.PART.THREE"} {
+		ds, ok := datasetByName(recs, dsn)
+		if !ok {
+			t.Fatalf("expected dataset entity %s", dsn)
+		}
+		if ds.Properties["ddname"] != "INDD" {
+			t.Errorf("%s: ddname = %q, want INDD", dsn, ds.Properties["ddname"])
+		}
+		if _, ok := relForTo(recs, string(types.RelationshipKindReadsFrom), dsn); !ok {
+			t.Errorf("expected READS_FROM %s", dsn)
+		}
+	}
+	// The two continuation cards are flagged as concatenants.
+	two, _ := datasetByName(recs, "PROD.PART.TWO")
+	if two.Properties["concatenated"] != "true" || two.Properties["concatenation_position"] != "1" {
+		t.Errorf("PROD.PART.TWO concat props = %v, want concatenated=true position=1", two.Properties)
+	}
+	three, _ := datasetByName(recs, "PROD.PART.THREE")
+	if three.Properties["concatenation_position"] != "2" {
+		t.Errorf("PROD.PART.THREE concatenation_position = %q, want 2", three.Properties["concatenation_position"])
+	}
+	// The first card of the concatenation is NOT itself a continuant.
+	one, _ := datasetByName(recs, "PROD.PART.ONE")
+	if one.Properties["concatenated"] == "true" {
+		t.Error("PROD.PART.ONE should not be flagged concatenated (it is the DD head)")
+	}
+}
+
+// TestExtractor_GDGRelativeGeneration proves a GDG (+1)/(–1) suffix resolves to
+// the base group name with a gdg_generation property, and that (+1) is a write.
+func TestExtractor_GDGRelativeGeneration(t *testing.T) {
+	recs := run(t, "multidsn.jcl", multiDsnFixture)
+	// Both generations collapse to the same base entity PROD.HISTORY.GDG.
+	base, ok := datasetByName(recs, "PROD.HISTORY.GDG")
+	if !ok {
+		t.Fatal("expected GDG base dataset entity PROD.HISTORY.GDG")
+	}
+	if base.Properties["gdg_base"] != "PROD.HISTORY.GDG" {
+		t.Errorf("gdg_base = %q", base.Properties["gdg_base"])
+	}
+	// (-1) is a read of a prior generation.
+	if rel, ok := relForTo(recs, string(types.RelationshipKindReadsFrom), "PROD.HISTORY.GDG"); !ok {
+		t.Error("expected READS_FROM PROD.HISTORY.GDG (-1)")
+	} else if rel.Properties["gdg_generation"] != "-1" {
+		t.Errorf("read gdg_generation = %q, want -1", rel.Properties["gdg_generation"])
+	}
+	// (+1) is a freshly-created generation = a write.
+	if rel, ok := relForTo(recs, string(types.RelationshipKindWritesTo), "PROD.HISTORY.GDG"); !ok {
+		t.Error("expected WRITES_TO PROD.HISTORY.GDG (+1)")
+	} else if rel.Properties["gdg_generation"] != "+1" {
+		t.Errorf("write gdg_generation = %q, want +1", rel.Properties["gdg_generation"])
+	}
+}
+
+// TestExtractor_PDSMember proves DSN=LIB(MEMBER) yields a granular library+member
+// dataset identity distinct from the bare library name.
+func TestExtractor_PDSMember(t *testing.T) {
+	recs := run(t, "multidsn.jcl", multiDsnFixture)
+	ds, ok := datasetByName(recs, "PROD.LOADLIB(PAYROLL)")
+	if !ok {
+		t.Fatal("expected PDS member dataset entity PROD.LOADLIB(PAYROLL)")
+	}
+	if ds.Properties["pds_library"] != "PROD.LOADLIB" || ds.Properties["pds_member"] != "PAYROLL" {
+		t.Errorf("pds props = %v, want library=PROD.LOADLIB member=PAYROLL", ds.Properties)
+	}
+	if rel, ok := relForTo(recs, string(types.RelationshipKindReadsFrom), "PROD.LOADLIB(PAYROLL)"); !ok {
+		t.Error("expected READS_FROM PROD.LOADLIB(PAYROLL)")
+	} else if rel.Properties["pds_member"] != "PAYROLL" {
+		t.Errorf("read pds_member = %q, want PAYROLL", rel.Properties["pds_member"])
+	}
+}
+
+// TestExtractor_MultiDSNNoOp proves a plain single-DSN DD carries no #5043
+// granularity props (no false concatenation/GDG/PDS flags).
+func TestExtractor_MultiDSNNoOp(t *testing.T) {
+	recs := run(t, "pay.jcl", payJobFixture)
+	for _, r := range findByKind(recs, "SCOPE.Datastore", "dataset") {
+		for _, k := range []string{"concatenated", "gdg_generation", "pds_member"} {
+			if r.Properties[k] != "" {
+				t.Errorf("dataset %q unexpectedly carries %s=%q", r.Name, k, r.Properties[k])
+			}
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #5044 conditional flow — COND=, IF/ELSE/ENDIF, RESTART=.
+// ---------------------------------------------------------------------------
+
+// condFlowFixture mirrors testdata/condflow.jcl inline.
+const condFlowFixture = `//CONDJOB  JOB (ACCT),'COND FLOW',CLASS=A,MSGCLASS=X,RESTART=STEP2
+//*
+//STEP1    EXEC PGM=PREP
+//STEP2    EXEC PGM=LOADER,COND=(4,LT,STEP1)
+//STEP3    EXEC PGM=VALIDATE,COND=(8,LE)
+//         IF (STEP2.RC = 0) THEN
+//OKSTEP   EXEC PGM=COMMIT
+//         ELSE
+//BADSTEP  EXEC PGM=ROLLBACK
+//         ENDIF
+//LASTSTEP EXEC PGM=REPORT
+//
+`
+
+func stepByName(recs []types.EntityRecord, name string) (types.EntityRecord, bool) {
+	for _, r := range findByKind(recs, "SCOPE.Operation", "step") {
+		if r.Name == name {
+			return r, true
+		}
+	}
+	return types.EntityRecord{}, false
+}
+
+func precedesFromTo(recs []types.EntityRecord, toSubstr string) (types.RelationshipRecord, bool) {
+	for _, rel := range relationsByKind(recs, string(types.RelationshipKindPrecedes)) {
+		if strings.Contains(rel.ToID, toSubstr) {
+			return rel, true
+		}
+	}
+	return types.RelationshipRecord{}, false
+}
+
+// TestExtractor_CondStepSkip proves COND=(code,op,step) records the predicate on
+// the step and emits a conditional PRECEDES edge from the referenced step.
+func TestExtractor_CondStepSkip(t *testing.T) {
+	recs := run(t, "condflow.jcl", condFlowFixture)
+	s2, ok := stepByName(recs, "STEP2")
+	if !ok {
+		t.Fatal("expected STEP2")
+	}
+	if s2.Properties["cond"] != "4,LT" || s2.Properties["cond_step"] != "STEP1" {
+		t.Errorf("STEP2 cond props = %v, want cond=4,LT cond_step=STEP1", s2.Properties)
+	}
+	// PRECEDES edge from STEP1 to STEP2 carrying the condition.
+	s1, _ := stepByName(recs, "STEP1")
+	var found bool
+	for _, rel := range s1.Relationships {
+		if rel.Kind == string(types.RelationshipKindPrecedes) && strings.Contains(rel.ToID, "STEP2") {
+			found = true
+			if rel.Properties["flow"] != "conditional" || rel.Properties["cond_op"] != "LT" {
+				t.Errorf("PRECEDES props = %v", rel.Properties)
+			}
+		}
+	}
+	if !found {
+		t.Error("expected conditional PRECEDES STEP1 -> STEP2")
+	}
+	// COND with no step name: attributed to the immediately-prior step (STEP2).
+	s3, _ := stepByName(recs, "STEP3")
+	if s3.Properties["cond"] != "8,LE" {
+		t.Errorf("STEP3 cond = %q, want 8,LE", s3.Properties["cond"])
+	}
+	if rel, ok := precedesFromTo(recs, "STEP3"); !ok {
+		t.Error("expected PRECEDES edge to STEP3 (implicit prior-step COND)")
+	} else if rel.Properties["cond_scope"] != "all_prior" {
+		t.Errorf("STEP3 cond edge cond_scope = %q, want all_prior", rel.Properties["cond_scope"])
+	}
+}
+
+// TestExtractor_IfElseEndif proves steps inside an IF/ELSE/ENDIF block carry the
+// predicate + branch grouping.
+func TestExtractor_IfElseEndif(t *testing.T) {
+	recs := run(t, "condflow.jcl", condFlowFixture)
+	ok1, _ := stepByName(recs, "OKSTEP")
+	if ok1.Properties["if_cond"] != "STEP2.RC = 0" || ok1.Properties["if_branch"] != "then" {
+		t.Errorf("OKSTEP if props = %v, want cond='STEP2.RC = 0' branch=then", ok1.Properties)
+	}
+	bad, _ := stepByName(recs, "BADSTEP")
+	if bad.Properties["if_branch"] != "else" {
+		t.Errorf("BADSTEP if_branch = %q, want else", bad.Properties["if_branch"])
+	}
+	// A step after ENDIF is no longer inside the block.
+	last, _ := stepByName(recs, "LASTSTEP")
+	if last.Properties["if_cond"] != "" {
+		t.Errorf("LASTSTEP unexpectedly inside IF block: %v", last.Properties)
+	}
+}
+
+// TestExtractor_Restart proves RESTART=STEP2 marks the entry point and flags the
+// steps before it as skipped on restart.
+func TestExtractor_Restart(t *testing.T) {
+	recs := run(t, "condflow.jcl", condFlowFixture)
+	job := findByKind(recs, "SCOPE.Component", "job")
+	if len(job) != 1 || job[0].Properties["restart"] != "STEP2" {
+		t.Fatalf("expected JOB restart=STEP2, got %v", job)
+	}
+	s1, _ := stepByName(recs, "STEP1")
+	if s1.Properties["restart_skipped"] != "true" {
+		t.Errorf("STEP1 should be restart_skipped (before STEP2): %v", s1.Properties)
+	}
+	s2, _ := stepByName(recs, "STEP2")
+	if s2.Properties["restart_entry"] != "true" {
+		t.Errorf("STEP2 should be restart_entry: %v", s2.Properties)
+	}
+	s3, _ := stepByName(recs, "STEP3")
+	if s3.Properties["restart_skipped"] == "true" {
+		t.Error("STEP3 (after restart point) must NOT be restart_skipped")
+	}
+}
+
+// TestExtractor_CondFlowNoOp proves an ordinary job carries no #5044 conditional
+// props (no false cond/if/restart flags).
+func TestExtractor_CondFlowNoOp(t *testing.T) {
+	recs := run(t, "pay.jcl", payJobFixture)
+	for _, r := range recs {
+		for _, k := range []string{"cond", "if_cond", "restart_skipped", "restart_entry"} {
+			if r.Properties[k] != "" {
+				t.Errorf("%s %q unexpectedly carries %s=%q", r.Kind, r.Name, k, r.Properties[k])
+			}
+		}
+	}
+	for _, rel := range relationsByKind(recs, string(types.RelationshipKindPrecedes)) {
+		t.Errorf("plain job unexpectedly emitted PRECEDES edge: %v", rel)
+	}
+}
+
+// TestExtractor_CondFlowWrongLanguageNoOp proves COBOL source yields no JCL
+// conditional-flow entities/edges (the JCL card grammar matches nothing).
+func TestExtractor_CondFlowWrongLanguageNoOp(t *testing.T) {
+	const cobolSrc = `       IDENTIFICATION DIVISION.
+       PROGRAM-ID. PAYROLL.
+       PROCEDURE DIVISION.
+           IF WS-RC = 0 THEN
+              PERFORM COMMIT-PARA
+           ELSE
+              PERFORM ROLLBACK-PARA
+           END-IF.
+           STOP RUN.
+`
+	recs := run(t, "payroll.cbl", cobolSrc)
+	for _, r := range recs {
+		if r.Kind == "SCOPE.Operation" || r.Kind == "SCOPE.Component" {
+			t.Errorf("JCL extractor produced %s %q from COBOL source", r.Kind, r.Name)
+		}
+	}
+	if len(relationsByKind(recs, string(types.RelationshipKindPrecedes))) != 0 {
+		t.Error("JCL extractor produced PRECEDES edges from COBOL source")
+	}
+}
