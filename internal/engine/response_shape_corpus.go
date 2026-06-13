@@ -163,6 +163,18 @@ func ApplyResponseShapesCorpus(
 		}
 	}
 
+	// srcByPath caches the string form of each handler file's content so
+	// many endpoints sharing one large views.py reuse the same string
+	// identity (and therefore the same memoized pySourceIndex) instead of
+	// allocating + re-hashing a fresh string per endpoint (#5143).
+	srcByPath := make(map[string]string)
+	// pyIdxByPath caches the resolved per-source def/class index by handler
+	// file path. This is the key O(n²)→O(n) fix: the file string is hashed
+	// (to build the index) at most ONCE per file, then every endpoint on that
+	// file reuses the prebuilt index via a cheap short-path-key map lookup
+	// instead of re-hashing the multi-KB source on every call.
+	pyIdxByPath := make(map[string]*pySourceIndex)
+
 	for i := range entities {
 		e := &entities[i]
 		if !isHTTPEndpointKind(e.Kind) {
@@ -190,11 +202,18 @@ func ApplyResponseShapesCorpus(
 
 		// Read the handler's source file and dispatch to the
 		// language-appropriate extractor with the resolved method name.
-		content := fileReader(handlerEnt.SourceFile)
-		if len(content) == 0 {
+		// Reuse a previously-read string for the same path so the per-source
+		// index memo (#5143) hits on string identity rather than re-hashing
+		// an equal-but-distinct string for every endpoint in the file.
+		src, ok := srcByPath[handlerEnt.SourceFile]
+		if !ok {
+			content := fileReader(handlerEnt.SourceFile)
+			src = string(content)
+			srcByPath[handlerEnt.SourceFile] = src
+		}
+		if len(src) == 0 {
 			continue
 		}
-		src := string(content)
 		framework := e.Properties["framework"]
 
 		var sh shape
@@ -205,7 +224,12 @@ func ApplyResponseShapesCorpus(
 			// we don't have an explicit method name (Django composed
 			// routes give us only the View class), try the standard
 			// DRF/Django entry methods in order of specificity.
-			sh = extractPythonShapeWithFallbacks(src, methodName, framework, e)
+			pyIdx, ok := pyIdxByPath[handlerEnt.SourceFile]
+			if !ok {
+				pyIdx = getPySourceIndex(src)
+				pyIdxByPath[handlerEnt.SourceFile] = pyIdx
+			}
+			sh = extractPythonShapeWithFallbacksIdx(pyIdx, src, methodName, framework, e)
 		case "javascript", "typescript":
 			sh = extractJSShape(src, methodName, framework)
 		case "java":
@@ -388,19 +412,35 @@ var drfViewSetEntryMethods = []string{
 // class-based views productive without requiring the synthesizer to
 // pre-resolve a verb-to-method mapping.
 func extractPythonShapeWithFallbacks(src, name, framework string, e *types.EntityRecord) shape {
+	return extractPythonShapeWithFallbacksIdx(getPySourceIndex(src), src, name, framework, e)
+}
+
+// extractPythonShapeWithFallbacksIdx is extractPythonShapeWithFallbacks with
+// the per-source def/class index resolved once by the caller. The corpus pass
+// caches that index by handler-file path so the file string is hashed at most
+// once per file, not once per endpoint (#5143).
+func extractPythonShapeWithFallbacksIdx(idx *pySourceIndex, src, name, framework string, e *types.EntityRecord) shape {
 	if name == "" {
 		return shape{}
 	}
 	// If the synthesizer already gave us a concrete method name, trust it.
 	if !looksLikeClassName(name) {
-		return extractPythonShape(src, name, framework)
+		return extractPythonShapeIdx(idx, src, name, framework)
 	}
 	// Class name — union across standard entry methods. We don't merge
 	// extractor outputs across calls (the shape struct has no merge
 	// helper), so we collect from each method and combine.
+	//
+	// The index (resolved above) is shared across all method extractions
+	// for this file.
 	var combined shape
 	for _, method := range drfViewSetEntryMethods {
-		sh := extractPythonShape(src, method, framework)
+		if _, ok := idx.funcBodies[method]; !ok {
+			// Method not defined anywhere in this file — skip without paying
+			// for a full extractPythonShape scan.
+			continue
+		}
+		sh := extractPythonShapeIdx(idx, src, method, framework)
 		if sh.knownResponse || sh.dynamicResponse {
 			mergeShape(&combined, sh)
 		}

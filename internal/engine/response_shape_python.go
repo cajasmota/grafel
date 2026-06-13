@@ -23,7 +23,185 @@ package engine
 import (
 	"regexp"
 	"strings"
+	"sync"
 )
+
+// ---------------------------------------------------------------------------
+// Per-source memoization (#5143)
+//
+// ApplyResponseShapesCorpus drives the Python extractors in a hot loop: for a
+// single Django class-based view it calls extractPythonShape up to 13 times
+// (once per drfViewSetEntryMethods entry), and many endpoints share the same
+// large views.py source. Every call previously (a) compiled a fresh regexp
+// keyed on the handler/class name and (b) re-scanned the entire file. On an
+// 8k-entity Django repo that is O(endpoints × methods × filesize) with a
+// per-call regexp.MustCompile dominating CPU — the profiled hot path.
+//
+// The fix indexes each unique source string ONCE into name → body-span maps
+// (functions and classes), reusing the index across every handler/method/class
+// lookup for that file. The maps are keyed by the source string itself, so the
+// same file content (read once per endpoint by fileReader, but identical bytes)
+// resolves to the same cached index regardless of caller.
+//
+// The cache is process-global and bounded only by distinct source strings seen
+// during one index pass; the engine constructs a fresh set per Index call and
+// the strings are released when the pass completes (we hold no references to
+// EntityRecords). Access is mutex-guarded so the corpus pass stays race-free.
+
+type pySourceIndex struct {
+	// funcBodies maps a function name to the source slice of its body
+	// (first definition wins, matching the original FindStringSubmatchIndex
+	// which returned the first match).
+	funcBodies map[string]string
+	// classBodies maps a class name to the source slice of its body.
+	classBodies map[string]string
+}
+
+var (
+	pyIndexMu    sync.Mutex
+	pyIndexCache = map[string]*pySourceIndex{}
+)
+
+// getPySourceIndex returns the memoized def/class body index for src,
+// building it on first use. Safe for concurrent callers.
+func getPySourceIndex(src string) *pySourceIndex {
+	pyIndexMu.Lock()
+	if idx, ok := pyIndexCache[src]; ok {
+		pyIndexMu.Unlock()
+		return idx
+	}
+	pyIndexMu.Unlock()
+
+	idx := buildPySourceIndex(src)
+
+	pyIndexMu.Lock()
+	// Another goroutine may have built it meanwhile; first writer wins so
+	// the returned pointer is stable.
+	if existing, ok := pyIndexCache[src]; ok {
+		pyIndexMu.Unlock()
+		return existing
+	}
+	pyIndexCache[src] = idx
+	pyIndexMu.Unlock()
+	return idx
+}
+
+// pyDefScanRe matches every `def <name>(` / `class <name>` header in a single
+// pass over the file. It is compiled ONCE (package level) rather than per
+// handler name — eliminating the per-call regexp.MustCompile that dominated
+// the profiled hot path. Group 1 is the leading indent, group 2 is the
+// keyword (`def`/`class` — `async ` is stripped by the optional prefix so it
+// is NOT captured), group 3 is the name.
+var pyDefScanRe = regexp.MustCompile(`(?m)^([ \t]*)(?:async\s+)?(def|class)\s+([A-Za-z_]\w*)`)
+
+// buildPySourceIndex scans src once and records the body span of every
+// top-and-nested def/class by name. Body bounds use the same indentation rule
+// as the original per-name walkers, so the extracted slices are byte-identical
+// to what findHandlerBody / walkPyClassFields produced before.
+//
+// Critically this must stay ~O(filesize): the regex finds all headers in one
+// pass, and bodyAfterHeader computes each header's span by a single forward
+// indentation walk. We must NOT do any O(filesize) work per header (e.g.
+// re-slicing `src[headerStart:]` and TrimLeft-ing it to classify the keyword)
+// — on a file with many defs that turns index construction back into O(n²),
+// which is exactly what #5143 was fixing (a test fixture with a large
+// many-function file otherwise wedges for minutes).
+func buildPySourceIndex(src string) *pySourceIndex {
+	idx := &pySourceIndex{
+		funcBodies:  map[string]string{},
+		classBodies: map[string]string{},
+	}
+	matches := pyDefScanRe.FindAllStringSubmatchIndex(src, -1)
+	for _, loc := range matches {
+		// loc layout: [full0,full1, g1s,g1e (indent), g2s,g2e (keyword), g3s,g3e (name)]
+		headerStart := loc[0]
+		defIndent := loc[3] - loc[2]
+		keyword := src[loc[4]:loc[5]]
+		name := src[loc[6]:loc[7]]
+
+		body := bodyAfterHeader(src, headerStart, defIndent)
+		if keyword == "class" {
+			if _, ok := idx.classBodies[name]; !ok {
+				idx.classBodies[name] = body
+			}
+		} else {
+			if _, ok := idx.funcBodies[name]; !ok {
+				idx.funcBodies[name] = body
+			}
+		}
+	}
+	return idx
+}
+
+// bodyAfterHeader returns the body slice for a def/class header that starts at
+// headerStart with the given indent, applying the original multi-line-signature
+// skip and indentation-based body walk. Extracted verbatim from the original
+// findHandlerBody so output is unchanged.
+func bodyAfterHeader(src string, headerStart, defIndent int) string {
+	startLine := headerStart
+	headEnd := strings.Index(src[startLine:], "\n")
+	if headEnd < 0 {
+		return ""
+	}
+	bodyStart := startLine + headEnd + 1
+	// The signature might span multiple lines (Python allows wrapped argument
+	// lists); advance bodyStart line-by-line until the accumulated header text
+	// contains `):` or the header line ends with `:` (the def/class colon).
+	//
+	// The original findHandlerBody computed `nl` from `src[bodyStart-1:]`, but
+	// bodyStart always sits immediately after a newline, so `src[bodyStart-1]`
+	// is that newline and `nl` was 0 on a multi-line signature — wedging the
+	// loop forever (a latent bug that #5143's per-header indexing newly exposes
+	// because bodyAfterHeader now runs for EVERY def, not just looked-up ones).
+	// We scan from bodyStart instead, which both fixes the hang and keeps the
+	// walk linear. For the common single-line signature the first check breaks
+	// immediately, producing the identical bodyStart as before.
+	for {
+		// Has the signature already terminated on the header line(s) consumed
+		// so far? `src[startLine:bodyStart]` is the header text up to (and
+		// including) the newline that bodyStart follows.
+		header := src[startLine:bodyStart]
+		if strings.Contains(header, "):") ||
+			strings.HasSuffix(strings.TrimRight(strings.TrimRight(header, "\n"), " \t\r"), ":") {
+			break
+		}
+		nl := strings.Index(src[bodyStart:], "\n")
+		if nl < 0 {
+			// No further newline: the rest of the file is the (unterminated)
+			// signature; there is no body to extract.
+			return ""
+		}
+		bodyStart = bodyStart + nl + 1
+		if bodyStart >= len(src) {
+			return ""
+		}
+	}
+	i := bodyStart
+	bodyEnd := bodyStart
+	for i < len(src) {
+		lineEnd := strings.Index(src[i:], "\n")
+		if lineEnd < 0 {
+			lineEnd = len(src) - i
+		}
+		line := src[i : i+lineEnd]
+		stripped := strings.TrimLeft(line, " \t")
+		if stripped == "" || strings.HasPrefix(stripped, "#") {
+			i += lineEnd + 1
+			bodyEnd = i
+			continue
+		}
+		indent := len(line) - len(stripped)
+		if indent <= defIndent {
+			break
+		}
+		i += lineEnd + 1
+		bodyEnd = i
+	}
+	if bodyEnd > len(src) {
+		bodyEnd = len(src)
+	}
+	return src[bodyStart:bodyEnd]
+}
 
 // fastapiResponseModelRe captures the response_model=ClassName kwarg
 // off a FastAPI decorator above the handler. Multiple decorators are
@@ -45,6 +223,11 @@ var pyStatusKwargRe = regexp.MustCompile(`\bstatus(?:_code)?\s*=\s*(\d{3})`)
 // pyStatusHTTPConstRe handles `status=status.HTTP_404_NOT_FOUND` symbolic forms.
 var pyStatusHTTPConstRe = regexp.MustCompile(`\bstatus(?:_code)?\s*=\s*status\.HTTP_(\d{3})_`)
 
+// pyReturnCtorRe matches a leading `SomeClass(` constructor call in a return
+// expression. Precompiled (was an inline regexp.MustCompile in the per-return
+// hot loop — #5143).
+var pyReturnCtorRe = regexp.MustCompile(`^([A-Z][A-Za-z0-9_]*)\s*\(`)
+
 // findHandlerBody returns the source slice that contains the body of the
 // named Python function, or "" if not found. We use indentation to
 // determine where the function ends — the body is every line whose
@@ -54,65 +237,7 @@ func findHandlerBody(src, name string) string {
 	if name == "" {
 		return ""
 	}
-	re := regexp.MustCompile(`(?m)^([ \t]*)(?:async\s+)?def\s+` + regexp.QuoteMeta(name) + `\s*\(`)
-	loc := re.FindStringSubmatchIndex(src)
-	if loc == nil {
-		return ""
-	}
-	defIndent := loc[3] - loc[2] // length of capture group 1
-	// Start from the end of the def line. Find next newline.
-	startLine := loc[0]
-	headEnd := strings.Index(src[startLine:], "\n")
-	if headEnd < 0 {
-		return ""
-	}
-	bodyStart := startLine + headEnd + 1
-	// The signature might span multiple lines (Python allows wrapped
-	// argument lists); skip until we reach a line ending with `:`.
-	for {
-		// Find end of current line.
-		nl := strings.Index(src[bodyStart-1:], "\n")
-		if nl < 0 {
-			break
-		}
-		prev := src[startLine : bodyStart-1+nl]
-		if strings.Contains(prev, "):") || strings.HasSuffix(strings.TrimRight(prev, " \t\r"), ":") {
-			break
-		}
-		bodyStart = bodyStart - 1 + nl + 1
-		if bodyStart >= len(src) {
-			return ""
-		}
-	}
-	// Walk subsequent lines: include them while their indent > defIndent
-	// (or while they're blank). Stop at the first non-blank, indent <= defIndent.
-	i := bodyStart
-	bodyEnd := bodyStart
-	for i < len(src) {
-		lineEnd := strings.Index(src[i:], "\n")
-		if lineEnd < 0 {
-			lineEnd = len(src) - i
-		}
-		line := src[i : i+lineEnd]
-		stripped := strings.TrimLeft(line, " \t")
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
-			// blank/comment line; keep going.
-			i += lineEnd + 1
-			bodyEnd = i
-			continue
-		}
-		indent := len(line) - len(stripped)
-		if indent <= defIndent {
-			break
-		}
-		i += lineEnd + 1
-		bodyEnd = i
-	}
-	// Clamp bodyEnd to source length in case the last line lacked a newline.
-	if bodyEnd > len(src) {
-		bodyEnd = len(src)
-	}
-	return src[bodyStart:bodyEnd]
+	return getPySourceIndex(src).funcBodies[name]
 }
 
 // extractPythonShape implements the shape extractor for all four Python
@@ -120,11 +245,20 @@ func findHandlerBody(src, name string) string {
 // behaviours (e.g. FastAPI response_model lookup uses decorators above
 // the def line, which the others don't have in the same form).
 func extractPythonShape(src, handler, framework string) shape {
+	return extractPythonShapeIdx(getPySourceIndex(src), src, handler, framework)
+}
+
+// extractPythonShapeIdx is extractPythonShape with the per-source def/class
+// index resolved once by the caller. Threading `idx` lets the corpus pass's
+// 13-method loop (and the nested class/serializer walkers) avoid re-hashing
+// the whole file string on every lookup — the residual O(n²) the global memo
+// alone did not eliminate (#5143).
+func extractPythonShapeIdx(idx *pySourceIndex, src, handler, framework string) shape {
 	var sh shape
 	if handler == "" {
 		return sh
 	}
-	body := findHandlerBody(src, handler)
+	body := idx.funcBodies[handler]
 	if body == "" {
 		return sh
 	}
@@ -132,7 +266,7 @@ func extractPythonShape(src, handler, framework string) shape {
 	// above the def line.
 	if framework == "fastapi" {
 		if m := lookupFastAPIResponseModel(src, handler); m != "" {
-			schema := walkPyClassFields(src, m)
+			schema := walkPyClassFieldsIdx(idx, m)
 			if len(schema) > 0 {
 				sh.responseSchema = schema
 				keys := make([]string, 0, len(schema))
@@ -158,13 +292,13 @@ func extractPythonShape(src, handler, framework string) shape {
 		if expr == "" || expr == "None" {
 			continue
 		}
-		parsePyReturn(src, body, expr, &sh)
+		parsePyReturn(idx, src, body, expr, &sh)
 	}
 	// If we still have only dynamicResponse (e.g. `return serializer.data`
 	// resolved via self.get_serializer()), try the class-level serializer_class
 	// as a last resort.
 	if sh.dynamicResponse && !sh.knownResponse {
-		if keys := drfResolveAndWalk(src, "", body); len(keys) > 0 {
+		if keys := drfResolveAndWalk(idx, src, "", body); len(keys) > 0 {
 			sh.responseKeys = append(sh.responseKeys, keys...)
 			sh.knownResponse = true
 			sh.dynamicResponse = false
@@ -177,7 +311,7 @@ func extractPythonShape(src, handler, framework string) shape {
 // parsePyReturn inspects a single `return <expr>` and updates `sh` in place.
 // `handlerBody` is the text of the enclosing function body, used for DRF
 // local-variable resolution.
-func parsePyReturn(src, handlerBody, expr string, sh *shape) {
+func parsePyReturn(pidx *pySourceIndex, src, handlerBody, expr string, sh *shape) {
 	// Strip a trailing comment.
 	if i := strings.Index(expr, " #"); i >= 0 {
 		expr = strings.TrimSpace(expr[:i])
@@ -203,7 +337,7 @@ func parsePyReturn(src, handlerBody, expr string, sh *shape) {
 			if parenIdx >= 0 {
 				args := extractArgList(expr, idx+parenIdx)
 				if len(args) > 0 {
-					applyPyReturnArg(src, handlerBody, args[0], status, sh)
+					applyPyReturnArg(pidx, src, handlerBody, args[0], status, sh)
 					recordStatus(sh, status, looksLikeError(args[0]))
 					return
 				}
@@ -223,14 +357,14 @@ func parsePyReturn(src, handlerBody, expr string, sh *shape) {
 					status = n
 				}
 			}
-			applyPyReturnArg(src, handlerBody, dict, status, sh)
+			applyPyReturnArg(pidx, src, handlerBody, dict, status, sh)
 			recordStatus(sh, status, false)
 			return
 		}
 	}
 	// `return SomeModel(...)` — walk the class fields if SomeModel is in this file.
-	if m := regexp.MustCompile(`^([A-Z][A-Za-z0-9_]*)\s*\(`).FindStringSubmatch(expr); len(m) >= 2 {
-		schema := walkPyClassFields(src, m[1])
+	if m := pyReturnCtorRe.FindStringSubmatch(expr); len(m) >= 2 {
+		schema := walkPyClassFieldsIdx(pidx, m[1])
 		if len(schema) > 0 {
 			if sh.responseSchema == nil {
 				sh.responseSchema = schema
@@ -254,7 +388,7 @@ func parsePyReturn(src, handlerBody, expr string, sh *shape) {
 				varName = strings.TrimSpace(varName[parenIdx+1:])
 			}
 			if varName != "" && varName != "self" {
-				if keys := drfResolveAndWalk(src, varName, handlerBody); len(keys) > 0 {
+				if keys := drfResolveAndWalk(pidx, src, varName, handlerBody); len(keys) > 0 {
 					for _, k := range keys {
 						sh.responseKeys = append(sh.responseKeys, k)
 					}
@@ -274,7 +408,7 @@ func parsePyReturn(src, handlerBody, expr string, sh *shape) {
 // applyPyReturnArg merges a single argument (typically the body literal
 // passed to Response(...)) into `sh`. `handlerBody` is passed for DRF
 // serializer resolution when the arg is `serializer.data`.
-func applyPyReturnArg(src, handlerBody, arg string, status int, sh *shape) {
+func applyPyReturnArg(pidx *pySourceIndex, src, handlerBody, arg string, status int, sh *shape) {
 	keys := extractDictKeys(arg)
 	if len(keys) > 0 {
 		sh.knownResponse = true
@@ -290,7 +424,7 @@ func applyPyReturnArg(src, handlerBody, arg string, status int, sh *shape) {
 		if dotIdx := strings.Index(arg, ".data"); dotIdx > 0 {
 			varName := strings.TrimSpace(arg[:dotIdx])
 			if varName != "" && varName != "self" {
-				if drfKeys := drfResolveAndWalk(src, varName, handlerBody); len(drfKeys) > 0 {
+				if drfKeys := drfResolveAndWalk(pidx, src, varName, handlerBody); len(drfKeys) > 0 {
 					sh.responseKeys = append(sh.responseKeys, drfKeys...)
 					sh.knownResponse = true
 					sh.responseKeysSource = "drf_serializer"
@@ -302,8 +436,8 @@ func applyPyReturnArg(src, handlerBody, arg string, status int, sh *shape) {
 		return
 	}
 	// `return SomeModel(...)` inside a wrapper, e.g. Response(SomeModel(...)).
-	if m := regexp.MustCompile(`^([A-Z][A-Za-z0-9_]*)\s*\(`).FindStringSubmatch(strings.TrimSpace(arg)); len(m) >= 2 {
-		schema := walkPyClassFields(src, m[1])
+	if m := pyReturnCtorRe.FindStringSubmatch(strings.TrimSpace(arg)); len(m) >= 2 {
+		schema := walkPyClassFieldsIdx(pidx, m[1])
 		if len(schema) > 0 {
 			if sh.responseSchema == nil {
 				sh.responseSchema = schema
@@ -425,40 +559,16 @@ func extractFastAPIRequestSchema(src, handler string) map[string]string {
 // a map of `field -> type` for every `name: type` declaration in the
 // class body. Returns nil when the class is not found.
 func walkPyClassFields(src, name string) map[string]string {
-	re := regexp.MustCompile(`(?m)^([ \t]*)class\s+` + regexp.QuoteMeta(name) + `\b[^\n]*:`)
-	loc := re.FindStringSubmatchIndex(src)
-	if loc == nil {
+	return walkPyClassFieldsIdx(getPySourceIndex(src), name)
+}
+
+// walkPyClassFieldsIdx is walkPyClassFields with the per-source index resolved
+// once by the caller (#5143).
+func walkPyClassFieldsIdx(idx *pySourceIndex, name string) map[string]string {
+	body, ok := idx.classBodies[name]
+	if !ok {
 		return nil
 	}
-	classIndent := loc[3] - loc[2]
-	// Find the class body bounds the same way we did for handlers.
-	headEnd := strings.Index(src[loc[0]:], "\n")
-	if headEnd < 0 {
-		return nil
-	}
-	bodyStart := loc[0] + headEnd + 1
-	i := bodyStart
-	bodyEnd := bodyStart
-	for i < len(src) {
-		lineEnd := strings.Index(src[i:], "\n")
-		if lineEnd < 0 {
-			lineEnd = len(src) - i
-		}
-		line := src[i : i+lineEnd]
-		stripped := strings.TrimLeft(line, " \t")
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
-			i += lineEnd + 1
-			bodyEnd = i
-			continue
-		}
-		indent := len(line) - len(stripped)
-		if indent <= classIndent {
-			break
-		}
-		i += lineEnd + 1
-		bodyEnd = i
-	}
-	body := src[bodyStart:bodyEnd]
 	out := map[string]string{}
 	for _, m := range pyClassFieldRe.FindAllStringSubmatch(body, -1) {
 		fname := m[1]
@@ -500,11 +610,13 @@ var drfClassSerializerClassRe = regexp.MustCompile(`(?m)[ \t]+serializer_class\s
 // `varName` is the local variable name (e.g. "serializer"), `handlerBody` is the
 // method body text. Falls back to class-level `serializer_class` in the full source.
 // Returns nil when resolution fails.
-func drfResolveAndWalk(src, varName, handlerBody string) []string {
-	// 1. Look for local var assignment: `varName = SomeSerializer(...)`
+func drfResolveAndWalk(pidx *pySourceIndex, src, varName, handlerBody string) []string {
+	// 1. Look for local var assignment: `varName = SomeSerializer(...)`.
+	//    varName is dynamic, so this regex is name-specific; it only runs on
+	//    the rare DRF `.data` return path, not the hot dict-literal path.
 	varRe := regexp.MustCompile(`(?m)[ \t]+` + regexp.QuoteMeta(varName) + `\s*=\s*([A-Z][A-Za-z0-9_]*)\s*\(`)
 	if m := varRe.FindStringSubmatch(src); len(m) >= 2 {
-		if keys := walkDRFSerializer(src, m[1]); len(keys) > 0 {
+		if keys := walkDRFSerializerIdx(pidx, m[1]); len(keys) > 0 {
 			return keys
 		}
 	}
@@ -513,14 +625,14 @@ func drfResolveAndWalk(src, varName, handlerBody string) []string {
 	if m := drfGetSerializerRe.FindStringSubmatch(handlerBody + src); len(m) >= 2 {
 		// Ignore the variable name matched — just resolve via class attribute.
 		if m2 := drfClassSerializerClassRe.FindStringSubmatch(src); len(m2) >= 2 {
-			if keys := walkDRFSerializer(src, m2[1]); len(keys) > 0 {
+			if keys := walkDRFSerializerIdx(pidx, m2[1]); len(keys) > 0 {
 				return keys
 			}
 		}
 	}
 	// 3. Class-level serializer_class attribute.
 	if m := drfClassSerializerClassRe.FindStringSubmatch(src); len(m) >= 2 {
-		if keys := walkDRFSerializer(src, m[1]); len(keys) > 0 {
+		if keys := walkDRFSerializerIdx(pidx, m[1]); len(keys) > 0 {
 			return keys
 		}
 	}
@@ -533,43 +645,17 @@ func drfResolveAndWalk(src, varName, handlerBody string) []string {
 // - ModelSerializer with `Meta.fields = [...]`: reads the list
 // - Nested serializers: `nested = NestedSerializer()` → adds "nested" as a key
 func walkDRFSerializer(src, name string) []string {
-	// Find the class body.
-	re := regexp.MustCompile(`(?m)^([ \t]*)class\s+` + regexp.QuoteMeta(name) + `\b[^\n]*:`)
-	loc := re.FindStringSubmatchIndex(src)
-	if loc == nil {
+	return walkDRFSerializerIdx(getPySourceIndex(src), name)
+}
+
+// walkDRFSerializerIdx is walkDRFSerializer with the per-source index resolved
+// once by the caller (#5143).
+func walkDRFSerializerIdx(idx *pySourceIndex, name string) []string {
+	// Find the class body via the memoized per-source class index.
+	body, ok := idx.classBodies[name]
+	if !ok {
 		return nil
 	}
-	classIndent := loc[3] - loc[2]
-	headEnd := strings.Index(src[loc[0]:], "\n")
-	if headEnd < 0 {
-		return nil
-	}
-	bodyStart := loc[0] + headEnd + 1
-	i := bodyStart
-	bodyEnd := bodyStart
-	for i < len(src) {
-		lineEnd := strings.Index(src[i:], "\n")
-		if lineEnd < 0 {
-			lineEnd = len(src) - i
-		}
-		line := src[i : i+lineEnd]
-		stripped := strings.TrimLeft(line, " \t")
-		if stripped == "" || strings.HasPrefix(stripped, "#") {
-			i += lineEnd + 1
-			bodyEnd = i
-			continue
-		}
-		indent := len(line) - len(stripped)
-		if indent <= classIndent {
-			break
-		}
-		i += lineEnd + 1
-		bodyEnd = i
-	}
-	if bodyEnd > len(src) {
-		bodyEnd = len(src)
-	}
-	body := src[bodyStart:bodyEnd]
 
 	// Check if this is a ModelSerializer with Meta.fields.
 	if metaKeys := drfReadMetaFields(body); len(metaKeys) > 0 {
