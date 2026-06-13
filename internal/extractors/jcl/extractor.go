@@ -44,6 +44,18 @@
 //   - IMPORTS  — INCLUDE MEMBER=<name> (job/proc → spliced PROCLIB/JCLLIB
 //     member; import_kind="include", a real cross-file dependency)
 //
+// Symbolic-parameter substitution (#5042): a `// SET SYM=VAL` card and a PROC
+// statement's `SYMBOL=default` operands seed a job-level symbol table; an
+// `EXEC proc,SYMBOL=override` overrides them for that invocation. Before any
+// edge is emitted, `&SYM` / `&HLQ..FILE` tokens in PGM=/PROC=/DSN= operands are
+// resolved against the table so the CALLS/READS_FROM/WRITES_TO target carries
+// the substituted program / dataset identity (the literal `&VAR` token would
+// otherwise break COBOL by-name binding and dataset identity). The resolved
+// operand keeps a `symbolic_source="<original>"` property when a substitution
+// fired, and unresolved `&VAR` tokens are left intact (and flagged
+// `symbolic_unresolved="true"`). `// JCLLIB ORDER=(...)` is recorded as a
+// `jcllib_order` property / proc-resolution search-order hint on the JOB.
+//
 // Registers itself via init() and is imported by registry_gen.go.
 package jcl
 
@@ -81,18 +93,19 @@ var (
 	// operands (may be empty).
 	stmtRe = regexp.MustCompile(`(?i)^//\s*([A-Za-z$#@][A-Za-z0-9$#@]*)?\s+([A-Za-z]+)\b\s*(.*)$`)
 
-	// execPgmRe matches the PGM= operand of an EXEC statement.
-	// Group 1: program name.
-	execPgmRe = regexp.MustCompile(`(?i)\bPGM\s*=\s*([A-Za-z$#@][A-Za-z0-9$#@]*)`)
+	// execPgmRe matches the PGM= operand of an EXEC statement. The operand may
+	// be a literal program name or an unresolved `&SYM` symbolic reference
+	// (resolved later against the symbol table). Group 1: program token.
+	execPgmRe = regexp.MustCompile(`(?i)\bPGM\s*=\s*(&?[A-Za-z$#@][A-Za-z0-9$#@.]*)`)
 
-	// execProcRe matches the explicit PROC= operand of an EXEC statement.
-	// Group 1: procedure name.
-	execProcRe = regexp.MustCompile(`(?i)\bPROC\s*=\s*([A-Za-z$#@][A-Za-z0-9$#@]*)`)
+	// execProcRe matches the explicit PROC= operand of an EXEC statement. The
+	// operand may be a `&SYM` symbolic reference. Group 1: procedure token.
+	execProcRe = regexp.MustCompile(`(?i)\bPROC\s*=\s*(&?[A-Za-z$#@][A-Za-z0-9$#@.]*)`)
 
 	// ddDsnRe matches the DSN= / DSNAME= operand of a DD statement.
 	// Group 1: dataset name (may be a qualified name like PROD.PAYROLL.MASTER
 	// or a temp name like &&TEMP).
-	ddDsnRe = regexp.MustCompile(`(?i)\bDSN(?:AME)?\s*=\s*(&{0,2}[A-Za-z0-9$#@.()-]+)`)
+	ddDsnRe = regexp.MustCompile(`(?i)\bDSN(?:AME)?\s*=\s*([&A-Za-z0-9$#@.()-]+)`)
 
 	// ddDispRe captures the leading DISP disposition token (NEW/OLD/SHR/MOD).
 	// Group 1: status.
@@ -151,7 +164,90 @@ var (
 	// dataset name.
 	idcamsReproInRe  = regexp.MustCompile(`(?i)\b(?:IN|FROM)DATASET\s*\(\s*'?([A-Za-z0-9$#@.()-]+?)'?\s*[,)]`)
 	idcamsReproOutRe = regexp.MustCompile(`(?i)\b(?:OUT|TO)DATASET\s*\(\s*'?([A-Za-z0-9$#@.()-]+?)'?\s*[,)]`)
+
+	// symbolRefRe matches one `&SYM` symbolic-parameter reference. A trailing
+	// period is the JCL concatenation terminator (`&HLQ..FILE` → value of HLQ,
+	// then a literal `.`, then `FILE`); it is consumed as part of the token so
+	// the remaining text concatenates correctly. Group 1: symbol name (1-8
+	// national/alphanumeric chars, leading alpha/national); the optional
+	// trailing `.` is group 2 (the concatenation period, dropped on substitute).
+	symbolRefRe = regexp.MustCompile(`&([A-Za-z$#@][A-Za-z0-9$#@]{0,7})(\.?)`)
+
+	// setOperandsRe / kvPairRe split a `// SET`, PROC-default, or EXEC-override
+	// operand list into NAME=VALUE pairs. JCL SET allows comma-separated
+	// assignments on one card (`// SET HLQ=PROD,ENV=PRD`). VALUE may be quoted.
+	kvPairRe = regexp.MustCompile(`([A-Za-z$#@][A-Za-z0-9$#@]{0,7})\s*=\s*('[^']*'|[^,\s]+)`)
+
+	// jcllibOrderRe captures the parenthesised library list of a
+	// `// JCLLIB ORDER=(LIB1,LIB2)` card (or the single unparenthesised form).
+	// Group 1: the raw order list (without the surrounding parens).
+	jcllibOrderRe = regexp.MustCompile(`(?i)\bORDER\s*=\s*\(([^)]*)\)`)
+	jcllibOneRe   = regexp.MustCompile(`(?i)\bORDER\s*=\s*([A-Za-z0-9$#@.]+)`)
 )
+
+// symbolTable holds JCL symbolic-parameter values seeded by `// SET` cards and
+// PROC SYMBOL= defaults / EXEC SYMBOL= overrides. Lookups are case-insensitive
+// (keys are stored upper-cased).
+type symbolTable map[string]string
+
+// set records a symbol value, upper-casing the name and stripping surrounding
+// quotes from the value (JCL quotes a value containing special characters).
+func (t symbolTable) set(name, value string) {
+	name = strings.ToUpper(strings.TrimSpace(name))
+	if name == "" {
+		return
+	}
+	value = strings.TrimSpace(value)
+	if len(value) >= 2 && value[0] == '\'' && value[len(value)-1] == '\'' {
+		value = value[1 : len(value)-1]
+	}
+	t[name] = value
+}
+
+// learnPairs parses a comma/space-separated NAME=VALUE operand list (a SET
+// card or an EXEC override list) into the table, overwriting existing values.
+func (t symbolTable) learnPairs(operands string) {
+	for _, m := range kvPairRe.FindAllStringSubmatch(operands, -1) {
+		t.set(m[1], m[2])
+	}
+}
+
+// learnDefaults parses a PROC statement's SYMBOL=default operand list with
+// fill-if-absent semantics: a default only applies when the symbol was not
+// already supplied by an invoking EXEC override or a `// SET` card (the JCL
+// precedence — EXEC override / SET beats the PROC default).
+func (t symbolTable) learnDefaults(operands string) {
+	for _, m := range kvPairRe.FindAllStringSubmatch(operands, -1) {
+		name := strings.ToUpper(strings.TrimSpace(m[1]))
+		if _, exists := t[name]; exists {
+			continue
+		}
+		t.set(m[1], m[2])
+	}
+}
+
+// substitute resolves `&SYM` symbolic references in a PGM=/PROC=/DSN= operand
+// value against the table. It returns the resolved string, whether any
+// substitution fired, and whether any `&VAR` reference remained unresolved.
+// Unknown symbols are left as the literal `&VAR` token (with its concatenation
+// period preserved) so downstream binding can still see the unresolved name.
+func (t symbolTable) substitute(s string) (out string, changed, unresolved bool) {
+	out = symbolRefRe.ReplaceAllStringFunc(s, func(tok string) string {
+		m := symbolRefRe.FindStringSubmatch(tok)
+		key := strings.ToUpper(m[1])
+		if v, ok := t[key]; ok {
+			changed = true
+			return v // the concatenation period (m[2]) is consumed/dropped
+		}
+		unresolved = true
+		return tok // leave the literal &VAR (and its period) intact
+	})
+	return out, changed, unresolved
+}
+
+// hasSymbolRef reports whether s contains an `&SYM` symbolic reference (used to
+// decide whether to attempt substitution at all).
+func hasSymbolRef(s string) bool { return strings.ContainsRune(s, '&') }
 
 // Extract processes a JCL source file and returns entity records.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -244,6 +340,32 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 	currentStepIdx := -1
 	stepSeq := 0 // disambiguates anonymous steps for stable names
 
+	// Symbolic-parameter table (#5042). Seeded job-wide by `// SET` cards and
+	// by a PROC statement's SYMBOL= default operands; an EXEC proc invocation's
+	// SYMBOL= operands override for that step. `&SYM` references in PGM=/PROC=/
+	// DSN= operands are resolved against this table before edge emission so the
+	// edge target carries the substituted program/dataset identity rather than
+	// the literal `&VAR` token.
+	symbols := symbolTable{}
+
+	// applySymbols resolves &SYM references in an operand value and records the
+	// outcome on the given step's Properties (the original literal when a
+	// substitution fired, an unresolved flag otherwise). value is the matched
+	// operand; key is the Properties prefix ("pgm"/"proc"/"dataset").
+	applySymbols := func(value string, props map[string]string, key string) string {
+		if !hasSymbolRef(value) {
+			return value
+		}
+		resolved, changed, unresolved := symbols.substitute(value)
+		if changed && props != nil {
+			props["symbolic_source"] = value
+		}
+		if unresolved && props != nil {
+			props["symbolic_unresolved"] = "true"
+		}
+		return resolved
+	}
+
 	addContains := func(ownerIdx int, ref string, child string) {
 		if ownerIdx < 0 || ownerIdx >= len(entities) {
 			return
@@ -305,6 +427,11 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 			if name == "" {
 				continue
 			}
+			// PROC SYMBOL=default operands seed job-wide symbol defaults so a
+			// `DSN=&HLQ..FILE` inside the proc body resolves even when the EXEC
+			// did not override the symbol. Fill-if-absent: an EXEC override (or
+			// `// SET`) already in the table wins over the PROC default.
+			symbols.learnDefaults(operands)
 			procIdx = len(entities)
 			currentStepIdx = -1
 			entities = append(entities, types.EntityRecord{
@@ -345,9 +472,14 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				Properties: map[string]string{},
 			}
 
+			// An EXEC proc,SYMBOL=override invocation overrides the symbol table
+			// for the proc body that follows. PGM/PROC keyword operands are
+			// harmlessly re-learned but are never referenced as &symbols.
+			symbols.learnPairs(operands)
+
 			// EXEC PGM=<program> — the cross-language bridge edge to COBOL.
 			if pm := execPgmRe.FindStringSubmatch(operands); pm != nil {
-				prog := strings.ToUpper(pm[1])
+				prog := strings.ToUpper(applySymbols(pm[1], step.Properties, "pgm"))
 				step.Properties["pgm"] = prog
 				step.Relationships = append(step.Relationships, types.RelationshipRecord{
 					ToID: prog,
@@ -406,7 +538,7 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				}
 			} else if pr := execProcRe.FindStringSubmatch(operands); pr != nil {
 				// EXEC PROC=<proc> — procedure invocation.
-				proc := strings.ToUpper(pr[1])
+				proc := strings.ToUpper(applySymbols(pr[1], step.Properties, "proc"))
 				step.Properties["proc"] = proc
 				step.Relationships = append(step.Relationships, types.RelationshipRecord{
 					ToID: proc,
@@ -443,12 +575,21 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 			if dm == nil {
 				continue
 			}
-			dsn := strings.ToUpper(strings.TrimRight(dm[1], "."))
+			// Resolve &SYM symbolic references in the DSN operand before the
+			// dataset identity is fixed (`DSN=&HLQ..FILE` → PROD.FILE). Record
+			// the outcome on the dataset entity Properties so a substitution /
+			// unresolved-symbol is visible on the node.
+			dsnProps := map[string]string{}
+			dsn := strings.ToUpper(strings.TrimRight(applySymbols(dm[1], dsnProps, "dataset"), "."))
 			disp := ""
 			if dispM := ddDispRe.FindStringSubmatch(operands); dispM != nil {
 				disp = strings.ToUpper(dispM[1])
 			}
 			dsIdx := len(entities)
+			dsProps := map[string]string{"dsn": dsn, "disp": disp}
+			for k, v := range dsnProps { // symbolic_source / symbolic_unresolved
+				dsProps[k] = v
+			}
 			entities = append(entities, types.EntityRecord{
 				Name:       dsn,
 				Kind:       "SCOPE.Datastore",
@@ -458,7 +599,7 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 				StartLine:  st.startLine,
 				EndLine:    st.startLine,
 				Signature:  truncSig(st.text),
-				Properties: map[string]string{"dsn": dsn, "disp": disp},
+				Properties: dsProps,
 			})
 			// Attribute the dataset access to the current step. NEW/MOD =
 			// write; OLD/SHR/default = read. A dataset is also CONTAINS-ed by
@@ -502,6 +643,40 @@ func extractJCL(src, filePath string) []types.EntityRecord {
 								"member":      member,
 							},
 						})
+				}
+			}
+
+		case "SET":
+			// `// SET SYM=VAL[,SYM2=VAL2]` — job-level symbolic-parameter
+			// assignment. Seeds the symbol table consulted when resolving
+			// `&SYM` references in subsequent PGM=/PROC=/DSN= operands.
+			symbols.learnPairs(operands)
+
+		case "JCLLIB":
+			// `// JCLLIB ORDER=(LIB1,LIB2)` declares the proc-resolution search
+			// order. Record it as a property / search-order hint on the JOB so
+			// the cataloged-proc-resolution order is visible on the graph.
+			if jobIdx >= 0 && jobIdx < len(entities) {
+				order := ""
+				if om := jcllibOrderRe.FindStringSubmatch(operands); om != nil {
+					order = om[1]
+				} else if om := jcllibOneRe.FindStringSubmatch(operands); om != nil {
+					order = om[1]
+				}
+				if order != "" {
+					// Normalise to a comma-joined, blank-stripped library list.
+					var libs []string
+					for _, lib := range strings.Split(order, ",") {
+						if l := strings.TrimSpace(lib); l != "" {
+							libs = append(libs, strings.ToUpper(l))
+						}
+					}
+					if len(libs) > 0 {
+						if entities[jobIdx].Properties == nil {
+							entities[jobIdx].Properties = map[string]string{}
+						}
+						entities[jobIdx].Properties["jcllib_order"] = strings.Join(libs, ",")
+					}
 				}
 			}
 		}

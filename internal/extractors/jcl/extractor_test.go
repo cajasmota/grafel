@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/archigraph/internal/extractor"
@@ -456,6 +457,169 @@ const idcamsJobFixture = `//IDCJOB   JOB (ACCT),'VSAM COPY',CLASS=A
 /*
 //
 `
+
+// ---------------------------------------------------------------------------
+// #5042 — SET/JCLLIB symbolic substitution + &VAR resolution.
+// ---------------------------------------------------------------------------
+
+// symJobFixture exercises the symbolic-parameter substitution paths: a job
+// `// SET` card, a PROC SYMBOL= default, an EXEC SYMBOL= override, &VAR
+// resolution into PGM=/PROC=/DSN=, an unresolved &VAR, and a `// JCLLIB ORDER`.
+const symJobFixture = `//SYMJOB   JOB (ACCT),'SYMBOLIC',CLASS=A,MSGCLASS=X
+//         JCLLIB ORDER=(PROD.PROCLIB,SHARED.PROCLIB)
+//         SET HLQ=PROD,PGMNAME=PAYROLL
+//*
+//RUNSTEP  EXEC PGM=&PGMNAME
+//EMPIN    DD DSN=&HLQ..PAYROLL.MASTER,DISP=SHR
+//PAYOUT   DD DSN=&HLQ..PAYROLL.RESULTS,DISP=(NEW,CATLG,DELETE)
+//MYSTERY  DD DSN=&UNDEF..FILE,DISP=SHR
+//*
+//ARCH     EXEC PROC=ARCHP,DSNAME=ARCHIVE
+//*
+//ARCHP    PROC DSNAME=DEFLT
+//COPYSTEP EXEC PGM=IEBGENER
+//SYSUT2   DD DSN=&HLQ..&DSNAME,DISP=(NEW,CATLG)
+//         PEND
+`
+
+// TestExtractor_SetSymbolSubstitution proves a `// SET PGMNAME=PAYROLL`
+// resolves `EXEC PGM=&PGMNAME` to the literal program so the COBOL by-name
+// bridge edge targets PAYROLL, not the literal &PGMNAME token.
+func TestExtractor_SetSymbolSubstitution(t *testing.T) {
+	recs := run(t, "sym.jcl", symJobFixture)
+
+	if _, leaked := callTo(recs, "&PGMNAME"); leaked {
+		t.Error("EXEC PGM=&PGMNAME leaked the literal &VAR token instead of resolving")
+	}
+	rel, ok := callTo(recs, "PAYROLL")
+	if !ok {
+		t.Fatal("expected CALLS edge to PAYROLL after &PGMNAME substitution")
+	}
+	if rel.Properties["cross_language"] != "cobol" {
+		t.Errorf("PAYROLL cross_language = %q, want cobol", rel.Properties["cross_language"])
+	}
+	// The step records the pre-substitution literal.
+	var srcOK bool
+	for _, r := range findByKind(recs, "SCOPE.Operation", "step") {
+		if r.Name == "RUNSTEP" && r.Properties["symbolic_source"] == "&PGMNAME" &&
+			r.Properties["pgm"] == "PAYROLL" {
+			srcOK = true
+		}
+	}
+	if !srcOK {
+		t.Error("expected RUNSTEP to record symbolic_source=&PGMNAME and pgm=PAYROLL")
+	}
+}
+
+// TestExtractor_DsnSymbolSubstitution proves `&HLQ..PAYROLL.MASTER` resolves to
+// PROD.PAYROLL.MASTER (the HLQ value + concatenation period) so the dataset
+// identity is the real qualified name, not a &VAR-bearing token.
+func TestExtractor_DsnSymbolSubstitution(t *testing.T) {
+	recs := run(t, "sym.jcl", symJobFixture)
+
+	if !hasEntity(recs, "SCOPE.Datastore", "dataset", "PROD.PAYROLL.MASTER") {
+		t.Error("expected dataset PROD.PAYROLL.MASTER from &HLQ..PAYROLL.MASTER")
+	}
+	if !hasEntity(recs, "SCOPE.Datastore", "dataset", "PROD.PAYROLL.RESULTS") {
+		t.Error("expected dataset PROD.PAYROLL.RESULTS from &HLQ..PAYROLL.RESULTS")
+	}
+	var readOK bool
+	for _, r := range relationsByKind(recs, "READS_FROM") {
+		if r.ToID == "PROD.PAYROLL.MASTER" {
+			readOK = true
+		}
+	}
+	if !readOK {
+		t.Error("expected READS_FROM PROD.PAYROLL.MASTER")
+	}
+	// The dataset entity records the pre-substitution literal.
+	var srcOK bool
+	for _, r := range findByKind(recs, "SCOPE.Datastore", "dataset") {
+		if r.Name == "PROD.PAYROLL.MASTER" && r.Properties["symbolic_source"] == "&HLQ..PAYROLL.MASTER" {
+			srcOK = true
+		}
+	}
+	if !srcOK {
+		t.Error("expected dataset to record symbolic_source=&HLQ..PAYROLL.MASTER")
+	}
+}
+
+// TestExtractor_ProcSymbolDefaultAndOverride proves PROC SYMBOL= defaults and
+// EXEC SYMBOL= overrides: ARCHP defines DSNAME=DEFLT; the EXEC overrides it to
+// ARCHIVE, so `DSN=&HLQ..&DSNAME` in the proc body resolves to PROD.ARCHIVE.
+func TestExtractor_ProcSymbolDefaultAndOverride(t *testing.T) {
+	recs := run(t, "sym.jcl", symJobFixture)
+	if !hasEntity(recs, "SCOPE.Datastore", "dataset", "PROD.ARCHIVE") {
+		t.Error("expected dataset PROD.ARCHIVE from &HLQ..&DSNAME with EXEC DSNAME=ARCHIVE override")
+	}
+}
+
+// TestExtractor_UnresolvedSymbol proves an unknown `&UNDEF` is left intact and
+// flagged symbolic_unresolved (rather than silently dropped).
+func TestExtractor_UnresolvedSymbol(t *testing.T) {
+	recs := run(t, "sym.jcl", symJobFixture)
+	var found bool
+	for _, r := range findByKind(recs, "SCOPE.Datastore", "dataset") {
+		if r.Properties["symbolic_unresolved"] == "true" && strings.Contains(r.Name, "&UNDEF") {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("expected an unresolved &UNDEF dataset flagged symbolic_unresolved=true")
+	}
+}
+
+// TestExtractor_JCLLibOrder proves `// JCLLIB ORDER=(...)` is recorded as a
+// jcllib_order search-order hint on the JOB.
+func TestExtractor_JCLLibOrder(t *testing.T) {
+	recs := run(t, "sym.jcl", symJobFixture)
+	var ok bool
+	for _, r := range findByKind(recs, "SCOPE.Component", "job") {
+		if r.Properties["jcllib_order"] == "PROD.PROCLIB,SHARED.PROCLIB" {
+			ok = true
+		}
+	}
+	if !ok {
+		t.Error("expected JOB jcllib_order=PROD.PROCLIB,SHARED.PROCLIB")
+	}
+}
+
+// TestExtractor_NoSymbolsNoOp proves the no-match no-op: a job with no SET/&VAR
+// is unchanged — no symbolic_source/unresolved properties appear anywhere.
+func TestExtractor_NoSymbolsNoOp(t *testing.T) {
+	recs := run(t, "pay.jcl", payJobFixture)
+	for _, r := range recs {
+		if r.Properties["symbolic_source"] != "" || r.Properties["symbolic_unresolved"] != "" {
+			t.Errorf("entity %q unexpectedly carries symbolic props: %v", r.Name, r.Properties)
+		}
+		if r.Properties["jcllib_order"] != "" {
+			t.Errorf("entity %q unexpectedly carries jcllib_order", r.Name)
+		}
+	}
+	// The literal PAYROLL program is still bound (no &VAR involved).
+	if _, ok := callTo(recs, "PAYROLL"); !ok {
+		t.Error("expected literal PAYROLL CALL edge to remain")
+	}
+}
+
+// TestExtractor_WrongLanguageNoOp proves the wrong-language no-op: COBOL source
+// fed to the JCL extractor yields no JCL job/step/dataset entities (the JCL
+// card grammar matches nothing in a COBOL program).
+func TestExtractor_WrongLanguageNoOp(t *testing.T) {
+	const cobolSrc = `       IDENTIFICATION DIVISION.
+       PROGRAM-ID. PAYROLL.
+       PROCEDURE DIVISION.
+           SET WS-FLAG TO TRUE.
+           MOVE &HLQ TO WS-NAME.
+           STOP RUN.
+`
+	recs := run(t, "payroll.cbl", cobolSrc)
+	for _, r := range recs {
+		if r.Kind == "SCOPE.Component" || r.Kind == "SCOPE.Operation" || r.Kind == "SCOPE.Datastore" {
+			t.Errorf("JCL extractor produced %s/%s %q from COBOL source", r.Kind, r.Subtype, r.Name)
+		}
+	}
+}
 
 // payJobFixture mirrors testdata/payjob.jcl inline so the unit tests are
 // self-contained; the on-disk fixture exists for end-to-end pipeline runs.
