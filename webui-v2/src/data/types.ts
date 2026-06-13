@@ -1953,6 +1953,48 @@ export interface GroupCoverageReport {
    * which is graph-derived reach coverage, not a measured line %.
    */
   line_coverage?: LineCoverageSummary;
+  /**
+   * Static test-reachability roll-up (#5037/#5062): which HTTP endpoints have
+   * at least one test path reaching their handler vs none (the "orphan"
+   * surface). Graph-derived, no execution — distinct from `coverage_pct` and
+   * `line_coverage`. Absent on older backends; when `computed` is false the
+   * reachability pass never ran for this group (pre-#5061 index) and the UI
+   * must show "not computed — reindex" rather than implying everything is
+   * untested.
+   */
+  reachability?: ReachabilitySummary;
+}
+
+/**
+ * Endpoint-level static test-reachability summary (#5037/#5062). Surfaces the
+ * orphan endpoints (no test path reaching their handler) as the actionable
+ * untested surface for a parity rewrite.
+ */
+export interface ReachabilitySummary {
+  /**
+   * Whether the reachability pass ran for this group. When false, the counts
+   * are meaningless (pre-#5061 index) and the UI shows a "not computed" notice.
+   */
+  computed: boolean;
+  total_endpoints: number;
+  tested_endpoints: number;
+  orphan_endpoints: number;
+  /** 100 * tested / total (0 when total === 0). */
+  reachable_pct: number;
+  /** Capped, sorted list of untested endpoints. */
+  orphans: ReachOrphanEndpoint[];
+  /** Count of orphan endpoints elided beyond the cap. */
+  orphans_more?: number;
+}
+
+/** One untested endpoint row (#5062). */
+export interface ReachOrphanEndpoint {
+  id: string;
+  name: string;
+  kind: string;
+  source_file?: string;
+  start_line?: number;
+  repo?: string;
 }
 
 /**

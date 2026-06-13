@@ -70,6 +70,7 @@ import {
 import type { InsightValue } from "@/components/ui";
 import type { CoverageSourceState } from "@/lib/coverage-provenance";
 import { coverageStateFromReport } from "@/lib/coverage-provenance";
+import { resolveReachabilityView } from "@/lib/reachability-summary";
 import { Skeleton } from "@/components/ui/skeleton";
 import { RefLine } from "@/components/RefLine";
 import { useSourcePeek } from "@/components/SourcePeek";
@@ -92,6 +93,8 @@ import type {
   NPlusOneFinding,
   GodNode,
   MetricTrend,
+  ReachabilitySummary,
+  ReachOrphanEndpoint,
 } from "@/data/types";
 
 // ---------------------------------------------------------------------------
@@ -789,6 +792,138 @@ function UncoveredRow({ u, repo }: { u: UncoveredEntity; repo: string }) {
   );
 }
 
+/**
+ * ReachabilitySurface — static test-reachability (#5037/#5062). The highest-
+ * value display is the ORPHAN list: endpoints with NO test path reaching their
+ * handler. All branch logic lives in resolveReachabilityView (pure, tested);
+ * this is a thin renderer over the descriptor.
+ *
+ *  - not-computed ⇒ a neutral "reindex to compute" notice (never implies
+ *    everything is untested).
+ *  - all-tested   ⇒ a success badge.
+ *  - has-orphans  ⇒ the highlighted untested-endpoint list.
+ */
+function ReachabilitySurface({
+  reachability,
+  groupId,
+  repo,
+}: {
+  reachability: ReachabilitySummary | undefined;
+  groupId: string;
+  repo: string;
+}) {
+  const view = resolveReachabilityView(reachability);
+
+  if (view.kind === "not-computed") {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm text-text-3">
+        <Info size={14} className="text-text-4 shrink-0" />
+        <span>
+          Static test-reachability not computed for this group — reindex to
+          mark tested vs untested endpoints.
+        </span>
+      </div>
+    );
+  }
+
+  if (view.kind === "all-tested") {
+    return (
+      <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Badge tone="success" className="inline-flex items-center gap-1">
+          <CheckCircle2 size={11} />
+          {view.label}
+        </Badge>
+        <span className="text-text-4 tabular-nums">
+          {view.reachablePct.toFixed(1)}% endpoints test-reachable
+        </span>
+      </div>
+    );
+  }
+
+  // has-orphans — the actionable untested surface.
+  return (
+    <Card>
+      <CardHeader className="flex flex-wrap items-center justify-between gap-2">
+        <CardTitle className="flex items-center gap-1.5">
+          <AlertTriangle size={14} className="text-warning shrink-0" />
+          Untested endpoints
+          <MetricInfo
+            hint={
+              <>
+                Endpoints with <strong>no test path reaching their handler</strong>,
+                computed statically (#5037) from TESTS + CALLS edges — no
+                execution. Distinct from line coverage: these architectural
+                surfaces have zero test exercising them, the most actionable
+                signal for a parity rewrite.
+              </>
+            }
+          />
+          <span className="ml-1 text-text-4 tabular-nums font-normal text-xs">
+            {view.orphans} of {view.total}
+          </span>
+        </CardTitle>
+        <span className="text-text-4 tabular-nums text-xs">
+          {view.reachablePct.toFixed(1)}% test-reachable
+        </span>
+      </CardHeader>
+      <CardBody className="space-y-2">
+        {view.orphanRows.map((o) => (
+          <ReachOrphanRow key={o.id} o={o} repo={repo} />
+        ))}
+        {view.orphansMore > 0 && (
+          <div className="text-xs text-text-4 px-1">
+            + {view.orphansMore} more untested endpoint
+            {view.orphansMore === 1 ? "" : "s"} not shown
+          </div>
+        )}
+      </CardBody>
+    </Card>
+  );
+  // `groupId` reserved for a future deep-link/filter (parity with siblings).
+  void groupId;
+}
+
+/** One untested-endpoint row, reusing RepoChip/RefLine like UncoveredRow. */
+function ReachOrphanRow({
+  o,
+  repo,
+}: {
+  o: ReachOrphanEndpoint;
+  repo: string;
+}) {
+  const entityRepo = o.repo || repo;
+  return (
+    <div className="flex flex-col gap-1.5 px-3 py-2.5 rounded-lg border border-warning/30 bg-warning/5 hover:bg-warning/10 transition-colors">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className="font-mono text-sm text-text truncate" title={o.name}>
+          {o.name}
+        </span>
+        <div className="ml-auto flex items-center gap-1.5 shrink-0">
+          <Badge tone="warning" className="shrink-0 inline-flex items-center gap-0.5">
+            <AlertTriangle size={11} />
+            untested
+          </Badge>
+          <Badge tone="neutral" className="shrink-0">
+            {o.kind}
+          </Badge>
+        </div>
+      </div>
+      {o.source_file && (
+        <div className="flex items-center gap-2 min-w-0 -mx-1">
+          <RepoChip slug={entityRepo} className="text-[10px] shrink-0" />
+          <RefLine
+            repo={entityRepo}
+            file={o.source_file}
+            line={o.start_line ?? 0}
+            name=""
+            className="text-[11px] py-0.5 px-1 min-w-0"
+          />
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CoverageTab({ groupId }: { groupId: string }) {
   const { data, isLoading, isError } = useQualityCoverage(groupId);
   const [severity, setSeverity] = useState<"all" | "high" | "medium" | "low">("all");
@@ -877,6 +1012,17 @@ function CoverageTab({ groupId }: { groupId: string }) {
         totalTests={data.total_tests}
         contractOnly={data.contract_covered_only ?? 0}
         contractPct={data.contract_covered_pct ?? data.coverage_pct}
+      />
+
+      {/* Static test-reachability (#5037/#5062): tested vs untested endpoints,
+          highlighting the orphan surface (no test path reaching the handler).
+          Graph-derived, no execution — distinct from the reach gauge above and
+          the line-coverage badge. Degrades to a "not computed" notice on a
+          pre-#5061 index rather than implying everything is untested. */}
+      <ReachabilitySurface
+        reachability={data.reachability}
+        groupId={groupId}
+        repo={data.group}
       />
 
       {(data.by_directory?.length ?? 0) > 0 && (

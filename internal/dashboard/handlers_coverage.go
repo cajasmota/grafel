@@ -72,6 +72,14 @@ type GroupCoverageReport struct {
 	// `coverage_source` prop — the common case until a report is ingested — so
 	// the provenance banner degrades cleanly to reachability/capability.
 	LineCoverage *LineCoverageSummary `json:"line_coverage,omitempty"`
+
+	// Reachability is the static test-reachability roll-up (#5037/#5062):
+	// endpoint-level tested/untested counts plus the orphan list (endpoints
+	// with no test path reaching their handler). Distinct from CoveragePct
+	// (reach %) and LineCoverage (executed %). Nil when no repo was scanned;
+	// Computed:false when scanned but the reachability pass never ran (pre-#5061
+	// index) so the UI shows "not computed — reindex".
+	Reachability *ReachabilitySummary `json:"reachability,omitempty"`
 }
 
 // LineCoverageSummary is the group-level roll-up of the per-entity ingested
@@ -252,6 +260,11 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 	// shape once all repos are scanned.
 	var lineCov lineCovAccumulator
 
+	// Static test-reachability roll-up (#5037/#5062). Folds the test_reachable
+	// props stamped onto endpoint entities (#5061) into an endpoint-level
+	// tested/untested summary + orphan list.
+	var reach reachAccumulator
+
 	// S8 (#2159): use the cached group to avoid per-request LoadGraphFromDir.
 	cachedGrpCov, _ := s.graphs.GetGroupCached(groupName)
 
@@ -320,12 +333,22 @@ func (s *Server) handleQualityCoverage(w http.ResponseWriter, r *http.Request) {
 
 		// Fold this repo's stamped ingested line-coverage props (#5066).
 		lineCov.accumulate(doc)
+
+		// Fold this repo's stamped endpoint reachability props (#5037/#5062).
+		reach.accumulate(doc, rp.Slug)
 	}
 
 	// Presence of any stamped entity ⇒ a report was ingested for this group, so
 	// we emit the authoritative line % (distinct from reach CoveragePct). When
 	// nothing was stamped, LineCoverage stays nil and the banner degrades.
 	result.LineCoverage = lineCov.summarize()
+
+	// Endpoint reachability summary (#5037/#5062). Only attach when at least one
+	// repo was scanned; the summary's Computed flag distinguishes
+	// "pass-never-ran" (degrade) from "ran, zero orphans".
+	if result.Repos > 0 {
+		result.Reachability = reach.summarize()
+	}
 
 	// ── compute group-level coverage % ───────────────────────────────────────
 	// CoveragePct stays pure reach-coverage; ContractCoveredPct is the union
