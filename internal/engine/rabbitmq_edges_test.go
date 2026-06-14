@@ -630,3 +630,168 @@ func TestRabbitMQ_CSharp_NoSignal(t *testing.T) {
 		t.Fatalf("expected nothing for non-RabbitMQ file, got ents=%d rels=%d", len(ents), len(rels))
 	}
 }
+
+// --- #5125: exchange topology + event-consumer handler attribution ---------
+
+// exchangeByName finds a SCOPE.Queue node serving as an exchange (entity_role).
+func exchangeByName(ents []entityResult, name string) *entityResult {
+	for i := range ents {
+		if ents[i].kind == queueEntityKind && ents[i].name == "rabbitmq:exchange:"+name &&
+			ents[i].props["entity_role"] == "exchange" {
+			return &ents[i]
+		}
+	}
+	return nil
+}
+
+// TestRabbitMQ_CSharp_ExchangeDeclareAndBind covers ExchangeDeclare + QueueBind
+// emitting an exchange node (with type) and a ROUTES_TO topology edge. (#5125)
+func TestRabbitMQ_CSharp_ExchangeDeclareAndBind(t *testing.T) {
+	src := `using RabbitMQ.Client;
+
+public class Topology
+{
+    public void Setup(IModel channel)
+    {
+        channel.ExchangeDeclare(exchange: "events", type: "fanout");
+        channel.QueueDeclare(queue: "audit", durable: true);
+        channel.QueueBind(queue: "audit", exchange: "events", routingKey: "");
+    }
+}
+`
+	ents, rels := runRabbitMQDetect(t, "csharp", "src/Topology.cs", src)
+	ex := exchangeByName(ents, "events")
+	if ex == nil {
+		t.Fatalf("expected exchange node for 'events', ents=%v", ents)
+	}
+	if ex.props["exchange_type"] != "fanout" {
+		t.Errorf("exchange_type = %q, want fanout", ex.props["exchange_type"])
+	}
+	routes := relsByKind(rels, "ROUTES_TO")
+	found := false
+	for _, r := range routes {
+		if strings.Contains(r.from, "rabbitmq:exchange:events") &&
+			strings.Contains(r.to, rabbitmqQueueID("audit")) {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected ROUTES_TO events->audit, routes=%v", routes)
+	}
+}
+
+// TestRabbitMQ_CSharp_ExchangeDeclarePositionalTopic covers the positional
+// ExchangeDeclare("ex", ExchangeType.Topic, ...) form. (#5125)
+func TestRabbitMQ_CSharp_ExchangeDeclarePositionalTopic(t *testing.T) {
+	src := `using RabbitMQ.Client;
+public class T {
+    public void S(IModel ch) {
+        ch.ExchangeDeclare("logs", ExchangeType.Topic, durable: true);
+        ch.QueueBind("errors", "logs", "log.error");
+    }
+}`
+	ents, rels := runRabbitMQDetect(t, "csharp", "src/T.cs", src)
+	ex := exchangeByName(ents, "logs")
+	if ex == nil || ex.props["exchange_type"] != "topic" {
+		t.Fatalf("expected topic exchange 'logs', ents=%v", ents)
+	}
+	routes := relsByKind(rels, "ROUTES_TO")
+	found := false
+	for _, r := range routes {
+		if strings.Contains(r.to, rabbitmqQueueID("errors")) && r.props["routing_key"] == "log.error" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected ROUTES_TO logs->errors rk=log.error, routes=%v", routes)
+	}
+}
+
+// TestRabbitMQ_CSharp_EventingReceivedMethodGroup covers handler attribution
+// for the method-group form `consumer.Received += OnMessage;`. (#5125)
+func TestRabbitMQ_CSharp_EventingReceivedMethodGroup(t *testing.T) {
+	src := `using RabbitMQ.Client;
+using RabbitMQ.Client.Events;
+
+public class OrderConsumer
+{
+    public void Start(IModel channel)
+    {
+        var consumer = new EventingBasicConsumer(channel);
+        consumer.Received += OnMessage;
+        channel.BasicConsume(queue: "orders.created", autoAck: true, consumer: consumer);
+    }
+
+    private void OnMessage(object sender, BasicDeliverEventArgs ea) { }
+}
+`
+	_, rels := runRabbitMQDetect(t, "csharp", "src/OrderConsumer.cs", src)
+	qID := rabbitmqQueueID("orders.created")
+	subs := relsByKind(rels, subscribesToEdgeKind)
+	found := false
+	for _, s := range subs {
+		if strings.Contains(s.from, "OnMessage") && strings.Contains(s.to, qID) &&
+			s.props["handler"] == "method_group" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected SUBSCRIBES_TO OnMessage->%s (method_group), subs=%v", qID, subs)
+	}
+}
+
+// TestRabbitMQ_CSharp_EventingReceivedInlineLambdaNoExtraEdge asserts the
+// inline-lambda handler does NOT produce a duplicate handler edge — its body
+// is already covered by the BasicConsume edge on the enclosing method. (#5125)
+func TestRabbitMQ_CSharp_EventingReceivedInlineLambdaNoExtraEdge(t *testing.T) {
+	src := `using RabbitMQ.Client;
+public class C {
+    public void Listen(IModel channel) {
+        var consumer = new EventingBasicConsumer(channel);
+        consumer.Received += (model, ea) => { Handle(ea); };
+        channel.BasicConsume("jobs.pending", true, consumer);
+    }
+}`
+	_, rels := runRabbitMQDetect(t, "csharp", "src/C.cs", src)
+	subs := relsByKind(rels, subscribesToEdgeKind)
+	// Exactly one SUBSCRIBES_TO (the BasicConsume edge on Listen); no method_group.
+	for _, s := range subs {
+		if s.props["handler"] == "method_group" {
+			t.Fatalf("inline lambda wrongly produced a method_group edge: %v", s)
+		}
+	}
+	if len(subs) != 1 || !strings.Contains(subs[0].from, "Listen") {
+		t.Fatalf("expected exactly one SUBSCRIBES_TO from Listen, subs=%v", subs)
+	}
+}
+
+// TestRabbitMQ_CSharp_Topology_WrongLanguage asserts the C# topology pass does
+// not fire for a non-C# language even with matching tokens. (#5125)
+func TestRabbitMQ_CSharp_Topology_WrongLanguage(t *testing.T) {
+	src := `ch.ExchangeDeclare("events", "fanout"); ch.QueueBind("a", "events", "");`
+	ents, rels := runRabbitMQDetect(t, "go", "topology.go", src)
+	for _, e := range ents {
+		if e.props["entity_role"] == "exchange" {
+			t.Fatalf("go file produced a C# exchange node: %v", e)
+		}
+	}
+	_ = rels
+}
+
+// TestRabbitMQ_CSharp_Topology_NoMatch asserts a RabbitMQ C# file with no
+// exchange/bind/handler emits no topology nodes/edges. (#5125)
+func TestRabbitMQ_CSharp_Topology_NoMatch(t *testing.T) {
+	src := `using RabbitMQ.Client;
+public class P { public void Pub(IModel ch, byte[] b) { ch.BasicPublish("", "q", null, b); } }`
+	ents, rels := runRabbitMQDetect(t, "csharp", "src/P.cs", src)
+	for _, e := range ents {
+		if e.props["entity_role"] == "exchange" {
+			t.Fatalf("unexpected exchange node: %v", e)
+		}
+	}
+	for _, r := range rels {
+		if r.kind == "ROUTES_TO" {
+			t.Fatalf("unexpected ROUTES_TO edge: %v", r)
+		}
+	}
+}

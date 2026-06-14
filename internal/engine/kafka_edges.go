@@ -1414,6 +1414,13 @@ var csKafkaSubscribeSingleRe = regexp.MustCompile(`\.Subscribe\s*\(\s*"([^"\n\r]
 // Group 1 = the brace body holding the comma-separated string literals.
 var csKafkaSubscribeListRe = regexp.MustCompile(`\.Subscribe\s*\(\s*new\s*[^{(]*?\{([^}]*)\}`)
 
+// csKafkaAssignRe captures the per-partition consumer form
+// `consumer.Assign(new TopicPartition("orders", 0))` (#5125). It also matches
+// each `new TopicPartition("topic", ...)` inside a list/array argument, so
+// `Assign(new List<TopicPartition> { new TopicPartition("a", 0), ... })`
+// yields one subscription per partitioned topic. Group 1 = topic literal.
+var csKafkaAssignRe = regexp.MustCompile(`new\s+TopicPartition\s*\(\s*"([^"\n\r]+)"`)
+
 func synthesizeCSharpKafka(
 	src string,
 	emitTopic func(topicID, topicName, broker string, dynamic bool, props map[string]string),
@@ -1421,7 +1428,7 @@ func synthesizeCSharpKafka(
 ) {
 	// Fast pre-filter: only process files that reference Confluent.Kafka.
 	if !strings.Contains(src, "Kafka") && !strings.Contains(src, "Produce") &&
-		!strings.Contains(src, "Subscribe") {
+		!strings.Contains(src, "Subscribe") && !strings.Contains(src, "Assign") {
 		return
 	}
 
@@ -1469,6 +1476,27 @@ func synthesizeCSharpKafka(
 			continue
 		}
 		emitConsumer(src[m[2]:m[3]], m[0])
+	}
+
+	// Consumer: Assign(new TopicPartition("topic", partition)) — per-partition
+	// manual assignment (#5125). Only fired when the file calls .Assign( so a
+	// stray `new TopicPartition` (e.g. in producer key code) isn't miscounted.
+	if strings.Contains(src, ".Assign(") {
+		for _, m := range csKafkaAssignRe.FindAllStringSubmatchIndex(src, -1) {
+			topic := src[m[2]:m[3]]
+			if !looksLikeKafkaTopic(topic) {
+				continue
+			}
+			id := kafkaTopicID(topic)
+			emitTopic(id, topic, "kafka", false, map[string]string{
+				"messaging_layer": "confluent-kafka-dotnet",
+				"assignment":      "manual",
+			})
+			emitEdge("SCOPE.Operation", enclosing(m[0]), id, subscribesToEdgeKind, map[string]string{
+				"messaging_layer": "confluent-kafka-dotnet",
+				"assignment":      "manual",
+			})
+		}
 	}
 }
 

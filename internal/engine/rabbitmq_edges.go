@@ -1008,6 +1008,41 @@ var csRabbitQueueDeclarePosRe = regexp.MustCompile(
 	`\.QueueDeclare(?:Async|Passive)?\s*\(\s*"([^"\n\r]+)"`,
 )
 
+// --- #5125: exchange topology + event-consumer handler attribution ---------
+
+// csRabbitExchangeDeclareNamedRe captures the named-argument form
+// `ExchangeDeclare(exchange: "ex", type: "fanout", ...)` in either order.
+// Group 1/2 = exchange/type (exchange-first order), 3/4 = type/exchange order.
+var csRabbitExchangeDeclareNamedRe = regexp.MustCompile(
+	`\.ExchangeDeclare(?:Async|Passive)?\s*\(\s*(?:exchange\s*:\s*"([^"\n\r]+)"\s*,\s*type\s*:\s*"([^"\n\r]+)"|type\s*:\s*"([^"\n\r]+)"\s*,\s*exchange\s*:\s*"([^"\n\r]+)")`,
+)
+
+// csRabbitExchangeDeclarePosRe captures positional
+// `ExchangeDeclare("ex", "fanout", ...)` or `ExchangeDeclare("ex", ExchangeType.Fanout, ...)`.
+// Group 1 = exchange, group 2 = type literal, group 3 = ExchangeType.<X> form.
+var csRabbitExchangeDeclarePosRe = regexp.MustCompile(
+	`\.ExchangeDeclare(?:Async|Passive)?\s*\(\s*"([^"\n\r]+)"\s*,\s*(?:"([^"\n\r]+)"|ExchangeType\.(\w+))`,
+)
+
+// csRabbitQueueBindNamedRe captures the named-argument bind form
+// `QueueBind(queue: "q", exchange: "ex", routingKey: "rk")` (order-independent).
+var csRabbitQueueBindNamedRe = regexp.MustCompile(
+	`\.QueueBind(?:Async)?\s*\([^)]*?queue\s*:\s*"([^"\n\r]+)"[^)]*?exchange\s*:\s*"([^"\n\r]+)"(?:[^)]*?routingKey\s*:\s*"([^"\n\r]*)")?`,
+)
+
+// csRabbitQueueBindPosRe captures positional
+// `QueueBind("queue", "exchange", "routingKey")`. Groups: 1=queue, 2=exchange, 3=routingKey.
+var csRabbitQueueBindPosRe = regexp.MustCompile(
+	`\.QueueBind(?:Async)?\s*\(\s*"([^"\n\r]+)"\s*,\s*"([^"\n\r]+)"\s*(?:,\s*"([^"\n\r]*)")?`,
+)
+
+// csRabbitEventingReceivedMethodGroupRe captures the method-group handler form
+// `consumer.Received += OnMessageReceived;` (#5125). Group 1 = handler method
+// name. Excludes the lambda form (which has `=>` after the `+=`).
+var csRabbitEventingReceivedMethodGroupRe = regexp.MustCompile(
+	`\.Received\s*\+=\s*(?:async\s+)?(\w+)\s*;`,
+)
+
 func synthesizeCSharpRabbitMQ(
 	src string,
 	emitQueue func(queueID, queueName, exchange, routingKey string, props map[string]string),
@@ -1015,11 +1050,31 @@ func synthesizeCSharpRabbitMQ(
 ) {
 	// Fast pre-filter: only process files that reference RabbitMQ.Client.
 	if !strings.Contains(src, "RabbitMQ") && !strings.Contains(src, "BasicPublish") &&
-		!strings.Contains(src, "BasicConsume") && !strings.Contains(src, "QueueDeclare") {
+		!strings.Contains(src, "BasicConsume") && !strings.Contains(src, "QueueDeclare") &&
+		!strings.Contains(src, "ExchangeDeclare") && !strings.Contains(src, "QueueBind") &&
+		!strings.Contains(src, ".Received") {
 		return
 	}
 
 	enclosing := func(offset int) string { return findEnclosingCSharpMethod(src, offset) }
+
+	// #5125: a synthetic exchange node reuses SCOPE.Queue, distinguished by the
+	// entity_role=exchange property. Keyed `rabbitmq:exchange:<name>` so it never
+	// collides with a same-named queue.
+	emitExchange := func(name, exType string) {
+		if !looksLikeQueueName(name) {
+			return
+		}
+		props := map[string]string{
+			"messaging_layer": "rabbitmq-dotnet",
+			"entity_role":     "exchange",
+			"queue_name":      name,
+		}
+		if exType != "" {
+			props["exchange_type"] = strings.ToLower(exType)
+		}
+		emitQueue("rabbitmq:exchange:"+name, name, name, "", props)
+	}
 
 	emitPublish := func(exchange, routingKey string, offset int) {
 		if !looksLikeQueueName(routingKey) {
@@ -1099,6 +1154,112 @@ func synthesizeCSharpRabbitMQ(
 		if looksLikeQueueName(name) {
 			emitQueue(rabbitmqQueueID(name), name, "", "", map[string]string{
 				"messaging_layer": "rabbitmq-dotnet", "declared": "true",
+			})
+		}
+	}
+
+	// #5125: ExchangeDeclare — record the exchange topology node + its type
+	// (fanout / direct / topic / headers). Named-arg form first (either order).
+	exDeclOffsets := map[int]bool{}
+	for _, m := range csRabbitExchangeDeclareNamedRe.FindAllStringSubmatchIndex(src, -1) {
+		exDeclOffsets[m[0]] = true
+		var name, exType string
+		if m[2] != -1 { // exchange, type order
+			name, exType = src[m[2]:m[3]], src[m[4]:m[5]]
+		} else { // type, exchange order
+			exType, name = src[m[6]:m[7]], src[m[8]:m[9]]
+		}
+		emitExchange(name, exType)
+	}
+	for _, m := range csRabbitExchangeDeclarePosRe.FindAllStringSubmatchIndex(src, -1) {
+		if exDeclOffsets[m[0]] {
+			continue
+		}
+		name := src[m[2]:m[3]]
+		exType := ""
+		if m[4] != -1 { // "fanout" literal form
+			exType = src[m[4]:m[5]]
+		} else if m[6] != -1 { // ExchangeType.Fanout form
+			exType = src[m[6]:m[7]]
+		}
+		emitExchange(name, exType)
+	}
+
+	// #5125: QueueBind — exchange→queue routing topology. Emits a ROUTES_TO edge
+	// from the exchange node to the bound queue, carrying the routing key. The
+	// exchange node is recorded too (a bind may name an exchange not declared in
+	// this file). Named-arg form first.
+	emitBind := func(queue, exchange, routingKey string) {
+		if !looksLikeQueueName(queue) || !looksLikeQueueName(exchange) {
+			return
+		}
+		emitExchange(exchange, "")
+		emitQueue(rabbitmqQueueID(queue), queue, exchange, routingKey, map[string]string{
+			"messaging_layer": "rabbitmq-dotnet",
+		})
+		emitEdge("SCOPE.Queue", "rabbitmq:exchange:"+exchange, rabbitmqQueueID(queue), "ROUTES_TO", map[string]string{
+			"messaging_layer": "rabbitmq-dotnet",
+			"routing_key":     routingKey,
+			"exchange":        exchange,
+		})
+	}
+	bindOffsets := map[int]bool{}
+	for _, m := range csRabbitQueueBindNamedRe.FindAllStringSubmatchIndex(src, -1) {
+		bindOffsets[m[0]] = true
+		rk := ""
+		if m[6] != -1 {
+			rk = src[m[6]:m[7]]
+		}
+		emitBind(src[m[2]:m[3]], src[m[4]:m[5]], rk)
+	}
+	for _, m := range csRabbitQueueBindPosRe.FindAllStringSubmatchIndex(src, -1) {
+		if bindOffsets[m[0]] {
+			continue
+		}
+		rk := ""
+		if m[6] != -1 {
+			rk = src[m[6]:m[7]]
+		}
+		emitBind(src[m[2]:m[3]], src[m[4]:m[5]], rk)
+	}
+
+	// #5125: EventingBasicConsumer.Received handler attribution. The BasicConsume
+	// call already emits a SUBSCRIBES_TO from its enclosing method; this adds a
+	// handler-level edge so the actual message-handler body is attributed. The
+	// consumed queue is the single BasicConsume queue in this file (the common
+	// one-consumer-per-file shape); when ambiguous we skip rather than guess.
+	consumedQueue := ""
+	consumeCount := 0
+	for _, m := range csRabbitConsumeNamedRe.FindAllStringSubmatchIndex(src, -1) {
+		if looksLikeQueueName(src[m[2]:m[3]]) {
+			consumedQueue = src[m[2]:m[3]]
+			consumeCount++
+		}
+	}
+	for _, m := range csRabbitConsumePosRe.FindAllStringSubmatchIndex(src, -1) {
+		if looksLikeQueueName(src[m[2]:m[3]]) {
+			if consumedQueue != src[m[2]:m[3]] {
+				consumeCount++
+			}
+			consumedQueue = src[m[2]:m[3]]
+		}
+	}
+	if consumedQueue != "" && consumeCount == 1 {
+		qID := rabbitmqQueueID(consumedQueue)
+		// Method-group handler: `consumer.Received += OnMessage;` — attribute the
+		// SUBSCRIBES_TO to the NAMED handler method, which is the real message
+		// processor (the BasicConsume edge only reaches the wiring method). The
+		// inline-lambda form needs no extra edge: its body lexically lives in the
+		// enclosing method that BasicConsume already attributes, so attributing to
+		// that method is already correct (and would dedup against it).
+		for _, m := range csRabbitEventingReceivedMethodGroupRe.FindAllStringSubmatchIndex(src, -1) {
+			handler := src[m[2]:m[3]]
+			if handler == enclosing(m[0]) {
+				continue // already covered by the BasicConsume edge
+			}
+			emitEdge("SCOPE.Operation", handler, qID, subscribesToEdgeKind, map[string]string{
+				"messaging_layer": "rabbitmq-dotnet",
+				"handler":         "method_group",
 			})
 		}
 	}

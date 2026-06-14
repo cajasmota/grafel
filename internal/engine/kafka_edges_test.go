@@ -982,6 +982,75 @@ public class OrderConsumer
 	}
 }
 
+// TestKafka_CSharp_AssignConsumer covers the per-partition manual-assignment
+// consumer form `consumer.Assign(new TopicPartition("topic", 0))`. (#5125)
+func TestKafka_CSharp_AssignConsumer(t *testing.T) {
+	src := `using Confluent.Kafka;
+
+public class PartitionConsumer
+{
+    private readonly IConsumer<Null, string> _consumer;
+
+    public void Pin()
+    {
+        _consumer.Assign(new TopicPartition("inventory.reserved", 0));
+        _consumer.Assign(new List<TopicPartition>
+        {
+            new TopicPartition("orders.created", 1),
+            new TopicPartition("orders.created", 2),
+        });
+    }
+}
+`
+	ents, rels := runKafkaDetect(t, "csharp", "src/PartitionConsumer.cs", src)
+	for _, want := range []string{"inventory.reserved", "orders.created"} {
+		tp := topicByName(ents, want)
+		if tp == nil {
+			t.Fatalf("expected MessageTopic for %q, ents=%v", want, ents)
+		}
+		if tp.Properties["assignment"] != "manual" {
+			t.Errorf("topic %q assignment = %q, want manual", want, tp.Properties["assignment"])
+		}
+	}
+	sub := edgesOfKind(rels, subscribesToEdgeKind)
+	found := false
+	for _, s := range sub {
+		if strings.Contains(s.ToID, "kafka:inventory.reserved") &&
+			s.Properties["assignment"] == "manual" &&
+			strings.Contains(s.FromID, "Pin") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected SUBSCRIBES_TO Pin->kafka:inventory.reserved (manual), subs=%v", sub)
+	}
+}
+
+// TestKafka_CSharp_AssignWrongLanguage asserts the C# Assign pass does not fire
+// for a non-C# language even with matching tokens. (#5125)
+func TestKafka_CSharp_AssignWrongLanguage(t *testing.T) {
+	src := `consumer.Assign(new TopicPartition("orders", 0));`
+	ents, _ := runKafkaDetect(t, "python", "assign.py", src)
+	for _, e := range ents {
+		if e.Properties["assignment"] == "manual" {
+			t.Fatalf("python file produced a C# manual assignment: %v", e)
+		}
+	}
+}
+
+// TestKafka_CSharp_AssignNoMatch asserts a Kafka C# file with no Assign emits no
+// manual-assignment topics. (#5125)
+func TestKafka_CSharp_AssignNoMatch(t *testing.T) {
+	src := `using Confluent.Kafka;
+public class P { public void Pub(IProducer<Null,string> p) { p.Produce("orders", new Message<Null,string>()); } }`
+	_, rels := runKafkaDetect(t, "csharp", "src/P.cs", src)
+	for _, r := range rels {
+		if r.Properties["assignment"] == "manual" {
+			t.Fatalf("unexpected manual assignment edge: %v", r)
+		}
+	}
+}
+
 // TestKafka_CSharp_NoSignal asserts a non-Kafka C# file emits nothing.
 func TestKafka_CSharp_NoSignal(t *testing.T) {
 	src := `public class Plain { public void Run() { var x = 1; } }`

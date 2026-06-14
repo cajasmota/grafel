@@ -101,9 +101,13 @@ func hfCronHelperExpr(helper, arg string) (expr, label string) {
 		return "", "never"
 	case "Yearly", "Monthly", "Weekly", "Daily", "Hourly", "Minutely":
 		// Default (no-arg) forms have fixed canonical expressions. The
-		// argument-bearing overloads shift the fixed fields, which we can't
-		// resolve from non-literal args, so we only emit the canonical default.
+		// argument-bearing overloads shift the fixed fields; #5085 resolves
+		// them when every argument is a literal constant (parseable below),
+		// and otherwise falls back to the schedule label only.
 		if strings.TrimSpace(arg) != "" {
+			if e := hfCronOverloadExpr(helper, arg); e != "" {
+				return e, "cron"
+			}
 			return "", strings.ToLower(helper)
 		}
 		switch helper {
@@ -121,10 +125,186 @@ func hfCronHelperExpr(helper, arg string) (expr, label string) {
 			return "* * * * *", "minutely"
 		}
 	case "MinuteInterval", "HourInterval", "DayInterval", "MonthInterval":
-		// Interval helpers expand from a runtime count; record the label only.
+		// Interval helpers expand from a runtime count. #5085: resolve to a
+		// step expression when the count is a literal int; else label only.
+		if e := hfCronIntervalExpr(helper, arg); e != "" {
+			return e, "cron"
+		}
 		return "", "interval"
 	}
 	return "", ""
+}
+
+// hfDayOfWeekRe maps DayOfWeek.Monday → 1, etc. (cron Sun=0..Sat=6).
+var hfDayOfWeekNum = map[string]string{
+	"Sunday": "0", "Monday": "1", "Tuesday": "2", "Wednesday": "3",
+	"Thursday": "4", "Friday": "5", "Saturday": "6",
+}
+
+// hfIntLitRe matches a bare integer literal argument token.
+var hfIntLitRe = regexp.MustCompile(`^\d+$`)
+
+// hfDowLitRe matches a DayOfWeek.X enum literal token.
+var hfDowLitRe = regexp.MustCompile(`^DayOfWeek\.(\w+)$`)
+
+// hfCronOverloadArgs splits a Cron helper's argument list into trimmed tokens.
+func hfCronOverloadArgs(arg string) []string {
+	parts := strings.Split(arg, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// hfCronOverloadExpr resolves an argument-bearing Cron.* overload to a 5-field
+// NCrontab expression when ALL arguments are literal constants (#5085). The
+// argument shapes mirror the Hangfire.Cron static helpers:
+//
+//	Cron.Minutely()                        // no arg → handled by caller
+//	Cron.Hourly(int minute)
+//	Cron.Daily(int hour) / Daily(hour, minute)
+//	Cron.Weekly(DayOfWeek) / Weekly(dow, hour) / Weekly(dow, hour, minute)
+//	Cron.Monthly(int day) / Monthly(day, hour) / Monthly(day, hour, minute)
+//	Cron.Yearly(int month) / ... / Yearly(month, day, hour, minute)
+//
+// Returns "" when any argument is non-literal (captured var, expression), so
+// the node stays honest rather than fabricating a shifted schedule.
+func hfCronOverloadExpr(helper, arg string) string {
+	args := hfCronOverloadArgs(arg)
+	if len(args) == 0 {
+		return ""
+	}
+	// Default field values per the canonical (no-arg) expression.
+	minute, hour, dom, month, dow := "0", "0", "1", "1", "0"
+	intArg := func(s string) (string, bool) {
+		if hfIntLitRe.MatchString(s) {
+			return s, true
+		}
+		return "", false
+	}
+	switch helper {
+	case "Hourly": // (minute)
+		v, ok := intArg(args[0])
+		if !ok {
+			return ""
+		}
+		return v + " * * * *"
+	case "Daily": // (hour) | (hour, minute)
+		h, ok := intArg(args[0])
+		if !ok {
+			return ""
+		}
+		hour = h
+		if len(args) >= 2 {
+			m, ok := intArg(args[1])
+			if !ok {
+				return ""
+			}
+			minute = m
+		}
+		return minute + " " + hour + " * * *"
+	case "Weekly": // (dow) | (dow, hour) | (dow, hour, minute)
+		m := hfDowLitRe.FindStringSubmatch(args[0])
+		if m == nil {
+			return ""
+		}
+		d, ok := hfDayOfWeekNum[m[1]]
+		if !ok {
+			return ""
+		}
+		dow = d
+		if len(args) >= 2 {
+			h, ok := intArg(args[1])
+			if !ok {
+				return ""
+			}
+			hour = h
+		}
+		if len(args) >= 3 {
+			mm, ok := intArg(args[2])
+			if !ok {
+				return ""
+			}
+			minute = mm
+		}
+		return minute + " " + hour + " * * " + dow
+	case "Monthly": // (day) | (day, hour) | (day, hour, minute)
+		d, ok := intArg(args[0])
+		if !ok {
+			return ""
+		}
+		dom = d
+		if len(args) >= 2 {
+			h, ok := intArg(args[1])
+			if !ok {
+				return ""
+			}
+			hour = h
+		}
+		if len(args) >= 3 {
+			mm, ok := intArg(args[2])
+			if !ok {
+				return ""
+			}
+			minute = mm
+		}
+		return minute + " " + hour + " " + dom + " * *"
+	case "Yearly": // (month) | (month, day) | (month, day, hour) | (month, day, hour, minute)
+		mo, ok := intArg(args[0])
+		if !ok {
+			return ""
+		}
+		month = mo
+		dom = "1"
+		if len(args) >= 2 {
+			d, ok := intArg(args[1])
+			if !ok {
+				return ""
+			}
+			dom = d
+		}
+		if len(args) >= 3 {
+			h, ok := intArg(args[2])
+			if !ok {
+				return ""
+			}
+			hour = h
+		}
+		if len(args) >= 4 {
+			mm, ok := intArg(args[3])
+			if !ok {
+				return ""
+			}
+			minute = mm
+		}
+		return minute + " " + hour + " " + dom + " " + month + " *"
+	}
+	return ""
+}
+
+// hfCronIntervalExpr resolves Cron.MinuteInterval(n)/HourInterval(n)/etc. to a
+// step expression when n is a literal int (#5085). Mirrors Hangfire's interval
+// helpers which produce a `*/n` field at the relevant position.
+func hfCronIntervalExpr(helper, arg string) string {
+	n := strings.TrimSpace(arg)
+	if !hfIntLitRe.MatchString(n) {
+		return ""
+	}
+	switch helper {
+	case "MinuteInterval":
+		return "*/" + n + " * * * *"
+	case "HourInterval":
+		return "0 */" + n + " * * *"
+	case "DayInterval":
+		return "0 0 */" + n + " * *"
+	case "MonthInterval":
+		return "0 0 1 */" + n + " *"
+	}
+	return ""
 }
 
 // hfParseSchedule extracts a Hangfire cron expression and schedule label from
@@ -189,6 +369,53 @@ func hfFirstStringArg(tail string) string {
 
 var hfFirstStringRe = regexp.MustCompile(`["']([^"']+)["']`)
 
+// hfStringAssignRe captures local string-constant assignments used as captured
+// job-ids, e.g. `var jobId = "daily-report";` or `string id = "x";` or
+// `const string JobId = "x";`. Group 1 = identifier, group 2 = literal value.
+// Used by #5085 local-dataflow resolution to recover a captured-variable job-id
+// back to its literal at the same-file/class scope.
+var hfStringAssignRe = regexp.MustCompile(
+	`(?m)\b(?:var|string|const\s+string)\s+(\w+)\s*=\s*["']([^"']+)["']`,
+)
+
+// hfIdentArgRe matches a bare identifier as the first argument token (a captured
+// variable reference), e.g. the `jobId` in `AddOrUpdate(jobId, ...)`.
+var hfIdentArgRe = regexp.MustCompile(`^\s*(\w+)\s*[,)]`)
+
+// hfMethodGroupRe captures a method-group enqueue target without a call, e.g.
+// `BackgroundJob.Enqueue<IEmailSender>(x => x.Send)` (no trailing `(`) — the
+// lambda body is `x.Method` rather than `x.Method(...)`. Group 1 = type, group
+// 2 = method. #5085 first-class typed resolution for the method-group form.
+var hfMethodGroupRe = regexp.MustCompile(
+	`BackgroundJob\.(?:Enqueue|Schedule)\s*<\s*(\w+)\s*>\s*\(\s*\w+\s*=>\s*\w+\.(\w+)\s*\)`,
+)
+
+// hfResolveCapturedJobID attempts to resolve a captured-variable job-id to its
+// literal assignment within the same file (#5085 local dataflow). It returns the
+// resolved literal and true when the first argument of the call tail is a bare
+// identifier that has a literal string assignment in `assigns`.
+func hfResolveCapturedJobID(tail string, assigns map[string]string) (string, bool) {
+	// Bound the lookup to before the first lambda arrow so a later string
+	// literal isn't mistaken for the (variable) job-id argument.
+	scope := tail
+	if arrow := strings.Index(scope, "=>"); arrow >= 0 {
+		scope = scope[:arrow]
+	}
+	// `tail` begins immediately after the call's opening paren (the matcher
+	// anchors on `AddOrUpdate(`), so the first argument is the leading token.
+	// Trim a leading paren defensively in case the match boundary shifts.
+	scope = strings.TrimLeft(scope, " \t")
+	scope = strings.TrimPrefix(scope, "(")
+	m := hfIdentArgRe.FindStringSubmatch(scope)
+	if m == nil {
+		return "", false
+	}
+	if v, ok := assigns[m[1]]; ok {
+		return v, true
+	}
+	return "", false
+}
+
 func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("archigraph/custom/csharp")
 	_, span := tracer.Start(ctx, "indexer.hangfire_extractor.extract",
@@ -211,6 +438,14 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 	// call that a literal pattern resolved, so the dynamic fallback (sections 8/9)
 	// only fires for genuinely non-literal call-sites.
 	resolvedCalls := make(map[int]bool)
+
+	// #5085 local-dataflow: build a same-file string-constant assignment table so
+	// a captured-variable job-id (`var jobId = "x"; AddOrUpdate(jobId, ...)`) can
+	// be resolved back to its literal in the dynamic fallback below.
+	assigns := make(map[string]string)
+	for _, m := range hfStringAssignRe.FindAllStringSubmatch(src, -1) {
+		assigns[m[1]] = m[2]
+	}
 
 	add := func(ent types.EntityRecord) {
 		key := ent.Kind + ":" + ent.Name + ":" + ent.Subtype
@@ -325,6 +560,28 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		add(ent)
 	}
 
+	// 5b. Method-group enqueue: BackgroundJob.Enqueue<T>(x => x.Method) without a
+	//     call (#5085). First-class typed resolution so it isn't swept into the
+	//     dynamic fallback as unresolved.
+	for _, idx := range hfMethodGroupRe.FindAllStringSubmatchIndex(src, -1) {
+		typeName := src[idx[2]:idx[3]]
+		methodName := src[idx[4]:idx[5]]
+		line := lineOf(src, idx[0])
+		taskID := "task:hangfire:" + typeName + "." + methodName
+		ent := makeEntity(typeName+"."+methodName, "SCOPE.Operation", "task_enqueue", file.Path, file.Language, line)
+		setProps(&ent,
+			"framework", "hangfire",
+			"pattern_type", "enqueue_method_group",
+			"job_type", typeName,
+			"job_method", methodName,
+			"task_id", taskID,
+			"edge_kind", "PRODUCES",
+			"provenance", "INFERRED_FROM_HANGFIRE_ENQUEUE_METHOD_GROUP",
+		)
+		resolvedCalls[idx[0]] = true
+		add(ent)
+	}
+
 	// 8. Dynamic / non-literal RecurringJob.AddOrUpdate — job-id or lambda body
 	//    not statically resolvable (captured-var id, method-group, dynamic args).
 	//    Emitted as an honest unresolved producer so the call is still in-graph.
@@ -335,6 +592,15 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		line := lineOf(src, idx[0])
 		tail := hfStatementTail(src, idx[1])
 		jobID := hfFirstStringArg(tail)
+		// #5085 local-dataflow: a captured-variable job-id resolves to its
+		// same-file literal assignment, upgrading the node from unresolved.
+		resolution := "unresolved"
+		if jobID == "" {
+			if resolved, ok := hfResolveCapturedJobID(tail, assigns); ok {
+				jobID = resolved
+				resolution = "resolved_dataflow"
+			}
+		}
 		name := "RecurringJob@line" + intStr(line)
 		if jobID != "" {
 			name = "recurring:" + jobID
@@ -343,7 +609,7 @@ func (e *hangfireExtractor) Extract(ctx context.Context, file extractor.FileInpu
 		setProps(&ent,
 			"framework", "hangfire",
 			"pattern_type", "recurring_dynamic",
-			"resolution", "unresolved",
+			"resolution", resolution,
 			"edge_kind", "PRODUCES",
 			"provenance", "INFERRED_FROM_HANGFIRE_RECURRING_DYNAMIC",
 		)
