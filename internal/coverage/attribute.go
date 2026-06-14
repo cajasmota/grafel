@@ -18,8 +18,12 @@ const (
 	PropCoverageMeasAt = "coverage_measured_at"
 )
 
-// SourceLCOV is the coverage_source value stamped by the LCOV ingestor.
-const SourceLCOV = "lcov"
+// coverage_source values stamped onto attributed entities, one per parser.
+const (
+	SourceLCOV      = "lcov"
+	SourceCobertura = "cobertura"
+	SourceJaCoCo    = "jacoco"
+)
 
 // Attribution is the computed coverage for one graph entity.
 type Attribution struct {
@@ -94,6 +98,13 @@ func Attribute(entities []types.EntityRecord, rep *Report, rootPrefix string) []
 		normed[i] = nf{norm: Normalize(rep.Files[i].Path, rootPrefix), fc: &rep.Files[i]}
 	}
 
+	// The coverage_source stamped on every attribution follows the report's
+	// originating parser; default to LCOV for reports built without a Source.
+	source := rep.Source
+	if source == "" {
+		source = SourceLCOV
+	}
+
 	out := make([]Attribution, 0, len(entities))
 	for _, e := range entities {
 		esrc := Normalize(e.SourceFile, "")
@@ -129,7 +140,7 @@ func Attribute(entities []types.EntityRecord, rep *Report, rootPrefix string) []
 			CoveragePct:  pct,
 			CoveredLines: covered,
 			TotalLines:   total,
-			Source:       SourceLCOV,
+			Source:       source,
 		})
 	}
 	return out

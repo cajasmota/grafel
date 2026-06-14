@@ -2,9 +2,10 @@
 // NOT execute tests — it parses the report CI already emits) and attaches real
 // line-coverage to structural graph entities by source-span overlap.
 //
-// v1 (#5036) ships the LCOV parser + entity attribution as a pure, table-tested
-// transformation. Cobertura/JaCoCo parsers, dashboard overlay, and the
-// archigraph_coverage MCP query are deferred to follow-ups.
+// #5036 ships the LCOV, Cobertura and JaCoCo parsers + entity attribution as
+// pure, table-tested transformations behind a shared ingestion entry point
+// (ParseReport, parse.go). The dashboard overlay and the archigraph_coverage
+// MCP query are deferred to follow-ups.
 package coverage
 
 import (
@@ -51,9 +52,14 @@ func (f FileCoverage) Pct() float64 {
 	return 100.0 * float64(f.CoveredLines) / float64(f.TotalLines)
 }
 
-// Report is a parsed LCOV report: a set of per-file coverage blocks.
+// Report is a parsed coverage report: a set of per-file coverage blocks.
+//
+// Source records which parser produced the report (SourceLCOV / SourceCobertura
+// / SourceJaCoCo) so attribution stamps the correct coverage_source on entities.
+// ParseLCOV sets it to SourceLCOV; the XML parsers set their own.
 type Report struct {
-	Files []FileCoverage
+	Files  []FileCoverage
+	Source string
 }
 
 // ByPath returns the FileCoverage for the (raw, un-normalized) path, or nil.
@@ -83,7 +89,7 @@ func (r *Report) ByPath(path string) *FileCoverage {
 // are absent the totals are derived from the DA lines so a minimal report still
 // yields correct percentages.
 func ParseLCOV(r io.Reader) (*Report, error) {
-	rep := &Report{}
+	rep := &Report{Source: SourceLCOV}
 	sc := bufio.NewScanner(r)
 	sc.Buffer(make([]byte, 0, 64*1024), 4*1024*1024)
 

@@ -38,9 +38,11 @@ type Stats struct {
 
 	// ReportPath is the report that was parsed ("" when none / reachability-only).
 	ReportPath string
-	// ReportFiles is the number of file blocks in the parsed LCOV report.
+	// ReportFiles is the number of file blocks in the parsed coverage report
+	// (LCOV/Cobertura/JaCoCo).
 	ReportFiles int
-	// LCOVAttributed is the number of entities stamped with line coverage.
+	// LCOVAttributed is the number of entities stamped with line coverage from
+	// the parsed report (the field name is historical; it covers any format).
 	LCOVAttributed int
 
 	// Reachability stats (always run when the pass is enabled).
@@ -97,7 +99,7 @@ func Enrich(doc *graph.Document, repoRoot string, cfg Config) Stats {
 	if reportPath, ok := resolveReport(repoRoot, cfg); ok {
 		st.ReportPath = reportPath
 		rootPrefix := cfg.RootPrefix
-		if rep, err := parseReportFile(reportPath); err == nil && rep != nil {
+		if rep, err := parseReportFile(reportPath, cfg.Format); err == nil && rep != nil {
 			st.ReportFiles = len(rep.Files)
 			attrs := Attribute(records, rep, rootPrefix)
 			for _, a := range attrs {
@@ -228,14 +230,16 @@ func resolveReport(repoRoot string, cfg Config) (string, bool) {
 	return "", false
 }
 
-// parseReportFile opens and parses an LCOV report file.
-func parseReportFile(path string) (*Report, error) {
+// parseReportFile opens and parses a coverage report file. format is the
+// pinned Config.Format ("" auto-detects from content); it dispatches through
+// ParseReport so LCOV/Cobertura/JaCoCo all share one ingestion path.
+func parseReportFile(path, format string) (*Report, error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return nil, err
 	}
 	defer f.Close()
-	return ParseLCOV(f)
+	return ParseReport(format, f)
 }
 
 func fileExists(p string) bool {

@@ -1,0 +1,36 @@
+<?xml version="1.0" ?>
+<!DOCTYPE coverage SYSTEM "http://cobertura.sourceforge.net/xml/coverage-04.dtd">
+<coverage line-rate="0.8" branch-rate="0.5" version="1.9" timestamp="1700000000">
+  <packages>
+    <package name="src" line-rate="0.8" branch-rate="0.5">
+      <classes>
+        <class name="calc" filename="src/calc.py" line-rate="0.8">
+          <lines>
+            <line number="1" hits="5"/>
+            <line number="2" hits="5"/>
+            <line number="3" hits="5"/>
+            <line number="4" hits="5"/>
+            <line number="5" hits="5"/>
+            <line number="7" hits="0"/>
+            <line number="8" hits="0"/>
+            <line number="9" hits="0"/>
+            <line number="10" hits="5"/>
+            <line number="11" hits="5"/>
+          </lines>
+        </class>
+        <!-- Second class in the SAME file: must merge into one FileCoverage. -->
+        <class name="calc.Helper" filename="src/calc.py" line-rate="1.0">
+          <lines>
+            <line number="14" hits="2"/>
+          </lines>
+        </class>
+        <class name="util" filename="src/util.py" line-rate="1.0">
+          <lines>
+            <line number="1" hits="3"/>
+            <line number="2" hits="3"/>
+          </lines>
+        </class>
+      </classes>
+    </package>
+  </packages>
+</coverage>

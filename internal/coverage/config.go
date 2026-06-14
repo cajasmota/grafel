@@ -26,8 +26,13 @@ type Config struct {
 	RootPrefix string `json:"root_prefix,omitempty" yaml:"root_prefix,omitempty"`
 }
 
-// FormatLCOV is the only Config.Format value honored in v1.
-const FormatLCOV = "lcov"
+// Config.Format values selecting a parser. When empty, the format is detected
+// from the report file (extension + root element) — see DetectFormat.
+const (
+	FormatLCOV      = "lcov"
+	FormatCobertura = "cobertura"
+	FormatJaCoCo    = "jacoco"
+)
 
 // Enabled reports whether the group has opted into coverage ingestion.
 func (c Config) Enabled() bool {
