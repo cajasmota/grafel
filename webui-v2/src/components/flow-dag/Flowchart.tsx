@@ -58,7 +58,12 @@ import type {
   ControlFlowResponse,
 } from "@/data/types";
 import type { FlowDagDirection } from "./layout";
-import { FlowchartNode, type FlowchartNodeData } from "./FlowchartNode";
+import {
+  FlowchartNode,
+  type FlowchartNodeData,
+  FLOWCHART_SOURCE_HANDLE_ID,
+  FLOWCHART_TARGET_HANDLE_ID,
+} from "./FlowchartNode";
 import { FlowchartEdge, type FlowchartEdgeData } from "./FlowchartEdge";
 import { boxFor, defaultCaption } from "./flowchart-shapes";
 
@@ -176,6 +181,11 @@ function FlowchartInner({
       id: `cfe_${i}_${e.from}_${e.to}_${e.kind}`,
       source: e.from,
       target: e.to,
+      // Bind to the node's single centered handles so endpoints resolve to the
+      // direction-aware mid-side (TB → bottom→top, LR → right→left), not an
+      // arbitrary same-type handle — the #4882 vertical side-anchor fix.
+      sourceHandle: FLOWCHART_SOURCE_HANDLE_ID,
+      targetHandle: FLOWCHART_TARGET_HANDLE_ID,
       type: FLOWCHART_EDGE_TYPE,
       markerEnd: { type: MarkerType.ArrowClosed, width: 14, height: 14 },
       data: { kind: e.kind },

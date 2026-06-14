@@ -160,6 +160,22 @@ const NODE_TYPE = "flowDag";
 const EDGE_TYPE = "flowDag";
 
 /**
+ * Stable handle ids for the single centered source/target handle each node
+ * renders. The handle POSITION is direction-aware (TB → Bottom/Top, LR →
+ * Right/Left), but the id is constant so every edge can bind to the exact
+ * centered handle. Without an explicit id, React Flow resolves an edge endpoint
+ * against *some* handle of the matching type, which is unspecified when a node
+ * exposes more than one — the latent cause of #4882's vertical (TB) edges
+ * docking on the node side instead of the bottom/top mid-point. Edges set
+ * sourceHandle/targetHandle to these so the binding is deterministic in every
+ * direction and on the smoothstep fallback (when ELK's orthogonal route is
+ * absent). Exported so FlowDagNode (handle render) and buildFlowDagEdges (edge
+ * binding) share one source of truth.
+ */
+export const SOURCE_HANDLE_ID = "flowdag-out";
+export const TARGET_HANDLE_ID = "flowdag-in";
+
+/**
  * Hard ceiling on unfolded instances. A pure-tree unfold of a diamond-heavy DAG
  * can blow up combinatorially; this caps the rendered tree so the browser never
  * hangs. The depth control is the primary lever; this is the safety net.
@@ -427,6 +443,11 @@ function buildFlowDagEdges(instances: TreeInstance[]): FlowDagEdge[] {
       id: `e__${inst.id}`,
       source: inst.parentId!,
       target: inst.id,
+      // Bind to the node's single centered handles so the endpoint resolves to
+      // the direction-aware mid-side (TB → bottom→top, LR → right→left) instead
+      // of an arbitrary same-type handle — the #4882 vertical side-anchor fix.
+      sourceHandle: SOURCE_HANDLE_ID,
+      targetHandle: TARGET_HANDLE_ID,
       type: EDGE_TYPE,
       data: { kind: inst.edgeKind ?? "CALLS" },
     }));

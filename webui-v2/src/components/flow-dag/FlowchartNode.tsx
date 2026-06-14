@@ -20,6 +20,16 @@ import { Database, Globe, FileCog, Mail, HardDrive } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { ControlFlowShape, ControlFlowEffect } from "@/data/types";
 
+/**
+ * Stable handle ids for the flowchart node's single centered source/target
+ * handle. The position is direction-aware (TB → bottom/top, LR → right/left);
+ * the id is constant so each edge binds to the exact centered handle rather than
+ * an arbitrary same-type one (the #4882 vertical side-anchor class of bug). The
+ * Flowchart wires sourceHandle/targetHandle to these.
+ */
+export const FLOWCHART_SOURCE_HANDLE_ID = "flowchart-out";
+export const FLOWCHART_TARGET_HANDLE_ID = "flowchart-in";
+
 export interface FlowchartNodeData extends Record<string, unknown> {
   shape: ControlFlowShape;
   /** Short caption (label at full detail, else a shape-derived default). */
@@ -144,6 +154,7 @@ function FlowchartNodeImpl({ data }: NodeProps) {
         </span>
       )}
       <Handle
+        id={FLOWCHART_TARGET_HANDLE_ID}
         type="target"
         position={d.targetPos}
         className="!w-1.5 !h-1.5 !border-0 !bg-[var(--border)]"
@@ -219,6 +230,7 @@ function FlowchartNodeImpl({ data }: NodeProps) {
       ) : null}
 
       <Handle
+        id={FLOWCHART_SOURCE_HANDLE_ID}
         type="source"
         position={d.sourcePos}
         className="!w-1.5 !h-1.5 !border-0 !bg-[var(--border)]"

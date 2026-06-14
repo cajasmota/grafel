@@ -4,7 +4,14 @@
  * Run with: npx vitest run src/components/flow-dag/layout.test.ts
  */
 import { describe, it, expect } from "vitest";
-import { unfoldTree, layoutTree, layoutTreeElk } from "./layout";
+import { Position } from "@xyflow/react";
+import {
+  unfoldTree,
+  layoutTree,
+  layoutTreeElk,
+  SOURCE_HANDLE_ID,
+  TARGET_HANDLE_ID,
+} from "./layout";
 import { routeInstanceIds } from "./route";
 import {
   nodeBucket,
@@ -528,6 +535,39 @@ describe("layoutTreeElk (#4827)", () => {
       expect(end.y).toBeCloseTo(tgt.position.y + TALL / 2, 1);
     }
   });
+
+  // #4882 regression guard. The centered handle is direction-aware (TB →
+  // bottom/top, LR → left/right) but its id is constant, and every edge must
+  // bind to it explicitly so React Flow resolves the endpoint at the centered
+  // handle — not an arbitrary same-type handle, which is how a TB edge could
+  // dock on the node side. This holds in BOTH orientations and is independent of
+  // ELK's orthogonal route (it governs the smoothstep fallback too).
+  for (const dir of ["TB", "LR"] as const) {
+    it(`binds every edge to the centered source/target handle ids — ${dir} (#4882)`, async () => {
+      const { instances, hasOutEdge } = unfoldTree(
+        "a",
+        [n("a"), n("b"), n("c")],
+        [e("a", "b"), e("a", "c")],
+      );
+      const { nodes: rf, edges } = await layoutTreeElk(
+        instances, dir, new Set(), () => {}, hasOutEdge,
+      );
+      // The node's handle faces follow the direction…
+      const expectSource = dir === "LR" ? Position.Right : Position.Bottom;
+      const expectTarget = dir === "LR" ? Position.Left : Position.Top;
+      for (const nd of rf) {
+        expect(nd.sourcePosition).toBe(expectSource);
+        expect(nd.targetPosition).toBe(expectTarget);
+      }
+      // …and every edge binds to the single centered handle by id, so the
+      // endpoint resolves to that face's mid-point in either orientation.
+      expect(edges.length).toBeGreaterThan(0);
+      for (const ed of edges) {
+        expect(ed.sourceHandle).toBe(SOURCE_HANDLE_ID);
+        expect(ed.targetHandle).toBe(TARGET_HANDLE_ID);
+      }
+    });
+  }
 });
 
 describe("layoutTree leaf vs truncated (#4561)", () => {

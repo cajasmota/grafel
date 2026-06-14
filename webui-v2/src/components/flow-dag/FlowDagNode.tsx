@@ -29,7 +29,7 @@ import { RepoChip } from "@/lib/repo-color";
 import { effectBadge } from "@/lib/effect-badge";
 import { useSourcePeek } from "@/components/SourcePeek";
 import { nodeStyle, isExternalNode, moduleBand, edgeStyle } from "./style";
-import type { FlowDagNodeData } from "./layout";
+import { SOURCE_HANDLE_ID, TARGET_HANDLE_ID, type FlowDagNodeData } from "./layout";
 
 /**
  * FlowDagNode — one DAG node. Color + label come from the role; terminal
@@ -133,9 +133,25 @@ function FlowDagNodeImpl({ id, data, sourcePosition, targetPosition }: NodeProps
             : undefined,
       }}
     >
-      {/* in/out handles — positions follow the H/V layout direction. */}
-      <Handle type="target" position={targetPosition ?? Position.Left} className="!bg-text-4" />
-      <Handle type="source" position={sourcePosition ?? Position.Right} className="!bg-text-4" />
+      {/* in/out handles — positions follow the H/V layout direction (TB →
+          top/bottom, LR → left/right). Stable ids ({@link TARGET_HANDLE_ID} /
+          {@link SOURCE_HANDLE_ID}) so the edge binds to THIS centered handle
+          deterministically: with multiple handles per type, React Flow's
+          fallback "pick any handle of this type" is unspecified, which is how a
+          TB edge could resolve against a stale Left/Right anchor and dock on the
+          side (#4882). The edges set sourceHandle/targetHandle to match. */}
+      <Handle
+        id={TARGET_HANDLE_ID}
+        type="target"
+        position={targetPosition ?? Position.Left}
+        className="!bg-text-4"
+      />
+      <Handle
+        id={SOURCE_HANDLE_ID}
+        type="source"
+        position={sourcePosition ?? Position.Right}
+        className="!bg-text-4"
+      />
 
       <div className="px-2.5 py-2">
         {/* Header — two tidy rows (#4816). Cramming kind + role + terminal +
