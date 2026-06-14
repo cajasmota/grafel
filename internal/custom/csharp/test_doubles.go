@@ -21,12 +21,31 @@
 //	  [Binding] classes with [Given]/[When]/[Then]/[StepDefinition] methods
 //	  -> SCOPE.Pattern/step_definition (one per step, carrying the step text).
 //
-// All three reuse existing entity Kinds (SCOPE.Pattern) and edge kinds
-// (USES, DEPENDS_ON_SERVICE) — no new Kind is introduced. Bogus / AutoFixture
-// test-data builders are an honest follow-up (see issue #5005).
+//	Test-data builders (Bogus / AutoFixture) — issue #5071:
+//	  new Faker<T>().RuleFor(x => x.Name, …)  (Bogus)   -> SCOPE.Pattern/
+//	  fixture.Create<T>() / fixture.Build<T>() (AutoFixture)   test_data_builder
+//	  for the built type T; USES edge -> type:<T>. Bogus builders additionally
+//	  carry the faked field list (fields=Name,Email,…) harvested from the
+//	  .RuleFor(x => x.Field, …) chain. The node carries library=bogus|autofixture
+//	  and target=<T>.
+//
+//	Mock-target -> DI-impl resolution — issue #5071:
+//	  when a mock is wired into production code — registered into a DI container
+//	  (services.AddSingleton(mock.Object)) or passed to a system-under-test
+//	  constructor (new Sut(mock.Object)) — the mocked interface is resolved to
+//	  its concrete implementation by the dotnet_di naming convention (strip the
+//	  leading `I`, e.g. IOrderRepository -> OrderRepository) and a RESOLVES_TO
+//	  edge is emitted -> impl:<Impl>, the same node the dotnet_di extractor lands
+//	  as its BINDS target. This stitches the test-double surface to the
+//	  production DI graph. Honest-partial: the resolution is by-name only (the
+//	  mock and the registration usually live in the same test file, but the impl
+//	  class lives elsewhere); custom factory registrations are not resolved.
+//
+// All of these reuse existing entity Kinds (SCOPE.Pattern) and edge kinds
+// (USES, DEPENDS_ON_SERVICE, RESOLVES_TO) — no new Kind is introduced.
 //
 // Registration key: "custom_csharp_test_doubles"
-// Issue #5005.
+// Issues #5005, #5071.
 package csharp
 
 import (
@@ -80,6 +99,31 @@ var (
 	// SpecFlow / Reqnroll step attribute: [Given("…")], [When(@"…")],
 	// [Then("…")], [StepDefinition("…")]. Captures the step keyword + text.
 	reStepAttr = regexp.MustCompile(`\[(Given|When|Then|StepDefinition)\s*\(\s*@?"([^"]*)"`)
+
+	// Bogus: new Faker<Customer>() — captures the built type. The RuleFor
+	// chain that follows is harvested separately for the faked field list.
+	reBogusFaker = regexp.MustCompile(`\bnew\s+Faker\s*<\s*([\w.]+)\s*>`)
+
+	// Bogus: .RuleFor(x => x.Name, …) — captures the faked property name.
+	reBogusRuleFor = regexp.MustCompile(`\.RuleFor\s*\(\s*\w+\s*=>\s*\w+\.(\w+)`)
+
+	// AutoFixture: fixture.Create<Customer>() — the one-shot factory form.
+	reAutoFixtureCreate = regexp.MustCompile(`\.Create\s*<\s*([\w.]+)\s*>\s*\(`)
+
+	// AutoFixture: fixture.Build<Customer>() — the customisable-builder form
+	// (typically followed by .With(...).Create()).
+	reAutoFixtureBuild = regexp.MustCompile(`\.Build\s*<\s*([\w.]+)\s*>\s*\(`)
+
+	// Mock-target -> DI registration / SUT wiring. Captures the mock variable
+	// whose .Object is registered into a DI container or passed to a ctor:
+	//   services.AddSingleton(repoMock.Object)  /  new Sut(repoMock.Object)
+	// Group 1 = the mock variable name (matched against new Mock<T> bindings).
+	reMockObjectUse = regexp.MustCompile(`\b(\w+)\.Object\b`)
+
+	// new Mock<T>() assigned to a variable: var repo = new Mock<IFoo>();
+	// Group 1 = variable, group 2 = mocked type. Used to resolve .Object uses
+	// back to the interface they double.
+	reMoqVarBinding = regexp.MustCompile(`\b(\w+)\s*=\s*new\s+Mock\s*<\s*([\w.]+)\s*>`)
 )
 
 // reLeafType strips a dotted/namespaced C# type to its leaf token, e.g.
@@ -116,7 +160,8 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 
 	// Cheap gate: only fire on files that mention one of the supported
 	// test-double surfaces.
-	if !regexpAny(src, "Mock<", "Mock.Of", "Substitute.For", "Container", ".WithImage", "[Binding") {
+	if !regexpAny(src, "Mock<", "Mock.Of", "Substitute.For", "Container", ".WithImage", "[Binding",
+		"Faker<", "Create<", "Build<") {
 		return nil, nil
 	}
 
@@ -134,6 +179,9 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 	// -------------------------------------------------------------------------
 	// Mock-binding — Moq / NSubstitute. The test USES the mocked type T.
 	// -------------------------------------------------------------------------
+	// mockEnts indexes the emitted mock node per target type so the DI/SUT
+	// resolution pass can attach a RESOLVES_TO edge to the same node.
+	mockEnts := make(map[string]int) // target -> index in entities
 	emitMock := func(target, library string, line int) {
 		target = leafCSharpType(target)
 		if target == "" || csharpPrimitives[target] {
@@ -154,7 +202,11 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 				"line":      itoa(line),
 			},
 		})
+		before := len(entities)
 		add(ent)
+		if len(entities) > before {
+			mockEnts[target] = len(entities) - 1
+		}
 	}
 
 	for _, m := range reMoqNew.FindAllStringSubmatchIndex(src, -1) {
@@ -231,7 +283,138 @@ func (e *testDoublesExtractor) Extract(ctx context.Context, file extractor.FileI
 		}
 	}
 
+	// -------------------------------------------------------------------------
+	// Test-data builders — Bogus / AutoFixture. The builder USES the built type.
+	// -------------------------------------------------------------------------
+	emitBuilder := func(target, library, fields string, line int) {
+		target = leafCSharpType(target)
+		if target == "" || csharpPrimitives[target] {
+			return
+		}
+		ent := makeEntity("builder:"+library+":"+target, "SCOPE.Pattern",
+			"test_data_builder", file.Path, "csharp", line)
+		props := []string{"framework", "test_doubles", "library", library,
+			"target", target, "provenance", "INFERRED_FROM_TEST_DATA_BUILDER"}
+		if fields != "" {
+			props = append(props, "fields", fields)
+		}
+		setProps(&ent, props...)
+		ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+			ToID: "type:" + target,
+			Kind: string(types.RelationshipKindUses),
+			Properties: map[string]string{
+				"library":   library,
+				"target":    target,
+				"role":      "test_data_builder",
+				"framework": "test_doubles",
+				"line":      itoa(line),
+			},
+		})
+		add(ent)
+	}
+
+	// Bogus: new Faker<T>() with the trailing .RuleFor(x => x.Field, …) chain.
+	// We harvest the faked fields from the whole source (RuleFor calls are
+	// commonly chained across lines) and attach them to every Faker<T> in the
+	// file; the field set is shared at file granularity (honest-partial — we do
+	// not scope RuleFor to a specific Faker<T> binding).
+	if reBogusFaker.MatchString(src) {
+		var fields []string
+		seenField := make(map[string]bool)
+		for _, m := range reBogusRuleFor.FindAllStringSubmatch(src, -1) {
+			f := m[1]
+			if !seenField[f] {
+				seenField[f] = true
+				fields = append(fields, f)
+			}
+		}
+		fieldList := joinStrings(fields, ",")
+		for _, m := range reBogusFaker.FindAllStringSubmatchIndex(src, -1) {
+			emitBuilder(src[m[2]:m[3]], "bogus", fieldList, lineOf(src, m[0]))
+		}
+	}
+
+	// AutoFixture: fixture.Create<T>() and fixture.Build<T>(). Both forms only
+	// fire when the file actually references AutoFixture (gate on "Fixture" /
+	// "AutoFixture") so we don't match unrelated generic Create<T>/Build<T>.
+	if regexpAny(src, "Fixture", "AutoFixture") {
+		for _, m := range reAutoFixtureCreate.FindAllStringSubmatchIndex(src, -1) {
+			emitBuilder(src[m[2]:m[3]], "autofixture", "", lineOf(src, m[0]))
+		}
+		for _, m := range reAutoFixtureBuild.FindAllStringSubmatchIndex(src, -1) {
+			emitBuilder(src[m[2]:m[3]], "autofixture", "", lineOf(src, m[0]))
+		}
+	}
+
+	// -------------------------------------------------------------------------
+	// Mock-target -> DI-impl resolution. When a mock's .Object is wired into
+	// production code (DI registration / SUT constructor), resolve the mocked
+	// interface to the concrete impl the dotnet_di extractor binds.
+	// -------------------------------------------------------------------------
+	if len(mockEnts) > 0 && reMockObjectUse.MatchString(src) {
+		// Map mock variable -> mocked type from `var x = new Mock<T>()`.
+		varToType := make(map[string]string)
+		for _, m := range reMoqVarBinding.FindAllStringSubmatch(src, -1) {
+			varToType[m[1]] = leafCSharpType(m[2])
+		}
+		// Each `x.Object` use where x is a known mock variable wires that mock
+		// into production code: resolve its interface to the impl by-name.
+		resolved := make(map[string]bool)
+		for _, m := range reMockObjectUse.FindAllStringSubmatchIndex(src, -1) {
+			v := src[m[2]:m[3]]
+			target, ok := varToType[v]
+			if !ok {
+				continue
+			}
+			idx, ok := mockEnts[target]
+			if !ok || resolved[target] {
+				continue
+			}
+			impl := implOfInterface(target)
+			line := lineOf(src, m[0])
+			entities[idx].Relationships = append(entities[idx].Relationships,
+				types.RelationshipRecord{
+					ToID: "impl:" + impl,
+					Kind: string(types.RelationshipKindResolvesTo),
+					Properties: map[string]string{
+						"interface":      target,
+						"implementation": impl,
+						"role":           "mock_di_resolution",
+						"framework":      "test_doubles",
+						"resolution":     "by_name",
+						"line":           itoa(line),
+					},
+				})
+			setProps(&entities[idx], "resolved_impl", impl)
+			resolved[target] = true
+		}
+	}
+
 	return entities, nil
+}
+
+// implOfInterface maps a C# interface name to its conventional implementation
+// name by stripping a leading capital-I prefix (IOrderRepository ->
+// OrderRepository). When the name does not follow the convention it is returned
+// unchanged. This matches the impl node the dotnet_di extractor binds.
+func implOfInterface(iface string) string {
+	if len(iface) >= 2 && iface[0] == 'I' && iface[1] >= 'A' && iface[1] <= 'Z' {
+		return iface[1:]
+	}
+	return iface
+}
+
+// joinStrings joins parts with sep without pulling in strings just for Join in
+// this regex-only package's hot path keeping the dependency surface small.
+func joinStrings(parts []string, sep string) string {
+	out := ""
+	for i, p := range parts {
+		if i > 0 {
+			out += sep
+		}
+		out += p
+	}
+	return out
 }
 
 // indexByteAny returns the index of the first byte in s that is one of the

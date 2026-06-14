@@ -154,6 +154,188 @@ public class CheckoutSteps
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Bogus / AutoFixture test-data builders (#5071).
+// ---------------------------------------------------------------------------
+
+func TestTestDoubles_BogusFakerBuilder(t *testing.T) {
+	src := `
+using Bogus;
+using Xunit;
+
+public class CustomerFactoryTests
+{
+    [Fact]
+    public void Builds()
+    {
+        var faker = new Faker<Customer>()
+            .RuleFor(x => x.Name, f => f.Name.FullName())
+            .RuleFor(x => x.Email, f => f.Internet.Email());
+        var c = faker.Generate();
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("CustomerFactoryTests.cs", "csharp", src))
+
+	if e := relOf(recs, "USES", "type:Customer"); e == nil {
+		t.Error("expected new Faker<Customer>() -> USES type:Customer")
+	} else if e.Properties["role"] != "test_data_builder" || e.Properties["library"] != "bogus" {
+		t.Errorf("expected bogus test_data_builder props, got %v", e.Properties)
+	}
+	var fields string
+	for _, e := range recs {
+		if e.Subtype == "test_data_builder" && e.Properties["target"] == "Customer" {
+			fields = e.Properties["fields"]
+		}
+	}
+	if fields != "Name,Email" {
+		t.Errorf("expected faked fields Name,Email, got %q", fields)
+	}
+}
+
+func TestTestDoubles_AutoFixtureBuilder(t *testing.T) {
+	src := `
+using AutoFixture;
+using Xunit;
+
+public class OrderBuilderTests
+{
+    [Fact]
+    public void Builds()
+    {
+        var fixture = new Fixture();
+        var order = fixture.Create<Order>();
+        var custom = fixture.Build<Customer>().With(c => c.Name, "Ann").Create();
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("OrderBuilderTests.cs", "csharp", src))
+
+	if e := relOf(recs, "USES", "type:Order"); e == nil {
+		t.Error("expected fixture.Create<Order>() -> USES type:Order")
+	} else if e.Properties["library"] != "autofixture" || e.Properties["role"] != "test_data_builder" {
+		t.Errorf("expected autofixture test_data_builder props, got %v", e.Properties)
+	}
+	if relOf(recs, "USES", "type:Customer") == nil {
+		t.Error("expected fixture.Build<Customer>() -> USES type:Customer")
+	}
+}
+
+// AutoFixture generic Create<T>/Build<T> must NOT fire without a Fixture in the
+// file (avoid matching unrelated generic Create<T> / Build<T> calls).
+func TestTestDoubles_AutoFixtureRequiresFixture(t *testing.T) {
+	src := `
+public class Factory
+{
+    public T Create<T>() => default;
+    public void Go()
+    {
+        var x = Create<Order>();
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("Factory.cs", "csharp", src))
+	for _, e := range recs {
+		if e.Subtype == "test_data_builder" {
+			t.Errorf("test_data_builder should not fire without a Fixture, got %v", e)
+		}
+	}
+}
+
+func TestTestDoubles_BuilderWrongLanguageNoOp(t *testing.T) {
+	// A non-C# file that textually contains a Faker<T> must not extract.
+	src := `const faker = new Faker<Customer>();`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("builder.ts", "typescript", src))
+	if len(recs) != 0 {
+		t.Errorf("expected no entities for non-csharp source, got %d", len(recs))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Mock-target -> DI-impl resolution (#5071).
+// ---------------------------------------------------------------------------
+
+func TestTestDoubles_MockResolvesToDIImpl_Registration(t *testing.T) {
+	src := `
+using Moq;
+using Microsoft.Extensions.DependencyInjection;
+
+public class SetupTests
+{
+    public void Configure(IServiceCollection services)
+    {
+        var repoMock = new Mock<IOrderRepository>();
+        services.AddSingleton(repoMock.Object);
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("SetupTests.cs", "csharp", src))
+
+	// USES edge still present.
+	if relOf(recs, "USES", "type:IOrderRepository") == nil {
+		t.Error("expected mock USES edge")
+	}
+	// RESOLVES_TO the by-name impl node the dotnet_di extractor binds.
+	if e := relOf(recs, "RESOLVES_TO", "impl:OrderRepository"); e == nil {
+		t.Error("expected repoMock.Object registration -> RESOLVES_TO impl:OrderRepository")
+	} else if e.Properties["interface"] != "IOrderRepository" ||
+		e.Properties["role"] != "mock_di_resolution" {
+		t.Errorf("expected mock_di_resolution props, got %v", e.Properties)
+	}
+	// resolved_impl prop stamped on the mock node.
+	for _, en := range recs {
+		if en.Subtype == "test_double" && en.Properties["target"] == "IOrderRepository" {
+			if en.Properties["resolved_impl"] != "OrderRepository" {
+				t.Errorf("expected resolved_impl=OrderRepository, got %v", en.Properties)
+			}
+		}
+	}
+}
+
+func TestTestDoubles_MockResolvesToDIImpl_SutCtor(t *testing.T) {
+	src := `
+using Moq;
+
+public class HandlerTests
+{
+    public void Builds()
+    {
+        var gatewayMock = new Mock<IPaymentGateway>();
+        var sut = new PaymentHandler(gatewayMock.Object);
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("HandlerTests.cs", "csharp", src))
+	if relOf(recs, "RESOLVES_TO", "impl:PaymentGateway") == nil {
+		t.Error("expected SUT-ctor mock.Object -> RESOLVES_TO impl:PaymentGateway")
+	}
+}
+
+// A mock that is never wired into production (no .Object use) must NOT get a
+// RESOLVES_TO edge — resolution is gated on actual DI/SUT wiring.
+func TestTestDoubles_MockNoResolutionWithoutWiring(t *testing.T) {
+	src := `
+using Moq;
+
+public class PlainMockTests
+{
+    public void Go()
+    {
+        var repo = new Mock<IOrderRepository>();
+        repo.Setup(r => r.Save(It.IsAny<Order>()));
+    }
+}
+`
+	recs := extractFull(t, "custom_csharp_test_doubles", fi("PlainMockTests.cs", "csharp", src))
+	for _, e := range recs {
+		for _, r := range e.Relationships {
+			if r.Kind == "RESOLVES_TO" {
+				t.Errorf("unwired mock should not RESOLVES_TO, got %v", r.ToID)
+			}
+		}
+	}
+}
+
 func TestTestDoubles_NoFalsePositiveOnPlainSource(t *testing.T) {
 	src := `
 public class Order
