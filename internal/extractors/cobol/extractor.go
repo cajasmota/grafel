@@ -305,10 +305,13 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 	// moveLiterals tracks `MOVE '<lit>' TO <item>` bindings (upper-cased item
 	// name → literal value) so a later dynamic `CALL <item>` can resolve to the
 	// real program-id (#5040). Last-write-wins within a paragraph; a subsequent
-	// non-literal MOVE into the same item clears the binding (the value is no
-	// longer statically known). Reset whenever a new paragraph opens so a
+	// non-literal MOVE into the same item clears (taints) the binding (the value
+	// is no longer statically known). Reset whenever a new paragraph opens so a
 	// binding never leaks across paragraph boundaries.
-	moveLiterals := map[string]string{}
+	//
+	// Backed by the reusable cross-language literal-binding resolver (#5158);
+	// COBOL data-item names are case-insensitive, so names are folded upper.
+	moveLiterals := extractor.NewLiteralBindingResolver(strings.ToUpper)
 
 	// EXEC SQL / EXEC CICS block accumulation (#2838 Phase 2). A block may
 	// span many lines; we buffer its body until END-EXEC, then extract.
@@ -768,7 +771,7 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					currentParagraphName = name
 					// New paragraph scope: drop any move-literal bindings so a
 					// dynamic CALL only resolves from MOVEs in its own paragraph.
-					moveLiterals = map[string]string{}
+					moveLiterals.Reset()
 					rec := types.EntityRecord{
 						Name:       name,
 						Kind:       "SCOPE.Operation",
@@ -802,15 +805,15 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 			// CALL scan below so a MOVE earlier on the SAME line still resolves a
 			// trailing CALL (rare, but `MOVE 'X' TO Y. CALL Y` on one line).
 			for _, mm := range moveLiteralRe.FindAllStringSubmatch(ln.code, -1) {
-				moveLiterals[strings.ToUpper(mm[2])] = mm[1]
+				moveLiterals.Bind(mm[2], mm[1])
 			}
 			for _, mm := range moveNonLiteralRe.FindAllStringSubmatch(ln.code, -1) {
 				recv := strings.ToUpper(mm[1])
 				// Only clear if this same line did not also set it via a literal
 				// MOVE (a literal MOVE wins for that token on the line).
-				if _, set := moveLiterals[recv]; set {
+				if _, set := moveLiterals.Resolve(recv); set {
 					if !moveLiteralSetsOnLine(ln.code, recv) {
-						delete(moveLiterals, recv)
+						moveLiterals.Taint(recv)
 					}
 				}
 			}
@@ -922,9 +925,12 @@ func extractCOBOL(src, filePath, repoRoot string) []types.EntityRecord {
 					// `MOVE '<lit>' TO <ident>` (#5040). When found, the CALLS
 					// ToID becomes the literal program name; dynamic_ref stays
 					// true and resolved_via records how it was recovered.
-					if lit, ok := moveLiterals[strings.ToUpper(ident)]; ok {
+					if lit, ok := moveLiterals.Resolve(ident); ok {
 						toID = lit
+						// Keep the COBOL-specific resolved_via label for back-compat
+						// while recording the cross-language mechanism (#5158).
 						props["resolved_via"] = "move-literal"
+						props["resolved_mechanism"] = extractor.ResolvedViaLiteralBinding
 						props["dynamic_target"] = ident
 					}
 					rel := types.RelationshipRecord{

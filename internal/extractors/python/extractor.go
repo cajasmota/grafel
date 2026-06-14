@@ -1235,6 +1235,19 @@ func extractCallRelationships(
 		rels = append(rels, ddRels...)
 	}
 
+	// Issue #5158 — reflective `getattr(self, name)()` dispatch where `name` is a
+	// string literal bound earlier in the body. Resolves the CALLS edge to
+	// `<parentClass>.<method>` via the cross-language literal-binding resolver.
+	// Only fires for in-class methods (parentClass != ""). Bridges the same
+	// `seen` set so an edge already emitted by the direct path is not duplicated.
+	if parentClass != "" {
+		gaSeen := make(map[seenKeyDD]bool, len(seen))
+		for k := range seen {
+			gaSeen[seenKeyDD{target: k.target, alias: k.alias}] = true
+		}
+		rels = append(rels, extractGetattrDispatchCalls(body, src, parentClass, callerName, gaSeen)...)
+	}
+
 	return rels
 }
 

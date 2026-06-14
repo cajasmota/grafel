@@ -317,58 +317,223 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 	if body == nil || callerName == "" || len(localFns) == 0 {
 		return nil
 	}
-	commands := findAllNodes(body, "command")
-	if len(commands) == 0 {
-		return nil
+	seen := make(map[string]bool)
+	var rels []types.RelationshipRecord
+	// binder tracks `cmd=do_work` literal bindings within this function body so a
+	// later indirect `$cmd` command head can be resolved to the real function
+	// name (#5158, reusing the cross-language literal-binding resolver).
+	// Shell variable names are case-sensitive ⇒ identity keyFn. Bash has no
+	// nested-function lexical scope here; the function body IS the scope, so no
+	// Reset is needed mid-walk.
+	binder := extractor.NewLiteralBindingResolver(nil)
+
+	// Walk the body in document order so a binding established earlier is visible
+	// to a later command head (last-write-wins / taint semantics).
+	var walk func(n *sitter.Node)
+	walk = func(n *sitter.Node) {
+		if n == nil {
+			return
+		}
+		switch n.Type() {
+		case "variable_assignment":
+			recordShellAssignment(n, src, binder)
+		case "command":
+			if head, dynVar := commandHeadName(n, src, binder); head != "" &&
+				head != callerName && localFns[head] && !seen[head] {
+				seen[head] = true
+				props := map[string]string{
+					"line": strconv.Itoa(int(n.StartPoint().Row) + 1),
+				}
+				if dynVar != "" {
+					// Recovered through a literal binding on `$dynVar` (#5158).
+					props["resolved_via"] = extractor.ResolvedViaLiteralBinding
+					props["dynamic_target"] = dynVar
+				}
+				rels = append(rels, types.RelationshipRecord{
+					ToID:       head,
+					Kind:       "CALLS",
+					Properties: props,
+				})
+			}
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			walk(n.Child(i))
+		}
 	}
-	seen := make(map[string]bool, len(commands))
-	rels := make([]types.RelationshipRecord, 0, len(commands))
-	for _, cmd := range commands {
-		head := commandHeadName(cmd, src)
-		if head == "" || head == callerName {
-			continue
-		}
-		if !localFns[head] {
-			continue
-		}
-		if seen[head] {
-			continue
-		}
-		seen[head] = true
-		rels = append(rels, types.RelationshipRecord{
-			ToID: head,
-			Kind: "CALLS",
-			Properties: map[string]string{
-				"line": strconv.Itoa(int(cmd.StartPoint().Row) + 1),
-			},
-		})
-	}
+	walk(body)
 	return rels
 }
 
-// commandHeadName returns the identifier text of a command node's
-// command_name child, or "" if not a simple identifier.
+// recordShellAssignment feeds a `variable_assignment` node into the binder:
+// a bare-word / string-literal RHS Binds the variable to its command-name
+// literal; any other RHS (command substitution, expansion, arithmetic) Taints
+// the binding so a stale literal is never resolved.
 //
-//	command
+//	cmd=do_work        → Bind("cmd", "do_work")
+//	other="run_it"     → Bind("other", "run_it")
+//	bad=$(date)        → Taint("bad")
+func recordShellAssignment(n *sitter.Node, src []byte, binder *extractor.LiteralBindingResolver) {
+	nameNode := n.ChildByFieldName("name")
+	if nameNode == nil || nameNode.Type() != "variable_name" {
+		return
+	}
+	name := string(src[nameNode.StartByte():nameNode.EndByte()])
+	// The value is the first non-(variable_name,"=") child.
+	var val *sitter.Node
+	for i := 0; i < int(n.ChildCount()); i++ {
+		ch := n.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "variable_name", "=":
+			continue
+		default:
+			val = ch
+		}
+		if val != nil {
+			break
+		}
+	}
+	if lit, ok := shellStringLiteral(val, src); ok {
+		binder.Bind(name, lit)
+		return
+	}
+	// Non-literal RHS (or empty assignment) — taint.
+	binder.Taint(name)
+}
+
+// shellStringLiteral returns the static command-name literal carried by an
+// assignment RHS, or ("", false) when the RHS is not a plain literal. Handles
+// a bare `word` (cmd=do_work) and a double/single-quoted `string` whose only
+// content is a single string_content child (other="run_it"). A quoted string
+// containing an expansion or anything other than literal text is rejected.
+func shellStringLiteral(val *sitter.Node, src []byte) (string, bool) {
+	if val == nil {
+		return "", false
+	}
+	switch val.Type() {
+	case "word":
+		return string(src[val.StartByte():val.EndByte()]), true
+	case "raw_string":
+		// single-quoted 'literal' — strip the surrounding quotes.
+		s := string(src[val.StartByte():val.EndByte()])
+		if len(s) >= 2 && s[0] == '\'' && s[len(s)-1] == '\'' {
+			return s[1 : len(s)-1], true
+		}
+		return "", false
+	case "string":
+		// Accept only "literal" — exactly one string_content child between the
+		// quotes. Anything with an expansion/substitution child is non-static.
+		var content *sitter.Node
+		for i := 0; i < int(val.ChildCount()); i++ {
+			ch := val.Child(i)
+			if ch == nil {
+				continue
+			}
+			switch ch.Type() {
+			case "\"":
+				continue
+			case "string_content":
+				if content != nil {
+					return "", false
+				}
+				content = ch
+			default:
+				return "", false
+			}
+		}
+		if content != nil {
+			return string(src[content.StartByte():content.EndByte()]), true
+		}
+		return "", false
+	}
+	return "", false
+}
+
+// commandHeadName returns the resolved head identifier of a command node plus,
+// when the head was an indirect `$var` expansion resolved through a literal
+// binding, the original variable name (dynVar); dynVar is "" for a direct word
+// head. Returns ("", "") when the head is neither a simple word nor a
+// resolvable single-variable expansion.
+//
+//	command                      → direct:   word "<head>"
 //	  command_name
 //	    word "<head>"
-func commandHeadName(cmd *sitter.Node, src []byte) string {
+//
+//	command "$cmd"               → indirect: simple_expansion → variable_name
+//	  command_name                            (or string wrapping it: "$cmd")
+//	    simple_expansion
+//	      $ ; variable_name "<var>"
+func commandHeadName(cmd *sitter.Node, src []byte, binder *extractor.LiteralBindingResolver) (head, dynVar string) {
 	if cmd == nil || cmd.ChildCount() == 0 {
-		return ""
+		return "", ""
 	}
-	head := cmd.Child(0)
-	if head == nil || head.Type() != "command_name" {
-		return ""
+	nameNode := cmd.Child(0)
+	if nameNode == nil || nameNode.Type() != "command_name" {
+		return "", ""
 	}
-	// command_name typically has a single word child.
-	for i := 0; i < int(head.ChildCount()); i++ {
-		ch := head.Child(i)
+	// Direct: a plain word child.
+	for i := 0; i < int(nameNode.ChildCount()); i++ {
+		ch := nameNode.Child(i)
 		if ch != nil && ch.Type() == "word" {
+			return string(src[ch.StartByte():ch.EndByte()]), ""
+		}
+	}
+	// Indirect: a lone simple_expansion (`$cmd`) or a string wrapping exactly one
+	// (`"$cmd"`). Resolve the variable through the literal binder.
+	if v := loneExpansionVar(nameNode, src); v != "" {
+		if lit, ok := binder.Resolve(v); ok {
+			return lit, v
+		}
+		// Unresolved indirect head — not a recoverable call target.
+		return "", ""
+	}
+	return "", ""
+}
+
+// loneExpansionVar returns the variable name of a command_name node that is
+// exactly one `$var` simple_expansion, optionally wrapped in a double-quoted
+// string ("$var"); "" when the head is anything else (literal text, multiple
+// expansions, concatenations, ${var}-with-ops, etc.).
+func loneExpansionVar(nameNode *sitter.Node, src []byte) string {
+	// Unwrap a single double-quoted string child.
+	node := nameNode
+	if c := singleSignificantChild(node); c != nil && c.Type() == "string" {
+		node = c
+	}
+	exp := singleSignificantChild(node)
+	if exp == nil || exp.Type() != "simple_expansion" {
+		return ""
+	}
+	for i := 0; i < int(exp.ChildCount()); i++ {
+		ch := exp.Child(i)
+		if ch != nil && ch.Type() == "variable_name" {
 			return string(src[ch.StartByte():ch.EndByte()])
 		}
 	}
-	// Fall back to the whole command_name text.
-	return strings.TrimSpace(string(src[head.StartByte():head.EndByte()]))
+	return ""
+}
+
+// singleSignificantChild returns the unique non-quote child of node, or nil when
+// node has zero or more than one significant child. Quote (`"`) tokens are
+// ignored so a `"$var"` string is treated as wrapping a single expansion.
+func singleSignificantChild(node *sitter.Node) *sitter.Node {
+	if node == nil {
+		return nil
+	}
+	var only *sitter.Node
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch == nil || ch.Type() == "\"" {
+			continue
+		}
+		if only != nil {
+			return nil
+		}
+		only = ch
+	}
+	return only
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
