@@ -1305,6 +1305,15 @@ const (
 	// the owning profile on edge properties so DTO↔entity mapping topology is
 	// traversable rather than buried in a mapper configuration class.
 	RelationshipKindMapsTo RelationshipKind = "MAPS_TO"
+	// #4983 infra↔code deployment topology: an IaC compute resource (a
+	// Kubernetes workload, a docker-compose service with an image/build, a
+	// serverless function) → the CODE service/module/image it runs.
+	//   DEPLOYS : infra compute resource → canonical code `service:<name>` node
+	// Resolved by container-image repository name / compose service name /
+	// serverless handler source. Carries an `inferred` confidence marker so the
+	// dashboard can style the deploy-time mapping distinctly from identity and
+	// typed-usage cross-links (Topology Model 2/3, #4810).
+	RelationshipKindDeploys RelationshipKind = "DEPLOYS"
 )
 
 // AllRelationshipKinds returns every RelationshipKind producers may emit.
@@ -1469,6 +1478,8 @@ func AllRelationshipKinds() []RelationshipKind {
 		RelationshipKindSupervises,
 		// #5074 object-mapping topology (AutoMapper/Mapster source→dest):
 		RelationshipKindMapsTo,
+		// #4983 infra↔code deployment topology: IaC compute resource → code service.
+		RelationshipKindDeploys,
 	}
 }
 

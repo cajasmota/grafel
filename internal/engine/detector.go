@@ -848,6 +848,20 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// dedicated passes (applyKubernetesEdges, applyServerlessFrameworkEdges).
 	// Append-only — cannot regress surrounding passes.
 	applyPass(applyDeploymentTopologyEdges)
+	// Explicit infra↔code DEPLOYMENT edges (#4983, Topology Model 2/3 epic
+	// #4810). The K8s / compose / serverless passes above model infra↔infra and
+	// request-flow topology but never connect an IaC COMPUTE resource to the
+	// CODE service it runs. This pass mints a first-class DEPLOYS edge from a
+	// Kubernetes workload (via its container image repo), a docker-compose
+	// service (via its first-party image / build), and a serverless function
+	// (via its handler) to the canonical code `service:<name>` node — the SAME
+	// key applyDeploymentTopologyEdges/applyAPIGatewayRoutingEdges use, so the
+	// edge collapses onto the real code/compose service node. Public base/
+	// sidecar images (postgres, redis, nginx…) and templated refs are filtered,
+	// not guessed; every edge carries inferred=true so Model 2/3 can style the
+	// deploy-time mapping distinctly. Append-only — cannot regress surrounding
+	// passes.
+	applyPass(applyDeploymentCodeEdges)
 	// API-gateway route topology edges (#3723, epic #3628 area #21). Complements
 	// applyDeploymentTopologyEdges (which owns the reverse-proxy / infra gateways
 	// nginx/Caddy/Kong/Traefik) by modelling the APPLICATION-FRAMEWORK API
