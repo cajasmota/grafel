@@ -189,8 +189,20 @@ var (
 	//   NAME EQU value       (MASM / NASM)
 	equDotRE   = regexp.MustCompile(`(?m)^\s*\.(?:equ|set)\s+([A-Za-z_][A-Za-z0-9_]*)\s*,\s*(.+?)\s*$`)
 	equNasmRE  = regexp.MustCompile(`(?m)^\s*%define\s+([A-Za-z_][A-Za-z0-9_]*)\s+(.+?)\s*$`)
-	equMasmRE  = regexp.MustCompile(`(?m)^\s*([A-Za-z_][A-Za-z0-9_]*)\s+[Ee][Qq][Uu]\s+(.+?)\s*$`)
+	// equMasmRE matches the column-1 EQU equate used by MASM/NASM and armasm:
+	//   NAME EQU value          |bar.sym| EQU value      (#5056 bar-delimited)
+	// Group 1 is the name (bars stripped), group 2 the value. armasm places the
+	// label in column 1 with EQU as the second token — the same shape as MASM.
+	equMasmRE  = regexp.MustCompile(`(?m)^\s*\|?([A-Za-z_][A-Za-z0-9_.$]*)\|?\s+[Ee][Qq][Uu]\s+(.+?)\s*$`)
 	equEqualRE = regexp.MustCompile(`(?m)^\s*([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.+?)\s*$`)
+
+	// dcdRE matches the armasm column-1 data-definition forms (#5056):
+	//   LABEL DCD value     LABEL DCW value     LABEL DCB value     LABEL DCQ ...
+	// armasm defines initialised data with the label in column 1 and a DCx
+	// (Define-Constant) directive as the second token. The label may be
+	// bar-delimited (`|tbl.entry| DCD 0`). Group 1 is the label (bars stripped),
+	// group 2 the DCx directive (data width), group 3 the initialiser list.
+	dcdRE = regexp.MustCompile(`(?im)^\s*\|?([A-Za-z_][A-Za-z0-9_.$]*)\|?\s+(DC[BWDQ]|DCFS|DCFD)\s+(.+?)\s*$`)
 )
 
 // callMnemonics is the set of call-family instructions across ISAs. The
@@ -310,6 +322,7 @@ func extractAssembly(src, filePath, lang string) []types.EntityRecord {
 	entities = append(entities, buildSectionEntities(lines, filePath, lang)...)
 	entities = append(entities, buildMasmBlockEntities(lines, filePath, lang, dialect)...)
 	entities = append(entities, buildConstantEntities(scrubbed, filePath, lang)...)
+	entities = append(entities, buildDataEntities(scrubbed, filePath, lang, dialect, exported)...)
 	entities = append(entities, buildProcedureEntities(lines, filePath, lang, dialect, exported, external)...)
 
 	return entities
@@ -657,6 +670,58 @@ func buildConstantEntities(scrubbed, filePath, lang string) []types.EntityRecord
 	for _, m := range allSubmatchWithLine(equEqualRE, scrubbed) {
 		// Avoid double-counting names already taken by a stronger pattern.
 		add(m.groups[0], m.groups[1], m.line)
+	}
+	return out
+}
+
+// -----------------------------------------------------------------------
+// Data definitions (armasm DCx)
+// -----------------------------------------------------------------------
+
+// buildDataEntities emits a SCOPE.Variable for each armasm column-1
+// data-definition (`LABEL DCD value`, `LABEL DCB/DCW/DCQ/DCFS/DCFD ...`)
+// (#5056). armasm places the label in column 1 with a DCx (Define-Constant)
+// directive as the second token, defining initialised data — the parallel of
+// the gas `.word`/`.byte` data the high-level data-entity model expects. The
+// label may be bar-delimited (`|tbl.entry| DCD 0`); the bars are stripped by
+// the capture. Each entity records the data width and initialiser via
+// Properties, and is marked exported when EXPORT/GLOBAL named it.
+func buildDataEntities(scrubbed, filePath, lang, dialect string, exported map[string]bool) []types.EntityRecord {
+	seen := map[string]bool{}
+	var out []types.EntityRecord
+
+	for _, idx := range dcdRE.FindAllStringSubmatchIndex(scrubbed, -1) {
+		if len(idx) < 8 {
+			continue
+		}
+		name := strings.TrimSpace(scrubbed[idx[2]:idx[3]])
+		width := strings.ToUpper(strings.TrimSpace(scrubbed[idx[4]:idx[5]]))
+		initVal := strings.TrimSpace(scrubbed[idx[6]:idx[7]])
+		if name == "" || seen[name] {
+			continue
+		}
+		seen[name] = true
+		line := strings.Count(scrubbed[:idx[0]], "\n") + 1
+		props := map[string]string{
+			"dialect":     dialect,
+			"data_form":   "dcx",
+			"data_width":  width,
+			"initialiser": initVal,
+		}
+		if exported[name] {
+			props["exported"] = "true"
+		}
+		out = append(out, types.EntityRecord{
+			Name:       name,
+			Kind:       string(types.EntityKindVariable),
+			Subtype:    "data",
+			SourceFile: filePath,
+			Language:   lang,
+			StartLine:  line,
+			EndLine:    line,
+			Signature:  name + " " + width + " " + initVal,
+			Properties: props,
+		})
 	}
 	return out
 }
@@ -1228,12 +1293,24 @@ func scrubComments(src string) string {
 		case c == ';' || c == '@' || c == '!':
 			i = blankToEOL(out, src, i)
 		case c == '|':
-			// m68k line comment. `|` is also the bitwise-OR operator inside
-			// expression operands (`#(A|B)`), so only treat it as a comment
-			// when it starts a token (preceded by start-of-line or whitespace),
-			// mirroring the conservative `#` handling. This keeps an in-operand
-			// OR intact while blanking a trailing `| comment`.
-			if i == 0 || src[i-1] == ' ' || src[i-1] == '\t' || src[i-1] == '\n' {
+			// `|` is the m68k line-comment marker, but armasm also uses it to
+			// bar-delimit a symbol that contains characters not otherwise legal
+			// in an identifier (`|My.Sym|`, `AREA |.text|`), and it is the
+			// bitwise-OR operator inside expression operands (`#(A|B)`) (#5056).
+			//
+			// Disambiguation (cheap, single-line lookahead):
+			//   - Not a token start (preceded by a non-space) → bitwise OR; keep.
+			//   - Token start AND there is a matching closing `|` later on the
+			//     same line with at least one non-space identifier char between
+			//     them → a bar-delimited symbol (`|name|`); keep so the label/
+			//     section/data paths can read it.
+			//   - Otherwise (token start, no well-formed `|...|` pair) → m68k
+			//     line comment; blank to EOL. This still blanks a trailing
+			//     `| comment` (space after `|`, no closing bar).
+			tokenStart := i == 0 || src[i-1] == ' ' || src[i-1] == '\t' || src[i-1] == '\n'
+			if tokenStart && barDelimitedSymbol(src, i) {
+				i++ // leave the `|name|` intact; advance past the opening bar.
+			} else if tokenStart {
 				i = blankToEOL(out, src, i)
 			} else {
 				i++
@@ -1257,6 +1334,29 @@ func scrubComments(src string) string {
 		}
 	}
 	return string(out)
+}
+
+// barDelimitedSymbol reports whether the `|` at src[open] opens a well-formed
+// armasm bar-delimited symbol `|name|` (#5056): a matching closing `|` exists
+// later on the same line, and at least one non-space character sits between the
+// bars. A trailing m68k comment (`| like this`) has a space immediately after
+// the bar and no closing bar on the line, so it returns false and is scrubbed.
+func barDelimitedSymbol(src string, open int) bool {
+	n := len(src)
+	seenContent := false
+	for j := open + 1; j < n; j++ {
+		c := src[j]
+		if c == '\n' {
+			return false // no closing bar on this line.
+		}
+		if c == '|' {
+			return seenContent // closing bar; require non-empty content.
+		}
+		if c != ' ' && c != '\t' {
+			seenContent = true
+		}
+	}
+	return false // closing bar runs past EOF.
 }
 
 // blankToEOL blanks out[from:] up to (not including) the next newline and

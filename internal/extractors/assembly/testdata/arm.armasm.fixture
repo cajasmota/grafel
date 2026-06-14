@@ -1,6 +1,8 @@
-; ARM armasm (legacy) structured-directive fixture (#4950).
+; ARM armasm (legacy) structured-directive fixture (#4950, #5056).
 ; Exercises AREA section framing, name PROC/ENDP and FUNCTION/ENDFUNC
-; procedure framing, EXPORT/IMPORT linkage, and GET/INCLUDE includes.
+; procedure framing, EXPORT/IMPORT linkage, GET/INCLUDE includes, the
+; column-1 EQU equate / DCD data-definition forms, and the bar-delimited
+; |name| symbol syntax (#5056).
 
         GET     macros.inc
         INCLUDE defs.inc
@@ -8,16 +10,25 @@
         EXPORT  main
         IMPORT  printf
 
+MAXLEN  EQU     256
+|Cfg.Flags| EQU 0x07
+
+        AREA    |.data|, DATA, READWRITE
+
+buffer  DCD     0
+|tbl.entry| DCW 1, 2, 3
+banner  DCB     "hi", 0
+
         AREA    .text, CODE, READONLY
 
 main    PROC
-        bl      compute
+        bl      compute     | tail-call into the worker
         bl      printf
         bx      lr
         ENDP
 
 compute FUNCTION
-        add     r0, r0, #1
+        add     r0, r0, #(MAXLEN | 1)
         bx      lr
         ENDFUNC
 

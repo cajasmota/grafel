@@ -825,6 +825,61 @@ func TestExtractARMArmasmStructured(t *testing.T) {
 			t.Errorf("missing IMPORTS for %q; got %v", want, imps)
 		}
 	}
+
+	// #5056 — column-1 EQU equate (plain + bar-delimited |Cfg.Flags|).
+	if c := byName(recs, "MAXLEN"); c == nil || c.Kind != "SCOPE.Constant" || c.Subtype != "equate" {
+		t.Errorf("MAXLEN should be a SCOPE.Constant equate; got %v", c)
+	}
+	if c := byName(recs, "Cfg.Flags"); c == nil || c.Kind != "SCOPE.Constant" {
+		t.Errorf("bar-delimited |Cfg.Flags| EQU should be a constant (bars stripped); got %v", c)
+	}
+
+	// #5056 — column-1 DCx data definitions (plain + bar-delimited).
+	if d := byName(recs, "buffer"); d == nil || d.Kind != "SCOPE.Variable" || d.Subtype != "data" {
+		t.Fatalf("buffer DCD should be a SCOPE.Variable data; got %v", d)
+	} else if d.Properties["data_width"] != "DCD" {
+		t.Errorf("buffer data_width=%q want DCD", d.Properties["data_width"])
+	}
+	if d := byName(recs, "tbl.entry"); d == nil || d.Kind != "SCOPE.Variable" {
+		t.Errorf("bar-delimited |tbl.entry| DCW should be a data variable (bars stripped); got %v", d)
+	} else if d.Properties["data_width"] != "DCW" {
+		t.Errorf("tbl.entry data_width=%q want DCW", d.Properties["data_width"])
+	}
+	if d := byName(recs, "banner"); d == nil || d.Properties["data_width"] != "DCB" {
+		t.Errorf("banner DCB should be a data variable width DCB; got %v", d)
+	}
+
+	// #5056 — bar-delimited AREA name survives scrubbing.
+	if s := byName(recs, ".data"); s == nil || s.Subtype != "section" {
+		t.Errorf("AREA |.data| should be a section; got %v", s)
+	}
+
+	// #5056 — a trailing `| comment` after the bl is still blanked: the call
+	// edge survives but the comment text must not leak into any entity.
+	if byName(recs, "tail-call") != nil || byName(recs, "into") != nil {
+		t.Errorf("trailing m68k-style | comment leaked into an entity")
+	}
+}
+
+// #5056 — no-op guards: wrong dialect and no-match inputs emit no EQU/DCD
+// constants or data beyond the file entity.
+func TestArmasmColumn1NoOp(t *testing.T) {
+	// Wrong language: a NASM source has no armasm column-1 DCx; the DCx path
+	// must not fabricate data entities from `dd`/`db` style NASM directives.
+	nasm := loadFixture(t, "x86_64.nasm.fixture")
+	for _, r := range extractAssembly(nasm, "boot.nasm", "assembly") {
+		if r.Subtype == "data" {
+			t.Errorf("NASM fixture produced an armasm DCx data entity: %v", r)
+		}
+	}
+
+	// No-match: a body with only instructions and comments emits no EQU/DCD.
+	noMatch := "        AREA    code, CODE\n        mov     r0, #1   | just a comment\n        bx      lr\n"
+	for _, r := range extractAssembly(noMatch, "n.s", "assembly") {
+		if r.Subtype == "data" || r.Subtype == "equate" {
+			t.Errorf("no-match input produced %s entity %q", r.Subtype, r.Name)
+		}
+	}
 }
 
 // Full pipeline through Extract (language tagging) -------------------------
