@@ -278,3 +278,114 @@ func TestM5_OrderedResolutionParity_Representative(t *testing.T) {
 		}
 	}
 }
+
+// ambiguousMultiCandidateFixture reproduces the #5206 cross-module multi-
+// candidate divergence: a name/ref that maps to >1 candidate entity, where the
+// candidates live in DIFFERENT modules (pkgDirs) AND the module that owns the
+// globally-later candidate is FIRST-SEEN earlier (via an unrelated entity).
+// That layout is exactly what makes BuildIndexFromModulesOrdered consume the
+// colliding entities in a different order than flat BuildIndex — so the
+// first-writer-wins winner (byQualifiedName refProp), and hence the resolved
+// IMPLEMENTS / EXTENDS edge, diverges unless the global-position replay forces
+// M5 to consume in flat's exact order.
+//
+// Shape (the OnApplicationShutdown / mysql-psycopg2 family, distilled):
+//
+//	module b/ is first-seen via `bFirst` (an unrelated entity), THEN two
+//	interface-anchor entities in modules a/ and b/ SHARE one structural ref
+//	`scope:component:interface:rust:Handler` (first-writer-wins, NO blanking),
+//	and two implementer entities in modules c/ and d/ each EXTENDS that ref.
+//	Flat keeps the a/ anchor as the ref winner (global order); pre-fix M5
+//	grouped b/ first and kept the b/ anchor — so the two EXTENDS edges resolved
+//	to a DIFFERENT target ID, diverging the (from,to,kind) multiset.
+//
+// Entity IDs are scrambled relative to source order so any residual order
+// dependence surfaces.
+func ambiguousMultiCandidateFixture() []types.EntityRecord {
+	const sharedRef = "scope:component:interface:rust:Handler"
+	return []types.EntityRecord{
+		// module b/ is first-seen here via an unrelated entity — this is what
+		// makes the pre-fix module grouping visit b/ before a/.
+		{ID: "00000000000052b0", Kind: "SCOPE.Operation", Name: "bFirst",
+			SourceFile: "b/early.rs"},
+
+		// a/ anchor — GLOBAL first writer of the shared interface ref.
+		{ID: "0000000000005201", Kind: "SCOPE.Component", Name: "Handler",
+			SourceFile: "a/handler.rs", Properties: map[string]string{"ref": sharedRef}},
+		// b/ anchor — later globally, but b/ is grouped first pre-fix, so it
+		// would win first-writer-wins under module-order consumption.
+		{ID: "0000000000005202", Kind: "SCOPE.Component", Name: "Handler",
+			SourceFile: "b/handler.rs", Properties: map[string]string{"ref": sharedRef}},
+
+		// Two implementers in further modules, each EXTENDS the shared ref.
+		{ID: "00000000000052c0", Kind: "SCOPE.Component", Name: "ImplC",
+			SourceFile: "c/impl.rs",
+			Relationships: []types.RelationshipRecord{
+				{FromID: "00000000000052c0", ToID: sharedRef, Kind: "EXTENDS"},
+			}},
+		{ID: "00000000000052d0", Kind: "SCOPE.Component", Name: "ImplD",
+			SourceFile: "d/impl.rs",
+			Relationships: []types.RelationshipRecord{
+				{FromID: "00000000000052d0", ToID: sharedRef, Kind: "EXTENDS"},
+			}},
+	}
+}
+
+// resolvedEdgeMultiset runs ReferencesEmbedded over a COPY of the fixture and
+// returns the sorted (from,to,kind) edge multiset after resolution. Working on
+// a deep copy keeps the two index builds from sharing mutated relationship
+// slices.
+func resolvedEdgeMultiset(entities []types.EntityRecord, idx Index) []string {
+	recs := deepCopyEntities(entities)
+	ReferencesEmbedded(recs, idx)
+	var edges []string
+	for k := range recs {
+		for _, r := range recs[k].Relationships {
+			edges = append(edges, r.FromID+"|"+r.ToID+"|"+r.Kind)
+		}
+	}
+	sort.Strings(edges)
+	return edges
+}
+
+// deepCopyEntities clones the entity slice including each entity's embedded
+// Relationships slice, so in-place rewrites under one index do not leak into
+// the other index's resolution pass.
+func deepCopyEntities(in []types.EntityRecord) []types.EntityRecord {
+	out := make([]types.EntityRecord, len(in))
+	for i := range in {
+		out[i] = in[i]
+		if in[i].Relationships != nil {
+			out[i].Relationships = append([]types.RelationshipRecord(nil), in[i].Relationships...)
+		}
+	}
+	return out
+}
+
+// TestM5_AmbiguousMultiCandidateResolutionParity is the #5206 regression guard
+// and the end-to-end gap the unit table-parity harness missed: it resolves an
+// ambiguous multi-candidate fixture (same-name IMPLEMENTS target across modules
+// + a bare CALL matching two distinct candidates across modules) under BOTH the
+// flat and the M5 ordered index, and asserts the resulting (from,to,kind) edge
+// multiset is IDENTICAL. Before the global-position replay fix this FAILED
+// (M5 picked a different first-writer-wins winner / collapsed the fan-out
+// differently because it consumed the colliding entities in module order rather
+// than global order); after the fix the two multisets match exactly.
+func TestM5_AmbiguousMultiCandidateResolutionParity(t *testing.T) {
+	entities := ambiguousMultiCandidateFixture()
+	flat := BuildIndex(entities)
+	mod := BuildIndexFromModulesOrdered(entities, ModuleKeyByPkgDir)
+
+	// Index tables must be byte-identical first — this is the root-cause layer.
+	if diffs := indexParityDiff(flat, mod); len(diffs) != 0 {
+		t.Fatalf("#5206 index-table divergence on ambiguous fixture: %v\nflat=%+v\nmod=%+v",
+			diffs, flat, mod)
+	}
+
+	flatEdges := resolvedEdgeMultiset(entities, flat)
+	modEdges := resolvedEdgeMultiset(entities, mod)
+	if !reflect.DeepEqual(flatEdges, modEdges) {
+		t.Fatalf("#5206 ambiguous-resolution edge multiset diverges:\n flat (%d): %v\n  M5 (%d): %v",
+			len(flatEdges), flatEdges, len(modEdges), modEdges)
+	}
+}

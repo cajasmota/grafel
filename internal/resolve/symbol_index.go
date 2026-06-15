@@ -97,6 +97,22 @@ type moduleEntry struct {
 	refProp       string // Properties["ref"] value, if indexable
 	dotName       bool   // name contains a '.'
 	properties    map[string]string
+
+	// globalPos is the entity's position in the caller's ORIGINAL (flat)
+	// entity slice — the order BuildIndex consumes. M5 builds its symbol
+	// table per-module (so the merge visits entities grouped by module, not
+	// in global order), but every index table in this package is first-
+	// writer-wins / order-sensitive (byKind, byName, byLocation, the #1818
+	// platform-variant merge, …). Consuming in module order instead of
+	// global order therefore picks a DIFFERENT winner for any name that is
+	// ambiguous ACROSS modules, which diverges the resolved edge set from
+	// flat BuildIndex (issue #5206: mysql/psycopg2 driver swap, the
+	// OnApplicationShutdown cross-module IMPLEMENTS drop). Stamping the
+	// global position lets BuildIndexFromModulesOrdered re-establish flat's
+	// exact consumption order before insertModuleEntry, making M5 edge-
+	// identical to flat. Only BuildModuleSymbolsOrdered (the production path)
+	// stamps this; the legacy sort-by-ID BuildModuleSymbols leaves it 0.
+	globalPos int
 }
 
 // ModuleSymbols is the per-module symbol table.  It is intentionally
@@ -361,6 +377,20 @@ func BuildIndexFromModules(modules map[ModuleKey][]types.EntityRecord, batchSize
 // extraction order is sufficient to reproduce BuildIndex's PlatformVariants
 // topology exactly.
 func BuildModuleSymbolsOrdered(key ModuleKey, entities []types.EntityRecord) *ModuleSymbols {
+	// Public signature unchanged: stamp each entity's globalPos with its index
+	// within this slice. BuildIndexFromModulesOrdered uses the positions-aware
+	// internal builder so globalPos reflects the position in the ORIGINAL flat
+	// entity slice (the order BuildIndex consumes).
+	return buildModuleSymbolsOrderedPos(key, entities, nil)
+}
+
+// buildModuleSymbolsOrderedPos is the positions-aware core of
+// BuildModuleSymbolsOrdered. positions[k] is the global (flat-slice) index of
+// entities[k]; when positions is nil each entity is stamped with its local
+// index k. Every retained moduleEntry carries its globalPos so the caller can
+// re-establish flat BuildIndex's exact consumption order before insertion
+// (#5206).
+func buildModuleSymbolsOrderedPos(key ModuleKey, entities []types.EntityRecord, positions []int) *ModuleSymbols {
 	ms := &ModuleSymbols{
 		Key:         key,
 		entityCount: len(entities),
@@ -376,6 +406,10 @@ func BuildModuleSymbolsOrdered(key ModuleKey, entities []types.EntityRecord) *Mo
 		if trimmed == e.Kind {
 			trimmed = ""
 		}
+		pos := k
+		if positions != nil {
+			pos = positions[k]
+		}
 		me := moduleEntry{
 			id:            e.ID,
 			name:          e.Name,
@@ -386,6 +420,7 @@ func BuildModuleSymbolsOrdered(key ModuleKey, entities []types.EntityRecord) *Mo
 			refProp:       extractIndexableRef(e),
 			dotName:       strings.IndexByte(e.Name, dottedNameSep) >= 0,
 			properties:    e.Properties,
+			globalPos:     pos,
 		}
 		ms.entries = append(ms.entries, me)
 	}
@@ -410,10 +445,11 @@ func BuildIndexFromModulesOrdered(entities []types.EntityRecord, moduleKeyOf fun
 		return emptyIndex()
 	}
 	// Partition preserving extraction order within and across modules. We track
-	// first-seen module order so the merge visits modules in a deterministic,
-	// extraction-faithful order (matters for cross-module first-writer-wins on
-	// byQualifiedName refProps).
+	// first-seen module order so the per-module build stays extraction-faithful,
+	// and we stamp each entity's GLOBAL position (its index in the flat slice)
+	// so the final insertion can be replayed in flat BuildIndex's exact order.
 	buckets := make(map[ModuleKey][]types.EntityRecord)
+	bucketPos := make(map[ModuleKey][]int)
 	order := make([]ModuleKey, 0)
 	for k := range entities {
 		key := moduleKeyOf(entities[k])
@@ -421,12 +457,34 @@ func BuildIndexFromModulesOrdered(entities []types.EntityRecord, moduleKeyOf fun
 			order = append(order, key)
 		}
 		buckets[key] = append(buckets[key], entities[k])
+		bucketPos[key] = append(bucketPos[key], k)
 	}
 
 	si := &SymbolIndex{}
 	for _, key := range order {
-		si.Add(BuildModuleSymbolsOrdered(key, buckets[key]))
+		si.Add(buildModuleSymbolsOrderedPos(key, buckets[key], bucketPos[key]))
 	}
+
+	// #5206 — collapse the per-module symbol tables back into a SINGLE stream
+	// ordered by global position, so insertModuleEntry consumes entities in the
+	// exact order flat BuildIndex does. Every index table here is first-writer-
+	// wins / order-sensitive (byKind, byName, byLocation, the #1818 platform-
+	// variant merge), so consuming in module order instead of global order picks
+	// a different winner for any name that is ambiguous ACROSS modules — the
+	// edge-set divergence in #5206. Replaying in global order makes M5 produce
+	// an Index that is byte-identical to flat's, hence edge-identical resolution.
+	// Cost: one O(N log N) sort over lightweight pointers, on top of the per-
+	// module build that M5 already does — the scale win (pre-sized maps, per-
+	// module locality during BuildModuleSymbolsOrdered) is preserved.
+	ordered := make([]*moduleEntry, 0, len(entities))
+	for _, ms := range si.modules {
+		for i := range ms.entries {
+			ordered = append(ordered, &ms.entries[i])
+		}
+	}
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].globalPos < ordered[j].globalPos
+	})
 
 	total := len(entities)
 	acc := accumulatorIndex(total)
@@ -434,11 +492,8 @@ func BuildIndexFromModulesOrdered(entities []types.EntityRecord, moduleKeyOf fun
 	pkgCompTag := make(map[string]map[string]string)
 	pkgOpSrc := make(map[string]map[string]string)
 	pkgCompSrc := make(map[string]map[string]string)
-	for _, ms := range si.modules {
-		for i := range ms.entries {
-			me := &ms.entries[i]
-			insertModuleEntry(&acc, me, pkgOpTag, pkgCompTag, pkgOpSrc, pkgCompSrc)
-		}
+	for _, me := range ordered {
+		insertModuleEntry(&acc, me, pkgOpTag, pkgCompTag, pkgOpSrc, pkgCompSrc)
 	}
 	return acc
 }
