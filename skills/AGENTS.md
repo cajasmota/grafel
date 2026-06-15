@@ -16,8 +16,8 @@ Each skill is a focused, independently-invokable capability published to agent h
 
 ## Naming
 
-- Use the `archigraph-<concern>` prefix for skills that operate on an archigraph-indexed group (e.g. `archigraph-tech-docs`, `archigraph-security-audit`).
-- Skills that are agent-host utilities (not archigraph-specific) drop the prefix (e.g. `extend-convention`, `using-archigraph`).
+- Use the `grafel-<concern>` prefix for skills that operate on an grafel-indexed group (e.g. `grafel-tech-docs`, `grafel-security-audit`).
+- Skills that are agent-host utilities (not grafel-specific) drop the prefix (e.g. `extend-convention`, `using-grafel`).
 - The skill ID must match the directory name and the frontmatter `name`.
 
 ## Installation
@@ -32,4 +32,4 @@ Skills are picked up from `skills/<name>/SKILL.md` by the agent host. There is n
 
 ## Coverage matrix update
 
-Skill changes typically do not touch the capability matrix — skills are agent-facing tooling, not extraction code. If a skill change exposes a new archigraph CLI verb or MCP tool that materially changes capability surface, follow the root `AGENTS.md` "Coverage matrix update" workflow.
+Skill changes typically do not touch the capability matrix — skills are agent-facing tooling, not extraction code. If a skill change exposes a new grafel CLI verb or MCP tool that materially changes capability surface, follow the root `AGENTS.md` "Coverage matrix update" workflow.
