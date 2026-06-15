@@ -5108,6 +5108,54 @@ func TestPythonDBAPIDriverPlaceholder_EngineMatrix(t *testing.T) {
 	}
 }
 
+// TestPythonDBAPIDriverPlaceholder_Deterministic is the #5206 regression guard.
+//
+// pythonDBAPIDriverPlaceholder used to iterate the file's import set in Go's
+// randomised map-iteration order and keep the FIRST concrete-engine placeholder
+// it saw. When a single file imports two concrete server engines (the
+// upvate_core core/views/sync_viewset.py case imports BOTH a MySQL driver and
+// psycopg2), the resolved ext:<driver> CALLS target flipped between mysql and
+// psycopg2 from one index run to the next — non-deterministic output that
+// surfaced as a spurious flat-vs-M5 resolver-index parity divergence (the two
+// resolver indexes are byte-identical; the instability lived here, not in the
+// index). The fix sorts the import set before iterating. This test asserts the
+// result is STABLE across many independently-constructed maps (Go randomises
+// per-map, so 200 fresh maps reliably exercises multiple iteration orders) and
+// that the multi-server-engine choice is the documented deterministic winner.
+func TestPythonDBAPIDriverPlaceholder_Deterministic(t *testing.T) {
+	cases := []struct {
+		name    string
+		imports []string
+		want    string // the single stable placeholder every run must return
+	}{
+		// The exact #5206 corpus shape: a file importing two concrete server
+		// engines. Sorted-import order makes mysql.connector precede psycopg2,
+		// so "mysql" is the deterministic winner.
+		{"mysql+psycopg2", []string{"mysql.connector", "psycopg2"}, "mysql"},
+		// Same set, declared in the opposite source order — must still be stable
+		// and identical (the map drops ordering anyway; the sort restores it).
+		{"psycopg2+mysql", []string{"psycopg2", "mysql.connector"}, "mysql"},
+		// Three concrete engines + the sqlite3 stdlib fallback: sqlite3 must
+		// never win, and the concrete winner must be stable.
+		{"mysql+psycopg2+oracle+sqlite", []string{"sqlite3", "psycopg2", "mysql.connector", "cx_Oracle"}, "cx_Oracle"},
+	}
+	for _, c := range cases {
+		c := c
+		t.Run(c.name, func(t *testing.T) {
+			for i := 0; i < 200; i++ {
+				imports := map[string]bool{}
+				for _, imp := range c.imports {
+					imports[imp] = true
+				}
+				if got := pythonDBAPIDriverPlaceholder(imports); got != c.want {
+					t.Fatalf("iteration %d: pythonDBAPIDriverPlaceholder(%v) = %q; want stable %q "+
+						"(non-deterministic map iteration regressed — #5206)", i, c.imports, got, c.want)
+				}
+			}
+		})
+	}
+}
+
 // TestPythonPerImportGates_WithoutImport_KeepsSaferBiasMiss confirms
 // that on a python source file WITHOUT the gate's canonical import,
 // the generic verb is NOT classified — preserving #94's safer-bias

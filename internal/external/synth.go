@@ -16108,8 +16108,21 @@ func pythonDBAPIDriverPlaceholder(imports map[string]bool) string {
 	if len(imports) == 0 {
 		return generic
 	}
-	best := ""
+	// Determinism (#5206): iterate the import set in sorted order rather than
+	// in Go's randomised map-iteration order. A file that imports two concrete
+	// server engines (e.g. pymysql AND psycopg2) used to pick whichever
+	// placeholder happened to iterate FIRST, so the resolved ext:<driver>
+	// CALLS target flipped between runs (mysql ↔ psycopg2) — non-deterministic
+	// output that surfaced as a spurious flat-vs-M5 edge-set divergence (the
+	// indexes are identical; the instability is here, not in the resolver
+	// index). Sorting the imports makes the choice reproducible.
+	roots := make([]string, 0, len(imports))
 	for p := range imports {
+		roots = append(roots, p)
+	}
+	sort.Strings(roots)
+	best := ""
+	for _, p := range roots {
 		root := pythonImportRoot(p)
 		// django.db.* paths are DB-API-shaped but carry no engine signal
 		// (the engine lives in settings.DATABASES), so they leave `best`
@@ -16123,6 +16136,9 @@ func pythonDBAPIDriverPlaceholder(imports map[string]bool) string {
 			continue
 		}
 		// Prefer a concrete server engine over the sqlite3 stdlib fallback.
+		// Among multiple concrete engines the first in sorted-import order
+		// wins deterministically (the engine choice is heuristic anyway;
+		// stability across runs is what matters for parity).
 		if best == "sqlite3" && placeholder != "sqlite3" {
 			best = placeholder
 		}
