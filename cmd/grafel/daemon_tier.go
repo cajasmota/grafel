@@ -271,6 +271,26 @@ func tierTouchRepoRef(repoPath, ref string) error {
 	return daemonTierMgr.Touch(tier.SlotKey{RepoPath: repoPath, Ref: ref})
 }
 
+// deadRefTierForgetter adapts daemonTierMgr.ForgetRef to the
+// daemon.RefForgetter interface used by the dead-ref sweeper (#5236). It is a
+// zero-value struct so it can be wired before daemonTierMgr is constructed;
+// the nil check happens at call time.
+type deadRefTierForgetter struct{}
+
+func (deadRefTierForgetter) ForgetRef(repoPath, ref string) bool {
+	if daemonTierMgr == nil {
+		return false
+	}
+	return daemonTierMgr.ForgetRef(repoPath, ref)
+}
+
+// deadRefDropReader releases the cached mmap'd fbreader for a reaped
+// (repoPath, ref) so its resident graph leaves memory (#5236). Wired as the
+// dead-ref sweeper's DropReader hook.
+func deadRefDropReader(repoPath, ref string) {
+	daemonMCPCache.InvalidateForRepoRef(repoPath, ref)
+}
+
 // tierEvictCallback releases the in-memory graph for a WARM→COLD transition.
 func tierEvictCallback(key tier.SlotKey) {
 	// Invalidate the mmap'd fbreader in the MCP graph cache.
