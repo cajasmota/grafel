@@ -244,6 +244,22 @@ func uninstall(opts Options) error {
 	return teardown(sm)
 }
 
+// registeredRoot is the Windows implementation. The Task Scheduler XML does not
+// bake a HOME/root the way the launchd plist and systemd unit do (the daemon
+// derives its root from GRAFEL_DAEMON_ROOT/APPDATA at runtime), so there is no
+// recorded root to read back. We report found=false (no error): the uninstall
+// guard then relies on the isolated-home belt-and-suspenders check (#5277) to
+// avoid tearing down a global task from an isolated install. The Windows
+// named-pipe is already root-scoped (#5264/#5269), so a future enhancement can
+// scope the task name per root; until then the isolated-home guard is the
+// safety net.
+func registeredRoot() (string, bool, error) {
+	if _, err := taskXMLPath(); err != nil {
+		return "", false, err
+	}
+	return "", false, nil
+}
+
 // status is the Windows implementation of Status.
 //
 // It queries Task Scheduler via:

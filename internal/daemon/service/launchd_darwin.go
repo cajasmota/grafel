@@ -224,6 +224,53 @@ func uninstall(opts Options) error {
 	return teardown(sm)
 }
 
+// registeredRoot is the macOS implementation: it reads the installed
+// LaunchAgent plist and extracts the HOME baked into its
+// EnvironmentVariables dict — the root the live daemon serves (#5277).
+func registeredRoot() (string, bool, error) {
+	path, err := plistPath()
+	if err != nil {
+		return "", false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil // not installed — nothing to guard against
+		}
+		return "", false, fmt.Errorf("read plist %s: %w", path, err)
+	}
+	root := extractPlistHome(string(data))
+	if root == "" {
+		// Installed but no HOME recorded (legacy plist). Report found=true with
+		// an empty root so the caller fails closed rather than assuming a match.
+		return "", true, nil
+	}
+	return root, true, nil
+}
+
+// extractPlistHome pulls the value following the <key>HOME</key> entry from a
+// rendered LaunchAgent plist. It is a small, dependency-free scan keyed on the
+// plist structure this package emits (GeneratePlist); it does not attempt to be
+// a general plist parser.
+func extractPlistHome(plist string) string {
+	const key = "<key>HOME</key>"
+	idx := strings.Index(plist, key)
+	if idx < 0 {
+		return ""
+	}
+	rest := plist[idx+len(key):]
+	open := strings.Index(rest, "<string>")
+	if open < 0 {
+		return ""
+	}
+	rest = rest[open+len("<string>"):]
+	close := strings.Index(rest, "</string>")
+	if close < 0 {
+		return ""
+	}
+	return strings.TrimSpace(rest[:close])
+}
+
 // status is the macOS implementation of Status.
 func status(opts Options) (StatusInfo, error) {
 	path, err := plistPath()

@@ -187,6 +187,43 @@ func uninstall(opts Options) error {
 	return teardown(sm)
 }
 
+// registeredRoot is the Linux implementation: it reads the installed systemd
+// user unit and extracts the HOME baked into its `Environment=HOME=` line —
+// the root the live daemon serves (#5277).
+func registeredRoot() (string, bool, error) {
+	path, err := unitPath()
+	if err != nil {
+		return "", false, err
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return "", false, nil // not installed — nothing to guard against
+		}
+		return "", false, fmt.Errorf("read unit %s: %w", path, err)
+	}
+	root := extractUnitHome(string(data))
+	if root == "" {
+		// Installed but no HOME recorded (legacy unit). Report found=true with an
+		// empty root so the caller fails closed rather than assuming a match.
+		return "", true, nil
+	}
+	return root, true, nil
+}
+
+// extractUnitHome pulls the value of the `Environment=HOME=<root>` line from a
+// rendered systemd unit (GenerateUnit). Returns "" when absent.
+func extractUnitHome(unit string) string {
+	const prefix = "Environment=HOME="
+	for _, line := range strings.Split(unit, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, prefix) {
+			return strings.TrimSpace(strings.TrimPrefix(line, prefix))
+		}
+	}
+	return ""
+}
+
 // status is the Linux implementation of Status.
 func status(opts Options) (StatusInfo, error) {
 	path, err := unitPath()

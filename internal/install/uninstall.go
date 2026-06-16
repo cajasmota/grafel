@@ -62,6 +62,30 @@ type UninstallOptions struct {
 	// production implementation (promptConfirm) is used.
 	// Returns true if the user confirmed, false to abort.
 	ConfirmFn func(prompt string) (bool, error)
+
+	// registeredRootFn resolves the root the LIVE daemon serves (the HOME
+	// baked into the installed OS service unit). When nil it defaults to
+	// service.RegisteredRoot. Injectable so the #5277 guard decision can be
+	// unit-tested without reading a real launchd plist / systemd unit.
+	registeredRootFn func() (root string, found bool, err error)
+
+	// stopDaemonFn performs the actual service teardown. When nil it defaults
+	// to a wrapper over service.Uninstall. Injectable so tests can assert
+	// whether the stop was performed WITHOUT ever invoking real launchctl /
+	// systemctl / schtasks.
+	stopDaemonFn func() error
+
+	// targetRootFn resolves the root of the install being uninstalled. When
+	// nil it defaults to uninstallTargetRoot (HOME). Injectable for tests.
+	targetRootFn func() string
+
+	// isolatedHomeFn reports whether GRAFEL_TEST_REQUIRE_ISOLATED_HOME=1.
+	// When nil it defaults to isolatedHomeActive. Injectable for tests.
+	isolatedHomeFn func() bool
+
+	// warnFn receives WARN lines (e.g. when the daemon stop is skipped for
+	// isolation safety). When nil it writes to os.Stderr.
+	warnFn func(string)
 }
 
 // UninstallResult reports what RunUninstall accomplished.
@@ -108,6 +132,23 @@ func (o *UninstallOptions) applyDefaults() error {
 			o.Yes = true
 		}
 		o.ConfirmFn = promptConfirm
+	}
+	if o.registeredRootFn == nil {
+		o.registeredRootFn = service.RegisteredRoot
+	}
+	if o.stopDaemonFn == nil {
+		o.stopDaemonFn = func() error { return service.Uninstall(service.Options{}) }
+	}
+	if o.targetRootFn == nil {
+		o.targetRootFn = uninstallTargetRoot
+	}
+	if o.isolatedHomeFn == nil {
+		o.isolatedHomeFn = isolatedHomeActive
+	}
+	if o.warnFn == nil {
+		o.warnFn = func(msg string) {
+			fmt.Fprintf(os.Stderr, "grafel uninstall: WARN: %s\n", msg)
+		}
 	}
 	return nil
 }
@@ -185,9 +226,22 @@ func RunUninstall(opts UninstallOptions) (*UninstallResult, error) {
 		}
 	}
 
-	// ── Step 3: Stop daemon ───────────────────────────────────────────────────
+	// ── Step 3: Stop daemon (with #5277 isolation safety guard) ───────────────
+	// The OS service label is GLOBAL. Before stopping/unregistering it we must
+	// confirm the live daemon belongs to THIS uninstall target's root — never
+	// tear down a daemon serving a different root (e.g. the developer's live
+	// daemon while uninstalling an isolated sandbox install). evaluateDaemonStop
+	// is pure; the I/O (reading the recorded root, performing the stop) is in
+	// injectable hooks so the decision is unit-tested without touching launchctl.
 	if !opts.SkipDaemonStop && !opts.DryRun {
-		if err := service.Uninstall(service.Options{}); err != nil {
+		regRoot, regFound, regErr := opts.registeredRootFn()
+		decision := evaluateDaemonStop(
+			regRoot, regFound, regErr != nil,
+			opts.targetRootFn(), opts.isolatedHomeFn(),
+		)
+		if !decision.Stop {
+			opts.warnFn(decision.Reason)
+		} else if err := opts.stopDaemonFn(); err != nil {
 			fmt.Fprintf(os.Stderr, "grafel uninstall: stop daemon: %v\n", err)
 		} else {
 			result.DaemonStopped = true

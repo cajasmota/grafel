@@ -89,6 +89,21 @@ func Status(opts Options) (StatusInfo, error) {
 	return status(opts)
 }
 
+// RegisteredRoot returns the daemon root directory recorded in the currently
+// installed OS service unit (the HOME baked into the launchd plist / systemd
+// unit at install time, or the root derived from the installed task's socket on
+// Windows). The returned root is the home/GRAFEL_DAEMON_ROOT the LIVE daemon
+// actually serves — which is what an uninstall must compare against before
+// stopping a GLOBAL service label (issue #5277).
+//
+// found is false (with a nil error) when no service is installed — there is no
+// recorded root to compare, so the caller should treat that as "nothing to
+// guard against". A non-nil error means the unit file existed but could not be
+// read/parsed; callers should fail closed (skip the stop) on error.
+func RegisteredRoot() (root string, found bool, err error) {
+	return registeredRoot()
+}
+
 // resolveOptions fills in empty Options fields from OS defaults. This
 // runs before any platform call so platform code can assume opts is
 // complete. Platform-specific path resolution is in service_unix.go and
