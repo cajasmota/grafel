@@ -80,6 +80,7 @@ const (
 	Codex             Tool = "codex"
 	ContinueDev       Tool = "continue-dev"
 	Zed               Tool = "zed"
+	Kiro              Tool = "kiro"
 )
 
 // ConfigShape describes the JSON layout of a host's config file for
@@ -192,6 +193,15 @@ func SettingsPath(tool Tool) (string, error) {
 			return "", err
 		}
 		return filepath.Join(xdg, "zed", "settings.json"), nil
+	case Kiro:
+		// Kiro (AWS agentic IDE): user-global MCP config at
+		// ~/.kiro/settings/mcp.json. Kiro also supports a workspace-level
+		// config at <repo>/.kiro/settings/mcp.json, but to match grafel's
+		// ADR-0004 one-global-entry-per-tool model (the single daemon routes
+		// by caller-CWD, so a per-repo entry is unnecessary), we register the
+		// user-global file — same convention as Cursor (~/.cursor/mcp.json).
+		// The JSON shape is identical to Cursor: { "mcpServers": { ... } }.
+		return filepath.Join(home, ".kiro", "settings", "mcp.json"), nil
 	}
 	return "", fmt.Errorf("unknown tool: %s", tool)
 }
@@ -247,6 +257,13 @@ func DetectCodexPaths() []HostTarget {
 // other top-level keys such as "models"; all are preserved).
 func DetectContinueDevPaths() []HostTarget {
 	return DetectHostPaths([]string{".continue"}, "config.json", ShapeNested)
+}
+
+// DetectKiroPaths returns Kiro config paths to register.
+// Uses ~/.kiro/settings/mcp.json — ShapeFlat (mcpServers key at root,
+// same shape as Cursor).
+func DetectKiroPaths() []HostTarget {
+	return DetectHostPaths([]string{".kiro", "settings"}, "mcp.json", ShapeFlat)
 }
 
 // DetectZedPaths returns Zed config paths to register.

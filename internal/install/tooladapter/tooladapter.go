@@ -94,6 +94,8 @@ func adapters() []Adapter {
 		windsurfAdapter{},
 		codeiumAdapter{},
 		copilotAdapter{},
+		kiroAdapter{},
+		antigravityAdapter{},
 	}
 }
 

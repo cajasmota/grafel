@@ -63,6 +63,57 @@ func TestWriteAll_FreshRepo(t *testing.T) {
 	}
 }
 
+// TestWriteTargets_KiroAndAntigravity verifies the #5255 nested-directory
+// targets (Kiro steering + Antigravity rules) round-trip: WriteTargets
+// creates the parent dirs and block, a second write is idempotent, and
+// RemoveTargets deletes the grafel-authored files.
+func TestWriteTargets_KiroAndAntigravity(t *testing.T) {
+	repo := t.TempDir()
+	targets := []string{".kiro/steering/grafel.md", ".agent/rules/grafel.md"}
+
+	res, err := WriteTargets(repo, WriteOptions{GroupName: "demo"}, targets)
+	if err != nil {
+		t.Fatalf("WriteTargets: %v", err)
+	}
+	if len(res.Written) != 2 {
+		t.Fatalf("expected 2 written, got %v", res.Written)
+	}
+	for _, target := range targets {
+		data, err := os.ReadFile(filepath.Join(repo, target))
+		if err != nil {
+			t.Fatalf("missing %s: %v", target, err)
+		}
+		if !bytes.Contains(data, []byte(StartMarker)) || !bytes.Contains(data, []byte("grafel MCP")) {
+			t.Errorf("%s: block not written", target)
+		}
+	}
+
+	// Idempotent: second write does not duplicate the block.
+	if _, err := WriteTargets(repo, WriteOptions{GroupName: "demo"}, targets); err != nil {
+		t.Fatalf("WriteTargets second: %v", err)
+	}
+	for _, target := range targets {
+		data, _ := os.ReadFile(filepath.Join(repo, target))
+		if n := bytes.Count(data, []byte(StartMarker)); n != 1 {
+			t.Errorf("%s: expected 1 block, got %d", target, n)
+		}
+	}
+
+	// Remove strips/deletes grafel-authored files.
+	rr, err := RemoveTargets(repo, targets)
+	if err != nil {
+		t.Fatalf("RemoveTargets: %v", err)
+	}
+	if len(rr.Deleted) != 2 {
+		t.Fatalf("expected 2 deleted (grafel sole author), got %v / stripped %v", rr.Deleted, rr.Stripped)
+	}
+	for _, target := range targets {
+		if _, err := os.Stat(filepath.Join(repo, target)); !os.IsNotExist(err) {
+			t.Errorf("%s: expected removed, stat err=%v", target, err)
+		}
+	}
+}
+
 // TestWriteAll_Idempotent verifies that a second run does not duplicate
 // the block.
 func TestWriteAll_Idempotent(t *testing.T) {

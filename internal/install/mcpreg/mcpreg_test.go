@@ -477,6 +477,125 @@ func TestInstall_SkipsAbsentCursor(t *testing.T) {
 	}
 }
 
+// ── Kiro tests ──────────────────────────────────────────────────────────────
+
+// TestInstall_RegistersKiro: ~/.kiro/settings/ present → DetectKiroPaths
+// returns the mcp.json path and RegisterPath writes a valid grafel entry
+// with the Cursor-shaped { "mcpServers": { ... } } layout (#5255).
+func TestInstall_RegistersKiro(t *testing.T) {
+	home := withHome(t)
+
+	settingsDir := filepath.Join(home, ".kiro", "settings")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	targets := DetectKiroPaths()
+	wantPath := filepath.Join(settingsDir, "mcp.json")
+	if len(targets) != 1 || targets[0].Path != wantPath {
+		t.Fatalf("DetectKiroPaths: got %v, want [{%s ShapeFlat}]", targets, wantPath)
+	}
+	if targets[0].Shape != ShapeFlat {
+		t.Fatalf("Kiro shape: got %v, want ShapeFlat", targets[0].Shape)
+	}
+
+	// SettingsPath(Kiro) must resolve to the same user-global file.
+	sp, err := SettingsPath(Kiro)
+	if err != nil {
+		t.Fatalf("SettingsPath(Kiro): %v", err)
+	}
+	if sp != wantPath {
+		t.Fatalf("SettingsPath(Kiro) = %q, want %q", sp, wantPath)
+	}
+
+	if _, err := RegisterPath(wantPath, "/usr/local/bin/grafel"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		McpServers map[string]Entry `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := doc.McpServers[ServerName]
+	if got.Command != "/usr/local/bin/grafel" {
+		t.Fatalf("kiro: command = %q, want /usr/local/bin/grafel", got.Command)
+	}
+	if len(got.Args) != 1 || got.Args[0] != "mcp-bridge" {
+		t.Fatalf("kiro: args = %v, want [mcp-bridge]", got.Args)
+	}
+	if got.Type != "stdio" {
+		t.Fatalf("kiro: type = %q, want stdio", got.Type)
+	}
+}
+
+// TestInstall_SkipsAbsentKiro: no ~/.kiro dir → DetectKiroPaths is empty.
+func TestInstall_SkipsAbsentKiro(t *testing.T) {
+	withHome(t)
+	if targets := DetectKiroPaths(); len(targets) != 0 {
+		t.Fatalf("expected no Kiro paths when .kiro absent, got %v", targets)
+	}
+}
+
+// TestKiro_PreservesForeignServers_AndUnregisters: registering grafel into a
+// Kiro mcp.json that already has another server preserves the foreign entry,
+// and Unregister removes ONLY grafel's key (#5255 safety, same as Cursor).
+func TestKiro_PreservesForeignServers_AndUnregisters(t *testing.T) {
+	home := withHome(t)
+	settingsDir := filepath.Join(home, ".kiro", "settings")
+	if err := os.MkdirAll(settingsDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(settingsDir, "mcp.json")
+
+	seed := `{"mcpServers":{"other":{"command":"/bin/other","args":["x"]}},"someKiroSetting":true}`
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := RegisterPath(path, "/usr/local/bin/grafel"); err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	b, _ := os.ReadFile(path)
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if _, ok := servers["other"]; !ok {
+		t.Fatalf("foreign server 'other' was dropped: %v", servers)
+	}
+	if _, ok := servers[ServerName]; !ok {
+		t.Fatalf("grafel server not written: %v", servers)
+	}
+	if doc["someKiroSetting"] != true {
+		t.Fatalf("unrelated key 'someKiroSetting' not preserved: %v", doc["someKiroSetting"])
+	}
+
+	if err := UnregisterPath(path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(path)
+	doc = nil
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	servers, _ = doc["mcpServers"].(map[string]any)
+	if _, ok := servers[ServerName]; ok {
+		t.Fatalf("grafel not removed on unregister: %v", servers)
+	}
+	if _, ok := servers["other"]; !ok {
+		t.Fatalf("unregister dropped foreign server 'other': %v", servers)
+	}
+	if doc["someKiroSetting"] != true {
+		t.Fatalf("unregister dropped unrelated key: %v", doc["someKiroSetting"])
+	}
+}
+
 // ── Codex tests ───────────────────────────────────────────────────────────────
 
 // TestInstall_RegistersCodex: ~/.codex/ present → DetectCodexPaths returns
@@ -886,6 +1005,7 @@ func TestInstall_SkipsAbsentHost(t *testing.T) {
 		{"Codex", DetectCodexPaths},
 		{"ContinueDev", DetectContinueDevPaths},
 		{"Zed", DetectZedPaths},
+		{"Kiro", DetectKiroPaths},
 	}
 	for _, h := range hosts {
 		t.Run(h.name, func(t *testing.T) {

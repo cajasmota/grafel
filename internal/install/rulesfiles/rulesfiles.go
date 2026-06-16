@@ -10,6 +10,8 @@
 //   - Cursor Composer  → .cursorrules
 //   - Codeium          → .codeium/instructions.md
 //   - GitHub Copilot   → .github/copilot-instructions.md
+//   - Kiro             → .kiro/steering/grafel.md
+//   - Antigravity      → .agent/rules/grafel.md
 //
 // `grafel install` historically only wrote the rules block into
 // AGENTS.md, which meant Cascade and Cursor sessions did not learn that
@@ -101,6 +103,8 @@ var Targets = []string{
 	".cursorrules",
 	".codeium/instructions.md",
 	".github/copilot-instructions.md",
+	".kiro/steering/grafel.md",
+	".agent/rules/grafel.md",
 }
 
 // Status is the per-file state reported by Scan / doctor.
