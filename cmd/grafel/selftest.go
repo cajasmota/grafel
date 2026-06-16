@@ -12,7 +12,9 @@ package main
 //   - A fresh temp dir becomes BOTH the daemon root (GRAFEL_DAEMON_ROOT) and the
 //     registry/store home (GRAFEL_HOME), so the registry, the graph store, the
 //     socket, the pid file and the logs all live under it.
-//   - The dashboard binds a dynamic free port (GRAFEL_DASHBOARD_PORT).
+//   - The dashboard binds 127.0.0.1:0 (OS-assigned free port at bind time);
+//     the resolved port is learned via the daemon's OnDashboardListen hook
+//     (#5224 — avoids a pick-then-rebind race that flaked on Windows CI).
 //   - The Layer-1 self-defense conflict check is disabled for the run
 //     (GRAFEL_DISABLE_SELFDEFENSE) so the isolated daemon boots even when a
 //     canonical user daemon is already running.
@@ -48,6 +50,7 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
@@ -81,10 +84,19 @@ type layerResult struct {
 
 // selftestEnv holds the resolved isolation knobs + paths for one run.
 type selftestEnv struct {
-	root     string // temp daemon root == GRAFEL_HOME == GRAFEL_DAEMON_ROOT
-	repoDir  string // materialised fixture working tree (a git repo)
-	dashPort int
-	layout   daemon.Layout
+	root    string // temp daemon root == GRAFEL_HOME == GRAFEL_DAEMON_ROOT
+	repoDir string // materialised fixture working tree (a git repo)
+	layout  daemon.Layout
+
+	// dashPort is the dashboard port. We bind 127.0.0.1:0 and let the OS
+	// pick a free port AT BIND TIME, then learn the resolved port via the
+	// daemon's OnDashboardListen hook (stored atomically below). This kills
+	// the pick-then-close-then-rebind race that flaked on Windows CI (#5224).
+	dashPort atomic.Int64
+	// dashErr captures the dashboard goroutine's bind/serve error (if any) so
+	// a readiness timeout can report the REAL reason instead of an opaque
+	// dashboard=false (#5224, Part B).
+	dashErr atomic.Pointer[error]
 }
 
 // runSelftest is the `grafel selftest` entrypoint. It returns a process exit
@@ -151,7 +163,12 @@ func runSelftest(argv []string) int {
 			if err := selftestStopDaemon(env, cancel, daemonDone); err != nil {
 				return "", fmt.Errorf("stop daemon: %w", err)
 			}
-			// Restart a fresh daemon against the SAME isolated root.
+			// Restart a fresh daemon against the SAME isolated root. Reset the
+			// resolved-dashboard-port latch so selftestWaitReady waits for the
+			// NEW daemon's OnDashboardListen rather than probing the stale port
+			// from the first boot (#5224).
+			env.dashPort.Store(0)
+			env.dashErr.Store(nil)
 			ctx, cancel = context.WithCancel(context.Background())
 			daemonDone = make(chan error, 1)
 			startDaemon()
@@ -233,14 +250,13 @@ func setupSelftestEnv() (*selftestEnv, error) {
 		return nil, fmt.Errorf("register group: %w", err)
 	}
 
-	// Pick a free dashboard port and pin it via env so the daemon binds it.
-	port, err := freeTCPPort()
-	if err != nil {
-		return nil, fmt.Errorf("pick dashboard port: %w", err)
-	}
-	if err := mustSetenv("GRAFEL_DASHBOARD_PORT", strconv.Itoa(port)); err != nil {
-		return nil, err
-	}
+	// NOTE: the dashboard port is NOT pre-picked here. The old approach bound
+	// 127.0.0.1:0, read the port, CLOSED the socket, then handed the number to
+	// the daemon to RE-BIND — which races on Windows (TIME_WAIT / ephemeral
+	// exclusion) and made the daemon's net.Listen fail silently, so the
+	// readiness probe saw dashboard=false forever. Instead we pass
+	// DashboardPort=0 to the daemon (it binds 127.0.0.1:0 ONCE, at the moment
+	// it serves) and learn the resolved port via OnDashboardListen (#5224).
 
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
@@ -250,7 +266,7 @@ func setupSelftestEnv() (*selftestEnv, error) {
 		return nil, fmt.Errorf("ensure layout: %w", err)
 	}
 
-	return &selftestEnv{root: root, repoDir: repoDir, dashPort: port, layout: layout}, nil
+	return &selftestEnv{root: root, repoDir: repoDir, layout: layout}, nil
 }
 
 // materializeFixture writes every embedded fixture file into destDir.
@@ -342,8 +358,23 @@ func selftestDaemonConfig(env *selftestEnv) daemon.Config {
 		MCPListTools:   daemonMCPListTools,
 		MCPCallTool:    daemonMCPCallTool,
 		DashboardServe: makeDaemonDashboardServe(time.Now()),
-		DashboardPort:  env.dashPort,
-		DashboardBind:  "127.0.0.1",
+		// 0 = let the OS pick a free port AT BIND TIME (no pick-then-rebind
+		// race). The resolved port arrives via OnDashboardListen (#5224).
+		DashboardPort: 0,
+		DashboardBind: "127.0.0.1",
+		OnDashboardListen: func(addr string) {
+			// addr is "127.0.0.1:<port>"; extract and store the port.
+			if _, portStr, err := net.SplitHostPort(addr); err == nil {
+				if p, perr := strconv.Atoi(portStr); perr == nil {
+					env.dashPort.Store(int64(p))
+				}
+			}
+		},
+		OnDashboardError: func(err error) {
+			if err != nil {
+				env.dashErr.Store(&err)
+			}
+		},
 	}
 }
 
@@ -365,7 +396,7 @@ func selftestWaitReady(env *selftestEnv, timeout time.Duration) (string, error) 
 	deadline := time.Now().Add(timeout)
 	socketReady := false
 	dashReady := false
-	dashURL := fmt.Sprintf("http://127.0.0.1:%d/", env.dashPort)
+	dashURL := ""
 	httpClient := &http.Client{Timeout: 1 * time.Second}
 
 	for time.Now().Before(deadline) {
@@ -378,15 +409,29 @@ func selftestWaitReady(env *selftestEnv, timeout time.Duration) (string, error) 
 			}
 		}
 		if !dashReady {
-			if resp, err := httpClient.Get(dashURL); err == nil {
-				_ = resp.Body.Close()
-				dashReady = true
+			// The dashboard port is OS-assigned at bind time and reported via
+			// OnDashboardListen (#5224). Until that fires, port is 0 and we
+			// can't probe yet — just keep polling.
+			if p := env.dashPort.Load(); p > 0 {
+				dashURL = fmt.Sprintf("http://127.0.0.1:%d/", p)
+				if resp, err := httpClient.Get(dashURL); err == nil {
+					_ = resp.Body.Close()
+					dashReady = true
+				}
 			}
 		}
 		if socketReady && dashReady {
 			return fmt.Sprintf("socket=%s dashboard=%s", env.layout.SocketPath, dashURL), nil
 		}
 		time.Sleep(100 * time.Millisecond)
+	}
+	// Surface the dashboard goroutine's real bind/serve error (if any) so a
+	// future failure (e.g. on Windows CI) shows the reason, not just
+	// dashboard=false (#5224, Part B).
+	if !dashReady {
+		if ep := env.dashErr.Load(); ep != nil && *ep != nil {
+			return "", fmt.Errorf("not ready within %s (socket=%v dashboard=%v: %v)", timeout, socketReady, dashReady, *ep)
+		}
 	}
 	return "", fmt.Errorf("not ready within %s (socket=%v dashboard=%v)", timeout, socketReady, dashReady)
 }
@@ -746,16 +791,6 @@ func selftestStatsEntitiesWithRetry(env *selftestEnv, timeout time.Duration) str
 		time.Sleep(250 * time.Millisecond)
 	}
 	return last
-}
-
-// freeTCPPort asks the OS for an ephemeral free port and returns it.
-func freeTCPPort() (int, error) {
-	l, err := net.Listen("tcp", "127.0.0.1:0")
-	if err != nil {
-		return 0, err
-	}
-	defer l.Close()
-	return l.Addr().(*net.TCPAddr).Port, nil
 }
 
 // timeLayer runs fn, records wall time, and builds a layerResult.

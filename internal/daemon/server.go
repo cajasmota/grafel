@@ -114,12 +114,19 @@ type Config struct {
 	// function value avoids the import cycle that would arise if
 	// internal/daemon imported internal/dashboard directly.
 	//
-	// The hook receives the bind address and port to listen on, and the
-	// daemon logger. It should block until ctx is done.
-	DashboardServe func(ctx context.Context, bind string, port int, logger *slog.Logger) error
+	// The hook receives the bind address and port to listen on, the daemon
+	// logger, and an onListen callback. It should call onListen exactly once
+	// with the listener's RESOLVED address (e.g. "127.0.0.1:54231") as soon
+	// as net.Listen succeeds — this matters when port==0 (OS-assigned), so a
+	// caller can learn the actual port without a pick-then-rebind race
+	// (#5224). It should block until ctx is done.
+	DashboardServe func(ctx context.Context, bind string, port int, logger *slog.Logger, onListen func(addr string)) error
 
 	// DashboardPort is the TCP port for the embedded dashboard HTTP server
-	// (#929/#931). When 0 the dashboard is disabled. Default production
+	// (#929/#931). When negative the dashboard is disabled. 0 means "let the
+	// OS pick a free port at bind time" (used by `grafel selftest` to avoid a
+	// pick-then-close-then-rebind race that flakes on Windows — #5224); the
+	// resolved port is reported via OnDashboardListen. Default production
 	// value is 47274. Configurable via GRAFEL_DASHBOARD_PORT env or
 	// ~/.config/grafel/daemon.toml.
 	DashboardPort int
@@ -127,6 +134,18 @@ type Config struct {
 	// DashboardBind is the bind address for the dashboard TCP listener.
 	// Defaults to "127.0.0.1" (loopback-only).
 	DashboardBind string
+
+	// OnDashboardListen, when non-nil, is called with the dashboard
+	// listener's RESOLVED address (host:port) once it binds. This lets a
+	// caller that passed DashboardPort==0 learn the OS-assigned port without
+	// pre-binding+closing+rebinding (#5224).
+	OnDashboardListen func(addr string)
+
+	// OnDashboardError, when non-nil, is called with any error returned by
+	// the DashboardServe hook (e.g. a bind failure). The dashboard goroutine
+	// is non-fatal by design, so this hook lets a caller surface the real
+	// reason a readiness probe never sees the dashboard come up (#5224).
+	OnDashboardError func(err error)
 
 	// WatcherConfig tunes the file watcher. Zero value uses built-in
 	// defaults (5 s debounce, 50-event bulk threshold, 30 s heartbeat).
@@ -532,7 +551,9 @@ func Run(ctx context.Context, cfg Config) error {
 	// block the RPC socket. Shuts down when the daemon context is done.
 	// The DashboardServe hook is injected from cmd/grafel to avoid
 	// the import cycle that would arise from importing internal/dashboard here.
-	if cfg.DashboardServe != nil && cfg.DashboardPort > 0 {
+	// DashboardPort==0 means "OS-pick a free port at bind time" (#5224);
+	// only a NEGATIVE port disables the dashboard.
+	if cfg.DashboardServe != nil && cfg.DashboardPort >= 0 {
 		bind := cfg.DashboardBind
 		if bind == "" {
 			bind = "127.0.0.1"
@@ -540,11 +561,18 @@ func Run(ctx context.Context, cfg Config) error {
 		dashCtx, dashCancel := context.WithCancel(ctx)
 		defer dashCancel()
 		go func() {
-			if err := cfg.DashboardServe(dashCtx, bind, cfg.DashboardPort, logger); err != nil {
+			if err := cfg.DashboardServe(dashCtx, bind, cfg.DashboardPort, logger, cfg.OnDashboardListen); err != nil {
 				logger.Error("dashboard", "err", err)
+				if cfg.OnDashboardError != nil {
+					cfg.OnDashboardError(err)
+				}
 			}
 		}()
-		logger.Info("dashboard listening", "url", "http://"+bind+":"+fmt.Sprintf("%d", cfg.DashboardPort)+"/")
+		if cfg.DashboardPort > 0 {
+			logger.Info("dashboard listening", "url", "http://"+bind+":"+fmt.Sprintf("%d", cfg.DashboardPort)+"/")
+		} else {
+			logger.Info("dashboard listening", "bind", bind, "port", "os-assigned")
+		}
 	}
 
 	server := rpc.NewServer()

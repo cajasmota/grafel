@@ -1362,17 +1362,30 @@ func daemonPatternGroupDirs() map[string]string {
 //
 // This function lives in cmd/grafel (not internal/daemon) to avoid the
 // import cycle: internal/dashboard already imports internal/daemon.
-func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Context, bind string, port int, logger *slog.Logger) error {
-	return func(ctx context.Context, bind string, port int, logger *slog.Logger) error {
+func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Context, bind string, port int, logger *slog.Logger, onListen func(addr string)) error {
+	return func(ctx context.Context, bind string, port int, logger *slog.Logger, onListen func(addr string)) error {
 		addr := net.JoinHostPort(bind, strconv.Itoa(port))
 		l, err := net.Listen("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("dashboard listen %s: %w", addr, err)
 		}
 
+		// Resolve the ACTUAL bound address. When port==0 the OS assigned a
+		// free port at bind time (#5224); read it back so the dashboard
+		// config and any onListen observer see the real port — no
+		// pick-then-close-then-rebind race.
+		resolvedPort := port
+		if tcpAddr, ok := l.Addr().(*net.TCPAddr); ok {
+			resolvedPort = tcpAddr.Port
+		}
+		addr = net.JoinHostPort(bind, strconv.Itoa(resolvedPort))
+		if onListen != nil {
+			onListen(l.Addr().String())
+		}
+
 		// Build dashboard config: fixed port (the daemon already owns the listener).
 		cfg := dashboard.Config{
-			PortRange: dashboard.PortRange{Min: port, Max: port},
+			PortRange: dashboard.PortRange{Min: resolvedPort, Max: resolvedPort},
 			Bind:      bind,
 		}
 		srv, err := dashboard.NewServer(cfg, dashboard.NewLiveStore())
