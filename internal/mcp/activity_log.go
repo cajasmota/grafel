@@ -34,6 +34,15 @@ type ActivityLog struct {
 	queue chan MCPActivityEvent
 	once  sync.Once
 	done  chan struct{}
+
+	// started records whether the background worker has been launched. Close
+	// must not block on the worker's done channel if Append was never called
+	// (the worker — and therefore the open file handle — never came into
+	// existence). Guarded by startMu.
+	startMu   sync.Mutex
+	started   bool
+	closed    bool
+	closeOnce sync.Once
 }
 
 // NewActivityLog constructs an ActivityLog that writes to path. The
@@ -65,8 +74,21 @@ func DefaultActivityLogPath() string {
 
 // Append enqueues e for disk write. Returns immediately; never blocks.
 // The background goroutine (started on first call) performs the actual I/O.
+// Safe to call after Close: the event is silently dropped (sending on the
+// closed queue would otherwise panic, which select+default does NOT prevent).
 func (l *ActivityLog) Append(e MCPActivityEvent) {
+	l.startMu.Lock()
+	closed := l.closed
+	l.startMu.Unlock()
+	if closed {
+		return
+	}
 	l.once.Do(l.startWorker)
+	defer func() {
+		// Tolerate a Close that raced between the closed-check above and the
+		// send below: sending on a closed channel panics; recover and drop.
+		_ = recover()
+	}()
 	select {
 	case l.queue <- e:
 	default:
@@ -74,16 +96,49 @@ func (l *ActivityLog) Append(e MCPActivityEvent) {
 	}
 }
 
-// Close flushes the remaining queue and stops the background goroutine.
-// After Close returns, further Append calls are silently dropped.
+// Close flushes the remaining queue, stops the background goroutine and waits
+// for it to release the open file handle. It is idempotent and nil-safe, and
+// it does not block when the worker was never started (no Append ever ran), so
+// it is always safe to call on daemon shutdown.
+//
+// Closing the file handle here is what makes the isolated-root teardown work on
+// Windows: Windows refuses to unlink a file while a handle is open, whereas
+// Unix tolerates it. The daemon's graceful-stop path must call Close before any
+// caller removes ~/.grafel.
 func (l *ActivityLog) Close() {
-	close(l.queue)
-	<-l.done
+	if l == nil {
+		return
+	}
+	l.closeOnce.Do(func() {
+		l.startMu.Lock()
+		started := l.started
+		// Mark as closed so any concurrent startWorker becomes a no-op and the
+		// worker goroutine is never launched after Close, and so Append drops
+		// events instead of sending on the closed queue.
+		l.started = true
+		l.closed = true
+		l.startMu.Unlock()
+
+		close(l.queue)
+		if started {
+			// Worker is running (or about to drain the now-closed queue); wait
+			// for it to flush and Close the file handle.
+			<-l.done
+		}
+	})
 }
 
 // startWorker launches the background I/O goroutine. Called once via
-// sync.Once on the first Append.
+// sync.Once on the first Append. If Close has already run, it is a no-op so no
+// new file handle is opened after shutdown.
 func (l *ActivityLog) startWorker() {
+	l.startMu.Lock()
+	if l.started {
+		l.startMu.Unlock()
+		return
+	}
+	l.started = true
+	l.startMu.Unlock()
 	go l.worker()
 }
 

@@ -54,6 +54,36 @@ import (
 // created once in runDaemon before the RPC + dashboard servers start.
 var daemonProgressBroker = progress.NewBroker()
 
+// daemonActivityBroker is the process-wide MCP activity broker, captured at
+// dashboard wiring time so the graceful-stop path (ShutdownCleanup) can flush
+// and close its disk log handle (~/.grafel/mcp-activity.jsonl) before anything
+// removes the home dir. On Windows an open handle blocks unlink, which is what
+// made the isolated selftest teardown fail (#5264). Guarded by
+// daemonActivityBrokerMu.
+var (
+	daemonActivityBroker   *mcp.MCPActivityBroker
+	daemonActivityBrokerMu sync.Mutex
+)
+
+// setDaemonActivityBroker records the process-wide activity broker so the
+// shutdown path can close its disk log.
+func setDaemonActivityBroker(b *mcp.MCPActivityBroker) {
+	daemonActivityBrokerMu.Lock()
+	daemonActivityBroker = b
+	daemonActivityBrokerMu.Unlock()
+}
+
+// closeDaemonActivityLog flushes and closes the MCP activity disk log handle.
+// Idempotent and nil-safe; called from ShutdownCleanup on graceful stop.
+func closeDaemonActivityLog() {
+	daemonActivityBrokerMu.Lock()
+	b := daemonActivityBroker
+	daemonActivityBrokerMu.Unlock()
+	if b != nil {
+		b.CloseLog()
+	}
+}
+
 // defaultDashboardPort is the default TCP port for the embedded dashboard.
 const defaultDashboardPort = 47274
 
@@ -603,6 +633,10 @@ func runDaemon(argv []string) error {
 			if mcpSrv, err := mcpServerInstance(); err == nil {
 				mcpSrv.Stop()
 			}
+			// #5264: flush + close the MCP activity disk log so its file handle
+			// is released. On Windows an open handle blocks unlink, which made
+			// the isolated selftest teardown (os.RemoveAll of ~/.grafel) fail.
+			closeDaemonActivityLog()
 		},
 
 		// #5236: dead-ref / dead-worktree GC hooks. When a branch is deleted or
@@ -1423,6 +1457,9 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 			srv.SetMCPActivityLog(logPath)
 		}
 		srv.SetMCPActivityBroker(activityBroker)
+		// Record the broker process-wide so the graceful-stop path can flush +
+		// close its disk log handle before ~/.grafel is removed (#5264).
+		setDaemonActivityBroker(activityBroker)
 		// Wire the broker into the shared MCP server (lazily initialised).
 		// We call mcpServerInstance here to ensure it exists; on failure we
 		// proceed without activity emission rather than crashing the daemon.

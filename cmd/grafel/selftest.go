@@ -423,23 +423,10 @@ func selftestWaitReady(env *selftestEnv, timeout time.Duration) (string, error) 
 		if socketReady && dashReady {
 			return fmt.Sprintf("socket=%s dashboard=%s", env.layout.SocketPath, dashURL), nil
 		}
-		// INTERIM (#5264): On Windows CI the ISOLATED in-proc selftest daemon
-		// hangs somewhere after `MigrateToRefStore complete` so the dashboard
-		// goroutine never binds (socket=true, dashboard=false forever). The
-		// PRODUCTION daemon serves /healthz=200 on Windows, so this is a
-		// selftest-path-only defect we cannot yet reproduce locally. To unblock
-		// the gate, treat dashboard-readiness as BEST-EFFORT on Windows: once the
-		// RPC socket answers Ping, Layer-1 passes and we move on (later layers —
-		// MCP, cold-index — still run and the Part-B startup tracing will reveal
-		// the wedged step on the next Windows CI run). Non-Windows is unchanged.
-		if runtimeIsWindows() && socketReady && !dashReady {
-			fmt.Fprintf(os.Stderr, "selftest: WARNING dashboard-readiness skipped on Windows (socket up, dashboard not yet bound) pending #5264 — passing Layer-1 on RPC socket alone\n")
-			detail := fmt.Sprintf("socket=%s dashboard=skipped-on-windows(#5264)", env.layout.SocketPath)
-			if ep := env.dashErr.Load(); ep != nil && *ep != nil {
-				detail = fmt.Sprintf("%s dashErr=%v", detail, *ep)
-			}
-			return detail, nil
-		}
+		// (#5264) The Windows-only dashboard-readiness skip is removed: the
+		// Windows acceptance run confirmed the isolated selftest daemon now
+		// binds the dashboard (`daemon ready ... dashboard=http://127.0.0.1:…/`),
+		// so Layer-1 requires a real dashboard URL on every OS — no skip branch.
 		time.Sleep(100 * time.Millisecond)
 	}
 	// Surface the dashboard goroutine's real bind/serve error (if any) so a
@@ -635,11 +622,35 @@ func selftestTeardown(env *selftestEnv, cancel context.CancelFunc, done chan err
 		}
 	}
 	if !keepRoot {
-		if err := os.RemoveAll(env.root); err != nil {
+		if err := removeAllWithRetry(env.root); err != nil {
 			return "", fmt.Errorf("remove isolated root: %w", err)
 		}
 	}
 	return "clean shutdown; isolated root removed; no leftover socket", nil
+}
+
+// removeAllWithRetry is os.RemoveAll with a short bounded backoff. On Windows a
+// file cannot be unlinked while any process holds an open handle, and handles
+// are released slightly asynchronously after the owning goroutine exits — so a
+// single RemoveAll can race a not-quite-closed handle (e.g. the MCP activity
+// log; see #5264) and fail with "being used by another process". Retrying for a
+// short window tolerates that brief lag. On Unix the first attempt almost always
+// succeeds (open files can be unlinked), so the retry loop costs nothing.
+func removeAllWithRetry(path string) error {
+	const attempts = 10
+	var err error
+	for i := 0; i < attempts; i++ {
+		if err = os.RemoveAll(path); err == nil {
+			return nil
+		}
+		// Confirm it's really gone (RemoveAll can report an error yet still have
+		// removed the tree on some platforms); bail out cleanly if so.
+		if _, statErr := os.Stat(path); os.IsNotExist(statErr) {
+			return nil
+		}
+		time.Sleep(200 * time.Millisecond)
+	}
+	return err
 }
 
 // ── helpers ──────────────────────────────────────────────────────────────────

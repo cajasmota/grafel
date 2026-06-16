@@ -169,6 +169,20 @@ func (b *MCPActivityBroker) SetLog(l *ActivityLog) {
 	b.mu.Unlock()
 }
 
+// CloseLog flushes and closes the attached disk log (if any) and detaches it
+// from the broker. Idempotent and safe to call on daemon shutdown; after it
+// returns the underlying file handle is released, which is required before the
+// isolated test root (~/.grafel) can be removed on Windows.
+func (b *MCPActivityBroker) CloseLog() {
+	b.mu.Lock()
+	l := b.log
+	b.log = nil
+	b.mu.Unlock()
+	if l != nil {
+		l.Close()
+	}
+}
+
 // Publish fans e out to every subscriber and (optionally) appends it to the
 // disk log. Non-blocking: slow subscribers are silently dropped.
 func (b *MCPActivityBroker) Publish(e MCPActivityEvent) {
