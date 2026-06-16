@@ -84,3 +84,35 @@ func TestBrokerCloseLogIdempotent(t *testing.T) {
 	b.CloseLog()
 	b.CloseLog() // detached + already closed — must not panic
 }
+
+// TestBrokerCloseLogReleasesHandle is the #5264 regression at the broker level —
+// it exercises the EXACT call the daemon's graceful-stop cleanup makes
+// (MCPActivityBroker.CloseLog, via daemonShutdownCleanup → closeDaemonActivityLog).
+// The handle on mcp-activity.jsonl is opened lazily on the first published event
+// (mirroring the selftest's grafel_stats call). After CloseLog returns the file
+// must be immediately deletable — on Windows an open handle blocks unlink, which
+// was the failing teardown layer. The selftest daemon previously never invoked
+// this cleanup, so the handle leaked; this asserts the close path itself fully
+// releases the handle synchronously.
+func TestBrokerCloseLogReleasesHandle(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".grafel", activityLogFile)
+
+	b := NewMCPActivityBroker()
+	b.SetLog(NewActivityLog(path))
+	// Publishing opens the disk handle lazily on the worker's first write — the
+	// same trigger as an MCP grafel_stats Append in the selftest.
+	b.Publish(MCPActivityEvent{ToolName: "grafel_stats"})
+
+	// Graceful-stop cleanup: this is what daemonShutdownCleanup invokes.
+	b.CloseLog()
+
+	if _, err := os.Stat(path); err != nil {
+		t.Fatalf("expected activity log to exist after Publish+CloseLog: %v", err)
+	}
+	// The teardown that #5264 fixes: removing the isolated root. Must succeed
+	// once the handle is released (would fail on Windows if it leaked).
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatalf("could not remove root after CloseLog (handle still open?): %v", err)
+	}
+}

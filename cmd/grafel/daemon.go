@@ -84,6 +84,31 @@ func closeDaemonActivityLog() {
 	}
 }
 
+// daemonShutdownCleanup is the single graceful-stop cleanup used by BOTH the
+// production daemon (runDaemon) and the in-process selftest daemon
+// (selftestDaemonConfig). It stops the shared MCP server (flushing session
+// metrics, #2530) and flushes + closes the MCP activity disk log handle so its
+// file handle is released (#5264).
+//
+// Owning the activity-log close here — on the cleanup path BOTH daemon
+// configurations install — is what makes the close robust regardless of which
+// component lazily opened ~/.grafel/mcp-activity.jsonl. The handle is created on
+// the first MCP Append (e.g. the selftest's grafel_stats call) via the single
+// broker that the dashboard wiring (makeDaemonDashboardServe) registers
+// process-wide; the previous fix (#5271) only wired this cleanup into runDaemon,
+// so the selftest daemon — which builds its config separately — never closed the
+// handle and leaked it, failing the Windows teardown layer. Best-effort and
+// idempotent: safe to call on every shutdown.
+func daemonShutdownCleanup() {
+	if mcpSrv, err := mcpServerInstance(); err == nil {
+		mcpSrv.Stop()
+	}
+	// #5264: flush + close the MCP activity disk log so its file handle is
+	// released. On Windows an open handle blocks unlink, which made the
+	// isolated selftest teardown (os.RemoveAll of ~/.grafel) fail.
+	closeDaemonActivityLog()
+}
+
 // defaultDashboardPort is the default TCP port for the embedded dashboard.
 const defaultDashboardPort = 47274
 
@@ -627,17 +652,10 @@ func runDaemon(argv []string) error {
 			}
 		}(),
 
-		// Shutdown cleanup: flush MCP session metrics to disk (issue #2530).
-		// Best-effort: does not block shutdown on error.
-		ShutdownCleanup: func() {
-			if mcpSrv, err := mcpServerInstance(); err == nil {
-				mcpSrv.Stop()
-			}
-			// #5264: flush + close the MCP activity disk log so its file handle
-			// is released. On Windows an open handle blocks unlink, which made
-			// the isolated selftest teardown (os.RemoveAll of ~/.grafel) fail.
-			closeDaemonActivityLog()
-		},
+		// Shutdown cleanup: flush MCP session metrics to disk (issue #2530) and
+		// close the MCP activity disk log handle (#5264). Shared with the
+		// in-process selftest daemon so both close the handle identically.
+		ShutdownCleanup: daemonShutdownCleanup,
 
 		// #5236: dead-ref / dead-worktree GC hooks. When a branch is deleted or
 		// a worktree removed, the reaper-driven sweep reclaims its store dir;
