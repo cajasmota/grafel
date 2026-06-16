@@ -272,7 +272,14 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $Prefix = Join-Path $env:USERPROFILE '.grafel'
+          # grafel resolves its home as $HOME (if set) else %USERPROFILE% — see
+          # internal/install/state.go userHomeDir(). GitHub's Windows runner
+          # exports HOME, which can differ from USERPROFILE, so mirror the exact
+          # binary precedence here (and in the integrity/uninstall steps) instead
+          # of hard-coding USERPROFILE — otherwise the install writes install.json
+          # under $HOME\.grafel while the check looks under %USERPROFILE%\.grafel.
+          $GrafelHome = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+          $Prefix = Join-Path $GrafelHome '.grafel'
           $BinDir = Join-Path $Prefix 'bin'
           $Extract = Join-Path $Prefix 'extract'
           New-Item -ItemType Directory -Force -Path $BinDir, $Extract | Out-Null
@@ -326,6 +333,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # Mirror grafel's home precedence ($HOME else %USERPROFILE%) — see the
+          # Install (windows) step for why hard-coding USERPROFILE is wrong in CI.
+          $GrafelHome = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
           $claudeDir = Join-Path $env:USERPROFILE '.claude'
           New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
           $claudeCfg = Join-Path $claudeDir '.claude.json'
@@ -333,7 +343,7 @@ jobs:
           try {
             grafel install --copy --skills-source-dir ./skills --claude-config-dirs $claudeCfg --force
           } catch { Write-Host "install: service step warned (no service manager in CI) — tolerated" }
-          $prefix = Join-Path $env:USERPROFILE '.grafel'
+          $prefix = Join-Path $GrafelHome '.grafel'
           if (-not (Test-Path (Join-Path $prefix 'install.json'))) { throw "install.json not written" }
           if (-not (Test-Path $prefix)) { throw "~/.grafel not created" }
           if (-not (Select-String -Path $claudeCfg -Pattern 'grafel' -Quiet)) { throw "MCP not registered in .claude.json" }
@@ -366,8 +376,11 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
+          # Mirror grafel's home precedence ($HOME else %USERPROFILE%) so the
+          # teardown asserts against the same prefix the install actually used.
+          $GrafelHome = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
           $claudeCfg = Join-Path (Join-Path $env:USERPROFILE '.claude') '.claude.json'
-          $prefix = Join-Path $env:USERPROFILE '.grafel'
+          $prefix = Join-Path $GrafelHome '.grafel'
           try {
             grafel uninstall --yes --purge --remove-binary --claude-config-dirs $claudeCfg
           } catch { Write-Host "uninstall: service step warned — tolerated" }
