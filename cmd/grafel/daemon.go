@@ -1365,9 +1365,18 @@ func daemonPatternGroupDirs() map[string]string {
 func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Context, bind string, port int, logger *slog.Logger, onListen func(addr string)) error {
 	return func(ctx context.Context, bind string, port int, logger *slog.Logger, onListen func(addr string)) error {
 		addr := net.JoinHostPort(bind, strconv.Itoa(port))
+		// #5264: bracket the dashboard net.Listen — the prime suspect for the
+		// Windows isolated-selftest startup hang. If "dashboard-listen begin"
+		// appears with no matching "done", the TCP bind is wedging.
+		if logger != nil {
+			logger.Info("startup: dashboard-listen begin", "addr", addr)
+		}
 		l, err := net.Listen("tcp", addr)
 		if err != nil {
 			return fmt.Errorf("dashboard listen %s: %w", addr, err)
+		}
+		if logger != nil {
+			logger.Info("startup: dashboard-listen done", "addr", l.Addr().String())
 		}
 
 		// Resolve the ACTUAL bound address. When port==0 the OS assigned a
@@ -1462,6 +1471,10 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 		srv.UseListener(l)
 		if logger != nil {
 			logger.Info("dashboard ready", "url", "http://"+addr+"/")
+			// #5264: last trace before the blocking Serve loop. Once
+			// "dashboard ready" is logged the listener is bound + wired, so a
+			// hang past this point is in Serve/HTTP, not startup wiring.
+			logger.Info("startup: dashboard-serve-loop begin", "url", "http://"+addr+"/")
 		}
 		return srv.Serve(ctx)
 	}

@@ -276,20 +276,29 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 	}
 
+	// #5264: unconditional INFO-level startup tracing between
+	// `MigrateToRefStore complete` and the dashboard goroutine launch. On the
+	// next Windows CI run the LAST `begin` with no matching `done` pinpoints the
+	// wedged startup step (the isolated selftest daemon hangs here). Cheap +
+	// helps all platforms; does NOT change startup order/behavior.
+	logger.Info("startup: pidfile-acquire begin")
 	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath)
 	if err != nil {
 		return err
 	}
 	defer releasePID()
+	logger.Info("startup: pidfile-acquire done")
 
 	// Remove any stale socket file from a previous crash (Unix only; on
 	// Windows named pipes are not filesystem objects and os.Remove is a no-op).
 	_ = os.Remove(cfg.Layout.SocketPath)
 
+	logger.Info("startup: socket-listen begin", "socket", cfg.Layout.SocketPath)
 	listener, err := transport.Listen(cfg.Layout.SocketPath)
 	if err != nil {
 		return fmt.Errorf("listen %s: %w", cfg.Layout.SocketPath, err)
 	}
+	logger.Info("startup: socket-listen done")
 	// On Unix, chmod 0600 makes the socket per-user. The transport package
 	// sets an equivalent ACL on Windows named pipes so no explicit Chmod is
 	// needed there. chmodSocket is a no-op on Windows.
@@ -302,6 +311,7 @@ func Run(ctx context.Context, cfg Config) error {
 		_ = os.Remove(cfg.Layout.SocketPath)
 	}()
 
+	logger.Info("startup: service-init begin")
 	stopReq := make(chan struct{})
 	svc := newService(cfg.Index, cfg.Rebuild, cfg.QualityAudit, cfg.Layout.SocketPath, stopReq, logger, cfg.MaxConcurrentGroups)
 	svc.mcpListTools = cfg.MCPListTools
@@ -316,14 +326,19 @@ func Run(ctx context.Context, cfg Config) error {
 		svc.watcherMgrStats = cfg.WatcherMgrStats
 	}
 
+	logger.Info("startup: service-init done")
+
 	// Layer 2 self-defense: start CPU watchdog for ephemeral /tmp daemons.
 	// The watchdog passes the service's real inFlight counter so it can
 	// distinguish hot-loops (no work) from legitimate sustained indexing.
+	logger.Info("startup: cpu-watchdog begin")
 	StartCPUWatchdog(&svc.inFlight, logger)
+	logger.Info("startup: cpu-watchdog done")
 
 	// Phase B — bring up the scheduler + watcher when the caller
 	// supplied the four hooks. They are optional so tests can exercise
 	// the bare RPC surface without dragging the extractor into scope.
+	logger.Info("startup: scheduler-watcher begin", "enabled", cfg.SchedulerIndex != nil)
 	if cfg.SchedulerIndex != nil {
 		history := sched.LoadRSSHistory(cfg.RSSHistoryPath)
 		scheduler := sched.New(sched.Config{
@@ -515,10 +530,12 @@ func Run(ctx context.Context, cfg Config) error {
 			logger.Info("reaper: vanished-repo store GC started", "interval", "5m")
 		}
 	}
+	logger.Info("startup: scheduler-watcher done")
 
 	// Pattern confidence time-decay scheduler — runs every 6 hours (or a
 	// caller-supplied interval for tests). Requires PatternGroupDirs to be
 	// non-nil; skipped gracefully when the caller has not provided it.
+	logger.Info("startup: pattern-decay begin", "enabled", cfg.PatternGroupDirs != nil)
 	if cfg.PatternGroupDirs != nil {
 		decayInterval := cfg.PatternDecayInterval
 		if decayInterval <= 0 {
@@ -531,9 +548,11 @@ func Run(ctx context.Context, cfg Config) error {
 		defer decayCancel()
 		logger.Info("pattern decay scheduler started", "interval", decayInterval.String())
 	}
+	logger.Info("startup: pattern-decay done")
 
 	// Docgen background sweeper (issue #2216): removes stale staging runs and
 	// .previous-* backups every 24 h. Opt-in: nil = disabled (--no-auto-cleanup).
+	logger.Info("startup: docgen-sweeper begin", "enabled", cfg.DocgenSweep != nil)
 	if cfg.DocgenSweep != nil {
 		sweepCfg := *cfg.DocgenSweep
 		sweepCfg.Logger = logger
@@ -546,6 +565,7 @@ func Run(ctx context.Context, cfg Config) error {
 		}
 		logger.Info("docgen sweeper started", "interval", interval.String())
 	}
+	logger.Info("startup: docgen-sweeper done")
 
 	// Dashboard HTTP server — started in a goroutine so it does not
 	// block the RPC socket. Shuts down when the daemon context is done.
@@ -553,6 +573,8 @@ func Run(ctx context.Context, cfg Config) error {
 	// the import cycle that would arise from importing internal/dashboard here.
 	// DashboardPort==0 means "OS-pick a free port at bind time" (#5224);
 	// only a NEGATIVE port disables the dashboard.
+	logger.Info("startup: dashboard-launch begin",
+		"serve_hook", cfg.DashboardServe != nil, "port", cfg.DashboardPort)
 	if cfg.DashboardServe != nil && cfg.DashboardPort >= 0 {
 		bind := cfg.DashboardBind
 		if bind == "" {
@@ -561,12 +583,17 @@ func Run(ctx context.Context, cfg Config) error {
 		dashCtx, dashCancel := context.WithCancel(ctx)
 		defer dashCancel()
 		go func() {
+			// #5264: bracket the actual DashboardServe call (which does the
+			// net.Listen + heavy wiring) so a hang inside the goroutine is
+			// distinguishable from the goroutine never being scheduled.
+			logger.Info("startup: dashboard-serve-goroutine begin")
 			if err := cfg.DashboardServe(dashCtx, bind, cfg.DashboardPort, logger, cfg.OnDashboardListen); err != nil {
 				logger.Error("dashboard", "err", err)
 				if cfg.OnDashboardError != nil {
 					cfg.OnDashboardError(err)
 				}
 			}
+			logger.Info("startup: dashboard-serve-goroutine done")
 		}()
 		if cfg.DashboardPort > 0 {
 			logger.Info("dashboard listening", "url", "http://"+bind+":"+fmt.Sprintf("%d", cfg.DashboardPort)+"/")
@@ -574,6 +601,7 @@ func Run(ctx context.Context, cfg Config) error {
 			logger.Info("dashboard listening", "bind", bind, "port", "os-assigned")
 		}
 	}
+	logger.Info("startup: dashboard-launch done")
 
 	server := rpc.NewServer()
 	if err := server.RegisterName(proto.ServiceName, svc); err != nil {
