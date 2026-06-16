@@ -27,9 +27,10 @@ func TestDefaultEnablement_ReproducesAllSixRulesFiles(t *testing.T) {
 	}
 }
 
-// TestDefaultEnablement_ClaudeAndWindsurfMCP guards that the default set
-// registers exactly the two MCP tools grafel writes today.
-func TestDefaultEnablement_ClaudeAndWindsurfMCP(t *testing.T) {
+// TestDefaultEnablement_MCPTools guards the set of MCP tools grafel
+// registers under the default (all-tools) enablement. Cursor and Codex were
+// added in #5254 alongside the pre-existing Claude + Windsurf.
+func TestDefaultEnablement_MCPTools(t *testing.T) {
 	var mcp []mcpreg.Tool
 	for _, a := range tooladapter.EnabledAdapters(nil) {
 		if a.SupportsMCP() {
@@ -37,7 +38,7 @@ func TestDefaultEnablement_ClaudeAndWindsurfMCP(t *testing.T) {
 		}
 	}
 	sort.Slice(mcp, func(i, j int) bool { return mcp[i] < mcp[j] })
-	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Windsurf}
+	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Codex, mcpreg.Cursor, mcpreg.Windsurf}
 	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
 	if !reflect.DeepEqual(mcp, want) {
 		t.Fatalf("default MCP tools = %v, want %v", mcp, want)
@@ -55,9 +56,12 @@ func TestRestrictedEnablement_OnlySubset(t *testing.T) {
 	if rt := unionRulesTargets(ad); !reflect.DeepEqual(rt, []string{".cursorrules"}) {
 		t.Fatalf("cursor rules targets = %v, want [.cursorrules]", rt)
 	}
-	// Cursor has no MCP today and no agent hook.
-	if ad[0].SupportsMCP() || ad[0].SupportsAgentHook() || ad[0].SupportsSkills() {
-		t.Fatalf("cursor should not support MCP/hook/skills")
+	// Cursor registers MCP (#5254) but has no agent hook or skills.
+	if !ad[0].SupportsMCP() || ad[0].MCPTool() != mcpreg.Cursor {
+		t.Fatalf("cursor must register Cursor MCP")
+	}
+	if ad[0].SupportsAgentHook() || ad[0].SupportsSkills() {
+		t.Fatalf("cursor should not support hook/skills")
 	}
 }
 

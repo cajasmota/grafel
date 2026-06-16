@@ -4,6 +4,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/install"
@@ -77,5 +78,30 @@ func TestApply_RestrictedEnablement_OnlySubset(t *testing.T) {
 	sort.Strings(want)
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("restricted rules files = %v, want %v", got, want)
+	}
+}
+
+// TestApply_MCPSettings_CursorWindsurfCodex proves that enabling the three
+// #5254 MCP tools records their per-tool config paths (in the right format)
+// in Result.MCPSettings, and that a tool without MCP (copilot) records none.
+func TestApply_MCPSettings_CursorWindsurfCodex(t *testing.T) {
+	res := applyDryRun(t, []string{"cursor", "windsurf", "codex", "copilot"})
+
+	joined := strings.Join(res.MCPSettings, "\n")
+	for _, want := range []string{
+		filepath.Join(".cursor", "mcp.json"),
+		filepath.Join(".codeium", "windsurf", "mcp_config.json"),
+		filepath.Join(".codex", "config.toml"),
+	} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("MCPSettings missing %q:\n%s", want, joined)
+		}
+	}
+	if strings.Contains(joined, filepath.Join(".codex", "config.json")) {
+		t.Fatalf("Codex MCP must be config.toml, not config.json:\n%s", joined)
+	}
+	// copilot has no MCP host; nothing copilot-specific should appear.
+	if strings.Contains(joined, "copilot") {
+		t.Fatalf("copilot should not contribute an MCP path:\n%s", joined)
 	}
 }

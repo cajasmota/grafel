@@ -53,31 +53,31 @@ func (claudeAdapter) SupportsAgentHook() bool    { return true }
 
 // ── codex ────────────────────────────────────────────────────────────
 //
-// Codex / OpenAI reads AGENTS.md. No MCP entry is registered by grafel
-// today (Codex MCP is a follow-up, #5254/#5255).
+// Codex / OpenAI reads AGENTS.md and registers an MCP server in its TOML
+// config (~/.codex/config.toml, table [mcp_servers.grafel]) — #5254.
 type codexAdapter struct{}
 
 func (codexAdapter) ID() string                 { return "codex" }
 func (codexAdapter) DisplayName() string        { return "Codex" }
 func (codexAdapter) DetectInstalled() bool      { return hasMCPHost(mcpreg.Codex) }
 func (codexAdapter) RulesFileTargets() []string { return []string{rulesAGENTS} }
-func (codexAdapter) SupportsMCP() bool          { return false }
-func (codexAdapter) MCPTool() mcpreg.Tool       { return "" }
+func (codexAdapter) SupportsMCP() bool          { return true }
+func (codexAdapter) MCPTool() mcpreg.Tool       { return mcpreg.Codex }
 func (codexAdapter) SupportsSkills() bool       { return false }
 func (codexAdapter) SupportsAgentHook() bool    { return false }
 
 // ── cursor ───────────────────────────────────────────────────────────
 //
-// Cursor Composer reads .cursorrules. grafel does not register Cursor MCP
-// today (#5254/#5255).
+// Cursor Composer reads .cursorrules and registers an MCP server in its
+// user-global JSON config (~/.cursor/mcp.json, mcpServers.grafel) — #5254.
 type cursorAdapter struct{}
 
 func (cursorAdapter) ID() string                 { return "cursor" }
 func (cursorAdapter) DisplayName() string        { return "Cursor" }
 func (cursorAdapter) DetectInstalled() bool      { return hasMCPHost(mcpreg.Cursor) }
 func (cursorAdapter) RulesFileTargets() []string { return []string{rulesCursor} }
-func (cursorAdapter) SupportsMCP() bool          { return false }
-func (cursorAdapter) MCPTool() mcpreg.Tool       { return "" }
+func (cursorAdapter) SupportsMCP() bool          { return true }
+func (cursorAdapter) MCPTool() mcpreg.Tool       { return mcpreg.Cursor }
 func (cursorAdapter) SupportsSkills() bool       { return false }
 func (cursorAdapter) SupportsAgentHook() bool    { return false }
 
