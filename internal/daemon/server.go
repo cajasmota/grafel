@@ -181,6 +181,18 @@ type Config struct {
 	// are logged but do not block shutdown. Injected from cmd/grafel to call
 	// the MCP server's Stop method (issue #2530).
 	ShutdownCleanup func()
+
+	// DeadRefTier, when non-nil, is the tier Manager's per-ref forget hook
+	// (#5236). The dead-ref sweeper calls it to drop the in-memory slot for a
+	// reaped ref. Injected from cmd/grafel (which owns daemonTierMgr).
+	DeadRefTier RefForgetter
+
+	// DeadRefDropReader, when non-nil, releases the cached mmap'd fbreader for a
+	// reaped (repoPath, ref) so the resident graph leaves memory (#5236).
+	// Injected from cmd/grafel to call the MCP graph cache's per-ref
+	// invalidation. nil leaves the on-disk delete to run without an explicit
+	// reader drop (the cache ages out on its own).
+	DeadRefDropReader func(repoPath, ref string)
 }
 
 // Run starts the daemon. It blocks until either:
@@ -453,8 +465,21 @@ func Run(ctx context.Context, cfg Config) error {
 			// disk have their store dir deleted and their fsnotify
 			// subscription dropped, reclaiming the orphaned ~100MB worktree
 			// stores that accumulated under ~/.grafel/store/.
+			trackedRepos := makeReaperTrackedRepos(cfg.ReposToWatch, wtStore)
+			// #5236: dead-ref / dead-worktree sweep. Reclaims store dirs +
+			// resident graphs for refs git no longer knows about, within
+			// still-present repos. Driven by the reaper on the shared cadence.
+			deadRefSweeper := NewDeadRefSweeper(DeadRefConfig{
+				TrackedRepos:   trackedRepos,
+				LiveRefs:       LiveGitRefs,
+				PrimaryRef:     PrimaryGitRef,
+				RefsDirForRepo: RefsDirForRepo,
+				DropReader:     cfg.DeadRefDropReader,
+				Tier:           cfg.DeadRefTier,
+				Logger:         logger,
+			})
 			reaper := NewReaper(ReaperConfig{
-				TrackedRepos:    makeReaperTrackedRepos(cfg.ReposToWatch, wtStore),
+				TrackedRepos:    trackedRepos,
 				StoreDirForRepo: repoBaseDir,
 				Untrack: func(repoPath string) {
 					watcher.RemoveRepo(repoPath)
@@ -462,6 +487,7 @@ func Run(ctx context.Context, cfg Config) error {
 				// #5142: also reap stale/orphaned `grafel watch` PIDs that
 				// registered in the daemon-owned registry under the daemon root.
 				WatchRegistry: watchreg.New(watchreg.DefaultPath(cfg.Layout.Root)),
+				DeadRefs:      deadRefSweeper,
 				Logger:        logger,
 			})
 			reaperStop := make(chan struct{})

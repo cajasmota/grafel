@@ -570,6 +570,13 @@ func runDaemon(argv []string) error {
 				mcpSrv.Stop()
 			}
 		},
+
+		// #5236: dead-ref / dead-worktree GC hooks. When a branch is deleted or
+		// a worktree removed, the reaper-driven sweep reclaims its store dir;
+		// these hooks also drop the cached mmap reader and the tier slot so the
+		// resident graph leaves memory.
+		DeadRefTier:       deadRefTierForgetter{},
+		DeadRefDropReader: deadRefDropReader,
 	}
 
 	ctx := context.Background()

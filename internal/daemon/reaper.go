@@ -81,6 +81,12 @@ type ReaperConfig struct {
 	// orphaned watchers. nil → os.Getpid (the running daemon owns the sweep).
 	LiveDaemonPID func() int
 
+	// DeadRefs, when non-nil, is the dead-ref / dead-worktree store sweep
+	// (#5236). It reclaims store dirs + resident graphs for refs that git no
+	// longer knows about, within still-present repos. The Reaper drives it on
+	// the same cadence as the vanished-repo GC. nil disables it.
+	DeadRefs *DeadRefSweeper
+
 	// Interval between sweeps. Default (zero value): 5 minutes.
 	Interval time.Duration
 
@@ -101,6 +107,8 @@ type ReapResult struct {
 	// WatchersReaped is the number of stale/orphaned `grafel watch` PID
 	// registry entries reaped this sweep (#5142).
 	WatchersReaped int
+	// DeadRefs summarises the dead-ref / dead-worktree sub-sweep (#5236).
+	DeadRefs DeadRefResult
 }
 
 // Reaper periodically GCs stores for repos that no longer exist on disk.
@@ -153,6 +161,12 @@ func (r *Reaper) Sweep() ReapResult {
 	// #5142: reap stale/orphaned `grafel watch` PIDs. Independent of the
 	// vanished-repo GC below, so it runs even in configs without TrackedRepos.
 	res.WatchersReaped = r.sweepWatchers()
+	// #5236: dead-ref / dead-worktree sweep. Independent of the vanished-repo
+	// GC below; runs on the same cadence so a deleted branch's store + resident
+	// graph are reclaimed without a separate scheduler.
+	if r.cfg.DeadRefs != nil {
+		res.DeadRefs = r.cfg.DeadRefs.Sweep()
+	}
 	if r.cfg.TrackedRepos == nil {
 		return res
 	}

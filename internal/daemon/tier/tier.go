@@ -492,6 +492,25 @@ func (m *Manager) Forget(repoPath string) int {
 	return n
 }
 
+// ForgetRef removes the single slot for (repoPath, ref) from the Manager,
+// dropping it from the in-memory accounting WITHOUT firing eviction/disk
+// callbacks. It is the tier-side half of the dead-ref reaper (issue #5236):
+// once a branch is deleted or a worktree is removed, its stored ref must be
+// untracked so the Manager stops counting it toward pressure and stops
+// attempting cold-wakes against a ref that is gone. The on-disk store dir and
+// the cached mmap reader are released separately by the dead-ref sweeper.
+// Returns true when a slot was actually present and removed.
+func (m *Manager) ForgetRef(repoPath, ref string) bool {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	key := SlotKey{RepoPath: repoPath, Ref: ref}
+	if _, ok := m.slots[key]; !ok {
+		return false
+	}
+	delete(m.slots, key)
+	return true
+}
+
 // Len returns the number of slots currently tracked. Used by the reaper's
 // memory-accounting assertions and diagnostics.
 func (m *Manager) Len() int {

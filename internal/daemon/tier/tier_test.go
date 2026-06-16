@@ -452,3 +452,34 @@ func TestManager_Forget(t *testing.T) {
 		t.Fatalf("second Forget returned %d, want 0", n)
 	}
 }
+
+func TestManager_ForgetRef(t *testing.T) {
+	clock, _ := makeClock()
+	m := tier.NewManagerForTest(tier.DefaultTTLConfig(), clock, noopEvict, noopReload)
+
+	repo := "/repos/app"
+	m.Register(tier.SlotKey{RepoPath: repo, Ref: "main"}, true, tier.SlotKindBranchMain)
+	m.Register(tier.SlotKey{RepoPath: repo, Ref: "feat/x"}, false, tier.SlotKindBranchFeature)
+
+	if got := m.Len(); got != 2 {
+		t.Fatalf("Len before = %d, want 2", got)
+	}
+
+	// Forget a single ref: only that slot is dropped.
+	if !m.ForgetRef(repo, "feat/x") {
+		t.Fatalf("ForgetRef(feat/x) = false, want true")
+	}
+	if got := m.Len(); got != 1 {
+		t.Fatalf("Len after = %d, want 1", got)
+	}
+	if m.Get(tier.SlotKey{RepoPath: repo, Ref: "main"}) != tier.TierHot {
+		t.Fatalf("main slot wrongly dropped by ForgetRef")
+	}
+	// Idempotent / unknown ref: returns false.
+	if m.ForgetRef(repo, "feat/x") {
+		t.Fatalf("second ForgetRef returned true, want false")
+	}
+	if m.ForgetRef(repo, "never-registered") {
+		t.Fatalf("ForgetRef of unknown ref returned true, want false")
+	}
+}
