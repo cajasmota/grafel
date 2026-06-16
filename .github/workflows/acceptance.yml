@@ -284,7 +284,8 @@ jobs:
           $ErrorActionPreference = 'Stop'
           (Get-Command grafel).Source
           grafel --version
-          try { grafel doctor } catch { Write-Host "doctor non-zero (no service in headless CI) — tolerated" }
+          grafel doctor
+          if ($LASTEXITCODE -ne 0) { Write-Host "doctor non-zero (not yet installed / no service in headless CI) — tolerated"; $global:LASTEXITCODE = 0 }
 
       # MCP config + install.json via the real `grafel install --copy` path.
       # Service registration (launchd/systemd) is expected to warn in headless
