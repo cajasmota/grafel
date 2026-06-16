@@ -79,6 +79,27 @@ type OrphanRootConfig struct {
 	// not-exist is treated as "exists" so a flaky FS never reaps a live root).
 	PathExists func(path string) bool
 
+	// ReadRootManifest reads a root's recorded source-path manifest (#5267).
+	// Returns (manifest, present, err); present=false for a legacy root with no
+	// manifest. nil → ReadRootManifest. When a manifest IS present, its recorded
+	// source_path is preferred over the forward map, so a root whose source path
+	// was removed from the registry (and thus no longer hashes forward) is still
+	// attributable. Injected in tests.
+	ReadRootManifest func(rootDir string) (RootManifest, bool, error)
+
+	// AllowUndeterminableReap, when true, lets the OPERATOR opt-in reap path
+	// (#5268) consider roots whose source path is undeterminable (legacy +
+	// path-gone + not in the forward map), bounded by ReapOlderThan. The
+	// PERIODIC reaper NEVER sets this — it stays fail-closed. Default false.
+	AllowUndeterminableReap bool
+
+	// ReapOlderThan bounds the opt-in undeterminable reap: only an
+	// undeterminable root whose newest graph artifact mtime is older than this
+	// is eligible. Ignored unless AllowUndeterminableReap is true. A zero/negative
+	// value with AllowUndeterminableReap set reaps NOTHING (an explicit age
+	// bound is required to reap undeterminable roots).
+	ReapOlderThan time.Duration
+
 	// Tier, when non-nil, has Forget(repoPath) called for every reaped orphan
 	// root so any lingering in-memory slots leave the tier accounting.
 	Tier TierForgetter
@@ -106,8 +127,16 @@ type OrphanRootVerdict struct {
 	Root string
 	// SourcePath is the attributed source path, or "" when undeterminable.
 	SourcePath string
-	// PathKnown is true when Root mapped to a known source path.
+	// PathKnown is true when Root mapped to a known source path (via the
+	// recorded manifest source_path OR the forward map).
 	PathKnown bool
+	// FromManifest is true when SourcePath came from the root's recorded
+	// `root.json` manifest (#5267) rather than the forward hash map.
+	FromManifest bool
+	// Undeterminable is true when the source path could not be determined at all
+	// (no manifest AND not in the forward map). Such a root is KEPT by default
+	// and only reaped under the operator opt-in (#5268).
+	Undeterminable bool
 	// PathExists is true when the attributed source path exists on disk.
 	PathExists bool
 	// RefCount is the number of stored refs under <root>/refs/.
@@ -168,6 +197,9 @@ func NewOrphanRootSweeper(cfg OrphanRootConfig) *OrphanRootSweeper {
 	}
 	if cfg.PathExists == nil {
 		cfg.PathExists = repoExists
+	}
+	if cfg.ReadRootManifest == nil {
+		cfg.ReadRootManifest = ReadRootManifest
 	}
 	if cfg.GraceWindow == 0 {
 		cfg.GraceWindow = 24 * time.Hour
@@ -233,10 +265,23 @@ func (s *OrphanRootSweeper) Attribute() []OrphanRootVerdict {
 		root := filepath.Join(base, e.Name())
 		v := OrphanRootVerdict{Root: root}
 
-		// Forward attribution: does this root map to a KNOWN source path?
-		src, known := r2p[filepath.Clean(root)]
+		// Attribution priority (#5267): prefer the root's RECORDED source path
+		// (root.json manifest) over the one-way forward map. A recorded path is
+		// authoritative even when the path was removed from the registry / git
+		// worktree set and so no longer hashes forward to this root.
+		var src string
+		var known bool
+		if mfst, present, mErr := s.cfg.ReadRootManifest(root); mErr == nil && present && mfst.SourcePath != "" {
+			src = mfst.SourcePath
+			known = true
+			v.FromManifest = true
+		} else {
+			// Legacy root (no manifest) → fall back to the forward map.
+			src, known = r2p[filepath.Clean(root)]
+		}
 		v.SourcePath = src
 		v.PathKnown = known
+		v.Undeterminable = !known
 
 		// Cheap diagnostics for the operator view.
 		v.RefCount = countRefs(filepath.Join(root, "refs"))
@@ -256,26 +301,63 @@ func (s *OrphanRootSweeper) Attribute() []OrphanRootVerdict {
 		}
 
 		switch {
-		case !known:
-			// Undeterminable source path → FAIL-CLOSED KEEP.
-			v.Verdict = "KEEP"
-			v.Reason = "source path undeterminable (no known repo/worktree maps to this root) — fail-closed"
-		case v.PathExists:
-			// Source path still exists (covers live group/primary repos) → KEEP.
+		case known && v.PathExists:
+			// Source path exists (covers live group/primary repos) → KEEP. This
+			// guard precedes the undeterminable branch so a root with a recorded
+			// manifest whose path STILL EXISTS is never reaped, even in opt-in mode.
 			v.Verdict = "KEEP"
 			v.Reason = "source path exists on disk"
-		case v.WithinGrace:
-			// Vanished but recently indexed → KEEP (race guard).
+		case known && v.WithinGrace:
+			// Known-but-gone yet recently indexed → KEEP (race guard).
 			v.Verdict = "KEEP"
 			v.Reason = "source path gone but recently indexed (grace window)"
-		default:
-			// Vanished, not live, outside grace → ORPHAN.
+		case known:
+			// Known, vanished, not live, outside grace → ORPHAN. With a recorded
+			// manifest this is now attributable WITHOUT the forward map.
 			v.Verdict = "ORPHAN"
-			v.Reason = "source path gone and maps to no live group/primary"
+			if v.FromManifest {
+				v.Reason = "recorded source path gone and maps to no live group/primary"
+			} else {
+				v.Reason = "source path gone and maps to no live group/primary"
+			}
+		case s.cfg.AllowUndeterminableReap && s.reapableUndeterminable(v):
+			// Operator opt-in (#5268): undeterminable + gone + older than the
+			// explicit age bound → ORPHAN. Recoverable (re-indexes if needed).
+			v.Verdict = "ORPHAN"
+			v.Reason = "source path undeterminable and untouched beyond --older-than — operator opt-in reap (re-indexes if needed)"
+		case v.WithinGrace:
+			// Undeterminable but recently indexed → KEEP even in opt-in mode.
+			v.Verdict = "KEEP"
+			v.Reason = "source path undeterminable; recently indexed (grace window)"
+		default:
+			// Undeterminable source path → FAIL-CLOSED KEEP (default + periodic).
+			v.Verdict = "KEEP"
+			v.Reason = "source path undeterminable (no manifest; no known repo/worktree maps to this root) — fail-closed"
 		}
 		out = append(out, v)
 	}
 	return out
+}
+
+// reapableUndeterminable reports whether an UNDETERMINABLE root is eligible for
+// the operator opt-in reap (#5268). It is the only path that can reap a root
+// whose source path is undeterminable, and it requires an EXPLICIT positive age
+// bound: a root is reapable only when its newest graph artifact is OLDER than
+// ReapOlderThan. With a zero/negative bound nothing is reaped (an explicit
+// --older-than is mandatory). A root with no artifact at all has unknown age and
+// is conservatively NOT reaped.
+func (s *OrphanRootSweeper) reapableUndeterminable(v OrphanRootVerdict) bool {
+	if !s.cfg.AllowUndeterminableReap {
+		return false
+	}
+	if s.cfg.ReapOlderThan <= 0 {
+		return false
+	}
+	if v.AgeOfNewest <= 0 {
+		// No datable artifact → unknown age → keep (conservative).
+		return false
+	}
+	return v.AgeOfNewest > s.cfg.ReapOlderThan
 }
 
 // Sweep enumerates the store roots and PRUNES the orphans (path-gone, not-live,

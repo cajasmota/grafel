@@ -23,6 +23,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -50,6 +51,9 @@ Subcommands:
 func newStoreGCCmd() *cobra.Command {
 	var prune bool
 	var dryRun bool
+	var includeUndeterminable bool
+	var olderThan string
+	var yes bool
 	cmd := &cobra.Command{
 		Use:   "gc [--prune]",
 		Short: "Reap orphan top-level store roots (default: dry-run)",
@@ -59,15 +63,51 @@ registered group, ref count, on-disk size, age of newest graph artifact, and a
 verdict (KEEP / ORPHAN-would-prune).
 
 An ORPHAN is a root whose source path is GONE and which maps to no live
-group/primary and is outside the 24h grace window. The store-root hash is
-one-way, so a root that maps to NO known repo/worktree is reported
-UNDETERMINABLE and always KEPT (fail-closed).
+group/primary and is outside the 24h grace window. A root now records its
+canonical source path in a root.json manifest (#5267), so even a root whose
+repo was removed from the registry / deleted from disk is attributable and
+reapable. A LEGACY root with no manifest that maps to NO known repo/worktree is
+reported UNDETERMINABLE and KEPT (fail-closed).
 
 By default this is a DRY RUN — nothing is removed. Pass --prune to actually
-reap the ORPHAN roots and reclaim their bytes. Safe to run whether or not the
-daemon is running.`,
+reap the ORPHAN roots and reclaim their bytes.
+
+Operator opt-in (#5268), for legacy stores with undeterminable roots:
+  --include-undeterminable  also consider undeterminable (legacy / unmapped)
+                            roots. REQUIRES --older-than. Reaping a root is
+                            recoverable — it re-indexes automatically if needed.
+  --older-than <dur>        only reap an undeterminable root whose newest graph
+                            artifact is older than this (e.g. 168h, 7d, 30d).
+  --yes                     REQUIRED to actually prune in --include-undeterminable
+                            mode; without it the run stays a dry-run even with
+                            --prune (guard against accidental aggressive reap).
+
+The periodic in-daemon reaper NEVER uses the opt-in path — it stays fail-closed.
+Safe to run whether or not the daemon is running.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runStoreGC(cmd.OutOrStdout(), prune, cliKnownSourcePaths)
+			var reapOlderThan time.Duration
+			if olderThan != "" {
+				d, perr := parseDurationWithDays(olderThan)
+				if perr != nil {
+					return fmt.Errorf("invalid --older-than %q: %w", olderThan, perr)
+				}
+				reapOlderThan = d
+			}
+			if includeUndeterminable && reapOlderThan <= 0 {
+				return fmt.Errorf("--include-undeterminable requires --older-than <dur> (e.g. --older-than 7d) so undeterminable roots are reaped only beyond an explicit age bound")
+			}
+			// --yes is the prune authorisation for opt-in mode. Without it the
+			// run is forced to dry-run even if --prune was passed.
+			effectivePrune := prune
+			if includeUndeterminable && !yes {
+				effectivePrune = false
+			}
+			return runStoreGC(cmd.OutOrStdout(), storeGCOpts{
+				prune:                 effectivePrune,
+				includeUndeterminable: includeUndeterminable,
+				reapOlderThan:         reapOlderThan,
+				yesWithheld:           includeUndeterminable && !yes && prune,
+			}, cliKnownSourcePaths)
 		},
 	}
 	cmd.Flags().BoolVar(&prune, "prune", false,
@@ -76,6 +116,12 @@ daemon is running.`,
 	// default and simply the negation of --prune. Explicit --dry-run wins.
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false,
 		"list orphans without removing them (default behaviour)")
+	cmd.Flags().BoolVar(&includeUndeterminable, "include-undeterminable", false,
+		"also consider undeterminable (legacy/unmapped) roots; requires --older-than and --yes to prune")
+	cmd.Flags().StringVar(&olderThan, "older-than", "",
+		"in --include-undeterminable mode, only reap roots untouched longer than this (e.g. 168h, 7d, 30d)")
+	cmd.Flags().BoolVar(&yes, "yes", false,
+		"confirm the aggressive opt-in reap; REQUIRED to prune when --include-undeterminable is set")
 	cmd.PreRunE = func(cmd *cobra.Command, _ []string) error {
 		if dryRun {
 			prune = false
@@ -85,10 +131,44 @@ daemon is running.`,
 	return cmd
 }
 
-func runStoreGC(w io.Writer, prune bool, knownPaths func() []string) error {
+// parseDurationWithDays parses a Go duration, additionally accepting a trailing
+// "d" day suffix (e.g. "7d" → 168h, "30d" → 720h) which time.ParseDuration does
+// not support. A bare "d" value is multiplied into hours before delegating.
+func parseDurationWithDays(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if rest, ok := strings.CutSuffix(s, "d"); ok {
+		// Guard against "d" colliding with a valid unit-less suffix: only treat
+		// it as days when the remainder is a plain number.
+		if n, err := strconv.ParseFloat(strings.TrimSpace(rest), 64); err == nil {
+			return time.Duration(n * float64(24*time.Hour)), nil
+		}
+	}
+	return time.ParseDuration(s)
+}
+
+// storeGCOpts bundles the resolved `store gc` flags for runStoreGC.
+type storeGCOpts struct {
+	// prune is the EFFECTIVE prune decision (already gated by --yes in opt-in
+	// mode): true → actually remove orphans.
+	prune bool
+	// includeUndeterminable enables the operator opt-in reap of undeterminable
+	// (legacy/unmapped) roots, bounded by reapOlderThan.
+	includeUndeterminable bool
+	// reapOlderThan is the explicit age bound for the opt-in reap (>0 required
+	// when includeUndeterminable is set).
+	reapOlderThan time.Duration
+	// yesWithheld is true when --prune --include-undeterminable was requested
+	// WITHOUT --yes, so we forced dry-run and want to tell the operator why.
+	yesWithheld bool
+}
+
+func runStoreGC(w io.Writer, opts storeGCOpts, knownPaths func() []string) error {
 	sweeper := daemon.NewOrphanRootSweeper(daemon.OrphanRootConfig{
-		KnownSourcePaths: knownPaths,
+		KnownSourcePaths:        knownPaths,
+		AllowUndeterminableReap: opts.includeUndeterminable,
+		ReapOlderThan:           opts.reapOlderThan,
 	})
+	prune := opts.prune
 
 	verdicts := sweeper.Attribute()
 	// Stable, browsable order: orphans first, then by size descending.
@@ -113,9 +193,20 @@ func runStoreGC(w io.Writer, prune bool, knownPaths func() []string) error {
 	fmt.Fprintf(w, "\n%d roots, %s total; %d orphan(s), %s would reclaim\n",
 		len(verdicts), hbytes(totalBytes), orphanCount, hbytes(orphanBytes))
 
+	if opts.includeUndeterminable {
+		fmt.Fprintf(w, "(opt-in: undeterminable roots untouched > %s are reapable; reaped roots re-index automatically if needed later.)\n",
+			humanAge(opts.reapOlderThan))
+	}
+
 	if !prune {
 		if orphanCount > 0 {
-			fmt.Fprintln(w, "\n(dry-run) Run 'grafel store gc --prune' to reap the ORPHAN roots above.")
+			if opts.yesWithheld {
+				fmt.Fprintln(w, "\n(dry-run) --include-undeterminable requires --yes to prune; re-run with --prune --yes to reap the ORPHAN roots above.")
+			} else if opts.includeUndeterminable {
+				fmt.Fprintln(w, "\n(dry-run) Run 'grafel store gc --include-undeterminable --older-than <dur> --prune --yes' to reap the ORPHAN roots above.")
+			} else {
+				fmt.Fprintln(w, "\n(dry-run) Run 'grafel store gc --prune' to reap the ORPHAN roots above.")
+			}
 		}
 		return nil
 	}
@@ -131,6 +222,9 @@ func runStoreGC(w io.Writer, prune bool, knownPaths func() []string) error {
 	if res.RootsReaped < orphanCount {
 		fmt.Fprintf(w, "  (%d candidate(s) kept — removal failed or became live mid-sweep)\n",
 			orphanCount-res.RootsReaped)
+	}
+	if opts.includeUndeterminable {
+		fmt.Fprintln(w, "  Reaped roots re-index automatically the next time their source path is registered/indexed.")
 	}
 	return nil
 }

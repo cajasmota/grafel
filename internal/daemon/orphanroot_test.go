@@ -221,3 +221,176 @@ func dirSizeMust(t *testing.T, dir string) int64 {
 	}
 	return sz
 }
+
+// writeManifest writes a root.json manifest recording sourcePath into the given
+// store-root dir (#5267).
+func writeManifest(t *testing.T, sourcePath string) {
+	t.Helper()
+	if err := WriteRootManifest(sourcePath); err != nil {
+		t.Fatalf("WriteRootManifest(%s): %v", sourcePath, err)
+	}
+}
+
+// TestOrphanRoot_5267_ManifestAttributesWithoutForwardMap: a root WITH a
+// recorded source_path that is GONE + old is attributed ORPHAN even when the
+// forward map (KnownSourcePaths) knows NOTHING — the recorded path makes it
+// self-attributing. The same recorded path STILL EXISTING → KEEP. A legacy root
+// with NO manifest and not in the forward map → KEEP (fail-closed fallback).
+func TestOrphanRoot_5267_ManifestAttributesWithoutForwardMap(t *testing.T) {
+	f := newOrphanFixture(t)
+	old := f.now.Add(-72 * time.Hour)
+
+	// (1) manifest + gone path → ORPHAN without any forward map.
+	goneDir := filepath.Join(t.TempDir(), "removed-from-registry")
+	goneRoot := buildRoot(t, goneDir, "main", old)
+	writeManifest(t, goneDir)
+	if err := os.RemoveAll(goneDir); err != nil {
+		t.Fatalf("rm goneDir: %v", err)
+	}
+
+	// (2) manifest + existing path → KEEP.
+	liveDir := t.TempDir()
+	liveRoot := buildRoot(t, liveDir, "main", old)
+	writeManifest(t, liveDir)
+
+	// (3) legacy root: no manifest, not in forward map → KEEP (fail-closed).
+	legacyDir := filepath.Join(t.TempDir(), "legacy-gone")
+	legacyRoot := buildRoot(t, legacyDir, "main", old)
+	if err := os.RemoveAll(legacyDir); err != nil {
+		t.Fatalf("rm legacyDir: %v", err)
+	}
+
+	// Forward map is EMPTY — attribution must come entirely from manifests.
+	s := f.sweeper(func() []string { return nil })
+	got := map[string]OrphanRootVerdict{}
+	for _, v := range s.Attribute() {
+		got[v.Root] = v
+	}
+
+	if v := got[goneRoot]; !v.IsOrphan() || !v.FromManifest {
+		t.Errorf("gone+manifest root: want ORPHAN+FromManifest, got verdict=%s fromManifest=%v reason=%q",
+			v.Verdict, v.FromManifest, v.Reason)
+	}
+	if v := got[liveRoot]; v.IsOrphan() {
+		t.Errorf("live+manifest root: want KEEP, got ORPHAN (%q)", v.Reason)
+	}
+	if v := got[legacyRoot]; v.IsOrphan() || !v.Undeterminable {
+		t.Errorf("legacy no-manifest root: want KEEP+Undeterminable, got verdict=%s undeterminable=%v",
+			v.Verdict, v.Undeterminable)
+	}
+
+	// Periodic Sweep (no opt-in) must reap ONLY the manifest-attributed orphan,
+	// never the undeterminable legacy root.
+	res := s.Sweep()
+	if res.RootsReaped != 1 {
+		t.Fatalf("Sweep reaped %d roots, want 1 (manifest orphan only)", res.RootsReaped)
+	}
+	if dirExists(goneRoot) {
+		t.Errorf("manifest orphan root not reaped: %s", goneRoot)
+	}
+	if !dirExists(legacyRoot) {
+		t.Errorf("undeterminable legacy root wrongly reaped: %s", legacyRoot)
+	}
+}
+
+// TestOrphanRoot_5268_OptInUndeterminableReap exercises the operator opt-in
+// reap of undeterminable-gone roots, bounded by ReapOlderThan, and the safety
+// guards around it.
+func TestOrphanRoot_5268_OptInUndeterminableReap(t *testing.T) {
+	f := newOrphanFixture(t)
+	old := f.now.Add(-30 * 24 * time.Hour) // 30d old
+	recent := f.now.Add(-2 * time.Hour)    // newer than a 7d bound
+
+	// Undeterminable + gone + OLD (30d) → eligible.
+	oldDir := filepath.Join(t.TempDir(), "old-undeterminable")
+	oldRoot := buildRoot(t, oldDir, "main", old)
+	if err := os.RemoveAll(oldDir); err != nil {
+		t.Fatalf("rm oldDir: %v", err)
+	}
+
+	// Undeterminable + gone + NEWER than 7d → KEPT.
+	newDir := filepath.Join(t.TempDir(), "new-undeterminable")
+	newRoot := buildRoot(t, newDir, "main", recent)
+	if err := os.RemoveAll(newDir); err != nil {
+		t.Fatalf("rm newDir: %v", err)
+	}
+
+	// Live-path root (exists, and in the known forward map like a registered
+	// group repo) → KEPT even with the opt-in flag.
+	liveDir := t.TempDir()
+	liveRoot := buildRoot(t, liveDir, "main", old)
+
+	sevenDays := 7 * 24 * time.Hour
+	known := func() []string { return []string{liveDir} }
+
+	// --- opt-in attribution with a 7d bound -----------------------------------
+	optIn := NewOrphanRootSweeper(OrphanRootConfig{
+		KnownSourcePaths:        known,
+		Now:                     func() time.Time { return f.now },
+		AllowUndeterminableReap: true,
+		ReapOlderThan:           sevenDays,
+	})
+	got := map[string]OrphanRootVerdict{}
+	for _, v := range optIn.Attribute() {
+		got[v.Root] = v
+	}
+	if v := got[oldRoot]; !v.IsOrphan() {
+		t.Errorf("old undeterminable root: want ORPHAN under opt-in, got %s (%q)", v.Verdict, v.Reason)
+	}
+	if v := got[newRoot]; v.IsOrphan() {
+		t.Errorf("new undeterminable root: want KEEP (newer than --older-than), got ORPHAN")
+	}
+	if v := got[liveRoot]; v.IsOrphan() {
+		t.Errorf("live-path root: want KEEP even with opt-in, got ORPHAN")
+	}
+
+	// --- default sweeper (no opt-in) keeps ALL undeterminable roots -----------
+	plain := f.sweeper(func() []string { return nil })
+	for _, v := range plain.Attribute() {
+		if v.Root == oldRoot && v.IsOrphan() {
+			t.Errorf("default sweeper reaped undeterminable old root — fail-closed broken")
+		}
+	}
+
+	// --- prune in opt-in mode reaps ONLY the old one --------------------------
+	res := optIn.Sweep()
+	if res.RootsReaped != 1 {
+		t.Fatalf("opt-in Sweep reaped %d, want 1", res.RootsReaped)
+	}
+	if dirExists(oldRoot) {
+		t.Errorf("old undeterminable root not reaped under opt-in: %s", oldRoot)
+	}
+	if !dirExists(newRoot) || !dirExists(liveRoot) {
+		t.Errorf("opt-in sweep wrongly reaped a protected root (new=%v live=%v)",
+			dirExists(newRoot), dirExists(liveRoot))
+	}
+}
+
+// TestOrphanRoot_5268_RequiresAgeBound: opt-in mode with NO age bound (zero
+// ReapOlderThan) reaps NOTHING — an explicit bound is mandatory.
+func TestOrphanRoot_5268_RequiresAgeBound(t *testing.T) {
+	f := newOrphanFixture(t)
+	old := f.now.Add(-365 * 24 * time.Hour)
+
+	goneDir := filepath.Join(t.TempDir(), "ancient-undeterminable")
+	goneRoot := buildRoot(t, goneDir, "main", old)
+	if err := os.RemoveAll(goneDir); err != nil {
+		t.Fatalf("rm: %v", err)
+	}
+
+	s := NewOrphanRootSweeper(OrphanRootConfig{
+		KnownSourcePaths:        func() []string { return nil },
+		Now:                     func() time.Time { return f.now },
+		AllowUndeterminableReap: true,
+		ReapOlderThan:           0, // no bound → reap nothing
+	})
+	for _, v := range s.Attribute() {
+		if v.Root == goneRoot && v.IsOrphan() {
+			t.Errorf("opt-in with no age bound reaped a root — explicit --older-than must be required")
+		}
+	}
+	if res := s.Sweep(); res.RootsReaped != 0 {
+		t.Errorf("opt-in with no age bound reaped %d roots, want 0", res.RootsReaped)
+	}
+	_ = goneRoot
+}

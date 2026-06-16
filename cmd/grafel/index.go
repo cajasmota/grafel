@@ -556,6 +556,16 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			fmt.Fprintf(os.Stderr, "grafel: wrote %s\n", fbPath)
 		}
 
+		// #5267: record the canonical absolute source path in the top-level
+		// `<root>/root.json` manifest so the orphan-root GC can attribute this
+		// root WITHOUT the one-way forward hash map (a removed-from-registry /
+		// deleted source path is then still reapable). Best-effort: a failure
+		// here never fails the index pass — attribution falls back to the
+		// forward map for this root.
+		if err := daemon.WriteRootManifest(absRepo); err != nil {
+			fmt.Fprintf(os.Stderr, "grafel: root manifest write failed (non-fatal): %v\n", err)
+		}
+
 		if idx.exportJSON {
 			if err := graph.WriteAtomic(outPath, doc, pretty); err != nil {
 				return err
