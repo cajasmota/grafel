@@ -273,12 +273,20 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           # grafel resolves its home as $HOME (if set) else %USERPROFILE% — see
-          # internal/install/state.go userHomeDir(). GitHub's Windows runner
-          # exports HOME, which can differ from USERPROFILE, so mirror the exact
-          # binary precedence here (and in the integrity/uninstall steps) instead
-          # of hard-coding USERPROFILE — otherwise the install writes install.json
-          # under $HOME\.grafel while the check looks under %USERPROFILE%\.grafel.
-          $GrafelHome = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+          # internal/install/state.go userHomeDir(). The catch on the Windows
+          # runner is that actions/checkout@v4 logs "Temporarily overriding
+          # HOME='D:\a\_temp\...'" and that override LEAKS INCONSISTENTLY across
+          # job steps: HOME is set in some steps and unset in others. If install
+          # resolves home via a transient HOME but integrity/uninstall resolve it
+          # via USERPROFILE (HOME unset there), they look under different .grafel
+          # prefixes and the gate fails (run 27642393411). Pin HOME=USERPROFILE at
+          # the TOP of EVERY grafel step so the binary's $HOME-first precedence
+          # always resolves to the SAME stable prefix, immune to checkout's
+          # override. An in-step assignment is used (not job-level `env: HOME`)
+          # because checkout overrides a job-level HOME at runtime, whereas this
+          # per-step assignment runs after checkout and is the last writer.
+          $env:HOME = $env:USERPROFILE
+          $GrafelHome = $env:HOME
           $Prefix = Join-Path $GrafelHome '.grafel'
           $BinDir = Join-Path $Prefix 'bin'
           $Extract = Join-Path $Prefix 'extract'
@@ -305,6 +313,10 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
+          # Pin HOME=USERPROFILE (see Install step) so this step's grafel
+          # invocation resolves the same home as install — checkout's transient
+          # HOME override leaks inconsistently across steps.
+          $env:HOME = $env:USERPROFILE
           (Get-Command grafel).Source
           grafel --version
           try { grafel doctor } catch { Write-Host "doctor non-zero (no service in headless CI) — tolerated" }
@@ -333,9 +345,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          # Mirror grafel's home precedence ($HOME else %USERPROFILE%) — see the
-          # Install (windows) step for why hard-coding USERPROFILE is wrong in CI.
-          $GrafelHome = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+          # Pin HOME=USERPROFILE (see Install step) so grafel's $HOME-first home
+          # resolution lands on the SAME .grafel prefix the install used.
+          # checkout's transient HOME override leaks inconsistently across steps,
+          # so we make HOME deterministic here rather than branch on it.
+          $env:HOME = $env:USERPROFILE
+          $GrafelHome = $env:HOME
           $claudeDir = Join-Path $env:USERPROFILE '.claude'
           New-Item -ItemType Directory -Force -Path $claudeDir | Out-Null
           $claudeCfg = Join-Path $claudeDir '.claude.json'
@@ -353,8 +368,21 @@ jobs:
       # Fully isolated (own temp GRAFEL_DAEMON_ROOT + dynamic dashboard port);
       # needs no service manager, so it is the authoritative functional check on
       # the HEADLESS macOS runner too (real launchd validation = #5229 runbook).
-      - name: grafel selftest (acceptance ladder)
+      - name: grafel selftest (acceptance ladder) (unix)
+        if: matrix.os != 'windows-latest'
         run: grafel selftest
+
+      - name: grafel selftest (acceptance ladder) (windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # selftest is self-isolated (own temp GRAFEL_DAEMON_ROOT), but keep HOME
+          # pinned identically to the other Windows steps so home resolution is
+          # uniform across the whole job and never depends on checkout's transient
+          # HOME override.
+          $env:HOME = $env:USERPROFILE
+          grafel selftest
 
       # ── 5. Uninstall → assert CLEAN teardown ────────────────────────────────
       - name: Uninstall + assert clean (unix)
@@ -376,9 +404,12 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Continue'
-          # Mirror grafel's home precedence ($HOME else %USERPROFILE%) so the
-          # teardown asserts against the same prefix the install actually used.
-          $GrafelHome = if ($env:HOME) { $env:HOME } else { $env:USERPROFILE }
+          # Pin HOME=USERPROFILE (see Install step) so teardown asserts against the
+          # SAME .grafel prefix the install used — checkout's transient HOME
+          # override leaks inconsistently across steps, so we make HOME
+          # deterministic here rather than branch on it.
+          $env:HOME = $env:USERPROFILE
+          $GrafelHome = $env:HOME
           $claudeCfg = Join-Path (Join-Path $env:USERPROFILE '.claude') '.claude.json'
           $prefix = Join-Path $GrafelHome '.grafel'
           try {
