@@ -1423,6 +1423,14 @@ func makeDaemonDashboardServe(daemonStartedAt time.Time) func(ctx context.Contex
 			srv.SetWatcherQuerier(daemonWatcherMgr)
 		}
 
+		// #5238: register the dashboard's per-group invalidator so the tier
+		// manager can evict the dashboard GraphCache's heavy materialised
+		// graph state on a WARM→COLD demotion (not just the cheap mmap'd MCP
+		// reader). Without this, an idle group's full *graph.Document +
+		// re-derived algorithm results + search index stay on the heap until
+		// the group happens to be re-requested past its TTL.
+		setDashboardGroupInvalidator(srv.InvalidateGroup)
+
 		// Wire the enrichment job queue (#1244). Jobs persist to
 		// ~/.grafel/jobs.jsonl so history survives daemon restarts.
 		var jobHistoryPath string

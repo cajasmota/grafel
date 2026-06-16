@@ -192,6 +192,26 @@ func (s *Server) SetDaemonStartedAt(t time.Time) {
 	s.daemonStartedAt = t
 }
 
+// InvalidateGroup drops the dashboard's in-memory graph state for a single
+// group, releasing its materialised *graph.Document slices, re-derived Pass-4
+// algorithm results, mmap readers, and pre-built search index back to the GC.
+// The next request for the group lazily reloads it from disk.
+//
+// #5238: this is the eviction lever the tier manager calls on a WARM→COLD
+// transition. The MCP graph cache already drops its (cheap, mmap'd) reader on
+// COLD, but the dashboard GraphCache previously only aged out via its own
+// access-driven TTL — an idle group that was never re-requested held its full
+// materialised Document on the heap indefinitely. Wiring this into the tier
+// demotion lets a cold group's derived heap be reclaimed promptly.
+//
+// Safe to call for an unknown / not-yet-loaded group (no-op).
+func (s *Server) InvalidateGroup(group string) {
+	if s == nil || s.graphs == nil {
+		return
+	}
+	s.graphs.Invalidate(group)
+}
+
 // SetProgressBroker wires the shared indexer progress broker into the server
 // so that /api/index-progress endpoints can stream live events. Call this from
 // cmd/grafel (or any daemon entrypoint) before Serve.
