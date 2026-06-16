@@ -123,7 +123,7 @@ func runSelftest(argv []string) int {
 
 	// ── Layer 1: daemon ready ─────────────────────────────────────────────────
 	r1 := timeLayer("daemon ready", func() (string, error) {
-		return selftestWaitReady(env, 30*time.Second)
+		return selftestWaitReady(env, selftestReadyTimeout())
 	})
 	add(r1)
 
@@ -155,7 +155,7 @@ func runSelftest(argv []string) int {
 			ctx, cancel = context.WithCancel(context.Background())
 			daemonDone = make(chan error, 1)
 			startDaemon()
-			if _, err := selftestWaitReady(env, 30*time.Second); err != nil {
+			if _, err := selftestWaitReady(env, selftestReadyTimeout()); err != nil {
 				return "", fmt.Errorf("daemon did not re-become ready: %w", err)
 			}
 			return selftestPersistence(env)
@@ -345,6 +345,18 @@ func selftestDaemonConfig(env *selftestEnv) daemon.Config {
 		DashboardPort:  env.dashPort,
 		DashboardBind:  "127.0.0.1",
 	}
+}
+
+// selftestReadyTimeout resolves the daemon-ready probe budget. Cold CGO
+// startup on Windows CI legitimately exceeds the old hard-coded 30s, so the
+// default is generous and overridable via GRAFEL_SELFTEST_READY_TIMEOUT_SEC.
+func selftestReadyTimeout() time.Duration {
+	if v := os.Getenv("GRAFEL_SELFTEST_READY_TIMEOUT_SEC"); v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return 60 * time.Second
 }
 
 // selftestWaitReady polls the daemon socket (RPC Ping) and the dashboard HTTP
