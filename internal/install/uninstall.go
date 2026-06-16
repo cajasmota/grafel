@@ -215,7 +215,11 @@ func RunUninstall(opts UninstallOptions) (*UninstallResult, error) {
 				fmt.Fprintf(os.Stderr, "grafel uninstall (dry-run): would remove binary %s\n", state.CLI.Path)
 				result.BinaryRemoved = true
 			} else if removeIt {
-				if err := os.Remove(state.CLI.Path); err != nil {
+				// removeBinary is self-delete-safe: on Windows it renames the
+				// running exe aside and schedules it for deletion on reboot when
+				// it cannot be unlinked directly (#5264). On Unix it is a plain
+				// os.Remove.
+				if err := removeBinary(state.CLI.Path); err != nil {
 					fmt.Fprintf(os.Stderr, "grafel uninstall: remove binary %s: %v\n", state.CLI.Path, err)
 				} else {
 					result.BinaryRemoved = true
