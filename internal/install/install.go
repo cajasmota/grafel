@@ -17,6 +17,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install/hooks"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/rulesfiles"
+	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/install/watchers"
 	"github.com/cajasmota/grafel/internal/registry"
 )
@@ -86,6 +87,13 @@ func Apply(opts Options) (*Result, error) {
 
 	res := &Result{}
 
+	// Resolve the enabled tool adapters for this group. Back-compat: an
+	// absent/empty Config.Tools yields every supported tool, reproducing
+	// the historical hard-coded sequence (all six rules files + Claude
+	// skills/hooks + Claude/Windsurf MCP). The same set drives the
+	// per-repo rules/hook steps and the MCP step below.
+	adaptersForRepo := tooladapter.EnabledAdapters(opts.Config)
+
 	cfgPath, err := registry.ConfigPathFor(opts.Group)
 	if err != nil {
 		return nil, err
@@ -126,39 +134,48 @@ func Apply(opts Options) (*Result, error) {
 			res.HooksInstalled = append(res.HooksInstalled, repo)
 		}
 		if !opts.SkipRulesFiles {
-			if !opts.DryRun {
-				wr, werr := rulesfiles.WriteAll(repo, rulesfiles.WriteOptions{
-					GroupName: opts.Group,
-				})
-				if werr != nil {
-					return nil, fmt.Errorf("rules files for %s: %w", repo, werr)
-				}
-				if wr != nil {
+			// Collect the union of rules-file targets across the enabled
+			// tools, ordered by rulesfiles.Targets so Result reporting is
+			// identical to the historical single-WriteAll behaviour.
+			targets := enabledRulesTargets(adaptersForRepo)
+			if len(targets) > 0 {
+				if !opts.DryRun {
+					wr, werr := rulesfiles.WriteTargets(repo, rulesfiles.WriteOptions{
+						GroupName: opts.Group,
+					}, targets)
+					if werr != nil {
+						return nil, fmt.Errorf("rules files for %s: %w", repo, werr)
+					}
+					if wr != nil {
+						if res.RulesFiles == nil {
+							res.RulesFiles = map[string][]string{}
+						}
+						res.RulesFiles[repo] = wr.Written
+						if len(wr.SkippedMixedStale) > 0 {
+							if res.RulesFilesStaleSkipped == nil {
+								res.RulesFilesStaleSkipped = map[string][]string{}
+							}
+							res.RulesFilesStaleSkipped[repo] = wr.SkippedMixedStale
+						}
+						if len(wr.ReplacedStale) > 0 {
+							if res.RulesFilesStaleReplaced == nil {
+								res.RulesFilesStaleReplaced = map[string][]string{}
+							}
+							res.RulesFilesStaleReplaced[repo] = wr.ReplacedStale
+						}
+					}
+				} else {
 					if res.RulesFiles == nil {
 						res.RulesFiles = map[string][]string{}
 					}
-					res.RulesFiles[repo] = wr.Written
-					if len(wr.SkippedMixedStale) > 0 {
-						if res.RulesFilesStaleSkipped == nil {
-							res.RulesFilesStaleSkipped = map[string][]string{}
-						}
-						res.RulesFilesStaleSkipped[repo] = wr.SkippedMixedStale
-					}
-					if len(wr.ReplacedStale) > 0 {
-						if res.RulesFilesStaleReplaced == nil {
-							res.RulesFilesStaleReplaced = map[string][]string{}
-						}
-						res.RulesFilesStaleReplaced[repo] = wr.ReplacedStale
-					}
+					res.RulesFiles[repo] = append([]string{}, targets...)
 				}
-			} else {
-				if res.RulesFiles == nil {
-					res.RulesFiles = map[string][]string{}
-				}
-				res.RulesFiles[repo] = append([]string{}, rulesfiles.Targets...)
 			}
 		}
-		if opts.InstallAgentHooks || opts.Config.Features.AgentHooks {
+		// The opt-in PreToolUse agent hook is Claude-only. Install it only
+		// when (a) an adapter that supports it is enabled, AND (b) the
+		// option/feature flag requests it.
+		if (opts.InstallAgentHooks || opts.Config.Features.AgentHooks) && anyAdapterSupportsAgentHook(adaptersForRepo) {
 			if !opts.DryRun {
 				if _, err := agenthooks.Install(repo); err != nil {
 					return nil, fmt.Errorf("agent hooks for %s: %w", repo, err)
@@ -197,7 +214,7 @@ func Apply(opts Options) (*Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, tool := range []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Windsurf} {
+		for _, tool := range enabledMCPTools(adaptersForRepo) {
 			if opts.DryRun {
 				p, _ := mcpreg.SettingsPath(tool)
 				res.MCPSettings = append(res.MCPSettings, p)
@@ -217,6 +234,68 @@ func Apply(opts Options) (*Result, error) {
 	}
 
 	return res, nil
+}
+
+// enabledRulesTargets returns the union of rules-file targets across the
+// given adapters, ordered to match rulesfiles.Targets so the resulting
+// Result.RulesFiles slice is identical to the historical single-WriteAll
+// ordering. Duplicate targets (multiple tools reading the same file) are
+// de-duplicated.
+func enabledRulesTargets(adapters []tooladapter.Adapter) []string {
+	want := map[string]bool{}
+	for _, a := range adapters {
+		for _, t := range a.RulesFileTargets() {
+			want[t] = true
+		}
+	}
+	out := make([]string, 0, len(want))
+	for _, t := range rulesfiles.Targets {
+		if want[t] {
+			out = append(out, t)
+			delete(want, t)
+		}
+	}
+	// Any target not present in rulesfiles.Targets (shouldn't happen for
+	// the built-in adapters) is appended in adapter order for safety.
+	for _, a := range adapters {
+		for _, t := range a.RulesFileTargets() {
+			if want[t] {
+				out = append(out, t)
+				delete(want, t)
+			}
+		}
+	}
+	return out
+}
+
+// enabledMCPTools returns the mcpreg.Tool entries to register, in adapter
+// order, for the adapters that support MCP today. De-duplicated.
+func enabledMCPTools(adapters []tooladapter.Adapter) []mcpreg.Tool {
+	seen := map[mcpreg.Tool]bool{}
+	var out []mcpreg.Tool
+	for _, a := range adapters {
+		if !a.SupportsMCP() {
+			continue
+		}
+		t := a.MCPTool()
+		if t == "" || seen[t] {
+			continue
+		}
+		seen[t] = true
+		out = append(out, t)
+	}
+	return out
+}
+
+// anyAdapterSupportsAgentHook reports whether any enabled adapter exposes
+// the opt-in PreToolUse agent hook (Claude-only today).
+func anyAdapterSupportsAgentHook(adapters []tooladapter.Adapter) bool {
+	for _, a := range adapters {
+		if a.SupportsAgentHook() {
+			return true
+		}
+	}
+	return false
 }
 
 // Uninstall reverses Apply for a single group: removes hooks/watchers

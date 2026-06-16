@@ -154,13 +154,26 @@ type WriteResult struct {
 // disk full); per-file decisions (skip-mixed-stale, replace-stale) are
 // reported via the returned WriteResult.
 func WriteAll(repoRoot string, opts WriteOptions) (*WriteResult, error) {
+	return WriteTargets(repoRoot, opts, Targets)
+}
+
+// WriteTargets is WriteAll restricted to an explicit subset of rules-file
+// targets. It is used by the per-tool ToolAdapter model so that a given
+// tool only writes the rules file(s) it actually reads, instead of the
+// full canonical set. The block content and per-file decision tree are
+// identical to WriteAll — only the set of paths differs.
+//
+// Passing rulesfiles.Targets reproduces WriteAll exactly. Unknown paths
+// are written verbatim under repoRoot (callers pass values from this
+// package's Targets list).
+func WriteTargets(repoRoot string, opts WriteOptions, targets []string) (*WriteResult, error) {
 	if opts.Logger == nil {
 		opts.Logger = os.Stderr
 	}
 	block := RenderBlock(opts.GroupName)
 
 	res := &WriteResult{}
-	for _, target := range Targets {
+	for _, target := range targets {
 		abs := filepath.Join(repoRoot, target)
 		action, err := upsert(abs, block)
 		if err != nil {

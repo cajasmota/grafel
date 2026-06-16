@@ -150,6 +150,20 @@ type GroupConfig struct {
 		// nagging users who don't want it (#4273).
 		AgentHooks bool `json:"agent_hooks,omitempty"`
 	} `json:"features"`
+	// Tools is the set of AI coding tools this group's install targets,
+	// identified by ToolAdapter ID (e.g. "claude", "cursor", "copilot").
+	// It gates which per-tool artifacts (rules files, MCP entries, skills)
+	// `grafel install` writes.
+	//
+	// Back-compat: when absent or empty the effective set is the historical
+	// default — every supported tool, i.e. Claude (full: MCP + skills +
+	// rules + opt-in hooks) plus all rules-file conventions. Resolve the
+	// effective set with DefaultEnabledTools / EnabledTools rather than
+	// reading this field directly.
+	//
+	// Example fleet JSON:
+	//   "tools": ["claude", "cursor"]
+	Tools []string `json:"tools,omitempty"`
 	// ExtraStdlibFilter is a user-extensible map from language tag to a list
 	// of bare-name symbols that should be suppressed as if they were stdlib
 	// builtins — i.e. no placeholder External entity is emitted for them.
