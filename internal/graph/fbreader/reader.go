@@ -12,45 +12,46 @@ package fbreader
 import (
 	"fmt"
 
-	"golang.org/x/exp/mmap"
-
 	fb "github.com/cajasmota/grafel/internal/graph/fbgraph"
 )
 
 // Reader holds an mmap'd graph.fb plus a parsed root view. The zero
 // value is not usable; call Open.
+//
+// The FlatBuffer root and every accessor obtained from it read lazily
+// against the mmap region's bytes. That region — and therefore any
+// []byte/string view a caller pulls out of an Entity/Relationship — is
+// only valid until Close is called. Callers must not retain such views
+// past Close (the daemon caches the Reader and drops it on
+// invalidateAfterIndex, which is the correct lifetime boundary).
 type Reader struct {
-	ra    *mmap.ReaderAt
-	buf   []byte
-	root  *fb.Graph
-	nEnts int
-	nRels int
+	region *mmapRegion
+	root   *fb.Graph
+	nEnts  int
+	nRels  int
 }
 
 // Open memory-maps graphFB and returns a Reader. Close releases the
 // mapping; the caller is responsible for invoking it.
+//
+// The file is mapped as a contiguous, read-only, page-cache-backed view
+// (no heap copy of the graph bytes). The FlatBuffer root is parsed
+// directly against that view, so individual fields are decoded on demand
+// without ever materialising the full file on the heap.
 func Open(path string) (*Reader, error) {
-	ra, err := mmap.Open(path)
+	region, err := mmapOpen(path)
 	if err != nil {
-		return nil, fmt.Errorf("fbreader: mmap %s: %w", path, err)
+		return nil, err
 	}
+	buf := region.bytes()
 	// Guard against truncated or malformed files: a valid FlatBuffer needs
 	// at least a 4-byte root-table offset followed by a 4-byte vtable offset.
 	// Without this check, GetRootAsGraph panics on short buffers and the
 	// mmap is leaked — on Windows this prevents the test's t.TempDir cleanup
 	// from removing the file (issue surfaced by TestStatusGraphFileDetection).
-	if ra.Len() < 8 {
-		ra.Close()
-		return nil, fmt.Errorf("fbreader: %s too short to be a flatbuffer (%d bytes)", path, ra.Len())
-	}
-	// FlatBuffers needs a contiguous []byte. mmap.ReaderAt does not expose
-	// the slice directly, so we read into a single allocation. This is
-	// O(N) but a single bulk memcpy from the page cache; the win comes
-	// from skipping JSON parse, not from skipping the read itself.
-	buf := make([]byte, ra.Len())
-	if _, err := ra.ReadAt(buf, 0); err != nil {
-		ra.Close()
-		return nil, fmt.Errorf("fbreader: read mmap: %w", err)
+	if len(buf) < 8 {
+		_ = region.unmap()
+		return nil, fmt.Errorf("fbreader: %s too short to be a flatbuffer (%d bytes)", path, len(buf))
 	}
 	// Belt-and-suspenders: catch any residual panic from FlatBuffer parsing
 	// of a malformed but length-passing buffer, and free the mmap before
@@ -60,26 +61,29 @@ func Open(path string) (*Reader, error) {
 	// be invalid).
 	defer func() {
 		if r := recover(); r != nil {
-			ra.Close()
+			_ = region.unmap()
 			panic(r)
 		}
 	}()
 	root := fb.GetRootAsGraph(buf, 0)
 	return &Reader{
-		ra:    ra,
-		buf:   buf,
-		root:  root,
-		nEnts: root.EntitiesLength(),
-		nRels: root.RelationshipsLength(),
+		region: region,
+		root:   root,
+		nEnts:  root.EntitiesLength(),
+		nRels:  root.RelationshipsLength(),
 	}, nil
 }
 
-// Close releases the underlying mmap.
+// Close releases the underlying mmap. After Close returns, no field or
+// string previously read from this Reader (or from any Entity/Relationship
+// it produced) may be accessed — the backing memory is unmapped.
 func (r *Reader) Close() error {
-	if r == nil || r.ra == nil {
+	if r == nil || r.region == nil {
 		return nil
 	}
-	return r.ra.Close()
+	err := r.region.unmap()
+	r.region = nil
+	return err
 }
 
 // Version returns the on-disk schema version (Graph.version).
