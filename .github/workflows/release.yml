@@ -18,33 +18,63 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Cache the built embed dir keyed on the SPA SOURCE hash. When webui-v2/**
+      # hasn't changed since the last release build, the cached
+      # internal/dashboard/dist is restored and the (slow) `npm ci && vite build`
+      # below is SKIPPED. The dist is ALWAYS populated either way (cache hit
+      # restores it; cache miss builds it), so the embed is never blank.
+      # node_modules and any stale dist are excluded from the key so only real
+      # source/config/lockfile changes invalidate it.
+      - name: Cache dashboard build
+        id: dash-cache
+        uses: actions/cache@v4
+        with:
+          path: internal/dashboard/dist
+          key: dashboard-dist-${{ hashFiles('webui-v2/**', '!webui-v2/node_modules/**', '!webui-v2/dist/**') }}
+
       - uses: actions/setup-node@v4
+        if: steps.dash-cache.outputs.cache-hit != 'true'
         with:
           node-version: '20'
           cache: npm
           cache-dependency-path: webui-v2/package-lock.json
 
       - name: Build dashboard SPA
+        if: steps.dash-cache.outputs.cache-hit != 'true'
         run: |
           cd webui-v2
           npm ci
           npx vite build
 
       - name: Stage bundle into embed dir
+        if: steps.dash-cache.outputs.cache-hit != 'true'
         run: |
           rm -rf internal/dashboard/dist
           cp -r webui-v2/dist internal/dashboard/dist
 
-      # Guard (#4468): both webui-v2/dist and the freshly-copied
-      # internal/dashboard/dist exist here, so this catches a failed/empty
-      # build before the bundle is ever fanned out to the matrix legs.
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26'
 
+      # Guard (#4468): catches a failed/empty build (cache miss) OR a corrupt
+      # cached bundle (cache hit) before it is ever fanned out to the matrix
+      # legs. On a cache hit webui-v2/dist is absent, so verify-dashboard passes
+      # with a notice; the explicit index.html check is what catches a bad
+      # cached dist. On a cache miss webui-v2/dist is present, so it also
+      # catches a stale embed.
       - name: Verify dashboard embed is current
-        run: go run ./cmd/verify-dashboard -root .
+        shell: bash
+        run: |
+          if [ ! -f internal/dashboard/dist/index.html ]; then
+            echo "FAIL: internal/dashboard/dist/index.html missing — dashboard build/cache produced no embed (would ship a blank UI). See #4457."
+            ls -la internal/dashboard/dist || true
+            exit 1
+          fi
+          go run ./cmd/verify-dashboard -root .
+          echo "OK: dashboard embed populated (cache-hit=${{ steps.dash-cache.outputs.cache-hit }})"
 
+      # Always upload the (cached or freshly built) dist so every matrix leg
+      # restores the real UI into the embed dir before `go build`.
       - uses: actions/upload-artifact@v4
         with:
           name: dashboard-dist
@@ -110,7 +140,7 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.22'
+          go-version: '1.26'
           cache: true
 
       - name: Cache Go build and module cache
