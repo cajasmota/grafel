@@ -178,8 +178,10 @@ func SettingsPath(tool Tool) (string, error) {
 		// Cursor: ~/.cursor/mcp.json
 		return filepath.Join(home, ".cursor", "mcp.json"), nil
 	case Codex:
-		// Codex CLI: ~/.codex/config.json
-		return filepath.Join(home, ".codex", "config.json"), nil
+		// Codex CLI: ~/.codex/config.toml. Codex uses TOML (not JSON) and
+		// expects the table [mcp_servers.<name>] (underscore, not the
+		// JSON-world "mcpServers"). See registerTOML/unregisterTOML.
+		return filepath.Join(home, ".codex", "config.toml"), nil
 	case ContinueDev:
 		// Continue.dev: ~/.continue/config.json
 		return filepath.Join(home, ".continue", "config.json"), nil
@@ -404,6 +406,12 @@ func RegisterPath(path, binPath string) (string, error) {
 	if err := backupOnce(path); err != nil {
 		return "", fmt.Errorf("backup %s: %w", filepath.Base(path), err)
 	}
+	if isTOML(path) {
+		// Codex-style TOML host. The same backup/sidecar machinery above
+		// already snapshotted the original, so rollback (RestorePath) is
+		// format-agnostic — it restores or deletes the raw bytes.
+		return path, registerTOML(path, binPath)
+	}
 	doc, err := readSettings(path)
 	if err != nil {
 		return "", err
@@ -438,6 +446,9 @@ func Unregister(tool Tool) error {
 // `{"mcpServers":{}}`. Returns nil if the file or entry doesn't exist
 // (idempotent). It NEVER overwrites foreign servers or resets the file to `{}`.
 func UnregisterPath(path string) error {
+	if isTOML(path) {
+		return unregisterTOML(path)
+	}
 	doc, err := readSettings(path)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {

@@ -42,8 +42,8 @@ import (
 //   - RulesFileTargets() returns nil/empty when the tool has no per-repo
 //     rules file convention.
 //   - SupportsMCP()/MCPTool() report whether grafel registers an MCP entry
-//     for this tool TODAY (only Claude + Windsurf return true here; other
-//     tools' MCP is a follow-up ticket).
+//     for this tool (Claude, Windsurf, Cursor and Codex return true; Codex
+//     is written as TOML, the rest as JSON — see mcpreg).
 //   - SupportsSkills()/SupportsAgentHook() are Claude-only today.
 type Adapter interface {
 	// ID is the stable, lowercase identifier persisted in
