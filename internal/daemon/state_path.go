@@ -259,6 +259,36 @@ func repoBaseDir(absRepoPath string) string {
 	return filepath.Join(StoreDir(), repoSlug(absRepoPath))
 }
 
+// RepoBaseDir is the exported wrapper around repoBaseDir: it returns the
+// top-level store root directory for repoPath (the `<slug>-<hash>/` slot, or
+// `state/<hash>/` under GRAFEL_DAEMON_ROOT). The path is absolutised + cleaned
+// first so callers get the same root the writer used. This is the forward
+// (path → root) half of the store-root ↔ source-path mapping the orphan-root
+// GC relies on (#5263): the hash is one-way, so the ONLY authoritative way to
+// attribute a root to a path is to compute the expected root for every KNOWN
+// live source path and treat the rest as undeterminable.
+func RepoBaseDir(repoPath string) string {
+	if repoPath == "" {
+		return ""
+	}
+	abs, err := filepath.Abs(repoPath)
+	if err != nil {
+		abs = repoPath
+	}
+	return repoBaseDir(filepath.Clean(abs))
+}
+
+// StoreRootBase returns the directory that DIRECTLY contains the top-level
+// store roots — `<store>` normally, or `<GRAFEL_DAEMON_ROOT>/state` under an
+// isolated daemon root. Its immediate sub-directories are the per-repo roots
+// returned by RepoBaseDir. The orphan-root GC enumerates this directory.
+func StoreRootBase() string {
+	if root := os.Getenv(EnvRoot); root != "" {
+		return filepath.Join(root, "state")
+	}
+	return StoreDir()
+}
+
 // StateDirForRepoRef returns the per-ref state directory for repoPath
 // and a specific git ref:
 //

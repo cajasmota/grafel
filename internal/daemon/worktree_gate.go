@@ -67,3 +67,35 @@ func makeReaperTrackedRepos(reposToWatch func() []string, wtStore *worktree.Stor
 		return out
 	}
 }
+
+// makeKnownSourcePaths returns the orphan-root sweep's KnownSourcePaths
+// provider (#5263): the union of the registered repos (reposToWatch) and ALL
+// worktree children — active AND expired/vanished. Unlike makeReaperTrackedRepos
+// it deliberately includes vanished worktrees so their store roots can still be
+// ATTRIBUTED to a (now-gone) source path and reaped; a root attributable to no
+// known path is left undeterminable (fail-closed KEEP) by the sweeper. Either
+// input may be nil. Duplicate paths are de-duplicated.
+func makeKnownSourcePaths(reposToWatch func() []string, wtStore *worktree.Store) func() []string {
+	return func() []string {
+		seen := map[string]bool{}
+		var out []string
+		add := func(p string) {
+			if p == "" || seen[p] {
+				return
+			}
+			seen[p] = true
+			out = append(out, p)
+		}
+		if reposToWatch != nil {
+			for _, r := range reposToWatch() {
+				add(r)
+			}
+		}
+		if wtStore != nil {
+			for _, c := range wtStore.All() {
+				add(c.Path)
+			}
+		}
+		return out
+	}
+}

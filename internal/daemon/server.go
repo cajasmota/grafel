@@ -497,6 +497,23 @@ func Run(ctx context.Context, cfg Config) error {
 				Tier:           cfg.DeadRefTier,
 				Logger:         logger,
 			})
+			// #5263: orphan top-level store-root sweep. Reaps whole
+			// `<store>/<slug>-<hash>/` roots that map to a vanished source path
+			// and to no live group/primary — the gap between the vanished-repo
+			// GC (currently-tracked repos only) and the dead-ref GC (refs within
+			// still-tracked repos only). KnownSourcePaths includes EXPIRED
+			// worktrees so a now-gone path's root can still be attributed; roots
+			// attributable to no known path are kept (fail-closed).
+			orphanRootSweeper := NewOrphanRootSweeper(OrphanRootConfig{
+				KnownSourcePaths: makeKnownSourcePaths(cfg.ReposToWatch, wtStore),
+				// Tier / DropReaderForRoot are per-repo-path hooks; the daemon
+				// does not currently expose a whole-repo Forget here, and a
+				// reaped orphan root's source path is already GONE (no live
+				// slot to wake), so on-disk reclamation is the load-bearing
+				// effect. Any residual in-mem slot is dropped by the
+				// vanished-repo reaper / memory-pressure eviction.
+				Logger: logger,
+			})
 			reaper := NewReaper(ReaperConfig{
 				TrackedRepos:    trackedRepos,
 				StoreDirForRepo: repoBaseDir,
@@ -507,6 +524,7 @@ func Run(ctx context.Context, cfg Config) error {
 				// registered in the daemon-owned registry under the daemon root.
 				WatchRegistry: watchreg.New(watchreg.DefaultPath(cfg.Layout.Root)),
 				DeadRefs:      deadRefSweeper,
+				OrphanRoots:   orphanRootSweeper,
 				Logger:        logger,
 			})
 			reaperStop := make(chan struct{})

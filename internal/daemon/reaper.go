@@ -87,6 +87,15 @@ type ReaperConfig struct {
 	// the same cadence as the vanished-repo GC. nil disables it.
 	DeadRefs *DeadRefSweeper
 
+	// OrphanRoots, when non-nil, is the orphan top-level store-root sweep
+	// (#5263). It reaps whole `<store>/<slug>-<hash>/` roots that map to a
+	// vanished source path and to no live group/primary — the gap left by the
+	// vanished-repo GC (which only covers CURRENTLY-tracked repos) and the
+	// dead-ref GC (which only covers refs within still-tracked repos). Driven
+	// on the shared cadence. nil disables it. Conservative + fail-closed: an
+	// undeterminable root is always KEPT.
+	OrphanRoots *OrphanRootSweeper
+
 	// Interval between sweeps. Default (zero value): 5 minutes.
 	Interval time.Duration
 
@@ -109,6 +118,8 @@ type ReapResult struct {
 	WatchersReaped int
 	// DeadRefs summarises the dead-ref / dead-worktree sub-sweep (#5236).
 	DeadRefs DeadRefResult
+	// OrphanRoots summarises the orphan top-level store-root sub-sweep (#5263).
+	OrphanRoots OrphanRootResult
 }
 
 // Reaper periodically GCs stores for repos that no longer exist on disk.
@@ -166,6 +177,13 @@ func (r *Reaper) Sweep() ReapResult {
 	// graph are reclaimed without a separate scheduler.
 	if r.cfg.DeadRefs != nil {
 		res.DeadRefs = r.cfg.DeadRefs.Sweep()
+	}
+	// #5263: orphan top-level store-root sweep. Independent of the
+	// vanished-repo GC below; runs on the shared cadence so a root tracked by
+	// nothing (repo de-registered / worktree deleted) is reclaimed wholesale.
+	// Conservative + fail-closed: undeterminable roots are always kept.
+	if r.cfg.OrphanRoots != nil {
+		res.OrphanRoots = r.cfg.OrphanRoots.Sweep()
 	}
 	if r.cfg.TrackedRepos == nil {
 		return res
