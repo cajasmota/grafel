@@ -152,7 +152,14 @@ jobs:
             echo "asset not ready yet (attempt $i); sleeping 20s"; sleep 20
           done
           test -f "artifact/$NAME" || { echo "FAIL: release asset $NAME not found"; exit 1; }
-          echo "ARCHIVE=$PWD/artifact/$NAME" >> "$GITHUB_ENV"
+          # Same MSYS→pwsh handoff as the dispatch build step: this bash step is
+          # MSYS on Windows so $PWD is /d/a/...; the pwsh "Install (windows)" step
+          # needs a native D:\a\... path. Convert on Windows, leave unix as-is.
+          ARCHIVE_PATH="$PWD/artifact/$NAME"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ARCHIVE_PATH="$(cygpath -w "$ARCHIVE_PATH")"
+          fi
+          echo "ARCHIVE=${ARCHIVE_PATH}" >> "$GITHUB_ENV"
 
       # ── 1b. On manual dispatch (no release): build the binary locally ───────
       # Build the dashboard SPA first so the embed is the real UI (mirrors
@@ -231,7 +238,16 @@ jobs:
             NAME="grafel_dispatch_${{ steps.arch.outputs.os }}_${{ steps.arch.outputs.arch }}.tar.gz"
             (cd dist && tar czf "../artifact/${NAME}" grafel LICENSE README.md)
           fi
-          echo "ARCHIVE=$PWD/artifact/${NAME}" >> "$GITHUB_ENV"
+          # This bash step runs under MSYS on the Windows runner, so $PWD is a
+          # POSIX path (/d/a/grafel/grafel). The "Install (windows)" step that
+          # consumes ARCHIVE runs in pwsh, which cannot resolve a /d/a/... path
+          # (Expand-Archive fails). Convert to a native Windows path (D:\a\...)
+          # via cygpath on Windows; leave unix paths untouched.
+          ARCHIVE_PATH="$PWD/artifact/${NAME}"
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            ARCHIVE_PATH="$(cygpath -w "$ARCHIVE_PATH")"
+          fi
+          echo "ARCHIVE=${ARCHIVE_PATH}" >> "$GITHUB_ENV"
 
       # ── 2. Install the artifact the way a user does (unix) ──────────────────
       # Extract into the real install prefix ($HOME/.grafel/bin) and add it to
