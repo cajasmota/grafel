@@ -120,6 +120,11 @@ Run in PowerShell as the **current user**:
       schtasks /query /tn com.grafel.daemon    # ERROR: cannot find the file specified
       Test-Path "$env:USERPROFILE\.grafel"     # False
       ```
+      > grafel resolves its home as `$HOME` if that variable is set, otherwise
+      > `%USERPROFILE%` (see `internal/install/state.go`). On a normal user
+      > session `$HOME` is unset so `%USERPROFILE%\.grafel` is correct. If you
+      > have exported `HOME` (some shells/CI do, and it can differ from
+      > `%USERPROFILE%`), check `"$env:HOME\.grafel"` instead.
       Confirm the MCP entry is gone from each AI-tool config (e.g.
       `%USERPROFILE%\.claude\.claude.json`).
 
