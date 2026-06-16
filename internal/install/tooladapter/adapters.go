@@ -17,6 +17,12 @@ const (
 	rulesCursor   = ".cursorrules"
 	rulesCodeium  = ".codeium/instructions.md"
 	rulesCopilot  = ".github/copilot-instructions.md"
+	// rulesKiro is Kiro's project-level steering file. Kiro reads markdown
+	// guidance from <repo>/.kiro/steering/*.md.
+	rulesKiro = ".kiro/steering/grafel.md"
+	// rulesAntigravity is Google Antigravity's workspace rules file. Rules
+	// live as markdown under <repo>/.agent/rules/*.md.
+	rulesAntigravity = ".agent/rules/grafel.md"
 )
 
 // hasMCPHost reports whether the given tool's MCP config file (or its
@@ -126,3 +132,49 @@ func (copilotAdapter) SupportsMCP() bool          { return false }
 func (copilotAdapter) MCPTool() mcpreg.Tool       { return "" }
 func (copilotAdapter) SupportsSkills() bool       { return false }
 func (copilotAdapter) SupportsAgentHook() bool    { return false }
+
+// ── kiro ─────────────────────────────────────────────────────────────
+//
+// Kiro (AWS agentic IDE) reads project-level steering files from
+// <repo>/.kiro/steering/*.md (we write .kiro/steering/grafel.md) and
+// connects to MCP servers via a JSON config with the same { "mcpServers":
+// { ... } } shape as Cursor. grafel registers in the user-global
+// ~/.kiro/settings/mcp.json (mcpreg.Kiro) to match ADR-0004's single
+// global-entry-per-tool model — the same choice made for Cursor. Kiro also
+// supports a workspace-level .kiro/settings/mcp.json, but a per-repo entry
+// is unnecessary since the daemon routes by caller-CWD. (#5255)
+type kiroAdapter struct{}
+
+func (kiroAdapter) ID() string                 { return "kiro" }
+func (kiroAdapter) DisplayName() string        { return "Kiro" }
+func (kiroAdapter) DetectInstalled() bool      { return hasMCPHost(mcpreg.Kiro) }
+func (kiroAdapter) RulesFileTargets() []string { return []string{rulesKiro} }
+func (kiroAdapter) SupportsMCP() bool          { return true }
+func (kiroAdapter) MCPTool() mcpreg.Tool       { return mcpreg.Kiro }
+func (kiroAdapter) SupportsSkills() bool       { return false }
+func (kiroAdapter) SupportsAgentHook() bool    { return false }
+
+// ── antigravity ──────────────────────────────────────────────────────
+//
+// Google Antigravity (agentic IDE) reads workspace rules as markdown from
+// <repo>/.agent/rules/*.md (we write .agent/rules/grafel.md).
+//
+// MCP: SupportsMCP()==false for now. Antigravity's MCP config path is not
+// confidently verifiable — public sources disagree on the location
+// (~/.gemini/antigravity/mcp_config.json vs ~/.gemini/config/mcp_config.json)
+// and Antigravity uses a non-standard `serverUrl` key (vs the usual `url`),
+// signalling its JSON shape is not a drop-in Cursor clone. Per #5255 we ship
+// the rules-file adapter only rather than invent a path we can't justify.
+// TODO(#5255 follow-up): confirm the Antigravity MCP config path + JSON
+// format against a pinned IDE version, then flip SupportsMCP()==true and add
+// the mcpreg.Tool entry (and a serverUrl-aware writer if needed).
+type antigravityAdapter struct{}
+
+func (antigravityAdapter) ID() string                 { return "antigravity" }
+func (antigravityAdapter) DisplayName() string        { return "Antigravity" }
+func (antigravityAdapter) DetectInstalled() bool      { return false }
+func (antigravityAdapter) RulesFileTargets() []string { return []string{rulesAntigravity} }
+func (antigravityAdapter) SupportsMCP() bool          { return false }
+func (antigravityAdapter) MCPTool() mcpreg.Tool       { return "" }
+func (antigravityAdapter) SupportsSkills() bool       { return false }
+func (antigravityAdapter) SupportsAgentHook() bool    { return false }

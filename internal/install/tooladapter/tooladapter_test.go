@@ -29,7 +29,8 @@ func TestDefaultEnablement_ReproducesAllSixRulesFiles(t *testing.T) {
 
 // TestDefaultEnablement_MCPTools guards the set of MCP tools grafel
 // registers under the default (all-tools) enablement. Cursor and Codex were
-// added in #5254 alongside the pre-existing Claude + Windsurf.
+// added in #5254 alongside the pre-existing Claude + Windsurf; Kiro was added
+// in #5255 (Antigravity is rules-only, no MCP).
 func TestDefaultEnablement_MCPTools(t *testing.T) {
 	var mcp []mcpreg.Tool
 	for _, a := range tooladapter.EnabledAdapters(nil) {
@@ -38,7 +39,7 @@ func TestDefaultEnablement_MCPTools(t *testing.T) {
 		}
 	}
 	sort.Slice(mcp, func(i, j int) bool { return mcp[i] < mcp[j] })
-	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Codex, mcpreg.Cursor, mcpreg.Windsurf}
+	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Codex, mcpreg.Cursor, mcpreg.Windsurf, mcpreg.Kiro}
 	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
 	if !reflect.DeepEqual(mcp, want) {
 		t.Fatalf("default MCP tools = %v, want %v", mcp, want)
@@ -108,9 +109,50 @@ func TestLookupAndAllIDs(t *testing.T) {
 	if _, ok := tooladapter.Lookup("does-not-exist"); ok {
 		t.Fatal("unknown id must not resolve")
 	}
-	want := []string{"claude", "codex", "cursor", "windsurf", "codeium", "copilot"}
+	want := []string{"claude", "codex", "cursor", "windsurf", "codeium", "copilot", "kiro", "antigravity"}
 	if got := tooladapter.AllIDs(); !reflect.DeepEqual(got, want) {
 		t.Fatalf("AllIDs = %v, want %v", got, want)
+	}
+}
+
+// TestKiroAdapter checks Kiro's targets: a steering rules file plus an MCP
+// entry registered into the user-global ~/.kiro/settings/mcp.json (#5255).
+func TestKiroAdapter(t *testing.T) {
+	cfg := &registry.GroupConfig{Tools: []string{"kiro"}}
+	ad := tooladapter.EnabledAdapters(cfg)
+	if len(ad) != 1 || ad[0].ID() != "kiro" {
+		t.Fatalf("expected only kiro adapter, got %v", idsOf(ad))
+	}
+	a := ad[0]
+	if rt := unionRulesTargets(ad); !reflect.DeepEqual(rt, []string{".kiro/steering/grafel.md"}) {
+		t.Fatalf("kiro rules targets = %v, want [.kiro/steering/grafel.md]", rt)
+	}
+	if !a.SupportsMCP() || a.MCPTool() != mcpreg.Kiro {
+		t.Fatalf("kiro must register Kiro MCP")
+	}
+	if a.SupportsAgentHook() || a.SupportsSkills() {
+		t.Fatalf("kiro should not support hook/skills")
+	}
+}
+
+// TestAntigravityAdapter checks Antigravity is a rules-only adapter (#5255):
+// a workspace .agent/rules/grafel.md file and NO MCP entry (path not yet
+// confidently verifiable — see adapter doc TODO).
+func TestAntigravityAdapter(t *testing.T) {
+	cfg := &registry.GroupConfig{Tools: []string{"antigravity"}}
+	ad := tooladapter.EnabledAdapters(cfg)
+	if len(ad) != 1 || ad[0].ID() != "antigravity" {
+		t.Fatalf("expected only antigravity adapter, got %v", idsOf(ad))
+	}
+	a := ad[0]
+	if rt := unionRulesTargets(ad); !reflect.DeepEqual(rt, []string{".agent/rules/grafel.md"}) {
+		t.Fatalf("antigravity rules targets = %v, want [.agent/rules/grafel.md]", rt)
+	}
+	if a.SupportsMCP() || a.MCPTool() != "" {
+		t.Fatalf("antigravity must NOT register MCP (path unverified)")
+	}
+	if a.SupportsAgentHook() || a.SupportsSkills() {
+		t.Fatalf("antigravity should not support hook/skills")
 	}
 }
 
