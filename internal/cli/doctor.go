@@ -11,6 +11,8 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/daemon/sched"
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/process"
@@ -188,6 +190,12 @@ func runDoctor(w io.Writer) error {
 		fmt.Fprintf(w, "%s grafel binary: %s\n", statusOK, bin)
 	}
 
+	// Reindex-storm mitigations (#5231): surface whether the daemon's
+	// memory- and CPU-saving indexing paths are active so operators can
+	// confirm them at a glance. Both are read from the local process env,
+	// which a co-located daemon shares.
+	printIndexingModes(w)
+
 	regPath, _ := registry.RegistryPath()
 	groups, err := registry.Groups()
 	if err != nil {
@@ -347,6 +355,23 @@ func scanGrafelProcs(myPID int) ([]staleProcess, error) {
 		})
 	}
 	return result, nil
+}
+
+// printIndexingModes reports whether the two reindex-storm mitigations
+// (#5231) are active: incremental file-level reindex and subprocess
+// (out-of-daemon) indexing. Both are derived from the local process
+// environment, which a co-located daemon inherits at start.
+func printIndexingModes(w io.Writer) {
+	var cfg *extractor.ExtractorConfig // nil → IsIncrementalEnabled reads env
+	incremental := cfg.IsIncrementalEnabled()
+	subprocess := sched.SubprocessIndexEnabled()
+
+	// Incremental defaults ON (#5231); subprocess defaults OFF (memory
+	// isolation is opt-in until rollout completes).
+	fmt.Fprintf(w, "%s incremental reindex: %s (GRAFEL_INCREMENTAL_REINDEX; default on)\n",
+		statusOK, onOff(incremental))
+	fmt.Fprintf(w, "%s subprocess indexer: %s (GRAFEL_SUBPROCESS_INDEXER; default off)\n",
+		statusOK, onOff(subprocess))
 }
 
 func checkRepo(w io.Writer, r registry.Repo) {

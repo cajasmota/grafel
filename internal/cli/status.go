@@ -12,7 +12,9 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/cajasmota/grafel/internal/daemon/client"
+	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/daemon/worktree"
+	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -93,6 +95,13 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 				if st.DashboardPort > 0 {
 					fmt.Fprintf(w, "  dashboard: http://127.0.0.1:%d/\n", st.DashboardPort)
 				}
+				// Reindex-storm mitigations (#5231): incremental file-level
+				// reindex (default ON) and subprocess/out-of-daemon indexing
+				// (default OFF). Read from the local process env, which a
+				// co-located daemon shares.
+				var ecfg *extractor.ExtractorConfig // nil → reads env
+				fmt.Fprintf(w, "  indexing: incremental=%s subprocess=%s\n",
+					onOff(ecfg.IsIncrementalEnabled()), onOff(sched.SubprocessIndexEnabled()))
 			}
 			if st.WatcherRepos > 0 || st.WatcherEvents > 0 {
 				fmt.Fprintf(w, "  watcher: repos=%d dirs=%d events=%d dropped=%d",
@@ -279,6 +288,14 @@ func printWorktreeChildren(w io.Writer, groupName string) {
 			fmt.Fprintf(w, "  └─ worktree: %s @ %s\n", name, branch)
 		}
 	}
+}
+
+// onOff renders a bool as "on"/"off" for status/doctor indexing-mode lines.
+func onOff(b bool) string {
+	if b {
+		return "on"
+	}
+	return "off"
 }
 
 // humanBytes formats a byte count as a short human-readable string. We

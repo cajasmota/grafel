@@ -35,8 +35,10 @@ import (
 // the Config-first / env-fallback logic in one place.
 type ExtractorConfig struct {
 	// Incremental reindex toggles (GRAFEL_INCREMENTAL_REINDEX,
-	// GRAFEL_INCREMENTAL_MAX_FILES). Non-pointer so the zero value
-	// is the documented default (disabled / auto-limit).
+	// GRAFEL_INCREMENTAL_MAX_FILES). The effective default when neither
+	// Config nor env sets a value is ON (#5231) — see IsIncrementalEnabled;
+	// the zero value here only means "not explicitly set via Config"
+	// (IncrementalReindexSet=false), which defers to that default.
 	IncrementalReindex  bool
 	IncrementalMaxFiles int // 0 means "auto" (gitmeta-based heuristic)
 
@@ -128,13 +130,22 @@ func (c *ExtractorConfig) EmitDestructureDetail() bool {
 }
 
 // IsIncrementalEnabled reports whether the incremental reindex path is active.
-// Config (when IncrementalReindexSet=true) wins; env var is the fallback;
-// default is false.
+// Config (when IncrementalReindexSet=true) wins; env var is the fallback.
+//
+// Default flipped to ON (#5231, the reindex-storm fix): the incremental
+// file-level patch is ~25× faster than a full reindex for single-file edits
+// and has a proven safe fall-through to the full IndexFn on any precondition
+// failure. Operators can still force the legacy full-reindex-every-time
+// behaviour with GRAFEL_INCREMENTAL_REINDEX=0 (or =false), which boolFromEnv
+// reports as an explicitly-set falsy value.
 func (c *ExtractorConfig) IsIncrementalEnabled() bool {
 	if c != nil && c.IncrementalReindexSet {
 		return c.IncrementalReindex
 	}
-	v, _ := boolFromEnv("GRAFEL_INCREMENTAL_REINDEX")
+	v, set := boolFromEnv("GRAFEL_INCREMENTAL_REINDEX")
+	if !set {
+		return true // default ON (#5231)
+	}
 	return v
 }
 
