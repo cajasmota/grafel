@@ -27,6 +27,13 @@ func main() {
 	if len(os.Args) >= 2 && os.Args[1] == "index-internal" {
 		os.Exit(runIndexInternal(os.Args[2:]))
 	}
+	// Release acceptance ladder (#5224). Intercepted before cobra dispatch
+	// because it owns its own argv, lifecycle, and exit code (it boots an
+	// isolated in-process daemon and asserts each layer). Lives in cmd/grafel
+	// (not internal/cli) since it wires the real Index + MCP function values.
+	if len(os.Args) >= 2 && os.Args[1] == "selftest" {
+		os.Exit(runSelftest(os.Args[2:]))
+	}
 	// Quick-doctor hook: cheap binary SHA + daemon /healthz check (#2211).
 	// Silent on success; prints one-line warning to stderr on drift.
 	// Skipped when the user is explicitly running `grafel doctor` (which

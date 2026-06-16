@@ -351,8 +351,42 @@ func runDaemon(argv []string) error {
 	fs.BoolVar(&noAutoCleanup, "no-auto-cleanup", false,
 		"disable the background docgen cleanup sweeper (default: enabled)")
 
+	// --foreground (#5225): run the daemon WITHOUT an OS service manager
+	// (launchd/systemd/Windows-Service). This is the CI / selftest / container
+	// path: the process starts, binds the socket + dashboard, logs to stdout,
+	// and blocks until SIGINT/SIGTERM. The normal background/service path
+	// (`grafel start` → launchd/systemd → `grafel daemon`) is unchanged — that
+	// path simply does not pass this flag. Also honours GRAFEL_DAEMON_FOREGROUND=1
+	// so a runner can opt in without rewriting argv.
+	//
+	// Effects when enabled:
+	//   - logs an explicit "foreground mode" banner to stdout so CI logs show it,
+	//   - disables the Layer-1 self-defense conflict check (GRAFEL_DISABLE_SELFDEFENSE)
+	//     so an ISOLATED daemon (its own GRAFEL_DAEMON_ROOT + dynamic port) can boot
+	//     even when a canonical user daemon is already running — matching the
+	//     in-test isolation seam. The Layer-2 CPU watchdog is left intact.
+	var foreground bool
+	fs.BoolVar(&foreground, "foreground", false,
+		"run in the foreground without an OS service manager (CI / container mode); blocks until SIGINT/SIGTERM")
+
 	if err := fs.Parse(argv); err != nil {
 		return err
+	}
+
+	// Env-var opt-in mirrors the flag (#5225). Either turns foreground mode on.
+	if v := strings.TrimSpace(os.Getenv("GRAFEL_DAEMON_FOREGROUND")); v == "1" || strings.EqualFold(v, "true") {
+		foreground = true
+	}
+	if foreground {
+		// Disable the Layer-1 startup conflict check for this run so an
+		// isolated foreground daemon can boot alongside a canonical one. Set
+		// before daemon.Run reads it. Idempotent: a no-op if already set.
+		if os.Getenv(daemon.EnvDisableSelfDefense) == "" {
+			_ = os.Setenv(daemon.EnvDisableSelfDefense, "1")
+		}
+		fmt.Fprintf(os.Stdout,
+			"grafel: foreground mode — no OS service manager; logging to stdout; SIGINT/SIGTERM to stop (root=%s)\n",
+			os.Getenv(daemon.EnvRoot))
 	}
 
 	layout, err := daemon.DefaultLayout()
