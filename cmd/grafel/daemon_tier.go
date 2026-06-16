@@ -51,6 +51,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/tier"
@@ -291,13 +292,76 @@ func deadRefDropReader(repoPath, ref string) {
 	daemonMCPCache.InvalidateForRepoRef(repoPath, ref)
 }
 
+// dashboardGroupInvalidator is the dashboard GraphCache per-group eviction hook
+// (#5238). Set by setDashboardGroupInvalidator when the embedded dashboard
+// server is constructed; nil before that (and in non-dashboard daemon test
+// paths), in which case tierEvictCallback skips the dashboard eviction.
+// Guarded by dashboardGroupInvalidatorMu so the construct-time set and the
+// scanner-goroutine read never race.
+var (
+	dashboardGroupInvalidatorMu sync.RWMutex
+	dashboardGroupInvalidator   func(group string)
+)
+
+// setDashboardGroupInvalidator registers (or replaces) the dashboard GraphCache
+// per-group invalidator used by tierEvictCallback on WARM→COLD demotion.
+func setDashboardGroupInvalidator(fn func(group string)) {
+	dashboardGroupInvalidatorMu.Lock()
+	dashboardGroupInvalidator = fn
+	dashboardGroupInvalidatorMu.Unlock()
+}
+
+// groupsForRepoPath returns the registry group name(s) that contain repoPath.
+// A repo can in principle appear in more than one group, so all matches are
+// returned. Best-effort: registry/config read errors yield an empty slice
+// (the caller simply skips dashboard eviction for the unmappable repo).
+func groupsForRepoPath(repoPath string) []string {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, g := range groups {
+		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
+		if err != nil {
+			continue
+		}
+		for _, r := range cfg.Repos {
+			if r.Path == repoPath {
+				out = append(out, g.Name)
+				break
+			}
+		}
+	}
+	return out
+}
+
 // tierEvictCallback releases the in-memory graph for a WARM→COLD transition.
+//
+// #5238: in addition to dropping the cheap mmap'd fbreader in the MCP cache,
+// it now also evicts the dashboard GraphCache's heavy materialised graph state
+// (the full *graph.Document slices, re-derived Pass-4 algorithm results, and
+// the per-group search index) for every group containing the demoted repo.
+// These derived structures are the dominant remaining idle-heap consumer; the
+// mmap'd graph.fb on disk is the source of truth, so dropping them is safe and
+// they rebuild lazily on the next dashboard request for the group.
 func tierEvictCallback(key tier.SlotKey) {
 	// Invalidate the mmap'd fbreader in the MCP graph cache.
 	stateDir := daemon.StateDirForRepoRef(key.RepoPath, key.Ref)
 	fbPath := filepath.Join(stateDir, "graph.fb")
 	daemonMCPCache.Invalidate(fbPath)
-	// The dashboard GraphCache entry ages out via its own TTL on next access.
+
+	// #5238: drop the dashboard GraphCache's materialised state for this repo's
+	// group(s) so its derived heap is reclaimed promptly on idle rather than
+	// only when the group is next re-requested past its TTL.
+	dashboardGroupInvalidatorMu.RLock()
+	inv := dashboardGroupInvalidator
+	dashboardGroupInvalidatorMu.RUnlock()
+	if inv != nil {
+		for _, g := range groupsForRepoPath(key.RepoPath) {
+			inv(g)
+		}
+	}
 }
 
 // tierReloadCallback reloads the mmap'd fbreader into the MCP graph cache
