@@ -28,6 +28,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/service"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/skilllink"
+	"github.com/cajasmota/grafel/internal/registry"
 )
 
 // UninstallOptions controls RunUninstall behaviour.
@@ -86,6 +87,20 @@ type UninstallOptions struct {
 	// warnFn receives WARN lines (e.g. when the daemon stop is skipped for
 	// isolation safety). When nil it writes to os.Stderr.
 	warnFn func(string)
+
+	// groupsFn / loadGroupFn resolve registered groups + their configs so the
+	// MCP deregistration sweep covers EVERY enabled tool's own config file
+	// (Cursor/Windsurf/Codex/Kiro), not just the recorded .claude.json paths
+	// (#5258). When nil they default to registry.Groups /
+	// registry.LoadGroupConfig. Injectable for tests.
+	groupsFn    func() ([]registry.GroupRef, error)
+	loadGroupFn func(path string) (*registry.GroupConfig, error)
+
+	// unregisterToolFn removes grafel's MCP entry from a tool's own config
+	// file (per-format: JSON or Codex TOML), preserving foreign entries. When
+	// nil it defaults to mcpreg.Unregister. Injectable so tests assert the
+	// multi-tool sweep without touching live config files.
+	unregisterToolFn func(tool mcpreg.Tool) error
 }
 
 // UninstallResult reports what RunUninstall accomplished.
@@ -95,6 +110,11 @@ type UninstallResult struct {
 
 	// MCPPaths lists the .claude.json files updated.
 	MCPPaths []string
+
+	// MCPToolsDeregistered lists the per-tool MCP configs (Cursor/Windsurf/
+	// Codex/Kiro/…) grafel's entry was removed from beyond the recorded
+	// .claude.json paths (#5258).
+	MCPToolsDeregistered []mcpreg.Tool
 
 	// DaemonStopped is true when the daemon was stopped.
 	DaemonStopped bool
@@ -149,6 +169,9 @@ func (o *UninstallOptions) applyDefaults() error {
 		o.warnFn = func(msg string) {
 			fmt.Fprintf(os.Stderr, "grafel uninstall: WARN: %s\n", msg)
 		}
+	}
+	if o.unregisterToolFn == nil {
+		o.unregisterToolFn = mcpreg.Unregister
 	}
 	return nil
 }
@@ -223,6 +246,29 @@ func RunUninstall(opts UninstallOptions) (*UninstallResult, error) {
 			fmt.Fprintf(os.Stderr, "grafel uninstall: deregister MCP %s: %v\n", cfgPath, err)
 		} else {
 			result.MCPPaths = append(result.MCPPaths, cfgPath)
+		}
+	}
+
+	// ── Step 2b: Sweep every enabled tool's own MCP config (#5258) ────────────
+	// Step 2 only removed grafel from the recorded .claude.json paths. The
+	// enabled-tool set lives in each group's config, so resolve it here and
+	// deregister grafel's entry from EVERY enabled tool's own config file —
+	// Cursor (~/.cursor/mcp.json), Windsurf (~/.codeium/windsurf/mcp_config.json),
+	// Codex (~/.codex/config.toml, TOML), Kiro (~/.kiro/settings/mcp.json).
+	// mcpreg.Unregister dispatches per-format (JSON vs TOML) and removes ONLY
+	// grafel's key/table, preserving every foreign server. Idempotent: a
+	// missing file or absent entry is a no-op.
+	bindings := resolveEnabledToolBindings(opts.groupsFn, opts.loadGroupFn)
+	for _, tool := range mcpToolsFromBindings(bindings) {
+		if opts.DryRun {
+			fmt.Fprintf(os.Stderr, "grafel uninstall (dry-run): would deregister MCP for tool %s\n", tool)
+			result.MCPToolsDeregistered = append(result.MCPToolsDeregistered, tool)
+			continue
+		}
+		if err := opts.unregisterToolFn(tool); err != nil {
+			fmt.Fprintf(os.Stderr, "grafel uninstall: deregister MCP for tool %s: %v\n", tool, err)
+		} else {
+			result.MCPToolsDeregistered = append(result.MCPToolsDeregistered, tool)
 		}
 	}
 
