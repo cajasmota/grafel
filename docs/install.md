@@ -96,6 +96,29 @@ grafel status               # confirm MCP: connected
 
 ---
 
+## Choosing which AI coding tools to target
+
+`grafel install` writes MCP entries, rules files, and (for Claude Code) skills
+into the AI coding tools you use. By default it targets **every supported
+tool**. To pick a subset:
+
+```sh
+grafel install --tools claude,cursor,windsurf   # non-interactive allow-list
+grafel install                                  # interactive wizard on a TTY
+grafel install --no-wizard                       # keep current/default set; skip wizard
+grafel tools list                                # inspect enabled/detected state
+grafel tools enable kiro                          # enable a tool after install (in-process)
+grafel tools disable codeium                       # disable a tool after install (in-process)
+```
+
+The same selection is editable from the dashboard under **Settings → AI coding
+tools**.
+
+See [tools.md](tools.md) for the full supported-tools matrix (exact MCP config
+paths and rules-file paths per tool) and the complete enable/disable reference.
+
+---
+
 ## Upgrade
 
 ```sh

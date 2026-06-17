@@ -110,6 +110,7 @@ For per-agent setup instructions see [docs/agent-hosts.md](docs/agent-hosts.md).
 | [docs/concepts.md](docs/concepts.md) | Knowledge graph, entities, edges, residual edges, repair |
 | [docs/mcp-tools.md](docs/mcp-tools.md) | MCP tool catalogue and pointer to full schema |
 | [docs/install.md](docs/install.md) | Full install matrix (script, binary, source, dev mode) |
+| [docs/tools.md](docs/tools.md) | Supported AI coding tools matrix + per-tool enable/disable (CLI + web) |
 | [docs/agent-hosts.md](docs/agent-hosts.md) | Per-agent setup (Claude Code, Cursor, Windsurf, Continue, Aider, Cline) |
 | [skills/README.md](skills/README.md) | Skill family — chains, dependencies, install |
 | [internal/mcp/SCHEMA.md](internal/mcp/SCHEMA.md) | Full MCP tool schema (canonical) |

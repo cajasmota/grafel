@@ -10,6 +10,7 @@ Reference documentation for grafel. The [README.md](../README.md) at the repo ro
 |-----|----------|
 | [quickstart.md](quickstart.md) | Install, first index, first query — 5 commands |
 | [install.md](install.md) | Full install matrix: script, binary, source, dev mode, troubleshooting |
+| [tools.md](tools.md) | Supported AI coding tools matrix (MCP / rules / skills paths) + per-tool enable/disable via CLI and web |
 | [agent-hosts.md](agent-hosts.md) | Per-agent MCP setup (Claude Code, Cursor, Windsurf, Continue, Aider, Cline) |
 
 ## Core concepts
