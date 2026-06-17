@@ -48,7 +48,6 @@ package watch
 import (
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -380,17 +379,20 @@ func classifyRefChange(repoPath, oldSHA, newSHA string, logger *slog.Logger) (Re
 		return ReindexUnknown, nil
 	}
 
-	// git diff --name-only <old>..<new>
-	cmd := exec.Command("git", "diff", "--name-only", oldSHA+".."+newSHA)
-	cmd.Dir = repoPath
-	out, err := cmd.Output()
-	if err != nil {
-		logger.Warn("classifyRefChange: git diff failed", "repo", repoPath, "err", err)
+	// git diff --name-only <old>..<new>. Bounded (#5286): the poller's loop
+	// goroutine calls this synchronously; an unbounded git diff on a U-state
+	// (uninterruptible I/O) child during heavy churn previously wedged the whole
+	// HEAD poller (no further branch-switch detection). On timeout/error we
+	// fail-closed to ReindexUnknown → the scheduler does a full reindex, and the
+	// poller keeps ticking.
+	out, ok := gitmeta.RunGitBounded(repoPath, "diff", "--name-only", oldSHA+".."+newSHA)
+	if !ok {
+		logger.Warn("classifyRefChange: git diff failed or timed out (#5286) — full reindex", "repo", repoPath)
 		return ReindexUnknown, nil
 	}
 
 	// Filter to indexed-source paths.
-	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	lines := strings.Split(strings.TrimSpace(out), "\n")
 	var sourcePaths []string
 	for _, rel := range lines {
 		rel = strings.TrimSpace(rel)

@@ -45,11 +45,12 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/gitmeta"
 )
 
 // Version is the manifest schema version. Increment when the JSON shape changes
@@ -215,36 +216,30 @@ func UpdateManifest(absRepo string, relPaths []string, m *Manifest) {
 // repo-relative paths changed since the last HEAD commit. Returns nil when
 // the repo is not a git repository or git is not available.
 func GitChangedFiles(repoPath string) (map[string]bool, error) {
-	// Verify this is a git repo.
-	checkCmd := exec.Command("git", "-C", repoPath, "rev-parse", "--is-inside-work-tree")
-	checkCmd.Stdout = io.Discard
-	checkCmd.Stderr = io.Discard
-	if err := checkCmd.Run(); err != nil {
-		return nil, nil // not a git repo, not an error
+	// Verify this is a git repo. Bounded (#5286): a stuck git child during heavy
+	// churn must not wedge the index worker — a timeout here is treated as "not
+	// a git repo" so FilterWithGit falls back to hash comparison.
+	if _, ok := gitmeta.RunGitBoundedC(repoPath, "rev-parse", "--is-inside-work-tree"); !ok {
+		return nil, nil // not a git repo (or git wedged) — not an error
 	}
 
-	// Collect: staged + unstaged changes + untracked files.
-	out := &bytes.Buffer{}
-
-	// git diff --name-only HEAD: tracked files that differ from HEAD
-	cmd := exec.Command("git", "-C", repoPath, "diff", "--name-only", "HEAD")
-	cmd.Stdout = out
-	cmd.Stderr = io.Discard
-	if err := cmd.Run(); err != nil {
-		// HEAD may not exist in a brand-new repo; treat as full-rebuild signal.
-		return nil, fmt.Errorf("git diff HEAD: %w", err)
+	// git diff --name-only HEAD: tracked files that differ from HEAD.
+	// Bounded: on timeout/error return an error so the caller falls back to the
+	// full hash-based scan instead of hanging on a U-state git child (#5286).
+	diffOut, ok := gitmeta.RunGitBoundedC(repoPath, "diff", "--name-only", "HEAD")
+	if !ok {
+		// HEAD may not exist in a brand-new repo, or git timed out; either way
+		// signal a full-rebuild fallback rather than blocking.
+		return nil, fmt.Errorf("git diff HEAD: bounded git failed (timeout or no HEAD)")
 	}
 
-	// git ls-files --others --exclude-standard: untracked new files
-	untrackedOut := &bytes.Buffer{}
-	utCmd := exec.Command("git", "-C", repoPath, "ls-files", "--others", "--exclude-standard")
-	utCmd.Stdout = untrackedOut
-	utCmd.Stderr = io.Discard
-	_ = utCmd.Run() // best-effort
+	// git ls-files --others --exclude-standard: untracked new files (best-effort,
+	// bounded). A timeout here just means we miss untracked files this pass.
+	untrackedOut, _ := gitmeta.RunGitBoundedC(repoPath, "ls-files", "--others", "--exclude-standard")
 
 	changed := make(map[string]bool)
-	for _, buf := range []*bytes.Buffer{out, untrackedOut} {
-		sc := bufio.NewScanner(buf)
+	for _, buf := range [][]byte{diffOut, untrackedOut} {
+		sc := bufio.NewScanner(bytes.NewReader(buf))
 		for sc.Scan() {
 			line := strings.TrimSpace(sc.Text())
 			if line != "" {
@@ -392,8 +387,9 @@ func moduleBase(relPath string) string {
 // headCommit returns the short HEAD commit hash for the repo at repoPath, or
 // empty string if git is unavailable or this is not a git repo.
 func headCommit(repoPath string) string {
-	out, err := exec.Command("git", "-C", repoPath, "rev-parse", "--short", "HEAD").Output()
-	if err != nil {
+	// Bounded (#5286): never let a stuck git child hang the index worker.
+	out, ok := gitmeta.RunGitBoundedC(repoPath, "rev-parse", "--short", "HEAD")
+	if !ok {
 		return ""
 	}
 	return strings.TrimSpace(string(out))

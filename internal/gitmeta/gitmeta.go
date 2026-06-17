@@ -8,10 +8,90 @@ package gitmeta
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"time"
 )
+
+// EnvGitTimeout overrides the default external-git deadline (in seconds) used
+// by the bounded runners below. A value ≤ 0 disables the cap (not recommended).
+// Default when unset: DefaultGitTimeout.
+const EnvGitTimeout = "GRAFEL_GIT_TIMEOUT_SECONDS"
+
+// DefaultGitTimeout bounds any external git invocation made on a serve- or
+// index-critical path. Issue #5286: a stuck `git` child (uninterruptible disk
+// I/O during heavy churn) previously wedged the indexer / HEAD poller with no
+// deadline. CommandContext lets us kill the child on timeout and fail-closed
+// skip the repo while the daemon keeps serving. 45s is generous for a slow but
+// healthy `git log`/`git diff` on a large repo, yet bounds a true hang.
+const DefaultGitTimeout = 45 * time.Second
+
+// GitTimeout returns the configured external-git deadline (DefaultGitTimeout
+// unless GRAFEL_GIT_TIMEOUT_SECONDS overrides it). A non-positive override is
+// clamped to DefaultGitTimeout so a typo can never re-introduce an unbounded
+// call on the serve/index path.
+func GitTimeout() time.Duration {
+	if v := strings.TrimSpace(os.Getenv(EnvGitTimeout)); v != "" {
+		if n, err := strconv.Atoi(v); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	return DefaultGitTimeout
+}
+
+// RunGitBounded runs git with the given args inside dir under the configured
+// GitTimeout and returns (stdout-trimmed, true) on success. On timeout or any
+// error it returns ("", false) — the child is killed by CommandContext when the
+// deadline fires. Unlike RunGit (2s, swallows errors) this exposes the ok flag
+// so index/poller callers can fail-closed skip a repo whose git wedged, instead
+// of silently treating a hang as "no output". Issue #5286.
+func RunGitBounded(dir string, args ...string) (string, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), GitTimeout())
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "git", args...)
+	cmd.Dir = dir
+	applyWaitDelay(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return "", false
+	}
+	return strings.TrimSpace(string(out)), true
+}
+
+// waitDelayGrace is how long Wait()/Output() will wait, AFTER the context
+// deadline fires and the child is signalled, before the os/exec runtime
+// force-closes the child's I/O pipes and returns. This is the load-bearing part
+// of the #5286 fix: a stuck git can spawn a grandchild (or itself wedge in a
+// U-state) that keeps the stdout pipe open, so CommandContext's SIGKILL of the
+// direct child does NOT unblock Output() — Wait blocks on the inherited pipe
+// indefinitely. WaitDelay caps that wait so the caller ALWAYS returns and can
+// fail-closed skip the repo, even when the OS cannot reap the wedged process.
+const waitDelayGrace = 3 * time.Second
+
+// applyWaitDelay wires cmd.WaitDelay (Go 1.20+) so a wedged child whose pipes
+// stay open after the deadline cannot block Wait()/Output() forever.
+func applyWaitDelay(cmd *exec.Cmd) {
+	cmd.WaitDelay = waitDelayGrace
+}
+
+// RunGitBoundedC is like RunGitBounded but takes the explicit subcommand form
+// `git -C <dir> <args...>` (matching the indexer's existing call style) and
+// returns the raw, untrimmed stdout so callers that scan line-by-line keep
+// trailing structure. ok is false on timeout/error.
+func RunGitBoundedC(dir string, args ...string) ([]byte, bool) {
+	ctx, cancel := context.WithTimeout(context.Background(), GitTimeout())
+	defer cancel()
+	full := append([]string{"-C", dir}, args...)
+	cmd := exec.CommandContext(ctx, "git", full...)
+	applyWaitDelay(cmd)
+	out, err := cmd.Output()
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
 
 // Info holds the git HEAD metadata captured at index time.
 type Info struct {
