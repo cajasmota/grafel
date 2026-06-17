@@ -106,6 +106,15 @@ type DoctorOptions struct {
 	// SkillsDir is the primary Claude skills directory.
 	// When empty it is derived from ClaudeConfigDirs or auto-detected from HOME.
 	SkillsDir string
+
+	// groupsFn / loadGroupFn resolve the registered groups and their configs
+	// for the per-enabled-tool checks (#5258). When nil they default to
+	// registry.Groups / registry.LoadGroupConfig. Injectable so tests can
+	// drive the enabled-tool set without a real registry on disk.
+	groupsFn     func() ([]registry.GroupRef, error)
+	loadGroupFn  func(path string) (*registry.GroupConfig, error)
+	mcpEntryFn   func(cfgPath string) (missing bool, drift string)
+	mcpPathForFn func(tool mcpreg.Tool) (string, error)
 }
 
 func (o *DoctorOptions) applyDefaults() error {
@@ -203,7 +212,18 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 		report.Checks = append(report.Checks, c)
 	}
 
-	// ── Check 7: Stale staging dirs ─────────────────────────────────────────
+	// ── Check 7: Per-enabled-tool wiring (issue #5258) ──────────────────────
+	// For every tool ENABLED in any group's config, verify its own artifacts:
+	// the MCP entry in that tool's config file (where SupportsMCP), and its
+	// rules file(s) across the group's repos. Skills are Claude-only and are
+	// already covered by Check 3, so they are not re-reported here. These rows
+	// are Warning severity (a per-tool gap doesn't break the install) — Claude's
+	// critical MCP/skills checks above keep their existing severity.
+	for _, c := range checkEnabledTools(opts) {
+		report.Checks = append(report.Checks, c)
+	}
+
+	// ── Check 8: Stale staging dirs ─────────────────────────────────────────
 	if staleCheck := checkStaleStagingDirs(opts.StatePath); staleCheck != nil {
 		report.Checks = append(report.Checks, *staleCheck)
 	}
@@ -644,6 +664,88 @@ func scanRulesFilesForRepo(group, repoPath string) CheckResult {
 		}
 	}
 	return cr
+}
+
+// checkEnabledTools emits one CheckResult per (group, enabled-tool) pair,
+// validating that tool's own wiring (issue #5258):
+//
+//   - MCP: when the adapter SupportsMCP, the grafel entry must be present in
+//     that tool's config file (mcpreg.SettingsPath — .claude.json, Cursor's
+//     ~/.cursor/mcp.json, Windsurf's mcp_config.json, Codex's config.toml,
+//     Kiro's mcp.json). A missing config file is reported as "mcp not wired"
+//     rather than an error — the tool may simply not be installed.
+//   - rules: each of the adapter's rules-file targets must contain the current
+//     grafel block in every repo of the group.
+//
+// Severity is Warning: a per-tool gap means that tool's agent won't reach for
+// the grafel MCP first, but it does not break the install. Claude's critical
+// MCP/skills checks (Checks 3 & 4) are unchanged. When no groups are
+// registered the slice is empty (a fresh machine isn't "broken").
+func checkEnabledTools(opts DoctorOptions) []CheckResult {
+	bindings := resolveEnabledToolBindings(opts.groupsFn, opts.loadGroupFn)
+	if len(bindings) == 0 {
+		return nil
+	}
+
+	mcpEntry := opts.mcpEntryFn
+	if mcpEntry == nil {
+		mcpEntry = mcpEntryDrift
+	}
+	mcpPathFor := opts.mcpPathForFn
+	if mcpPathFor == nil {
+		mcpPathFor = mcpreg.SettingsPath
+	}
+
+	var results []CheckResult
+	for _, b := range bindings {
+		a := b.adapter
+		cr := CheckResult{
+			Surface:  fmt.Sprintf("tool/%s/%s", b.group, a.ID()),
+			OK:       true,
+			Severity: SeverityWarning,
+		}
+
+		// ── MCP entry in the tool's own config file ───────────────────────
+		if a.SupportsMCP() {
+			tool := a.MCPTool()
+			cfgPath, err := mcpPathFor(tool)
+			if err != nil {
+				cr.OK = false
+				cr.Drift = append(cr.Drift, fmt.Sprintf("mcp: cannot resolve config path: %v", err))
+			} else if _, statErr := os.Stat(cfgPath); statErr != nil {
+				// Tool's config file absent — tool likely not installed.
+				cr.OK = false
+				cr.Drift = append(cr.Drift, fmt.Sprintf("mcp not wired (%s absent — tool installed?)", cfgPath))
+			} else if missing, drift := mcpEntry(cfgPath); missing {
+				cr.OK = false
+				cr.Drift = append(cr.Drift, fmt.Sprintf("mcp entry absent from %s", cfgPath))
+			} else if drift != "" {
+				cr.OK = false
+				cr.Drift = append(cr.Drift, fmt.Sprintf("mcp: %s", drift))
+			}
+		}
+
+		// ── rules file(s) across the group's repos ────────────────────────
+		want := map[string]bool{}
+		for _, t := range a.RulesFileTargets() {
+			want[t] = true
+		}
+		if len(want) > 0 {
+			for _, repo := range b.repos {
+				for _, st := range rulesfiles.Scan(repo) {
+					if !want[st.Target] || st.Status == rulesfiles.StatusOK {
+						continue
+					}
+					cr.OK = false
+					label := strings.ToUpper(string(st.Status))
+					cr.Drift = append(cr.Drift, fmt.Sprintf("rules %s [%s] (%s)", st.Target, label, filepath.Base(repo)))
+				}
+			}
+		}
+
+		results = append(results, cr)
+	}
+	return results
 }
 
 // checkStaleStagingDirs looks for .grafel/staging/<run_id>/ directories
