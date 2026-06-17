@@ -20,6 +20,8 @@ import type {
   SettingsGroup,
   SettingsFeatures,
   DoctorCheck,
+  ToolsStatus,
+  ToolsApplyReply,
   TopologyResponse,
   CompoundTopologyResponse,
   CompoundGroupBy,
@@ -449,6 +451,24 @@ export const api = {
   runDoctor: (groupId: string) =>
     requestV2<DoctorCheck[]>(`/groups/${encodeURIComponent(groupId)}/doctor`, {
       method: "POST",
+    }),
+
+  /**
+   * GET /api/v2/groups/:id/tools — AI-tool selection status (#5257). Returns
+   * every adapter with its enabled + detected state.
+   */
+  getTools: (groupId: string) =>
+    requestV2<ToolsStatus>(`/groups/${encodeURIComponent(groupId)}/tools`),
+
+  /**
+   * PUT /api/v2/groups/:id/tools — set the desired enabled tool-set. The
+   * delta is applied in-process (rules files + MCP entries) and a per-tool
+   * summary is returned.
+   */
+  putTools: (groupId: string, tools: string[]) =>
+    requestV2<ToolsApplyReply>(`/groups/${encodeURIComponent(groupId)}/tools`, {
+      method: "PUT",
+      body: JSON.stringify({ tools }),
     }),
 
   // --- v2 Pending screen (#1442) ---

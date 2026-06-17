@@ -291,6 +291,38 @@ export interface DoctorCheck {
   detail: string;
 }
 
+// ── AI-tool selection settings (#5257, epic #5252) ───────────────────────────
+
+/** One AI coding tool's install status for a group. */
+export interface ToolStatus {
+  id: string;
+  displayName: string;
+  /** Whether grafel's artifacts are written for this tool in the group. */
+  enabled: boolean;
+  /** Best-effort detection that the tool is present on this machine. */
+  detected: boolean;
+}
+
+/** GET /api/v2/groups/:id/tools response. */
+export interface ToolsStatus {
+  tools: ToolStatus[];
+  /** True when the group has an explicit selection (vs the all-tools default). */
+  explicit: boolean;
+}
+
+/** Per-tool outcome of a PUT /tools apply. */
+export interface ToolApplyResult {
+  id: string;
+  action: "written" | "removed" | "unchanged" | "error";
+  detail?: string;
+}
+
+/** PUT /api/v2/groups/:id/tools response. */
+export interface ToolsApplyReply {
+  tools: string[];
+  summary: ToolApplyResult[];
+}
+
 // ── Topology screen ──────────────────────────────────────────────────────────
 
 /** Canonical broker identifiers used for color/shape mapping. */

@@ -153,3 +153,29 @@ export function useRunDoctor(groupId: string) {
     mutationFn: () => api.runDoctor(groupId),
   });
 }
+
+// ── AI-tool selection settings (#5257, epic #5252) ───────────────────────────
+
+/** Query key for the AI-tool selection status of a group. */
+export const toolsQueryKey = (groupId: string) => ["tools", groupId] as const;
+
+/** Fetches the AI-tool selection status (enabled + detected per adapter). */
+export function useTools(groupId: string) {
+  return useQuery({
+    queryKey: toolsQueryKey(groupId),
+    queryFn: () => api.getTools(groupId),
+  });
+}
+
+/**
+ * Saves the desired enabled tool-set. The server applies the delta in-process
+ * (rules files + MCP entries) and returns a per-tool summary. Invalidates the
+ * tools query on success so the panel reflects the persisted state.
+ */
+export function usePutTools(groupId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (tools: string[]) => api.putTools(groupId, tools),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: toolsQueryKey(groupId) }),
+  });
+}

@@ -62,10 +62,12 @@ import {
   usePatchMonorepo,
   useRunDoctor,
   useActionJob,
+  useTools,
+  usePutTools,
 } from "@/hooks/use-settings";
 import { ScanWizard } from "@/components/chrome/scan-wizard";
 import { ApiError } from "@/lib/api";
-import type { SettingsRepo, SettingsGroup, DoctorCheck, MonorepoPkg } from "@/data/types";
+import type { SettingsRepo, SettingsGroup, DoctorCheck, MonorepoPkg, ToolApplyResult } from "@/data/types";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 
@@ -835,6 +837,140 @@ function DocsSection({ group, groupId }: { group: SettingsGroup; groupId: string
 }
 
 // ---------------------------------------------------------------------------
+// 4b. AI coding tools (#5257, epic #5252)
+//
+// Checklist of every AI coding tool grafel can install into, with each tool's
+// enabled + (detected) state. Saving applies the delta IN-PROCESS via
+// PUT /api/v2/groups/:id/tools (the daemon stays up — no `grafel install`
+// subprocess, no daemon restart) and surfaces a per-tool written/removed
+// summary.
+//
+// Create-time selection: the SPA's create-group flow (ScanWizard mode="create")
+// indexes a new group asynchronously and does not yet thread a tool selection
+// into the create request — that is CLI-only today via `grafel install`
+// (#5256). This panel covers post-create editing for every group.
+// ---------------------------------------------------------------------------
+
+const TOOL_ACTION_STYLE: Record<ToolApplyResult["action"], string> = {
+  written: "text-success",
+  removed: "text-warning",
+  unchanged: "text-text-4",
+  error: "text-danger",
+};
+
+function ToolsSection({ groupId }: { groupId: string }) {
+  const { data, isLoading, isError } = useTools(groupId);
+  const putTools = usePutTools(groupId);
+
+  // Local checked-set, seeded from the server and kept in sync on refetch.
+  const [checked, setChecked] = useState<Record<string, boolean>>({});
+  const [summary, setSummary] = useState<ToolApplyResult[] | null>(null);
+
+  useEffect(() => {
+    if (!data) return;
+    const next: Record<string, boolean> = {};
+    for (const t of data.tools) next[t.id] = t.enabled;
+    setChecked(next);
+  }, [data]);
+
+  const dirty =
+    !!data &&
+    data.tools.some((t) => !!checked[t.id] !== t.enabled);
+
+  const save = () => {
+    const tools = Object.entries(checked)
+      .filter(([, on]) => on)
+      .map(([id]) => id);
+    setSummary(null);
+    putTools.mutate(tools, {
+      onSuccess: (reply) => {
+        setSummary(reply.summary);
+        const changed = reply.summary.filter((s) => s.action === "written" || s.action === "removed").length;
+        const errs = reply.summary.filter((s) => s.action === "error").length;
+        if (errs > 0) toast.error(`${errs} tool${errs !== 1 ? "s" : ""} failed to apply.`);
+        else toast.success(changed > 0 ? `Updated ${changed} tool${changed !== 1 ? "s" : ""}.` : "No changes.");
+      },
+      onError: () => toast.error("Failed to save tool selection."),
+    });
+  };
+
+  return (
+    <Section
+      id="tools"
+      title="AI coding tools"
+      sub="Pick which AI coding tools grafel installs its MCP entry + rules files into. Changes apply instantly across every repo in this group — the daemon stays up."
+      action={
+        <Button
+          variant="primary"
+          size="sm"
+          disabled={!dirty || putTools.isPending}
+          onClick={save}
+          data-testid="btn-save-tools"
+        >
+          {putTools.isPending ? <Loader2 size={12} className="animate-spin" /> : null}
+          Save tools
+        </Button>
+      }
+    >
+      {isLoading ? (
+        <div className="space-y-2">
+          {[0, 1, 2].map((i) => (
+            <Skeleton key={i} h="h-9" className="rounded-lg" />
+          ))}
+        </div>
+      ) : isError || !data ? (
+        <p className="text-sm text-text-3 py-4 text-center">Failed to load tool status.</p>
+      ) : (
+        <>
+          <div className="divide-y divide-border-soft">
+            {data.tools.map((t) => {
+              const applied = summary?.find((s) => s.id === t.id);
+              return (
+                <label
+                  key={t.id}
+                  className="flex items-center gap-3 py-2.5 cursor-pointer first:pt-0 last:pb-0"
+                >
+                  <input
+                    type="checkbox"
+                    checked={!!checked[t.id]}
+                    onChange={(e) => setChecked((c) => ({ ...c, [t.id]: e.target.checked }))}
+                    className="accent-[var(--accent)] rounded"
+                    data-testid={`tool-checkbox-${t.id}`}
+                  />
+                  <span className="flex-1 min-w-0">
+                    <span className="text-sm font-medium text-text">{t.displayName}</span>
+                    <span className="ml-2 font-mono text-xs text-text-4">{t.id}</span>
+                  </span>
+                  {t.detected && (
+                    <span className="text-xs font-mono text-success border border-success/40 rounded px-1.5 py-0.5">
+                      detected
+                    </span>
+                  )}
+                  {applied && applied.action !== "unchanged" && (
+                    <span className={cn("text-xs font-mono", TOOL_ACTION_STYLE[applied.action])}>
+                      {applied.action}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </div>
+          {!data.explicit && (
+            <p className="mt-3 flex items-start gap-1.5 text-xs text-text-3">
+              <Info size={12} className="mt-px shrink-0 text-text-4" />
+              <span>
+                No explicit selection yet — every supported tool is enabled by
+                default. Saving records an explicit set.
+              </span>
+            </p>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // 5. Health check
 // ---------------------------------------------------------------------------
 
@@ -1583,6 +1719,9 @@ export default function SettingsScreen() {
 
       {/* 4. Group docs */}
       <DocsSection group={group} groupId={groupId} />
+
+      {/* 4b. AI coding tools (#5257) */}
+      <ToolsSection groupId={groupId} />
 
       {/* 5. Health check */}
       <HealthSection groupId={groupId} />

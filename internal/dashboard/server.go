@@ -20,11 +20,13 @@ import (
 
 	"github.com/cajasmota/grafel/internal/audit"
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/jobs"
 	"github.com/cajasmota/grafel/internal/mcp"
 	"github.com/cajasmota/grafel/internal/notifications"
 	"github.com/cajasmota/grafel/internal/perf"
 	"github.com/cajasmota/grafel/internal/progress"
+	"github.com/cajasmota/grafel/internal/registry"
 )
 
 // Server is an embedded HTTP dashboard. It is intentionally small: it
@@ -126,7 +128,18 @@ type Server struct {
 	// GET /api/v2/groups/:group/refs endpoint (PH2a of epic #2087 #2096).
 	// Optional: when nil, watcher_state is reported as "unknown".
 	watcherQuerier WatcherQuerier
+
+	// applyToolDelta is the in-process tool-selection delta applier used by
+	// the tools settings PUT handler (#5257). Defaults to
+	// install.ApplyToolDelta; injectable in tests so the handler never touches
+	// the real (live) machine's rules files / MCP registrations.
+	applyToolDelta applyToolDeltaFunc
 }
+
+// applyToolDeltaFunc matches install.ApplyToolDelta's signature so the tools
+// settings handler can be tested with a mock that records the delta and never
+// writes to the live filesystem (#5257).
+type applyToolDeltaFunc func(cfg *registry.GroupConfig, group, binPath string, prevTools, nextTools []string, ops *install.ToolDeltaOps) (*install.ToolDeltaResult, error)
 
 // watcherForceRescan is the subset of the watch.Watcher surface used by
 // the dashboard. The interface keeps the dashboard package free of a
@@ -727,6 +740,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("DELETE /api/v2/groups/{group}/repos/{repo}", s.handleV2RemoveRepo)
 	mux.HandleFunc("PATCH /api/v2/groups/{group}/repos/{repo}/monorepo", s.handleV2PatchMonorepo)
 	mux.HandleFunc("POST /api/v2/groups/{group}/doctor", s.handleV2Doctor)
+
+	// AI-tool selection settings (#5257, epic #5252): per-group enable/disable
+	// of the install targets, applied in-process via install.ApplyToolDelta.
+	mux.HandleFunc("GET /api/v2/groups/{group}/tools", s.handleV2GetTools)
+	mux.HandleFunc("PUT /api/v2/groups/{group}/tools", s.handleV2PutTools)
 
 	// --- v2 action endpoints (#1512): real REST wrappers over CLI-only ops. ---
 	// Rebuild/reset are ASYNC: handler returns 202 + a job id immediately and
