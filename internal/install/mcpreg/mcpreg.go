@@ -81,6 +81,7 @@ const (
 	ContinueDev       Tool = "continue-dev"
 	Zed               Tool = "zed"
 	Kiro              Tool = "kiro"
+	Antigravity       Tool = "antigravity"
 )
 
 // ConfigShape describes the JSON layout of a host's config file for
@@ -202,6 +203,15 @@ func SettingsPath(tool Tool) (string, error) {
 		// user-global file — same convention as Cursor (~/.cursor/mcp.json).
 		// The JSON shape is identical to Cursor: { "mcpServers": { ... } }.
 		return filepath.Join(home, ".kiro", "settings", "mcp.json"), nil
+	case Antigravity:
+		// Google Antigravity (agentic IDE): user-global MCP config at
+		// ~/.gemini/antigravity/mcp_config.json (on Windows the same relative
+		// path under %USERPROFILE%). grafel is a local stdio server, so the
+		// entry is the standard JSON { "mcpServers": { "grafel": { command,
+		// args } } } shape — identical to Cursor/Kiro. The `serverUrl` key is
+		// only for remote HTTP MCP servers and does NOT apply here. Path source:
+		// the official github-mcp-server install-antigravity guide.
+		return filepath.Join(home, ".gemini", "antigravity", "mcp_config.json"), nil
 	}
 	return "", fmt.Errorf("unknown tool: %s", tool)
 }
@@ -264,6 +274,14 @@ func DetectContinueDevPaths() []HostTarget {
 // same shape as Cursor).
 func DetectKiroPaths() []HostTarget {
 	return DetectHostPaths([]string{".kiro", "settings"}, "mcp.json", ShapeFlat)
+}
+
+// DetectAntigravityPaths returns Antigravity config paths to register.
+// Uses ~/.gemini/antigravity/mcp_config.json — ShapeFlat (mcpServers key at
+// root, same JSON shape as Cursor/Kiro). grafel is a local stdio server, so
+// no remote `serverUrl` is involved.
+func DetectAntigravityPaths() []HostTarget {
+	return DetectHostPaths([]string{".gemini", "antigravity"}, "mcp_config.json", ShapeFlat)
 }
 
 // DetectZedPaths returns Zed config paths to register.

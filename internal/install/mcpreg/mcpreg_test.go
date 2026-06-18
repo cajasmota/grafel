@@ -596,6 +596,128 @@ func TestKiro_PreservesForeignServers_AndUnregisters(t *testing.T) {
 	}
 }
 
+// ── Antigravity tests ─────────────────────────────────────────────────────────
+
+// TestInstall_RegistersAntigravity: ~/.gemini/antigravity/ present →
+// DetectAntigravityPaths returns the mcp_config.json path and RegisterPath
+// writes a valid grafel entry with the Cursor-shaped { "mcpServers": { ... } }
+// layout (#5280).
+func TestInstall_RegistersAntigravity(t *testing.T) {
+	home := withHome(t)
+
+	agDir := filepath.Join(home, ".gemini", "antigravity")
+	if err := os.MkdirAll(agDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	targets := DetectAntigravityPaths()
+	wantPath := filepath.Join(agDir, "mcp_config.json")
+	if len(targets) != 1 || targets[0].Path != wantPath {
+		t.Fatalf("DetectAntigravityPaths: got %v, want [{%s ShapeFlat}]", targets, wantPath)
+	}
+	if targets[0].Shape != ShapeFlat {
+		t.Fatalf("Antigravity shape: got %v, want ShapeFlat", targets[0].Shape)
+	}
+
+	// SettingsPath(Antigravity) must resolve to the same user-global file.
+	sp, err := SettingsPath(Antigravity)
+	if err != nil {
+		t.Fatalf("SettingsPath(Antigravity): %v", err)
+	}
+	if sp != wantPath {
+		t.Fatalf("SettingsPath(Antigravity) = %q, want %q", sp, wantPath)
+	}
+
+	if _, err := RegisterPath(wantPath, "/usr/local/bin/grafel"); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(wantPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		McpServers map[string]Entry `json:"mcpServers"`
+	}
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := doc.McpServers[ServerName]
+	if got.Command != "/usr/local/bin/grafel" {
+		t.Fatalf("antigravity: command = %q, want /usr/local/bin/grafel", got.Command)
+	}
+	if len(got.Args) != 1 || got.Args[0] != "mcp-bridge" {
+		t.Fatalf("antigravity: args = %v, want [mcp-bridge]", got.Args)
+	}
+	if got.Type != "stdio" {
+		t.Fatalf("antigravity: type = %q, want stdio", got.Type)
+	}
+}
+
+// TestInstall_SkipsAbsentAntigravity: no ~/.gemini/antigravity dir →
+// DetectAntigravityPaths is empty.
+func TestInstall_SkipsAbsentAntigravity(t *testing.T) {
+	withHome(t)
+	if targets := DetectAntigravityPaths(); len(targets) != 0 {
+		t.Fatalf("expected no Antigravity paths when dir absent, got %v", targets)
+	}
+}
+
+// TestAntigravity_PreservesForeignServers_AndUnregisters: registering grafel
+// into an Antigravity mcp_config.json that already has another server preserves
+// the foreign entry, and Unregister removes ONLY grafel's key (#5280 safety,
+// same as Cursor/Kiro).
+func TestAntigravity_PreservesForeignServers_AndUnregisters(t *testing.T) {
+	home := withHome(t)
+	agDir := filepath.Join(home, ".gemini", "antigravity")
+	if err := os.MkdirAll(agDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(agDir, "mcp_config.json")
+
+	seed := `{"mcpServers":{"other":{"command":"/bin/other","args":["x"]}},"someAGSetting":true}`
+	if err := os.WriteFile(path, []byte(seed), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := RegisterPath(path, "/usr/local/bin/grafel"); err != nil {
+		t.Fatal(err)
+	}
+	var doc map[string]any
+	b, _ := os.ReadFile(path)
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if _, ok := servers["other"]; !ok {
+		t.Fatalf("foreign server 'other' was dropped: %v", servers)
+	}
+	if _, ok := servers[ServerName]; !ok {
+		t.Fatalf("grafel server not written: %v", servers)
+	}
+	if doc["someAGSetting"] != true {
+		t.Fatalf("unrelated key 'someAGSetting' not preserved: %v", doc["someAGSetting"])
+	}
+
+	if err := UnregisterPath(path); err != nil {
+		t.Fatal(err)
+	}
+	b, _ = os.ReadFile(path)
+	doc = nil
+	if err := json.Unmarshal(b, &doc); err != nil {
+		t.Fatal(err)
+	}
+	servers, _ = doc["mcpServers"].(map[string]any)
+	if _, ok := servers[ServerName]; ok {
+		t.Fatalf("grafel not removed on unregister: %v", servers)
+	}
+	if _, ok := servers["other"]; !ok {
+		t.Fatalf("unregister dropped foreign server 'other': %v", servers)
+	}
+	if doc["someAGSetting"] != true {
+		t.Fatalf("unregister dropped unrelated key: %v", doc["someAGSetting"])
+	}
+}
+
 // ── Codex tests ───────────────────────────────────────────────────────────────
 
 // TestInstall_RegistersCodex: ~/.codex/ present → DetectCodexPaths returns
@@ -1006,6 +1128,7 @@ func TestInstall_SkipsAbsentHost(t *testing.T) {
 		{"ContinueDev", DetectContinueDevPaths},
 		{"Zed", DetectZedPaths},
 		{"Kiro", DetectKiroPaths},
+		{"Antigravity", DetectAntigravityPaths},
 	}
 	for _, h := range hosts {
 		t.Run(h.name, func(t *testing.T) {

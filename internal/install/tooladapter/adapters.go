@@ -157,24 +157,21 @@ func (kiroAdapter) SupportsAgentHook() bool    { return false }
 // ── antigravity ──────────────────────────────────────────────────────
 //
 // Google Antigravity (agentic IDE) reads workspace rules as markdown from
-// <repo>/.agent/rules/*.md (we write .agent/rules/grafel.md).
+// <repo>/.agent/rules/*.md (we write .agent/rules/grafel.md) and registers an
+// MCP server in its user-global JSON config at
+// ~/.gemini/antigravity/mcp_config.json (mcpServers.grafel) — #5280.
 //
-// MCP: SupportsMCP()==false for now. Antigravity's MCP config path is not
-// confidently verifiable — public sources disagree on the location
-// (~/.gemini/antigravity/mcp_config.json vs ~/.gemini/config/mcp_config.json)
-// and Antigravity uses a non-standard `serverUrl` key (vs the usual `url`),
-// signalling its JSON shape is not a drop-in Cursor clone. Per #5255 we ship
-// the rules-file adapter only rather than invent a path we can't justify.
-// TODO(#5255 follow-up): confirm the Antigravity MCP config path + JSON
-// format against a pinned IDE version, then flip SupportsMCP()==true and add
-// the mcpreg.Tool entry (and a serverUrl-aware writer if needed).
+// grafel is a local stdio server (command=grafel binary, args=["mcp-bridge"]),
+// so the entry uses the standard JSON { "mcpServers": { ... } } shape —
+// identical to Cursor/Kiro and a drop-in for the existing JSON mcpreg writer.
+// The `serverUrl` key is only for remote HTTP MCP servers and does NOT apply.
 type antigravityAdapter struct{}
 
 func (antigravityAdapter) ID() string                 { return "antigravity" }
 func (antigravityAdapter) DisplayName() string        { return "Antigravity" }
-func (antigravityAdapter) DetectInstalled() bool      { return false }
+func (antigravityAdapter) DetectInstalled() bool      { return hasMCPHost(mcpreg.Antigravity) }
 func (antigravityAdapter) RulesFileTargets() []string { return []string{rulesAntigravity} }
-func (antigravityAdapter) SupportsMCP() bool          { return false }
-func (antigravityAdapter) MCPTool() mcpreg.Tool       { return "" }
+func (antigravityAdapter) SupportsMCP() bool          { return true }
+func (antigravityAdapter) MCPTool() mcpreg.Tool       { return mcpreg.Antigravity }
 func (antigravityAdapter) SupportsSkills() bool       { return false }
 func (antigravityAdapter) SupportsAgentHook() bool    { return false }

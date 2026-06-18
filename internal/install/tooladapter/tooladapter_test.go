@@ -30,7 +30,7 @@ func TestDefaultEnablement_ReproducesAllSixRulesFiles(t *testing.T) {
 // TestDefaultEnablement_MCPTools guards the set of MCP tools grafel
 // registers under the default (all-tools) enablement. Cursor and Codex were
 // added in #5254 alongside the pre-existing Claude + Windsurf; Kiro was added
-// in #5255 (Antigravity is rules-only, no MCP).
+// in #5255; Antigravity MCP was wired in #5280.
 func TestDefaultEnablement_MCPTools(t *testing.T) {
 	var mcp []mcpreg.Tool
 	for _, a := range tooladapter.EnabledAdapters(nil) {
@@ -39,7 +39,7 @@ func TestDefaultEnablement_MCPTools(t *testing.T) {
 		}
 	}
 	sort.Slice(mcp, func(i, j int) bool { return mcp[i] < mcp[j] })
-	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Codex, mcpreg.Cursor, mcpreg.Windsurf, mcpreg.Kiro}
+	want := []mcpreg.Tool{mcpreg.ClaudeCode, mcpreg.Codex, mcpreg.Cursor, mcpreg.Windsurf, mcpreg.Kiro, mcpreg.Antigravity}
 	sort.Slice(want, func(i, j int) bool { return want[i] < want[j] })
 	if !reflect.DeepEqual(mcp, want) {
 		t.Fatalf("default MCP tools = %v, want %v", mcp, want)
@@ -135,9 +135,9 @@ func TestKiroAdapter(t *testing.T) {
 	}
 }
 
-// TestAntigravityAdapter checks Antigravity is a rules-only adapter (#5255):
-// a workspace .agent/rules/grafel.md file and NO MCP entry (path not yet
-// confidently verifiable — see adapter doc TODO).
+// TestAntigravityAdapter checks Antigravity's targets: a workspace rules file
+// plus an MCP entry registered into the user-global
+// ~/.gemini/antigravity/mcp_config.json (#5280).
 func TestAntigravityAdapter(t *testing.T) {
 	cfg := &registry.GroupConfig{Tools: []string{"antigravity"}}
 	ad := tooladapter.EnabledAdapters(cfg)
@@ -148,8 +148,8 @@ func TestAntigravityAdapter(t *testing.T) {
 	if rt := unionRulesTargets(ad); !reflect.DeepEqual(rt, []string{".agent/rules/grafel.md"}) {
 		t.Fatalf("antigravity rules targets = %v, want [.agent/rules/grafel.md]", rt)
 	}
-	if a.SupportsMCP() || a.MCPTool() != "" {
-		t.Fatalf("antigravity must NOT register MCP (path unverified)")
+	if !a.SupportsMCP() || a.MCPTool() != mcpreg.Antigravity {
+		t.Fatalf("antigravity must register Antigravity MCP")
 	}
 	if a.SupportsAgentHook() || a.SupportsSkills() {
 		t.Fatalf("antigravity should not support hook/skills")

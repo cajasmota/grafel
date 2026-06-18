@@ -28,7 +28,7 @@ writes what the tool can actually consume.
 | **Codeium** (`codeium`) | ✗ | `.codeium/instructions.md` | ✗ | ✗ | ✗ (rules-only) |
 | **GitHub Copilot** (`copilot`) | ✗ | `.github/copilot-instructions.md` | ✗ | ✗ | ✗ (rules-only) |
 | **Kiro** (`kiro`) | ✓ `~/.kiro/settings/mcp.json` | `.kiro/steering/grafel.md` | ✗ | ✗ | ✓ (MCP config present) |
-| **Antigravity** (`antigravity`) | ✗ (rules-only today — see below) | `.agent/rules/grafel.md` | ✗ | ✗ | ✗ (rules-only) |
+| **Antigravity** (`antigravity`) | ✓ `~/.gemini/antigravity/mcp_config.json` | `.agent/rules/grafel.md` | ✗ | ✗ | ✓ (MCP config present) |
 
 Notes:
 
@@ -41,7 +41,7 @@ Notes:
   relative paths apply under the user profile.
 - **Detected?** is a best-effort signal that the tool is present on this
   machine: for MCP-capable tools it checks whether the tool's MCP config file
-  exists; the two rules-only tools (Codeium, Copilot, Antigravity) report "not
+  exists; the two rules-only tools (Codeium, Copilot) report "not
   detected" since there is no config file to probe. Detection is **advisory** —
   it only pre-checks tools in the wizard; install still honours your explicit
   selection regardless.
@@ -49,16 +49,14 @@ Notes:
   MCP-capable tool uses the JSON `{ "mcpServers": { "grafel": { ... } } }`
   shape.
 
-### Antigravity — rules-only today
+### Antigravity — MCP + rules
 
-Google Antigravity gets the rules file (`.agent/rules/grafel.md`) but **no MCP
-entry yet**. Antigravity's MCP config path is not confidently verifiable
-(public sources disagree on the location, and it uses a non-standard
-`serverUrl` JSON key), so grafel ships the rules adapter only rather than write
-a path it cannot justify. MCP support is tracked in
-[#5280](https://github.com/cajasmota/grafel/issues/5280); once the path and
-JSON shape are confirmed, Antigravity will register an MCP entry like the other
-tools.
+Google Antigravity gets both the rules file (`.agent/rules/grafel.md`) and an
+MCP entry at `~/.gemini/antigravity/mcp_config.json` (#5280). grafel is a local
+**stdio** server, so the entry uses the standard JSON
+`{ "mcpServers": { "grafel": { "command": ..., "args": ["mcp-bridge"] } } }`
+shape — identical to Cursor/Kiro. (The `serverUrl` key applies only to remote
+HTTP MCP servers and is not used here.)
 
 ---
 
