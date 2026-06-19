@@ -39,15 +39,36 @@ func removeBinaryPlatform(binPath string) error {
 	if err == nil {
 		return nil
 	}
-	if !isAccessOrSharingError(err) || !isRunningExecutable(binPath) {
+	if !isAccessOrSharingError(err) {
 		return err
 	}
 
+	// The binary is locked. Two distinct causes converge here on Windows:
+	//
+	//   1. binPath IS the running uninstall exe — Windows refuses to unlink a
+	//      file backing a live process. The classic self-delete case.
+	//   2. binPath is held by ANOTHER process (e.g. the daemon `grafel install`
+	//      just started, which is still releasing its handle on the .exe a beat
+	//      after `grafel uninstall` stopped it — the #5293/acceptance regression).
+	//
+	// In BOTH cases the canonical install path is freed by renaming it aside
+	// (a directory-entry change Windows permits even for a running exe, and one
+	// that succeeds for a foreign-held exe as soon as the holder releases its
+	// handle). We therefore no longer gate the rename-aside on
+	// isRunningExecutable — renaming aside ANY locked target frees the canonical
+	// <bin>\grafel.exe the uninstall guarantees is gone. freeLockedBinaryPath
+	// rides out the brief handle-release lag from cause (2) with a bounded retry
+	// before giving up.
 	aside := renamedAsidePath(binPath, os.Getpid())
-	if rerr := os.Rename(binPath, aside); rerr != nil {
-		// Could not free the install path — surface the original error so the
-		// caller reports the genuine failure.
-		return fmt.Errorf("self-delete: rename %s aside: %w (original: %v)", binPath, rerr, err)
+	asideUsed, ferr := freeLockedBinaryPath(binPath, aside, err, isAccessOrSharingError)
+	if ferr != nil {
+		// Could not free the install path — surface the genuine failure.
+		return ferr
+	}
+	if !asideUsed {
+		// A retried remove (or the holder itself) cleared the path outright —
+		// no orphan to schedule.
+		return nil
 	}
 
 	// The canonical install path is now clear. Schedule the orphan for deletion
