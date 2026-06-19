@@ -56,6 +56,49 @@ The graph lives entirely on your machine — local-first by design, as called ou
 
 ---
 
+## Quickstart
+
+Install with one line. On macOS / Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash
+```
+
+On Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/cajasmota/grafel/main/install.ps1 | iex
+```
+
+Then point it at your code and wire it up:
+
+```sh
+# 1. Point it at your code (interactive)
+grafel wizard
+
+# 2. Start the daemon + register MCP + install skills
+grafel install
+
+# 3. Confirm everything is wired
+grafel status
+
+# 4. Open the dashboard
+grafel dashboard
+```
+
+Prefer to build from source? See [docs/install.md](docs/install.md) for the full install matrix (source build, manual binary download, dev mode).
+
+To verify from inside Claude Code:
+```
+grafel_whoami()
+grafel_stats()
+grafel_clusters()
+```
+
+For per-agent setup instructions see [docs/agent-hosts.md](docs/agent-hosts.md).
+
+---
+
 ## Dashboard
 
 grafel ships a local web dashboard: an in-browser view of your code knowledge graph. It is served by the daemon at `http://127.0.0.1:47274/` and opened with `grafel dashboard` (which auto-starts the daemon if it isn't already running). Everything runs on your machine — the dashboard reads the same in-memory graph the MCP server does, with no cloud, no upload, and no account. Same local-first posture as the rest of grafel: your code never leaves your laptop.
@@ -103,51 +146,6 @@ your repos
 When an agent calls `grafel_find(query="payment processing")`, the daemon runs BM25 against entity labels and qualified names, then expands outward via BFS — returning a ranked, token-budgeted subgraph in one call. No files are read at query time.
 
 After `grafel install`, the daemon registers itself as an MCP server in your Claude Code config automatically. No manual JSON editing.
-
----
-
-## Quickstart
-
-Install with one line. On macOS / Linux:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash
-```
-
-On Windows (PowerShell):
-
-```powershell
-irm https://raw.githubusercontent.com/cajasmota/grafel/main/install.ps1 | iex
-```
-
-Then point it at your code and wire it up:
-
-```sh
-# 1. Point it at your code (interactive)
-grafel wizard
-
-# 2. Start the daemon + register MCP + install skills
-grafel install
-
-# 3. Confirm everything is wired
-grafel status
-
-# 4. Open the dashboard
-grafel dashboard
-```
-
-The dashboard is at `http://127.0.0.1:47274`. Your AI agent picks up the MCP server automatically after the next session restart.
-
-Prefer to build from source? See [docs/install.md](docs/install.md) for the full install matrix (source build, manual binary download, dev mode).
-
-To verify from inside Claude Code:
-```
-grafel_whoami()
-grafel_stats()
-grafel_clusters()
-```
-
-For per-agent setup instructions see [docs/agent-hosts.md](docs/agent-hosts.md).
 
 ---
 
