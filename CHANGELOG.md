@@ -6,6 +6,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.1] — 2026-06-20
+
+### Fixed
+
+- **Process/event flows persist to the canonical `graph.fb` the daemon
+  serves.** The phantom-edge pass (`runPhantomEdgePass`) re-runs
+  `RunProcessFlowWithCompanions` + `RunEventFlow` after promoting cross-repo
+  CALLS edges; post ADR-0016 (flip-day) the daemon loads `graph.fb`, so a
+  `graph.json`-only writeback left recomputed flows invisible to the daemon
+  and dashboard (live proof: `graph.json` held 30+32 `SCOPE.Process`
+  entities while `grafel status` reported `0 flows`). The dual-write of
+  `graph.fb` + `graph.json` is now covered by a regression test
+  (`internal/cli/links_processflow_fb_test.go`) that loads the resulting
+  `graph.fb` (not `graph.json`) and asserts `SCOPE.Process` flow entities
+  are present, so the fix can't silently regress (Refs #1893, #1702).
+
+---
+
 ## [0.1.0] — 2026-05-23 (Preview Release)
 
 grafel's first pre-release. Active development; APIs, MCP tool names,
