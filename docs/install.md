@@ -17,17 +17,19 @@ Full install matrix for grafel. For the five-command path see [quickstart.md](qu
 
 ## macOS / Linux — installer script
 
-> **Not yet published.** The script below will work after the first release ships. During the preview phase, build from source (see below).
+The recommended install path. Downloads the latest release binary, verifies it, and places `grafel` under `~/.grafel/bin`.
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash
 ```
 
+The script respects `GRAFEL_VERSION` (pin a release tag), `GRAFEL_PREFIX` (install location, default `~/.grafel`), and `GRAFEL_FORCE=1` (overwrite an existing install).
+
 ---
 
 ## Windows — PowerShell installer
 
-> **Not yet published.** During the preview phase, build from source with MinGW.
+The recommended install path on Windows. Downloads the latest release binary into `%USERPROFILE%\.grafel`.
 
 ```powershell
 irm https://raw.githubusercontent.com/cajasmota/grafel/main/install.ps1 | iex
@@ -39,7 +41,7 @@ Windows builds require MSYS2/MinGW64. The installer handles this. Shipped binari
 
 ## Pre-built binary (manual download)
 
-> **Not yet published.** Will be at https://github.com/cajasmota/grafel/releases after the first release.
+Release archives are published at https://github.com/cajasmota/grafel/releases for those who prefer a manual download over the installer script.
 
 Archives per platform: `linux_x86_64`, `linux_arm64`, `macos_x86_64`, `macos_arm64`, `windows_x86_64`.
 
@@ -49,7 +51,7 @@ Extract the archive and move the `grafel` binary to a directory on your `PATH`.
 
 ## Build from source
 
-This is the correct path during the preview phase.
+For contributors, or if you prefer to build the binary yourself.
 
 ```sh
 git clone https://github.com/cajasmota/grafel.git

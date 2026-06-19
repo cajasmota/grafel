@@ -25,7 +25,7 @@ The graph lives entirely on your machine. No cloud indexing, no account, no data
 - **Process flow tracing** — pre-computed BFS from entry points (route handlers, `main`, framework hooks) stored as traceable chains; ad-hoc follow from any entity on demand.
 - **Message-bus topology** — topic/broker/service groupings for event-driven systems; publisher and subscriber orphan detection.
 - **Cross-repo dependency graph** — index a folder of repos as one group; edges span repo boundaries with confidence scores; diff graph state between any two indexed refs.
-- **Documentation and analysis skills** — a 14-skill family (tech docs, business docs, security audit, consultant panel, patterns) all driven off the graph, invokable from Claude Code as slash commands.
+- **Documentation and analysis skills** — a 15-skill family (tech docs, business docs, security audit, consultant panel, patterns) all driven off the graph, invokable from Claude Code as slash commands.
 - **Real-time dashboard** — 19 surfaces (Graph, Flows, Event-flows, Topology, Paths, Links, GraphQL, IaC, Docs, Security, Taint, DI, Error-flow, Quality, Settings, Pending, Operations, Compare, Missing) embedded in the daemon, no separate server, at `http://127.0.0.1:47274`.
 
 ---
@@ -53,28 +53,37 @@ After `grafel install`, the daemon registers itself as an MCP server in your Cla
 
 ## Quickstart
 
-> The binary must be built from source during the current preview phase — the installer script and GitHub Releases binaries are not yet published. See [docs/install.md](docs/install.md) for the full install matrix.
+Install with one line. On macOS / Linux:
 
 ```sh
-# 1. Build (requires Go 1.26+, CGO, Node 20+)
-git clone https://github.com/cajasmota/grafel.git
-cd grafel
-make build
+curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash
+```
 
-# 2. Point it at your code (interactive)
-./grafel wizard
+On Windows (PowerShell):
 
-# 3. Start the daemon + register MCP + install skills
-./grafel install
+```powershell
+irm https://raw.githubusercontent.com/cajasmota/grafel/main/install.ps1 | iex
+```
 
-# 4. Confirm everything is wired
-./grafel status
+Then point it at your code and wire it up:
 
-# 5. Open the dashboard
-./grafel dashboard
+```sh
+# 1. Point it at your code (interactive)
+grafel wizard
+
+# 2. Start the daemon + register MCP + install skills
+grafel install
+
+# 3. Confirm everything is wired
+grafel status
+
+# 4. Open the dashboard
+grafel dashboard
 ```
 
 The dashboard is at `http://127.0.0.1:47274`. Your AI agent picks up the MCP server automatically after the next session restart.
+
+Prefer to build from source? See [docs/install.md](docs/install.md) for the full install matrix (source build, manual binary download, dev mode).
 
 To verify from inside Claude Code:
 ```

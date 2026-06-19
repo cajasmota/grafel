@@ -190,7 +190,7 @@ func defaultRebuildConcurrency() int {
 // inside a group rebuild before it is surfaced as a stalled repo and skipped
 // (#5143). Without it, one slow/stuck repo wedges the whole group rebuild for
 // the full 2h RPC timeout with no indication of which repo is stuck — the
-// reported symptom (35m+ "no result yet", upvate-core-backend stale). The
+// reported symptom (35m+ "no result yet", my-service stale). The
 // group still serializes repos and returns partial results for the rest.
 //
 // Generous default so a genuinely large repo isn't killed; tune via
@@ -853,7 +853,7 @@ func daemonSchedulerAlgo(ctx context.Context, repoPath string) error {
 	// group, so a watcher-triggered re-index keeps doc.Repo aligned with the
 	// dashboard's node slugs and the cross-repo link endpoints. An empty
 	// repoTag would fall back to the dir basename and diverge from a slugified
-	// config slug (e.g. upvate_core vs upvate-core), dropping cross-repo edges.
+	// config slug (e.g. my_app vs my-app), dropping cross-repo edges.
 	// NOTE: ctx is not yet used by Index, but is threaded through for future
 	// context-aware subprocess handling (similar to SchedulerIncremental above).
 	_ = ctx
@@ -1105,7 +1105,7 @@ func daemonRebuildFuncCore(
 			// directory basename) so doc.Repo matches the slug the dashboard
 			// keys nodes by and the slug the cross-repo link pass emits as the
 			// link endpoint prefix. When the wizard slugifies a repo name
-			// (e.g. upvate_core → upvate-core) an empty repoTag would fall back
+			// (e.g. my_app → my-app) an empty repoTag would fall back
 			// to the dir basename and diverge, dropping every cross-repo edge.
 			indexErr = indexFn(rw.r.Path, "", rw.r.Slug, nil, false, false, opts...)
 		}()

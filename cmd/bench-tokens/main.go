@@ -15,8 +15,8 @@
 //
 // Usage:
 //
-//	go run ./cmd/bench-tokens -group upvate
-//	go run ./cmd/bench-tokens -group upvate -questions seeds.txt -out docs/benches/tokens.md
+//	go run ./cmd/bench-tokens -group my-group
+//	go run ./cmd/bench-tokens -group my-group -questions seeds.txt -out docs/benches/tokens.md
 //
 // -questions, when given, is a newline-delimited file of seed questions (blank
 // lines and #-comments ignored). Otherwise a small built-in seed set is used.
@@ -41,7 +41,7 @@ import (
 )
 
 func main() {
-	group := flag.String("group", "upvate", "group name to bench against")
+	group := flag.String("group", "", "group name to bench against")
 	questionsPath := flag.String("questions", "", "path to a newline-delimited seed-questions file (default: built-in seed set)")
 	depth := flag.Int("depth", 3, "subgraph depth passed to grafel_find")
 	tokenBudget := flag.Int("token-budget", 1200, "token_budget passed to grafel_find (graph-scoped payload cap)")

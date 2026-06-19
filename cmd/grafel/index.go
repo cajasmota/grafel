@@ -1147,7 +1147,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 
 		// Pass 2.6e-vs — DRF ViewSet.as_view({dict}) route synthesis (#2614).
 		// Handles the explicit method-map mounting pattern that appears outside
-		// router.register() — e.g. the upvate notification routes where
+		// router.register() — e.g. notification routes where
 		// NotificationViewSet.as_view({'get': 'list', 'delete': 'delete_all'})
 		// is pre-bound to a variable and then wired into urlpatterns. Covers
 		// both the pre-bound-variable form and the inline as_view({}) form.
@@ -1309,7 +1309,7 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		// #2570 — supplement pass2Rels with synthetic ROUTES_TO records
 		// derived from http_endpoint entities in pass3Records.  When the app
 		// separates router.register() and include(router.urls) into different
-		// files (upvate pattern), applyDjangoRouteComposition never fires in
+		// files (a common pattern), applyDjangoRouteComposition never fires in
 		// same-file mode and no composed ROUTES_TO land in pass2Rels.  The
 		// entities emitted by ApplyDjangoDRFRoutes carry path+source_handler
 		// properties that let us reconstruct equivalent ROUTES_TO records here.
@@ -3068,7 +3068,7 @@ func runDjangoAdminRoutes(classified []classifiedFile) []types.EntityRecord {
 	// pass tags every framework-generated route (changelist/add/change/delete/
 	// history/login/logout/…) with scaffolding="true"; only project-authored
 	// custom actions and get_urls() overrides carry scaffolding="false". The
-	// scaffolding family (88 on upvate, 11.6% of all defs) has no inbound
+	// scaffolding family (commonly ~12% of all defs) has no inbound
 	// architectural signal and swamps the real endpoint surface, so we exclude
 	// it from the graph here.
 	kept := all[:0]
