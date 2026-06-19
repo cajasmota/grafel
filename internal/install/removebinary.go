@@ -18,14 +18,82 @@
 package install
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strconv"
+	"time"
 )
 
 // osRemove is os.Remove indirected so tests can simulate the Windows
 // "access denied while running" failure on a non-Windows host.
 var osRemove = os.Remove
+
+// osRename is os.Rename indirected so tests can simulate the Windows
+// "sharing violation while another process holds the exe" rename failure —
+// and its release on a later retry — on a non-Windows host.
+var osRename = os.Rename
+
+// removeBinaryRetries / removeBinaryRetryDelay bound the retry loop in
+// freeLockedBinaryPath that absorbs a *transient* lock on the install binary.
+// The acceptance regression (run 27847397341): `grafel install --copy` now
+// leaves a live daemon process running the installed exe (readiness gates on
+// the RPC socket — #5293 — so the daemon genuinely comes up on Windows CI).
+// `grafel uninstall` stops that daemon first, but Windows can hold the .exe
+// handle for a brief beat AFTER the daemon's socket disappears, so the
+// immediate os.Remove AND the rename-aside both fail with
+// ERROR_SHARING_VIOLATION and the binary survives. A short bounded retry rides
+// out that handle-release lag without weakening the guarantee: a permanent lock
+// still surfaces the genuine error. Variables (not consts) so tests can shrink
+// the delay.
+var (
+	removeBinaryRetries    = 20
+	removeBinaryRetryDelay = 150 * time.Millisecond
+)
+
+// freeLockedBinaryPath frees the canonical install path of a binary that is
+// currently locked, by renaming it aside (a directory-entry change Windows
+// permits even for a file backing a running/foreign-held process) within a
+// bounded retry loop. It is the platform-neutral core of the Windows
+// self-delete-safe removal, extracted here so it is unit-testable on any OS via
+// the injectable osRemove/osRename seams; isLock classifies the
+// platform-specific lock/sharing error.
+//
+// On each attempt it first re-tries a clean os.Remove (the lock may have
+// cleared — e.g. the daemon fully exited — letting us delete outright with no
+// orphan), then falls back to renaming the path aside. It returns:
+//   - asideUsed=true when the path was freed via rename (the caller schedules
+//     the orphan for delete-on-reboot);
+//   - asideUsed=false when a retried os.Remove (or the holder itself) cleared
+//     the path outright — nothing to schedule;
+//   - a non-nil error only when the lock never cleared within the budget.
+//
+// firstErr is the original os.Remove error, threaded through for context.
+func freeLockedBinaryPath(binPath, aside string, firstErr error, isLock func(error) bool) (asideUsed bool, err error) {
+	var rerr error
+	for attempt := 0; attempt < removeBinaryRetries; attempt++ {
+		if attempt > 0 {
+			if derr := osRemove(binPath); derr == nil {
+				return false, nil // lock cleared; deleted outright, no orphan.
+			} else if !isLock(derr) {
+				return false, derr
+			}
+		}
+		if rerr = osRename(binPath, aside); rerr == nil {
+			return true, nil // path freed via rename-aside.
+		}
+		if !isLock(rerr) {
+			break // a non-lock rename error won't clear by waiting.
+		}
+		time.Sleep(removeBinaryRetryDelay)
+	}
+	// If the file vanished while we retried (the holder deleted it, or an
+	// interleaved os.Remove won), the path is clear — success, nothing aside.
+	if _, serr := os.Stat(binPath); os.IsNotExist(serr) {
+		return false, nil
+	}
+	return false, fmt.Errorf("self-delete: rename %s aside: %w (original: %v)", binPath, rerr, firstErr)
+}
 
 // removeBinary removes the installed CLI binary at binPath. It returns nil when
 // the binary is gone from its canonical install path afterwards — which, on
