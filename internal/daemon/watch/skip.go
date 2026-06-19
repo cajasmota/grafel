@@ -118,6 +118,12 @@ func ShouldSkipDir(base string) bool {
 	if _, ok := SkipDirs[base]; ok {
 		return true
 	}
+	// TCC guard (#5296): never recurse into macOS media-library bundles
+	// (*.musiclibrary, *.photoslibrary, ...) — descending trips the privacy
+	// prompt. Checked by basename so it matches at any depth.
+	if walk.IsMediaLibraryBundle(base) {
+		return true
+	}
 	// Delegate to walk package for suffix-based rules (*.egg-info, etc.)
 	return walk.IsHardcodedSkip(base)
 }

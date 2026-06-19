@@ -10,6 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon/walk"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -199,6 +200,14 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 	if err != nil {
 		return 0, err
 	}
+	// TCC guard (#5296): refuse to register a repo whose root resolves into a
+	// protected macOS media folder (~/Music, ~/Photos, ...) or is a media
+	// library bundle. Subscribing fsnotify there would walk the tree and trip
+	// a macOS privacy prompt for Music/Photos access.
+	if protected, reason := walk.IsProtectedPath(abs); protected {
+		w.logger.Warn("watcher: refusing protected path", "repo", abs, "reason", reason)
+		return 0, fmt.Errorf("watch: refusing to register protected path %s (%s)", abs, reason)
+	}
 	w.mu.Lock()
 	if _, ok := w.repos[abs]; ok {
 		w.mu.Unlock()
@@ -225,12 +234,32 @@ func (w *Watcher) AddRepo(repoPath string) (int, error) {
 //  3. .gitignore + .grafel/watch.json (ShouldSkipDirGitignore)
 func (w *Watcher) subscribeRepo(abs string) (int, error) {
 	added := 0
+	dirCap := walk.WatchDirCap()
+	capWarned := false
 	walkErr := filepath.WalkDir(abs, func(p string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if !d.IsDir() {
 			return nil
+		}
+		// TCC guard (#5296): never subscribe to protected macOS media folders
+		// or media-library bundles — fsnotify-watching them trips the privacy
+		// prompt. Checked even at the root as defence-in-depth.
+		if protected, reason := walk.IsProtectedPath(p); protected {
+			w.logger.Warn("watcher: skip protected", "path", p, "reason", reason)
+			return filepath.SkipDir
+		}
+		// Watch-dir cap (#5296): the live failure subscribed 875 dirs on a
+		// non-code tree. Once we exceed the cap, WARN once and stop walking
+		// further subtrees so we never register an unbounded watch set.
+		if dirCap > 0 && added >= dirCap {
+			if !capWarned {
+				capWarned = true
+				w.logger.Warn("watcher: watch-dir cap exceeded — may not be a real code repo; skipping remaining subtrees",
+					"repo", abs, "cap", dirCap)
+			}
+			return filepath.SkipDir
 		}
 		if p != abs {
 			base := filepath.Base(p)
@@ -545,6 +574,10 @@ func (w *Watcher) subscribeDirRecursive(root string) {
 		}
 		if !d.IsDir() {
 			return nil
+		}
+		// TCC guard (#5296): never recurse into protected media folders/bundles.
+		if protected, _ := walk.IsProtectedPath(p); protected {
+			return filepath.SkipDir
 		}
 		base := filepath.Base(p)
 		if p != root && w.shouldSkipDir(base) {

@@ -63,6 +63,19 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 		opts = &Options{}
 	}
 
+	// TCC guard (#5296): refuse outright to index a repo ROOT that resolves
+	// into one of the user's protected macOS media folders (~/Music, ~/Photos,
+	// ...) or is itself a media-library bundle. Walking such a tree pops a
+	// macOS privacy prompt ("grafel would like to access your Music/Photos").
+	if absRoot, aerr := filepath.Abs(root); aerr == nil {
+		if protected, reason := IsProtectedPath(absRoot); protected {
+			if opts.PrintSkipped != nil {
+				fmt.Fprintf(opts.PrintSkipped, "[WARN] refusing to index %s — %s; this path lives in a protected location and will not be walked (#5296)\n", absRoot, reason)
+			}
+			return nil, []SkipEntry{{AbsPath: absRoot, Rule: "protected:" + reason}}, fmt.Errorf("walk: refusing to index protected path %s (%s)", absRoot, reason)
+		}
+	}
+
 	// Build the extra skip set from opts (merged with the hard-coded list).
 	extraSkip := make(map[string]struct{})
 	for _, d := range opts.AdditionalSkipDirs {
@@ -71,6 +84,14 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 
 	var files []string
 	var skipped []SkipEntry
+
+	// dirCount tracks directories entered so we can WARN once if the tree
+	// blows past the watch-dir cap — a strong signal the path is not a real
+	// code repo (#5296: the live failure walked 875 dirs of a 588MB non-code
+	// tree). A value <= 0 disables the cap.
+	dirCap := WatchDirCap()
+	dirCount := 0
+	capWarned := false
 
 	// igStack tracks .gitignore/.grafelignore files as we descend.
 	var igStack IgnoreStack
@@ -106,6 +127,37 @@ func WalkRepo(root string, opts *Options) ([]string, []SkipEntry, error) {
 
 		if d.IsDir() {
 			base := d.Name()
+
+			// TCC guard (#5296): never descend into protected macOS media
+			// folders or media-library bundles. This is checked before the
+			// gitignore/hardcoded layers because descending even once is what
+			// trips the privacy prompt.
+			if protected, reason := IsProtectedPath(absPath); protected {
+				rule := "protected:" + reason
+				skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: rule})
+				if opts.PrintSkipped != nil {
+					fmt.Fprintf(opts.PrintSkipped, "[skip] %s (rule: %s)\n", absPath, rule)
+				}
+				return filepath.SkipDir
+			}
+
+			// Watch-dir cap tripwire: once the tree exceeds the cap, WARN once
+			// and stop descending into further subtrees. Real code repos stay
+			// well under the (generous) cap; a non-code tree that blows past it
+			// is almost certainly a media/asset folder, not source.
+			if dirCap > 0 {
+				dirCount++
+				if dirCount > dirCap {
+					if !capWarned {
+						capWarned = true
+						if opts.PrintSkipped != nil {
+							fmt.Fprintf(opts.PrintSkipped, "[WARN] %s exceeded the %d-directory cap; this may not be a real code repo — skipping the remaining subtrees (#5296). Override with GRAFEL_WATCH_DIR_CAP.\n", root, dirCap)
+						}
+					}
+					skipped = append(skipped, SkipEntry{AbsPath: absPath, Rule: "dir-cap"})
+					return filepath.SkipDir
+				}
+			}
 
 			// Pop entries for directories we've left.
 			for len(depthEntries) > 0 {
