@@ -153,7 +153,7 @@ class ContractViewSet(ModelViewSet):
 
 // TestApplyDjangoDRFRoutes_CollectionActionDefaultGet verifies that
 // @action(detail=False) (no methods kwarg) defaults to GET and uses the
-// HYPHENATED method name as the URL path (DRF replaces `_`→`-`). #5230.
+// VERBATIM method name as the URL path (DRF keeps underscores). #5298.
 func TestApplyDjangoDRFRoutes_CollectionActionDefaultGet(t *testing.T) {
 	files := fileMap{
 		"urls.py": `
@@ -174,10 +174,10 @@ class ContractViewSet(ModelViewSet):
 `,
 	}
 	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
-	// DRF default url_path for a method `get_extras` is `get-extras`, not the
-	// raw `get_extras` (#5230).
-	assertHasAllIDs(t, got, []string{"http:GET:/contracts/get-extras"})
-	assertHasNoneIDs(t, got, []string{"http:GET:/contracts/get_extras"})
+	// DRF default url_path for a method `get_extras` is the verbatim
+	// `get_extras` (underscores preserved), not `get-extras` (#5298).
+	assertHasAllIDs(t, got, []string{"http:GET:/contracts/get_extras"})
+	assertHasNoneIDs(t, got, []string{"http:GET:/contracts/get-extras"})
 }
 
 // TestApplyDjangoDRFRoutes_ActionMultipleMethods verifies that an action
@@ -247,10 +247,12 @@ class BranchViewSet(ModelViewSet):
 	}
 }
 
-// TestApplyDjangoDRFRoutes_ActionDefaultHyphenatedSegment verifies #5230: an
-// @action with no url_path and a method name `do_thing` is routed at the
-// HYPHENATED `do-thing`, mirroring DRF's `_`→`-` default-url_path derivation.
-func TestApplyDjangoDRFRoutes_ActionDefaultHyphenatedSegment(t *testing.T) {
+// TestApplyDjangoDRFRoutes_ActionDefaultVerbatimSegment verifies #5298 (corrects
+// #5230): an @action with no url_path and a method name `do_thing` is routed at
+// the VERBATIM `do_thing` (underscores preserved). DRF's @action decorator sets
+// `func.url_path = url_path if url_path else func.__name__` — the `_`→`-`
+// replacement applies only to `url_name` (the reverse() lookup), NOT the URL.
+func TestApplyDjangoDRFRoutes_ActionDefaultVerbatimSegment(t *testing.T) {
 	files := fileMap{
 		"urls.py": `
 from rest_framework import routers
@@ -270,8 +272,8 @@ class WidgetViewSet(ModelViewSet):
 `,
 	}
 	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
-	assertHasAllIDs(t, got, []string{"http:GET:/widgets/do-thing"})
-	assertHasNoneIDs(t, got, []string{"http:GET:/widgets/do_thing"})
+	assertHasAllIDs(t, got, []string{"http:GET:/widgets/do_thing"})
+	assertHasNoneIDs(t, got, []string{"http:GET:/widgets/do-thing"})
 }
 
 // TestApplyDjangoDRFRoutes_NestedRouterActionParams verifies #5230 composes
@@ -314,10 +316,13 @@ class BranchViewSet(ModelViewSet):
 	})
 }
 
-// TestApplyDjangoDRFRoutes_BranchViewSetRegression5230 is the #5230 regression
-// fixture: a BranchViewSet with three actions (a nested-url_path detail action,
-// a hyphenated-default detail action, and a hyphenated-default collection
-// action) must produce the exact expected URL set.
+// TestApplyDjangoDRFRoutes_BranchViewSetRegression5230 is the #5230 / #5298
+// regression fixture: a BranchViewSet with actions (a nested-url_path detail
+// action plus two default-segment detail actions) must produce the exact
+// expected URL set. With no url_path the default segment is the method name
+// VERBATIM (underscores preserved) — `set_director`, not `set-director`
+// (#5298 corrects the earlier hyphenated belief; the explicit-url_path action
+// is still used verbatim with its capture group).
 func TestApplyDjangoDRFRoutes_BranchViewSetRegression5230(t *testing.T) {
 	files := fileMap{
 		"urls.py": `
@@ -348,14 +353,16 @@ class BranchViewSet(ModelViewSet):
 	got := ApplyDjangoDRFRoutes([]string{"urls.py", "views.py"}, files.reader)
 	assertHasAllIDs(t, got, []string{
 		"http:DELETE:/branches/{pk}/contacts/{contact_id}/remove",
-		"http:POST:/branches/{pk}/set-director",
-		"http:POST:/branches/{pk}/clear-director",
-	})
-	// Raw underscore method names must NOT appear in any action URL.
-	assertHasNoneIDs(t, got, []string{
-		"http:DELETE:/branches/{pk}/remove_contact",
 		"http:POST:/branches/{pk}/set_director",
 		"http:POST:/branches/{pk}/clear_director",
+	})
+	// The hyphenated forms must NOT appear — DRF's default url_path keeps
+	// underscores (only url_name is hyphenated). The remove_contact method's
+	// own name must not leak into the URL (its explicit url_path wins).
+	assertHasNoneIDs(t, got, []string{
+		"http:DELETE:/branches/{pk}/remove_contact",
+		"http:POST:/branches/{pk}/set-director",
+		"http:POST:/branches/{pk}/clear-director",
 	})
 }
 

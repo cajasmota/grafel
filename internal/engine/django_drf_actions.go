@@ -13,13 +13,13 @@
 // Plus, every `@action(detail=True|False, methods=[...], url_path="...")`
 // decorated method on the ViewSet class adds another endpoint:
 //
-//	detail=True:  /<prefix>/{pk}/<url_path or hyphenated-method-name>/
-//	detail=False: /<prefix>/<url_path or hyphenated-method-name>/
+//	detail=True:  /<prefix>/{pk}/<url_path or verbatim-method-name>/
+//	detail=False: /<prefix>/<url_path or verbatim-method-name>/
 //
-// When no `url_path=` is given DRF derives the segment from the method name
-// with `_`→`-` (`do_thing` → `do-thing`); an explicit `url_path` is used
-// verbatim including embedded `(?P<name>regex)` capture groups, which the
-// canonicaliser rewrites to `{name}` path params (#5230).
+// When no `url_path=` is given DRF uses the method name VERBATIM as the segment
+// (underscores preserved: `do_thing` → `do_thing`); an explicit `url_path` is
+// used verbatim including embedded `(?P<name>regex)` capture groups, which the
+// canonicaliser rewrites to `{name}` path params (#5230 / #5298).
 //
 // The base `ApplyDjangoNestedURLConf` pass only emits ONE endpoint per
 // `router.register(...)` call (the list/create root). This pass is the
@@ -1337,13 +1337,16 @@ func emitActionRoutes(
 		} else {
 			actPosture = postureForAction(vc, act.methodName)
 		}
-		// #5230 — URL-segment derivation faithful to DRF semantics:
+		// #5230 / #5298 — URL-segment derivation faithful to DRF semantics:
 		//   1. An explicit `url_path="<value>"` kwarg wins VERBATIM, including any
 		//      embedded `(?P<name>regex)` capture groups — canonicalDjango rewrites
 		//      those to `{name}` path params downstream (stripPythonNamedGroups).
-		//   2. With no url_path, DRF derives the segment from the Python method name
-		//      with underscores replaced by hyphens (`do_thing` → `do-thing`), NOT
-		//      the raw method name. Pre-#5230 the raw name leaked into the URL.
+		//   2. With no url_path, DRF uses the Python method name VERBATIM as the URL
+		//      segment (underscores preserved). In rest_framework/decorators.py the
+		//      @action decorator sets `func.url_path = url_path if url_path else
+		//      func.__name__` — only `url_name` (the reverse() lookup name, not the
+		//      URL) gets the `_`→`-` replacement. So `do_thing` routes at
+		//      `.../do_thing/`, NOT `.../do-thing/`.
 		segment := act.urlPath
 		if segment == "" {
 			segment = drfDefaultActionSegment(act.methodName)
@@ -1392,14 +1395,16 @@ func emitActionRoutes(
 }
 
 // drfDefaultActionSegment returns the URL segment DRF derives from an
-// @action-decorated method NAME when no `url_path=` kwarg is supplied (#5230).
-// DRF's router replaces underscores in the method name with hyphens to build
-// the default URL path: a method `do_thing` is routed at `.../do-thing/`, not
-// `.../do_thing/`. See rest_framework.routers — the default url_path is
-// `replace(method_name, '_', '-')`. A name with no underscore passes through
-// unchanged.
+// @action-decorated method NAME when no `url_path=` kwarg is supplied
+// (#5230 / #5298). DRF uses the method name VERBATIM, with underscores
+// PRESERVED: `rest_framework/decorators.py` sets
+// `func.url_path = url_path if url_path else func.__name__`, so a method
+// `do_thing` is routed at `.../do_thing/`. (The `_`→`-` replacement applies
+// only to `url_name`, the reverse() lookup name — NOT the URL segment. The
+// earlier #5230 belief that the default url_path was hyphenated conflated the
+// two and broke snake_case action paths — #5298.)
 func drfDefaultActionSegment(methodName string) string {
-	return strings.ReplaceAll(methodName, "_", "-")
+	return methodName
 }
 
 // emitViewSetMethodEntities emits synthetic SCOPE.Operation entities for each
