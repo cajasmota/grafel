@@ -136,18 +136,28 @@ func TestRunUninstall_Purge(t *testing.T) {
 		t.Fatalf("RunCopy: %v", err)
 	}
 
-	// Create fake store/ and docs/ directories.
+	// Create every grafel-created scratch dir under the prefix, each with a
+	// sentinel file so we can confirm full recursive removal.
 	grafelDir := filepath.Dir(env.statePath)
-	storePath := filepath.Join(grafelDir, "store")
-	docsPath := filepath.Join(grafelDir, "docs")
-	for _, p := range []string{storePath, docsPath} {
+	scratch := []string{"store", "docs", "backups", "logs", "sockets"}
+	paths := map[string]string{}
+	for _, name := range scratch {
+		p := filepath.Join(grafelDir, name)
+		paths[name] = p
 		if err := os.MkdirAll(p, 0o755); err != nil {
 			t.Fatalf("create %s: %v", p, err)
 		}
-		// Put a sentinel file inside to confirm removal.
 		if err := os.WriteFile(filepath.Join(p, "sentinel"), []byte("data"), 0o644); err != nil {
 			t.Fatalf("write sentinel in %s: %v", p, err)
 		}
+	}
+	// backups/mcpreg/*.json snapshot, the specific leftover from #5274.
+	mcpregDir := filepath.Join(paths["backups"], "mcpreg")
+	if err := os.MkdirAll(mcpregDir, 0o755); err != nil {
+		t.Fatalf("create mcpreg dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(mcpregDir, "snap.json"), []byte("{}"), 0o644); err != nil {
+		t.Fatalf("write mcpreg snapshot: %v", err)
 	}
 
 	result, err := install.RunUninstall(install.UninstallOptions{
@@ -166,11 +176,74 @@ func TestRunUninstall_Purge(t *testing.T) {
 	if !result.DocsRemoved {
 		t.Error("DocsRemoved should be true with --purge")
 	}
+	for _, name := range scratch {
+		if _, err := os.Stat(paths[name]); err == nil {
+			t.Errorf("%s/ still exists after --purge", name)
+		}
+	}
+	if len(result.PurgedDirs) != len(scratch) {
+		t.Errorf("PurgedDirs = %v, want all of %v", result.PurgedDirs, scratch)
+	}
+	// The root contained only grafel artifacts → it must be removed.
+	if !result.RootRemoved {
+		t.Error("RootRemoved should be true when .grafel root is left empty")
+	}
+	if _, err := os.Stat(grafelDir); err == nil {
+		t.Error(".grafel root still exists after --purge of an empty root")
+	}
+}
+
+// TestRunUninstall_PurgePreservesForeignRoot verifies that --purge removes the
+// grafel scratch dirs but preserves the ~/.grafel root (and the foreign file)
+// when a non-grafel file is present in the prefix (#5274 safety).
+func TestRunUninstall_PurgePreservesForeignRoot(t *testing.T) {
+	env := newTestEnv(t)
+
+	if _, err := install.RunCopy(install.CopyOptions{
+		BinPath:           env.fakeBin,
+		SkillsSourceDir:   env.skillsSourceDir,
+		ClaudeConfigDirs:  []string{env.claudeJSON},
+		StatePath:         env.statePath,
+		WorkingDir:        env.gitRepo,
+		SkipDaemonRestart: true,
+	}); err != nil {
+		t.Fatalf("RunCopy: %v", err)
+	}
+
+	grafelDir := filepath.Dir(env.statePath)
+	storePath := filepath.Join(grafelDir, "store")
+	if err := os.MkdirAll(storePath, 0o755); err != nil {
+		t.Fatalf("create store: %v", err)
+	}
+	// A foreign file the user dropped into ~/.grafel — must be preserved.
+	foreign := filepath.Join(grafelDir, "user-notes.txt")
+	if err := os.WriteFile(foreign, []byte("mine"), 0o644); err != nil {
+		t.Fatalf("write foreign file: %v", err)
+	}
+
+	result, err := install.RunUninstall(install.UninstallOptions{
+		StatePath:      env.statePath,
+		Purge:          true,
+		Yes:            true,
+		SkipDaemonStop: true,
+	})
+	if err != nil {
+		t.Fatalf("RunUninstall --purge: %v", err)
+	}
+
+	// Grafel scratch dir gone …
 	if _, err := os.Stat(storePath); err == nil {
 		t.Error("store/ still exists after --purge")
 	}
-	if _, err := os.Stat(docsPath); err == nil {
-		t.Error("docs/ still exists after --purge")
+	// … but the root and the foreign file are preserved.
+	if result.RootRemoved {
+		t.Error("RootRemoved should be false when foreign content is present")
+	}
+	if _, err := os.Stat(grafelDir); err != nil {
+		t.Errorf(".grafel root should be preserved with foreign content: %v", err)
+	}
+	if data, err := os.ReadFile(foreign); err != nil || string(data) != "mine" {
+		t.Errorf("foreign file should be preserved intact: data=%q err=%v", data, err)
 	}
 }
 

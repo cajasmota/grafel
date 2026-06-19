@@ -12,7 +12,9 @@
 //     unless --yes).
 //  6. Remove ~/.grafel/install.json.
 //  7. Default: leave ~/.grafel/store/ intact.
-//     --purge: also remove ~/.grafel/store/ and ~/.grafel/docs/.
+//     --purge: also remove every grafel-created scratch dir under the prefix
+//     (store/, docs/, backups/, logs/, sockets/) and, if the ~/.grafel root is
+//     then empty, the root itself — foreign (non-grafel) content is preserved.
 //
 // All steps are idempotent: missing files are silently skipped.
 // If no install.json is found the command exits 0 (nothing to do).
@@ -37,8 +39,10 @@ type UninstallOptions struct {
 	// Defaults to DefaultStatePath().
 	StatePath string
 
-	// Purge, when true, also removes ~/.grafel/store/ and
-	// ~/.grafel/docs/ in addition to the install artifacts.
+	// Purge, when true, also removes every grafel-created scratch dir under
+	// the prefix (store/, docs/, backups/, logs/, sockets/) in addition to the
+	// install artifacts, and removes the ~/.grafel root itself when it is left
+	// empty (foreign content is preserved).
 	Purge bool
 
 	// RemoveBinary, when true, removes the installed CLI binary as part of
@@ -130,7 +134,24 @@ type UninstallResult struct {
 
 	// DocsRemoved is true when ~/.grafel/docs/ was removed (--purge only).
 	DocsRemoved bool
+
+	// PurgedDirs lists the grafel-created scratch subdirectories removed under
+	// the prefix during --purge (store/, docs/, backups/, logs/, sockets/).
+	PurgedDirs []string
+
+	// RootRemoved is true when the ~/.grafel root directory itself was removed
+	// after purge because it was left empty (no foreign content). It stays
+	// false when the root still held foreign (non-grafel) content, which is
+	// preserved (--purge only).
+	RootRemoved bool
 }
+
+// grafelScratchDirs are the subdirectories grafel creates under the install
+// prefix (~/.grafel). --purge removes all of these. Keep in sync with the
+// daemon/install paths: store/ + docs/ (graph + generated docs), backups/
+// (incl. backups/mcpreg/ config snapshots), logs/ (daemon logs), sockets/
+// (unix socket dir).
+var grafelScratchDirs = []string{"store", "docs", "backups", "logs", "sockets"}
 
 func (o *UninstallOptions) applyDefaults() error {
 	if o.StatePath == "" {
@@ -340,32 +361,56 @@ func RunUninstall(opts UninstallOptions) (*UninstallResult, error) {
 		}
 	}
 
-	// ── Step 6 (--purge): Remove store/ and docs/ ─────────────────────────────
+	// ── Step 6 (--purge): Remove grafel scratch dirs + empty root ─────────────
+	// --purge removes EVERY grafel-created subdirectory under the prefix —
+	// store/, docs/, backups/ (incl. the mcpreg config snapshots), logs/, and
+	// sockets/ — not just store/+docs/ (the leftover gap from #5274). It then
+	// attempts to remove the ~/.grafel root itself, but ONLY when it is empty:
+	// os.Remove (non-recursive) succeeds on an empty dir and fails on a
+	// non-empty one, so any FOREIGN content a user placed under the prefix is
+	// preserved. install.json/store/docs/backups/logs/sockets were each removed
+	// individually above, so an empty root means "grafel artifacts only".
 	if opts.Purge {
 		grafelDir := filepath.Dir(opts.StatePath)
 
-		storePath := filepath.Join(grafelDir, "store")
-		if opts.DryRun {
-			fmt.Fprintf(os.Stderr, "grafel uninstall --purge (dry-run): would remove %s\n", storePath)
-			result.StoreRemoved = true
-		} else {
-			if err := os.RemoveAll(storePath); err != nil {
-				fmt.Fprintf(os.Stderr, "grafel uninstall --purge: remove store: %v\n", err)
+		for _, name := range grafelScratchDirs {
+			p := filepath.Join(grafelDir, name)
+			if opts.DryRun {
+				fmt.Fprintf(os.Stderr, "grafel uninstall --purge (dry-run): would remove %s\n", p)
+				result.PurgedDirs = append(result.PurgedDirs, name)
+				continue
+			}
+			if err := os.RemoveAll(p); err != nil {
+				fmt.Fprintf(os.Stderr, "grafel uninstall --purge: remove %s: %v\n", p, err)
 			} else {
-				result.StoreRemoved = true
+				result.PurgedDirs = append(result.PurgedDirs, name)
 			}
 		}
 
-		docsPath := filepath.Join(grafelDir, "docs")
-		if opts.DryRun {
-			fmt.Fprintf(os.Stderr, "grafel uninstall --purge (dry-run): would remove %s\n", docsPath)
-			result.DocsRemoved = true
-		} else {
-			if err := os.RemoveAll(docsPath); err != nil {
-				fmt.Fprintf(os.Stderr, "grafel uninstall --purge: remove docs: %v\n", err)
-			} else {
+		// Back-compat: keep the existing StoreRemoved/DocsRemoved flags.
+		for _, name := range result.PurgedDirs {
+			switch name {
+			case "store":
+				result.StoreRemoved = true
+			case "docs":
 				result.DocsRemoved = true
 			}
+		}
+
+		// Attempt to remove the now-(hopefully-)empty root. Non-recursive
+		// os.Remove only succeeds when the directory is empty — foreign content
+		// keeps the root in place and is left untouched.
+		if opts.DryRun {
+			fmt.Fprintf(os.Stderr, "grafel uninstall --purge (dry-run): would remove %s if empty\n", grafelDir)
+			result.RootRemoved = true
+		} else if err := os.Remove(grafelDir); err != nil {
+			if !os.IsNotExist(err) {
+				// ENOTEMPTY (foreign content) or other error: keep the root.
+				opts.warnFn(fmt.Sprintf(
+					"--purge: kept %s (not empty — preserving non-grafel content)", grafelDir))
+			}
+		} else {
+			result.RootRemoved = true
 		}
 	}
 

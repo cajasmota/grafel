@@ -85,7 +85,9 @@ rebuilding it. Use --remove-binary to also delete the binary (with
 confirmation unless --yes).
 
 Default: leaves ~/.grafel/store/ (your graphs) intact.
-Use --purge to also remove store/ and docs/.
+Use --purge to also remove every grafel-created dir under ~/.grafel
+(store/, docs/, backups/, logs/, sockets/) and the ~/.grafel root
+itself when it is left empty (foreign content is preserved).
 
 Idempotent: if grafel is not installed the command exits 0.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -122,11 +124,11 @@ Idempotent: if grafel is not installed the command exits 0.`,
 				if result.StateRemoved {
 					fmt.Fprintln(out, "  install.json removed")
 				}
-				if result.StoreRemoved {
-					fmt.Fprintln(out, "  store/ removed")
+				for _, d := range result.PurgedDirs {
+					fmt.Fprintf(out, "  %s/ removed\n", d)
 				}
-				if result.DocsRemoved {
-					fmt.Fprintln(out, "  docs/ removed")
+				if result.RootRemoved {
+					fmt.Fprintln(out, "  ~/.grafel removed (empty)")
 				}
 				fmt.Fprintln(out, "✓ grafel uninstalled")
 				return nil
@@ -154,7 +156,7 @@ Idempotent: if grafel is not installed the command exits 0.`,
 	cmd.Flags().BoolVar(&skipSkillUnlink, "skip-skill-unlink", false,
 		"skip removing skills from Claude Code's skills/ directories")
 	cmd.Flags().BoolVar(&purge, "purge", false,
-		"also remove ~/.grafel/store/ and ~/.grafel/docs/ (user graphs and docs)")
+		"also remove all grafel dirs under ~/.grafel (store/, docs/, backups/, logs/, sockets/) + the empty root")
 	cmd.Flags().BoolVar(&removeBinary, "remove-binary", false,
 		"also delete the installed CLI binary (default: keep it so a reinstall/start needs no re-download)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false,
