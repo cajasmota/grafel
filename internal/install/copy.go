@@ -10,7 +10,7 @@
 //  1. CLI binary identification (SHA-256 of the running binary).
 //  2. Skills copy: copy skills/<name>/ → ~/.claude/skills/<name>/ (no symlinks).
 //  3. MCP registration: write grafel entry into all detected .claude.json files.
-//  4. Daemon restart: graceful stop + start, wait for /healthz.
+//  4. Daemon restart: graceful stop + start, wait for the RPC socket (#5293).
 //  5. .gitignore integration: append /.grafel/ if inside a git repo.
 //  6. Persist ~/.grafel/install.json.
 //
@@ -26,17 +26,87 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	dclient "github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/service"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/skilllink"
 )
 
+// defaultInstallHealthTimeout is the wait budget for step-4 daemon readiness.
+// A fresh daemon cold-indexes registered groups before its dashboard /healthz
+// endpoint returns 200; on a real codebase that can take well over the old
+// hard-coded 10s. We therefore gate step-4 success on the RPC SOCKET coming up
+// (the daemon accepts connections as soon as it serves, independent of the
+// cold index) and use a generous, overridable budget for the socket to appear.
+// Mirrors the selftest readiness fix (#5264) and the #5293 install repro.
+const defaultInstallHealthTimeout = 60 * time.Second
+
+// installHealthTimeout resolves the step-4 readiness budget. Overridable via
+// GRAFEL_INSTALL_HEALTH_TIMEOUT_SEC so operators can extend it on very large
+// repos. The caller passes the configured timeout in; a zero/negative value
+// falls back to the default.
+func installHealthTimeout(configured time.Duration) time.Duration {
+	if v := os.Getenv("GRAFEL_INSTALL_HEALTH_TIMEOUT_SEC"); v != "" {
+		if n, err := strconv.Atoi(strings.TrimSpace(v)); err == nil && n > 0 {
+			return time.Duration(n) * time.Second
+		}
+	}
+	if configured > 0 {
+		return configured
+	}
+	return defaultInstallHealthTimeout
+}
+
+// socketPingFunc probes the daemon's RPC socket and returns the reported
+// version. It succeeds as soon as the daemon accepts connections — BEFORE the
+// initial cold index completes. Injectable so tests need no real daemon.
+type socketPingFunc func(socketPath string) (version string, err error)
+
+// healthzGetFunc fetches the dashboard /healthz body. It is best-effort only —
+// readiness is gated on the socket, not on /healthz — so its failure (e.g.
+// because the dashboard is still cold-indexing) does NOT fail the install.
+type healthzGetFunc func(port int) (body string, err error)
+
+// defaultSocketPing is the production RPC-socket probe: Dial + Ping, the exact
+// liveness probe `grafel status` and selftest use.
+func defaultSocketPing(socketPath string) (string, error) {
+	c, err := dclient.DialPath(socketPath)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = c.Close() }()
+	reply, err := c.Ping()
+	if err != nil {
+		return "", err
+	}
+	return reply.Version, nil
+}
+
+// defaultHealthzGet is the production best-effort dashboard /healthz fetch.
+func defaultHealthzGet(port int) (string, error) {
+	url := fmt.Sprintf("http://127.0.0.1:%d/healthz", port)
+	client := &http.Client{Timeout: 2 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("/healthz returned HTTP %d", resp.StatusCode)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	return string(body), nil
+}
+
 // defaultDaemonRestart is the production daemon restart implementation.
-// It calls service.Install (registers/starts the OS service) and then
-// polls /healthz to confirm the daemon is up.
+// It calls service.Install (registers/starts the OS service) and then waits
+// for the daemon to be genuinely up — gating on the RPC SOCKET (Ping), not the
+// dashboard /healthz (which lags behind the initial cold index, the #5293 bug).
 func defaultDaemonRestart(binPath string, port int, timeout time.Duration) (string, error) {
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
@@ -52,7 +122,7 @@ func defaultDaemonRestart(binPath string, port int, timeout time.Duration) (stri
 	if _, err := service.Install(svcOpts); err != nil {
 		return "", fmt.Errorf("service install: %w", err)
 	}
-	return waitForHealthz(port, timeout)
+	return waitForDaemonReady(layout.SocketPath, port, installHealthTimeout(timeout), defaultSocketPing, defaultHealthzGet)
 }
 
 // DaemonRestartFunc is the injectable function for step 4 (daemon restart).
@@ -88,8 +158,11 @@ type CopyOptions struct {
 	// DryRun logs every action without writing anything.
 	DryRun bool
 
-	// HealthzTimeout is the maximum wait time for the daemon to become healthy
-	// after restart.  Defaults to 10 seconds.
+	// HealthzTimeout is the maximum wait time for the daemon to become ready
+	// (its RPC socket answering Ping) after restart. Defaults to
+	// defaultInstallHealthTimeout (60s); GRAFEL_INSTALL_HEALTH_TIMEOUT_SEC
+	// overrides it. Readiness is gated on the socket, NOT on the dashboard
+	// /healthz, which lags behind the initial cold index (#5293).
 	HealthzTimeout time.Duration
 
 	// DaemonPort is the HTTP port where the daemon's /healthz endpoint lives.
@@ -417,7 +490,11 @@ func (o *CopyOptions) applyDefaults() error {
 		o.WorkingDir = cwd
 	}
 	if o.HealthzTimeout == 0 {
-		o.HealthzTimeout = 10 * time.Second
+		// Generous default: step-4 readiness gates on the RPC socket (not the
+		// cold-index-bound /healthz), but the socket itself can take a while to
+		// appear on a slow cold start. Overridable via
+		// GRAFEL_INSTALL_HEALTH_TIMEOUT_SEC (see installHealthTimeout). (#5293)
+		o.HealthzTimeout = defaultInstallHealthTimeout
 	}
 	if o.DaemonPort == 0 {
 		o.DaemonPort = 47274
@@ -631,29 +708,42 @@ func copyFile(src, dst string) error {
 	return err
 }
 
-// waitForHealthz polls http://127.0.0.1:<port>/healthz until it returns a
-// 200 or the timeout elapses. Returns the response body (daemon version string)
-// on success.
-func waitForHealthz(port int, timeout time.Duration) (string, error) {
-	url := fmt.Sprintf("http://127.0.0.1:%d/healthz", port)
+// waitForDaemonReady waits until the daemon is genuinely up. Readiness is
+// gated on the RPC SOCKET (Ping) — which the daemon serves as soon as it
+// accepts connections, BEFORE the initial cold index finishes — rather than on
+// the dashboard /healthz, which is gated on that cold index and can take far
+// longer than 10s on a real codebase (the #5293 bug: install reported failure
+// even though the daemon was up and indexing fine).
+//
+// Once the socket answers, install SUCCEEDS. Initial indexing continues async;
+// we print a note to that effect. The /healthz body is fetched best-effort
+// purely to enrich the recorded version string — its failure never fails the
+// install.
+//
+// If the socket never answers within the timeout, the daemon genuinely did not
+// start and we return the helpful error (so install still fails honestly when
+// the daemon is actually down).
+func waitForDaemonReady(socketPath string, port int, timeout time.Duration, ping socketPingFunc, healthz healthzGetFunc) (string, error) {
 	deadline := time.Now().Add(timeout)
 	const pollInterval = 300 * time.Millisecond
 
-	client := &http.Client{Timeout: 2 * time.Second}
-
 	for time.Now().Before(deadline) {
-		resp, err := client.Get(url)
-		if err == nil && resp.StatusCode == http.StatusOK {
-			body, _ := io.ReadAll(resp.Body)
-			_ = resp.Body.Close()
-			return string(body), nil
-		}
-		if resp != nil {
-			_ = resp.Body.Close()
+		version, err := ping(socketPath)
+		if err == nil {
+			// Socket is up — the daemon is serving. Try /healthz best-effort to
+			// enrich the version string, but do NOT block on it (it lags behind
+			// the cold index).
+			if healthz != nil {
+				if body, herr := healthz(port); herr == nil && strings.TrimSpace(body) != "" {
+					version = strings.TrimSpace(body)
+				}
+			}
+			fmt.Fprintln(os.Stderr, "grafel install: daemon started; initial indexing in progress (continues in the background)")
+			return version, nil
 		}
 		time.Sleep(pollInterval)
 	}
-	return "", fmt.Errorf("daemon did not respond on %s within %s; run 'grafel start' and retry", url, timeout)
+	return "", fmt.Errorf("daemon did not respond on its socket %s within %s; run 'grafel start' and retry", socketPath, timeout)
 }
 
 // ── rollback helpers ──────────────────────────────────────────────────────────
