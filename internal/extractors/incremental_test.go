@@ -149,10 +149,21 @@ func loadGraphRelKinds(t *testing.T, stateDir string) []string {
 // Test: incremental opt-in flag
 // ─────────────────────────────────────────────────────────────────────────────
 
-func TestIncrementalEnabled_DefaultOff(t *testing.T) {
+// TestIncrementalEnabled_DefaultOn pins the #5231 behaviour change: with the
+// env var unset (and no Config), incremental reindex is ON by default.
+func TestIncrementalEnabled_DefaultOn(t *testing.T) {
 	t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "")
+	if !extractors.IncrementalEnabled() {
+		t.Error("IncrementalEnabled() should be true (default ON, #5231) when env var is unset")
+	}
+}
+
+// TestIncrementalEnabled_ForcedOff verifies the legacy full-reindex behaviour is
+// still reachable via GRAFEL_INCREMENTAL_REINDEX=0.
+func TestIncrementalEnabled_ForcedOff(t *testing.T) {
+	t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "0")
 	if extractors.IncrementalEnabled() {
-		t.Error("IncrementalEnabled() should be false when env var is unset")
+		t.Error("IncrementalEnabled() should be false when GRAFEL_INCREMENTAL_REINDEX=0")
 	}
 }
 
@@ -1120,7 +1131,8 @@ func TestIncrementalConfig_IsIncrementalEnabled_ConfigOnly_On(t *testing.T) {
 }
 
 // TestIncrementalConfig_IsIncrementalEnabled_ConfigOnly_Off verifies that
-// Config=false overrides the default-off env (i.e., returns false deterministically).
+// Config=false overrides the default (now ON, #5231) — i.e., returns false
+// deterministically when Config explicitly disables incremental.
 func TestIncrementalConfig_IsIncrementalEnabled_ConfigOnly_Off(t *testing.T) {
 	t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "")
 	cfg := extractor.ExtractorConfig{
@@ -1156,12 +1168,12 @@ func TestIncrementalConfig_IsIncrementalEnabled_ConfigWins(t *testing.T) {
 }
 
 // TestIncrementalConfig_IsIncrementalEnabled_NilConfig_EnvUnset checks the
-// documented default: nil Config + unset env → false (disabled).
+// documented default after #5231: nil Config + unset env → true (enabled).
 func TestIncrementalConfig_IsIncrementalEnabled_NilConfig_EnvUnset(t *testing.T) {
 	t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "")
 	var cfg *extractor.ExtractorConfig
-	if cfg.IsIncrementalEnabled() {
-		t.Error("nil Config + unset env: default should be off (false)")
+	if !cfg.IsIncrementalEnabled() {
+		t.Error("nil Config + unset env: default should be on (true) after #5231")
 	}
 }
 
