@@ -12,11 +12,28 @@ This page gets you from zero to a running graph in five commands. For a full ins
 - **Node.js 20+** and npm (used to build the embedded dashboard)
 - **git**
 
-> **Preview note:** Pre-built binaries and the `curl | bash` installer are not yet published. Build from source as shown below.
+> The fastest path is the one-line installer (below). If you prefer to build
+> the binary yourself, see the **Build from source** alternative under step 1.
 
 ---
 
-## 1. Build
+## 1. Install
+
+macOS / Linux:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/cajasmota/grafel/main/install.sh | bash
+```
+
+Windows (PowerShell):
+
+```powershell
+irm https://raw.githubusercontent.com/cajasmota/grafel/main/install.ps1 | iex
+```
+
+The installer places `grafel` under `~/.grafel/bin`. Confirm with `grafel --version`.
+
+**Build from source** (alternative):
 
 ```sh
 git clone https://github.com/cajasmota/grafel.git
@@ -25,7 +42,7 @@ make build          # builds dashboard + binary -> ./grafel
 ./grafel --version
 ```
 
-Optional — add to `PATH`:
+Optional — add the source build to `PATH`:
 
 ```sh
 go install -ldflags="-X main.commit=$(git rev-parse --short HEAD)" ./cmd/grafel

@@ -38,7 +38,7 @@ Skills land in `~/.claude/skills/` where Claude Code discovers them.
     +-- /grafel-consult         -- 5-persona consultant panel
 ```
 
-For the full chain diagram, hard vs. soft dependencies, all 14 skills, and the decision table ("which skill for my goal?"), see [skills/README.md](../skills/README.md).
+For the full chain diagram, hard vs. soft dependencies, all 15 skills, and the decision table ("which skill for my goal?"), see [skills/README.md](../skills/README.md).
 
 ---
 
