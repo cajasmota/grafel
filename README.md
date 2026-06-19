@@ -38,6 +38,40 @@ The graph lives entirely on your machine — local-first by design, as called ou
 
 ---
 
+## Dashboard
+
+grafel ships a local web dashboard: an in-browser view of your code knowledge graph. It is served by the daemon at `http://127.0.0.1:47274/` and opened with `grafel dashboard` (which auto-starts the daemon if it isn't already running). Everything runs on your machine — the dashboard reads the same in-memory graph the MCP server does, with no cloud, no upload, and no account. Same local-first posture as the rest of grafel: your code never leaves your laptop.
+
+<!-- TODO: add screenshot — drop the PNG at docs/images/dashboard-graph.png -->
+![grafel dashboard — code graph](docs/images/dashboard-graph.png)
+
+### Key views
+
+The left rail switches between per-project screens:
+
+- **Graph** — the hero surface: a GPU-accelerated, force-directed visualization of the whole knowledge graph (cosmos.gl), with search, community/cluster grouping, module analysis, color modes, and filters. A live MCP-activity overlay glows the nodes your agent touches in real time, with a replayable query log.
+- **Topology** — async message-channel map for event-driven systems: topics, brokers, services, and publisher/subscriber relationships.
+- **Paths** — API & endpoint explorer: every HTTP route and its definition, callers, downstream flow, parameters, response shapes, and auth posture. The downstream-flow modal can flip from a call tree to a per-function **control-flow flowchart** (React Flow + elkjs layout) for the endpoint's handler.
+- **Flows** — process-flow explorer: layered DAGs per flow, multi-service traces, saga forward/compensation paths, plus dead-end and truncated-flow views.
+- **Links** — cross-repo links between entities that span repository boundaries.
+- **GraphQL** / **Infrastructure (IaC)** — GraphQL schema surface and infrastructure-as-code resource diagrams.
+- **Docs** — generated documentation (from the `/grafel-tech-docs` and `/grafel-business-docs` skills) rendered in-app.
+- **Security** / **Taint** / **DI** / **Error flow** — security findings, taint paths, dependency-injection wiring, and error/exception flow.
+- **Quality** — graph-health surface: orphan audit and recall measurement.
+- **Operations** — daemon control, logs, learned-patterns store, and update checks.
+- **Pending** — residual-edge and repair suggestions awaiting review.
+- **Settings** — per-group management (repos, watchers/git-hooks, docs path, health check) and the **AI coding tools** panel: a checklist to pick which tools grafel installs its MCP entry and rules files into. Changes apply instantly, daemon-up, across every repo in the group.
+
+<!-- TODO: add screenshot — drop the PNG at docs/images/dashboard-flows.png -->
+![grafel dashboard — Flows panel](docs/images/dashboard-flows.png)
+
+<!-- TODO: add screenshot — drop the PNG at docs/images/dashboard-tools-settings.png -->
+![grafel dashboard — Settings: AI coding tools panel](docs/images/dashboard-tools-settings.png)
+
+> The screenshots above are placeholders. Drop the PNGs into [`docs/images/`](docs/images/) to make them render.
+
+---
+
 ## How it works
 
 grafel runs as a background daemon. The daemon manages a tree-sitter-based indexer (50+ languages), an in-memory graph loaded from `.grafel/graph.fb` per repo, an MCP server on stdio, live file watchers, and the embedded dashboard — all as one process.
