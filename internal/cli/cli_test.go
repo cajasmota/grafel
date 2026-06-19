@@ -83,6 +83,167 @@ func TestWizardNonInteractive(t *testing.T) {
 	}
 }
 
+// TestWizardCuratedReposExcludesSiblings is the regression for #5295: a
+// curated --repos set registers EXACTLY the listed repos and never their
+// siblings under a shared parent.
+func TestWizardCuratedReposExcludesSiblings(t *testing.T) {
+	home := withSandboxHome(t)
+	parent := filepath.Join(home, "fleet")
+	repoA := filepath.Join(parent, "alpha")
+	repoB := filepath.Join(parent, "beta")
+	repoC := filepath.Join(parent, "gamma") // sibling that must NOT be picked up
+	makeRepo(t, repoA)
+	makeRepo(t, repoB)
+	makeRepo(t, repoC)
+
+	out := &bytes.Buffer{}
+	err := runWizard(out, wizardOptions{
+		NonInteractive: true,
+		GroupName:      "curated",
+		ReposCSV:       repoA,
+		Repos:          []string{repoB}, // mixing --repos and --repo
+		ParentDir:      parent,          // present but must be ignored
+		Watchers:       false,
+		GitHooks:       false,
+		RunInstall:     false,
+	})
+	if err != nil {
+		t.Fatalf("wizard: %v\n%s", err, out.String())
+	}
+	groups, err := registry.Groups()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(groups) != 1 {
+		t.Fatalf("groups: %+v", groups)
+	}
+	cfg, err := registry.LoadGroupConfig(groups[0].ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotSlugs := map[string]bool{}
+	for _, r := range cfg.Repos {
+		gotSlugs[r.Slug] = true
+	}
+	if len(gotSlugs) != 2 || !gotSlugs["alpha"] || !gotSlugs["beta"] {
+		t.Fatalf("expected exactly {alpha,beta}, got %v (cfg %+v)", gotSlugs, cfg.Repos)
+	}
+	if gotSlugs["gamma"] {
+		t.Fatalf("over-discovery: sibling gamma was registered")
+	}
+}
+
+// TestWizardCuratedRejectsBadPaths ensures non-git / missing paths are
+// warned+skipped and an all-invalid set is a hard error, not a silent
+// empty group.
+func TestWizardCuratedRejectsBadPaths(t *testing.T) {
+	home := withSandboxHome(t)
+	good := filepath.Join(home, "repos", "good")
+	makeRepo(t, good)
+	notGit := filepath.Join(home, "repos", "plain") // dir, no .git
+	if err := os.MkdirAll(notGit, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	missing := filepath.Join(home, "repos", "nope")
+
+	// Mixed: good kept, others warned+skipped.
+	out := &bytes.Buffer{}
+	err := runWizard(out, wizardOptions{
+		NonInteractive: true,
+		GroupName:      "mixed",
+		Repos:          []string{good, notGit, missing},
+		RunInstall:     false,
+	})
+	if err != nil {
+		t.Fatalf("wizard: %v\n%s", err, out.String())
+	}
+	if !strings.Contains(out.String(), "warning: skipping") {
+		t.Fatalf("expected skip warnings, got: %s", out.String())
+	}
+	groups, _ := registry.Groups()
+	cfg, err := registry.LoadGroupConfig(groups[0].ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repos) != 1 || cfg.Repos[0].Slug != "good" {
+		t.Fatalf("expected only good, got %+v", cfg.Repos)
+	}
+
+	// All-invalid: hard error.
+	out2 := &bytes.Buffer{}
+	err = runWizard(out2, wizardOptions{
+		NonInteractive: true,
+		GroupName:      "empty",
+		Repos:          []string{notGit, missing},
+		RunInstall:     false,
+	})
+	if err == nil {
+		t.Fatalf("expected error for all-invalid curated set, got nil\n%s", out2.String())
+	}
+}
+
+// TestWizardExcludePrunesParent verifies --exclude removes matching subdirs
+// from --parent auto-discovery while leaving the rest intact.
+func TestWizardExcludePrunesParent(t *testing.T) {
+	home := withSandboxHome(t)
+	parent := filepath.Join(home, "fleet")
+	keep := filepath.Join(parent, "keepme")
+	skip := filepath.Join(parent, "vendor")
+	makeRepo(t, keep)
+	makeRepo(t, skip)
+
+	out := &bytes.Buffer{}
+	err := runWizard(out, wizardOptions{
+		NonInteractive: true,
+		GroupName:      "pruned",
+		ParentDir:      parent,
+		Excludes:       []string{"vendor"},
+		RunInstall:     false,
+	})
+	if err != nil {
+		t.Fatalf("wizard: %v\n%s", err, out.String())
+	}
+	groups, _ := registry.Groups()
+	cfg, err := registry.LoadGroupConfig(groups[0].ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repos) != 1 || cfg.Repos[0].Slug != "keepme" {
+		t.Fatalf("expected only keepme after --exclude vendor, got %+v", cfg.Repos)
+	}
+}
+
+// TestWizardParentBackCompat confirms plain --parent still discovers every
+// git subdir (no flags = no behavior change).
+func TestWizardParentBackCompat(t *testing.T) {
+	home := withSandboxHome(t)
+	parent := filepath.Join(home, "fleet")
+	makeRepo(t, filepath.Join(parent, "a"))
+	makeRepo(t, filepath.Join(parent, "b"))
+	if err := os.MkdirAll(filepath.Join(parent, "notarepo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	out := &bytes.Buffer{}
+	err := runWizard(out, wizardOptions{
+		NonInteractive: true,
+		GroupName:      "discovered",
+		ParentDir:      parent,
+		RunInstall:     false,
+	})
+	if err != nil {
+		t.Fatalf("wizard: %v\n%s", err, out.String())
+	}
+	groups, _ := registry.Groups()
+	cfg, err := registry.LoadGroupConfig(groups[0].ConfigPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Repos) != 2 {
+		t.Fatalf("expected 2 discovered git repos, got %+v", cfg.Repos)
+	}
+}
+
 func TestDoctorRunsCleanly(t *testing.T) {
 	home := withSandboxHome(t)
 	repo := filepath.Join(home, "repos", "alpha")

@@ -23,6 +23,8 @@ func newWizardCmd() *cobra.Command {
 		groupName      string
 		parentDir      string
 		reposCSV       string
+		repoPaths      []string
+		excludes       []string
 		groupDocs      string
 		watchers       bool
 		gitHooks       bool
@@ -39,6 +41,8 @@ func newWizardCmd() *cobra.Command {
 				GroupName:      groupName,
 				ParentDir:      parentDir,
 				ReposCSV:       reposCSV,
+				Repos:          repoPaths,
+				Excludes:       excludes,
 				GroupDocs:      groupDocs,
 				Watchers:       watchers,
 				GitHooks:       gitHooks,
@@ -50,8 +54,10 @@ func newWizardCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "skip prompts; require all values via flags")
 	cmd.Flags().StringVar(&groupName, "group", "", "group name (non-interactive)")
-	cmd.Flags().StringVar(&parentDir, "parent", "", "parent dir for repo discovery (non-interactive)")
-	cmd.Flags().StringVar(&reposCSV, "repos", "", "comma-separated repo paths (non-interactive)")
+	cmd.Flags().StringVar(&parentDir, "parent", "", "parent dir for repo discovery (non-interactive); every git subdir is registered unless pruned with --exclude")
+	cmd.Flags().StringVar(&reposCSV, "repos", "", "comma-separated explicit repo paths; registers EXACTLY these (curated set), bypassing --parent auto-discovery")
+	cmd.Flags().StringArrayVar(&repoPaths, "repo", nil, "explicit repo path; repeatable; same curated semantics as --repos (combined with it)")
+	cmd.Flags().StringArrayVar(&excludes, "exclude", nil, "glob matched against a candidate's basename or full path to prune --parent discovery; repeatable")
 	cmd.Flags().StringVar(&groupDocs, "group-docs", "", "optional path to shared group docs")
 	cmd.Flags().BoolVar(&watchers, "watchers", true, "enable watchers")
 	cmd.Flags().BoolVar(&gitHooks, "git-hooks", true, "enable git hooks")
@@ -64,6 +70,8 @@ type wizardOptions struct {
 	NonInteractive      bool
 	GroupName           string
 	ParentDir, ReposCSV string
+	Repos               []string // explicit --repo paths (combined with --repos CSV)
+	Excludes            []string // --exclude globs (pruned from --parent discovery)
 	GroupDocs           string
 	Watchers, GitHooks  bool
 	AgentHooks          bool
@@ -94,7 +102,7 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 	cfg.Name = opts.GroupName
 
 	// Step 2 — repo discovery.
-	candidates, err := discoverCandidates(opts)
+	candidates, err := discoverCandidates(out, opts)
 	if err != nil {
 		return err
 	}
@@ -213,18 +221,46 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 }
 
 // discoverCandidates returns absolute paths to repos selected for this
-// group. Sources, in order: explicit --repos CSV, scan of --parent, or
-// the cwd's parent.
-func discoverCandidates(opts wizardOptions) ([]string, error) {
-	if opts.ReposCSV != "" {
-		out := splitCSV(opts.ReposCSV)
-		for i, p := range out {
+// group. Sources, in priority order:
+//
+//  1. An explicit curated set — the union of the --repos CSV and any --repo
+//     flags. When present this WINS: --parent auto-discovery is bypassed
+//     entirely so a group can be pinned to exactly the listed repos (e.g.
+//     two sibling groups that share a parent dir). Each path is resolved to
+//     an absolute path and validated to exist and be a git repo; a path that
+//     is missing or not a git repo is warned about and skipped. If every
+//     curated path is rejected the caller gets an error rather than a silent
+//     empty group.
+//  2. A scan of --parent (or, when --parent is empty, the cwd's parent):
+//     every immediate subdir containing a .git entry, minus any pruned by an
+//     --exclude glob (matched against the basename or the full path).
+func discoverCandidates(w io.Writer, opts wizardOptions) ([]string, error) {
+	curated := append(splitCSV(opts.ReposCSV), opts.Repos...)
+	if len(curated) > 0 {
+		if opts.ParentDir != "" {
+			fmt.Fprintln(w, "note: --repos/--repo given; ignoring --parent auto-discovery")
+		}
+		var out []string
+		seen := map[string]struct{}{}
+		for _, p := range curated {
 			abs, err := filepath.Abs(p)
 			if err != nil {
 				return nil, err
 			}
-			out[i] = abs
+			if _, dup := seen[abs]; dup {
+				continue
+			}
+			if !isGitRepo(abs) {
+				fmt.Fprintf(w, "warning: skipping %q: does not exist or is not a git repo\n", abs)
+				continue
+			}
+			seen[abs] = struct{}{}
+			out = append(out, abs)
 		}
+		if len(out) == 0 {
+			return nil, errors.New("no valid repos in --repos/--repo (each must exist and be a git repo)")
+		}
+		sort.Strings(out)
 		return out, nil
 	}
 	parent := opts.ParentDir
@@ -245,12 +281,43 @@ func discoverCandidates(opts wizardOptions) ([]string, error) {
 			continue
 		}
 		full := filepath.Join(parent, e.Name())
-		if _, err := os.Stat(filepath.Join(full, ".git")); err == nil {
-			out = append(out, full)
+		if !isGitRepo(full) {
+			continue
 		}
+		if excluded(e.Name(), full, opts.Excludes) {
+			fmt.Fprintf(w, "excluding %q (matched --exclude)\n", full)
+			continue
+		}
+		out = append(out, full)
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+// isGitRepo reports whether dir exists and contains a .git entry (dir or file,
+// the latter covering git worktrees and submodules).
+func isGitRepo(dir string) bool {
+	info, err := os.Stat(dir)
+	if err != nil || !info.IsDir() {
+		return false
+	}
+	_, err = os.Stat(filepath.Join(dir, ".git"))
+	return err == nil
+}
+
+// excluded reports whether a discovery candidate matches any --exclude glob.
+// Each glob is tried against both the basename and the full path so callers
+// can write either "vendor" or "*/vendor".
+func excluded(base, full string, globs []string) bool {
+	for _, g := range globs {
+		if ok, _ := filepath.Match(g, base); ok {
+			return true
+		}
+		if ok, _ := filepath.Match(g, full); ok {
+			return true
+		}
+	}
+	return false
 }
 
 // writeManifests writes <repo>/.grafel/group.json into each repo so
