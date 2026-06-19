@@ -8,11 +8,29 @@
 
 [![Build](https://github.com/cajasmota/grafel/actions/workflows/test.yml/badge.svg)](https://github.com/cajasmota/grafel/actions/workflows/test.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Status: Preview v0.x](https://img.shields.io/badge/status-preview_v0.x-orange.svg)](CHANGELOG.md)
+[![Status: v0.x](https://img.shields.io/badge/status-v0.x-blue.svg)](CHANGELOG.md)
 
-grafel is a local code-knowledge-graph daemon that gives AI agents structural navigation — call graphs, cross-repo dependency traces, HTTP surface maps, and process flows — across one or many repositories, exposed via 65 MCP tools.
+**grafel** is a local code-knowledge-graph daemon that gives AI agents structural navigation across one or many repos — call graphs, cross-repo traces, HTTP surface maps, process flows — via 65 MCP tools.
 
-**A companion to `grep`, not a replacement.** `grep` finds text; grafel maps structure — use them together. The standout value is **navigation**: where is `X` defined, who calls `Y`, how a request flows end-to-end, the blast radius of a change. Those are the questions grep can't answer and the graph can. (Fewer file reads also means fewer tokens — a nice side effect, not the point.)
+**A companion to `grep`, not a replacement:** `grep` finds text, grafel maps structure. Its value is **navigation** — where `X` is defined, who calls `Y`, how a request flows end-to-end, the blast radius of a change — the questions grep can't answer. (Fewer file reads also means fewer tokens — a side effect, not the point.)
+
+---
+
+## grep finds text. grafel finds the answer.
+
+Three questions an AI agent actually gets asked — and where plain `grep` leaves it stranded (fictional projects; grafel works the same on yours):
+
+**1. "Where does `amountDue` on the invoice report come from — end to end?"**
+- **grep** matches `amountDue` in a React component, a controller, maybe a SQL string — but can't connect them or say which column backs it. The agent guesses.
+- **grafel** traces the whole lineage: `InvoiceReport.tsx` (web-app) → `GET /reports/invoices` (api-gateway) → `requirePermission('billing:read')` → `BillingController.getInvoiceReport` (billing-service) → `InvoiceRepository.computeAmountDue()` → `SELECT … FROM invoice_lines JOIN invoices` → the **`invoices.amount_due` column in Postgres**. Component → endpoint → permission → service → ORM → query → table.
+
+**2. "I'm renaming `Invoice.amountDue` → `Invoice.balance`. What breaks?"**
+- **grep** drowns in false positives, and can't see that `web-app` and `mobile-app` read the field off the JSON response — it crosses the wire, not an import.
+- **grafel** warns it breaks `billing-service` (model + 3 call sites + the `invoices.amount_due` mapping) **and** `web-app`'s `InvoiceCard` **and** `mobile-app`'s `InvoiceScreen` — it tracks the HTTP payload shape across repos. A "backend rename" is really a frontend + mobile change.
+
+**3. "We're renaming the `invoice-events` topic / moving the `reports` database — what's affected?"**
+- **grep** finds the name scattered across Terraform, Helm, and code — but can't tell you which services publish or consume it.
+- **grafel** links infra to code: the Kafka topic `invoice-events` is **published by** `billing-service`, **consumed by** `notifications-service` and `analytics-service`; the Terraform `aws_db_instance.reports` connection string flows (via a Kubernetes ConfigMap) into `billing-service` and `analytics-service`. The real blast radius across infra ↔ services ↔ code.
 
 ---
 
@@ -35,6 +53,35 @@ The graph lives entirely on your machine — local-first by design, as called ou
 - **Cross-repo dependency graph** — index a folder of repos as one group; edges span repo boundaries with confidence scores; diff graph state between any two indexed refs.
 - **Documentation and analysis skills** — a 15-skill family (tech docs, business docs, security audit, consultant panel, patterns) all driven off the graph, invokable from Claude Code as slash commands.
 - **Real-time dashboard** — 19 surfaces (Graph, Flows, Event-flows, Topology, Paths, Links, GraphQL, IaC, Docs, Security, Taint, DI, Error-flow, Quality, Settings, Pending, Operations, Compare, Missing) embedded in the daemon, no separate server, at `http://127.0.0.1:47274`.
+
+---
+
+## Dashboard
+
+grafel ships a local web dashboard: an in-browser view of your code knowledge graph. It is served by the daemon at `http://127.0.0.1:47274/` and opened with `grafel dashboard` (which auto-starts the daemon if it isn't already running). Everything runs on your machine — the dashboard reads the same in-memory graph the MCP server does, with no cloud, no upload, and no account. Same local-first posture as the rest of grafel: your code never leaves your laptop.
+
+| | | |
+|:---:|:---:|:---:|
+| ![Code graph](docs/images/dashboard-graph.png)<br>**Graph** — the whole knowledge graph | ![Paths](docs/images/dashboard-paths.png)<br>**Paths** — endpoint explorer | ![Control flow](docs/images/dashboard-flow.png)<br>**Control flow** — per-endpoint flowchart |
+| ![Infrastructure](docs/images/dashboard-infrastructure.png)<br>**Infrastructure** — IaC resource graph | ![Dependency injection](docs/images/dashboard-di.png)<br>**Dependency injection** — DI wiring | ![Source view](docs/images/dashboard-source.png)<br>**Source** — inline code view |
+| ![Quality](docs/images/dashboard-quality.png)<br>**Quality** — test coverage | ![Security](docs/images/dashboard-security.png)<br>**Security** — auth coverage | ![Error flow](docs/images/dashboard-error-flow.png)<br>**Error flow** — exception paths |
+
+### Key views
+
+The left rail switches between per-project screens:
+
+- **Graph** — the hero surface: a GPU-accelerated, force-directed visualization of the whole knowledge graph (cosmos.gl), with search, community/cluster grouping, module analysis, color modes, and filters. A live MCP-activity overlay glows the nodes your agent touches in real time, with a replayable query log.
+- **Topology** — async message-channel map for event-driven systems: topics, brokers, services, and publisher/subscriber relationships.
+- **Paths** — API & endpoint explorer: every HTTP route and its definition, callers, downstream flow, parameters, response shapes, and auth posture. The downstream-flow modal can flip from a call tree to a per-function **control-flow flowchart** (React Flow + elkjs layout) for the endpoint's handler.
+- **Flows** — process-flow explorer: layered DAGs per flow, multi-service traces, saga forward/compensation paths, plus dead-end and truncated-flow views.
+- **Links** — cross-repo links between entities that span repository boundaries.
+- **GraphQL** / **Infrastructure (IaC)** — GraphQL schema surface and infrastructure-as-code resource diagrams.
+- **Docs** — generated documentation (from the `/grafel-tech-docs` and `/grafel-business-docs` skills) rendered in-app.
+- **Security** / **Taint** / **DI** / **Error flow** — security findings, taint paths, dependency-injection wiring, and error/exception flow.
+- **Quality** — graph-health surface: orphan audit and recall measurement.
+- **Operations** — daemon control, logs, learned-patterns store, and update checks.
+- **Pending** — residual-edge and repair suggestions awaiting review.
+- **Settings** — per-group management (repos, watchers/git-hooks, docs path, health check) and the **AI coding tools** panel: a checklist to pick which tools grafel installs its MCP entry and rules files into. Changes apply instantly, daemon-up, across every repo in the group.
 
 ---
 
@@ -166,23 +213,31 @@ See the [full coverage matrix](docs/coverage/summary.md) for every language and 
 
 ## Status
 
-Preview (v0.x). Approaching v1.0. APIs, MCP tool names, and graph schema may change between minor versions. macOS is the primary supported platform; Linux is tested; Windows works via MinGW build.
+**v0.x — early release.** APIs, MCP tool names, and graph schema may still change between minor versions. macOS is the primary supported platform; Linux is tested; Windows is supported.
 
 See [CHANGELOG.md](CHANGELOG.md) for breaking changes.
-Track the v1.0 milestone: https://github.com/cajasmota/grafel/milestone/1
-
-### v1.0 ship-gate
-
-- [ ] Bug-rate below 10% on the full validation corpus
-- [ ] Daemon determinism (#481) resolved
-- [ ] HTTP overhaul — unified HTTP client/server pairing
-- [ ] Per-language quality pass (residual orphan elimination)
 
 ---
 
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). If you're an AI agent contributing to grafel, see [AGENTS.md](AGENTS.md) for conventions.
+**grafel gets better the more real-world code it sees.** The single most useful thing you can do is point it at your *actual* codebase — and if an extractor misses an entity, mislabels a framework, or leaves edges unresolved, tell us **without sharing a single line of code**.
+
+### Report a quality issue — anonymized and offline
+
+Found a gap? Report it **without sharing a line of code** — two ways:
+
+- **In Claude Code:** invoke the **`/grafel-feedback`** skill (or just ask your agent to "file a grafel feedback report"). It runs the report, walks you through verifying it, and helps you open the issue.
+- **In a terminal:** run the CLI directly:
+  ```sh
+  grafel feedback --group <your-group>
+  ```
+
+Either way the report is generated by grafel's Go CLI — **the anonymization happens in code, not in an LLM**: every identifier becomes an ephemeral per-report hash (`ent_a3f7`), file paths collapse to depth-only templates (`<ts>/<seg>/<seg>.ts`), counts are bucketed, and only public framework-annotation names (`@GetMapping`, `@Inject`) survive. **No source code, no real paths, no real names, no network calls, no telemetry, no auto-submit** — you get a `.md` file you review end-to-end, then paste into the [feedback issue template](https://github.com/cajasmota/grafel/issues/new?template=feedback-report.yml).
+
+So point grafel at your real corpus, and if an extractor misses something, file a feedback report — it's safe on proprietary code, and it's the single most useful contribution you can make.
+
+For code contributions, see [CONTRIBUTING.md](CONTRIBUTING.md). If you're an AI agent contributing to grafel, see [AGENTS.md](AGENTS.md) for conventions.
 
 ---
 
