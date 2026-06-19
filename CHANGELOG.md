@@ -20,7 +20,7 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   `graph.fb` + `graph.json` is now covered by a regression test
   (`internal/cli/links_processflow_fb_test.go`) that loads the resulting
   `graph.fb` (not `graph.json`) and asserts `SCOPE.Process` flow entities
-  are present, so the fix can't silently regress (Refs #1893, #1702).
+  are present, so the fix can't silently regress (#5306; Refs #1893, #1702).
 
 ---
 
