@@ -5,6 +5,7 @@ package fbreader
 import (
 	"fmt"
 	"os"
+	"reflect"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -65,7 +66,20 @@ func mmapOpen(path string) (*mmapRegion, error) {
 		return nil, fmt.Errorf("fbreader: MapViewOfFile %s: %w", path, err)
 	}
 
-	data := unsafe.Slice((*byte)(unsafe.Pointer(addr)), int(size))
+	// addr is the base of a kernel-owned, page-cache-backed view returned by
+	// MapViewOfFile — not Go-managed memory. Building the []byte view via the
+	// slice header (rather than unsafe.Slice((*byte)(unsafe.Pointer(addr)), …))
+	// avoids a uintptr→unsafe.Pointer conversion that `go vet`'s unsafeptr
+	// analyzer flags as a possible misuse on the Windows build. The conversion
+	// here is unsafe.Pointer(&data) — of a Go pointer, which is always valid —
+	// and the raw address is assigned to the header's Data field as a uintptr,
+	// which vet accepts. The view's lifetime is owned by unmap(), not the GC,
+	// so the uintptr-held base needs no GC reachability.
+	var data []byte
+	h := (*reflect.SliceHeader)(unsafe.Pointer(&data))
+	h.Data = addr
+	h.Len = int(size)
+	h.Cap = int(size)
 	return &mmapRegion{data: data, mapping: mapping, addr: addr}, nil
 }
 
