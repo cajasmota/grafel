@@ -1,6 +1,8 @@
 package install
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -41,10 +43,18 @@ func sortedTools(ts []mcpreg.Tool) []string {
 	return out
 }
 
+// repoPath is a platform-appropriate ABSOLUTE repo path. ApplyToolDelta keys
+// its result maps by absRepo(r.Path) — on Windows a Unix-style "/tmp/repoX" is
+// NOT absolute, so filepath.Abs would rewrite it to e.g. C:\tmp\repoX and the
+// map key would no longer match the literal. Using an already-absolute path
+// (filepath.Join of a volume-rooted temp base) makes the key stable on every
+// OS while keeping the assertions exact.
+var repoPath = filepath.Join(os.TempDir(), "repoX")
+
 func cfgWithRepo() *registry.GroupConfig {
 	return &registry.GroupConfig{
 		Name:  "g",
-		Repos: []registry.Repo{{Path: "/tmp/repoX"}},
+		Repos: []registry.Repo{{Path: repoPath}},
 	}
 }
 
@@ -63,7 +73,7 @@ func TestApplyToolDelta_EnableCursor(t *testing.T) {
 	if len(res.Disabled) != 0 {
 		t.Fatalf("disabled = %v", res.Disabled)
 	}
-	if got := rec.rulesWritten["/tmp/repoX"]; !reflect.DeepEqual(got, []string{".cursorrules"}) {
+	if got := rec.rulesWritten[repoPath]; !reflect.DeepEqual(got, []string{".cursorrules"}) {
 		t.Fatalf("rules written = %v", got)
 	}
 	if len(rec.rulesRemoved) != 0 {
@@ -86,7 +96,7 @@ func TestApplyToolDelta_DisableWindsurf(t *testing.T) {
 	if !reflect.DeepEqual(res.Disabled, []string{"windsurf"}) {
 		t.Fatalf("disabled = %v", res.Disabled)
 	}
-	if got := rec.rulesRemoved["/tmp/repoX"]; !reflect.DeepEqual(got, []string{".windsurfrules"}) {
+	if got := rec.rulesRemoved[repoPath]; !reflect.DeepEqual(got, []string{".windsurfrules"}) {
 		t.Fatalf("rules removed = %v", got)
 	}
 	if got := sortedTools(rec.mcpUnregister); !reflect.DeepEqual(got, []string{string(mcpreg.Windsurf)}) {
@@ -105,7 +115,7 @@ func TestApplyToolDelta_DisableCodexKeepsClaudeRules(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := rec.rulesRemoved["/tmp/repoX"]; !reflect.DeepEqual(got, []string{"AGENTS.md"}) {
+	if got := rec.rulesRemoved[repoPath]; !reflect.DeepEqual(got, []string{"AGENTS.md"}) {
 		t.Fatalf("rules removed = %v (should strip only AGENTS.md)", got)
 	}
 	// codex registers an MCP entry → it should be unregistered.
