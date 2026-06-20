@@ -191,6 +191,24 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 		}
 	}
 
+	// #5314: shared name/qualified-name resolution. probe is the un-prefixed
+	// entity argument. resolveEntityArg first tries the exact hex id (happy
+	// path, unchanged), then falls back to a unique Name/QualifiedName match,
+	// and returns disambiguation candidates when the name is ambiguous. A
+	// genuine miss leaves (nil,"",nil) so the verbatim "entity not found" error
+	// below still fires. Restricting `repos`/`local` to the resolved entity
+	// keeps the downstream BFS and output shape byte-for-byte identical.
+	probe := local
+	if probe == "" {
+		probe = entityID
+	}
+	if rr, rl, disambig := resolveEntityArg(repos, entityID, probe); disambig != nil {
+		return nil, disambig
+	} else if rr != nil {
+		repos = []*LoadedRepo{rr}
+		local = rl
+	}
+
 	// Default shape: id, name, file, line, hop_count.
 	// Verbose shape: also includes kind, repo.
 	type caller struct {
@@ -537,6 +555,18 @@ func (s *Server) findCalleesStructured(_ context.Context, req mcpapi.CallToolReq
 		if r, ok := lg.Repos[repoHint]; ok && r.Doc != nil {
 			repos = []*LoadedRepo{r}
 		}
+	}
+
+	// #5314: shared name/qualified-name resolution (see findCallersStructured).
+	probe := local
+	if probe == "" {
+		probe = entityID
+	}
+	if rr, rl, disambig := resolveEntityArg(repos, entityID, probe); disambig != nil {
+		return nil, disambig
+	} else if rr != nil {
+		repos = []*LoadedRepo{rr}
+		local = rl
 	}
 
 	// Default shape: id, name, file, line, hop_count.
@@ -921,6 +951,48 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 
 	// Pass 3: nothing matched.
 	return impactResolution{}
+}
+
+// resolveEntityArg is the SHARED entity_id resolution path for the neighbor
+// tools (grafel_find_callers / grafel_find_callees / grafel_neighbors). It
+// converts the dominant ~35% error class — agents passing a bare name or a
+// fully qualified name instead of the opaque "<repo>::<hash>" entity_id — into
+// a successful resolution (#5314).
+//
+// Behaviour, layered on top of resolveImpactTarget:
+//  1. Exact local-ID match in any in-scope repo → (repo, localID, nil). This is
+//     the historical happy path; semantics are unchanged so there is no
+//     regression for callers that already pass the hex id.
+//  2. Unique Name / QualifiedName match → (repo, localID, nil). The name-based
+//     call now resolves instead of erroring.
+//  3. Ambiguous (same name on >1 entity) → (nil, "", disambiguation result):
+//     a well-formed `ambiguous` envelope listing the candidate entity_ids so
+//     the agent can re-issue against a precise id, NOT a bare error.
+//  4. No match → (nil, "", nil): the caller emits its own verbatim
+//     `entity not found` error (the genuine not-found case).
+//
+// `probe` is the un-prefixed entity argument (local part of "<repo>::<id>" or
+// the raw entity_id). `repos` is the already repoHint-scoped candidate set, so
+// group/cwd/repo scoping and cross_repo semantics are honoured by construction.
+func resolveEntityArg(repos []*LoadedRepo, entityID, probe string) (*LoadedRepo, string, *mcpapi.CallToolResult) {
+	res := resolveImpactTarget(repos, probe)
+	if len(res.candidates) > 0 {
+		return nil, "", jsonResult(map[string]any{
+			"entity_id":  entityID,
+			"resolved":   false,
+			"ambiguous":  true,
+			"candidates": res.candidates,
+			"count":      0,
+			"reason": fmt.Sprintf("entity_id %q is ambiguous: %d entities share this name. "+
+				"Re-run with one of the precise entity_id values in `candidates`.",
+				entityID, len(res.candidates)),
+		})
+	}
+	if res.repo == nil {
+		// Genuine not-found — caller emits its own verbatim error.
+		return nil, "", nil
+	}
+	return res.repo, res.localID, nil
 }
 
 // handleImpactRadius returns all entities that would be affected if the given

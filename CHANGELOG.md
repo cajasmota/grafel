@@ -6,6 +6,18 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [Unreleased]
+
+### Fixed
+
+- `grafel_find_callers` / `find_callees` / `neighbors` now resolve an entity by
+  name or qualified name (not only the opaque entity_id), returning
+  disambiguation candidates when ambiguous instead of a hard `entity not found`
+  — fixes a ~35% error rate on name-based calls
+  ([#5314](https://github.com/cajasmota/grafel/issues/5314)).
+
+---
+
 ## [0.1.1] — 2026-06-20
 
 ### Fixed
