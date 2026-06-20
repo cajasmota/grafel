@@ -17,20 +17,41 @@ import (
 // reindex job as a short-lived child process (S5 of issue #2155) instead
 // of calling the Index function in-process.
 //
-// Default logic (gradual rollout):
-//   - GRAFEL_SUBPROCESS_INDEXER=true/1  → always ON
-//   - GRAFEL_SUBPROCESS_INDEXER=false/0 → always OFF
-//   - unset                                 → OFF (existing installs keep old behaviour;
-//     new installs set it to "true" during `grafel install`)
+// Default logic (resource-safe defaults, v0.1.1):
+//   - GRAFEL_SUBPROCESS_INDEXER=false/0/no → always OFF (opt-out)
+//   - GRAFEL_SUBPROCESS_INDEXER=true/1/yes → always ON
+//   - unset                                 → ON (default)
+//
+// Why default ON: the in-process path runs the reindex at the daemon's own
+// GOMAXPROCS (= host core count) with no per-job CPU bound — the runaway the
+// dogfooding report observed (300–998% CPU, ~10 cores, for 10–20 min per
+// push). The subprocess path forks `grafel index-internal`, which the
+// extract coordinator bounds to GRAFEL_EXTRACT_GOMAXPROCS (default 2) cores
+// per child, so background reindexes cannot saturate the host on a fresh
+// `curl|bash` install that sets no env vars. It also keeps the daemon heap
+// flat (the original #2155 motivation). Operators who need the legacy
+// in-process behaviour can still force it with GRAFEL_SUBPROCESS_INDEXER=0.
 //
 // The env var is read once at program start via init() to avoid per-call
 // os.Getenv overhead in the hot admission loop.
 var subprocessIndexerEnabled atomic.Bool
 
 func init() {
+	subprocessIndexerEnabled.Store(subprocessIndexEnabledFromEnv())
+}
+
+// subprocessIndexEnabledFromEnv resolves the default-on toggle from the
+// process environment. Unset → ON; an explicit falsy value → OFF; any other
+// value → ON. Exposed (lower-case) so tests can re-resolve after t.Setenv.
+func subprocessIndexEnabledFromEnv() bool {
 	v := strings.TrimSpace(os.Getenv("GRAFEL_SUBPROCESS_INDEXER"))
-	on := v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
-	subprocessIndexerEnabled.Store(on)
+	switch strings.ToLower(v) {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		// "", "1", "true", "yes", or anything else → default ON.
+		return true
+	}
 }
 
 // SubprocessIndexEnabled returns the current subprocess-indexer toggle

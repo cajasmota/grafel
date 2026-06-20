@@ -6,11 +6,14 @@ import (
 	"testing"
 )
 
-// TestPrintIndexingModes verifies the #5231 surfacing in `grafel doctor`:
-// incremental defaults ON, subprocess defaults OFF, and the env override
-// flips incremental to off.
+// TestPrintIndexingModes verifies the doctor surfacing of the resource-safe
+// defaults (v0.1.1): incremental defaults ON (#5231) and subprocess defaults
+// ON (CPU-capped child indexer). The env override still flips incremental off.
+// Note: the subprocess toggle is resolved once at package init() from the
+// process env, so this asserts the default-on label (the test binary runs with
+// GRAFEL_SUBPROCESS_INDEXER unset).
 func TestPrintIndexingModes(t *testing.T) {
-	t.Run("defaults: incremental on, subprocess off", func(t *testing.T) {
+	t.Run("defaults: incremental on, subprocess on", func(t *testing.T) {
 		t.Setenv("GRAFEL_INCREMENTAL_REINDEX", "")
 		var buf bytes.Buffer
 		printIndexingModes(&buf)
@@ -18,8 +21,8 @@ func TestPrintIndexingModes(t *testing.T) {
 		if !strings.Contains(out, "incremental reindex: on") {
 			t.Fatalf("expected incremental ON by default, got:\n%s", out)
 		}
-		if !strings.Contains(out, "subprocess indexer: off") {
-			t.Fatalf("expected subprocess OFF by default, got:\n%s", out)
+		if !strings.Contains(out, "subprocess indexer: on") {
+			t.Fatalf("expected subprocess ON by default, got:\n%s", out)
 		}
 	})
 

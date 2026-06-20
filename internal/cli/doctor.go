@@ -366,11 +366,12 @@ func printIndexingModes(w io.Writer) {
 	incremental := cfg.IsIncrementalEnabled()
 	subprocess := sched.SubprocessIndexEnabled()
 
-	// Incremental defaults ON (#5231); subprocess defaults OFF (memory
-	// isolation is opt-in until rollout completes).
+	// Resource-safe defaults (v0.1.1): incremental reindex ON (#5231) and
+	// subprocess indexer ON (CPU-capped child per reindex). Both are opt-out
+	// via their env vars set to 0/false.
 	fmt.Fprintf(w, "%s incremental reindex: %s (GRAFEL_INCREMENTAL_REINDEX; default on)\n",
 		statusOK, onOff(incremental))
-	fmt.Fprintf(w, "%s subprocess indexer: %s (GRAFEL_SUBPROCESS_INDEXER; default off)\n",
+	fmt.Fprintf(w, "%s subprocess indexer: %s (GRAFEL_SUBPROCESS_INDEXER; default on)\n",
 		statusOK, onOff(subprocess))
 
 	// Go soft memory limit (#5237). Report the resolved limit + where it

@@ -255,15 +255,29 @@ func resolveDaemonGOMAXPROCS(hostCPU int) int {
 
 // resolveDaemonGOMAXPROCSWith is the #5137 runtime-reloadable form of
 // resolveDaemonGOMAXPROCS. fileVal is the cpu.json override (0 = unset). The
-// precedence is env (GRAFEL_DAEMON_GOMAXPROCS) > cpu.json > "no cap": env is
-// captured at process start and never changes in a running daemon, so the
-// config file is the live-mutable surface the SIGHUP handler reads. As with the
-// env-only form, a requested value at/above the host core count returns 0 ("the
-// Go default is already correct, leave it untouched").
+// precedence is env (GRAFEL_DAEMON_GOMAXPROCS) > cpu.json > half-cores
+// default: env is captured at process start and never changes in a running
+// daemon, so the config file is the live-mutable surface the SIGHUP handler
+// reads. A requested value at/above the host core count returns 0 ("the Go
+// default is already correct, leave it untouched").
+//
+// Resource-safe default (v0.1.1): when NEITHER env NOR cpu.json pins a value,
+// the daemon caps its own in-process Go parallelism at ~half the host cores
+// (defaultDaemonGOMAXPROCS). On a fresh `curl|bash` install that sets no env
+// vars this bounds the daemon's own GC / algorithm passes / in-process index
+// fallback so background work cannot saturate every core — the runaway the
+// dogfooding report observed. Query handling shares this process, so half (not
+// fewer) keeps MCP latency healthy while leaving headroom for the user's own
+// build/test/editor. Operators can raise it (up to the host count, which
+// disables the cap) or lower it via GRAFEL_DAEMON_GOMAXPROCS / cpu.json.
 func resolveDaemonGOMAXPROCSWith(hostCPU, fileVal int) int {
 	n := envPositiveInt2("GRAFEL_DAEMON_GOMAXPROCS")
 	if n <= 0 && fileVal > 0 {
 		n = fileVal
+	}
+	if n <= 0 {
+		// No explicit cap from env or cpu.json — apply the half-cores default.
+		n = defaultDaemonGOMAXPROCS(hostCPU)
 	}
 	if n <= 0 {
 		return 0
@@ -271,6 +285,22 @@ func resolveDaemonGOMAXPROCSWith(hostCPU, fileVal int) int {
 	if hostCPU > 0 && n >= hostCPU {
 		// Already at/above the Go default — nothing to cap.
 		return 0
+	}
+	return n
+}
+
+// defaultDaemonGOMAXPROCS returns the resource-safe default in-process
+// GOMAXPROCS for the daemon when the operator has pinned nothing: ~half the
+// host cores, floored at 1. Returns 0 when hostCPU is unknown (<=0) so the
+// caller leaves the Go default untouched rather than guessing. On a 2-core
+// host this resolves to 1; on 12 cores, 6.
+func defaultDaemonGOMAXPROCS(hostCPU int) int {
+	if hostCPU <= 0 {
+		return 0
+	}
+	n := hostCPU / 2
+	if n < 1 {
+		n = 1
 	}
 	return n
 }
@@ -807,17 +837,18 @@ func daemonWorktreeParents() []worktree.ParentRepo {
 // correct per-ref directory. When ref is empty the indexer falls back to
 // the current HEAD ref via gitmeta.Capture inside StateDirForRepo.
 //
-// S5 (#2155): when GRAFEL_SUBPROCESS_INDEXER=true the actual Index()
-// call is delegated to a short-lived child process so the daemon's heap
-// stays flat across sustained reindex workloads. The in-process path
-// remains the default (see sched.SubprocessIndexEnabled for the env gate).
+// S5 (#2155): by default (v0.1.1) the actual Index() call is delegated to a
+// short-lived child process so the daemon's heap stays flat across sustained
+// reindex workloads AND the per-child GOMAXPROCS cap (default 2) bounds CPU.
+// The in-process path is the OPT-OUT (GRAFEL_SUBPROCESS_INDEXER=0); see
+// sched.SubprocessIndexEnabled for the env gate.
 func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) error {
 	var err error
 	if sched.SubprocessIndexEnabled() {
 		// S5 path: fork-exec `grafel index-internal` for memory isolation.
 		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, slog.Default())
 	} else {
-		// In-process path (legacy default, enabled on existing installs).
+		// In-process path (opt-out via GRAFEL_SUBPROCESS_INDEXER=0).
 		// ADR-0016 flip-day (#808): graph.fb is always written by default now.
 		// ref is stored via StateDirForRepo → StateDirForRepoRef at write time;
 		// the indexer itself resolves the correct path via gitmeta at index time.

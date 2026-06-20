@@ -10,24 +10,28 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/caps"
 )
 
-// TestResolveDaemonGOMAXPROCSWith covers the #5137 env>file>none precedence for
-// the daemon's own in-process GOMAXPROCS, including the host-ceiling no-op.
+// TestResolveDaemonGOMAXPROCSWith covers the #5137 env>file>half-cores-default
+// precedence for the daemon's own in-process GOMAXPROCS, including the
+// host-ceiling no-op. Resource-safe default (v0.1.1): when neither env nor
+// cpu.json pins a value the resolver returns half the host cores (6 on a
+// 12-core host) rather than 0 ("no cap").
 func TestResolveDaemonGOMAXPROCSWith(t *testing.T) {
 	const host = 12
+	const halfDefault = host / 2
 	cases := []struct {
 		name    string
 		env     string
 		fileVal int
 		want    int
 	}{
-		{"none", "", 0, 0},
+		{"none-defaults-half", "", 0, halfDefault},
 		{"file-only", "", 3, 3},
 		{"env-only", "5", 0, 5},
 		{"env-beats-file", "5", 9, 5},
 		{"file-at-host-noop", "", 12, 0},
 		{"file-above-host-noop", "", 20, 0},
 		{"env-at-host-noop-ignores-file", "12", 3, 0},
-		{"file-nonpositive-treated-unset", "", 0, 0},
+		{"file-nonpositive-defaults-half", "", 0, halfDefault},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,31 +99,38 @@ func TestApplyDaemonGOMAXPROCSFromCaps(t *testing.T) {
 		t.Fatalf("raise not applied: got %d, want 5", got)
 	}
 
-	// 4. Clear the cap → restore the host default (no restart).
+	// 4. Clear the cap → restore the resource-safe DEFAULT (half cores), not
+	//    fully-uncapped host (v0.1.1). Clearing cpu.json means "no operator
+	//    override", which now resolves to the half-cores default rather than
+	//    the Go host default.
 	writeCPUJSON(t, dir, `{}`)
+	wantDefault := defaultDaemonGOMAXPROCS(host) // 32 on host=64
 	n, _, changed = applyDaemonGOMAXPROCSFromCaps(store, host)
-	if n != host || !changed {
-		t.Fatalf("clear: got (n=%d, changed=%v), want (host=%d, true)", n, changed, host)
+	if n != wantDefault || !changed {
+		t.Fatalf("clear: got (n=%d, changed=%v), want (default=%d, true)", n, changed, wantDefault)
 	}
-	if got := runtime.GOMAXPROCS(0); got != host {
-		t.Fatalf("clear not applied: got %d, want host %d", got, host)
+	if got := runtime.GOMAXPROCS(0); got != wantDefault {
+		t.Fatalf("clear not applied: got %d, want default %d", got, wantDefault)
 	}
 }
 
-// TestApplyDaemonGOMAXPROCSFromCaps_NilStore: a nil store with no env cap leaves
-// GOMAXPROCS at the host default (no-op when already there).
+// TestApplyDaemonGOMAXPROCSFromCaps_NilStore: a nil store with no env cap
+// resolves to the resource-safe half-cores default (v0.1.1), not the host
+// default. Uses a synthetic host count so the assertion is deterministic
+// regardless of the test machine's core count.
 func TestApplyDaemonGOMAXPROCSFromCaps_NilStore(t *testing.T) {
 	orig := runtime.GOMAXPROCS(0)
 	t.Cleanup(func() { runtime.GOMAXPROCS(orig) })
 	t.Setenv("GRAFEL_DAEMON_GOMAXPROCS", "")
 
-	host := runtime.NumCPU()
-	runtime.GOMAXPROCS(host) // ensure we start at host default
-	n, _, changed := applyDaemonGOMAXPROCSFromCaps(nil, host)
-	if n != host {
-		t.Fatalf("nil store: n=%d, want host %d", n, host)
+	const host = 16
+	wantDefault := defaultDaemonGOMAXPROCS(host) // 8
+	runtime.GOMAXPROCS(host)                     // start above the default so a change is observable
+	n, _, _ := applyDaemonGOMAXPROCSFromCaps(nil, host)
+	if n != wantDefault {
+		t.Fatalf("nil store: n=%d, want default %d", n, wantDefault)
 	}
-	if changed {
-		t.Fatalf("nil store at host default should be a no-op (changed=false)")
+	if got := runtime.GOMAXPROCS(0); got != wantDefault {
+		t.Fatalf("nil store: runtime.GOMAXPROCS=%d, want default %d", got, wantDefault)
 	}
 }

@@ -19,6 +19,7 @@ import (
 	"github.com/cajasmota/grafel/internal/enrichment"
 	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/indexstate"
 	"github.com/cajasmota/grafel/internal/links"
 	"github.com/cajasmota/grafel/internal/substrate"
 	"github.com/cajasmota/grafel/internal/types"
@@ -2828,6 +2829,21 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 				http["cross_repo_resolve_misses_by_reason"] = doc.HTTPSummary.MissesByReason
 			}
 			totals["http_resolve"] = http
+		}
+	}
+
+	// P5 (dogfooding report): surface live reindex state so a coordinator can
+	// query grafel_stats instead of polling `ps aux` for hot grafel processes.
+	// Sourced from the process-global indexstate record the daemon's scheduler
+	// updates on every in-flight transition. When the MCP server runs outside a
+	// daemon (e.g. `grafel mcp serve` stdio with no scheduler) the count is 0,
+	// so is_indexing is reported false — accurate for that mode.
+	ix := indexstate.Get()
+	totals["is_indexing"] = ix.IsIndexing
+	if ix.IsIndexing {
+		totals["indexing_in_flight"] = ix.InFlight
+		if !ix.StartedAt.IsZero() {
+			totals["indexing_started_at"] = ix.StartedAt.UTC().Format(time.RFC3339)
 		}
 	}
 

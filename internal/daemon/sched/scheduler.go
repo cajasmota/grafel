@@ -49,6 +49,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
 // IndexFn re-indexes a single repo at a specific git ref. The scheduler
@@ -628,6 +629,7 @@ func (s *Scheduler) checkDeadMan() {
 	s.pendingQ = append(s.pendingQ[:smallestIdx], s.pendingQ[smallestIdx+1:]...)
 	delete(s.pendingRefs, repo)
 	s.inflight[repo] = smallestMB
+	s.publishIndexStateLocked()
 	s.usedMB += smallestMB
 	stuckFor := now.Sub(s.deadManAt).Truncate(time.Second)
 	s.deadManAt = time.Time{} // reset clock; the job is now admitted
@@ -677,6 +679,14 @@ func (s *Scheduler) memReleaseLoop() {
 			s.maybeReleaseMemory(time.Now())
 		}
 	}
+}
+
+// publishIndexStateLocked mirrors the current in-flight index count to the
+// process-global indexstate record so the in-daemon MCP server can surface
+// `is_indexing` in grafel_stats without a scheduler reference (#P5). Must be
+// called with s.mu held, immediately after any mutation of s.inflight.
+func (s *Scheduler) publishIndexStateLocked() {
+	indexstate.Set(len(s.inflight))
 }
 
 // busyLocked reports whether any indexing-related work is in flight or
@@ -780,6 +790,7 @@ func (s *Scheduler) tryAdmit() {
 		s.pendingQ = s.pendingQ[1:]
 		delete(s.pendingRefs, repo)
 		s.inflight[repo] = predicted
+		s.publishIndexStateLocked()
 		s.usedMB += predicted
 		s.deadManAt = time.Time{} // job admitted — reset dead-man clock
 		s.logEventLocked("admit_ok", repo,
@@ -938,6 +949,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	}
 	s.indexedRepos[repoPath] = stats
 	delete(s.inflight, repoPath)
+	s.publishIndexStateLocked()
 	s.usedMB -= tok.predictedMB
 	if s.usedMB < 0 {
 		s.usedMB = 0

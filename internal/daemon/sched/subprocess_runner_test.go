@@ -3,17 +3,14 @@ package sched
 import (
 	"context"
 	"log/slog"
-	"os"
 	"os/exec"
-	"strings"
 	"testing"
 	"time"
 )
 
 // TestSubprocessIndexEnabledEnv verifies that the GRAFEL_SUBPROCESS_INDEXER
-// env var correctly governs SubprocessIndexEnabled(). We cannot mutate the
-// process env and re-run init(), so this test calls the atomic directly after
-// resetting it to match the env.
+// env var correctly governs the resolver. Resource-safe default (v0.1.1):
+// unset → ON; only an explicit falsy value turns it OFF.
 func TestSubprocessIndexEnabledEnv(t *testing.T) {
 	cases := []struct {
 		env  string
@@ -24,15 +21,19 @@ func TestSubprocessIndexEnabledEnv(t *testing.T) {
 		{"TRUE", true},
 		{"yes", true},
 		{"YES", true},
+		{"", true},        // unset → default ON
+		{"   ", true},     // blank → default ON
+		{"garbage", true}, // unrecognized → default ON
 		{"false", false},
+		{"FALSE", false},
 		{"0", false},
-		{"", false},
+		{"no", false},
+		{"off", false},
 	}
 	for _, tc := range cases {
 		t.Run("env="+tc.env, func(t *testing.T) {
-			v := strings.TrimSpace(tc.env)
-			got := v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
-			if got != tc.want {
+			t.Setenv("GRAFEL_SUBPROCESS_INDEXER", tc.env)
+			if got := subprocessIndexEnabledFromEnv(); got != tc.want {
 				t.Errorf("env=%q: got %v, want %v", tc.env, got, tc.want)
 			}
 		})
@@ -100,14 +101,17 @@ func TestRunSubprocessIndexCancellation(t *testing.T) {
 	_ = waitErr
 }
 
-// TestSubprocessIndexDefaultOff verifies that a fresh process with no
-// GRAFEL_SUBPROCESS_INDEXER env has the feature off. We test via the
-// init() gate logic mirrored inline.
-func TestSubprocessIndexDefaultOff(t *testing.T) {
-	v := strings.TrimSpace(os.Getenv("GRAFEL_SUBPROCESS_INDEXER"))
-	want := v == "1" || strings.EqualFold(v, "true") || strings.EqualFold(v, "yes")
-	// Regardless of what the test environment sets, the logic must match.
-	if SubprocessIndexEnabled() != want {
-		t.Errorf("SubprocessIndexEnabled()=%v but env %q implies %v", SubprocessIndexEnabled(), v, want)
+// TestSubprocessIndexDefaultOn verifies that a fresh process with no
+// GRAFEL_SUBPROCESS_INDEXER env has the feature ON (resource-safe default,
+// v0.1.1) — the abandon-preventer for a fresh `curl|bash` install.
+func TestSubprocessIndexDefaultOn(t *testing.T) {
+	t.Setenv("GRAFEL_SUBPROCESS_INDEXER", "")
+	if !subprocessIndexEnabledFromEnv() {
+		t.Error("unset GRAFEL_SUBPROCESS_INDEXER must default to ON (v0.1.1)")
+	}
+	// And the live atomic agrees with the resolver for the current env.
+	subprocessIndexerEnabled.Store(subprocessIndexEnabledFromEnv())
+	if SubprocessIndexEnabled() != subprocessIndexEnabledFromEnv() {
+		t.Errorf("SubprocessIndexEnabled()=%v disagrees with resolver", SubprocessIndexEnabled())
 	}
 }

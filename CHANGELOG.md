@@ -6,6 +6,43 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.1] — 2026-06-20
+
+### Fixed
+
+- **Reindex is now resource-safe by default** ([#PR](https://github.com/cajasmota/grafel/pull/5310)) —
+  background reindexing no longer saturates the host on a fresh `curl|bash`
+  install. Previously the good behaviour was env-var-gated, so a clean install
+  ran the indexer in-process at full host cores with no per-job CPU bound,
+  spiking to 300–998% CPU for 10–20 min per `git push` (reported by a
+  dogfooding user on a 36k-entity NestJS repo). Now, out of the box and with no
+  env vars set:
+  - **Subprocess indexer is default-on**, so each reindex runs in a short-lived
+    child process bounded to `GRAFEL_EXTRACT_GOMAXPROCS` (default 2) cores —
+    the host stays usable during heavy reindexing.
+  - **The daemon's own in-process Go parallelism is capped at ~half the host
+    cores** (`GRAFEL_DAEMON_GOMAXPROCS` default), bounding GC / algorithm
+    passes / the in-process index fallback.
+  - **Incremental reindex is default-on** (already shipped in #5231) so a
+    single-file push patches the graph (~25× faster) instead of a full
+    reindex.
+  - **A Go soft memory limit is applied by default** (already shipped in
+    #5237: ~40% of RAM, floor 2 GB, ceiling 2.5 GB) so swap can't saturate.
+
+  All four remain overridable: the env vars are now **opt-OUT / tuning**
+  overrides rather than enablers, so the existing production plist
+  (`GRAFEL_SUBPROCESS_INDEXER=1`, `GRAFEL_INCREMENTAL_REINDEX=1`,
+  `GRAFEL_DAEMON_MEMLIMIT_MB=1536`) is fully back-compatible.
+
+### Added
+
+- **`grafel_stats` exposes live reindex state** ([#PR](https://github.com/cajasmota/grafel/pull/5310)) —
+  the tool now returns `is_indexing` (and, while indexing, `indexing_in_flight`
+  + `indexing_started_at`) so a coordinator can query reindex state via MCP
+  instead of polling `ps aux` for hot grafel processes.
+
+---
+
 ## [0.1.0] — 2026-05-23 (Preview Release)
 
 grafel's first pre-release. Active development; APIs, MCP tool names,
