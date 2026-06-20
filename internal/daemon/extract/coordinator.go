@@ -274,6 +274,25 @@ type Result struct {
 // Memory contract: the coordinator's RSS is bounded by the final record
 // set (entities + relationships) plus a small per-subprocess buffer for
 // JSON decoding. It never holds AST trees or per-file source bytes.
+
+// syncWriter serializes concurrent Writes to an underlying writer. The
+// coordinator fans out N subprocesses, each with its own os/exec stderr-copier
+// goroutine, all targeting one shared writer; without this guard those writes
+// race (data race under -race) and can interleave bytes. The mutex makes each
+// Write atomic w.r.t. the others while preserving the caller's writer.
+type syncWriter struct {
+	mu sync.Mutex
+	w  io.Writer
+}
+
+func newSyncWriter(w io.Writer) *syncWriter { return &syncWriter{w: w} }
+
+func (s *syncWriter) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.w.Write(p)
+}
+
 func Coordinate(ctx context.Context, repoRoot string, files []string, cfg CoordinatorConfig) (*Result, error) {
 	if repoRoot == "" {
 		return nil, errors.New("coordinator: repoRoot is required")
@@ -347,6 +366,13 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 	if stderr == nil {
 		stderr = io.Discard
 	}
+	// Every subprocess's os/exec copier goroutine writes the child's stderr
+	// into this single shared writer concurrently. A plain writer (e.g. the
+	// caller's *bytes.Buffer) is not safe for concurrent Write, which is a real
+	// data race (caught by -race on CI) AND can interleave/corrupt log bytes in
+	// production. Serialize all subprocess writes through a mutex-guarded
+	// wrapper so the fan-out is safe regardless of the writer the caller passes.
+	stderr = newSyncWriter(stderr)
 
 	res := &Result{
 		ByLang:     map[string]int{},

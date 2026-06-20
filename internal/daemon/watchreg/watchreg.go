@@ -241,11 +241,55 @@ func (r *Registry) write(entries []Entry) error {
 		return err
 	}
 	b = append(b, '\n')
-	tmp := r.path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+
+	// Write to a UNIQUE temp file in the same directory (os.CreateTemp picks a
+	// collision-free name), then atomically rename it over r.path. A fixed
+	// "<path>.tmp" name is unsafe on Windows: if two writers in different
+	// processes ever overlap (or a previous crash left the temp open), the
+	// reused name collides and the rename can fail. CreateTemp sidesteps that.
+	dir := filepath.Dir(r.path)
+	f, err := os.CreateTemp(dir, "."+FileName+".tmp-*")
+	if err != nil {
 		return err
 	}
-	return os.Rename(tmp, r.path)
+	tmp := f.Name()
+	if _, err := f.Write(b); err != nil {
+		_ = f.Close()
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	if err := renameReplace(tmp, r.path); err != nil {
+		_ = os.Remove(tmp)
+		return err
+	}
+	return nil
+}
+
+// renameReplace atomically replaces dst with src. On Unix os.Rename already
+// replaces an existing target in a single try. On Windows MoveFileEx (which
+// os.Rename uses with MOVEFILE_REPLACE_EXISTING) can still fail transiently
+// with a sharing violation / access-denied when dst is momentarily open — by
+// a concurrent reader, an indexer, or antivirus. The mutation this guards is
+// already serialized by the registry lock, so the only failures left are these
+// transient Windows sharing windows; a short bounded retry clears them. Unix
+// succeeds on the first iteration and never sleeps.
+func renameReplace(src, dst string) error {
+	const (
+		attempts  = 20
+		pollEvery = 5 * time.Millisecond
+	)
+	var err error
+	for i := 0; i < attempts; i++ {
+		if err = os.Rename(src, dst); err == nil {
+			return nil
+		}
+		time.Sleep(pollEvery)
+	}
+	return err
 }
 
 // mutate runs fn under the registry lock against the current entries and writes

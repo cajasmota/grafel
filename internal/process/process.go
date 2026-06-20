@@ -20,6 +20,7 @@ package process
 import (
 	"os"
 	"runtime"
+	"strings"
 )
 
 // Footprint is an honest physical-memory reading for the current process.
@@ -111,6 +112,16 @@ func PidIsGrafel(pid int) (bool, error) {
 	if pid <= 0 {
 		return false, nil
 	}
+	// Fast, PID-targeted path: some platforms (Windows) cannot enumerate
+	// every process cheaply but CAN open a single pid and read its image
+	// path. When the primitive is available we compare the executable
+	// basename directly — this is more precise than a name scan and avoids
+	// the ErrUnsupported fallback that would otherwise honor a recycled
+	// foreign pid as "the daemon".
+	if base, ok := pidExeBaseName(pid); ok {
+		return exeBaseNameIsGrafel(base), nil
+	}
+
 	procs, err := FindByName("grafel")
 	if err != nil {
 		// Distinguish "platform can't enumerate" from a transient scan error.
@@ -127,4 +138,13 @@ func PidIsGrafel(pid int) (bool, error) {
 		}
 	}
 	return false, nil
+}
+
+// exeBaseNameIsGrafel reports whether an executable basename names the grafel
+// binary. It mirrors FindByName's case-insensitive substring match, and strips
+// a trailing platform extension (".exe" on Windows) so "grafel.exe" matches.
+func exeBaseNameIsGrafel(base string) bool {
+	b := strings.ToLower(base)
+	b = strings.TrimSuffix(b, ".exe")
+	return strings.Contains(b, "grafel")
 }

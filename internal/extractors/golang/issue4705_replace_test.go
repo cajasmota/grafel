@@ -7,6 +7,7 @@ package golang
 import (
 	"context"
 	"os"
+	"path"
 	"path/filepath"
 	"testing"
 
@@ -77,7 +78,7 @@ func TestIssue4705_ReplaceImportResolvesInternal(t *testing.T) {
 	for k := range merged {
 		e := merged[k]
 		if e.Kind == "SCOPE.Component" && e.Subtype == "file" &&
-			filepath.Dir(e.SourceFile) == "internal/x" {
+			path.Dir(e.SourceFile) == "internal/x" {
 			xFileIDs[e.ID] = true
 		}
 	}

@@ -29,6 +29,7 @@ import (
 	"bufio"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -187,7 +188,13 @@ func resolveSourcePath(grp *DashGroup, rawFile, wantRepo string) (abs, slug, rel
 	// Normalise the requested path: strip any leading separators and clean it.
 	// An absolute incoming path is treated as repo-relative by taking its
 	// cleaned form (we never read outside a repo root).
-	clean := filepath.Clean("/" + filepath.ToSlash(rawFile))
+	//
+	// Use path.Clean (always '/'), NOT filepath.Clean: on Windows the latter
+	// rewrites separators to '\\', which (a) breaks the leading-'/' trim below
+	// and (b) yields a backslash repo-relative path that no longer matches the
+	// slash-form paths the rest of the dashboard speaks. The OS-disk boundary is
+	// crossed exactly once, via filepath.FromSlash in tryRepo.
+	clean := path.Clean("/" + filepath.ToSlash(rawFile))
 	clean = strings.TrimPrefix(clean, "/")
 
 	tryRepo := func(repo *DashRepo) (string, string, bool) {

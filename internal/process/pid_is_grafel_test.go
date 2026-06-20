@@ -20,17 +20,20 @@ func TestPidIsGrafel_NonPositive(t *testing.T) {
 	}
 }
 
-// On unsupported platforms PidIsGrafel reports ErrUnsupported so callers
-// know to fall back. On supported platforms (darwin/linux) it must succeed and
-// report false for a process that is not grafel.
+// PidIsGrafel must classify a LIVE non-grafel process (the test binary) as
+// not-grafel on every platform that can resolve a live pid's identity:
+//   - darwin/linux via the FindByName ps/proc scan,
+//   - windows via the pid-targeted QueryFullProcessImageName primitive.
+//
+// Only platforms with NO introspection path at all report ErrUnsupported.
 func TestPidIsGrafel_SelfIsNotGrafel(t *testing.T) {
 	ok, err := PidIsGrafel(os.Getpid())
 	switch runtime.GOOS {
-	case "darwin", "linux":
+	case "darwin", "linux", "windows":
 		if err != nil {
 			t.Fatalf("unexpected error on %s: %v", runtime.GOOS, err)
 		}
-		// The test binary is "process.test", not "grafel".
+		// The test binary is "process.test(.exe)", not "grafel".
 		if ok {
 			t.Fatal("test binary must not be classified as an grafel process")
 		}
