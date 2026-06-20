@@ -4,6 +4,7 @@ package process
 
 import (
 	"fmt"
+	"path/filepath"
 	"unsafe"
 
 	"golang.org/x/sys/windows"
@@ -15,6 +16,45 @@ import (
 // a future improvement.
 func FindByName(_ string) ([]Info, error) {
 	return nil, ErrUnsupported
+}
+
+// pidExeBaseName returns the basename of the executable backing pid via a
+// single, pid-targeted OpenProcess + QueryFullProcessImageName. This is the
+// Windows substitute for FindByName-based PidIsGrafel: full process
+// enumeration is unavailable here, but a single pid's image path is cheaply
+// queryable with PROCESS_QUERY_LIMITED_INFORMATION (the same low-privilege
+// handle IsAlive already uses, openable across sessions).
+//
+// The second result is true when the basename was resolved. A false result
+// (process gone, or open/query failed) tells PidIsGrafel it could not verify
+// ownership for this pid — but because we DID try directly here, a live
+// non-grafel pid resolves to a non-matching basename → (false, true), which
+// PidIsGrafel turns into a definitive "not grafel". Only when the image path
+// is genuinely unreadable do we return false, leaving the decision to the
+// caller's liveness probe.
+func pidExeBaseName(pid int) (string, bool) {
+	if pid <= 0 {
+		return "", false
+	}
+	h, err := windows.OpenProcess(windows.PROCESS_QUERY_LIMITED_INFORMATION, false, uint32(pid))
+	if err != nil {
+		// Process is gone (ERROR_INVALID_PARAMETER) or otherwise unopenable.
+		// We cannot read the image path; report "unknown" so the caller falls
+		// back to its liveness probe rather than mislabeling the pid.
+		return "", false
+	}
+	defer windows.CloseHandle(h)
+
+	buf := make([]uint16, windows.MAX_PATH)
+	size := uint32(len(buf))
+	if err := windows.QueryFullProcessImageName(h, 0, &buf[0], &size); err != nil {
+		return "", false
+	}
+	full := windows.UTF16ToString(buf[:size])
+	if full == "" {
+		return "", false
+	}
+	return filepath.Base(full), true
 }
 
 // Kill terminates the given PID. os.Process.Kill maps to TerminateProcess
