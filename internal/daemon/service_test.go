@@ -4,12 +4,35 @@ import (
 	"bytes"
 	"encoding/json"
 	"log/slog"
+	"runtime"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 )
+
+// syncBuffer is a goroutine-safe bytes.Buffer wrapper. The stall-detector test
+// reads the log buffer from the test goroutine while the daemon's dead-man
+// goroutine writes to it concurrently, which races on a bare bytes.Buffer.
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
 
 // The three PR-#2374 tests below replaced the deleted startup guard
 // (which warned when log.Logger had flags set under JSON mode). That guard was
@@ -191,5 +214,123 @@ func TestStatusRSSReportsActualMemory(t *testing.T) {
 	if reply.RSSUsedMB != expectedUsedMB {
 		t.Errorf("RSSUsedMB: got %d, want %d (RSSBytes %d / 1MB)",
 			reply.RSSUsedMB, expectedUsedMB, reply.RSSBytes)
+	}
+}
+
+// TestRebuild_StallDetectorLogsGoroutineDump verifies the #5326 stall
+// diagnostics: when a rebuild runs longer than the (test-shortened) stall-warn
+// interval without producing a result, the daemon logs a "possible stall"
+// warning AND a goroutine dump so the next stall is diagnosable from the log.
+// It also asserts the result is still delivered promptly once the rebuild
+// completes — i.e. the warning is a heartbeat, not a wait the result depends on.
+func TestRebuild_StallDetectorLogsGoroutineDump(t *testing.T) {
+	t.Setenv("GRAFEL_STALL_WARN_INTERVAL", "30ms")
+
+	var buf syncBuffer
+	logger := slog.New(slog.NewJSONHandler(&buf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	release := make(chan struct{})
+	rebuildStarted := make(chan struct{})
+	svc := newService(
+		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
+		func(proto.RebuildArgs) ([]string, string, error) {
+			close(rebuildStarted)
+			<-release // block long enough for the stall detector to fire
+			return []string{"/repo/a"}, "", nil
+		},
+		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+			return proto.QualityAuditReply{}, nil
+		},
+		"/tmp/test.sock",
+		make(chan struct{}),
+		logger,
+		1,
+	)
+
+	done := make(chan error, 1)
+	var reply proto.RebuildReply
+	go func() {
+		done <- svc.Rebuild(&proto.RebuildArgs{Group: "stallgroup"}, &reply)
+	}()
+
+	<-rebuildStarted
+	// Wait until the stall warning + goroutine dump have been logged.
+	deadline := time.After(3 * time.Second)
+	for {
+		if strings.Contains(buf.String(), "goroutine dump") {
+			break
+		}
+		select {
+		case <-deadline:
+			t.Fatalf("stall goroutine dump not logged within timeout; log:\n%s", buf.String())
+		case <-time.After(5 * time.Millisecond):
+		}
+	}
+
+	logOut := buf.String()
+	if !strings.Contains(logOut, "possible stall") {
+		t.Errorf("expected 'possible stall' warning, got:\n%s", logOut)
+	}
+	// The dump must contain an actual goroutine stack ("goroutine N [..]").
+	if !strings.Contains(logOut, "goroutine ") {
+		t.Errorf("goroutine dump did not contain a stack trace:\n%s", logOut)
+	}
+
+	// Now release the rebuild — the result must be delivered promptly, proving
+	// the result path does not wait on the stall timer.
+	t0 := time.Now()
+	close(release)
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("rebuild returned error: %v", err)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("rebuild did not complete promptly after work finished")
+	}
+	if elapsed := time.Since(t0); elapsed > time.Second {
+		t.Errorf("result delivery was slow after completion: %s (expected ~immediate)", elapsed)
+	}
+	if len(reply.Repos) != 1 {
+		t.Errorf("expected 1 repo in reply, got %d", len(reply.Repos))
+	}
+}
+
+// TestRebuild_NoGoroutineLeak verifies the dead-man ticker goroutine is torn
+// down when the rebuild completes — previously `for range ticker.C` blocked
+// forever (Ticker.Stop does not close the channel), leaking one goroutine per
+// Rebuild RPC (#5326).
+func TestRebuild_NoGoroutineLeak(t *testing.T) {
+	t.Setenv("GRAFEL_STALL_WARN_INTERVAL", "10ms")
+	svc := newService(
+		func(proto.IndexArgs) (string, string, error) { return "", "", nil },
+		func(proto.RebuildArgs) ([]string, string, error) { return []string{"/r"}, "", nil },
+		func(proto.QualityAuditRequest) (proto.QualityAuditReply, error) {
+			return proto.QualityAuditReply{}, nil
+		},
+		"/tmp/test.sock",
+		make(chan struct{}),
+		nil,
+		1,
+	)
+
+	// Let any startup goroutines settle.
+	time.Sleep(20 * time.Millisecond)
+	before := runtime.NumGoroutine()
+
+	for i := 0; i < 50; i++ {
+		var reply proto.RebuildReply
+		if err := svc.Rebuild(&proto.RebuildArgs{Group: "g"}, &reply); err != nil {
+			t.Fatalf("rebuild %d: %v", i, err)
+		}
+	}
+
+	// Give torn-down ticker goroutines a moment to exit.
+	time.Sleep(50 * time.Millisecond)
+	after := runtime.NumGoroutine()
+	// Allow a small slack for runtime/background goroutines; a leak would be ~50.
+	if after-before > 10 {
+		t.Errorf("goroutine leak: before=%d after=%d (delta=%d) after 50 rebuilds",
+			before, after, after-before)
 	}
 }

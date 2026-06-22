@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -28,6 +29,38 @@ import (
 // be cleaned up). 2 hours is intentionally conservative — even a full cold
 // re-index of a large group should finish well under 30 minutes in practice.
 const rebuildRPCTimeout = 2 * time.Hour
+
+// defaultStallWarnInterval is how long a Rebuild RPC may run without producing
+// a result before the dead-man detector logs a "possible stall" warning plus a
+// goroutine dump. Kept well under rebuildRPCTimeout so a wedged rebuild is
+// surfaced (and made diagnosable) long before the hard 2-hour cap. Overridable
+// via GRAFEL_STALL_WARN_INTERVAL (a Go duration string) so operators and tests
+// can shorten it without a redeploy (#5326).
+const defaultStallWarnInterval = 5 * time.Minute
+
+// maxGoroutineDumpBytes caps the goroutine dump captured on a stall so a daemon
+// with thousands of goroutines cannot emit a multi-megabyte log line.
+const maxGoroutineDumpBytes = 1 << 20 // 1 MiB
+
+// resolveStallWarnInterval returns the dead-man warning interval, honoring the
+// GRAFEL_STALL_WARN_INTERVAL override when it parses to a positive duration.
+func resolveStallWarnInterval() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv("GRAFEL_STALL_WARN_INTERVAL")); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultStallWarnInterval
+}
+
+// captureGoroutineDump returns a full goroutine stack dump (all goroutines),
+// bounded to maxGoroutineDumpBytes. It is used by the rebuild stall detector so
+// the next stall can be root-caused from the daemon log alone (#5326).
+func captureGoroutineDump() string {
+	buf := make([]byte, maxGoroutineDumpBytes)
+	n := runtime.Stack(buf, true)
+	return string(buf[:n])
+}
 
 // IndexFunc runs a one-shot index. The daemon does not import the
 // extractor stack directly — that lives in cmd/grafel — so it
@@ -433,23 +466,54 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 		resultCh <- rebuildResult{repos: repos, warning: warning, err: err}
 	}()
 
-	// Dead-man heartbeat: if no result arrives within 5 minutes, log a
-	// warning so operators can detect a stalled rebuild without waiting
-	// for the full 2-hour timeout (#2097).
-	const deadManInterval = 5 * time.Minute
+	// Dead-man heartbeat: if no result arrives within deadManInterval, log a
+	// warning so operators can detect a stalled rebuild without waiting for the
+	// full 2-hour timeout (#2097). When it fires we also capture a full
+	// goroutine dump so the NEXT stall is diagnosable straight from the daemon
+	// log instead of needing a live `sample`/SIGQUIT against the process (#5326).
+	//
+	// The ticker goroutine is torn down via stopDeadMan when the result lands.
+	// Previously it ran `for range deadMan.C` with no exit path: time.Ticker.Stop
+	// does NOT close the channel, so the goroutine blocked forever and leaked one
+	// goroutine per Rebuild RPC (#5326). It now selects on a stop channel so it
+	// exits as soon as the rebuild completes.
+	deadManInterval := resolveStallWarnInterval()
 	deadMan := time.NewTicker(deadManInterval)
-	defer deadMan.Stop()
-	// Use a separate goroutine to handle the ticker without blocking the
-	// main select (the ticker fires repeatedly until the main select exits).
+	stopDeadMan := make(chan struct{})
+	var deadManDone sync.WaitGroup
+	deadManDone.Add(1)
 	go func() {
-		for range deadMan.C {
-			if s.logger != nil {
-				s.logger.Warn("rebuild: possible stall — no result yet",
-					"group", args.Group,
-					"elapsed", time.Since(rebuildStartTime).Truncate(time.Second).String(),
-				)
+		defer deadManDone.Done()
+		fired := 0
+		for {
+			select {
+			case <-stopDeadMan:
+				return
+			case <-deadMan.C:
+				fired++
+				if s.logger != nil {
+					s.logger.Warn("rebuild: possible stall — no result yet",
+						"group", args.Group,
+						"elapsed", time.Since(rebuildStartTime).Truncate(time.Second).String(),
+					)
+					// Rate-limit the (potentially large) goroutine dump: emit it
+					// on the first stall warning only, so a genuinely wedged
+					// rebuild logs the stack once rather than every interval.
+					if fired == 1 {
+						s.logger.Warn("rebuild: goroutine dump (stall diagnostic)",
+							"group", args.Group,
+							"goroutines", runtime.NumGoroutine(),
+							"stack", captureGoroutineDump(),
+						)
+					}
+				}
 			}
 		}
+	}()
+	defer func() {
+		deadMan.Stop()
+		close(stopDeadMan)
+		deadManDone.Wait()
 	}()
 
 	timer := time.NewTimer(rebuildRPCTimeout)
