@@ -46,7 +46,7 @@ func newIndexView(group string, expectedRepos int) indexView {
 		progress.WithoutPercentage(),
 	)
 	s := spinner.New()
-	s.Spinner = spinner.Dot
+	s.Spinner = g.Spinner()
 	s.Style = lipgloss.NewStyle().Foreground(colAccent)
 	return indexView{
 		group:         group,
@@ -139,14 +139,14 @@ func (v indexView) renderRow(r Row, spinnerFrame string) string {
 	var glyph, phase string
 	switch {
 	case r.Phase == prog.PhaseError:
-		glyph = rowErrStyle.Render("✗")
+		glyph = rowErrStyle.Render(g.Cross)
 		msg := r.Error
 		if msg == "" {
 			msg = "error"
 		}
 		phase = rowErrStyle.Render(truncate(msg, 40))
 	case r.Phase == prog.PhaseDone:
-		glyph = rowDoneStyle.Render("✓")
+		glyph = rowDoneStyle.Render(g.Check)
 		phase = rowDoneStyle.Render("Done")
 	default:
 		glyph = spinnerFrame
@@ -162,7 +162,7 @@ func (v indexView) renderRow(r Row, spinnerFrame string) string {
 	}
 	tail := ""
 	if len(extra) > 0 {
-		tail = "  " + rowCountStyle.Render(strings.Join(extra, " · "))
+		tail = "  " + rowCountStyle.Render(strings.Join(extra, " "+g.MidDot+" "))
 	}
 
 	return fmt.Sprintf("%s %s  %s%s", glyph, name, phase, tail)
@@ -200,7 +200,7 @@ func (v indexView) view() string {
 	b.WriteString(fmt.Sprintf("  %3d%%\n\n", int(pct*100)))
 
 	if len(rows) == 0 && !v.done() {
-		b.WriteString(rowCountStyle.Render("waiting for the indexer to report…"))
+		b.WriteString(rowCountStyle.Render("waiting for the indexer to report" + g.Ellipsis))
 		return b.String()
 	}
 
@@ -244,20 +244,20 @@ func (v indexView) doneSummary() string {
 	if v.elapsed != "" {
 		parts = append(parts, v.elapsed)
 	}
-	b.WriteString(rowDoneStyle.Render(strings.Join(parts, "  ·  ")))
+	b.WriteString(rowDoneStyle.Render(strings.Join(parts, "  "+g.MidDot+"  ")))
 
 	// Captured install summary (hooks · watchers · MCP).
 	if v.install.Applied {
 		b.WriteString("\n")
 		b.WriteString(rowCountStyle.Render(fmt.Sprintf(
-			"installed %d hooks · %d watchers · %d MCP",
+			"installed %d hooks "+g.MidDot+" %d watchers "+g.MidDot+" %d MCP",
 			v.install.Hooks, v.install.Watchers, v.install.MCP)))
 	}
 
 	// Watcher warnings as styled non-fatal notes.
 	for _, w := range v.install.WatcherWarnings {
 		b.WriteString("\n")
-		b.WriteString(rowWarnStyle.Render("⚠ " + w))
+		b.WriteString(rowWarnStyle.Render(g.Warn + " " + w))
 	}
 
 	return b.String()

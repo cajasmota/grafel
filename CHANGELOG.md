@@ -10,6 +10,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **`grafel wizard` TUI renders correctly on legacy Windows CMD/conhost
+  (#5340, #856):** the wizard's Bubble Tea TUI used Unicode glyphs (`›`, `✓`,
+  `↑/↓`, `·`, `…`, `⚠`, `[✓]`, the braille spinner) with no console code-page
+  setup, so outside Windows Terminal it could render as mojibake. The TUI now
+  (1) switches the Windows console to the UTF-8 code page (65001) at startup and
+  restores the previous code page on exit, so a modern CMD/conhost with a
+  TrueType font shows the Unicode glyphs; and (2) falls back to an ASCII-safe
+  glyph set (`>`, `v`, `^/v`, `-`, `...`, `!`, `[x]`, `|/-\` spinner) on legacy
+  consoles. The glyph set is chosen by a single, unit-tested selector: ASCII on
+  Windows unless `WT_SESSION` (Windows Terminal) or `GRAFEL_TUI_UNICODE=1` is
+  set; `GRAFEL_ASCII=1` forces ASCII on any OS; non-Windows defaults to Unicode
+  ([#5340](https://github.com/cajasmota/grafel/issues/5340),
+  [#856](https://github.com/cajasmota/grafel/issues/856)).
 - **`grafel wizard` indexing view reliably shows one row per repo (#5340):** the
   TUI indexing screen could collapse to a single row labeled with the GROUP name
   (e.g. "ivivo") reaching Done instead of one row per repo (backend, frontend).

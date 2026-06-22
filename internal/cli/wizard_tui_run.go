@@ -164,6 +164,11 @@ func runInteractiveTUI(out, errOut io.Writer, opts wizardOptions) (wiztui.Result
 	idxFn := makeIndexFunc(out, errOut, class, opts)
 	m := wiztui.New(drv, idxFn, opts.Watchers, opts.GitHooks)
 
+	// Switch the console to UTF-8 (Windows) before the alt-screen starts so the
+	// wizard's glyphs render instead of mojibake; restore on exit (#5340).
+	restoreConsole := wiztui.SetupConsole()
+	defer restoreConsole()
+
 	prog := tea.NewProgram(m, tea.WithAltScreen(), tea.WithOutput(out))
 	final, err := prog.Run()
 	if err != nil {

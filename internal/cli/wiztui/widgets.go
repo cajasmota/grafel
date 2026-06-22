@@ -119,7 +119,7 @@ func (m listModel) view(maxHeight int) string {
 		b.WriteString("\n")
 	}
 	if m.filtering || m.filter != "" {
-		b.WriteString(filterStyle.Render("filter: " + m.filter + "█"))
+		b.WriteString(filterStyle.Render("filter: " + m.filter + g.Caret))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
@@ -131,7 +131,7 @@ func (m listModel) view(maxHeight int) string {
 		cursor := "  "
 		line := optStyle.Render(c.Label)
 		if i == m.cursor {
-			cursor = cursorStyle.Render("› ")
+			cursor = cursorStyle.Render(g.Cursor)
 			line = selOptStyle.Render(c.Label)
 		}
 		b.WriteString(cursor + line + "\n")
@@ -264,7 +264,7 @@ func (m multiListModel) view(maxHeight int) string {
 		b.WriteString("\n")
 	}
 	if m.filtering || m.filter != "" {
-		b.WriteString(filterStyle.Render("filter: " + m.filter + "█"))
+		b.WriteString(filterStyle.Render("filter: " + m.filter + g.Caret))
 		b.WriteString("\n")
 	}
 	b.WriteString("\n")
@@ -274,15 +274,15 @@ func (m multiListModel) view(maxHeight int) string {
 	for i := start; i < end; i++ {
 		realIdx := vis[i]
 		c := m.all[realIdx]
-		box := "[ ] "
+		box := g.BoxOff
 		lineStyle := optStyle
 		if c.Selected {
-			box = "[✓] "
+			box = g.BoxOn
 			lineStyle = selOptStyle
 		}
 		cursor := "  "
 		if i == m.cursor {
-			cursor = cursorStyle.Render("› ")
+			cursor = cursorStyle.Render(g.Cursor)
 			lineStyle = lineStyle.Bold(true)
 		}
 		label := c.Label
@@ -314,7 +314,7 @@ func newInputModel(title, description, value string, optional bool) inputModel {
 	ti := textinput.New()
 	ti.SetValue(value)
 	ti.CursorEnd()
-	ti.Prompt = "› "
+	ti.Prompt = g.Cursor
 	ti.PromptStyle = cursorStyle
 	ti.Width = 50
 	return inputModel{title: title, description: description, ti: ti, optional: optional}
