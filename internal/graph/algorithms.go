@@ -36,6 +36,7 @@ import (
 	"sort"
 	"time"
 
+	gonumgraph "gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/community"
 	"gonum.org/v1/gonum/graph/network"
 	"gonum.org/v1/gonum/graph/path"
@@ -505,6 +506,47 @@ func ComputeCommunities(g *simple.WeightedDirectedGraph, idx *nodeIndex, entityN
 // unweighted Brandes implementation (much cheaper) and document the trade-off.
 const betweennessExactCutoff = 3000
 
+// betweennessSampleThreshold is the node count above which betweenness switches
+// from exact (full Brandes, O(V·E)) to a sampled-pivot approximation
+// (O(K·E), K = betweennessSampleSize). On 28k+-entity group unions (#5349 A4,
+// plan §4 risk 1) exact betweenness is minutes-scary; sampling preserves the
+// important nodes (god-node tier) at a fraction of the cost. PageRank and
+// community detection stay EXACT every pass (decision Q1); only betweenness
+// samples above this threshold.
+//
+// Override at runtime with GRAFEL_BETWEENNESS_SAMPLE_THRESHOLD (a positive
+// integer). A value of 0 or a parse failure falls back to the default.
+const betweennessSampleThreshold = 8000
+
+// betweennessSampleSize is the number of random pivot sources K used by the
+// sampled Brandes approximation. The estimator sums single-source dependencies
+// from K pivots and scales by V/K (standard Brandes-sampling, Bader et al.).
+// 512 pivots gives a tight top-K ranking estimate on sparse code graphs.
+const betweennessSampleSize = 512
+
+// betweennessSampleSeed is the fixed PCG seed for pivot selection so the
+// sampled approximation is byte-reproducible across runs of the same graph
+// (mirrors the fixed-seed determinism elsewhere in this file).
+const betweennessSampleSeed = 0x5349
+
+// betweennessSampleThresholdValue returns the node-count threshold above which
+// betweenness is sampled, honouring the GRAFEL_BETWEENNESS_SAMPLE_THRESHOLD
+// override. Factored out so tests can assert the gate and the env override.
+func betweennessSampleThresholdValue() int {
+	if v := os.Getenv("GRAFEL_BETWEENNESS_SAMPLE_THRESHOLD"); v != "" {
+		if n := atoiSafe(v); n > 0 {
+			return n
+		}
+	}
+	return betweennessSampleThreshold
+}
+
+// BetweennessSampleThreshold exports the effective betweenness-sampling node
+// threshold (honouring GRAFEL_BETWEENNESS_SAMPLE_THRESHOLD) so out-of-package
+// consumers (e.g. the group-algo differential validator) can report whether a
+// group was large enough to trigger the sampled approximation.
+func BetweennessSampleThreshold() int { return betweennessSampleThresholdValue() }
+
 func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[string]float64, map[string]float64) {
 	betw := make(map[string]float64, idx.next)
 	pr := make(map[string]float64, idx.next)
@@ -516,9 +558,14 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 		pr[idx.fromInt[id]] = 0
 	}
 
-	// Betweenness — choose exact-weighted vs unweighted based on graph size.
+	// Betweenness — choose exact-weighted vs unweighted vs sampled by size.
 	var raw map[int64]float64
-	if int(idx.next) <= betwennessNodeCount(idx) {
+	switch {
+	case int(idx.next) > betweennessSampleThresholdValue():
+		// Large group union (#5349 A4): exact Brandes is O(V·E) and scary on
+		// 28k+ nodes. Use the deterministic sampled-pivot approximation.
+		raw = sampledBetweenness(g, betweennessSampleSize, betweennessSampleSeed)
+	case int(idx.next) <= betwennessNodeCount(idx):
 		// FloydWarshall is O(V^3) and precomputes all shortest paths; on
 		// graphs <= cutoff this is the most accurate option.
 		shortest, ok := path.FloydWarshall(g)
@@ -549,6 +596,106 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 		pr[idx.fromInt[nid]] = roundForDeterminism(sanitizeFloat(v))
 	}
 	return betw, pr
+}
+
+// sampledBetweenness approximates betweenness centrality on a directed graph
+// using K random pivot sources (Brandes-sampling, Bader/Brandes-Pich). For each
+// pivot s it runs a single-source unweighted BFS, builds the shortest-path DAG
+// (sigma counts + predecessor lists in non-decreasing distance order), then
+// back-accumulates dependencies delta exactly as in Brandes' algorithm. The sum
+// of single-source dependencies over K pivots is an unbiased estimator of the
+// full betweenness scaled by K/V; we rescale by V/K so the magnitudes match the
+// exact directed Brandes output and the god-node tier (top-K ranking) is
+// preserved (acceptance: top-50 overlap >= 0.9 vs exact on mid-size graphs).
+//
+// Pivot selection uses a fixed PCG seed so the approximation is byte-stable
+// across runs of the same graph (the on-disk determinism contract, #481).
+// Unweighted shortest paths are used (matching network.Betweenness, the exact
+// fallback above the FloydWarshall cutoff) so the comparison is apples-to-apples.
+func sampledBetweenness(g *simple.WeightedDirectedGraph, k int, seed uint64) map[int64]float64 {
+	nodes := gonumgraph.NodesOf(g.Nodes())
+	v := len(nodes)
+	cb := make(map[int64]float64, v)
+	if v == 0 {
+		return cb
+	}
+	ids := make([]int64, v)
+	for i, n := range nodes {
+		ids[i] = n.ID()
+	}
+	// Deterministic order so the seeded pivot draw is reproducible regardless
+	// of gonum's internal node-map iteration order.
+	sort.Slice(ids, func(i, j int) bool { return ids[i] < ids[j] })
+
+	if k > v {
+		k = v
+	}
+	// Deterministic pivot sample without replacement via a seeded Fisher-Yates
+	// partial shuffle over a copy of the sorted ids.
+	rng := rand.New(rand.NewPCG(seed, seed^0x9e3779b97f4a7c15)) //nolint:gosec // reproducibility, not security
+	perm := make([]int64, v)
+	copy(perm, ids)
+	for i := 0; i < k; i++ {
+		j := i + int(rng.Uint64N(uint64(v-i)))
+		perm[i], perm[j] = perm[j], perm[i]
+	}
+	pivots := perm[:k]
+
+	// Pre-extract successor adjacency once (avoids repeated gonum map lookups).
+	succ := make(map[int64][]int64, v)
+	for _, id := range ids {
+		var out []int64
+		it := g.From(id)
+		for it.Next() {
+			out = append(out, it.Node().ID())
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i] < out[j] }) // determinism
+		succ[id] = out
+	}
+
+	for _, s := range pivots {
+		// Single-source Brandes (unweighted BFS).
+		stack := make([]int64, 0, v)
+		pred := make(map[int64][]int64, v)
+		sigma := make(map[int64]float64, v)
+		dist := make(map[int64]int, v)
+		sigma[s] = 1
+		dist[s] = 0
+		queue := []int64{s}
+		for len(queue) > 0 {
+			cur := queue[0]
+			queue = queue[1:]
+			stack = append(stack, cur)
+			for _, w := range succ[cur] {
+				if _, seen := dist[w]; !seen {
+					dist[w] = dist[cur] + 1
+					queue = append(queue, w)
+				}
+				if dist[w] == dist[cur]+1 {
+					sigma[w] += sigma[cur]
+					pred[w] = append(pred[w], cur)
+				}
+			}
+		}
+		// Back-accumulation.
+		delta := make(map[int64]float64, len(stack))
+		for i := len(stack) - 1; i >= 0; i-- {
+			w := stack[i]
+			for _, p := range pred[w] {
+				delta[p] += (sigma[p] / sigma[w]) * (1 + delta[w])
+			}
+			if w != s {
+				cb[w] += delta[w]
+			}
+		}
+	}
+
+	// Rescale so sampled magnitudes match full Brandes (V/K estimator scale).
+	scale := float64(v) / float64(k)
+	for id := range cb {
+		cb[id] *= scale
+	}
+	return cb
 }
 
 // runtimeMSFor returns wall-clock milliseconds elapsed since start, or 0

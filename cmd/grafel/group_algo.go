@@ -18,6 +18,7 @@ package main
 //	grafel group-algo <group> [--dry-run|--write]
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
@@ -28,6 +29,7 @@ import (
 func runGroupAlgo(args []string) int {
 	dryRun := false
 	write := false
+	diff := false
 	var positional []string
 	for _, a := range args {
 		switch a {
@@ -35,14 +37,46 @@ func runGroupAlgo(args []string) int {
 			dryRun = true
 		case "--write":
 			write = true
+		case "--diff":
+			diff = true
 		default:
 			positional = append(positional, a)
 		}
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: grafel group-algo <group> [--dry-run|--write]")
+		fmt.Fprintln(os.Stderr, "usage: grafel group-algo <group> [--dry-run|--write|--diff]")
 		return 2
 	}
+	group := positional[0]
+
+	// --diff (#5349 A4): run the differential validator (per-repo-old vs
+	// group-new) and emit a machine-readable JSON report on stdout. It writes
+	// no overlay; CI / the upvate baseline re-run consume the JSON. The process
+	// exits non-zero if the core thesis assertion fails (a cross-repo entity
+	// LOST PageRank rank at group scope).
+	if diff {
+		if write || dryRun {
+			fmt.Fprintln(os.Stderr, "grafel group-algo: --diff cannot be combined with --write/--dry-run")
+			return 2
+		}
+		rep, derr := groupalgo.DiffGroup(group, 0)
+		if derr != nil {
+			fmt.Fprintf(os.Stderr, "grafel group-algo --diff: %v\n", derr)
+			return 1
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		if eerr := enc.Encode(rep); eerr != nil {
+			fmt.Fprintf(os.Stderr, "grafel group-algo --diff: encode report: %v\n", eerr)
+			return 1
+		}
+		if !rep.CrossRepoRankNonDecreasing {
+			fmt.Fprintf(os.Stderr, "grafel group-algo --diff: FAIL — %d cross-repo entit(ies) lost PageRank rank at group scope\n", len(rep.CrossRepoRankRegressions))
+			return 1
+		}
+		return 0
+	}
+
 	if write && dryRun {
 		fmt.Fprintln(os.Stderr, "grafel group-algo: --write and --dry-run are mutually exclusive")
 		return 2
@@ -51,7 +85,6 @@ func runGroupAlgo(args []string) int {
 	if !write {
 		dryRun = true
 	}
-	group := positional[0]
 
 	res, err := groupalgo.RunGroupAlgorithms(group)
 	if err != nil {

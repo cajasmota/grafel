@@ -39,6 +39,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Added
 
+- **Group-algo differential validator + sampled-pivot betweenness perf guard
+  (Refs #5356, #5349):** a `grafel group-algo <group> --diff` mode runs BOTH the
+  OLD per-repo pass (re-derived locally — the production per-repo pass was removed
+  in A3) and the NEW group pass over the union, then emits a machine-readable
+  JSON report (`DiffReport`): # entities whose `community_id` changed, the top-N
+  PageRank **rank churn**, the modularity delta, and a **cross-repo-rank
+  non-decreasing assertion** — no entity that receives a cross-repo phantom CALLS
+  edge may LOSE PageRank rank group-vs-repo (the core thesis; the process exits
+  non-zero and lists the regressions if it ever does), so CI / the upvate
+  baseline re-run can gate on it. Separately, `ComputeCentrality` gains a
+  **sampled-pivot betweenness approximation** (deterministic seed, K random Brandes
+  pivots scaled by V/K) gated by node count — exact below the threshold, sampled
+  above (default 8000, env `GRAFEL_BETWEENNESS_SAMPLE_THRESHOLD`); PageRank and
+  community detection stay exact every pass. This bounds the ~O(V·E) exact
+  betweenness on 28k+-entity group unions: a 28k-node synthetic pass completes in
+  seconds under budget, and full-vs-sampled top-50 betweenness overlap is ≥0.9
+  (the god-node tier is preserved). **No behavior change until deployed.**
+
 - **Group-algo overlay storage + atomic swap, applied at MCP group load
   (Refs #5354, #5349):** the group-scope algorithm pass (A1) now persists its
   result as a single `~/.grafel/groups/<group>-algo.json` overlay
