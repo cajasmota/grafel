@@ -40,7 +40,9 @@ type indexView struct {
 
 func newIndexView(group string, expectedRepos int) indexView {
 	b := progress.New(
-		progress.WithDefaultGradient(),
+		// Blue → teal/green gradient (matches the light-blue accent), replacing
+		// the charm default pink→purple.
+		progress.WithScaledGradient("#5FB0FF", "#2FD6A6"),
 		progress.WithoutPercentage(),
 	)
 	s := spinner.New()
