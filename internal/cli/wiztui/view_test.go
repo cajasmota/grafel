@@ -177,17 +177,23 @@ func TestDoneScreen_RendersCapturedSummary(t *testing.T) {
 		t.Fatalf("scr = %v, want scrDone", m.scr)
 	}
 
-	v := m.View()
-	for _, want := range []string{
-		"1234 entities",
-		"56 relationships",
-		"installed 2 hooks · 1 watchers · 3 MCP",
-		"⚠ watcher for X not activated",
-	} {
-		if !strings.Contains(v, want) {
-			t.Errorf("Done screen missing %q:\n%s", want, v)
+	// Force the Unicode glyph set so the literal "·"/"⚠" assertions hold on
+	// every OS. #5345 makes the active set ASCII on legacy Windows, which
+	// would otherwise render "-"/"!" and fail these #5342 assertions; pin the
+	// set here so the test is glyph-set-agnostic (#5346 CI greening).
+	withGlyphs(unicodeGlyphs, func() {
+		v := m.View()
+		for _, want := range []string{
+			"1234 entities",
+			"56 relationships",
+			"installed 2 hooks " + g.MidDot + " 1 watchers " + g.MidDot + " 3 MCP",
+			g.Warn + " watcher for X not activated",
+		} {
+			if !strings.Contains(v, want) {
+				t.Errorf("Done screen missing %q:\n%s", want, v)
+			}
 		}
-	}
+	})
 }
 
 // TestModel_SuccessFinalizesStuckRows is the #5340 regression: one repo's last
@@ -309,11 +315,16 @@ func TestDoneScreen_DaemonDownNote(t *testing.T) {
 	v.terminal = true
 	v.daemonDown = true
 	v.install = InstallSummary{Applied: true, Hooks: 1, Watchers: 0, MCP: 1}
-	out := v.view()
-	if !strings.Contains(out, "Registered (not indexed") {
-		t.Errorf("daemon-down note missing:\n%s", out)
-	}
-	if !strings.Contains(out, "installed 1 hooks · 0 watchers · 1 MCP") {
-		t.Errorf("install counts missing on daemon-down:\n%s", out)
-	}
+	// Pin the Unicode set so the "·" MidDot assertion holds on every OS,
+	// including legacy Windows where #5345 selects ASCII glyphs (#5346).
+	withGlyphs(unicodeGlyphs, func() {
+		out := v.view()
+		if !strings.Contains(out, "Registered (not indexed") {
+			t.Errorf("daemon-down note missing:\n%s", out)
+		}
+		want := "installed 1 hooks " + g.MidDot + " 0 watchers " + g.MidDot + " 1 MCP"
+		if !strings.Contains(out, want) {
+			t.Errorf("install counts missing on daemon-down:\n%s", out)
+		}
+	})
 }

@@ -27,6 +27,26 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **`test.yml` is now green on all three OS (macOS, Linux, Windows), unblocking
+  the v0.1.2 tag:** three test-only failures were fixed without touching
+  production behavior — (1) a data race in the canonicalize-timeout tests
+  (`internal/daemon`): the abandoned `readDirBounded` timeout goroutine kept
+  reading the injected `readDirFunc` package var (and a plain `int` counter)
+  after the test body had moved on, so the tests now track in-flight
+  invocations with a `WaitGroup`, park blocked closures on a `stop` channel the
+  helper closes before draining, and use an `atomic.Int64` counter — race-clean
+  under `go test -race` and fast (no literal 10s sleeps)
+  ([#5346](https://github.com/cajasmota/grafel/issues/5346)); (2) the
+  Done-screen wizard-TUI tests (`internal/cli/wiztui`) hardcoded Unicode glyphs
+  (`✓`/`⚠`/`·`) and failed on legacy Windows where the glyph set is ASCII —
+  they now pin the Unicode set with `withGlyphs` and assert via the active
+  set's symbols, so they pass under both glyph sets
+  ([#5342](https://github.com/cajasmota/grafel/issues/5342) ×
+  [#5345](https://github.com/cajasmota/grafel/issues/5345)); and (3)
+  `TestPoller_EmitsForSourceReindex` (`internal/daemon/watch`) was timing-flaky
+  on Windows — the baseline HEAD snapshot is now captured before the commit
+  with a mod-time-granularity guard, and the event is awaited with a generous
+  deterministic deadline instead of a tight 1s budget.
 - **Graph-view rebuild toast now reports the graph's real entity/relationship
   totals instead of "0 entities, 0 relationships" (#5326):** after a background
   rebuild on the graph view, the completion toast read "rebuilt N repo(s): 0

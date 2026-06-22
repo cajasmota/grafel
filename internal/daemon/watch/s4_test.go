@@ -371,12 +371,23 @@ func TestPoller_EmitsForSourceReindex(t *testing.T) {
 		evMu.Unlock()
 	}, nil)
 	p.AddRepo(dir)
+
+	// Establish the baseline (pre-commit HEAD/ref mod-times) BEFORE making
+	// the source commit, then sleep past the filesystem mod-time granularity
+	// so the post-commit ref-file write is guaranteed to present a distinct
+	// mod-time. Windows (NTFS) and some CI filesystems have coarse mod-time
+	// resolution; without this guard a commit landing inside the same tick as
+	// the baseline capture leaves newRefMTime == prev.RefMTime and the poller
+	// (correctly) skips it, so the event is never emitted (Windows flake).
+	time.Sleep(50 * time.Millisecond)
+	gitCommitFileS4(t, dir, "main.go", "package main\n")
+
 	p.Start()
 	defer p.Stop()
 
-	gitCommitFileS4(t, dir, "main.go", "package main\n")
-
-	deadline := time.Now().Add(time.Second)
+	// Await the event with a generous deadline: Windows/CI git operations and
+	// the 50ms poll cadence can take noticeably longer than a single second.
+	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) {
 		evMu.Lock()
 		n := len(events)
