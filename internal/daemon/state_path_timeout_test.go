@@ -15,17 +15,44 @@ package daemon
 
 import (
 	"os"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
 
 // withReadDirFunc swaps readDirFunc for the duration of a test and
 // restores it afterwards.
-func withReadDirFunc(t *testing.T, f func(string) ([]os.DirEntry, error)) {
+//
+// The injected function f is given a `stop` channel and is wrapped so
+// every in-flight invocation is tracked by a WaitGroup. On a timeout the
+// production readDirBounded abandons the goroutine running readDirFunc,
+// so that goroutine can outlive the test body. Restoring the package var
+// (or letting the test mutate shared state) while such an abandoned
+// goroutine is still executing readDirFunc is an unsynchronized data
+// race (#5346).
+//
+// The single cleanup registered here closes `stop` FIRST (releasing any
+// closure that parks waiting for teardown) and only THEN drains the
+// WaitGroup before restoring readDirFunc. Owning both the release signal
+// and the drain in one cleanup avoids any LIFO-ordering footgun between
+// separate cleanups: by the time readDirFunc is written, no abandoned
+// goroutine can still be reading it.
+func withReadDirFunc(t *testing.T, f func(stop <-chan struct{}, dir string) ([]os.DirEntry, error)) {
 	t.Helper()
+	var wg sync.WaitGroup
+	stop := make(chan struct{})
 	prev := readDirFunc
-	readDirFunc = f
-	t.Cleanup(func() { readDirFunc = prev })
+	readDirFunc = func(dir string) ([]os.DirEntry, error) {
+		wg.Add(1)
+		defer wg.Done()
+		return f(stop, dir)
+	}
+	t.Cleanup(func() {
+		close(stop) // release any closure parked until teardown
+		wg.Wait()   // drain all in-flight invocations before the write below
+		readDirFunc = prev
+	})
 }
 
 // TestCanonicalizePathTimesOutAndDegrades verifies that when os.ReadDir
@@ -38,12 +65,17 @@ func TestCanonicalizePathTimesOutAndDegrades(t *testing.T) {
 	// returns in ~20ms, not 10s.
 	t.Setenv("GRAFEL_CANONICALIZE_TIMEOUT_MS", "20")
 	blockStarted := make(chan struct{}, 1)
-	withReadDirFunc(t, func(string) ([]os.DirEntry, error) {
+	withReadDirFunc(t, func(stop <-chan struct{}, _ string) ([]os.DirEntry, error) {
 		select {
 		case blockStarted <- struct{}{}:
 		default:
 		}
-		time.Sleep(10 * time.Second) // simulate a wedged FS
+		// Block far longer than the 20ms timeout so the guard fires, but
+		// wake promptly at teardown via stop.
+		select {
+		case <-stop:
+		case <-time.After(10 * time.Second):
+		}
 		return nil, nil
 	})
 
@@ -73,7 +105,7 @@ func TestCanonicalizePathTimesOutAndDegrades(t *testing.T) {
 // the segment's casing.
 func TestCanonicalizePathFastReadDirCanonicalizes(t *testing.T) {
 	clearCanonicalCache()
-	withReadDirFunc(t, func(dir string) ([]os.DirEntry, error) {
+	withReadDirFunc(t, func(_ <-chan struct{}, dir string) ([]os.DirEntry, error) {
 		// Defer to the real ReadDir; this is fast and well under any timeout.
 		return os.ReadDir(dir)
 	})
@@ -100,27 +132,27 @@ func TestCanonicalizePathTimeoutResultIsCached(t *testing.T) {
 	clearCanonicalCache()
 	t.Setenv("GRAFEL_CANONICALIZE_TIMEOUT_MS", "20")
 
-	var calls int
-	gate := make(chan struct{})
-	withReadDirFunc(t, func(string) ([]os.DirEntry, error) {
-		calls++
-		<-gate // block forever (until test ends)
+	// calls is read by the test body while abandoned timeout goroutines
+	// may still be incrementing it, so it must be atomic (#5346).
+	var calls atomic.Int64
+	withReadDirFunc(t, func(stop <-chan struct{}, _ string) ([]os.DirEntry, error) {
+		calls.Add(1)
+		<-stop // block until teardown releases us
 		return nil, nil
 	})
-	t.Cleanup(func() { close(gate) })
 
 	const input = "/tmp/grafel-5330-cache/SlowMount/Repo"
 	first := canonicalizePath(input)
 	if _, ok := canonicalCache.Load(input); !ok {
 		t.Fatal("expected timeout result to be cached")
 	}
-	callsAfterFirst := calls
+	callsAfterFirst := calls.Load()
 	second := canonicalizePath(input)
 	if first != second {
 		t.Errorf("cached call returned different value: first=%q second=%q", first, second)
 	}
-	if calls != callsAfterFirst {
-		t.Errorf("second call invoked readDirFunc again (%d → %d); cache not used", callsAfterFirst, calls)
+	if got := calls.Load(); got != callsAfterFirst {
+		t.Errorf("second call invoked readDirFunc again (%d → %d); cache not used", callsAfterFirst, got)
 	}
 }
 
