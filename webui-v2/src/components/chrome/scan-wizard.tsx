@@ -95,6 +95,37 @@ function slugify(s: string): string {
   return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
 
+/**
+ * The per-repo list this index will register, as {@link WizardRepo}s — one per
+ * selected child git repo, else one per selected monorepo package, else the
+ * whole folder as a single repo. SINGLE source of truth shared by runIndex (the
+ * from-scan payload) and the progress feed (seeding one row per repo, #5340), so
+ * the seeded rows exactly match the repos the daemon will index.
+ */
+function buildRepos(
+  scan: ScanInspectReply | null,
+  selectedChildren: Set<string>,
+  selectedPkgs: Set<string>,
+): WizardRepo[] {
+  if (!scan?.valid) return [];
+  const hasChildGitRepos = (scan.childGitRepos?.length ?? 0) > 0;
+  const isMonorepo = (scan.packages?.length ?? 0) > 0;
+  if (hasChildGitRepos) {
+    return [...selectedChildren].sort().map((child) => ({
+      path: `${scan.absPath}/${child}`,
+      slug: slugify(child),
+    }));
+  }
+  if (isMonorepo) {
+    return [...selectedPkgs].sort().map((pkg) => ({
+      path: `${scan.absPath}/${pkg}`,
+      slug: slugify(`${scan.suggestedSlug}-${pkg}`),
+      modules: [pkg],
+    }));
+  }
+  return [{ path: scan.absPath, slug: scan.suggestedSlug }];
+}
+
 export function ScanWizard(props: ScanWizardProps) {
   const { open, onOpenChange, mode, groupId, groupName, takenNames = [], existingPaths = [], onIndexed } = props;
 
@@ -153,7 +184,15 @@ export function ScanWizard(props: ScanWizardProps) {
   // progressActive gates the subscription on the JOB being active (Index step +
   // a group) — NOT on `terminal`/`feedTerminal` — so a premature feed-terminal
   // can't tear the stream down before every repo reports (#5326).
-  const progressActive = step === "index" && !!targetGroup;
+  //
+  // SUBSCRIBE-BEFORE-INDEX (#5340): also activate while the from-scan/scan POST
+  // is in flight (createFromScan/scanRepos pending) — BEFORE `setStep("index")`.
+  // The POST is what triggers the daemon to start indexing; opening the SSE
+  // stream as soon as the POST fires means the broker is already listening when
+  // the first per-repo extraction events arrive, so a fast index doesn't drop
+  // them (which collapsed the feed to just the late group terminal → one row).
+  const indexStarting = createFromScan.isPending || scanRepos.isPending;
+  const progressActive = (step === "index" || indexStarting) && !!targetGroup;
   // How many repos THIS index registered — the same selection the wizard uses
   // to start indexing (see runIndex): one per selected child git repo, else one
   // per selected monorepo package, else 1 for a single repo. Threading this into
@@ -166,7 +205,21 @@ export function ScanWizard(props: ScanWizardProps) {
         ? selectedPkgs.size
         : 1
     : undefined;
-  const indexProgress = useIndexProgress(targetGroup, progressActive, expectedRepos);
+  // The per-repo slugs this index will register — the SAME list runIndex POSTs.
+  // Seeds one pending row per repo so ALL repos (backend + frontend) show up
+  // front and survive any dropped early SSE events, instead of collapsing to a
+  // single late group-terminal row (#5340).
+  const seedSlugs = buildRepos(scan, selectedChildren, selectedPkgs).map((r) => r.slug ?? "");
+  // Finalize seeded rows to Done only on SUCCESSFUL completion. The job poller's
+  // "done" is the success signal; a row frozen on its last intermediate phase
+  // (final SSE events arrived after the rebuild RPC returned) is then advanced
+  // to Done so the rows agree with "Done · 100%" (#5348/#5340). Failures keep
+  // their state (handled by leaving complete false on "failed").
+  const indexComplete = job.data?.status === "done";
+  const indexProgress = useIndexProgress(targetGroup, progressActive, expectedRepos, {
+    seedSlugs,
+    complete: indexComplete,
+  });
 
   // Reset everything when the dialog closes.
   function reset() {
@@ -261,28 +314,10 @@ export function ScanWizard(props: ScanWizardProps) {
   // undefined preserves back-compat (register every detected tool / add-repo).
   async function runIndex(mcpToolsSel?: string[]) {
     if (!scan?.valid) return;
-    // Build the repo list based on what was detected:
-    //   1. Child git repos (multi-repo-parent, #1531 follow-up): each selected
-    //      child dir as its own repo (absolute sub-path).
-    //   2. Monorepo packages (#1531): each selected package as its own repo.
-    //   3. Single repo: the whole folder, as before.
-    const hasChildGitRepos = (scan.childGitRepos?.length ?? 0) > 0;
-    const isMonorepo = (scan.packages?.length ?? 0) > 0;
-    let repos: WizardRepo[];
-    if (hasChildGitRepos) {
-      repos = [...selectedChildren].sort().map((child) => ({
-        path: `${scan.absPath}/${child}`,
-        slug: slugify(child),
-      }));
-    } else if (isMonorepo) {
-      repos = [...selectedPkgs].sort().map((pkg) => ({
-        path: `${scan.absPath}/${pkg}`,
-        slug: slugify(`${scan.suggestedSlug}-${pkg}`),
-        modules: [pkg],
-      }));
-    } else {
-      repos = [{ path: scan.absPath, slug: scan.suggestedSlug }];
-    }
+    // Build the repo list based on what was detected (child git repos →
+    // monorepo packages → single repo). buildRepos is shared with the progress
+    // feed's row seeding so the seeded rows match the registered repos (#5340).
+    const repos = buildRepos(scan, selectedChildren, selectedPkgs);
     if (repos.length === 0) {
       toast.error("Select at least one repo to index.");
       return;
@@ -343,7 +378,7 @@ export function ScanWizard(props: ScanWizardProps) {
       : jobProgress;
   // Overall phase label from the least-advanced active repo, so the header
   // reflects what the index is actually doing instead of a static string.
-  const phaseLabel = overallPhaseLabel(indexProgress.rows, terminal);
+  const phaseLabel = overallPhaseLabel(indexProgress.rows, terminal, indexProgress.groupPhase);
   // Subtle "alive" pulse while non-terminal — especially during the
   // sub-progress-less phases that would otherwise look frozen.
   const barActive = !terminal;

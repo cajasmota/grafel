@@ -29,6 +29,70 @@ export function rowKey(e: Pick<ProgressEvent, "repo_slug">): string {
 }
 
 /**
+ * Seed one PENDING row per expected repo, so ALL repos are visible the moment
+ * the Index step starts — even before any SSE event arrives, and even if some
+ * early per-repo events are dropped under the broker's drop policy (#5340).
+ * Real events fold into these seeded rows by repo_slug. Seeded rows sit at the
+ * first phase ("scanning") with a ts of 0 so the very first real event for that
+ * repo always wins the stale-ts / phase-advance checks in `fold`.
+ *
+ * `slugs` is the per-repo slug list the wizard registered for this index (one
+ * per selected child git repo, or one per selected monorepo package, or 1 for a
+ * single repo) — the same slugs runIndex POSTs to /api/v2/groups/from-scan.
+ */
+export function seedRows(slugs: string[]): Map<string, ProgressRow> {
+  const m = new Map<string, ProgressRow>();
+  for (const slug of slugs) {
+    if (!slug) continue;
+    m.set(slug, {
+      key: slug,
+      repoSlug: slug,
+      phase: "scanning",
+      filesDone: 0,
+      filesTotal: 0,
+      entitiesSoFar: 0,
+      ts: 0,
+    });
+  }
+  return m;
+}
+
+/**
+ * Fold the group-scoped phase (from the group event, repo_slug === group) into a
+ * monotonic running value — never regressing to a coarser phase. `fold` excludes
+ * that event from the rows; this tracks its phase so `overallPhaseLabel` can show
+ * the cross-repo pass ("Detecting cross-repo links…") in the header instead of a
+ * spurious group row (#5340). Mirrors indexview.go foldEvent's groupPhase update.
+ */
+export function groupPhase(
+  prev: ProgressRow["phase"] | undefined,
+  e: ProgressEvent,
+  groupSlug: string,
+): ProgressRow["phase"] | undefined {
+  if (!groupSlug || e.repo_slug !== groupSlug) return prev;
+  if (!prev || PHASE_ORDER[e.phase] >= PHASE_ORDER[prev]) return e.phase;
+  return prev;
+}
+
+/**
+ * Mark every non-terminal row Done — called once the index completes
+ * successfully so a row frozen on its last intermediate phase (its final SSE
+ * events arrived after the rebuild RPC returned and the forwarder stopped)
+ * agrees with the overall "Done · 100%" (#5348/#5340). Failures keep their
+ * state. Files/entities counts are preserved. Mirrors indexview.go finalizeRows.
+ */
+export function finalizeRows(prev: Map<string, ProgressRow>): Map<string, ProgressRow> {
+  let changed = false;
+  const next = new Map(prev);
+  for (const [k, r] of prev) {
+    if (r.phase === "done" || r.phase === "error") continue;
+    next.set(k, { ...r, phase: "done" });
+    changed = true;
+  }
+  return changed ? next : prev;
+}
+
+/**
  * Monotonic phase order so a stale lower phase never overwrites a higher one.
  *
  * #5334 — the graph-assembly tail is split into granular passes. The order
@@ -68,7 +132,14 @@ const PHASE_ORDER: Record<ProgressRow["phase"], number> = {
 export function fold(
   prev: Map<string, ProgressRow>,
   e: ProgressEvent,
+  groupSlug?: string,
 ): Map<string, ProgressRow> {
+  // The group-scoped event (repo_slug === group, the cross-repo links/flows
+  // pass) is NOT a repo: it must never spawn a per-repo row (#5340). Drop it
+  // here so it can't become a spurious "<group> · Indexed" row — its phase is
+  // routed to the OVERALL label via groupPhase()/overallPhaseLabel instead.
+  // Mirrors internal/cli/wiztui/indexview.go foldEvent.
+  if (groupSlug && e.repo_slug === groupSlug) return prev;
   const key = rowKey(e);
   const existing = prev.get(key);
   // Ignore stale events that predate what we already have for this row.
@@ -224,15 +295,39 @@ const PHASE_LABEL: Record<ProgressRow["phase"], string> = {
  * When `terminal` (or every row is terminal / there are no active rows), the
  * label is "Done".
  */
-export function overallPhaseLabel(rows: ProgressRow[], terminal?: boolean): string {
+export function overallPhaseLabel(
+  rows: ProgressRow[],
+  terminal?: boolean,
+  groupPhaseValue?: ProgressRow["phase"],
+): string {
   if (terminal) return "Done";
   const active = rows.filter((r) => r.phase !== "done" && r.phase !== "error");
-  if (active.length === 0) return "Done";
-  // Least-advanced active phase gates overall progress.
-  const least = active.reduce((min, r) =>
-    PHASE_ORDER[r.phase] < PHASE_ORDER[min.phase] ? r : min,
-  );
-  return PHASE_LABEL[least.phase];
+  // Least-advanced active per-repo phase gates overall progress.
+  const repoLabel =
+    active.length === 0
+      ? "Done"
+      : PHASE_LABEL[
+          active.reduce((min, r) =>
+            PHASE_ORDER[r.phase] < PHASE_ORDER[min.phase] ? r : min,
+          ).phase
+        ];
+  // Once every repo is terminal but the group-scoped pass (cross-repo links /
+  // flows) is still in flight, surface THAT group phase in the header instead of
+  // a stale "Done" — the group work runs after all repos finish (#5340). Mirrors
+  // indexview.go overallLabel.
+  if (groupPhaseValue && groupPhaseValue !== "done" && groupPhaseValue !== "error") {
+    const leastActiveRank =
+      active.length === 0
+        ? PHASE_ORDER.done
+        : active.reduce(
+            (min, r) => Math.min(min, PHASE_ORDER[r.phase]),
+            PHASE_ORDER.done,
+          );
+    if (repoLabel === "Done" || PHASE_ORDER[groupPhaseValue] >= leastActiveRank) {
+      return PHASE_LABEL[groupPhaseValue];
+    }
+  }
+  return repoLabel;
 }
 
 /** Stable sort for rendering: by repo, then module label. */
