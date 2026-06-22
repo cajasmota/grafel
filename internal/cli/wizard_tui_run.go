@@ -9,6 +9,7 @@ package cli
 // render a per-repo indexing view without owning any side effects.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -25,6 +26,7 @@ import (
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
 	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/registry"
@@ -187,13 +189,18 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 
 			repos := reposForResult(class, r)
 
+			// In the TUI, applyGroupConfig's stdout must NOT leak onto the
+			// alt-screen (fix C, #5340). Capture it into a sink buffer and feed
+			// the structured install.Result back into the Done screen instead.
+			var sink bytes.Buffer
+
 			// Add-to-existing-group path.
 			if r.Action == wiztui.ActionAddGroup && r.AddToGroup != "" {
-				if err := addReposToExistingGroupNoIndex(out, r.AddToGroup, repos, opts); err != nil {
+				if err := addReposToExistingGroupNoIndex(&sink, r.AddToGroup, repos, opts); err != nil {
 					outCh <- wiztui.IndexOutcome{Err: err}
 					return
 				}
-				streamIndex(evCh, outCh, r.AddToGroup, opts.NoIndex)
+				streamIndexWithSummary(evCh, outCh, r.AddToGroup, opts.NoIndex, wiztui.InstallSummary{})
 				return
 			}
 
@@ -204,33 +211,53 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 			cfg.Features.AgentHooks = opts.AgentHooks
 			cfg.GroupDocs = r.GroupDocs
 			cfg.Repos = repos
-			if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall}); err != nil {
+			res, err := applyGroupConfig(&sink, cfg, groupApplyOptions{RunInstall: opts.RunInstall})
+			if err != nil {
 				outCh <- wiztui.IndexOutcome{Err: err}
 				return
 			}
-			streamIndex(evCh, outCh, cfg.Name, opts.NoIndex)
+			streamIndexWithSummary(evCh, outCh, cfg.Name, opts.NoIndex, installSummary(res))
 		}()
 
 		return evCh, outCh
 	}
 }
 
-// streamIndex triggers a daemon index of group and forwards broker progress
-// events onto evCh, then sends the terminal outcome on outCh. A down daemon or
-// --no-index is a soft completion (DaemonDown), not an error.
-func streamIndex(evCh chan<- progress.Event, outCh chan<- wiztui.IndexOutcome, group string, noIndex bool) {
+// installSummary maps an install.Result into the TUI's structured summary so the
+// Done screen can render "installed N hooks · N watchers · N MCP" plus any
+// watcher warnings, instead of those lines scattering over the alt-screen.
+func installSummary(res *install.Result) wiztui.InstallSummary {
+	if res == nil {
+		// RunInstall was false — nothing was installed.
+		return wiztui.InstallSummary{}
+	}
+	return wiztui.InstallSummary{
+		Applied:         true,
+		Hooks:           len(res.HooksInstalled),
+		Watchers:        len(res.WatcherUnits),
+		MCP:             len(res.MCPSettings),
+		WatcherWarnings: res.WatcherWarnings,
+		ConfigPath:      res.GroupConfigPath,
+	}
+}
+
+// streamIndexWithSummary triggers a daemon index of group and forwards broker
+// progress events onto evCh, then sends the terminal outcome on outCh — with the
+// captured install summary attached so the Done screen renders it. A down daemon
+// or --no-index is a soft completion (DaemonDown), not an error.
+func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.IndexOutcome, group string, noIndex bool, summary wiztui.InstallSummary) {
 	if noIndex {
-		outCh <- wiztui.IndexOutcome{DaemonDown: true}
+		outCh <- wiztui.IndexOutcome{DaemonDown: true, Install: summary}
 		return
 	}
 
 	c, err := client.Dial()
 	if err != nil {
 		if errors.Is(err, client.ErrDaemonNotRunning) {
-			outCh <- wiztui.IndexOutcome{DaemonDown: true}
+			outCh <- wiztui.IndexOutcome{DaemonDown: true, Install: summary}
 			return
 		}
-		outCh <- wiztui.IndexOutcome{Err: err}
+		outCh <- wiztui.IndexOutcome{Err: err, Install: summary}
 		return
 	}
 	defer c.Close()
@@ -261,14 +288,14 @@ func streamIndex(evCh chan<- progress.Event, outCh chan<- wiztui.IndexOutcome, g
 		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
 			o := forwardBrokerToChannel(ctx, sseCh, rpcCh, evCh)
 			cancel()
-			outCh <- toIndexOutcome(o)
+			outCh <- toIndexOutcome(o, summary)
 			return
 		}
 	}
 
 	// No dashboard broker — just wait for the RPC outcome.
 	o := <-rpcCh
-	outCh <- toIndexOutcome(o)
+	outCh <- toIndexOutcome(o, summary)
 }
 
 // forwardBrokerToChannel reads broker SSE events and forwards parsed
@@ -340,10 +367,11 @@ func jsonUnmarshalEvent(data string, e *progress.Event) bool {
 	return json.Unmarshal([]byte(data), e) == nil
 }
 
-// toIndexOutcome maps a rebuildOutcome to the TUI's terminal IndexOutcome.
-func toIndexOutcome(o rebuildOutcome) wiztui.IndexOutcome {
+// toIndexOutcome maps a rebuildOutcome to the TUI's terminal IndexOutcome,
+// attaching the captured install summary so the Done screen renders it.
+func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary) wiztui.IndexOutcome {
 	if o.err != nil {
-		return wiztui.IndexOutcome{Err: o.err}
+		return wiztui.IndexOutcome{Err: o.err, Install: summary}
 	}
 	elapsed := ""
 	if o.elapsed > 0 {
@@ -353,6 +381,7 @@ func toIndexOutcome(o rebuildOutcome) wiztui.IndexOutcome {
 		Entities: o.entities,
 		Rels:     o.rels,
 		Elapsed:  elapsed,
+		Install:  summary,
 	}
 }
 

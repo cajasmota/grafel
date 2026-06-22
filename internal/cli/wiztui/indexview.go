@@ -29,6 +29,8 @@ type indexView struct {
 	summaryEntities int64
 	summaryRels     int64
 	elapsed         string
+	daemonDown      bool           // group registered but not indexed
+	install         InstallSummary // captured applyGroupConfig output (fix C)
 }
 
 func newIndexView(group string, expectedRepos int) indexView {
@@ -62,6 +64,7 @@ var (
 	rowDoneStyle    = lipgloss.NewStyle().Foreground(colGreen)
 	rowErrStyle     = lipgloss.NewStyle().Foreground(colRed)
 	rowCountStyle   = lipgloss.NewStyle().Foreground(colMuted)
+	rowWarnStyle    = lipgloss.NewStyle().Foreground(colYellow)
 	overallLblStyle = lipgloss.NewStyle().Foreground(colAccent2).Bold(true)
 )
 
@@ -136,7 +139,7 @@ func (v indexView) view() string {
 	b.WriteString(bar.ViewAs(pct))
 	b.WriteString(fmt.Sprintf("  %3d%%\n\n", int(pct*100)))
 
-	if len(rows) == 0 {
+	if len(rows) == 0 && !v.done() {
 		b.WriteString(rowCountStyle.Render("waiting for the indexer to report…"))
 		return b.String()
 	}
@@ -153,17 +156,48 @@ func (v indexView) view() string {
 		b.WriteString(rowErrStyle.Render("Index failed: " + v.errMsg))
 	} else if v.terminal {
 		b.WriteString("\n")
-		parts := []string{"Done"}
-		if v.summaryEntities > 0 {
-			parts = append(parts, fmt.Sprintf("%d entities", v.summaryEntities))
-		}
-		if v.summaryRels > 0 {
-			parts = append(parts, fmt.Sprintf("%d relationships", v.summaryRels))
-		}
-		if v.elapsed != "" {
-			parts = append(parts, v.elapsed)
-		}
-		b.WriteString(rowDoneStyle.Render(strings.Join(parts, "  ·  ")))
+		b.WriteString(v.doneSummary())
+	}
+
+	return b.String()
+}
+
+// doneSummary renders the clean Done block that replaces applyGroupConfig's raw
+// stdout (fix C, #5340): a one-line index result, the captured install counts,
+// and any watcher warnings as styled non-fatal notes.
+func (v indexView) doneSummary() string {
+	var b strings.Builder
+
+	// Index result line (entities / relationships / elapsed), or a soft note
+	// when the daemon was down and the group was only registered.
+	head := "Done"
+	if v.daemonDown {
+		head = "Registered (not indexed — daemon not running)"
+	}
+	parts := []string{head}
+	if v.summaryEntities > 0 {
+		parts = append(parts, fmt.Sprintf("%d entities", v.summaryEntities))
+	}
+	if v.summaryRels > 0 {
+		parts = append(parts, fmt.Sprintf("%d relationships", v.summaryRels))
+	}
+	if v.elapsed != "" {
+		parts = append(parts, v.elapsed)
+	}
+	b.WriteString(rowDoneStyle.Render(strings.Join(parts, "  ·  ")))
+
+	// Captured install summary (hooks · watchers · MCP).
+	if v.install.Applied {
+		b.WriteString("\n")
+		b.WriteString(rowCountStyle.Render(fmt.Sprintf(
+			"installed %d hooks · %d watchers · %d MCP",
+			v.install.Hooks, v.install.Watchers, v.install.MCP)))
+	}
+
+	// Watcher warnings as styled non-fatal notes.
+	for _, w := range v.install.WatcherWarnings {
+		b.WriteString("\n")
+		b.WriteString(rowWarnStyle.Render("⚠ " + w))
 	}
 
 	return b.String()

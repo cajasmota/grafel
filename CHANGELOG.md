@@ -30,6 +30,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Changed
 
+- **`grafel wizard` TUI polish — per-screen context, light-blue accent, and a
+  captured Done summary (#5340):** each step now carries a concise explanatory
+  subtitle so it's clear what's being configured (what indexing a single repo /
+  group / monorepo means; "Choose which repositories to include in this group";
+  the Name screen names the actual repos being grouped; the optional-docs screen
+  explains shared markdown docs). The accent (header badge, step-rail pills,
+  cursor `›`, selected/active highlights) moved from pink/magenta to a tasteful
+  **light blue** (adaptive 256-color `117`/`75`), keeping green for done/✓. And
+  the install/index output that previously scattered over the alt-screen on
+  completion ("saved …", "installed N hooks/watchers/MCP", watcher warnings) is
+  now **captured and rendered inside the Done screen** — a clean summary line
+  plus any watcher warning as a styled non-fatal note — so nothing prints
+  misaligned after the TUI tears down (the non-TTY/plain path still prints the
+  normal messages) ([#5340](https://github.com/cajasmota/grafel/issues/5340)).
 - **`grafel wizard` now uses a cohesive Bubble Tea TUI (#5340):** the
   interactive wizard is a single full-screen `tea.Model` state machine with
   consistent chrome on every step — a styled grafel header + a step rail

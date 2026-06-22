@@ -81,6 +81,22 @@ type IndexOutcome struct {
 	// DaemonDown indicates the group was registered but not indexed (daemon
 	// not running) — a soft, non-error completion.
 	DaemonDown bool
+	// Install summarizes what applyGroupConfig wrote (hooks/watchers/MCP) and
+	// any non-fatal watcher warnings, captured so the TUI can render them inside
+	// the Done screen instead of letting raw stdout scatter over the alt-screen.
+	Install InstallSummary
+}
+
+// InstallSummary is the captured, structured outcome of applyGroupConfig's
+// install transaction. The cli package fills it from install.Result so the TUI
+// owns all post-completion output (fix C, #5340).
+type InstallSummary struct {
+	Applied         bool     // an install transaction ran (RunInstall was true)
+	Hooks           int      // git hooks installed
+	Watchers        int      // watcher units written
+	MCP             int      // MCP settings entries touched
+	WatcherWarnings []string // non-fatal watcher-activation warnings
+	ConfigPath      string   // saved per-group config path (e.g. "saved …")
 }
 
 // screen identifies the active screen in the state machine.
@@ -152,8 +168,10 @@ func New(drv Driver, index IndexFunc, watchers, gitHooks bool) Model {
 		{Label: "Index a monorepo", Value: string(ActionMonorepo)},
 		{Label: "Add a repository to an existing group", Value: string(ActionAddGroup)},
 	})
-	// Pre-place cursor on the suggested action.
-	m.actionList.context = drv.ContextLine()
+	// Pre-place cursor on the suggested action, with a one-line explainer of
+	// what the four indexing modes mean under the detected-context line.
+	m.actionList.context = drv.ContextLine() + "\n" +
+		"A single repo, a group of related repos, a monorepo's packages, or add to an existing group."
 	m.actionList.setCursorByValue(string(drv.SuggestedAction()))
 	return m
 }
@@ -196,6 +214,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.idx.summaryEntities = o.Entities
 		m.idx.summaryRels = o.Rels
 		m.idx.elapsed = o.Elapsed
+		m.idx.daemonDown = o.DaemonDown
+		m.idx.install = o.Install
 		if o.Err != nil {
 			m.idx.failed = true
 			m.idx.errMsg = o.Err.Error()
@@ -281,6 +301,7 @@ func (m Model) enterSelect() (tea.Model, tea.Cmd) {
 	// Append the rescan entry.
 	cands = append(cands, Candidate{Label: "scan a different folder…", Value: RescanSentinel})
 	m.selectList = newMultiListModel(title, cands)
+	m.selectList.context = "Choose which repositories to include in this group."
 	m.scr = scrSelect
 	m.step = StepSelect
 	return m, nil
@@ -342,6 +363,7 @@ func (m Model) updateGroupPick(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		title, cands := m.drv.Candidates(ActionGroup)
 		cands = append(cands, Candidate{Label: "scan a different folder…", Value: RescanSentinel})
 		m.selectList = newMultiListModel(title, cands)
+		m.selectList.context = "Choose which repositories to add to “" + m.res.AddToGroup + "”."
 		m.scr = scrSelect
 		m.step = StepSelect
 		return m, nil
@@ -351,11 +373,29 @@ func (m Model) updateGroupPick(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m Model) enterName() (tea.Model, tea.Cmd) {
 	def := m.drv.DefaultGroupName(m.res.Repos)
-	m.nameInput = newInputModel("Group name",
-		"Used as the registry key and the per-group config filename.", def, false)
+	desc := "The group's registry key and config filename. Repos in this group: " +
+		repoNames(m.res.Repos) + "."
+	m.nameInput = newInputModel("Group name", desc, def, false)
 	m.scr = scrName
 	m.step = StepName
 	return m, m.nameInput.focusCmd()
+}
+
+// repoNames renders a short, comma-joined list of repo basenames for the Name
+// screen's explainer (so the user sees exactly which repos they're grouping).
+func repoNames(repos []string) string {
+	if len(repos) == 0 {
+		return "(none)"
+	}
+	names := make([]string, 0, len(repos))
+	for _, p := range repos {
+		base := p
+		if i := strings.LastIndexAny(p, `/\`); i >= 0 && i < len(p)-1 {
+			base = p[i+1:]
+		}
+		names = append(names, base)
+	}
+	return strings.Join(names, ", ")
 }
 
 func (m Model) updateName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -373,7 +413,7 @@ func (m Model) updateName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.res.GroupName = v
 		m.docsInput = newInputModel("Path to shared group docs",
-			"optional · press enter to skip", "", true)
+			"A folder of shared markdown docs surfaced in the graph. Optional — press enter to skip.", "", true)
 		m.scr = scrDocs
 		return m, m.docsInput.focusCmd()
 	}
