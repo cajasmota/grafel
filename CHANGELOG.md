@@ -10,6 +10,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **Daemon startup no longer deadlocks when `canonicalizePath`'s `os.ReadDir`
+  blocks on a slow filesystem (#5330):** at startup the daemon canonicalizes
+  each known repo path by walking its ancestors with a per-segment `os.ReadDir`,
+  previously with no timeout. If a single ancestor's FS call hung (a
+  `~/Documents` iCloud/Spotlight/TCC stall, a slow/unresponsive mount, or an
+  observed launchd-context permission stall) the entire startup blocked forever
+  and the daemon never began serving — the hang was only visible via a SIGQUIT
+  goroutine dump. Each `os.ReadDir` is now bounded by a timeout (default 3s,
+  overridable via `GRAFEL_CANONICALIZE_TIMEOUT_MS`); on timeout `canonicalizePath`
+  degrades to preserving the input casing for that and remaining segments — the
+  same fallback it already takes on a read error — and logs a WARN with the
+  offending path. A new `startup: state-migration begin` log is emitted before
+  the migration runs so a wedge here is diagnosable without a goroutine dump
+  ([#5330](https://github.com/cajasmota/grafel/issues/5330)).
+
 - **`grafel wizard` TUI renders correctly on legacy Windows CMD/conhost
   (#5340, #856):** the wizard's Bubble Tea TUI used Unicode glyphs (`›`, `✓`,
   `↑/↓`, `·`, `…`, `⚠`, `[✓]`, the braille spinner) with no console code-page

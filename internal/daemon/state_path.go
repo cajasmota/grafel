@@ -48,11 +48,14 @@ package daemon
 import (
 	"crypto/sha256"
 	"encoding/hex"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
+	"time"
 	"unicode/utf8"
 
 	"github.com/cajasmota/grafel/internal/gitmeta"
@@ -62,6 +65,62 @@ import (
 // every daemon startup pays the os.ReadDir cost at most once per unique
 // input path. Paths do not change casing during a daemon's lifetime.
 var canonicalCache sync.Map // map[string]string
+
+// readDirFunc is the directory-read primitive used by canonicalizePath.
+// It is a package var so tests can inject a slow/blocking implementation
+// to exercise the timeout guard without a real stuck filesystem.
+var readDirFunc = os.ReadDir
+
+// defaultCanonicalizeTimeout bounds the per-segment os.ReadDir call in
+// canonicalizePath. On case-insensitive filesystems this read is
+// effectively instant; the timeout only ever fires when an ancestor
+// directory's FS call hangs (an iCloud/Spotlight/TCC stall, a slow or
+// unresponsive mount, or a launchd-context permission stall). When it
+// fires we degrade to preserving the input casing rather than blocking
+// the daemon's startup forever (#5330).
+const defaultCanonicalizeTimeout = 3 * time.Second
+
+// canonicalizeTimeout returns the per-segment ReadDir timeout, honouring
+// the GRAFEL_CANONICALIZE_TIMEOUT_MS override. A zero, negative, or
+// unparseable value falls back to defaultCanonicalizeTimeout.
+func canonicalizeTimeout() time.Duration {
+	if v := os.Getenv("GRAFEL_CANONICALIZE_TIMEOUT_MS"); v != "" {
+		if ms, err := strconv.Atoi(v); err == nil && ms > 0 {
+			return time.Duration(ms) * time.Millisecond
+		}
+	}
+	return defaultCanonicalizeTimeout
+}
+
+// readDirBounded runs readDirFunc(dir) under a timeout. It returns the
+// entries (or read error) when the read completes in time, or a third
+// return of false when the read did not finish before the deadline.
+//
+// The read runs in its own goroutine writing to a 1-deep buffered
+// channel, so on a genuinely wedged filesystem that goroutine is simply
+// abandoned: it holds no lock, blocks nothing else, and its eventual
+// (or never) send cannot leak memory beyond the single buffered slot.
+// This is what lets daemon startup proceed instead of deadlocking on a
+// slow FS (#5330).
+func readDirBounded(dir string, timeout time.Duration) (entries []os.DirEntry, err error, ok bool) {
+	type result struct {
+		entries []os.DirEntry
+		err     error
+	}
+	ch := make(chan result, 1)
+	go func() {
+		e, rdErr := readDirFunc(dir)
+		ch <- result{e, rdErr}
+	}()
+	timer := time.NewTimer(timeout)
+	defer timer.Stop()
+	select {
+	case r := <-ch:
+		return r.entries, r.err, true
+	case <-timer.C:
+		return nil, nil, false
+	}
+}
 
 // canonicalizePath returns the path with the actual on-disk casing of
 // each component. On case-insensitive filesystems (APFS, NTFS) two
@@ -94,13 +153,25 @@ func canonicalizePath(absPath string) string {
 	rest = strings.TrimLeft(rest, string(filepath.Separator))
 	segments := strings.Split(rest, string(filepath.Separator))
 
+	timeout := canonicalizeTimeout()
 	canonical := vol + string(filepath.Separator)
 	for _, seg := range segments {
 		if seg == "" {
 			continue
 		}
-		// Try to find the real on-disk name for this segment.
-		entries, err := os.ReadDir(canonical)
+		// Try to find the real on-disk name for this segment, bounded by a
+		// timeout. A single ancestor whose os.ReadDir hangs (iCloud/Spotlight/
+		// TCC stall, slow mount, launchd-context permission stall) must never
+		// deadlock daemon startup (#5330) — on timeout we take the same
+		// degrade path as a read error below: preserve the input casing for
+		// this and all remaining segments.
+		entries, err, completed := readDirBounded(canonical, timeout)
+		if !completed {
+			slog.Warn("canonicalizePath: os.ReadDir timed out; preserving input casing",
+				"dir", canonical, "timeout", timeout, "path", absPath)
+			canonical = filepath.Join(canonical, seg)
+			continue
+		}
 		if err != nil {
 			// Directory doesn't exist or isn't readable; preserve input
 			// casing for this segment and all remaining segments.

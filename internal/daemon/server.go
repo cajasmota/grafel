@@ -257,6 +257,13 @@ func Run(ctx context.Context, cfg Config) error {
 	// per-ref sub-directory layout introduced by PH1a (#2089). Called here
 	// (after EnsureLayout, before accepting RPCs) so every read path sees
 	// the new layout. Idempotent: already-migrated stores are skipped.
+	// #5330: log BEFORE the startup state migration. canonicalizePath (called
+	// transitively from MigrateToRefStore and the per-repo store-root mapping)
+	// does a per-segment os.ReadDir that, on a stuck FS, used to deadlock
+	// startup before ANY log line was emitted — the hang was only visible via a
+	// SIGQUIT goroutine dump. This line makes a wedge here diagnosable; a slow
+	// canonicalize now also logs a WARN with the offending path.
+	logger.Info("startup: state-migration begin")
 	if storeDir := StoreDir(); storeDir != "" {
 		if err := MigrateToRefStore(storeDir); err != nil {
 			// Non-fatal: log and continue; the daemon can still serve the
@@ -275,6 +282,7 @@ func Run(ctx context.Context, cfg Config) error {
 				"removed", removed, "freed_bytes", freed, "keep_n", keepN)
 		}
 	}
+	logger.Info("startup: state-migration done")
 
 	// #5264: unconditional INFO-level startup tracing between
 	// `MigrateToRefStore complete` and the dashboard goroutine launch. On the
