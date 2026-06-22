@@ -124,6 +124,27 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 		return finishWizard(out, cfg, opts)
 	}
 
+	// INTERACTIVE path — when stdin/stdout are a real terminal, drive the
+	// cohesive Bubble Tea TUI (#5340): header + step rail, spacious body, footer
+	// key hints, and a per-repo indexing view. The TUI owns presentation only —
+	// it calls back into applyGroupConfig + the daemon index here, so all the
+	// decision/registration LOGIC is preserved. A cancel registers nothing.
+	if wizardUseTUI(out) {
+		res, err := runInteractiveTUI(out, opts.errWriter(), opts)
+		if err != nil {
+			return err
+		}
+		if res.Cancelled {
+			fmt.Fprintln(out, "cancelled — nothing was registered.")
+			return nil
+		}
+		// All side effects (register/install/index) ran inside the TUI loop.
+		return nil
+	}
+
+	// NON-TTY interactive fallback (pipes, CI, $TERM=dumb): keep the original
+	// huh/line-based flow so scripts and non-terminal environments never launch
+	// the full-screen TUI.
 	// INTERACTIVE path — action-first (#5336). Pick an action (single / group /
 	// monorepo / add-to-group) with a smart cwd default, then resolve candidates
 	// per action via the shared detect.ClassifyPath classifier.
