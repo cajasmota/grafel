@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"os/user"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -41,12 +42,12 @@ const daemonTaskXMLTemplate = `<?xml version="1.0" encoding="UTF-16"?>
   <Triggers>
     <LogonTrigger>
       <Enabled>true</Enabled>
-      <UserId>{{.UserSID}}</UserId>
+      {{if .UserSID}}<UserId>{{.UserSID}}</UserId>{{end}}
     </LogonTrigger>
   </Triggers>
   <Principals>
     <Principal id="Author">
-      <UserId>{{.UserSID}}</UserId>
+      {{if .UserSID}}<UserId>{{.UserSID}}</UserId>{{end}}
       <LogonType>InteractiveToken</LogonType>
       <RunLevel>LeastPrivilege</RunLevel>
     </Principal>
@@ -94,20 +95,19 @@ func taskXMLPath() (string, error) {
 }
 
 // currentUserSID returns the SID string for the running user.
-// On failure it returns an empty string — schtasks accepts an empty UserId
-// and defaults to the token user.
+// On failure it returns an empty string — the task template degrades a missing
+// UserId to "fire on any logon" rather than emitting invalid XML.
+//
+// We use the native os/user API rather than shelling out to `whoami /user`:
+// on a Windows dev shell whose PATH resolves `whoami` to the MSYS/Git Bash
+// binary (not System32), that Unix `whoami` does not understand `/user` and
+// fails, leaving the SID empty. On Windows, user.Current().Uid *is* the SID.
 func currentUserSID() string {
-	// whoami /user /fo csv /nh emits: "domain\user","S-1-5-..."
-	out, err := exec.Command("whoami", "/user", "/fo", "csv", "/nh").Output()
+	u, err := user.Current()
 	if err != nil {
 		return ""
 	}
-	r := csv.NewReader(strings.NewReader(strings.TrimSpace(string(out))))
-	records, err := r.Read()
-	if err != nil || len(records) < 2 {
-		return ""
-	}
-	return strings.TrimSpace(records[1])
+	return strings.TrimSpace(u.Uid)
 }
 
 // GenerateTaskXML renders the Task Scheduler XML for the given options.
