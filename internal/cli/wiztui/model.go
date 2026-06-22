@@ -40,7 +40,12 @@ type Result struct {
 	GroupDocs  string
 	Watchers   bool
 	GitHooks   bool
-	Cancelled  bool // user pressed ctrl-c / esc out of the first screen
+	// MCPTools is the user's choice of which AI tools get the grafel MCP
+	// server (#5344). nil = no explicit choice (caller falls back to its
+	// default behaviour); non-nil (incl. empty) = register exactly these tool
+	// IDs. Set by the "Configure MCP for which tools?" screen.
+	MCPTools  *[]string
+	Cancelled bool // user pressed ctrl-c / esc out of the first screen
 
 	indexErr error // set if indexing failed (read via IndexErr)
 }
@@ -108,9 +113,20 @@ const (
 	scrGroupPick // add-to-group: pick target group
 	scrName
 	scrDocs
+	scrMCP // choose which AI tools get the grafel MCP server (#5344)
 	scrIndex
 	scrDone
 )
+
+// MCPToolOption is one selectable AI tool in the "Configure MCP for which
+// tools?" screen (#5344). The cli package builds these from the tool detector;
+// wiztui stays decoupled from the install package.
+type MCPToolOption struct {
+	ID              string // adapter ID persisted + passed to install
+	DisplayName     string // human-facing name
+	HasGrafel       bool   // already has a grafel entry (shown as "configured")
+	DefaultSelected bool   // B+C computed default checkbox state
+}
 
 // progressMsg / outcomeMsg are tea messages carrying indexing data.
 type progressMsg prog.Event
@@ -136,7 +152,12 @@ type Model struct {
 	groupPick  listModel
 	nameInput  inputModel
 	docsInput  inputModel
+	mcpList    multiListModel
 	idx        indexView
+
+	// mcpTools are the detected MCP-capable tools offered on the scrMCP
+	// screen, in display order. Empty (or len<=1) skips the screen (#5344).
+	mcpTools []MCPToolOption
 
 	// accumulated result
 	res Result
@@ -151,13 +172,16 @@ type Model struct {
 
 // New builds the wizard model. watchers/gitHooks seed the result defaults
 // (features are taken from flags, matching the current behavior — the TUI does
-// not re-prompt for them).
-func New(drv Driver, index IndexFunc, watchers, gitHooks bool) Model {
+// not re-prompt for them). mcpTools are the detected MCP-capable tools offered
+// on the "Configure MCP for which tools?" screen (#5344); pass nil/empty to
+// skip that screen entirely (e.g. a flag preset the selection, or ≤1 detected).
+func New(drv Driver, index IndexFunc, watchers, gitHooks bool, mcpTools []MCPToolOption) Model {
 	m := Model{
-		drv:   drv,
-		index: index,
-		scr:   scrAction,
-		step:  StepAction,
+		drv:      drv,
+		index:    index,
+		scr:      scrAction,
+		step:     StepAction,
+		mcpTools: mcpTools,
 	}
 	m.res.Watchers = watchers
 	m.res.GitHooks = gitHooks
@@ -252,6 +276,8 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m.updateName(msg)
 	case scrDocs:
 		return m.updateDocs(msg)
+	case scrMCP:
+		return m.updateMCP(msg)
 	case scrIndex:
 		// Index screen: only ctrl-c (handled globally) interrupts.
 		return m, nil
@@ -341,7 +367,7 @@ func (m Model) updateSelect(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.res.Repos = repos
 		if m.res.Action == ActionAddGroup {
-			return m.startIndex()
+			return m.enterMCP()
 		}
 		return m.enterName()
 	}
@@ -428,6 +454,55 @@ func (m Model) updateDocs(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.docsInput, cmd = m.docsInput.Update(msg)
 	if m.docsInput.done {
 		m.res.GroupDocs = strings.TrimSpace(m.docsInput.value())
+		return m.enterMCP()
+	}
+	return m, cmd
+}
+
+// enterMCP transitions to the "Configure MCP for which tools?" screen (#5344).
+// When ≤1 tool is detected the screen is skipped and the detected set is
+// auto-used (no screen for a trivial choice).
+func (m Model) enterMCP() (tea.Model, tea.Cmd) {
+	if len(m.mcpTools) <= 1 {
+		// ≤1 detected: auto-use it (or leave nil when none) and index.
+		if len(m.mcpTools) == 1 {
+			sel := []string{m.mcpTools[0].ID}
+			m.res.MCPTools = &sel
+		}
+		return m.startIndex()
+	}
+	cands := make([]Candidate, 0, len(m.mcpTools))
+	for _, t := range m.mcpTools {
+		label := t.DisplayName
+		if t.HasGrafel {
+			label += " (configured)"
+		}
+		cands = append(cands, Candidate{Label: label, Value: t.ID, Selected: t.DefaultSelected})
+	}
+	m.mcpList = newMultiListModel("Configure MCP for which tools?", cands)
+	m.mcpList.context = "Your AI agents that can query this graph."
+	m.scr = scrMCP
+	m.step = StepName
+	return m, nil
+}
+
+func (m Model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	if msg.String() == "esc" {
+		// Back to the docs screen.
+		m.docsInput = newInputModel("Path to shared group docs",
+			"A folder of shared markdown docs surfaced in the graph. Optional — press enter to skip.", m.res.GroupDocs, true)
+		m.scr = scrDocs
+		m.step = StepName
+		return m, m.docsInput.focusCmd()
+	}
+	var cmd tea.Cmd
+	m.mcpList, cmd = m.mcpList.Update(msg)
+	if m.mcpList.chosen {
+		sel := m.mcpList.values()
+		if sel == nil {
+			sel = []string{} // distinguish "chose none" from "no choice"
+		}
+		m.res.MCPTools = &sel
 		return m.startIndex()
 	}
 	return m, cmd
@@ -473,6 +548,9 @@ func (m Model) View() string {
 	case scrDocs:
 		body = m.docsInput.view()
 		hint = hintInputOpt()
+	case scrMCP:
+		body = m.mcpList.view(m.bodyHeight())
+		hint = hintMulti()
 	case scrIndex:
 		body = m.idx.view()
 		hint = hintIndex()

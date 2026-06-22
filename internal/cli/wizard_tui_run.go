@@ -28,9 +28,26 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/detect"
+	"github.com/cajasmota/grafel/internal/install/mcptools"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/registry"
 )
+
+// mcpToolOptions builds the wiztui MCP-tools picker options from the detector
+// (#5344), carrying the B+C computed default into the screen.
+func mcpToolOptions() []wiztui.MCPToolOption {
+	tools := mcptools.Detect()
+	out := make([]wiztui.MCPToolOption, 0, len(tools))
+	for _, t := range tools {
+		out = append(out, wiztui.MCPToolOption{
+			ID:              t.ID,
+			DisplayName:     t.DisplayName,
+			HasGrafel:       t.HasGrafel,
+			DefaultSelected: t.DefaultSelected,
+		})
+	}
+	return out
+}
 
 // wizardUseTUI reports whether the full-screen Bubble Tea TUI should drive the
 // interactive wizard. It requires BOTH stdin and the wizard's stdout to be real
@@ -162,7 +179,15 @@ func runInteractiveTUI(out, errOut io.Writer, opts wizardOptions) (wiztui.Result
 	drv := wizardDriver{class: class}
 
 	idxFn := makeIndexFunc(out, errOut, class, opts)
-	m := wiztui.New(drv, idxFn, opts.Watchers, opts.GitHooks)
+	// Build the MCP-tools picker options (#5344) unless a flag already preset
+	// the selection (--mcp-tools / --no-mcp) — in which case the screen is
+	// skipped (empty options) and the flag selection is honoured by the
+	// IndexFunc.
+	var mcpOpts []wiztui.MCPToolOption
+	if opts.MCPTools == nil {
+		mcpOpts = mcpToolOptions()
+	}
+	m := wiztui.New(drv, idxFn, opts.Watchers, opts.GitHooks, mcpOpts)
 
 	// Switch the console to UTF-8 (Windows) before the alt-screen starts so the
 	// wizard's glyphs render instead of mojibake; restore on exit (#5340).
@@ -194,6 +219,14 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 
 			repos := reposForResult(class, r)
 
+			// Resolve the MCP-tools selection (#5344): the picker screen sets
+			// r.MCPTools; when a flag preset the choice the screen was skipped
+			// and r.MCPTools is nil, so fall back to opts.MCPTools.
+			mcpSel := r.MCPTools
+			if mcpSel == nil {
+				mcpSel = opts.MCPTools
+			}
+
 			// In the TUI, applyGroupConfig's stdout must NOT leak onto the
 			// alt-screen (fix C, #5340). Capture it into a sink buffer and feed
 			// the structured install.Result back into the Done screen instead.
@@ -201,7 +234,7 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 
 			// Add-to-existing-group path.
 			if r.Action == wiztui.ActionAddGroup && r.AddToGroup != "" {
-				if err := addReposToExistingGroupNoIndex(&sink, r.AddToGroup, repos, opts); err != nil {
+				if err := addReposToExistingGroupNoIndex(&sink, r.AddToGroup, repos, opts, mcpSel); err != nil {
 					outCh <- wiztui.IndexOutcome{Err: err}
 					return
 				}
@@ -216,7 +249,7 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 			cfg.Features.AgentHooks = opts.AgentHooks
 			cfg.GroupDocs = r.GroupDocs
 			cfg.Repos = repos
-			res, err := applyGroupConfig(&sink, cfg, groupApplyOptions{RunInstall: opts.RunInstall})
+			res, err := applyGroupConfig(&sink, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel})
 			if err != nil {
 				outCh <- wiztui.IndexOutcome{Err: err}
 				return
@@ -407,7 +440,7 @@ func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary) wiztui.Inde
 // addReposToExistingGroupNoIndex appends repos to an existing group and applies
 // the config WITHOUT triggering an index (the TUI streams the index itself via
 // streamIndex right after, so we don't want a double index here).
-func addReposToExistingGroupNoIndex(out io.Writer, group string, repos []registry.Repo, opts wizardOptions) error {
+func addReposToExistingGroupNoIndex(out io.Writer, group string, repos []registry.Repo, opts wizardOptions, mcpSel *[]string) error {
 	if len(repos) == 0 {
 		return errors.New("no repos selected to add")
 	}
@@ -436,7 +469,7 @@ func addReposToExistingGroupNoIndex(out io.Writer, group string, repos []registr
 	if added == 0 {
 		return errors.New("all selected repos are already in the group")
 	}
-	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall}); err != nil {
+	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel}); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "added %d repo(s) to group %q\n", added, group)
