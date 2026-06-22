@@ -1626,15 +1626,28 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		doc.Stats.Relationships = len(doc.Relationships)
 	}
 
-	// Pass 4 — graph algorithms. Conceptually this runs "between" pass 3 and
-	// pass 5, but it operates on the merged/deduped entity set so we run it
-	// against the assembled Document and attach the per-entity attributes
-	// in-place. The pass is intentionally skippable for cheap CI smoke runs.
+	// Pass 4 — graph algorithms. REMOVED at per-repo scope (#5349 A3, epic
+	// #5350): communities + centrality are now computed ONCE over the assembled
+	// group union by the daemon's debounced group-algo scheduler, which writes
+	// the <group>-algo.json overlay. Computing them per-repo here was the wrong
+	// scope — the pass never saw cross-repo edges — and the values are now
+	// authoritatively supplied by the group overlay at MCP load time. The
+	// graph.fb per-entity algo FIELDS (community_id/centrality/pagerank/...)
+	// are retained (vestigial, one release) but left at their schema sentinels
+	// (-2 / 0 / false) rather than recomputed per-repo. A single-repo group is
+	// the degenerate one-repo union and still gets algorithms via the group
+	// pass. The PassGraphAlgo skip flag is kept for back-compat but the eager
+	// per-repo computation no longer runs even when it is unset.
+	//
+	// runPass4Algorithms / runPass4AlgorithmsWithProgress are retained (unused
+	// methods are legal in Go) for one release in case an operator needs to
+	// restore the per-repo pass via a future flag.
+	//
+	// The canonical entity/relationship sort that the old pass performed (issue
+	// #481) is PRESERVED here: downstream passes (process-flow BFS, module
+	// aggregation, the group-algo assembly) rely on entities/relationships being
+	// in canonical-id order. Only the gonum algorithm computation is removed.
 	if !i.skipPasses[PassGraphAlgo] {
-		// Issue #481 — gonum's BuildGraph assigns int64 node ids in slice
-		// order, so sort entities/relationships on canonical ids before the
-		// pass. Louvain, betweenness, articulation points, and surprise
-		// edges all consume that mapping.
 		sort.SliceStable(doc.Entities, func(a, b int) bool { return doc.Entities[a].ID < doc.Entities[b].ID })
 		sort.SliceStable(doc.Relationships, func(a, b int) bool {
 			ra, rb := &doc.Relationships[a], &doc.Relationships[b]
@@ -1646,8 +1659,6 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			}
 			return ra.Kind < rb.Kind
 		})
-		trk.PhaseStart(progress.PhaseAlgorithms, len(files), doc.Stats.Entities)
-		i.runPass4AlgorithmsWithProgress(doc, trk)
 	}
 
 	// #5334 — surface the flow walkers (process-flow + event-flow) as a

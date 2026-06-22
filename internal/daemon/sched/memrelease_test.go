@@ -102,7 +102,7 @@ func TestMaybeReleaseMemory_PendingAlgoCountsAsBusy(t *testing.T) {
 	s := newMemTestScheduler(10*time.Second, func() { freed.Add(1) })
 
 	s.mu.Lock()
-	s.algoPending["/repo"] = true
+	s.groupAlgoPending["shared"] = true
 	s.mu.Unlock()
 
 	base := time.Now()
@@ -114,7 +114,7 @@ func TestMaybeReleaseMemory_PendingAlgoCountsAsBusy(t *testing.T) {
 
 	// Algo pass clears → now genuinely idle.
 	s.mu.Lock()
-	s.algoPending["/repo"] = false
+	s.groupAlgoPending["shared"] = false
 	s.mu.Unlock()
 	s.maybeReleaseMemory(base.Add(30 * time.Second)) // arms fresh clock
 	s.maybeReleaseMemory(base.Add(41 * time.Second)) // fires

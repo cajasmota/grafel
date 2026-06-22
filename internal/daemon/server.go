@@ -61,7 +61,11 @@ type Config struct {
 	WorktreeParents func() []worktree.ParentRepo
 	SchedulerIndex  func(ctx context.Context, repo string, ref string) error // fast reindex (skip algo pass); ref is the git branch captured at enqueue time
 	SchedulerLinks  func(ctx context.Context, group string) error
-	SchedulerAlgo   func(ctx context.Context, repo string) error
+	// SchedulerGroupAlgo runs the group-scope algorithm pass over a group's
+	// assembled union and writes the <group>-algo.json overlay (#5349 A3). The
+	// scheduler chains it off the link-pass success path; it replaces the old
+	// per-repo SchedulerAlgo.
+	SchedulerGroupAlgo func(ctx context.Context, group string) error
 
 	// SchedulerIncremental, when non-nil, is wired as the S3 incremental
 	// file-level reindex hook (issue #2153). It is attempted before
@@ -352,7 +356,7 @@ func Run(ctx context.Context, cfg Config) error {
 		scheduler := sched.New(sched.Config{
 			Index:         cfg.SchedulerIndex,
 			Links:         cfg.SchedulerLinks,
-			Algorithms:    cfg.SchedulerAlgo,
+			GroupAlgo:     cfg.SchedulerGroupAlgo,
 			GroupsForRepo: cfg.GroupsForRepo,
 			Logger:        logger,
 			BudgetMB:      cfg.MaxRSSBudgetMB,

@@ -36,6 +36,7 @@ import (
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/extractors"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/jobs"
 	"github.com/cajasmota/grafel/internal/mcp"
 	"github.com/cajasmota/grafel/internal/process"
@@ -576,10 +577,10 @@ func runDaemon(argv []string) error {
 		// #3353/#3354: linked-worktree discovery + working-tree watching.
 		// Only groups with track_worktrees or watchers enabled are returned;
 		// nil → discovery not started.
-		WorktreeParents: daemonWorktreeParents,
-		SchedulerIndex:  daemonSchedulerIndex,
-		SchedulerLinks:  daemonSchedulerLinks,
-		SchedulerAlgo:   daemonSchedulerAlgo,
+		WorktreeParents:    daemonWorktreeParents,
+		SchedulerIndex:     daemonSchedulerIndex,
+		SchedulerLinks:     daemonSchedulerLinks,
+		SchedulerGroupAlgo: daemonSchedulerGroupAlgo,
 		// Issue #2406: capture extractorCfg at construction time so the closure
 		// owns an immutable pointer — no package-level singleton needed.
 		SchedulerIncremental: func(ctx context.Context, repoPath string, ref string) sched.IncrementalResult {
@@ -873,53 +874,33 @@ func daemonSchedulerLinks(ctx context.Context, group string) error {
 	return runLinksHookWithCtx(ctx, group)
 }
 
-// daemonSchedulerAlgo runs the full index (including Pass 4 algorithms)
-// against a repo. The scheduler arranges cancel+reschedule on new
-// writes, so this is allowed to be slow.
-// The ctx is the scheduler's shutdownCtx and is available for future use
-// (e.g. to cancel long-running subprocess operations on daemon shutdown).
-func daemonSchedulerAlgo(ctx context.Context, repoPath string) error {
-	// ADR-0016 flip-day (#808): graph.fb is always written by default now.
-	// #1576: tag with the registered CONFIG slug when this path is known to a
-	// group, so a watcher-triggered re-index keeps doc.Repo aligned with the
-	// dashboard's node slugs and the cross-repo link endpoints. An empty
-	// repoTag would fall back to the dir basename and diverge from a slugified
-	// config slug (e.g. my_app vs my-app), dropping cross-repo edges.
-	// NOTE: ctx is not yet used by Index, but is threaded through for future
-	// context-aware subprocess handling (similar to SchedulerIncremental above).
-	_ = ctx
-	err := Index(repoPath, "", configSlugForPath(repoPath), nil, false, false)
-	invalidateAfterIndex(repoPath)
-	// PH2 (#2090): re-activate the tier slot as HOT. ref="" here — the algo
-	// pass runs after the fast-index which already registered the slot; this
-	// just refreshes lastAccessedAt.
-	tierAfterIndex(repoPath, "")
-	return err
-}
-
-// configSlugForPath returns the registered config slug for repoPath by
-// scanning all group configs, or "" when the path is not registered (in which
-// case Index falls back to the directory basename). Paths are compared after
-// filepath.Clean so trailing-slash / relative differences do not defeat the
-// match.
-func configSlugForPath(repoPath string) string {
-	want := filepath.Clean(repoPath)
-	groups, err := registry.Groups()
+// daemonSchedulerGroupAlgo runs the group-scope algorithm pass ONCE over the
+// assembled union of a group's per-repo graphs and writes the <group>-algo.json
+// overlay (#5349 A3, epic #5350). It replaces the old per-repo daemonSchedulerAlgo:
+// the scheduler chains this off the SUCCESS path of the link pass, so N repo
+// reindexes coalesce into one link pass and then one group-algo pass.
+//
+// By default the pass runs in a short-lived child process
+// (`grafel group-algo <group> --write`) so the heavy union-graph heap is
+// isolated from the daemon and reclaimed on exit (plan Q2; mirrors the v0.1.1
+// subprocess indexer). GRAFEL_SUBPROCESS_INDEXER=0 opts into the in-process
+// path. The ctx is the scheduler's per-run cancel context (derived from
+// shutdownCtx) so daemon SIGTERM or a superseding link pass cancels cleanly.
+func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
+	if sched.SubprocessIndexEnabled() {
+		// Preferred path: fork-exec for heap isolation under the per-child CPU
+		// cap. The child writes the overlay; the MCP apply path picks it up by
+		// mtime on the next group load (no daemon-side cache to poke).
+		return sched.RunSubprocessGroupAlgo(ctx, group, slog.Default())
+	}
+	// In-process fallback (opt-out via GRAFEL_SUBPROCESS_INDEXER=0). Runs under
+	// the scheduler's algoSem cap. The union heap is freed when the result goes
+	// out of scope; no per-repo graph.fb is rewritten.
+	res, err := groupalgo.RunGroupAlgorithms(group)
 	if err != nil {
-		return ""
+		return err
 	}
-	for _, g := range groups {
-		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
-		if err != nil {
-			continue
-		}
-		for _, r := range cfg.Repos {
-			if filepath.Clean(r.Path) == want {
-				return r.Slug
-			}
-		}
-	}
-	return ""
+	return groupalgo.WriteOverlayFromResult(res)
 }
 
 // daemonIndexFunc is the IndexFunc handed to daemon.Run. It bridges the

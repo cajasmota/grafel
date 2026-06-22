@@ -8,6 +8,35 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Changed
+
+- **Graph algorithms now run once per GROUP via a debounced/capped/background
+  scheduler; the per-repo algorithm pass is removed (Refs #5355, #5349):**
+  communities, PageRank, betweenness, god-nodes and articulation points are now
+  computed ONCE over the assembled group union — so cross-repo edges are finally
+  seen — by a new `scheduleGroupAlgo` chained off the **success path of the
+  cross-repo link pass**. Because the link pass already coalesces a burst of
+  repo reindexes, N file saves collapse into 1 link pass and then 1 group-algo
+  pass (default 30s debounce, env `GRAFEL_GROUP_ALGO_DEBOUNCE`). The pass runs in
+  the background under the existing `algoSem` cap and, by default, in a
+  short-lived `grafel group-algo <group> --write` child process so the heavy
+  union-graph heap is isolated and reclaimed on exit (opt out with
+  `GRAFEL_SUBPROCESS_INDEXER=0`); its context derives from the scheduler's
+  shutdown context for clean SIGTERM cancellation. On completion it writes the
+  `<group>-algo.json` overlay (A2), which the MCP apply path picks up by mtime on
+  the next group load. The old per-repo algorithm pass (`scheduleAlgo` /
+  `daemonSchedulerAlgo` / the `GRAFEL_EAGER_ALGO` eager path) and the per-repo
+  Pass-4 computation in the index flow are removed — a single-repo group is the
+  degenerate one-repo union, so single-repo groups still get algorithms via the
+  group pass. The per-entity `graph.fb` algo fields are kept (vestigial, one
+  release) but left at their schema sentinels rather than recomputed per-repo;
+  the canonical entity/relationship sort that the pass performed is preserved for
+  downstream passes. An in-flight group-algo pass is surfaced in
+  `grafel_stats`' `is_indexing` (`group_algo_in_flight`). The now-dead on-demand
+  lazy algo cache (`internal/mcp/algo_demand.go`, the unused `ensureAlgoResults`
+  path) is deleted so there is a single algo path. **No behavior change until
+  deployed.**
+
 ### Added
 
 - **Group-algo overlay storage + atomic swap, applied at MCP group load

@@ -20,10 +20,10 @@ import (
 func newAsyncTestService(t *testing.T, syncFn IndexFunc, idxFn sched.IndexFn) (*Service, func()) {
 	t.Helper()
 	sc := sched.New(sched.Config{
-		Workers:    1,
-		Index:      idxFn,
-		Links:      func(context.Context, string) error { return nil },
-		Algorithms: func(context.Context, string) error { return nil },
+		Workers:   1,
+		Index:     idxFn,
+		Links:     func(context.Context, string) error { return nil },
+		GroupAlgo: func(context.Context, string) error { return nil },
 	})
 	sc.Start()
 	svc := newService(syncFn, nil, nil, "", make(chan struct{}, 1), nil, 1)
