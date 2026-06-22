@@ -27,6 +27,13 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **Wizard indexing view now marks all per-repo rows Done on successful
+  completion (#5340):** previously a repo could freeze on its last intermediate
+  phase (e.g. "Building communities…") if its final SSE events (centrality →
+  writing → done) arrived after the Rebuild RPC returned done and the forwarder
+  stopped. The overall bar reached "Done · 100%" but the stuck row disagreed. On
+  a successful `IndexOutcome` the view now finalizes every non-terminal row to
+  Done (preserving its files/entities counts); failures leave rows as-is.
 - **Daemon startup no longer deadlocks when `canonicalizePath`'s `os.ReadDir`
   blocks on a slow filesystem (#5330):** at startup the daemon canonicalizes
   each known repo path by walking its ancestors with a per-segment `os.ReadDir`,

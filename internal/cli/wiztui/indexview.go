@@ -75,6 +75,24 @@ func (v *indexView) foldEvent(e prog.Event) {
 // done reports whether the indexing screen has fully completed.
 func (v indexView) done() bool { return v.terminal || v.failed }
 
+// finalizeRows marks every per-repo row terminal (Done) on a successful index
+// completion. Because the index as a whole succeeded, every repo is done — but a
+// repo's final SSE events (centrality → writing → done) can arrive after the
+// Rebuild RPC returns done and the forwarder stops, leaving that row frozen on
+// its last intermediate phase (e.g. "Building communities…"). Rather than depend
+// on capturing that final SSE batch, advance any non-terminal row to PhaseDone,
+// preserving its files/entities counts. Rows already done/error are left as-is.
+// Only call this on SUCCESS; on failure rows keep their existing state (#5340).
+func (v *indexView) finalizeRows() {
+	for k, r := range v.rows {
+		if r.Terminal() {
+			continue
+		}
+		r.Phase = prog.PhaseDone
+		v.rows[k] = r
+	}
+}
+
 // overallLabel derives the header phase for the whole index. While per-repo
 // rows are still in flight it reflects the least-advanced repo. Once every repo
 // is terminal but the group-scoped pass (cross-repo links / flows) is still

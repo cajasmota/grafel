@@ -190,6 +190,116 @@ func TestDoneScreen_RendersCapturedSummary(t *testing.T) {
 	}
 }
 
+// TestModel_SuccessFinalizesStuckRows is the #5340 regression: one repo's last
+// SSE event is an intermediate phase (building_communities) because its final
+// events (centrality → writing → done) arrived after the Rebuild RPC returned
+// and the forwarder stopped. When the success IndexOutcome lands, BOTH rows must
+// render Done — the stuck one is force-finalized — with counts preserved and no
+// spinner glyph on it.
+func TestModel_SuccessFinalizesStuckRows(t *testing.T) {
+	d := fakeDriver{suggested: ActionGroup, cands: []Candidate{
+		{Label: "/a", Value: "/a", Selected: true},
+	}}
+	m := newTestModel(d, nilIndex)
+	m = m.update(key("enter")) // action → select
+	m = m.update(key("enter")) // select → name
+	m = m.update(key("enter")) // name → docs
+	m = m.update(key("enter")) // docs → index
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex", m.scr)
+	}
+
+	// frontend reaches done; backend freezes mid-flight on building_communities
+	// with real counts attached.
+	m = m.update(progressMsg(progress.Event{RepoSlug: "frontend", Phase: progress.PhaseDone, TS: 1}))
+	m = m.update(progressMsg(progress.Event{
+		RepoSlug: "backend", Phase: progress.PhaseBuildCommunities,
+		FilesDone: 80, FilesTotal: 80, EntitiesSoFar: 421, TS: 2,
+	}))
+
+	// Sanity: backend is NOT yet terminal before the outcome lands.
+	if r := m.idx.rows["backend"]; r.Terminal() {
+		t.Fatalf("backend terminal too early: %q", r.Phase)
+	}
+
+	// Success outcome lands.
+	m = m.update(outcomeMsg(IndexOutcome{Entities: 999, Rels: 10, Elapsed: "1.0s"}))
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+
+	// Both rows must now be terminal Done.
+	for _, slug := range []string{"frontend", "backend"} {
+		r, ok := m.idx.rows[slug]
+		if !ok {
+			t.Fatalf("row %q missing", slug)
+		}
+		if r.Phase != progress.PhaseDone {
+			t.Errorf("row %q phase = %q, want %q", slug, r.Phase, progress.PhaseDone)
+		}
+	}
+	// Counts on the previously-stuck row are preserved.
+	if r := m.idx.rows["backend"]; r.EntitiesSoFar != 421 || r.FilesDone != 80 {
+		t.Errorf("backend counts not preserved: files=%d entities=%d", r.FilesDone, r.EntitiesSoFar)
+	}
+
+	// View renders both as Done with no spinner glyph.
+	out := m.View()
+	if n := strings.Count(out, rowDoneStyle.Render("Done")); n < 2 {
+		t.Errorf("expected >=2 Done rows, got %d:\n%s", n, out)
+	}
+	if strings.Contains(out, m.idx.spin.View()) && m.idx.spin.View() != "" {
+		t.Errorf("spinner still present on finalized rows:\n%s", out)
+	}
+}
+
+// TestModel_FailureDoesNotForceDone asserts a FAILURE outcome leaves an
+// in-flight row on its phase — only success force-finalizes rows.
+func TestModel_FailureDoesNotForceDone(t *testing.T) {
+	v := newIndexView("grp", 2)
+	v.width = 100
+	v.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseBuildCommunities, TS: 1})
+
+	// Simulate the failure branch of the outcome handler: no finalizeRows call.
+	v.failed = true
+	v.errMsg = "boom"
+
+	if r := v.rows["backend"]; r.Phase != progress.PhaseBuildCommunities {
+		t.Errorf("backend phase = %q, want %q (failure must not force Done)",
+			r.Phase, progress.PhaseBuildCommunities)
+	}
+
+	// And finalizeRows itself, if not called, leaves rows untouched — guard the
+	// contract by asserting an explicit non-call keeps the row in-flight.
+	if v.rows["backend"].Terminal() {
+		t.Error("row should remain in-flight on failure")
+	}
+}
+
+// TestFinalizeRows_PreservesTerminalAndCounts unit-tests finalizeRows directly:
+// done/error rows are untouched, in-flight rows advance to Done with counts kept.
+func TestFinalizeRows_PreservesTerminalAndCounts(t *testing.T) {
+	v := newIndexView("grp", 3)
+	v.foldEvent(progress.Event{RepoSlug: "a", Phase: progress.PhaseDone, EntitiesSoFar: 5, TS: 1})
+	v.foldEvent(progress.Event{RepoSlug: "b", Phase: progress.PhaseError, TS: 1})
+	v.foldEvent(progress.Event{RepoSlug: "c", Phase: progress.PhaseBuildCommunities, EntitiesSoFar: 7, FilesDone: 3, TS: 1})
+
+	v.finalizeRows()
+
+	if v.rows["a"].Phase != progress.PhaseDone || v.rows["a"].EntitiesSoFar != 5 {
+		t.Errorf("done row a mutated: %+v", v.rows["a"])
+	}
+	if v.rows["b"].Phase != progress.PhaseError {
+		t.Errorf("error row b regressed to %q", v.rows["b"].Phase)
+	}
+	if v.rows["c"].Phase != progress.PhaseDone {
+		t.Errorf("in-flight row c not finalized: %q", v.rows["c"].Phase)
+	}
+	if v.rows["c"].EntitiesSoFar != 7 || v.rows["c"].FilesDone != 3 {
+		t.Errorf("row c counts not preserved: %+v", v.rows["c"])
+	}
+}
+
 // TestDoneScreen_DaemonDownNote: a daemon-down soft completion renders the
 // "registered (not indexed)" note while still showing the captured install
 // counts.

@@ -246,6 +246,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.res.indexErr = o.Err
 		} else {
 			m.idx.terminal = true
+			// The whole index succeeded, so every repo is done. Force any row
+			// still on an intermediate phase to Done — its final SSE events may
+			// have arrived after the RPC returned and been dropped (#5340).
+			m.idx.finalizeRows()
 		}
 		m.scr = scrDone
 		m.step = StepDone
