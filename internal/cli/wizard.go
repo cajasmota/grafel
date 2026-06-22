@@ -85,8 +85,52 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 	cfg.Features.AgentHooks = opts.AgentHooks
 	cfg.GroupDocs = opts.GroupDocs
 
-	// Step 1 — group name.
-	if opts.GroupName == "" && !opts.NonInteractive {
+	// NON-INTERACTIVE path (--repos/--parent/--exclude): unchanged flag-driven
+	// discovery, for scripting. Requires --group up front.
+	if opts.NonInteractive {
+		if opts.GroupName == "" {
+			return errors.New("group name required")
+		}
+		cfg.Name = opts.GroupName
+		candidates, err := discoverCandidates(out, opts)
+		if err != nil {
+			return err
+		}
+		if len(candidates) == 0 {
+			return errors.New("no repos selected")
+		}
+		for _, p := range candidates {
+			abs, _ := filepath.Abs(p)
+			cfg.Repos = append(cfg.Repos, registry.Repo{
+				Slug:  filepath.Base(abs),
+				Path:  abs,
+				Stack: registry.StackList{detect.Stack(abs)},
+			})
+		}
+		return finishWizard(out, cfg, opts)
+	}
+
+	// INTERACTIVE path — action-first (#5336). Pick an action (single / group /
+	// monorepo / add-to-group) with a smart cwd default, then resolve candidates
+	// per action via the shared detect.ClassifyPath classifier.
+	repos, addTo, err := runInteractiveRepoSelect(out)
+	if err != nil {
+		return err
+	}
+	// "Add to existing group" short-circuits: append the chosen repos to the
+	// target group's config and apply, rather than creating a new group.
+	if addTo != "" {
+		return addReposToExistingGroup(out, addTo, repos, opts)
+	}
+	if len(repos) == 0 {
+		return errors.New("no repos selected")
+	}
+	cfg.Repos = append(cfg.Repos, repos...)
+
+	// Group name — prompted AFTER the action so "add to existing group" can skip
+	// it. Pre-fill a suggestion from the first repo's basename.
+	if opts.GroupName == "" {
+		opts.GroupName = filepath.Base(repos[0].Path)
 		if err := huh.NewInput().
 			Title("Group name").
 			Description("Used as the registry key and the per-group config filename.").
@@ -100,39 +144,13 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 		return errors.New("group name required")
 	}
 	cfg.Name = opts.GroupName
+	return finishWizard(out, cfg, opts)
+}
 
-	// Step 2 — repo discovery.
-	candidates, err := discoverCandidates(out, opts)
-	if err != nil {
-		return err
-	}
-	var chosen []string
-	if opts.NonInteractive || len(candidates) == 0 {
-		chosen = candidates
-	} else {
-		opts2 := make([]huh.Option[string], 0, len(candidates))
-		for _, c := range candidates {
-			opts2 = append(opts2, huh.NewOption(c, c).Selected(true))
-		}
-		if err := huh.NewMultiSelect[string]().
-			Title("Repos to include").
-			Options(opts2...).
-			Value(&chosen).
-			Run(); err != nil {
-			return err
-		}
-	}
-	if len(chosen) == 0 {
-		return errors.New("no repos selected")
-	}
-	for _, p := range chosen {
-		abs, _ := filepath.Abs(p)
-		cfg.Repos = append(cfg.Repos, registry.Repo{
-			Slug:  filepath.Base(abs),
-			Path:  abs,
-			Stack: registry.StackList{detect.Stack(abs)},
-		})
-	}
+// finishWizard runs the remaining interactive prompts (features, group docs) and
+// then persists + installs the assembled group config. Shared by both the
+// non-interactive and interactive paths.
+func finishWizard(out io.Writer, cfg *registry.GroupConfig, opts wizardOptions) error {
 
 	// Step 3 — features (skip prompt; defaults from flags).
 	if !opts.NonInteractive {
@@ -160,7 +178,7 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 
 	// Steps 5-7 — persist + register + manifests + install. Shared with the
 	// non-interactive `group add` command via applyGroupConfig.
-	_, err = applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall})
+	_, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall})
 	return err
 }
 
@@ -218,6 +236,424 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 	fmt.Fprintf(out, "installed %d hooks, %d watchers, %d MCP entries\n",
 		len(res.HooksInstalled), len(res.WatcherUnits), len(res.MCPSettings))
 	return res, nil
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Action-first interactive flow (#5336)
+// ─────────────────────────────────────────────────────────────────────────────
+
+// wizardAction is one of the four top-level index actions.
+type wizardAction string
+
+const (
+	actionSingle   wizardAction = "single"
+	actionGroup    wizardAction = "group"
+	actionMonorepo wizardAction = "monorepo"
+	actionAddGroup wizardAction = "add-group"
+)
+
+// repoFromPath builds a registry.Repo for an absolute path, detecting its stack.
+func repoFromPath(abs string) registry.Repo {
+	return registry.Repo{
+		Slug:  filepath.Base(abs),
+		Path:  abs,
+		Stack: registry.StackList{detect.Stack(abs)},
+	}
+}
+
+// runInteractiveRepoSelect drives the action-first interactive flow. It returns
+// the chosen repos and, when the user picked "add to existing group", the name
+// of that group (in which case the repos are appended there by the caller rather
+// than forming a new group). Replaces the old filepath.Dir(cwd) sibling scan.
+func runInteractiveRepoSelect(out io.Writer) (repos []registry.Repo, addToGroup string, err error) {
+	cwd, err := os.Getwd()
+	if err != nil {
+		return nil, "", err
+	}
+	class, _ := detect.ClassifyPath(cwd)
+
+	// Step 1 — action select. ALWAYS show all four; pre-place the cursor on the
+	// smart default derived from ClassifyPath(cwd).
+	action := defaultAction(class)
+	if err := huh.NewSelect[wizardAction]().
+		Title("What do you want to index?").
+		Description(fmt.Sprintf("Detected: %s", describeClassification(class))).
+		Options(
+			huh.NewOption("Index a single repository", actionSingle),
+			huh.NewOption("Index a group of related repositories", actionGroup),
+			huh.NewOption("Index a monorepo", actionMonorepo),
+			huh.NewOption("Add a repository to an existing group", actionAddGroup),
+		).
+		Value(&action).
+		Run(); err != nil {
+		return nil, "", err
+	}
+
+	switch action {
+	case actionSingle:
+		repos, err = resolveSingleAction(class)
+		return repos, "", err
+	case actionGroup:
+		repos, err = resolveGroupAction(out, class)
+		return repos, "", err
+	case actionMonorepo:
+		repos, err = resolveMonorepoAction(out, class)
+		return repos, "", err
+	case actionAddGroup:
+		return resolveAddToGroupAction(out)
+	default:
+		return nil, "", errors.New("no action selected")
+	}
+}
+
+// defaultAction maps a classification's suggested action to a wizardAction.
+func defaultAction(c detect.Classification) wizardAction {
+	switch c.Suggested {
+	case detect.ActionGroup:
+		return actionGroup
+	case detect.ActionMonorepo:
+		return actionMonorepo
+	case detect.ActionSingle:
+		return actionSingle
+	default:
+		return actionSingle
+	}
+}
+
+// describeClassification renders a short human label of what cwd looks like.
+func describeClassification(c detect.Classification) string {
+	switch {
+	case len(c.ChildGitRepos) > 0:
+		return fmt.Sprintf("%s holds %d git repos (%s)", filepath.Base(c.AbsPath),
+			len(c.ChildGitRepos), strings.Join(c.ChildGitRepos, ", "))
+	case c.Monorepo != detect.KindNone && len(c.Packages) > 0:
+		return fmt.Sprintf("%s monorepo, %d packages", c.Monorepo, len(c.Packages))
+	case c.IsGitRepo && len(c.SiblingGitRepos) > 0:
+		return fmt.Sprintf("git repo with %d sibling repos", len(c.SiblingGitRepos))
+	case c.IsGitRepo:
+		return "single git repo"
+	default:
+		return "no git repo at " + filepath.Base(c.AbsPath)
+	}
+}
+
+// resolveSingle confirms cwd when it is a git repo, else prompts for a path. No
+// scan is performed.
+func resolveSingleAction(class detect.Classification) ([]registry.Repo, error) {
+	if class.IsGitRepo {
+		confirm := true
+		if err := huh.NewConfirm().
+			Title(fmt.Sprintf("Index %s?", class.AbsPath)).
+			Value(&confirm).Run(); err != nil {
+			return nil, err
+		}
+		if confirm {
+			return []registry.Repo{repoFromPath(class.AbsPath)}, nil
+		}
+	}
+	abs, err := promptGitRepoPath("Path to the repository")
+	if err != nil {
+		return nil, err
+	}
+	return []registry.Repo{repoFromPath(abs)}, nil
+}
+
+// resolveGroup resolves the candidate source AUTOMATICALLY (option 1a — no
+// "siblings vs parent" prompt): child git repos if present (ivivo→backend+
+// frontend), elif cwd is a git repo → cwd + its siblings, else prompt for a
+// folder. The candidates are shown as a filtered, scrollable [ ]/[✓] multiselect
+// with a count in the title, plus an explicit "scan a different folder…" entry.
+func resolveGroupAction(out io.Writer, class detect.Classification) ([]registry.Repo, error) {
+	candidates := groupCandidates(class)
+	for {
+		if len(candidates) == 0 {
+			abs, err := promptDir("Folder to scan for git repos")
+			if err != nil {
+				return nil, err
+			}
+			candidates = groupCandidates(mustClassify(abs))
+			if len(candidates) == 0 {
+				fmt.Fprintf(out, "no git repos found under %s\n", abs)
+			}
+			continue
+		}
+		chosen, rescan, err := multiSelectRepos(candidates)
+		if err != nil {
+			return nil, err
+		}
+		if rescan {
+			abs, err := promptDir("Folder to scan for git repos")
+			if err != nil {
+				return nil, err
+			}
+			candidates = groupCandidates(mustClassify(abs))
+			continue
+		}
+		return reposFromPaths(chosen), nil
+	}
+}
+
+// groupCandidates derives the absolute candidate repo paths for the group action
+// from a classification (option 1a precedence).
+func groupCandidates(class detect.Classification) []string {
+	if len(class.ChildGitRepos) > 0 {
+		out := make([]string, 0, len(class.ChildGitRepos))
+		for _, name := range class.ChildGitRepos {
+			out = append(out, filepath.Join(class.AbsPath, name))
+		}
+		return out
+	}
+	if class.IsGitRepo {
+		out := append([]string{class.AbsPath}, class.SiblingGitRepos...)
+		sort.Strings(out)
+		return out
+	}
+	return nil
+}
+
+// resolveMonorepo detects packages via the shared classifier and presents a
+// [ ]/[✓] multiselect of package roots. Each selected package is registered as
+// its own repo (its absolute sub-path) with the module recorded.
+func resolveMonorepoAction(out io.Writer, class detect.Classification) ([]registry.Repo, error) {
+	if class.Monorepo == detect.KindNone || len(class.Packages) == 0 {
+		// cwd isn't a monorepo — let the user point at one.
+		abs, err := promptDir("Path to the monorepo")
+		if err != nil {
+			return nil, err
+		}
+		class = mustClassify(abs)
+		if class.Monorepo == detect.KindNone || len(class.Packages) == 0 {
+			return nil, fmt.Errorf("%s is not a monorepo (no packages detected)", abs)
+		}
+	}
+	opts := make([]huh.Option[string], 0, len(class.Packages))
+	for _, p := range class.Packages {
+		opts = append(opts, huh.NewOption(p, p).Selected(true))
+	}
+	var chosen []string
+	if err := huh.NewMultiSelect[string]().
+		Title(fmt.Sprintf("%d packages found", len(class.Packages))).
+		Options(opts...).
+		Filterable(true).
+		Height(min(len(class.Packages)+4, 18)).
+		Value(&chosen).
+		Run(); err != nil {
+		return nil, err
+	}
+	if len(chosen) == 0 {
+		return nil, errors.New("no packages selected")
+	}
+	base := filepath.Base(class.AbsPath)
+	repos := make([]registry.Repo, 0, len(chosen))
+	for _, pkg := range chosen {
+		abs := filepath.Join(class.AbsPath, filepath.FromSlash(pkg))
+		repos = append(repos, registry.Repo{
+			Slug:    base + "-" + filepath.Base(pkg),
+			Path:    abs,
+			Stack:   registry.StackList{detect.Stack(abs)},
+			Modules: []string{pkg},
+		})
+	}
+	return repos, nil
+}
+
+// resolveAddToGroup lists existing groups, lets the user pick one, then multi-add
+// newly-discovered candidate repos and/or a typed path. Returns the repos and the
+// target group name (non-empty signals the add-to-group path to the caller).
+func resolveAddToGroupAction(out io.Writer) ([]registry.Repo, string, error) {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil, "", err
+	}
+	if len(groups) == 0 {
+		return nil, "", errors.New("no existing groups to add to")
+	}
+	gopts := make([]huh.Option[string], 0, len(groups))
+	for _, g := range groups {
+		gopts = append(gopts, huh.NewOption(g.Name, g.Name))
+	}
+	var target string
+	if err := huh.NewSelect[string]().
+		Title("Add to which group?").
+		Options(gopts...).
+		Value(&target).
+		Run(); err != nil {
+		return nil, "", err
+	}
+
+	// Discover candidates from cwd; let the user also scan a different folder.
+	cwd, _ := os.Getwd()
+	candidates := groupCandidates(mustClassify(cwd))
+	var chosen []string
+	if len(candidates) > 0 {
+		picked, rescan, err := multiSelectRepos(candidates)
+		if err != nil {
+			return nil, "", err
+		}
+		if rescan {
+			abs, err := promptDir("Folder to scan for git repos")
+			if err != nil {
+				return nil, "", err
+			}
+			picked, _, err = multiSelectRepos(groupCandidates(mustClassify(abs)))
+			if err != nil {
+				return nil, "", err
+			}
+		}
+		chosen = picked
+	} else {
+		abs, err := promptGitRepoPath("Path to the repository to add")
+		if err != nil {
+			return nil, "", err
+		}
+		chosen = []string{abs}
+	}
+	if len(chosen) == 0 {
+		return nil, "", errors.New("no repos selected to add")
+	}
+	return reposFromPaths(chosen), target, nil
+}
+
+// addReposToExistingGroup loads the target group's config, appends the new repos
+// (skipping ones already present by absolute path), and re-applies it.
+func addReposToExistingGroup(out io.Writer, group string, repos []registry.Repo, opts wizardOptions) error {
+	if len(repos) == 0 {
+		return errors.New("no repos selected to add")
+	}
+	cfgPath, err := registry.ConfigPathFor(group)
+	if err != nil {
+		return err
+	}
+	cfg, err := registry.LoadGroupConfig(cfgPath)
+	if err != nil {
+		return fmt.Errorf("load group %q: %w", group, err)
+	}
+	existing := map[string]struct{}{}
+	for _, r := range cfg.Repos {
+		existing[r.Path] = struct{}{}
+	}
+	added := 0
+	for _, r := range repos {
+		if _, dup := existing[r.Path]; dup {
+			fmt.Fprintf(out, "skipping %s (already in group)\n", r.Path)
+			continue
+		}
+		cfg.Repos = append(cfg.Repos, r)
+		existing[r.Path] = struct{}{}
+		added++
+	}
+	if added == 0 {
+		return errors.New("all selected repos are already in the group")
+	}
+	_, err = applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall})
+	if err == nil {
+		fmt.Fprintf(out, "added %d repo(s) to group %q\n", added, group)
+	}
+	return err
+}
+
+// multiSelectRepos renders a scrollable, type-to-filter [ ]/[✓] multiselect of
+// absolute repo paths (default all selected) plus an explicit "scan a different
+// folder…" entry. Returns the chosen absolute paths, or rescan=true when the
+// user picked the rescan entry.
+func multiSelectRepos(candidates []string) (chosen []string, rescan bool, err error) {
+	const rescanSentinel = "\x00rescan"
+	opts := make([]huh.Option[string], 0, len(candidates)+1)
+	for _, c := range candidates {
+		opts = append(opts, huh.NewOption(c, c).Selected(true))
+	}
+	opts = append(opts, huh.NewOption("scan a different folder…", rescanSentinel))
+	var selected []string
+	if err := huh.NewMultiSelect[string]().
+		Title(fmt.Sprintf("%d repos found", len(candidates))).
+		Options(opts...).
+		Filterable(true).
+		Height(min(len(candidates)+5, 18)).
+		Value(&selected).
+		Run(); err != nil {
+		return nil, false, err
+	}
+	for _, s := range selected {
+		if s == rescanSentinel {
+			return nil, true, nil
+		}
+	}
+	return selected, false, nil
+}
+
+// reposFromPaths maps absolute paths to registry.Repo records.
+func reposFromPaths(paths []string) []registry.Repo {
+	out := make([]registry.Repo, 0, len(paths))
+	for _, p := range paths {
+		out = append(out, repoFromPath(p))
+	}
+	return out
+}
+
+// mustClassify classifies a path, swallowing the error (returns a zero-value
+// Classification with AbsPath set on failure).
+func mustClassify(path string) detect.Classification {
+	c, err := detect.ClassifyPath(path)
+	if err != nil {
+		abs, _ := filepath.Abs(path)
+		return detect.Classification{AbsPath: abs}
+	}
+	return c
+}
+
+// promptDir prompts for a directory path, expanding ~ and validating existence.
+func promptDir(title string) (string, error) {
+	var p string
+	if err := huh.NewInput().
+		Title(title).
+		Validate(func(s string) error {
+			abs, err := expandUser(s)
+			if err != nil {
+				return err
+			}
+			info, err := os.Stat(abs)
+			if err != nil || !info.IsDir() {
+				return errors.New("not a directory")
+			}
+			return nil
+		}).
+		Value(&p).Run(); err != nil {
+		return "", err
+	}
+	return expandUser(p)
+}
+
+// promptGitRepoPath prompts for a path that must be a git repo.
+func promptGitRepoPath(title string) (string, error) {
+	var p string
+	if err := huh.NewInput().
+		Title(title).
+		Validate(func(s string) error {
+			abs, err := expandUser(s)
+			if err != nil {
+				return err
+			}
+			if !isGitRepo(abs) {
+				return errors.New("not a git repository")
+			}
+			return nil
+		}).
+		Value(&p).Run(); err != nil {
+		return "", err
+	}
+	return expandUser(p)
+}
+
+// expandUser resolves ~ and returns an absolute path.
+func expandUser(p string) (string, error) {
+	p = strings.TrimSpace(p)
+	if strings.HasPrefix(p, "~") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			p = filepath.Join(home, strings.TrimPrefix(p, "~"))
+		}
+	}
+	return filepath.Abs(p)
 }
 
 // discoverCandidates returns absolute paths to repos selected for this
