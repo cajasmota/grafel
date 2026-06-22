@@ -503,6 +503,19 @@ and graph schema may change between minor versions.
 
 ## [Unreleased] — v1.0-rc (2026-05-21, overnight session)
 
+### Changed
+
+- **MCP `tools/list` token trim** — strip the blanket annotation-hint block
+  (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) that
+  mcp-go's `NewTool` stamps on every tool by default. The hints were identical
+  across all 68 tools and inaccurate (read-only query tools were advertised as
+  destructive), so they were pure duplicated boilerplate. Cuts the per-connect
+  handshake from ~7592 → ~6113 tokens (−1479, −19.5%) as measured by
+  `cmd/mcp-audit`, with no change to the tool surface (names, params, types,
+  enums, required-sets, handlers) or behavior. Note: the live daemon bridge
+  (`MCPToolInfo`) never emitted annotations, so this is zero-change there and a
+  win for the stock mcp-go stdio path / the audited budget. (Refs #5386)
+
 ### Dashboard — new surfaces and nav
 
 - **Cmd+K command palette** — fuzzy search all surfaces and actions from

@@ -442,15 +442,49 @@ func (s *Server) fullToolList() ([]MCPToolEntry, error) {
 //	grafel_get_next_enrichment_task, grafel_get_telemetry.
 //
 // Dropped (agent-facing, superseded): grafel_recent_activity (superseded by MCPActivityBroker SSE/HTTP).
+// addTool registers a tool, first stripping the blanket annotation hints that
+// mcp-go's NewTool stamps on every Tool by default (readOnlyHint=false,
+// destructiveHint=true, idempotentHint=false, openWorldHint=true). Those four
+// *bool hints are emitted on ALL 68 tools regardless of what the tool actually
+// does — e.g. read-only query tools like grafel_find were wrongly advertised as
+// destructive — so they are inaccurate AND duplicated boilerplate. mcp-go's
+// `Annotations` field has no `omitempty`, but its inner pointer fields do, so
+// resetting to a zero ToolAnnotation serializes as `{}` (2 chars) instead of
+// the ~89-char hint block. Across 68 tools this trims ~1.5k tokens from the
+// per-connect tools/list payload with no change to params, types, enums,
+// required-sets, handlers, or any behavior (#5386). Tool-specific annotations,
+// if ever set deliberately via WithToolAnnotation, are preserved as long as
+// they differ from the NewTool default — callers that want real hints should
+// set them and this helper leaves non-default values intact.
+func (s *Server) addTool(tool mcpapi.Tool, handler mcpsrv.ToolHandlerFunc) {
+	if isDefaultAnnotation(tool.Annotations) {
+		tool.Annotations = mcpapi.ToolAnnotation{}
+	}
+	s.MCP.AddTool(tool, handler)
+}
+
+// isDefaultAnnotation reports whether a ToolAnnotation carries exactly the
+// blanket hint values that mcp-go's NewTool stamps by default (and nothing
+// deliberately set, such as a Title). Only such default-stamped annotations are
+// stripped; anything a caller set intentionally is left untouched.
+func isDefaultAnnotation(a mcpapi.ToolAnnotation) bool {
+	isBool := func(p *bool, want bool) bool { return p != nil && *p == want }
+	return a.Title == "" &&
+		isBool(a.ReadOnlyHint, false) &&
+		isBool(a.DestructiveHint, true) &&
+		isBool(a.IdempotentHint, false) &&
+		isBool(a.OpenWorldHint, true)
+}
+
 func (s *Server) registerTools() {
-	s.MCP.AddTool(mcpapi.NewTool("grafel_whoami",
+	s.addTool(mcpapi.NewTool("grafel_whoami",
 		mcpapi.WithDescription("Infer group/repo/ref for caller (cwd_resolved_to, indexed_ref, is_worktree)."),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("ref"),
 	), s.wrap("grafel_whoami", s.handleWhoami))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_get_source",
+	s.addTool(mcpapi.NewTool("grafel_get_source",
 		mcpapi.WithDescription("Source for a node (id/qname/label). from_line+to_line: exact range, no cap."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("context_lines", mcpapi.DefaultNumber(8)), // #2828: was 20
@@ -460,7 +494,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_get_source", s.handleGetNodeSource))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_find",
+	s.addTool(mcpapi.NewTool("grafel_find",
 		mcpapi.WithDescription("BM25 graph query. cwd-repo default; cross_repo=true spans all. min_score>=0.15."),
 		mcpapi.WithString("query", mcpapi.Required()),
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
@@ -480,7 +514,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("grafel_find", s.handleQueryGraph))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_inspect",
+	s.addTool(mcpapi.NewTool("grafel_inspect",
 		mcpapi.WithDescription("Look up entity by id/qname/label; line-precise calls+called_by. verbose=true."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// verbose=true (default false) read from request map to stay under token ceiling.
@@ -494,7 +528,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
 	), s.wrap("grafel_inspect", s.handleGetNode))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_expand",
+	s.addTool(mcpapi.NewTool("grafel_expand",
 		mcpapi.WithDescription("Deprecated alias of grafel_neighbors. Returns neighbors of entity_id."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// 'node' kept as a deprecated alias for one release cycle (#1916).
@@ -510,7 +544,7 @@ func (s *Server) registerTools() {
 		// #1639 token-ceiling pattern; see internal/mcp/tools.go::argMinConfidence.
 	), s.wrap("grafel_expand", s.handleGetNeighbors))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_trace",
+	s.addTool(mcpapi.NewTool("grafel_trace",
 		mcpapi.WithDescription("Confidence-weighted shortest path between two nodes."),
 		mcpapi.WithString("source", mcpapi.Required()),
 		mcpapi.WithString("target", mcpapi.Required()),
@@ -523,7 +557,7 @@ func (s *Server) registerTools() {
 
 	// grafel_traces — process-flow query surface (#724).
 	// action=list|get|follow — defaults to "list" when omitted.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_traces",
+	s.addTool(mcpapi.NewTool("grafel_traces",
 		mcpapi.WithDescription("Process-flow traces. action=list|get|follow (default: list)."),
 		mcpapi.WithString("action"),
 		mcpapi.WithAny("process_id"),
@@ -540,7 +574,7 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("grafel_traces", s.handleTraces))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_clusters",
+	s.addTool(mcpapi.NewTool("grafel_clusters",
 		mcpapi.WithDescription("List Louvain communities across loaded graphs."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("top_entities_limit", mcpapi.DefaultNumber(3)), // #2318: added by PR #2310, was missing from schema
@@ -558,7 +592,7 @@ func (s *Server) registerTools() {
 	// cross layer / cross file-type / peripheral->hub, with reasons), and
 	// templated orientation questions mined from ambiguous edges, bridge nodes,
 	// and isolated nodes. Caps overridable via top_entities/top_edges/max_questions.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_orient",
+	s.addTool(mcpapi.NewTool("grafel_orient",
 		mcpapi.WithDescription("Orientation analysis: key entities, cross-cutting edges, orientation questions."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("top_entities", mcpapi.DefaultNumber(15)),
@@ -572,7 +606,7 @@ func (s *Server) registerTools() {
 	// db/http/fs/mutation effects for the named entity, plus per-effect
 	// confidence (0..1) and sink primitive tags. Pure functions report
 	// effects=[] with effect_source="pure" and a low confidence floor.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_effects",
+	s.addTool(mcpapi.NewTool("grafel_effects",
 		mcpapi.WithDescription("Effects + sinks; include=branches|effect_contexts (cond/loop+complexity)"),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithString("include"),
@@ -588,7 +622,7 @@ func (s *Server) registerTools() {
 	// nothing is persisted to the graph. `detail` controls payload size
 	// (outline|decisions|data|full) per #2828. Also surfaces cyclomatic
 	// complexity. Languages: python + jsts validated; others degenerate.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_control_flow",
+	s.addTool(mcpapi.NewTool("grafel_control_flow",
 		mcpapi.WithDescription("On-demand per-function CFG+complexity; detail=outline|decisions|data|full."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithString("detail"),
@@ -604,7 +638,7 @@ func (s *Server) registerTools() {
 	// tRPC auth properties. entity_id → one entity's posture; omit entity_id for
 	// a repo-wide scan of every endpoint/callable carrying a non-empty facet
 	// (optional facet/path_contains/method narrowing). Read-only, cross-language.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_endpoint_posture",
+	s.addTool(mcpapi.NewTool("grafel_endpoint_posture",
 		mcpapi.WithDescription("Endpoint posture: throws/catches+rate_limit+deprecation+feature_gates+auth."),
 		mcpapi.WithString("entity_id"),
 		mcpapi.WithString("facet"),
@@ -620,7 +654,7 @@ func (s *Server) registerTools() {
 	// pattern): severity (low|medium|high), endpoint substring, repo
 	// substring, drift_class (schema|envelope), limit.
 	// #2809 — drift_class filter + envelope/schema classification.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_payload_drift",
+	s.addTool(mcpapi.NewTool("grafel_payload_drift",
 		mcpapi.WithDescription("Schema-drift findings on cross-repo HTTP endpoints (schema/envelope)."),
 		mcpapi.WithString("drift_class"),
 		mcpapi.WithAny("group"),
@@ -633,7 +667,7 @@ func (s *Server) registerTools() {
 	// enum:<Name>). Optional (undeclared per #1639): oracle_source, v3_source,
 	// oracle_derive, v3_derive (derivation resolver e.g. drf_action_codenames),
 	// viewset (scope a derivation to one ViewSet).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_literal_parity",
+	s.addTool(mcpapi.NewTool("grafel_literal_parity",
 		mcpapi.WithDescription("Cross-group ConstantSet/enum value-set parity diff (oracle vs v3)."),
 		mcpapi.WithString("group_oracle", mcpapi.Required()),
 		mcpapi.WithString("group_v3", mcpapi.Required()),
@@ -646,7 +680,7 @@ func (s *Server) registerTools() {
 	// shared {kind,literal} vocabulary via a pluggable resolver registry, then
 	// diffs to equivalent|stricter|looser|slug_mismatch|kind_mismatch. Required:
 	// group_oracle, group_v3. Optional (undeclared per #1639): endpoint, format.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_auth_posture_diff",
+	s.addTool(mcpapi.NewTool("grafel_auth_posture_diff",
 		mcpapi.WithDescription("Cross-group auth-posture parity diff per linked endpoint (oracle vs v3)."),
 		mcpapi.WithString("group_oracle", mcpapi.Required()),
 		mcpapi.WithString("group_v3", mcpapi.Required()),
@@ -657,7 +691,7 @@ func (s *Server) registerTools() {
 	// oracle computes, via the cross-graph effects contrast (v3 pure WHILE
 	// oracle has db/http effects). Required: group_v3, group_oracle.
 	// Optional (undeclared per #1639): endpoint (single-endpoint filter).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_stub_detector",
+	s.addTool(mcpapi.NewTool("grafel_stub_detector",
 		mcpapi.WithDescription("Cross-group stub detector: v3 pure where oracle computes (effects)."),
 		mcpapi.WithString("group_v3", mcpapi.Required()),
 		mcpapi.WithString("group_oracle", mcpapi.Required()),
@@ -672,7 +706,7 @@ func (s *Server) registerTools() {
 	// field membership (#4635) + canonical-key alignment (#4664). Verdict
 	// equivalent|drift|unresolved. Required: group_oracle, group_v3. Optional
 	// (undeclared per #1639): endpoint, format.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_response_shape_diff",
+	s.addTool(mcpapi.NewTool("grafel_response_shape_diff",
 		mcpapi.WithDescription("Cross-group branch-aware response-shape parity diff per endpoint (oracle vs v3)."),
 		mcpapi.WithString("group_oracle", mcpapi.Required()),
 		mcpapi.WithString("group_v3", mcpapi.Required()),
@@ -685,7 +719,7 @@ func (s *Server) registerTools() {
 	// same-literal expected==actual; + a low-confidence no_golden_linkage
 	// advisory). Single-group (the spec/v3 group). Optional (undeclared per
 	// #1639): repo_filter, entity_id, only_ineffective.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_contract_test_effectiveness",
+	s.addTool(mcpapi.NewTool("grafel_contract_test_effectiveness",
 		mcpapi.WithDescription("Tautological-spec detector: assertions that can never fail (oracle-blind)."),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -697,7 +731,7 @@ func (s *Server) registerTools() {
 	// intervening sanitizer. Findings are ranked by confidence
 	// (default floor 0.7). Filterable by category, min_confidence,
 	// source repo, and limit.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_security_findings",
+	s.addTool(mcpapi.NewTool("grafel_security_findings",
 		mcpapi.WithDescription("Taint-flow security findings: source→sink paths ranked by confidence."),
 		mcpapi.WithString("category"),
 		mcpapi.WithNumber("min_confidence"),
@@ -711,7 +745,7 @@ func (s *Server) registerTools() {
 	// like entities with no detected effects per the Phase 1A propag-
 	// ation pass. Confidence floor is 0.30 (absence of detection is
 	// not proof of purity).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_pure_functions",
+	s.addTool(mcpapi.NewTool("grafel_pure_functions",
 		mcpapi.WithDescription("Functions with no detected effects (Phase 1A) — memoization candidates."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
@@ -723,7 +757,7 @@ func (s *Server) registerTools() {
 	// strongly-connected components over IMPORTS edges (Tarjan SCC) of
 	// size >= min_size. Reads the persistent sidecar written by the
 	// Phase 3B link pass.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_import_cycles",
+	s.addTool(mcpapi.NewTool("grafel_import_cycles",
 		mcpapi.WithDescription("IMPORTS cycle clusters per repo (Tarjan SCC, default min_size=2)."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("min_size", mcpapi.DefaultNumber(2)),
@@ -735,7 +769,7 @@ func (s *Server) registerTools() {
 	// #2774 / #2775 — Phase 3C intra-procedural reaching-definitions /
 	// def-use chains. Per-function "where does <var> at line N come
 	// from?" answers using last-write-wins.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_def_use",
+	s.addTool(mcpapi.NewTool("grafel_def_use",
 		mcpapi.WithDescription("Intra-procedural def-use chains (last-write-wins) per function."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithString("entity_id", mcpapi.Description("Optional: restrict to one function entity id.")),
@@ -748,7 +782,7 @@ func (s *Server) registerTools() {
 	// data-flow edges (with field / sink_kind / hop_path provenance) the
 	// dataflow link pass emits. Before #3867 these lived only in an unread
 	// sidecar and were invisible to every graph reader.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_data_flows",
+	s.addTool(mcpapi.NewTool("grafel_data_flows",
 		mcpapi.WithDescription("Request-input→sink DATA_FLOWS_TO edges (field/sink_kind/hop_path)."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithString("entity_id", mcpapi.Description("Optional: restrict to flows from one handler entity id (<repo>::<localId>).")),
@@ -761,7 +795,7 @@ func (s *Server) registerTools() {
 	// #2774 / #2775 — Phase 3D template-pattern catalog. Surfaces
 	// every i18n key, log-format string, and SQL template literal
 	// across the group's source files.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_template_patterns",
+	s.addTool(mcpapi.NewTool("grafel_template_patterns",
 		mcpapi.WithDescription("i18n / log_format / sql template literals lifted per file."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithString("kind", mcpapi.Description("Filter by template kind: i18n | log_format | sql.")),
@@ -770,7 +804,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_template_patterns", s.handleTemplatePatterns))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_stats",
+	s.addTool(mcpapi.NewTool("grafel_stats",
 		mcpapi.WithDescription("Corpus-level metrics. breakdown=unresolved_imports adds edge taxonomy."),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -780,7 +814,7 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_stats", s.handleGraphStats))
 
 	// grafel_enrichments — action: list|submit|reject.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_enrichments",
+	s.addTool(mcpapi.NewTool("grafel_enrichments",
 		mcpapi.WithDescription("Enrichment candidates: list=pending, submit=resolve, reject=discard."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithArray("repo_filter"),
@@ -800,7 +834,7 @@ func (s *Server) registerTools() {
 	// Per-action optional args read from the request map but undeclared to
 	// stay under the token ceiling (#1639 pattern): channel, method,
 	// limit, repo_filter, candidate_id, override_target.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_cross_links",
+	s.addTool(mcpapi.NewTool("grafel_cross_links",
 		mcpapi.WithDescription("Cross-repo link candidates: list=pending, accept|reject=resolve."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithAny("group"),
@@ -816,7 +850,7 @@ func (s *Server) registerTools() {
 	// dynamic_reason (string), abandon_reason (string), confidence (number 0-1),
 	// reasoning (string), repo (string — override when residual_id is ambiguous),
 	// source (string — audit tag, default "mcp_submit_repair").
-	s.MCP.AddTool(mcpapi.NewTool("grafel_repairs",
+	s.addTool(mcpapi.NewTool("grafel_repairs",
 		mcpapi.WithDescription("Residual-edge repair queue: list=pending, submit=resolve."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithArray("repo_filter"),
@@ -827,7 +861,7 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_repairs", s.handleRepairs))
 
 	// grafel_apply_docgen_repairs — docgen→graph repair feedback loop (#1659).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_apply_docgen_repairs",
+	s.addTool(mcpapi.NewTool("grafel_apply_docgen_repairs",
 		mcpapi.WithDescription("Docgen feedback: apply repair candidates to graph enrichments."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("dry_run"),
@@ -840,7 +874,7 @@ func (s *Server) registerTools() {
 	// repo's <stateDir>/doc-semantics/, validates + applies them into
 	// SCOPE.DesignDecision nodes + RATIONALE_FOR edges. grafel makes NO LLM
 	// call — it only validates and applies what the calling agent returned.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_apply_doc_semantics",
+	s.addTool(mcpapi.NewTool("grafel_apply_doc_semantics",
 		mcpapi.WithDescription("Doc L2: apply agent-produced DesignDecision nodes + RATIONALE_FOR edges."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("dry_run"),
@@ -851,7 +885,7 @@ func (s *Server) registerTools() {
 	// grafel_get_telemetry dropped (dashboard-only; use HTTP /api/telemetry instead).
 
 	// grafel_patterns — ADR-0018. action=query|record.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_patterns",
+	s.addTool(mcpapi.NewTool("grafel_patterns",
 		mcpapi.WithDescription("Agent pattern store: query=find by task, record=store with exemplars."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithAny("text"),
@@ -865,7 +899,7 @@ func (s *Server) registerTools() {
 
 	// grafel_topology — message-channel topology (#1281). action=orphan_publishers|orphan_subscribers|topic_detail.
 	// verbose=true (default false) read from request map to stay under token ceiling.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_topology",
+	s.addTool(mcpapi.NewTool("grafel_topology",
 		mcpapi.WithDescription("Message-channel topology: orphans and topic detail."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithAny("topic_id"),
@@ -875,7 +909,7 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_topology", s.handleTopology))
 
 	// grafel_flows — flow-process diagnostics (#1281). action=dead_ends|truncated|detail.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_flows",
+	s.addTool(mcpapi.NewTool("grafel_flows",
 		mcpapi.WithDescription("Flow-process diagnostics: dead_ends, truncated, detail."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithAny("process_id"),
@@ -890,7 +924,7 @@ func (s *Server) registerTools() {
 
 	// grafel_graph_patterns — indexer-extracted patterns (#1281). action=list|get.
 	// Distinct from grafel_patterns (agent-learned store).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_graph_patterns",
+	s.addTool(mcpapi.NewTool("grafel_graph_patterns",
 		mcpapi.WithDescription("Indexer-extracted patterns (not agent store): list=browse, get=detail."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("needs_attention", mcpapi.DefaultBool(false)),
@@ -903,7 +937,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_graph_patterns", s.handleGraphPatterns))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_search_entities",
+	s.addTool(mcpapi.NewTool("grafel_search_entities",
 		mcpapi.WithDescription("Substring search over entity names; ranked matches with source locations."),
 		mcpapi.WithString("query", mcpapi.Required()),
 		mcpapi.WithAny("kind_filter"),
@@ -921,7 +955,7 @@ func (s *Server) registerTools() {
 	// grafel_subgraph — unified subgraph tool (#1754).
 	// Folds grafel_get_subgraph + grafel_summarize_subgraph into one
 	// entry point; discriminated by format="raw"|"markdown".
-	s.MCP.AddTool(mcpapi.NewTool("grafel_subgraph",
+	s.addTool(mcpapi.NewTool("grafel_subgraph",
 		mcpapi.WithDescription("Nodes+edges within N hops (format=raw) or Markdown summary (format=markdown)."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
@@ -934,7 +968,7 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("grafel_subgraph", s.handleSubgraph))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_find_paths",
+	s.addTool(mcpapi.NewTool("grafel_find_paths",
 		mcpapi.WithDescription("Shortest path between two entities with confidence."),
 		mcpapi.WithString("from", mcpapi.Required()),
 		mcpapi.WithString("to", mcpapi.Required()),
@@ -949,7 +983,7 @@ func (s *Server) registerTools() {
 	// action=definitions|calls|stats; path_contains+method filter BEFORE limit.
 	// format="terse" (default) returns one-line "lines" entries; "full" returns
 	// per-record structs with kind + deduplicated properties (path/verb stripped).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_endpoints",
+	s.addTool(mcpapi.NewTool("grafel_endpoints",
 		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats. kind=navigation. effect= filter."),
 		mcpapi.WithString("action", mcpapi.Required()),
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
@@ -977,7 +1011,7 @@ func (s *Server) registerTools() {
 	// pagination, permissions, auth_required, behaviour}. Thin serving/grouping
 	// layer over T5's projectEffectiveContract (#3964). Prevents the #278 defect
 	// class (inherited create surfacing 201 + [400] though the body is empty).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_effective_contract",
+	s.addTool(mcpapi.NewTool("grafel_effective_contract",
 		mcpapi.WithDescription("Per-verb effective contract of a ViewSet/controller (or route)."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithAny("qualified_name"),
@@ -990,7 +1024,7 @@ func (s *Server) registerTools() {
 	// grafel_neighbors — folds find_callers + find_callees into one tool
 	// (#1753, #1742). direction=in returns callers, out returns callees, both
 	// returns the union. find_callers / find_callees stay as deprecated aliases.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_neighbors",
+	s.addTool(mcpapi.NewTool("grafel_neighbors",
 		mcpapi.WithDescription("Graph neighbors of entity_id. direction=in|out|both."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithString("direction", mcpapi.DefaultString("both")),
@@ -1005,7 +1039,7 @@ func (s *Server) registerTools() {
 
 	// verbose=true (default false) read from request map to stay under token ceiling.
 	// Deprecated alias for grafel_neighbors(direction=in) (#1753).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_find_callers",
+	s.addTool(mcpapi.NewTool("grafel_find_callers",
 		mcpapi.WithDescription("Deprecated: use grafel_neighbors(direction=in). Inbound callers."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
@@ -1017,7 +1051,7 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_find_callers", s.handleFindCallers))
 
 	// Deprecated alias for grafel_neighbors(direction=out) (#1753).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_find_callees",
+	s.addTool(mcpapi.NewTool("grafel_find_callees",
 		mcpapi.WithDescription("Deprecated: use grafel_neighbors(direction=out). Outbound callees."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
@@ -1028,7 +1062,7 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("grafel_find_callees", s.handleFindCallees))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_impact_radius",
+	s.addTool(mcpapi.NewTool("grafel_impact_radius",
 		mcpapi.WithDescription("Inbound blast-radius: affected entities with risk_score [0,1]."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2)),
@@ -1038,7 +1072,7 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("grafel_impact_radius", s.handleImpactRadius))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_find_dead_code",
+	s.addTool(mcpapi.NewTool("grafel_find_dead_code",
 		mcpapi.WithDescription("Dead/unwired code: isolated, marked-unused, or test_only_referenced symbols."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("kind_filter"),
@@ -1053,7 +1087,7 @@ func (s *Server) registerTools() {
 	// (#2766 Phase 1B). Reads <group>-links-reachability.json (sidecar
 	// written by internal/links/reachability.go); falls back to a live
 	// in-memory recompute when the sidecar is missing.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_dead_code",
+	s.addTool(mcpapi.NewTool("grafel_dead_code",
 		mcpapi.WithDescription("Reachability dead-code: entities unreached by entry-points."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithAny("kind_filter"),
@@ -1066,7 +1100,7 @@ func (s *Server) registerTools() {
 
 	// grafel_quality_cycles — import cycle detection (#1312).
 	// Runs Tarjan SCC on IMPORTS edges; each SCC > 1 = circular dependency.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_quality_cycles",
+	s.addTool(mcpapi.NewTool("grafel_quality_cycles",
 		mcpapi.WithDescription("Detect import cycles via Tarjan SCC; weakest edge, fix hint."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
@@ -1078,7 +1112,7 @@ func (s *Server) registerTools() {
 	// grafel_auth_coverage — security audit (#1314).
 	// Walk all http_endpoint_definition entities and flag those without auth
 	// decorators/middleware.  Severity: error (sensitive/IDOR), warn (public), info (covered).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_auth_coverage",
+	s.addTool(mcpapi.NewTool("grafel_auth_coverage",
 		mcpapi.WithDescription("Flag endpoints missing auth (severity, IDOR). format=terse|full, token_budget."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("only_missing", mcpapi.DefaultBool(false)),
@@ -1093,7 +1127,7 @@ func (s *Server) registerTools() {
 
 	// #1323: test-coverage graph — link Test entities to the code they exercise.
 	// #1774: entity_id param added for single-entity focused queries.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_test_coverage",
+	s.addTool(mcpapi.NewTool("grafel_test_coverage",
 		mcpapi.WithDescription("Find production entities with no TESTS edge, ranked by severity."),
 		mcpapi.WithString("entity_id"),
 		mcpapi.WithArray("repo_filter"),
@@ -1109,7 +1143,7 @@ func (s *Server) registerTools() {
 	// stamped at index time by #5061. Surfaces orphan endpoints/functions with
 	// NO test path, the reaching tests, and min hop depth. Reads stamped props;
 	// does not recompute.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_test_reachability",
+	s.addTool(mcpapi.NewTool("grafel_test_reachability",
 		mcpapi.WithDescription("Static test-reachability: fns/endpoints with NO test path (orphans), depth."),
 		mcpapi.WithString("entity_id"),
 		mcpapi.WithArray("repo_filter"),
@@ -1125,7 +1159,7 @@ func (s *Server) registerTools() {
 	// LCOV line coverage (both stamped by #5061) into quadrants; headline is
 	// reachable-but-0%-lines (candidate ineffective/tautological tests, #4893).
 	// Reads stamped props; does not recompute. Dashboard surfacing = #5062/#5067.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_coverage_effectiveness",
+	s.addTool(mcpapi.NewTool("grafel_coverage_effectiveness",
 		mcpapi.WithDescription("Reachability x line-coverage: reachable-but-0%-lines (ineffective tests)."),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithBoolean("ineffective_only", mcpapi.DefaultBool(false)),
@@ -1141,7 +1175,7 @@ func (s *Server) registerTools() {
 	// Optional args read from request map but undeclared in schema to keep
 	// the handshake token budget under its ceiling (#1639 pattern): top_n,
 	// limit, min_size, repo_filter (slice form).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_module_analysis",
+	s.addTool(mcpapi.NewTool("grafel_module_analysis",
 		mcpapi.WithDescription("Module-level SCC+PageRank+betweenness: cycles|centrality|all."),
 		mcpapi.WithString("action", mcpapi.DefaultString("all")),
 		mcpapi.WithAny("group"),
@@ -1152,7 +1186,7 @@ func (s *Server) registerTools() {
 	// grafel_secrets — hardcoded secret detector (#1322).
 	// Walks source files; flags API keys, passwords, JWT tokens, and other
 	// high-entropy credentials. Test fixtures and opt-out comments are suppressed.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_secrets",
+	s.addTool(mcpapi.NewTool("grafel_secrets",
 		mcpapi.WithDescription("Scan for hardcoded secrets; masked findings by severity."),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -1165,7 +1199,7 @@ func (s *Server) registerTools() {
 	// the token ceiling (#1639 pattern):
 	//   save_finding: type, nodes, repo_filter.
 	//   list_findings: since, entity_id, limit.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_save_finding",
+	s.addTool(mcpapi.NewTool("grafel_save_finding",
 		mcpapi.WithDescription("Persist a Q&A finding to the group memory store."),
 		mcpapi.WithString("question", mcpapi.Required()),
 		mcpapi.WithString("answer", mcpapi.Required()),
@@ -1173,7 +1207,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_save_finding", s.handleSaveResult))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_list_findings",
+	s.addTool(mcpapi.NewTool("grafel_list_findings",
 		mcpapi.WithDescription("List findings from the group memory store."),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
@@ -1182,14 +1216,14 @@ func (s *Server) registerTools() {
 	// grafel_license_audit — re-wired (#2427): no HTTP route found in internal/dashboard/.
 	// Optional args read from the request map but undeclared to stay under
 	// the token ceiling (#1639 pattern): include_transitive, severity, limit.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_license_audit",
+	s.addTool(mcpapi.NewTool("grafel_license_audit",
 		mcpapi.WithDescription("Audit dependency licenses; flag GPL/AGPL conflicts."),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_license_audit", s.handleLicenseAudit))
 
 	// grafel_diff_refs — PH5 (#2093): compare two indexed git refs.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_diff_refs",
+	s.addTool(mcpapi.NewTool("grafel_diff_refs",
 		mcpapi.WithDescription("Diff two indexed git refs: added/removed/modified entities + relationships."),
 		mcpapi.WithString("group"),
 		mcpapi.WithString("repo", mcpapi.Required()),
@@ -1205,7 +1239,7 @@ func (s *Server) registerTools() {
 	// {refs:[...]}: each ref's impacted-community set intersected pairwise into a
 	// ranked merge-order/conflict triage. Core logic is pure (graph.AnalyzePRImpact
 	// / AnalyzeMergeRisk); refs are taken explicitly (offline, deterministic).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_pr_impact",
+	s.addTool(mcpapi.NewTool("grafel_pr_impact",
 		mcpapi.WithDescription("PR impact + merge-risk: changes->communities->blast radius."),
 		mcpapi.WithString("repo", mcpapi.Required()),
 		mcpapi.WithString("base"),
@@ -1223,7 +1257,7 @@ func (s *Server) registerTools() {
 	// promote:   atomic staging → canonical rename; SSG guard.
 	// abort:     rm -rf staging, release lock.
 	// list:      read-only enumeration of canonical docs.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_docgen_start_run",
+	s.addTool(mcpapi.NewTool("grafel_docgen_start_run",
 		mcpapi.WithDescription("Start or resume a docgen staging run for a group. Returns run_id + staging_path."),
 		mcpapi.WithString("group", mcpapi.Required()),
 		mcpapi.WithBoolean("resume", mcpapi.DefaultBool(true)),
@@ -1231,21 +1265,21 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_start_run", s.handleDocgenStartRun))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_docgen_status",
+	s.addTool(mcpapi.NewTool("grafel_docgen_status",
 		mcpapi.WithDescription("Inspect an in-flight docgen run: files written, SHA-256 per file."),
 		mcpapi.WithString("run_id", mcpapi.Required()),
 		mcpapi.WithBoolean("no_git", mcpapi.DefaultBool(false)),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_status", s.handleDocgenStatus))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_docgen_validate",
+	s.addTool(mcpapi.NewTool("grafel_docgen_validate",
 		mcpapi.WithDescription("Validate staging run: frontmatter + cross-links. Read-only, no file writes."),
 		mcpapi.WithString("run_id", mcpapi.Required()),
 		mcpapi.WithBoolean("no_git", mcpapi.DefaultBool(false)),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_validate", s.handleDocgenValidate))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_docgen_promote",
+	s.addTool(mcpapi.NewTool("grafel_docgen_promote",
 		mcpapi.WithDescription("Atomic promote: staging → canonical. Blocks SSG scaffolding. Rotates previous."),
 		mcpapi.WithString("run_id", mcpapi.Required()),
 		mcpapi.WithBoolean("force", mcpapi.DefaultBool(false)),
@@ -1253,14 +1287,14 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_promote", s.handleDocgenPromote))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_docgen_abort",
+	s.addTool(mcpapi.NewTool("grafel_docgen_abort",
 		mcpapi.WithDescription("Abort a staging run: rm -rf staging, release per-group lock. Canonical safe."),
 		mcpapi.WithString("run_id", mcpapi.Required()),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_abort", s.handleDocgenAbort))
 
-	s.MCP.AddTool(mcpapi.NewTool("grafel_docgen_list",
+	s.addTool(mcpapi.NewTool("grafel_docgen_list",
 		mcpapi.WithDescription("List canonical doc files for a group under ~/.grafel/docs/<group>/."),
 		mcpapi.WithString("group", mcpapi.Required()),
 		mcpapi.WithAny("cwd"),
@@ -1269,7 +1303,7 @@ func (s *Server) registerTools() {
 	// grafel_navigates — NAVIGATES_TO edge query tool (#2658).
 	// Phase 2 of #2655: filter NAVIGATES_TO edges by route, param, direction.
 	// mode=flow enables multi-hop BFS following navigation chains.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_navigates",
+	s.addTool(mcpapi.NewTool("grafel_navigates",
 		mcpapi.WithDescription("NAVIGATES_TO edge query: route/param filter; direction=out|in; mode=list|flow."),
 		mcpapi.WithAny("entity_id"),
 		mcpapi.WithAny("route"),
@@ -1287,7 +1321,7 @@ func (s *Server) registerTools() {
 	// Personas call this at session start (event_type=invoke) and on each
 	// Consult-Out (event_type=consult_out, target_persona=<name>). Group-agnostic.
 	// Appends to ~/.grafel/events/persona-events-YYYY-MM-DD.jsonl (LOCAL ONLY).
-	s.MCP.AddTool(mcpapi.NewTool("grafel_persona_event",
+	s.addTool(mcpapi.NewTool("grafel_persona_event",
 		mcpapi.WithDescription("Record a persona lifecycle event (invoke/consult_out/save_finding). LOCAL ONLY."),
 		mcpapi.WithString("persona", mcpapi.Required()),
 		mcpapi.WithString("event_type", mcpapi.Required()),
@@ -1302,7 +1336,7 @@ func (s *Server) registerTools() {
 	// wrong/incomplete or a library isn't recognized, and at phase checkpoints.
 	// Appends to ~/.grafel/events/feedback-events-YYYY-MM-DD.jsonl (LOCAL ONLY).
 	// Aggregated by `grafel feedback rollup`. Internal testing harness.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_feedback_event",
+	s.addTool(mcpapi.NewTool("grafel_feedback_event",
 		mcpapi.WithDescription("Record agent-experience feedback for a test run. LOCAL ONLY."),
 		mcpapi.WithString("outcome", mcpapi.Required()),
 		mcpapi.WithAny("group"),
@@ -1316,7 +1350,7 @@ func (s *Server) registerTools() {
 	// Returns in-memory per-tool counters (calls, errors, p50/p95 ms) for the
 	// current daemon session, plus up to N days of persisted daily rollups from
 	// ~/.grafel/metrics/. Group-agnostic; no cwd routing needed.
-	s.MCP.AddTool(mcpapi.NewTool("grafel_mcp_metrics",
+	s.addTool(mcpapi.NewTool("grafel_mcp_metrics",
 		mcpapi.WithDescription("Current session tool-call metrics (counts, p50/p95 ms) + last N days rollups."),
 		mcpapi.WithNumber("days", mcpapi.DefaultNumber(3)),
 	), s.wrap("grafel_mcp_metrics", s.handleMCPMetrics))
@@ -1325,7 +1359,7 @@ func (s *Server) registerTools() {
 	// Registered as a real callable tool so agents can invoke it and receive
 	// guidance. Excluded from the full handshake returned to indexed sessions
 	// (see fullToolList). Shown ONLY when cwd is outside all registered groups.
-	s.MCP.AddTool(mcpapi.NewTool(sentinelToolName,
+	s.addTool(mcpapi.NewTool(sentinelToolName,
 		mcpapi.WithDescription(sentinelToolDescription),
 	), s.wrap(sentinelToolName, s.handleStatus))
 }
