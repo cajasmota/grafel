@@ -18,12 +18,17 @@ type indexView struct {
 	group         string
 	expectedRepos int
 	rows          map[string]Row
-	bar           progress.Model
-	spin          spinner.Model
-	terminal      bool   // RPC reported done
-	failed        bool   // RPC reported an error
-	errMsg        string // terminal error text
-	width         int
+	// groupPhase holds the phase of the group-scoped event (RepoSlug == group),
+	// e.g. the cross-repo links / flows pass added by the granular-phases work.
+	// It is NOT a repo and must never render as a per-repo row (#5340); it only
+	// surfaces in the overall label/bar.
+	groupPhase string
+	bar        progress.Model
+	spin       spinner.Model
+	terminal   bool   // RPC reported done
+	failed     bool   // RPC reported an error
+	errMsg     string // terminal error text
+	width      int
 
 	// final summary, populated when the RPC outcome lands.
 	summaryEntities int64
@@ -50,13 +55,66 @@ func newIndexView(group string, expectedRepos int) indexView {
 	}
 }
 
-// foldEvent folds a single broker event into the per-repo rows.
+// foldEvent folds a single broker event into the per-repo rows. A group-scoped
+// event (RepoSlug == group, the cross-repo links/flows pass) is NOT a repo: it
+// updates the overall group phase instead of spawning a spurious group row
+// (#5340). Per-repo events (backend, frontend, …) always fold into rows.
 func (v *indexView) foldEvent(e prog.Event) {
+	if v.group != "" && e.RepoSlug == v.group {
+		// Monotonic: never regress the group phase to a coarser one.
+		if phaseRank(e.Phase) >= phaseRank(v.groupPhase) {
+			v.groupPhase = e.Phase
+		}
+		return
+	}
 	v.rows = Fold(v.rows, e)
 }
 
 // done reports whether the indexing screen has fully completed.
 func (v indexView) done() bool { return v.terminal || v.failed }
+
+// overallLabel derives the header phase for the whole index. While per-repo
+// rows are still in flight it reflects the least-advanced repo. Once every repo
+// is terminal but the group-scoped pass (cross-repo links / flows) is still
+// running, it surfaces THAT group phase instead — so the group-level work shows
+// in the overall label rather than as a spurious per-repo row (#5340).
+func (v indexView) overallLabel() string {
+	if v.terminal {
+		return "Done"
+	}
+	repoLabel := OverallPhaseLabel(v.rows, false)
+	// If the group-scoped phase is in flight and more advanced than (or follows)
+	// the per-repo work, prefer it. "Done" from OverallPhaseLabel means all rows
+	// are terminal, so any non-terminal group phase takes over the label.
+	if v.groupPhase != "" {
+		gp := v.groupPhase
+		if gp != prog.PhaseDone && gp != prog.PhaseError {
+			if repoLabel == "Done" || phaseRank(gp) >= phaseRank(leastActivePhase(v.rows)) {
+				return PhaseLabel(gp)
+			}
+		}
+	}
+	return repoLabel
+}
+
+// leastActivePhase returns the phase of the least-advanced non-terminal repo,
+// or PhaseDone when every repo is terminal (used to decide whether the
+// group-scoped phase should take over the overall label).
+func leastActivePhase(rows map[string]Row) string {
+	least := ""
+	for _, r := range rows {
+		if r.Terminal() {
+			continue
+		}
+		if least == "" || phaseRank(r.Phase) < phaseRank(least) {
+			least = r.Phase
+		}
+	}
+	if least == "" {
+		return prog.PhaseDone
+	}
+	return least
+}
 
 var (
 	rowSlugStyle    = lipgloss.NewStyle().Foreground(colText).Bold(true)
@@ -119,7 +177,7 @@ func (v indexView) view() string {
 	if v.terminal {
 		pct = 1
 	}
-	label := OverallPhaseLabel(v.rows, v.terminal)
+	label := v.overallLabel()
 	if v.failed {
 		label = "Failed"
 	}

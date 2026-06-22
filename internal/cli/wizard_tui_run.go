@@ -267,8 +267,37 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 		dashPort = st.DashboardPort
 	}
 
-	rpcCh := make(chan rebuildOutcome, 1)
 	token := progressToken()
+
+	// Establish the broker SSE subscription BEFORE triggering the Rebuild so no
+	// early per-repo extraction events are lost when the index runs fast (#5340).
+	// subscribeSSE connects synchronously (it returns only once the HTTP stream
+	// is open), so by the time we fire the Rebuild RPC the broker is listening
+	// and per-repo events (backend/frontend) are guaranteed to be delivered.
+	if dashPort > 0 {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
+			rpcCh := triggerRebuild(c, group, token)
+			o := forwardBrokerToChannel(ctx, sseCh, rpcCh, evCh)
+			cancel()
+			outCh <- toIndexOutcome(o, summary)
+			return
+		}
+	}
+
+	// No dashboard broker — just trigger the rebuild and wait for the outcome.
+	rpcCh := triggerRebuild(c, group, token)
+	o := <-rpcCh
+	outCh <- toIndexOutcome(o, summary)
+}
+
+// triggerRebuild fires the daemon Rebuild RPC for group on a goroutine and
+// returns a buffered channel that delivers the single rebuild outcome. It is
+// invoked AFTER the broker SSE subscription is established so the per-repo
+// extraction events that race the RPC are not dropped (#5340).
+func triggerRebuild(c *client.Client, group string, token string) <-chan rebuildOutcome {
+	rpcCh := make(chan rebuildOutcome, 1)
 	go func() {
 		reply, rpcErr := c.Rebuild(proto.RebuildArgs{Group: group, ProgressToken: token})
 		rpcCh <- rebuildOutcome{
@@ -280,22 +309,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 			err:      rpcErr,
 		}
 	}()
-
-	// Stream broker SSE events to evCh while waiting for the RPC outcome.
-	if dashPort > 0 {
-		ctx, cancel := context.WithCancel(context.Background())
-		defer cancel()
-		if sseCh, sseErr := subscribeSSE(ctx, dashPort, group); sseErr == nil {
-			o := forwardBrokerToChannel(ctx, sseCh, rpcCh, evCh)
-			cancel()
-			outCh <- toIndexOutcome(o, summary)
-			return
-		}
-	}
-
-	// No dashboard broker — just wait for the RPC outcome.
-	o := <-rpcCh
-	outCh <- toIndexOutcome(o, summary)
+	return rpcCh
 }
 
 // forwardBrokerToChannel reads broker SSE events and forwards parsed

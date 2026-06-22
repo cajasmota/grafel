@@ -10,6 +10,17 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **`grafel wizard` indexing view reliably shows one row per repo (#5340):** the
+  TUI indexing screen could collapse to a single row labeled with the GROUP name
+  (e.g. "ivivo") reaching Done instead of one row per repo (backend, frontend).
+  Two causes are fixed: (1) the wizard now establishes the broker SSE
+  subscription **before** triggering the Rebuild RPC, so the early per-repo
+  extraction events aren't missed when the index runs fast (previously the
+  rebuild fired first and the per-repo events had already replayed by the time we
+  subscribed); and (2) the group-scoped event (the cross-repo links/flows pass,
+  whose `repo_slug` equals the group) is no longer folded into a spurious
+  per-repo row — its phase surfaces in the overall "Indexing &lt;group&gt; — …"
+  label instead ([#5340](https://github.com/cajasmota/grafel/issues/5340)).
 - **Watcher install is robust to the flaky launchctl err-5 and never aborts the
   wizard (#5338):** `launchctl bootstrap` intermittently fails the first
   bootstrap of a freshly written plist with exit code 5 ("Bootstrap failed: 5:
