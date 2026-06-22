@@ -294,6 +294,24 @@ func renderBrokerEvent(
 			line = colorize(fmt.Sprintf("%s: running_algorithms…", slug), ansiYellow, tty, plain)
 		}
 
+	// #5334 — granular graph-assembly phases. Labels are kept in lock-step with
+	// the dashboard wizard (webui-v2 PHASE_LABEL) so CLI and web users see the
+	// same human phrase for the same phase.
+	case progress.PhaseBuildCommunities:
+		line = colorize(fmt.Sprintf("%s: Building communities…", slug), ansiYellow, tty, plain)
+
+	case progress.PhaseComputeCentrality:
+		line = colorize(fmt.Sprintf("%s: Computing centrality…", slug), ansiYellow, tty, plain)
+
+	case progress.PhaseDetectLinks:
+		line = colorize(fmt.Sprintf("%s: Detecting cross-repo links…", slug), ansiYellow, tty, plain)
+
+	case progress.PhaseComputeFlows:
+		line = colorize(fmt.Sprintf("%s: Computing flows…", slug), ansiYellow, tty, plain)
+
+	case progress.PhaseWriteGraph:
+		line = colorize(fmt.Sprintf("%s: Writing graph…", slug), ansiYellow, tty, plain)
+
 	case progress.PhaseMaterialize:
 		line = colorize(fmt.Sprintf("%s: materializing…", slug), ansiYellow, tty, plain)
 
