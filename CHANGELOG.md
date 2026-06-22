@@ -10,6 +10,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Changed
 
+- **Index wizard is now action-first with smart cwd detection (#5336):** both the
+  CLI (`grafel wizard`) and the dashboard scan wizard now open on an explicit
+  action choice — **Index a single repository**, **Index a group of related
+  repositories**, **Index a monorepo**, **Add a repository to an existing
+  group** — with the cursor pre-placed on a smart default derived from the
+  current directory. This fixes container folders: a parent directory holding
+  multiple repos (e.g. `ivivo/` with `backend/` + `frontend/`) now resolves to
+  exactly those child repos instead of scanning the cwd's PARENT for unrelated
+  siblings. CLI and dashboard share a single source of truth — the new
+  `detect.ClassifyPath` classifier — so they agree on what a folder is (its own
+  git status, immediate child git repos, monorepo packages, sibling repos) and
+  which action to suggest. The non-interactive `--repos`/`--parent`/`--exclude`
+  flags are unchanged for scripting
+  ([#5336](https://github.com/cajasmota/grafel/issues/5336)).
 - **Granular graph-assembly progress phases in the CLI and wizard (#5334):** the
   graph-assembly tail used to collapse under one coarse "Materializing" /
   "Running algorithms" label, so the long post-extraction passes looked stuck.
