@@ -1,7 +1,29 @@
 import { describe, it, expect } from "vitest";
 
-import { fold, rowKey, rowsTerminal, sortRows } from "./index-progress-fold";
+import {
+  aggregateProgress,
+  fold,
+  overallPhaseLabel,
+  rowFraction,
+  rowKey,
+  rowsTerminal,
+  sortRows,
+} from "./index-progress-fold";
 import type { ProgressEvent, ProgressRow } from "@/data/types";
+
+/** Minimal ProgressRow builder for the aggregate/label tests. */
+function row(p: Partial<ProgressRow>): ProgressRow {
+  return {
+    key: p.repoSlug ?? "backend",
+    repoSlug: "backend",
+    phase: "extracting_ast",
+    filesDone: 0,
+    filesTotal: 0,
+    entitiesSoFar: 0,
+    ts: 1,
+    ...p,
+  };
+}
 
 function ev(p: Partial<ProgressEvent>): ProgressEvent {
   return {
@@ -163,5 +185,126 @@ describe("rowsTerminal — expected-repo-count gate (#5326 multi-repo regression
       ev({ repo_slug: "shared", phase: "done", ts: 5 }),
     ]);
     expect(rowsTerminal(rows, 2)).toBe(true);
+  });
+});
+
+describe("rowFraction — phase-weighted per-repo completion (#5332)", () => {
+  it("done / error count as 100%", () => {
+    expect(rowFraction(row({ phase: "done" }))).toBe(1);
+    expect(rowFraction(row({ phase: "error" }))).toBe(1);
+  });
+
+  it("scanning is the bottom band (0%)", () => {
+    expect(rowFraction(row({ phase: "scanning" }))).toBe(0);
+  });
+
+  it("extracting_ast adds the files slice within its band", () => {
+    // base = 1/5 = 0.2; +50% of the 0.2 band = 0.3
+    expect(rowFraction(row({ phase: "extracting_ast", filesDone: 50, filesTotal: 100 }))).toBeCloseTo(0.3);
+  });
+
+  it("sub-progress-less phases advance only via their band", () => {
+    expect(rowFraction(row({ phase: "resolving_refs" }))).toBeCloseTo(0.4);
+    expect(rowFraction(row({ phase: "running_algorithms" }))).toBeCloseTo(0.6);
+    expect(rowFraction(row({ phase: "materializing" }))).toBeCloseTo(0.8);
+  });
+});
+
+describe("aggregateProgress (#5332)", () => {
+  it("single repo extracting at 50% files → sensible mid value", () => {
+    const p = aggregateProgress([row({ phase: "extracting_ast", filesDone: 50, filesTotal: 100 })]);
+    expect(p).toBe(30); // 0.3 * 100
+  });
+
+  it("one repo done + one extracting → between the two", () => {
+    const p = aggregateProgress([
+      row({ repoSlug: "a", phase: "done" }),
+      row({ repoSlug: "b", phase: "extracting_ast", filesDone: 0, filesTotal: 100 }),
+    ]);
+    // (1 + 0.2) / 2 = 0.6
+    expect(p).toBe(60);
+    expect(p).toBeGreaterThan(0);
+    expect(p).toBeLessThan(100);
+  });
+
+  it("all done → 100", () => {
+    const p = aggregateProgress([
+      row({ repoSlug: "a", phase: "done" }),
+      row({ repoSlug: "b", phase: "done" }),
+    ]);
+    expect(p).toBe(100);
+  });
+
+  it("unknown expectedRepos → averages over present rows", () => {
+    const p = aggregateProgress([row({ phase: "materializing" })], undefined);
+    expect(p).toBe(80);
+  });
+
+  it("expectedRepos counts not-yet-reporting repos as 0 (bar doesn't jump)", () => {
+    // 1 of 4 expected repos reporting, that one done → 1/4 = 25%
+    const p = aggregateProgress([row({ phase: "done" })], 4);
+    expect(p).toBe(25);
+  });
+
+  it("empty / zero denominator → 0", () => {
+    expect(aggregateProgress([])).toBe(0);
+    expect(aggregateProgress([], 0)).toBe(0);
+  });
+
+  it("is clamped to [0,100]", () => {
+    const p = aggregateProgress([row({ phase: "done" })], 1);
+    expect(p).toBe(100);
+  });
+
+  it("does not go backwards across a normal phase sequence (monotonic-ish)", () => {
+    const seq: ProgressRow["phase"][] = [
+      "scanning",
+      "extracting_ast",
+      "resolving_refs",
+      "running_algorithms",
+      "materializing",
+      "done",
+    ];
+    let last = -1;
+    for (const phase of seq) {
+      const p = aggregateProgress([row({ phase, filesDone: 100, filesTotal: 100 })], 1);
+      expect(p).toBeGreaterThanOrEqual(last);
+      last = p;
+    }
+  });
+});
+
+describe("overallPhaseLabel (#5332)", () => {
+  it("maps each phase to its human label", () => {
+    expect(overallPhaseLabel([row({ phase: "scanning" })])).toBe("Scanning…");
+    expect(overallPhaseLabel([row({ phase: "extracting_ast" })])).toBe("Extracting AST…");
+    expect(overallPhaseLabel([row({ phase: "resolving_refs" })])).toBe("Resolving references…");
+    expect(overallPhaseLabel([row({ phase: "running_algorithms" })])).toBe("Running algorithms…");
+    expect(overallPhaseLabel([row({ phase: "materializing" })])).toBe("Materializing graph…");
+  });
+
+  it("reflects the LEAST-advanced active repo", () => {
+    const label = overallPhaseLabel([
+      row({ repoSlug: "a", phase: "materializing" }),
+      row({ repoSlug: "b", phase: "extracting_ast" }),
+    ]);
+    expect(label).toBe("Extracting AST…");
+  });
+
+  it("ignores terminal rows when picking the least-advanced active phase", () => {
+    const label = overallPhaseLabel([
+      row({ repoSlug: "a", phase: "done" }),
+      row({ repoSlug: "b", phase: "materializing" }),
+    ]);
+    expect(label).toBe("Materializing graph…");
+  });
+
+  it("terminal flag → Done", () => {
+    expect(overallPhaseLabel([row({ phase: "extracting_ast" })], true)).toBe("Done");
+  });
+
+  it("all rows terminal → Done", () => {
+    expect(overallPhaseLabel([row({ phase: "done" })])).toBe("Done");
+    expect(overallPhaseLabel([])).toBe("Done");
   });
 });

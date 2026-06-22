@@ -10,6 +10,17 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Changed
 
+- **Index wizard main progress bar now reflects real progress (#5332):** the
+  wizard's top progress bar was driven solely by the coarse job poller, which
+  barely moves during indexing — so it looked frozen near 0% even while every
+  repo was at "Materializing"/"Indexed". It now derives a real aggregate from
+  the per-repo feed (each repo contributes a phase-weighted fraction that
+  advances as it crosses phase boundaries, including through the long
+  sub-progress-less "Materializing" phase), and the header shows the current
+  overall phase ("Scanning…", "Extracting AST…", …, "Materializing graph…",
+  "Done") instead of a static "Indexing…". The active bar also gets a tasteful
+  shimmer (respecting `prefers-reduced-motion`) so it never reads as stuck
+  ([#5332](https://github.com/cajasmota/grafel/issues/5332)).
 - **Windows / locale resilience (#5317):** swept the codebase for control flow
   that branched on a *localized* OS command output / error string — the bug
   class behind the Spanish-Windows `schtasks` install failure — and migrated the

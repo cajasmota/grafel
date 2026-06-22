@@ -52,6 +52,7 @@ import {
   useFsList,
 } from "@/hooks/use-wizard";
 import { useIndexProgress } from "@/hooks/use-index-progress";
+import { aggregateProgress, overallPhaseLabel } from "@/lib/index-progress-fold";
 import { IndexProgressFeed } from "@/components/chrome/index-progress-feed";
 import { ApiError } from "@/lib/api";
 import type { ScanInspectReply, WizardRepo } from "@/data/types";
@@ -263,6 +264,26 @@ export function ScanWizard(props: ScanWizardProps) {
         ? "failed"
         : "done"
       : jobStatus;
+
+  // Main progress bar (#5332). The job-poller value (jobProgress) barely moves
+  // during indexing, so the bar looked frozen near 0% even when repos were at
+  // "Materializing"/"Indexed". Derive a real aggregate from the per-repo feed:
+  // each repo contributes a phase-weighted fraction (advancing as it crosses
+  // phase boundaries, even through sub-progress-less phases like Materializing).
+  // Use the feed value when it has data; otherwise fall back to jobProgress.
+  // Once terminal, pin to 100%.
+  const aggregate = aggregateProgress(indexProgress.rows, expectedRepos);
+  const barProgress = terminal
+    ? 100
+    : indexProgress.hasData
+      ? aggregate
+      : jobProgress;
+  // Overall phase label from the least-advanced active repo, so the header
+  // reflects what the index is actually doing instead of a static string.
+  const phaseLabel = overallPhaseLabel(indexProgress.rows, terminal);
+  // Subtle "alive" pulse while non-terminal — especially during the
+  // sub-progress-less phases that would otherwise look frozen.
+  const barActive = !terminal;
 
   return (
     <Dialog
@@ -722,7 +743,11 @@ export function ScanWizard(props: ScanWizardProps) {
               )}
               <span className="text-sm text-text-2" data-testid="wizard-status">
                 {effectiveStatus === "queued" && "Queued…"}
-                {effectiveStatus === "running" && (job.data?.message || "Indexing…")}
+                {/* While running, surface the current overall phase (derived from
+                    the least-advanced active repo) instead of a static string,
+                    so "Materializing graph…" no longer reads as stuck (#5332). */}
+                {effectiveStatus === "running" &&
+                  (indexProgress.hasData ? phaseLabel : job.data?.message || "Indexing…")}
                 {effectiveStatus === "done" && (job.data?.message || "Indexing complete.")}
                 {effectiveStatus === "failed" && (job.data?.error || "Indexing failed.")}
                 {!effectiveStatus && "Starting…"}
@@ -738,8 +763,15 @@ export function ScanWizard(props: ScanWizardProps) {
                     : effectiveStatus === "done"
                       ? "bg-success"
                       : "bg-accent",
+                  // A tasteful shimmer keeps the bar visibly alive during the
+                  // sub-progress-less phases (resolving/algorithms/materializing)
+                  // that advance only at phase boundaries (#5332). Respects
+                  // prefers-reduced-motion via the keyframe utility.
+                  barActive && "wizard-bar-pulse",
                 )}
-                style={{ width: `${effectiveStatus === "done" ? 100 : jobProgress}%` }}
+                style={{ width: `${barProgress}%` }}
+                data-testid="wizard-progress-bar"
+                data-progress={barProgress}
               />
             </div>
 

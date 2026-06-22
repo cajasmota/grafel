@@ -162,6 +162,31 @@
   animation: flow-replay-bounce 180ms ease-out;
 }
 
+/* ── Wizard progress bar pulse (#5332) ───────────────────────────────────────
+   The index wizard's main bar advances via phase-weighted aggregate progress,
+   but the sub-progress-less phases (resolving refs / running algorithms /
+   materializing) only move it at phase boundaries — so a subtle traveling
+   shimmer keeps the active (non-terminal) bar visibly alive between jumps and
+   reassures the user it isn't frozen. Tasteful, low-contrast; the global
+   prefers-reduced-motion rule below collapses it to a no-op. */
+@keyframes wizard-bar-pulse {
+  0%   { background-position: 200% center; }
+  100% { background-position: -200% center; }
+}
+.wizard-bar-pulse {
+  background-image: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0)    0%,
+    rgba(255, 255, 255, 0)    35%,
+    rgba(255, 255, 255, 0.35) 50%,
+    rgba(255, 255, 255, 0)    65%,
+    rgba(255, 255, 255, 0)    100%
+  );
+  background-size: 200% auto;
+  background-repeat: no-repeat;
+  animation: wizard-bar-pulse 1.6s ease-in-out infinite;
+}
+
 /* Honor reduced-motion globally (per handoff motion rules). */
 @media (prefers-reduced-motion: reduce) {
   *,
