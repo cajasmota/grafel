@@ -10,6 +10,29 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **Dashboard wizard indexing froze mid-extraction and never showed completion;
+  rebuild appeared to idle-wait ~5 min** ([#5326](https://github.com/cajasmota/grafel/issues/5326)).
+  Three independent defects on the rebuild/progress path:
+  - **Progress (UI freeze):** the indexer emits its terminal `done`/`error`
+    progress event exactly once, but the broker's fan-out is best-effort
+    (drop-on-full) — under load that single event could be dropped, leaving the
+    wizard SSE stream sending only heartbeats and the UI frozen on the last
+    mid-extraction frame. The broker now **retains the last terminal event per
+    group** and the `/api/index-progress/{group}` SSE handler replays it on
+    connect and re-asserts it on each heartbeat, so the terminal state is
+    **always** rendered (then `close`), even if the live event was dropped or
+    the client connected late.
+  - **Goroutine leak (the "~5 min wait"):** the Rebuild RPC's dead-man heartbeat
+    ran `for range ticker.C` with no exit path — `time.Ticker.Stop()` does not
+    close the channel, so the goroutine blocked forever, leaking one goroutine
+    per Rebuild RPC. The ticker goroutine is now torn down via a stop channel
+    when the result lands. (The result itself was already delivered promptly via
+    a buffered channel; the "5m0s" log line was the dead-man heartbeat, not a
+    timeout the result waited on.)
+  - **Diagnosability:** when the stall detector fires it now logs a bounded
+    (≤1 MiB), once-per-RPC full goroutine dump (`runtime.Stack(_, true)`) so the
+    next stall is root-causable from the daemon log alone. The warning interval
+    is overridable via `GRAFEL_STALL_WARN_INTERVAL`.
 - `grafel_find_callers` / `find_callees` / `neighbors` now resolve an entity by
   name or qualified name (not only the opaque entity_id), returning
   disambiguation candidates when ambiguous instead of a hard `entity not found`
