@@ -169,6 +169,61 @@ func TestIndexerProgress_AlgorithmEvents(t *testing.T) {
 	}
 }
 
+// TestIndexerProgress_GranularAssemblyPhases verifies that the granular
+// graph-assembly phases (#5334) are emitted during a per-repo index and that
+// they appear in the expected relative order: community detection precedes
+// centrality, both precede the flow walkers, and writing the graph is the last
+// assembly phase before done.
+func TestIndexerProgress_GranularAssemblyPhases(t *testing.T) {
+	col := &progress.SliceCollector{}
+	idx := newTestIndexer(t, "crossfile_go", nil, "")
+	idx.publisher = col
+
+	if _, err := idx.Run(context.Background(), "testdata/crossfile_go"); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+
+	// Record the index of the FIRST event for each granular phase.
+	firstIdx := map[string]int{}
+	for i, e := range col.Events {
+		if _, seen := firstIdx[e.Phase]; !seen {
+			firstIdx[e.Phase] = i
+		}
+	}
+
+	required := []string{
+		progress.PhaseBuildCommunities,
+		progress.PhaseComputeCentrality,
+		progress.PhaseComputeFlows,
+		progress.PhaseWriteGraph,
+	}
+	for _, p := range required {
+		if _, ok := firstIdx[p]; !ok {
+			t.Errorf("granular phase %q never emitted (seen: %v)", p, firstIdx)
+		}
+	}
+	if t.Failed() {
+		return
+	}
+
+	// Ordering invariants (per-repo emission sequence).
+	assertBefore := func(a, b string) {
+		if firstIdx[a] >= firstIdx[b] {
+			t.Errorf("expected phase %q (idx %d) to emit before %q (idx %d)",
+				a, firstIdx[a], b, firstIdx[b])
+		}
+	}
+	assertBefore(progress.PhaseBuildCommunities, progress.PhaseComputeCentrality)
+	assertBefore(progress.PhaseComputeCentrality, progress.PhaseComputeFlows)
+	assertBefore(progress.PhaseComputeFlows, progress.PhaseWriteGraph)
+	assertBefore(progress.PhaseWriteGraph, progress.PhaseDone)
+
+	// The coarse PhaseAlgorithms is retained as a fallback and must still fire.
+	if _, ok := firstIdx[progress.PhaseAlgorithms]; !ok {
+		t.Error("coarse PhaseAlgorithms fallback no longer emitted")
+	}
+}
+
 // TestIndexerProgress_SkipAlgorithms verifies that algorithm events are NOT
 // emitted when PassGraphAlgo is skipped.
 func TestIndexerProgress_SkipAlgorithms(t *testing.T) {

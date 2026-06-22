@@ -199,21 +199,52 @@ describe("rowFraction — phase-weighted per-repo completion (#5332)", () => {
   });
 
   it("extracting_ast adds the files slice within its band", () => {
-    // base = 1/5 = 0.2; +50% of the 0.2 band = 0.3
-    expect(rowFraction(row({ phase: "extracting_ast", filesDone: 50, filesTotal: 100 }))).toBeCloseTo(0.3);
+    // base = 1/10 = 0.1; +50% of the 0.1 band = 0.15 (#5334: 10 bands)
+    expect(rowFraction(row({ phase: "extracting_ast", filesDone: 50, filesTotal: 100 }))).toBeCloseTo(0.15);
   });
 
   it("sub-progress-less phases advance only via their band", () => {
-    expect(rowFraction(row({ phase: "resolving_refs" }))).toBeCloseTo(0.4);
-    expect(rowFraction(row({ phase: "running_algorithms" }))).toBeCloseTo(0.6);
-    expect(rowFraction(row({ phase: "materializing" }))).toBeCloseTo(0.8);
+    // #5334 — 10 bands, emission-order indices.
+    expect(rowFraction(row({ phase: "resolving_refs" }))).toBeCloseTo(0.2);
+    expect(rowFraction(row({ phase: "materializing" }))).toBeCloseTo(0.3);
+    expect(rowFraction(row({ phase: "running_algorithms" }))).toBeCloseTo(0.4);
+  });
+
+  it("granular graph-assembly phases each occupy a higher band (#5334)", () => {
+    expect(rowFraction(row({ phase: "building_communities" }))).toBeCloseTo(0.5);
+    expect(rowFraction(row({ phase: "computing_centrality" }))).toBeCloseTo(0.6);
+    expect(rowFraction(row({ phase: "computing_flows" }))).toBeCloseTo(0.7);
+    expect(rowFraction(row({ phase: "detecting_links" }))).toBeCloseTo(0.8);
+    expect(rowFraction(row({ phase: "writing_graph" }))).toBeCloseTo(0.9);
+  });
+
+  it("rowFraction is strictly increasing across the assembly sequence (#5334)", () => {
+    const seq: ProgressRow["phase"][] = [
+      "scanning",
+      "extracting_ast",
+      "resolving_refs",
+      "materializing",
+      "running_algorithms",
+      "building_communities",
+      "computing_centrality",
+      "computing_flows",
+      "detecting_links",
+      "writing_graph",
+      "done",
+    ];
+    let last = -1;
+    for (const phase of seq) {
+      const f = rowFraction(row({ phase }));
+      expect(f).toBeGreaterThan(last);
+      last = f;
+    }
   });
 });
 
 describe("aggregateProgress (#5332)", () => {
   it("single repo extracting at 50% files → sensible mid value", () => {
     const p = aggregateProgress([row({ phase: "extracting_ast", filesDone: 50, filesTotal: 100 })]);
-    expect(p).toBe(30); // 0.3 * 100
+    expect(p).toBe(15); // 0.15 * 100 (#5334: 10 bands)
   });
 
   it("one repo done + one extracting → between the two", () => {
@@ -221,8 +252,8 @@ describe("aggregateProgress (#5332)", () => {
       row({ repoSlug: "a", phase: "done" }),
       row({ repoSlug: "b", phase: "extracting_ast", filesDone: 0, filesTotal: 100 }),
     ]);
-    // (1 + 0.2) / 2 = 0.6
-    expect(p).toBe(60);
+    // (1 + 0.1) / 2 = 0.55 (#5334: 10 bands)
+    expect(p).toBe(55);
     expect(p).toBeGreaterThan(0);
     expect(p).toBeLessThan(100);
   });
@@ -237,7 +268,7 @@ describe("aggregateProgress (#5332)", () => {
 
   it("unknown expectedRepos → averages over present rows", () => {
     const p = aggregateProgress([row({ phase: "materializing" })], undefined);
-    expect(p).toBe(80);
+    expect(p).toBe(30); // 0.3 * 100 (#5334: 10 bands)
   });
 
   it("expectedRepos counts not-yet-reporting repos as 0 (bar doesn't jump)", () => {
@@ -261,8 +292,13 @@ describe("aggregateProgress (#5332)", () => {
       "scanning",
       "extracting_ast",
       "resolving_refs",
-      "running_algorithms",
       "materializing",
+      "running_algorithms",
+      "building_communities",
+      "computing_centrality",
+      "computing_flows",
+      "detecting_links",
+      "writing_graph",
       "done",
     ];
     let last = -1;
@@ -281,6 +317,14 @@ describe("overallPhaseLabel (#5332)", () => {
     expect(overallPhaseLabel([row({ phase: "resolving_refs" })])).toBe("Resolving references…");
     expect(overallPhaseLabel([row({ phase: "running_algorithms" })])).toBe("Running algorithms…");
     expect(overallPhaseLabel([row({ phase: "materializing" })])).toBe("Materializing graph…");
+  });
+
+  it("maps the granular graph-assembly phases to friendly labels (#5334)", () => {
+    expect(overallPhaseLabel([row({ phase: "building_communities" })])).toBe("Building communities…");
+    expect(overallPhaseLabel([row({ phase: "computing_centrality" })])).toBe("Computing centrality…");
+    expect(overallPhaseLabel([row({ phase: "detecting_links" })])).toBe("Detecting cross-repo links…");
+    expect(overallPhaseLabel([row({ phase: "computing_flows" })])).toBe("Computing flows…");
+    expect(overallPhaseLabel([row({ phase: "writing_graph" })])).toBe("Writing graph…");
   });
 
   it("reflects the LEAST-advanced active repo", () => {

@@ -115,6 +115,43 @@ func TestRenderBrokerEvent_Algorithms_Named(t *testing.T) {
 	}
 }
 
+// TestRenderBrokerEvent_GranularPhases verifies the #5334 graph-assembly
+// phases render with their friendly labels in both plain (non-TTY) and TTY
+// (ANSI) modes. The label text must match the dashboard wizard's PHASE_LABEL.
+func TestRenderBrokerEvent_GranularPhases(t *testing.T) {
+	cases := []struct {
+		phase string
+		want  string
+	}{
+		{progress.PhaseBuildCommunities, "Building communities…"},
+		{progress.PhaseComputeCentrality, "Computing centrality…"},
+		{progress.PhaseDetectLinks, "Detecting cross-repo links…"},
+		{progress.PhaseComputeFlows, "Computing flows…"},
+		{progress.PhaseWriteGraph, "Writing graph…"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.phase, func(t *testing.T) {
+			e := progress.Event{RepoSlug: "svc", Phase: tc.phase}
+
+			// plain / non-TTY: friendly label, no ANSI escapes.
+			plain := renderBrokerEventPlain(e)
+			if !strings.Contains(plain, tc.want) {
+				t.Errorf("plain: missing label %q in %q", tc.want, plain)
+			}
+			if strings.Contains(plain, "\033[") {
+				t.Errorf("plain: unexpected ANSI escape in %q", plain)
+			}
+
+			// TTY: friendly label present (ANSI allowed).
+			var buf bytes.Buffer
+			renderBrokerEvent(&buf, e, map[string]int{}, true, false, false)
+			if !strings.Contains(buf.String(), tc.want) {
+				t.Errorf("tty: missing label %q in %q", tc.want, buf.String())
+			}
+		})
+	}
+}
+
 func TestRenderBrokerEvent_Materialize(t *testing.T) {
 	e := progress.Event{
 		RepoSlug: "svc",

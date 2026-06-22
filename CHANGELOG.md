@@ -10,6 +10,16 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Changed
 
+- **Granular graph-assembly progress phases in the CLI and wizard (#5334):** the
+  graph-assembly tail used to collapse under one coarse "Materializing" /
+  "Running algorithms" label, so the long post-extraction passes looked stuck.
+  The real passes are now surfaced as live phases — **Building communities**
+  (Louvain), **Computing centrality** (PageRank/Betweenness), **Computing
+  flows** (process/event-flow walkers), **Writing graph**, and the group-level
+  **Detecting cross-repo links** — with identical human labels in BOTH the
+  `grafel index`/`rebuild`/`wizard` terminal output (live, TTY-aware) and the
+  dashboard scan wizard. The coarse phases are retained as fallbacks
+  ([#5334](https://github.com/cajasmota/grafel/issues/5334)).
 - **Index wizard main progress bar now reflects real progress (#5332):** the
   wizard's top progress bar was driven solely by the coarse job poller, which
   barely moves during indexing — so it looked frozen near 0% even while every
