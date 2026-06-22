@@ -8,6 +8,22 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Fixed
+
+- **Windows installer latest-version auto-resolution produced garbage → 404
+  (Refs #5318):** `install.bat` extracted the release tag from the
+  `/releases/latest` redirect `location:` header with `%~nx`, which treats its
+  argument as a `\`-separated Windows path — but the header value is a
+  `/`-separated URL, so on some Windows builds it yielded garbage (e.g.
+  `LOC:=`) and built a 404 download URL. The tag is now sliced from the URL
+  with a delimiter-correct substring (`!LOC:*/tag/=!`, after the CR scrub),
+  with a GitHub releases-API fallback (`api.github.com/.../releases/latest`,
+  `tag_name`) when the redirect parse fails, and a sanity guard that rejects any
+  resolved version that does not look like a tag (must start with `v`, contain a
+  digit, and contain no `/`) before attempting a download — surfacing the
+  explicit `GRAFEL_VERSION` hint instead of a confusing 404. `install.ps1`
+  already used proper URI/regex parsing and is unaffected.
+
 ---
 
 ## [0.1.2] — 2026-06-23

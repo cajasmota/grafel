@@ -62,18 +62,63 @@ if defined GRAFEL_VERSION (
 if not defined VERSION (
     REM /releases/latest 302-redirects to /releases/tag/<version>. curl -sI
     REM prints the redirect target in the "location:" header; parse the tag.
-    for /f "tokens=2 delims= " %%H in ('curl -fsSLI "https://github.com/%REPO%/releases/latest" 2^>nul ^| findstr /I "^location:"') do (
-        set "LOC=%%H"
+    REM The header value is the FULL url, e.g.
+    REM   location: https://github.com/<repo>/releases/tag/vX.Y.Z<CR>
+    REM tokens=2 with a single space delim keeps the whole url (incl. its ':'
+    REM and '/') as one token. We must NOT use %%~nx here: that modifier treats
+    REM its arg as a '\'-separated Windows path, but the value is a '/'-separated
+    REM URL, so on some Windows builds it returns garbage (e.g. "LOC:=") and
+    REM yields a 404 download. Instead strip everything up to and including
+    REM "/tag/" with a delayed-expansion substring, leaving just the tag.
+    for /f "tokens=1,* delims= " %%H in ('curl -fsSLI "https://github.com/%REPO%/releases/latest" 2^>nul ^| findstr /I "^location:"') do (
+        set "LOC=%%I"
     )
     if defined LOC (
-        REM strip the trailing CR that HTTP headers carry, then take the last
-        REM path segment (the tag) via %%~nx.
+        REM scrub the trailing CR that HTTP headers carry FIRST, so the tag has
+        REM no stray CR, THEN slice off the URL prefix up to and incl. "/tag/".
         if defined CR set "LOC=!LOC:%CR%=!"
-        for %%T in ("!LOC!") do set "VERSION=%%~nxT"
+        REM only slice if the marker is actually present (substring replace is a
+        REM no-op when "/tag/" is absent, which would leave the full URL — we
+        REM guard against that below by validating the resulting VERSION).
+        set "VERSION=!LOC:*/tag/=!"
     )
 )
+
+REM --- fallback: GitHub releases API if the redirect parse failed or produced
+REM     something that still contains a URL separator (no real tag has '/'). ---
+set "BADVER="
+if defined VERSION if not "!VERSION:/=!"=="!VERSION!" set "BADVER=1"
+if not defined VERSION set "BADVER=1"
+if defined BADVER (
+    set "VERSION="
+    for /f "tokens=2 delims=:, " %%T in ('curl -fsSL "https://api.github.com/repos/%REPO%/releases/latest" 2^>nul ^| findstr /I /C:"tag_name"') do (
+        if not defined VERSION (
+            set "RAW=%%T"
+            REM strip surrounding double quotes from the JSON string value.
+            set "RAW=!RAW:"=!"
+            set "VERSION=!RAW!"
+        )
+    )
+)
+
 if not defined VERSION (
     echo error: failed to resolve latest release tag. Set GRAFEL_VERSION explicitly ^(e.g. v0.1.0^).
+    goto :fail
+)
+
+REM --- sanity-guard the resolved VERSION before building any download URL ---
+REM A valid tag looks like v<digits>... : it starts with 'v' and contains a
+REM digit, and must NOT contain a '/' (which would mean we kept part of a URL).
+REM Reject anything else with the explicit GRAFEL_VERSION hint instead of
+REM letting a garbage version produce a confusing 404.
+set "VERBAD="
+if not "!VERSION:~0,1!"=="v" set "VERBAD=1"
+if not "!VERSION:/=!"=="!VERSION!" set "VERBAD=1"
+set "HASDIGIT="
+for %%D in (0 1 2 3 4 5 6 7 8 9) do if not "!VERSION:%%D=!"=="!VERSION!" set "HASDIGIT=1"
+if not defined HASDIGIT set "VERBAD=1"
+if defined VERBAD (
+    echo error: resolved an invalid release tag ^("!VERSION!"^). Set GRAFEL_VERSION explicitly ^(e.g. v0.1.0^).
     goto :fail
 )
 
