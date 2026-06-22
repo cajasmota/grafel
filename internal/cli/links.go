@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -191,19 +192,48 @@ func stageGraphsDir(cfg *registry.GroupConfig) (string, func(), error) {
 			return "", func() {}, err
 		}
 		if hasJSON {
-			if err := os.Symlink(jsonSrc, filepath.Join(dstDir, "graph.json")); err != nil {
+			if err := linkOrCopyFile(jsonSrc, filepath.Join(dstDir, "graph.json")); err != nil {
 				cleanup()
 				return "", func() {}, err
 			}
 		}
 		if hasFB {
-			if err := os.Symlink(fbSrc, filepath.Join(dstDir, "graph.fb")); err != nil {
+			if err := linkOrCopyFile(fbSrc, filepath.Join(dstDir, "graph.fb")); err != nil {
 				cleanup()
 				return "", func() {}, err
 			}
 		}
 	}
 	return tmp, cleanup, nil
+}
+
+// linkOrCopyFile stages src at dst by symlink, falling back to a byte copy when
+// the symlink fails. On Windows, creating a symlink requires
+// SeCreateSymbolicLinkPrivilege (Developer Mode or admin); without it
+// os.Symlink fails with "A required privilege is not held by the client",
+// which previously aborted the cross-repo link passes and left cross-repo
+// edges at 0. The staging dir is a read-only temp that is deleted afterwards,
+// so a copy is an equivalent fallback. On Linux/mac the symlink never fails, so
+// the fallback is never taken and behavior is unchanged. Mirrors the
+// symlink→copy pattern used for skills in internal/install/dev.go.
+func linkOrCopyFile(src, dst string) error {
+	if err := os.Symlink(src, dst); err == nil {
+		return nil
+	}
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // runPhantomEdgePass is the P5 phantom-edge promotion pass (#769).
