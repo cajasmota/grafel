@@ -38,6 +38,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   the toast shows the real totals. When a rebuild legitimately has nothing to
   report, the toast now reads "up to date" instead of "0 entities"
   ([#5326](https://github.com/cajasmota/grafel/issues/5326)).
+- **Dashboard index wizard now shows one row per repo instead of a single group
+  row (Refs #5340, #5326):** the "Index a new group" dialog's Index step could
+  collapse to a single row labelled with the GROUP name (e.g. "ivivo · Indexed")
+  rather than one row per repo (backend + frontend). This is the web analog of
+  the CLI fixes (#5343/#5348). Four changes, mirroring the Go wizard: (1) the
+  group-scoped progress event (`repo_slug === group`, the cross-repo links/flows
+  pass) is excluded from the per-repo rows and its phase is surfaced in the
+  OVERALL header label instead of spawning a spurious group row; (2) the Index
+  step seeds one pending row per expected repo from the registered repo list, so
+  every repo shows up front and survives dropped early SSE events; (3) the
+  progress SSE subscription is opened as soon as the from-scan POST fires —
+  before the index starts — so fast indexes don't miss early per-repo events;
+  (4) on successful completion every non-terminal row is finalized to Done so
+  the final frame shows all repos Done. The single-repo case is unchanged
+  ([#5340](https://github.com/cajasmota/grafel/issues/5340)).
 - **Wizard indexing view now marks all per-repo rows Done on successful
   completion (#5340):** previously a repo could freeze on its last intermediate
   phase (e.g. "Building communities…") if its final SSE events (centrality →

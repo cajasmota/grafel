@@ -2,11 +2,14 @@ import { describe, it, expect } from "vitest";
 
 import {
   aggregateProgress,
+  finalizeRows,
   fold,
+  groupPhase,
   overallPhaseLabel,
   rowFraction,
   rowKey,
   rowsTerminal,
+  seedRows,
   sortRows,
 } from "./index-progress-fold";
 import type { ProgressEvent, ProgressRow } from "@/data/types";
@@ -350,5 +353,184 @@ describe("overallPhaseLabel (#5332)", () => {
   it("all rows terminal → Done", () => {
     expect(overallPhaseLabel([row({ phase: "done" })])).toBe("Done");
     expect(overallPhaseLabel([])).toBe("Done");
+  });
+});
+
+/* ----------------------------------------------------------------------------
+   #5340 — per-repo rows in the dashboard index wizard: exclude the group-scoped
+   event from rows (route to overall), seed rows from the repo list, finalize on
+   completion.
+   -------------------------------------------------------------------------- */
+
+/** Fold a stream WITH a known group slug, tracking groupPhase alongside rows. */
+function applyWithGroup(
+  events: ProgressEvent[],
+  group: string,
+  seedSlugs?: string[],
+): { rows: ProgressRow[]; groupPhase: ProgressRow["phase"] | undefined } {
+  let m = seedSlugs ? seedRows(seedSlugs) : new Map<string, ProgressRow>();
+  let gp: ProgressRow["phase"] | undefined;
+  for (const e of events) {
+    gp = groupPhase(gp, e, group);
+    m = fold(m, e, group);
+  }
+  return { rows: sortRows(m.values()), groupPhase: gp };
+}
+
+describe("fold — group-scoped event is NOT a per-repo row (#5340)", () => {
+  it("realistic order: backend + frontend rows only, NO group row, group phase in overall", () => {
+    const { rows, groupPhase: gp } = applyWithGroup(
+      [
+        ev({ repo_slug: "backend", phase: "extracting_ast", files_done: 50, files_total: 100, ts: 1 }),
+        ev({ repo_slug: "frontend", phase: "extracting_ast", files_done: 20, files_total: 80, ts: 2 }),
+        ev({ repo_slug: "backend", phase: "done", ts: 3 }),
+        ev({ repo_slug: "frontend", phase: "done", ts: 4 }),
+        // group-scoped cross-repo pass — must NOT spawn a row
+        ev({ repo_slug: "ivivo", phase: "detecting_links", ts: 5 }),
+        ev({ repo_slug: "ivivo", phase: "done", ts: 6 }),
+      ],
+      "ivivo",
+    );
+    expect(rows.map((r) => r.repoSlug)).toEqual(["backend", "frontend"]);
+    expect(rows.every((r) => r.phase === "done")).toBe(true);
+    expect(rows.find((r) => r.repoSlug === "ivivo")).toBeUndefined();
+    // group phase tracked; once both repos terminal, overall surfaces it
+    expect(gp).toBe("done");
+    // mid-pass: while detecting_links is live the overall shows it
+    const mid = applyWithGroup(
+      [
+        ev({ repo_slug: "backend", phase: "done", ts: 1 }),
+        ev({ repo_slug: "frontend", phase: "done", ts: 2 }),
+        ev({ repo_slug: "ivivo", phase: "detecting_links", ts: 3 }),
+      ],
+      "ivivo",
+    );
+    expect(mid.rows.map((r) => r.repoSlug)).toEqual(["backend", "frontend"]);
+    expect(overallPhaseLabel(mid.rows, false, mid.groupPhase)).toBe("Detecting cross-repo links…");
+  });
+
+  it("group-event-FIRST ordering still yields no group row", () => {
+    const { rows } = applyWithGroup(
+      [
+        // group terminal arrives before any per-repo event (the live bug shape)
+        ev({ repo_slug: "ivivo", phase: "detecting_links", ts: 1 }),
+        ev({ repo_slug: "ivivo", phase: "done", ts: 2 }),
+        ev({ repo_slug: "backend", phase: "done", ts: 3 }),
+        ev({ repo_slug: "frontend", phase: "done", ts: 4 }),
+      ],
+      "ivivo",
+    );
+    expect(rows.map((r) => r.repoSlug)).toEqual(["backend", "frontend"]);
+  });
+
+  it("interleaved group + repo events: group never becomes a row", () => {
+    const { rows } = applyWithGroup(
+      [
+        ev({ repo_slug: "backend", phase: "extracting_ast", ts: 1 }),
+        ev({ repo_slug: "ivivo", phase: "detecting_links", ts: 2 }),
+        ev({ repo_slug: "frontend", phase: "extracting_ast", ts: 3 }),
+        ev({ repo_slug: "ivivo", phase: "computing_flows", ts: 4 }),
+        ev({ repo_slug: "backend", phase: "done", ts: 5 }),
+        ev({ repo_slug: "frontend", phase: "done", ts: 6 }),
+      ],
+      "ivivo",
+    );
+    expect(rows.map((r) => r.repoSlug)).toEqual(["backend", "frontend"]);
+  });
+
+  it("single-repo case is unaffected (one repo → one row)", () => {
+    const { rows } = applyWithGroup(
+      [ev({ repo_slug: "solo", phase: "done", ts: 1 })],
+      "solo-group",
+    );
+    expect(rows.map((r) => r.repoSlug)).toEqual(["solo"]);
+  });
+
+  it("no groupSlug passed → legacy behavior, group-named event still a row", () => {
+    // Back-compat: callers that don't pass a group slug get the old folding.
+    const rows = applyAll([ev({ repo_slug: "ivivo", phase: "done", ts: 1 })]);
+    expect(rows.map((r) => r.repoSlug)).toEqual(["ivivo"]);
+  });
+
+  it("group phase is monotonic — a late coarse group event doesn't regress it", () => {
+    let gp: ProgressRow["phase"] | undefined;
+    // writing_graph(9) then a stale detecting_links(8) must NOT regress.
+    gp = groupPhase(gp, ev({ repo_slug: "g", phase: "writing_graph" }), "g");
+    gp = groupPhase(gp, ev({ repo_slug: "g", phase: "detecting_links" }), "g");
+    expect(gp).toBe("writing_graph");
+  });
+});
+
+describe("seedRows — show every repo before any event (#5340)", () => {
+  it("seeds one pending row per slug", () => {
+    const m = seedRows(["backend", "frontend"]);
+    const rows = sortRows(m.values());
+    expect(rows.map((r) => r.repoSlug)).toEqual(["backend", "frontend"]);
+    expect(rows.every((r) => r.phase === "scanning")).toBe(true);
+    expect(rows.every((r) => r.ts === 0)).toBe(true);
+  });
+
+  it("real events fold into the seeded rows by repo_slug (no duplicate rows)", () => {
+    const { rows } = applyWithGroup(
+      [
+        ev({ repo_slug: "backend", phase: "extracting_ast", files_done: 10, files_total: 100, ts: 1 }),
+        ev({ repo_slug: "backend", phase: "done", ts: 2 }),
+        ev({ repo_slug: "frontend", phase: "done", ts: 3 }),
+      ],
+      "ivivo",
+      ["backend", "frontend"],
+    );
+    expect(rows.map((r) => r.repoSlug)).toEqual(["backend", "frontend"]);
+    expect(rows.every((r) => r.phase === "done")).toBe(true);
+  });
+
+  it("a repo that never emits stays visible (seeded, pending)", () => {
+    const { rows } = applyWithGroup(
+      [ev({ repo_slug: "backend", phase: "done", ts: 1 })],
+      "ivivo",
+      ["backend", "frontend"],
+    );
+    expect(rows.map((r) => r.repoSlug)).toEqual(["backend", "frontend"]);
+    const fe = rows.find((r) => r.repoSlug === "frontend")!;
+    expect(fe.phase).toBe("scanning"); // still seeded
+  });
+
+  it("skips empty slugs", () => {
+    expect(sortRows(seedRows(["", "backend"]).values()).map((r) => r.repoSlug)).toEqual(["backend"]);
+  });
+});
+
+describe("finalizeRows — mark stuck rows Done on completion (#5348/#5340)", () => {
+  it("advances a row frozen mid-phase to done", () => {
+    const m = seedRows(["backend", "frontend"]);
+    let m2 = fold(m, ev({ repo_slug: "backend", phase: "done", ts: 1 }), "g");
+    // frontend froze at building_communities (its final events were dropped)
+    m2 = fold(m2, ev({ repo_slug: "frontend", phase: "building_communities", ts: 2 }), "g");
+    const finalized = sortRows(finalizeRows(m2).values());
+    expect(finalized.every((r) => r.phase === "done")).toBe(true);
+  });
+
+  it("leaves error rows untouched", () => {
+    let m = new Map<string, ProgressRow>();
+    m = fold(m, ev({ repo_slug: "backend", phase: "error", error: "boom", ts: 1 }), "g");
+    m = fold(m, ev({ repo_slug: "frontend", phase: "resolving_refs", ts: 2 }), "g");
+    const finalized = sortRows(finalizeRows(m).values());
+    expect(finalized.find((r) => r.repoSlug === "backend")!.phase).toBe("error");
+    expect(finalized.find((r) => r.repoSlug === "frontend")!.phase).toBe("done");
+  });
+
+  it("preserves file/entity counts when finalizing", () => {
+    let m = new Map<string, ProgressRow>();
+    m = fold(m, ev({ repo_slug: "backend", phase: "writing_graph", files_done: 9, files_total: 9, entities_so_far: 42, ts: 1 }), "g");
+    const r = sortRows(finalizeRows(m).values())[0];
+    expect(r.phase).toBe("done");
+    expect(r.entitiesSoFar).toBe(42);
+    expect(r.filesDone).toBe(9);
+  });
+
+  it("returns the same map (no-op) when nothing to finalize", () => {
+    let m = new Map<string, ProgressRow>();
+    m = fold(m, ev({ repo_slug: "backend", phase: "done", ts: 1 }), "g");
+    expect(finalizeRows(m)).toBe(m);
   });
 });
