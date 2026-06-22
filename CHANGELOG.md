@@ -8,6 +8,34 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Changed
+
+- **Windows / locale resilience (#5317):** swept the codebase for control flow
+  that branched on a *localized* OS command output / error string — the bug
+  class behind the Spanish-Windows `schtasks` install failure — and migrated the
+  genuine occurrences to locale-invariant signals (process exit codes, on-disk
+  unit-file checks, and typed `syscall.Errno` values). Migrated: the watcher
+  `Unload()` for schtasks / systemctl / launchctl (`internal/install/watchers/`,
+  which had the same English-text match as the original bug), the daemon
+  launchd `Load()`/`Unload()` (`internal/daemon/service/launchd_darwin.go`), and
+  the selftest Windows "file in use" detector (`cmd/grafel/selftest.go`, now
+  errno-based). The daemon `schtasks` `Unload()` keeps its English match only as
+  a documented best-effort race fallback behind the exit-code `IsLoaded()` check
+  (Refs [#5317](https://github.com/cajasmota/grafel/issues/5317),
+  [#856](https://github.com/cajasmota/grafel/issues/856)).
+
+### Added
+
+- **CI lint gate `lint-localematch` (#5317):** a standard-library Go AST analyzer
+  (`cmd/lint-localematch`) that fails CI when new code matches command
+  output/error text for control flow — `strings.Contains/HasPrefix/HasSuffix/
+  Index/EqualFold` or `regexp.MatchString` whose subject is data-flow-derived
+  from an `exec.Command(...).Output()/CombinedOutput()/Run()` result or an
+  `err.Error()` in an exec-using file. Scoped to files that shell out (low false
+  positives); justified race fallbacks opt out with `// nolint:localematch`.
+  Wired into `make lint`, `pre-merge.yml`, and `test.yml`
+  (Refs [#5317](https://github.com/cajasmota/grafel/issues/5317)).
+
 ### Fixed
 
 - `grafel_find_callers` / `find_callees` / `neighbors` now resolve an entity by

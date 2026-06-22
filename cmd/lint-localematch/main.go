@@ -20,12 +20,12 @@
 //     (strings.Contains/HasPrefix/HasSuffix/Index/EqualFold,
 //     regexp.MatchString / (*Regexp).MatchString) is flagged when its *subject*
 //     argument is derived from command output. The subject is recognized as:
-//       * a variable whose name looks like captured output
-//         (out, output, stdout, stderr, combined, b, s, ...) AND that variable
-//         was assigned from a .Output()/.CombinedOutput()/.Run() call, OR
-//       * an `<x>.Error()` call (matching on an error message string), where the
-//         file is in scope (an exec error), OR
-//       * a `string(<outputVar>)` conversion of such a variable.
+//   - a variable whose name looks like captured output
+//     (out, output, stdout, stderr, combined, b, s, ...) AND that variable
+//     was assigned from a .Output()/.CombinedOutput()/.Run() call, OR
+//   - an `<x>.Error()` call (matching on an error message string), where the
+//     file is in scope (an exec error), OR
+//   - a `string(<outputVar>)` conversion of such a variable.
 //   - A `//nolint:localematch` comment on the same line (or the line above)
 //     suppresses the finding — reserved for justified best-effort *race
 //     fallbacks* whose PRIMARY decision is already exit-code/structured (the
