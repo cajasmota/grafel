@@ -314,6 +314,15 @@ func (r *Registry) mutate(fn func([]Entry) []Entry) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
+	// Ensure the state directory exists before creating the .lock inside it.
+	// On a fresh install the state dir (e.g. %AppData%\grafel on Windows) may
+	// not exist yet, and opening the lock file inside a missing directory fails
+	// with "The system cannot find the path specified". Idempotent: a no-op
+	// when the directory already exists.
+	if err := os.MkdirAll(filepath.Dir(r.path), 0o755); err != nil {
+		return err
+	}
+
 	unlock, err := lockFile(r.path + ".lock")
 	if err != nil {
 		return err
