@@ -25,10 +25,13 @@ func TestSelftestDaemonConfigWiresShutdownCleanup(t *testing.T) {
 	cfg.ShutdownCleanup()
 }
 
-// TestIsWindowsFileInUse verifies the teardown backstop predicate matches the
-// Windows sharing-violation surfaces (typed permission error + OS message text)
-// and rejects unrelated errors. The predicate is only consulted on Windows, but
-// is unit-tested on every platform.
+// TestIsWindowsFileInUse verifies the cross-platform teardown backstop predicate:
+// it matches the typed permission error (fs.ErrPermission) and rejects everything
+// else — including LOCALIZED OS message strings, which are intentionally NOT
+// matched (#5321 locale-invariance). Real Windows file-in-use errors carry a
+// numeric syscall.Errno (32/5/33), matched by the Windows-only errno path
+// (exercised in selftest_errno_windows_test.go). The predicate is only consulted
+// on Windows but the cross-platform surface is unit-tested everywhere.
 func TestIsWindowsFileInUse(t *testing.T) {
 	cases := []struct {
 		name string
@@ -37,9 +40,11 @@ func TestIsWindowsFileInUse(t *testing.T) {
 	}{
 		{"nil", nil, false},
 		{"permission", fs.ErrPermission, true},
-		{"in-use message", errors.New("remove C:\\x: The process cannot access the file because it is being used by another process."), true},
-		{"sharing violation", errors.New("CreateFile foo: sharing violation"), true},
-		{"access denied", errors.New("open bar: Access is denied."), true},
+		// Localized message strings must NOT match (locale-invariance, #5321):
+		// a Spanish/Japanese Windows emits different text but the same errno.
+		{"localized in-use message (not matched)", errors.New("remove C:\\x: The process cannot access the file because it is being used by another process."), false},
+		{"localized sharing violation (not matched)", errors.New("CreateFile foo: sharing violation"), false},
+		{"localized access denied (not matched)", errors.New("open bar: Access is denied."), false},
 		{"unrelated", errors.New("no such file or directory"), false},
 	}
 	for _, tc := range cases {
