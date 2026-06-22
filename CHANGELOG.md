@@ -8,6 +8,25 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Added
+
+- **Group-algo overlay storage + atomic swap, applied at MCP group load
+  (Refs #5354, #5349):** the group-scope algorithm pass (A1) now persists its
+  result as a single `~/.grafel/groups/<group>-algo.json` overlay
+  (`entity_id → {community_id, pagerank, centrality, is_god_node,
+  is_articulation_point}` + a community summary, stats, and per-repo
+  `source_mtimes`). The overlay is written via an atomic temp-file + rename, so
+  a reader observes either the whole previous overlay or the whole new one —
+  never a torn read across files. At MCP group load the overlay, when present
+  and not stale (every recorded repo's current `graph.fb` mtime still matches),
+  is stamped onto the in-memory entities by ID and surfaced as
+  `LoadedGroup.Communities`; it is memoized by mtime so a mid-session swap
+  reloads only the overlay. **Absence-tolerant:** a missing or stale overlay is
+  a no-op — entities keep whatever `graph.fb` carried (today's per-repo values)
+  — so there is **no behavior change until an overlay file exists** (only A3's
+  scheduler will produce one). The hidden `grafel group-algo` command gains a
+  `--write` flag to persist the overlay; the default stays dry.
+
 ### Fixed
 
 - **Windows installer latest-version auto-resolution produced garbage → 404

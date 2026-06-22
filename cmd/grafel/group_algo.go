@@ -1,18 +1,21 @@
 package main
 
-// group_algo.go — hidden `grafel group-algo <group> --dry-run` subcommand
-// (#5349 A1, epic #5350).
+// group_algo.go — hidden `grafel group-algo <group> [--dry-run|--write]`
+// subcommand (#5349 A1/A2, epic #5350).
 //
 // Assembles the union of a group's per-repo graphs and runs the graph
 // algorithm pass (Louvain communities + PageRank/Betweenness centrality) ONCE
-// at group scope, then prints stats. With --dry-run (the only mode in A1) it
-// writes NO files and mutates no state — it is a pure read + compute + report.
+// at group scope, then prints stats. With --dry-run (the A1 default) it writes
+// NO files and mutates no state — a pure read + compute + report. With --write
+// (A2) it additionally persists the result as the <group>-algo.json overlay via
+// an atomic temp+rename swap (groupalgo.WriteOverlayFromResult); A3's scheduler
+// will be the real trigger for this path.
 //
 // Not part of the public command surface; intercepted before cobra dispatch in
 // main.go (mirrors the xrepo-verify / index-internal hidden harnesses). The
-// scheduling (A3) and overlay persistence (A2) land in follow-up PRs.
+// scheduling (A3) lands in a follow-up PR.
 //
-//	grafel group-algo <group> --dry-run
+//	grafel group-algo <group> [--dry-run|--write]
 
 import (
 	"fmt"
@@ -24,18 +27,29 @@ import (
 
 func runGroupAlgo(args []string) int {
 	dryRun := false
+	write := false
 	var positional []string
 	for _, a := range args {
 		switch a {
 		case "--dry-run":
 			dryRun = true
+		case "--write":
+			write = true
 		default:
 			positional = append(positional, a)
 		}
 	}
 	if len(positional) != 1 {
-		fmt.Fprintln(os.Stderr, "usage: grafel group-algo <group> --dry-run")
+		fmt.Fprintln(os.Stderr, "usage: grafel group-algo <group> [--dry-run|--write]")
 		return 2
+	}
+	if write && dryRun {
+		fmt.Fprintln(os.Stderr, "grafel group-algo: --write and --dry-run are mutually exclusive")
+		return 2
+	}
+	// Default (no flag) stays dry — A1 behavior is preserved.
+	if !write {
+		dryRun = true
 	}
 	group := positional[0]
 
@@ -43,6 +57,13 @@ func runGroupAlgo(args []string) int {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "grafel group-algo: %v\n", err)
 		return 1
+	}
+
+	if write {
+		if werr := groupalgo.WriteOverlayFromResult(res); werr != nil {
+			fmt.Fprintf(os.Stderr, "grafel group-algo: write overlay: %v\n", werr)
+			return 1
+		}
 	}
 
 	printGroupAlgoStats(os.Stdout, res, dryRun)
@@ -58,6 +79,8 @@ func printGroupAlgoStats(w *os.File, res *groupalgo.GroupAlgoResult, dryRun bool
 	fmt.Fprintf(w, "group-algo: %s", res.Group)
 	if dryRun {
 		fmt.Fprint(w, " (dry-run — no files written)")
+	} else {
+		fmt.Fprint(w, " (overlay written)")
 	}
 	fmt.Fprintln(w)
 	fmt.Fprintf(w, "  repos:          %d\n", res.NumRepos)

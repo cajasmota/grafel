@@ -31,6 +31,7 @@ import (
 	"github.com/cajasmota/grafel/internal/embed"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
+	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 )
 
 // Registry is the on-disk registry.json describing groups and their repos.
@@ -463,6 +464,19 @@ type LoadedGroup struct {
 	LinksFile string
 	linksMt   time.Time
 	MemoryDir string
+
+	// Communities is the GROUP-scope community summary applied from the
+	// <group>-algo.json overlay (A2, #5354). nil when no overlay is present —
+	// consumers then fall back to per-repo community data carried in graph.fb.
+	Communities []graph.CommunityResult
+	// algoFile / algoMt memoize the overlay by mtime (mirrors LinksFile/linksMt)
+	// so a mid-session swap of <group>-algo.json reloads only the overlay, not
+	// the graphs. algoApplied records whether the last-loaded overlay's values
+	// are currently stamped onto the in-memory entities, so a stale/absent
+	// overlay after a previous apply does not leave group values lingering.
+	algoFile    string
+	algoMt      time.Time
+	algoApplied bool
 }
 
 // WorktreeLookup is the narrow interface ResolveCWD uses to query the PH3
@@ -808,6 +822,13 @@ func (s *State) reloadLocked() (int, bool, error) {
 		} else if os.IsNotExist(err) {
 			grp.Links = nil
 		}
+
+		// Apply the group-algo overlay (A2, #5354). Absence-tolerant: when the
+		// <group>-algo.json overlay is missing or stale the entities keep
+		// whatever graph.fb carried (today's per-repo algo values / sentinels) —
+		// NO behavior change until an overlay exists. Memoized by mtime so a
+		// mid-session atomic swap reloads only the overlay, not the graphs.
+		applyGroupAlgoOverlay(grp)
 	}
 	// Recompute the tool-surface signature. If it differs from the previous
 	// value the caller will emit notifications/tools/list_changed (#1772).
@@ -1004,6 +1025,89 @@ func filterLinksBySource(links []CrossRepoLink, repo string) []CrossRepoLink {
 		}
 	}
 	return out
+}
+
+// applyGroupAlgoOverlay loads the <group>-algo.json overlay (A2, #5354) and, if
+// present and NOT stale, stamps the group-scope algo values
+// (CommunityID/Centrality/PageRank/IsGodNode/IsArticulationPt) onto the
+// in-memory entities by ID, and sets grp.Communities from the overlay summary.
+//
+// Absence-tolerant: a missing or stale overlay is a no-op — entities keep
+// whatever graph.fb carried (per-repo values or sentinels). There is NO
+// behavior change until an overlay file exists (which only A3's scheduler
+// produces). The overlay is memoized by mtime (mirrors LinksFile/linksMt) so a
+// mid-session atomic swap reloads only the overlay.
+//
+// Re-stamping is idempotent: the values overwrite the same pointer fields each
+// reload. A reparse (graph.fb mtime change) resets the entity to its graph.fb
+// value first, then this re-applies the (matching) overlay — so a stale overlay
+// (which always coincides with a graph.fb mtime change) cleanly falls back.
+func applyGroupAlgoOverlay(grp *LoadedGroup) {
+	path, err := groupalgo.OverlayPath(grp.Name)
+	if err != nil || path == "" {
+		return
+	}
+	grp.algoFile = path
+
+	fi, statErr := os.Stat(path)
+	if statErr != nil {
+		// Absent overlay → no-op. Clear any memoized mtime so a later-created
+		// overlay is picked up; leave entity fields as graph.fb carried them.
+		grp.algoMt = time.Time{}
+		grp.algoApplied = false
+		return
+	}
+
+	cur, mtErr := groupalgo.CurrentSourceMtimes(grp.Name)
+	if mtErr != nil {
+		return
+	}
+	ov, ok := groupalgo.ReadOverlay(path, cur)
+	if !ok {
+		// Stale or corrupt → no-op (fall back to graph.fb values). A stale
+		// overlay coincides with a repo reparse, which already reset the fields.
+		grp.algoMt = time.Time{}
+		grp.algoApplied = false
+		return
+	}
+
+	// Memoize: skip re-stamping when neither the overlay nor the graphs changed.
+	// We re-apply whenever the overlay mtime advanced OR a repo was reparsed
+	// this reload (which would have reset entity fields to graph.fb values).
+	if grp.algoApplied && fi.ModTime().Equal(grp.algoMt) {
+		// Still set the summary (cheap; keeps grp.Communities authoritative).
+		grp.Communities = ov.Communities
+		return
+	}
+
+	for _, lr := range grp.Repos {
+		if lr == nil || lr.Doc == nil {
+			continue
+		}
+		ents := lr.Doc.Entities
+		for i := range ents {
+			eo, has := ov.Results[ents[i].ID]
+			if !has {
+				continue
+			}
+			cid := eo.CommunityID
+			pr := eo.PageRank
+			cen := eo.Centrality
+			ents[i].CommunityID = &cid
+			ents[i].PageRank = &pr
+			ents[i].Centrality = &cen
+			ents[i].IsGodNode = eo.IsGodNode
+			ents[i].IsArticulationPt = eo.IsArticulationPoint
+		}
+		// Re-arm lazy derived indexes (TopKPageRank etc.) so they rebuild
+		// against the freshly-stamped group values rather than stale per-repo
+		// ones (mirrors the resetIndexes() call after a reparse).
+		lr.resetIndexes()
+	}
+
+	grp.Communities = ov.Communities
+	grp.algoMt = fi.ModTime()
+	grp.algoApplied = true
 }
 
 // defaultLinksFile is the conventional path for cross-repo links.
