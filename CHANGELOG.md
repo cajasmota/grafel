@@ -27,6 +27,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **`test.yml` round-2: OS-portable canonicalize-timeout test + deterministic
+  SSE heartbeat test → green on all three OS:** two more test-only failures
+  surfaced after the first batch — (1)
+  `TestCanonicalizePathTimesOutAndDegrades` (`internal/daemon`) hardcoded
+  Unix-style absolute paths (`/tmp/grafel-5330/...`) and asserted the degraded
+  result equalled that literal string; on Windows the casing-preserving
+  fallback rebuilds the path via `filepath.Join` with the active OS's volume +
+  separator semantics (drive letter, `\`), so the assertion failed even though
+  the timeout-degrade behavior worked. The test now builds an OS-native path
+  with `t.TempDir()`/`filepath.Join` and asserts against `filepath.Clean(input)`
+  so it holds on linux, darwin, AND windows; the cache test was made OS-native
+  the same way. (2) `TestSSE_TerminalReassertedOnHeartbeat`
+  (`internal/dashboard`) was a timing flake — it read a fixed SSE line-window
+  for a bounded 4s and could miss the heartbeat-reasserted terminal+close when
+  a loaded CI runner delivered them a few heartbeats late. It now polls via a
+  new `readSSEUntil` helper until BOTH the terminal phase and the `close` event
+  are observed, under a generous deadline, so it passes reliably under `-race`
+  and repeated runs. Production behavior is unchanged.
 - **`test.yml` is now green on all three OS (macOS, Linux, Windows), unblocking
   the v0.1.2 tag:** three test-only failures were fixed without touching
   production behavior — (1) a data race in the canonicalize-timeout tests

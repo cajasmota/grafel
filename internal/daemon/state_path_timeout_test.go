@@ -15,6 +15,7 @@ package daemon
 
 import (
 	"os"
+	"path/filepath"
 	"sync"
 	"sync/atomic"
 	"testing"
@@ -79,7 +80,16 @@ func TestCanonicalizePathTimesOutAndDegrades(t *testing.T) {
 		return nil, nil
 	})
 
-	const input = "/tmp/grafel-5330/SlowMount/Repo"
+	// Build an OS-native absolute path so the test holds on linux, darwin,
+	// AND windows (drive letters, `\` separators, volume roots). Hardcoding
+	// Unix-style "/tmp/..." made this fail on Windows because the
+	// casing-preserving fallback rebuilds the path via filepath.Join with
+	// the active OS's volume + separator semantics (#5330 CI portability).
+	input := filepath.Join(t.TempDir(), "SlowMount", "Repo")
+	// On timeout we preserve input casing: every segment is re-joined via
+	// filepath.Join (which cleans), so the expected fallback is the cleaned
+	// input under the active OS's filepath semantics.
+	want := filepath.Clean(input)
 	done := make(chan string, 1)
 	start := time.Now()
 	go func() { done <- canonicalizePath(input) }()
@@ -90,9 +100,9 @@ func TestCanonicalizePathTimesOutAndDegrades(t *testing.T) {
 		if elapsed > 2*time.Second {
 			t.Fatalf("canonicalizePath took %v; expected prompt return under the 10s block", elapsed)
 		}
-		// On timeout we preserve input casing → output equals the input.
-		if got != input {
-			t.Errorf("canonicalizePath(%q) = %q, want casing-preserving fallback %q", input, got, input)
+		// On timeout we preserve input casing → output equals the cleaned input.
+		if got != want {
+			t.Errorf("canonicalizePath(%q) = %q, want casing-preserving fallback %q", input, got, want)
 		}
 	case <-time.After(3 * time.Second):
 		t.Fatal("canonicalizePath did not return within 3s — it deadlocked on the slow ReadDir (#5330 regression)")
@@ -141,7 +151,9 @@ func TestCanonicalizePathTimeoutResultIsCached(t *testing.T) {
 		return nil, nil
 	})
 
-	const input = "/tmp/grafel-5330-cache/SlowMount/Repo"
+	// OS-native absolute path (see TestCanonicalizePathTimesOutAndDegrades);
+	// readDirFunc is mocked to block so the dir need not exist on disk.
+	input := filepath.Join(t.TempDir(), "cache", "SlowMount", "Repo")
 	first := canonicalizePath(input)
 	if _, ok := canonicalCache.Load(input); !ok {
 		t.Fatal("expected timeout result to be cached")

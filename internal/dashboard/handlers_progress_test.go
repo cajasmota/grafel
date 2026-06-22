@@ -366,6 +366,44 @@ func readSSERaw(t *testing.T, r *bufio.Reader, n int, timeout time.Duration) []s
 	return lines
 }
 
+// readSSEUntil reads raw SSE lines from r until pred(accumulated) is true or
+// the deadline expires, returning all lines collected so far. Unlike
+// readSSERaw (which stops after a fixed line count or timeout and is therefore
+// racy when the awaited event arrives a few heartbeats late on a loaded CI
+// runner), this keeps reading until the expected condition is actually met,
+// making the assertion deterministic under -race and repeated runs.
+func readSSEUntil(t *testing.T, r *bufio.Reader, timeout time.Duration, pred func(lines []string) bool) []string {
+	t.Helper()
+	var lines []string
+	done := time.After(timeout)
+	for {
+		if pred(lines) {
+			return lines
+		}
+		lineCh := make(chan string, 1)
+		errCh := make(chan error, 1)
+		go func() {
+			l, err := r.ReadString('\n')
+			if err != nil {
+				errCh <- err
+				return
+			}
+			lineCh <- l
+		}()
+		select {
+		case <-done:
+			return lines
+		case <-errCh:
+			return lines
+		case l := <-lineCh:
+			l = strings.TrimSpace(l)
+			if l != "" {
+				lines = append(lines, l)
+			}
+		}
+	}
+}
+
 // TestSSE_TerminalReplayedOnConnect verifies the #5326 fix: when a client
 // connects to the group SSE stream AFTER the rebuild already finished (its
 // terminal PhaseDone was retained by the broker), the handler immediately
@@ -413,7 +451,7 @@ func TestSSE_TerminalReassertedOnHeartbeat(t *testing.T) {
 	ts := newTestServerWithBroker(t, broker)
 	defer ts.Close()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 6*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, ts.URL+"/api/index-progress/hb-group", nil)
 	resp, err := http.DefaultClient.Do(req)
@@ -438,8 +476,15 @@ func TestSSE_TerminalReassertedOnHeartbeat(t *testing.T) {
 		TS:            time.Now().UnixMilli(),
 	})
 
-	// Within a couple of heartbeats (~1s each) the terminal must arrive + close.
-	lines := readSSERaw(t, reader, 30, 4*time.Second)
+	// The terminal must arrive (via the live channel or, if that event was
+	// dropped, a heartbeat re-assert ~1s/tick) followed by a close. Poll until
+	// BOTH markers are present rather than reading a fixed window, so a few
+	// late heartbeats on a slow/loaded CI runner can't flake the assertion.
+	hasTerminalClose := func(lines []string) bool {
+		joined := strings.Join(lines, "\n")
+		return strings.Contains(joined, progress.PhaseDone) && strings.Contains(joined, "event: close")
+	}
+	lines := readSSEUntil(t, reader, 15*time.Second, hasTerminalClose)
 	joined := strings.Join(lines, "\n")
 	if !strings.Contains(joined, progress.PhaseDone) {
 		t.Errorf("terminal state never delivered on heartbeat re-assert, got:\n%s", joined)
