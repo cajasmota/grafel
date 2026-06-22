@@ -1,6 +1,7 @@
 package watchreg
 
 import (
+	"os"
 	"path/filepath"
 	"reflect"
 	"sync"
@@ -10,6 +11,34 @@ import (
 func newTestRegistry(t *testing.T) *Registry {
 	t.Helper()
 	return New(filepath.Join(t.TempDir(), FileName))
+}
+
+// TestMutate_CreatesParentDir verifies that mutating the registry on a fresh
+// install — where the state directory does not exist yet — creates the parent
+// directory instead of failing to open the .lock file. On a clean Windows
+// install %AppData%\grafel does not exist, and the lock open previously failed
+// with "The system cannot find the path specified" (bug 4).
+func TestMutate_CreatesParentDir(t *testing.T) {
+	// Path two levels below a fresh temp dir: neither nested dir exists yet.
+	missingDir := filepath.Join(t.TempDir(), "grafel", "state")
+	r := New(filepath.Join(missingDir, FileName))
+
+	if _, err := os.Stat(missingDir); !os.IsNotExist(err) {
+		t.Fatalf("precondition: dir should not exist yet, stat err = %v", err)
+	}
+	if err := r.Register(Entry{PID: 100, Repo: "/a", OwnerDaemonPID: 1}); err != nil {
+		t.Fatalf("Register on fresh path: %v", err)
+	}
+	if _, err := os.Stat(missingDir); err != nil {
+		t.Errorf("expected parent dir to be created, stat err = %v", err)
+	}
+	entries, err := r.List()
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(entries) != 1 || entries[0].PID != 100 {
+		t.Errorf("expected one entry PID 100, got %v", entries)
+	}
 }
 
 func pids(entries []Entry) []int {
