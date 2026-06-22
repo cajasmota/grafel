@@ -66,6 +66,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
     (≤1 MiB), once-per-RPC full goroutine dump (`runtime.Stack(_, true)`) so the
     next stall is root-causable from the daemon log alone. The warning interval
     is overridable via `GRAFEL_STALL_WARN_INTERVAL`.
+  - **Wizard UX (frontend follow-up):** the index wizard's terminal state was a
+    *separate* source of truth from the now-fixed SSE feed — it came only from
+    the job poller (`/api/v2/jobs/{id}`), so a rebuild could finish (`rebuild:
+    done` in the daemon log) while the poller hadn't flipped, leaving the button
+    stuck on "Indexing…". The wizard now reaches **terminal ("Done")** when
+    *either* the job poller flips *or* the per-repo SSE feed shows every repo
+    `done`/`error` (the icon, label, progress bar and close-guard all follow this
+    effective status). The progress feed now renders **one row per repo** keyed
+    by repo slug — a repo-level event and its redundant module-scoped duplicate
+    collapse into a single row showing the latest status (no more stale "… module"
+    rows frozen mid-extraction). The wizard modal is also slightly larger
+    (`max-w-lg`, capped height with internal scroll, taller feed area) so the feed
+    no longer scrolls cramped.
 - `grafel_find_callers` / `find_callees` / `neighbors` now resolve an entity by
   name or qualified name (not only the opaque entity_id), returning
   disambiguation candidates when ambiguous instead of a hard `entity not found`

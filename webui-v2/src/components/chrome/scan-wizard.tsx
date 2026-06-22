@@ -225,7 +225,28 @@ export function ScanWizard(props: ScanWizardProps) {
   const indexing = createFromScan.isPending || scanRepos.isPending;
   const jobStatus = job.data?.status;
   const jobProgress = job.data?.progress ?? 0;
-  const terminal = jobStatus === "done" || jobStatus === "failed";
+  // Terminal state has TWO sources of truth (#5326 bug 1). The job poller
+  // (/api/v2/jobs/{id}) is primary, but the live freeze showed the rebuild
+  // finishing (`rebuild: done` in the daemon log) while the job status stayed
+  // "running" — leaving the button stuck on "Indexing…". The per-repo SSE feed
+  // carries its own terminal done/error event (now reliably replayed by the
+  // #5327 broker fix), so we also treat "every repo row done/error" as terminal.
+  // Either source flipping is enough to reach "Done".
+  const jobTerminal = jobStatus === "done" || jobStatus === "failed";
+  const feedTerminal = indexProgress.terminal;
+  const feedFailed = indexProgress.rows.some((r) => r.phase === "error");
+  const terminal = jobTerminal || feedTerminal;
+  // Effective display status drives the icon, label and bar. The job poller is
+  // primary; if it hasn't flipped yet but the per-repo feed has reached terminal
+  // (#5326 bug 1), surface done/failed so the UI matches the real state instead
+  // of an indefinite "Indexing…".
+  const effectiveStatus = jobTerminal
+    ? jobStatus
+    : feedTerminal
+      ? feedFailed
+        ? "failed"
+        : "done"
+      : jobStatus;
 
   return (
     <Dialog
@@ -237,7 +258,10 @@ export function ScanWizard(props: ScanWizardProps) {
         onOpenChange(v);
       }}
     >
-      <DialogContent>
+      {/* Slightly larger than the default modal (#5326 bug 3): the index feed
+          was scrolling cramped. One step wider (max-w-lg) + a capped height with
+          internal scroll, still responsive on small screens. */}
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogTitle>
           {mode === "create" ? "Index a new group" : <>Add a repo to <span className="font-mono">{groupName}</span></>}
         </DialogTitle>
@@ -673,19 +697,19 @@ export function ScanWizard(props: ScanWizardProps) {
         {step === "index" && (
           <div className="mt-4 space-y-4" data-testid="wizard-progress">
             <div className="flex items-center gap-2">
-              {jobStatus === "done" ? (
+              {effectiveStatus === "done" ? (
                 <CheckCircle2 size={16} className="text-success" />
-              ) : jobStatus === "failed" ? (
+              ) : effectiveStatus === "failed" ? (
                 <AlertTriangle size={16} className="text-danger" />
               ) : (
                 <Loader2 size={16} className="animate-spin text-accent-strong" />
               )}
               <span className="text-sm text-text-2" data-testid="wizard-status">
-                {jobStatus === "queued" && "Queued…"}
-                {jobStatus === "running" && (job.data?.message || "Indexing…")}
-                {jobStatus === "done" && (job.data?.message || "Indexing complete.")}
-                {jobStatus === "failed" && (job.data?.error || "Indexing failed.")}
-                {!jobStatus && "Starting…"}
+                {effectiveStatus === "queued" && "Queued…"}
+                {effectiveStatus === "running" && (job.data?.message || "Indexing…")}
+                {effectiveStatus === "done" && (job.data?.message || "Indexing complete.")}
+                {effectiveStatus === "failed" && (job.data?.error || "Indexing failed.")}
+                {!effectiveStatus && "Starting…"}
               </span>
             </div>
 
@@ -693,9 +717,13 @@ export function ScanWizard(props: ScanWizardProps) {
               <div
                 className={cn(
                   "h-full rounded-full transition-all duration-500",
-                  jobStatus === "failed" ? "bg-danger" : jobStatus === "done" ? "bg-success" : "bg-accent",
+                  effectiveStatus === "failed"
+                    ? "bg-danger"
+                    : effectiveStatus === "done"
+                      ? "bg-success"
+                      : "bg-accent",
                 )}
-                style={{ width: `${jobStatus === "done" ? 100 : jobProgress}%` }}
+                style={{ width: `${effectiveStatus === "done" ? 100 : jobProgress}%` }}
               />
             </div>
 
@@ -704,7 +732,7 @@ export function ScanWizard(props: ScanWizardProps) {
             <IndexProgressFeed
               rows={indexProgress.rows}
               loading={!indexProgress.hasData && !terminal}
-              className="max-h-64 overflow-y-auto pr-0.5"
+              className="max-h-80 overflow-y-auto pr-0.5"
             />
 
             <div className="flex justify-end gap-2 pt-1">
