@@ -30,6 +30,25 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Changed
 
+- **`grafel wizard` now uses a cohesive Bubble Tea TUI (#5340):** the
+  interactive wizard is a single full-screen `tea.Model` state machine with
+  consistent chrome on every step — a styled grafel header + a step rail
+  (`Action › Select › Name › Index`) highlighting the current stage, a spacious
+  body sized to the terminal (the four actions are always fully visible; long
+  repo lists scroll inside a tall viewport with a position indicator), and a
+  contextual footer key-hint bar on every screen (including the group-name and
+  optional-docs inputs → "optional · enter to skip"). The indexing step is now a
+  **per-repo view**: an overall progress bar plus **one row per repo** (name ·
+  phase label · files done/total · entities · spinner while active), folding the
+  broker SSE phase stream by `repo_slug` with a monotonic phase — which also
+  **fixes the dropped-repo display bug** where the old single-line
+  carriage-return renderer showed only one repo and dropped the rest. All
+  decision logic and side effects are preserved (`ClassifyPath`, group-name
+  default, `applyGroupConfig`, daemon auto-index); `ctrl-c`/`esc` cancel cleanly
+  with nothing registered. Non-interactive flags
+  (`--repos`/`--parent`/`--exclude`/`--no-index`) and non-TTY/CI/`$TERM=dumb`
+  contexts never launch the TUI and keep the line-based flow
+  ([#5340](https://github.com/cajasmota/grafel/issues/5340)).
 - **`grafel wizard` auto-indexes the new group with live progress (#5338):**
   after registering a group (or adding repos to an existing one), the wizard now
   triggers an index by default and renders live CLI phase progress — the same
