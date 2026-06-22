@@ -1229,11 +1229,31 @@ func daemonRebuildFuncCore(
 		return rebuilt, "", fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 
+	// #5334 — surface the GROUP-level cross-repo link pass as its own granular
+	// phase. This runs after every member repo is indexed (their per-repo rows
+	// are already terminal), so without a group-level event the wizard's overall
+	// label would sit at "Done" while the link pass is still churning. We emit a
+	// group-scoped event (RepoSlug == group) so both the wizard's aggregate
+	// label and the CLI's live line advance to "Detecting cross-repo links…".
+	// The phantom-edge pass re-runs process-flow inside linksFn, so the same
+	// phase also covers the group-level flow recompute.
+	linkTrk := progress.NewTracker(daemonProgressBroker, args.Group, args.Group)
+	linkTrk.Phase(progress.PhaseDetectLinks, "cross-repo links", 0)
+
 	// Cross-repo link passes run after every member is indexed.
 	warning := ""
 	if err := linksFn(args.Group); err != nil {
 		// Best-effort — surface as a warning, not a hard failure.
 		warning = fmt.Sprintf("link passes failed: %v", err)
+	}
+	// Terminalize the group-level link row so the wizard's feed-terminal gate
+	// (rowsTerminal) is not blocked by a perpetually non-terminal group row.
+	// expectedRepos counts member repos only, so the wizard tolerates this
+	// extra group row reaching done.
+	if warning != "" {
+		linkTrk.Fail(warning)
+	} else {
+		linkTrk.Done(0, 0)
 	}
 
 	// Explicitly invalidate the cache for each rebuilt repo (#2607).

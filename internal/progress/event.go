@@ -35,12 +35,37 @@ const (
 
 	// PhaseAlgorithms is Pass 4 (PageRank, Louvain, betweenness,
 	// articulation points, surprise edges). One event per algorithm entry
-	// and exit.
+	// and exit. Retained as a coarse fallback; the granular pass boundaries
+	// below (#5334) split it into community detection and centrality.
 	PhaseAlgorithms = "running_algorithms"
 
+	// PhaseBuildCommunities is the community-detection slice of Pass 4
+	// (Louvain). Surfaced as "Building communities…" (#5334).
+	PhaseBuildCommunities = "building_communities"
+
+	// PhaseComputeCentrality is the centrality slice of Pass 4 (PageRank,
+	// betweenness, articulation points, surprise edges). Surfaced as
+	// "Computing centrality…" (#5334).
+	PhaseComputeCentrality = "computing_centrality"
+
 	// PhaseMaterialize covers buildDocument, graph.fb write, sidecar write,
-	// and enrichment-candidate emission.
+	// and enrichment-candidate emission. Retained as a coarse fallback; the
+	// granular boundaries below (#5334) split the group-assembly tail into
+	// cross-repo links, flows, and the graph write.
 	PhaseMaterialize = "materializing"
+
+	// PhaseDetectLinks is the cross-repo link-detection pass that runs at
+	// GROUP assembly after every member repo is indexed. Surfaced as
+	// "Detecting cross-repo links…" (#5334).
+	PhaseDetectLinks = "detecting_links"
+
+	// PhaseComputeFlows is the process-flow / event-flow walker pass.
+	// Surfaced as "Computing flows…" (#5334).
+	PhaseComputeFlows = "computing_flows"
+
+	// PhaseWriteGraph is the final graph.fb / sidecar write step. Surfaced
+	// as "Writing graph…" (#5334).
+	PhaseWriteGraph = "writing_graph"
 
 	// PhaseDone is emitted once with final totals.
 	PhaseDone = "done"
@@ -262,6 +287,28 @@ func (t *Tracker) Tick(phase string, filesDone int, bytesSeen int64, currentFile
 		BytesSeen:        bytesSeen,
 		CurrentFile:      currentFile,
 		Module:           t.module(currentFile),
+		PhaseStartedAtMS: t.phaseStartedAtMS,
+		TS:               nowMS(),
+	})
+}
+
+// Phase emits a single phase-boundary event for a granular pass (#5334),
+// carrying the current entity count and the named algorithm/pass when known.
+// Unlike PhaseStart it does not reset phaseStartedAtMS-derived file counters;
+// it is the cheap one-event-per-pass signal used to surface the graph-assembly
+// tail (communities, centrality, links, flows, write) in the CLI and wizard.
+// The pass runs after all files are processed, so FilesDone == FilesTotal.
+func (t *Tracker) Phase(phase, passName string, entitiesSoFar int) {
+	t.currentPhase = phase
+	t.phaseStartedAtMS = nowMS()
+	t.pub.Publish(Event{
+		GroupSlug:        t.groupSlug,
+		RepoSlug:         t.repoSlug,
+		Phase:            phase,
+		FilesTotal:       t.filesTotal,
+		FilesDone:        t.filesTotal,
+		EntitiesSoFar:    entitiesSoFar,
+		AlgorithmName:    passName,
 		PhaseStartedAtMS: t.phaseStartedAtMS,
 		TS:               nowMS(),
 	})

@@ -1650,6 +1650,15 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		i.runPass4AlgorithmsWithProgress(doc, trk)
 	}
 
+	// #5334 — surface the flow walkers (process-flow + event-flow) as a
+	// granular "Computing flows…" phase so the CLI/wizard tail no longer
+	// collapses under one "Materializing". One cheap event per the combined
+	// flow stage; the coarse PhaseMaterialize (emitted at buildDocument) is
+	// retained as the fallback band.
+	if !i.skipPasses[PassProcessFlow] || !i.skipPasses[PassEventFlow] {
+		trk.Phase(progress.PhaseComputeFlows, "process+event flows", doc.Stats.Entities)
+	}
+
 	// Pass 7 — process-flow BFS (#724). Runs AFTER all CALLS edges are
 	// finalised (resolver + external synthesis + Pass 4) so the trace
 	// algorithm sees the same graph as downstream consumers. Emits
@@ -1894,6 +1903,13 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	// Properties BEFORE candidate emission, so previously agent-resolved
 	// values are preserved AND emitters skip already-described entities.
 	i.runPass6EmitEnrichmentCandidates(doc, absRepo)
+
+	// #5334 — surface the imminent graph write as a granular "Writing graph…"
+	// phase. The actual graph.fb / sidecar write happens in the Index() caller
+	// once Run returns (trk is out of scope there), so we emit the boundary here
+	// where the document is fully assembled and about to be persisted. Coarse
+	// PhaseMaterialize remains the fallback band.
+	trk.Phase(progress.PhaseWriteGraph, "graph.fb", doc.Stats.Entities)
 
 	// Emit the final done event before the summary log line.
 	trk.Done(len(files), doc.Stats.Entities)
@@ -2449,11 +2465,21 @@ func (i *Indexer) runPass4Algorithms(doc *graph.Document) {
 func (i *Indexer) runPass4AlgorithmsWithProgress(doc *graph.Document, trk *progress.Tracker) {
 	entityCount := doc.Stats.Entities
 
+	// #5334 — surface the two real algorithm passes as granular phases so the
+	// CLI and wizard show "Building communities…" then "Computing centrality…"
+	// instead of one coarse "Running algorithms". RunAlgorithms is a single
+	// combined call (we don't rewire the individual algorithms), so we emit the
+	// community-detection label at entry and the centrality label once the
+	// combined pass has produced its results. The coarse PhaseAlgorithms
+	// AlgorithmEvent is retained as a fallback for any consumer still keyed on
+	// it.
 	if trk != nil {
 		trk.AlgorithmEvent("Louvain+PageRank+Betweenness", entityCount)
+		trk.Phase(progress.PhaseBuildCommunities, "Louvain", entityCount)
 	}
 	res := graph.RunAlgorithms(doc.Entities, doc.Relationships)
 	if trk != nil {
+		trk.Phase(progress.PhaseComputeCentrality, "PageRank+Betweenness", entityCount)
 		trk.AlgorithmEvent("ArticulationPoints+SurpriseEdges", entityCount)
 	}
 
