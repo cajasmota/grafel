@@ -15,6 +15,27 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   disambiguation candidates when ambiguous instead of a hard `entity not found`
   — fixes a ~35% error rate on name-based calls
   ([#5314](https://github.com/cajasmota/grafel/issues/5314)).
+- **Windows (end-to-end, from user feedback):** the MCP bridge now dials the
+  daemon via `transport.Dial`, selecting the named pipe on Windows (was a
+  hardcoded AF_UNIX `net.Dial("unix", ...)`), so `/mcp` can connect; the offline
+  stub also always carries a valid `inputSchema` so a connection failure surfaces
+  clearly instead of as a cryptic Zod rejection (Refs [#856](https://github.com/cajasmota/grafel/issues/856)).
+- **Windows (end-to-end, from user feedback):** `grafel install` no longer aborts
+  on a clean install — `schtasks` Unload now checks existence via the exit-code
+  based `IsLoaded()` instead of matching English-only error text (worked around a
+  localized "cannot find the file" on non-English Windows) (Refs [#856](https://github.com/cajasmota/grafel/issues/856)).
+- **Windows (end-to-end, from user feedback):** the task user SID is now resolved
+  via the native `os/user` API instead of shelling out to `whoami /user`, which a
+  PATH-shadowing MSYS/Git Bash `whoami` could break; an empty SID degrades to a
+  conditional (omitted) `<UserId>` instead of invalid task XML (Refs [#856](https://github.com/cajasmota/grafel/issues/856)).
+- **Windows (end-to-end, from user feedback):** the watcher PID registry now
+  creates its state directory before taking the lock, fixing a non-fatal
+  "system cannot find the path specified" on a fresh `%AppData%\grafel`
+  (Refs [#856](https://github.com/cajasmota/grafel/issues/856)).
+- **Windows (end-to-end, from user feedback):** cross-repo link passes now fall
+  back to copying `graph.json`/`graph.fb` into the staging dir when `os.Symlink`
+  fails for lack of `SeCreateSymbolicLinkPrivilege`, so cross-repo edges are no
+  longer silently 0 without Developer Mode/admin (Refs [#856](https://github.com/cajasmota/grafel/issues/856)).
 
 ---
 
