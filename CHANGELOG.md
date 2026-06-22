@@ -10,6 +10,15 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Changed
 
+- **Un-deprecated `grafel_expand` / `grafel_find_callers` / `grafel_find_callees`
+  — they are first-class tools again (Refs #5386):** live MCP usage metrics show
+  these are actively used (`find_callers` 16 calls) and agents reach for the
+  explicit names over `grafel_neighbors(direction=…)` (2 calls). The
+  "Deprecated…" framing is removed from their tool descriptions and the
+  handshake instructions; all tools (including `grafel_neighbors`) are kept and
+  fully functional. The `node`→`entity_id` param alias on `grafel_expand`
+  (#1916) is unaffected.
+
 - **Graph algorithms now run once per GROUP via a debounced/capped/background
   scheduler; the per-repo algorithm pass is removed (Refs #5355, #5349):**
   communities, PageRank, betweenness, god-nodes and articulation points are now

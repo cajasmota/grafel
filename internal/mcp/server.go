@@ -70,7 +70,7 @@ const mcpInstructions = `grafel: a code knowledge-graph over your indexed repos 
 CONVENTIONS
 - entity_id/source/target accept an id, qualified_name, OR a bare label.
 - Output is token-budgeted; pass verbose / token_budget / max_results for more.
-- Defaults to cwd repo at HEAD; widen with cross_repo=true or group/ref. Each tool's inputSchema documents its params. Deprecated: expand, find_callers, find_callees - use neighbors.
+- Defaults to cwd repo at HEAD; widen with cross_repo=true or group/ref. Each tool's inputSchema documents its params.
 
 PICK A TOOL BY INTENT
 - Find code: find (semantic "where is X?"); search_entities (substring); get_source (by id|qname|label); inspect (entity + calls/called_by).
@@ -529,7 +529,7 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_inspect", s.handleGetNode))
 
 	s.addTool(mcpapi.NewTool("grafel_expand",
-		mcpapi.WithDescription("Deprecated alias of grafel_neighbors. Returns neighbors of entity_id."),
+		mcpapi.WithDescription("Neighbors of an entity (both directions). Alias of grafel_neighbors."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		// 'node' kept as a deprecated alias for one release cycle (#1916).
 		mcpapi.WithString("node"),
@@ -1038,9 +1038,8 @@ func (s *Server) registerTools() {
 	), s.wrap("grafel_neighbors", s.handleNeighbors))
 
 	// verbose=true (default false) read from request map to stay under token ceiling.
-	// Deprecated alias for grafel_neighbors(direction=in) (#1753).
 	s.addTool(mcpapi.NewTool("grafel_find_callers",
-		mcpapi.WithDescription("Deprecated: use grafel_neighbors(direction=in). Inbound callers."),
+		mcpapi.WithDescription("Inbound callers of an entity (who calls it). grafel_neighbors(direction=in)."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
@@ -1050,9 +1049,8 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("grafel_find_callers", s.handleFindCallers))
 
-	// Deprecated alias for grafel_neighbors(direction=out) (#1753).
 	s.addTool(mcpapi.NewTool("grafel_find_callees",
-		mcpapi.WithDescription("Deprecated: use grafel_neighbors(direction=out). Outbound callees."),
+		mcpapi.WithDescription("Outbound callees of an entity (what it calls). grafel_neighbors(direction=out)."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),

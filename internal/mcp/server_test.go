@@ -3440,8 +3440,8 @@ func TestMCPInstructionsOrientationMap(t *testing.T) {
 	}
 
 	// (2) cross-cutting conventions: the id|qualified_name|label form and the
-	// deprecated-tool steer toward neighbors.
-	for _, want := range []string{"qualified_name", "bare label", "Deprecated", "neighbors"} {
+	// neighbors navigation tool.
+	for _, want := range []string{"qualified_name", "bare label", "neighbors"} {
 		if !strings.Contains(mcpInstructions, want) {
 			t.Errorf("instructions missing convention marker %q", want)
 		}
