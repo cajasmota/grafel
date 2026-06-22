@@ -3,13 +3,16 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
-	"net"
+	"fmt"
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/cajasmota/grafel/internal/daemon/transport"
 )
 
 // mockDaemonService is a minimal RPC service that stands in for the real
@@ -37,19 +40,38 @@ func (m *mockDaemonService) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCal
 	return nil
 }
 
-// startMockDaemon starts a net/rpc JSON-RPC 1.0 server on a temp Unix socket
-// and returns the socket path and the mock service (for inspecting captured
-// fields after calls). The caller must invoke stop() to clean up.
+// startMockDaemon starts a net/rpc JSON-RPC 1.0 server on the
+// platform-appropriate IPC transport (Unix-domain socket on Linux/macOS, named
+// pipe on Windows) and returns the listen address and the mock service (for
+// inspecting captured fields after calls). The caller must invoke stop() to
+// clean up.
 //
-// macOS caps Unix socket paths at 104 bytes so we use os.MkdirTemp (shorter
-// names than t.TempDir()) to avoid EINVAL on long test names.
+// The mock MUST listen via the same transport abstraction the production bridge
+// dials with (transport.Dial in getRPCClient). Previously it listened on a raw
+// AF_UNIX socket while the bridge dialed a named pipe on Windows, so the two
+// never connected and the tools/call tests failed on Windows CI (test.yml
+// regression introduced by the transport.Dial switch in #5320). Going through
+// transport.Listen/transport.Dial keeps listen and dial in agreement on every
+// OS.
+//
+// On Unix, macOS caps socket paths at 104 bytes so we use os.MkdirTemp (shorter
+// names than t.TempDir()) to avoid EINVAL on long test names. On Windows the
+// address is a named-pipe path of the form \\.\pipe\<name>, which has no
+// path-length restriction; we make it unique per call via stubPipeSeq.
 func startMockDaemon(t *testing.T) (socketPath string, mock *mockDaemonService, stop func()) {
 	t.Helper()
-	tmp, err := os.MkdirTemp("", "agbr")
-	if err != nil {
-		t.Fatalf("MkdirTemp: %v", err)
+
+	var tmp string
+	if runtime.GOOS == "windows" {
+		socketPath = fmt.Sprintf(`\\.\pipe\agbr-%d`, stubPipeSeq(t))
+	} else {
+		var err error
+		tmp, err = os.MkdirTemp("", "agbr")
+		if err != nil {
+			t.Fatalf("MkdirTemp: %v", err)
+		}
+		socketPath = filepath.Join(tmp, "d.sock")
 	}
-	socketPath = filepath.Join(tmp, "d.sock")
 
 	mock = &mockDaemonService{}
 	srv := rpc.NewServer()
@@ -57,9 +79,9 @@ func startMockDaemon(t *testing.T) (socketPath string, mock *mockDaemonService, 
 		t.Fatalf("register mock: %v", err)
 	}
 
-	l, err := net.Listen("unix", socketPath)
+	l, err := transport.Listen(socketPath)
 	if err != nil {
-		t.Fatalf("listen: %v", err)
+		t.Fatalf("listen %s: %v", socketPath, err)
 	}
 
 	done := make(chan struct{})
@@ -77,7 +99,9 @@ func startMockDaemon(t *testing.T) (socketPath string, mock *mockDaemonService, 
 	stop = func() {
 		l.Close()
 		<-done
-		os.RemoveAll(tmp)
+		if tmp != "" {
+			os.RemoveAll(tmp)
+		}
 	}
 	return socketPath, mock, stop
 }
@@ -190,8 +214,21 @@ func TestBridge_ToolsCall(t *testing.T) {
 	}
 }
 
+// unreachableAddr returns a transport-valid address that nothing is listening
+// on, so transport.Dial fails fast and the bridge falls back to its offline
+// stub. On Unix this is a nonexistent socket path; on Windows it is a
+// named-pipe path with no listener (a Unix-style path is not a valid pipe
+// address, so we must use the pipe form to exercise the real "daemon
+// unreachable" path rather than an address-parse error).
+func unreachableAddr() string {
+	if runtime.GOOS == "windows" {
+		return `\\.\pipe\agbr-nonexistent`
+	}
+	return "/nonexistent/daemon.sock"
+}
+
 func TestBridge_DaemonNotRunning_ToolsList(t *testing.T) {
-	b := &bridge{socketPath: "/nonexistent/daemon.sock"}
+	b := &bridge{socketPath: unreachableAddr()}
 	req := rpc2Request{JSONRPC: "2.0", ID: 1, Method: "tools/list"}
 	resp := b.handle(req)
 	// Should return a stub (not an error) — offline mode.
@@ -210,7 +247,7 @@ func TestBridge_DaemonNotRunning_ToolsList(t *testing.T) {
 }
 
 func TestBridge_DaemonNotRunning_ToolsCall(t *testing.T) {
-	b := &bridge{socketPath: "/nonexistent/daemon.sock"}
+	b := &bridge{socketPath: unreachableAddr()}
 	params, _ := json.Marshal(map[string]any{"name": "grafel_whoami"})
 	req := rpc2Request{JSONRPC: "2.0", ID: 1, Method: "tools/call", Params: params}
 	resp := b.handle(req)
@@ -221,7 +258,7 @@ func TestBridge_DaemonNotRunning_ToolsCall(t *testing.T) {
 }
 
 func TestBridge_Notification_NoResponse(t *testing.T) {
-	b := &bridge{socketPath: "/nonexistent/daemon.sock"}
+	b := &bridge{socketPath: unreachableAddr()}
 	req := rpc2Request{JSONRPC: "2.0", Method: "notifications/initialized"}
 	resp := b.handle(req)
 	if resp != nil {
@@ -230,7 +267,7 @@ func TestBridge_Notification_NoResponse(t *testing.T) {
 }
 
 func TestBridge_UnknownMethod(t *testing.T) {
-	b := &bridge{socketPath: "/nonexistent/daemon.sock"}
+	b := &bridge{socketPath: unreachableAddr()}
 	req := rpc2Request{JSONRPC: "2.0", ID: 1, Method: "unknown/method"}
 	resp := b.handle(req)
 	if resp.Error == nil {
