@@ -46,7 +46,14 @@ func send(m tea.Model, msg tea.Msg) tea.Model {
 }
 
 func newTestModel(d Driver, idx IndexFunc) Model {
-	m := New(d, idx, true, true)
+	m := New(d, idx, true, true, nil)
+	return m.update(tea.WindowSizeMsg{Width: 100, Height: 40})
+}
+
+// newTestModelMCP builds a model WITH detected MCP tools so the
+// "Configure MCP for which tools?" screen is exercised (#5344).
+func newTestModelMCP(d Driver, idx IndexFunc, mcp []MCPToolOption) Model {
+	m := New(d, idx, true, true, mcp)
 	return m.update(tea.WindowSizeMsg{Width: 100, Height: 40})
 }
 
@@ -203,6 +210,58 @@ func TestAddGroupFlow(t *testing.T) {
 	}
 	if m.res.AddToGroup != "existing" {
 		t.Errorf("AddToGroup = %q, want existing", m.res.AddToGroup)
+	}
+}
+
+// TestMCPScreenShownWhenMultipleTools: with >1 detected tool, the docs step
+// advances to the MCP picker (not straight to index), and confirming the
+// picker carries the selection into Result.MCPTools (#5344).
+func TestMCPScreenShownWhenMultipleTools(t *testing.T) {
+	d := fakeDriver{suggested: ActionSingle, cands: []Candidate{
+		{Label: "/repo", Value: "/repo", Selected: true},
+	}}
+	mcp := []MCPToolOption{
+		{ID: "claude", DisplayName: "Claude Code", DefaultSelected: true},
+		{ID: "cursor", DisplayName: "Cursor", DefaultSelected: false},
+	}
+	m := newTestModelMCP(d, nilIndex, mcp)
+	m = m.update(key("enter")) // action → select
+	m = m.update(key("enter")) // select → name
+	m = m.update(key("enter")) // name → docs
+	m = m.update(key("enter")) // docs → MCP (not index, because 2 tools)
+	if m.scr != scrMCP {
+		t.Fatalf("after docs enter, scr = %v, want scrMCP", m.scr)
+	}
+	// claude is default-checked; confirm as-is.
+	m = m.update(key("enter")) // confirm MCP → index
+	if m.scr != scrIndex {
+		t.Fatalf("after MCP enter, scr = %v, want scrIndex", m.scr)
+	}
+	if m.res.MCPTools == nil {
+		t.Fatal("MCPTools not set after the picker")
+	}
+	if got := *m.res.MCPTools; len(got) != 1 || got[0] != "claude" {
+		t.Errorf("MCPTools = %v, want [claude]", got)
+	}
+}
+
+// TestMCPScreenSkippedWhenSingleTool: with exactly 1 detected tool, the picker
+// is skipped and that tool is auto-selected (#5344).
+func TestMCPScreenSkippedWhenSingleTool(t *testing.T) {
+	d := fakeDriver{suggested: ActionSingle, cands: []Candidate{
+		{Label: "/repo", Value: "/repo", Selected: true},
+	}}
+	mcp := []MCPToolOption{{ID: "claude", DisplayName: "Claude Code", DefaultSelected: true}}
+	m := newTestModelMCP(d, nilIndex, mcp)
+	m = m.update(key("enter")) // action → select
+	m = m.update(key("enter")) // select → name
+	m = m.update(key("enter")) // name → docs
+	m = m.update(key("enter")) // docs → index (MCP skipped: only 1 tool)
+	if m.scr != scrIndex {
+		t.Fatalf("after docs enter, scr = %v, want scrIndex (single tool auto-used)", m.scr)
+	}
+	if m.res.MCPTools == nil || len(*m.res.MCPTools) != 1 || (*m.res.MCPTools)[0] != "claude" {
+		t.Errorf("MCPTools = %v, want [claude] auto-selected", m.res.MCPTools)
 	}
 }
 

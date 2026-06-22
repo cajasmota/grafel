@@ -42,11 +42,32 @@ export function useScanInspect() {
   });
 }
 
+/**
+ * Detect the MCP-capable AI tools + the smart-default selection for the wizard's
+ * "Configure MCP for which tools?" step (#5344). Gated by `enabled` so the fetch
+ * only runs while the wizard is open in create mode.
+ */
+export function useMCPToolsDetect(enabled: boolean) {
+  return useQuery({
+    queryKey: ["mcp-tools-detect"],
+    queryFn: () => api.detectMCPTools(),
+    enabled,
+    staleTime: 30_000,
+  });
+}
+
 /** Create-group-from-scan: create + register + enqueue index job. Returns a JobAck. */
 export function useCreateGroupFromScan() {
   return useMutation({
-    mutationFn: ({ name, repos }: { name: string; repos: WizardRepo[] }) =>
-      api.createGroupFromScan(name, repos),
+    mutationFn: ({
+      name,
+      repos,
+      mcpTools,
+    }: {
+      name: string;
+      repos: WizardRepo[];
+      mcpTools?: string[];
+    }) => api.createGroupFromScan(name, repos, mcpTools),
   });
 }
 

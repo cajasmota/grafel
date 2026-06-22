@@ -8,6 +8,23 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Added
+
+- **The wizard (CLI + web) now lets you choose which AI tools get the grafel
+  MCP server (#5344):** instead of auto-registering the grafel MCP entry in
+  every detected AI tool (Claude Code, Cursor, Windsurf, Codex, Kiro,
+  Antigravity), the setup wizard adds a "Configure MCP for which tools?" step
+  that lists the detected tools and lets you pick. The default is a smart
+  pre-selection — a tool is checked when its MCP config was modified recently
+  (within ~30 days) **or** already contains a grafel entry — and the wizard
+  **remembers your last choice** (persisted to `~/.grafel/mcp-tools.json`),
+  defaulting to it on subsequent runs. The step is skipped automatically when
+  ≤1 tool is detected. For scripting, `grafel wizard --mcp-tools=claude,cursor`
+  registers exactly those tools and `--no-mcp` registers none; without either
+  flag, non-interactive runs keep today's behavior (register every detected
+  tool) so existing scripts are unaffected
+  ([#5344](https://github.com/cajasmota/grafel/issues/5344)).
+
 ### Fixed
 
 - **Daemon startup no longer deadlocks when `canonicalizePath`'s `os.ReadDir`

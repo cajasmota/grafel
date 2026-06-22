@@ -584,3 +584,41 @@ func writeSettings(path string, doc map[string]any) error {
 	}
 	return os.Rename(tmp, path)
 }
+
+// HasGrafelEntry reports whether the config file at path already contains a
+// grafel MCP server entry. It is format-aware (JSON mcpServers.grafel for the
+// JSON hosts, the [mcp_servers.grafel] table for Codex TOML) and never errors:
+// a missing/unreadable/malformed file simply reports false. Used by the wizard
+// tool detector to pre-check tools that were previously configured (#5344).
+func HasGrafelEntry(path string) bool {
+	if isTOML(path) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return false
+		}
+		_, present := stripGrafelBlock(string(raw))
+		return present
+	}
+	doc, err := readSettings(path)
+	if err != nil {
+		return false
+	}
+	servers, _ := doc["mcpServers"].(map[string]any)
+	if servers == nil {
+		return false
+	}
+	_, ok := servers[ServerName]
+	return ok
+}
+
+// ConfigModTime returns the last-modified time of the tool's MCP config file,
+// and whether that file currently exists. A missing file yields (zero, false).
+// Used by the wizard tool detector to compute the "recently used" smart
+// default (#5344).
+func ConfigModTime(path string) (time.Time, bool) {
+	info, err := os.Stat(path)
+	if err != nil {
+		return time.Time{}, false
+	}
+	return info.ModTime(), true
+}

@@ -50,6 +50,7 @@ import {
   useScanReposIntoGroup,
   useWizardJob,
   useFsList,
+  useMCPToolsDetect,
 } from "@/hooks/use-wizard";
 import { useIndexProgress } from "@/hooks/use-index-progress";
 import { aggregateProgress, overallPhaseLabel } from "@/lib/index-progress-fold";
@@ -61,12 +62,19 @@ import {
   defaultActionFor,
   type WizardAction,
 } from "@/lib/wizard-action";
+import {
+  defaultSelectedIds,
+  shouldShowMCPStep,
+  autoMCPSelection,
+} from "@/lib/mcp-tools-default";
 import { cn } from "@/lib/utils";
 
 // Action-first flow (#5336): the wizard now opens on an action choice (single /
 // group / monorepo / add-to-group) — parity with the CLI wizard — before the
 // folder picker. The chosen action tunes the Detect step's labels and defaults.
-type WizardStep = "action" | "pick" | "detect" | "index";
+// "mcp" — choose which AI tools get the grafel MCP server (#5344). Create mode
+// only; skipped when ≤1 MCP-capable tool is detected.
+type WizardStep = "action" | "pick" | "detect" | "mcp" | "index";
 
 export interface ScanWizardProps {
   open: boolean;
@@ -107,6 +115,22 @@ export function ScanWizard(props: ScanWizardProps) {
   // repos, the user picks WHICH ones to index; each is registered as its own
   // repo (its absolute sub-path). Default: all children checked.
   const [selectedChildren, setSelectedChildren] = useState<Set<string>>(new Set());
+
+  // MCP-tools selection (#5344). Which AI tools get the grafel MCP server. Only
+  // relevant in create mode; defaulted from the detector's smart (B+C) defaults
+  // once the detect query resolves. `mcpInitialized` ensures we seed the default
+  // exactly once (so a user's unchecks aren't clobbered by a refetch).
+  const [selectedMCPTools, setSelectedMCPTools] = useState<Set<string>>(new Set());
+  const [mcpInitialized, setMcpInitialized] = useState(false);
+  const mcpDetect = useMCPToolsDetect(open && mode === "create");
+  const mcpTools = mcpDetect.data?.tools ?? [];
+
+  // Seed the default MCP selection from the detector's B+C defaults, once.
+  useEffect(() => {
+    if (mcpInitialized || !mcpDetect.data) return;
+    setSelectedMCPTools(new Set(defaultSelectedIds(mcpDetect.data.tools)));
+    setMcpInitialized(true);
+  }, [mcpDetect.data, mcpInitialized]);
 
   // Server-side folder browser (#1529). `browseDir` is the directory currently
   // being listed; null defaults to the daemon's home dir. `null` while the
@@ -154,6 +178,8 @@ export function ScanWizard(props: ScanWizardProps) {
     setJobId(null);
     setSelectedPkgs(new Set());
     setSelectedChildren(new Set());
+    setSelectedMCPTools(new Set());
+    setMcpInitialized(false);
     setBrowseDir(null);
     inspect.reset();
     createFromScan.reset();
@@ -215,8 +241,25 @@ export function ScanWizard(props: ScanWizardProps) {
     }
   }
 
+  // proceedFromDetect decides what comes after the Detect step (#5344). In
+  // create mode, when more than one MCP-capable tool is detected, show the MCP
+  // picker; otherwise (add-repo mode, or ≤1 tool) skip straight to indexing,
+  // auto-using the single detected tool's selection.
+  function proceedFromDetect() {
+    if (mode === "create" && shouldShowMCPStep(mcpTools)) {
+      setStep("mcp");
+      return;
+    }
+    // ≤1 tool (or add-repo mode): auto-use. In create mode a single tool is
+    // pre-checked; add-repo mode leaves the selection undefined (back-compat).
+    const sel = mode === "create" ? autoMCPSelection(mcpTools) : undefined;
+    void runIndex(sel);
+  }
+
   // --- Step 3: create/register + index ---
-  async function runIndex() {
+  // mcpToolsSel (#5344): the chosen MCP tool IDs to register (create mode);
+  // undefined preserves back-compat (register every detected tool / add-repo).
+  async function runIndex(mcpToolsSel?: string[]) {
     if (!scan?.valid) return;
     // Build the repo list based on what was detected:
     //   1. Child git repos (multi-repo-parent, #1531 follow-up): each selected
@@ -247,7 +290,7 @@ export function ScanWizard(props: ScanWizardProps) {
     try {
       if (mode === "create") {
         if (!nameSlug || nameDuplicate) return;
-        const ack = await createFromScan.mutateAsync({ name: nameSlug, repos });
+        const ack = await createFromScan.mutateAsync({ name: nameSlug, repos, mcpTools: mcpToolsSel });
         setJobId(ack.job_id);
       } else {
         const ack = await scanRepos.mutateAsync(repos);
@@ -326,6 +369,7 @@ export function ScanWizard(props: ScanWizardProps) {
           {step === "action" && "What do you want to index?"}
           {step === "pick" && "Point Grafel at a repository folder on this machine."}
           {step === "detect" && "Review what we detected, then start indexing."}
+          {step === "mcp" && "Choose which AI tools get the grafel MCP server."}
           {step === "index" && "Indexing in progress — you can leave this open."}
         </DialogDescription>
 
@@ -335,6 +379,8 @@ export function ScanWizard(props: ScanWizardProps) {
             ...(mode === "create" ? [{ id: "action" as WizardStep, label: "Action" }] : []),
             { id: "pick", label: "Pick" },
             { id: "detect", label: "Detect" },
+            // The MCP step only appears in create mode (#5344).
+            ...(mode === "create" ? [{ id: "mcp" as WizardStep, label: "MCP" }] : []),
             { id: "index", label: "Index" },
           ];
           return (
@@ -808,11 +854,90 @@ export function ScanWizard(props: ScanWizardProps) {
                   (scan.packages.length > 0 && selectedPkgs.size === 0) ||
                   (mode === "create" && (!nameSlug || nameDuplicate))
                 }
-                onClick={() => void runIndex()}
+                onClick={() => (mode === "create" ? proceedFromDetect() : void runIndex())}
                 data-testid="wizard-index"
               >
                 {indexing ? <Loader2 size={13} className="animate-spin" /> : null}
-                {mode === "create" ? "Create & index" : "Add & index"}
+                {/* In create mode the next step may be the MCP picker, so the
+                    label is action-neutral; add-repo goes straight to indexing. */}
+                {mode === "create"
+                  ? shouldShowMCPStep(mcpTools)
+                    ? "Next"
+                    : "Create & index"
+                  : "Add & index"}
+              </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Step 2b — choose which AI tools get the grafel MCP server (#5344).
+            Create mode only; reached when >1 MCP-capable tool is detected. The
+            defaults are the detector's smart (recently-used / previously-
+            configured / remembered) selection. */}
+        {step === "mcp" && (
+          <div className="mt-4 space-y-4" data-testid="wizard-mcp">
+            <p className="text-sm text-text-3">Your AI agents that can query this graph.</p>
+            {mcpDetect.isLoading ? (
+              <div className="flex items-center gap-2 p-3 text-sm text-text-3">
+                <Loader2 size={14} className="animate-spin" /> Detecting tools…
+              </div>
+            ) : mcpTools.length === 0 ? (
+              <p className="text-sm text-text-4">No AI tools detected on this machine.</p>
+            ) : (
+              <ul className="max-h-64 overflow-y-auto rounded-lg border border-border bg-surface divide-y divide-border/60">
+                {mcpTools.map((t) => {
+                  const checked = selectedMCPTools.has(t.id);
+                  return (
+                    <li key={t.id}>
+                      <button
+                        type="button"
+                        role="checkbox"
+                        aria-checked={checked}
+                        className={cn(
+                          "flex w-full items-center gap-2 px-3 py-2 text-left text-sm hover:bg-surface-2",
+                          checked ? "text-text-2" : "text-text-4",
+                        )}
+                        onClick={() =>
+                          setSelectedMCPTools((prev) => {
+                            const next = new Set(prev);
+                            if (next.has(t.id)) next.delete(t.id);
+                            else next.add(t.id);
+                            return next;
+                          })
+                        }
+                        data-testid="wizard-mcp-tool"
+                        data-tool={t.id}
+                        data-checked={checked}
+                      >
+                        {checked ? (
+                          <CheckSquare size={15} className="shrink-0 text-accent-strong" />
+                        ) : (
+                          <Square size={15} className="shrink-0 text-text-4" />
+                        )}
+                        <span className="min-w-0 flex-1 truncate">{t.displayName}</span>
+                        {t.hasGrafel && (
+                          <Badge tone="neutral" className="shrink-0 text-[10px]">
+                            configured
+                          </Badge>
+                        )}
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <div className="flex justify-between gap-2 pt-1">
+              <Button type="button" variant="ghost" onClick={() => setStep("detect")}>
+                Back
+              </Button>
+              <Button
+                type="button"
+                disabled={indexing}
+                onClick={() => void runIndex([...selectedMCPTools])}
+                data-testid="wizard-mcp-next"
+              >
+                {indexing ? <Loader2 size={13} className="animate-spin" /> : null}
+                Create &amp; index
               </Button>
             </div>
           </div>

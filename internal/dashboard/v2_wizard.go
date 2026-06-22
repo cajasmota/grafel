@@ -33,6 +33,7 @@ package dashboard
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -41,6 +42,9 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install/detect"
+	"github.com/cajasmota/grafel/internal/install/mcpreg"
+	"github.com/cajasmota/grafel/internal/install/mcptools"
+	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -107,6 +111,25 @@ type v2WizardRepo struct {
 type v2FromScanReq struct {
 	Name  string         `json:"name"`
 	Repos []v2WizardRepo `json:"repos"`
+	// MCPTools, when non-nil, is the user's choice of which AI tools get the
+	// grafel MCP server (#5344). nil = back-compat (register every detected
+	// tool); empty = none; [ids] = exactly those. Mirrors the CLI wizard step.
+	MCPTools *[]string `json:"mcpTools,omitempty"`
+}
+
+// v2MCPToolStatus is one detected MCP-capable tool in the detect response,
+// mirroring the MCPToolStatus type in webui-v2/src/data/types.ts (#5344).
+type v2MCPToolStatus struct {
+	ID              string `json:"id"`
+	DisplayName     string `json:"displayName"`
+	HasGrafel       bool   `json:"hasGrafel"`
+	DefaultSelected bool   `json:"defaultSelected"`
+}
+
+// v2MCPToolsDetectReply is the GET /api/v2/mcp-tools/detect payload: the detected
+// MCP-capable tools with the B+C computed default selection.
+type v2MCPToolsDetectReply struct {
+	Tools []v2MCPToolStatus `json:"tools"`
 }
 
 // v2ScanReposReq is the body for POST /api/v2/groups/{group}/repos/scan.
@@ -213,6 +236,28 @@ func (s *Server) handleV2ScanInspect(w http.ResponseWriter, r *http.Request) {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// GET /api/v2/mcp-tools/detect — detected MCP tools + B+C default selection
+// ─────────────────────────────────────────────────────────────────────────────
+
+// handleV2DetectMCPTools returns the detected MCP-capable AI tools and the
+// smart-default (B) / remembered-last-choice (C) selection so the web wizard's
+// "Configure MCP for which tools?" step can render its checkboxes (#5344). It
+// performs NO writes.
+func (s *Server) handleV2DetectMCPTools(w http.ResponseWriter, _ *http.Request) {
+	detected := mcptools.Detect()
+	tools := make([]v2MCPToolStatus, 0, len(detected))
+	for _, t := range detected {
+		tools = append(tools, v2MCPToolStatus{
+			ID:              t.ID,
+			DisplayName:     t.DisplayName,
+			HasGrafel:       t.HasGrafel,
+			DefaultSelected: t.DefaultSelected,
+		})
+	}
+	writeV2JSON(w, http.StatusOK, v2OK(v2MCPToolsDetectReply{Tools: tools}))
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // POST /api/v2/groups/from-scan — create group + register repos + index
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -248,8 +293,58 @@ func (s *Server) handleV2CreateGroupFromScan(w http.ResponseWriter, r *http.Requ
 		return
 	}
 
+	// 2b. Register the grafel MCP server in the selected AI tools (#5344). A nil
+	// selection preserves back-compat (register every detected tool); an empty
+	// selection registers none. The chosen set is remembered (C) for next time.
+	registerWizardMCP(req.MCPTools)
+
 	// 3. Enqueue the async index job (reuses the #1512 actionJob infra).
 	s.enqueueWizardIndex(w, req.Name)
+}
+
+// registerWizardMCP registers the grafel MCP server in the tools the wizard
+// selected (#5344), mirroring install.Apply's MCP step but driven by the web
+// wizard's choice. sel semantics: nil = every detected MCP-capable tool
+// (back-compat); empty = none; [ids] = exactly those. The chosen set is
+// persisted via mcptools.SaveLastChoice so a later run defaults to it (C).
+// Per-tool failures are best-effort (an uninstalled tool is skipped); the group
+// is already created and will index regardless.
+func registerWizardMCP(sel *[]string) {
+	bin, _ := os.Executable()
+
+	// Resolve the target tool IDs. nil → all detected MCP-capable tools.
+	var ids []string
+	if sel == nil {
+		for _, t := range mcptools.Detect() {
+			ids = append(ids, t.ID)
+		}
+	} else {
+		ids = *sel
+	}
+
+	want := make(map[string]bool, len(ids))
+	for _, id := range ids {
+		want[id] = true
+	}
+	for _, a := range tooladapter.All() {
+		if !a.SupportsMCP() || !want[a.ID()] {
+			continue
+		}
+		tool := a.MCPTool()
+		if tool == "" {
+			continue
+		}
+		if _, err := mcpreg.Register(tool, bin, ""); err != nil && !errors.Is(err, os.ErrNotExist) {
+			// Non-fatal: log via auditor-free best effort. The group still indexes.
+			continue
+		}
+	}
+
+	// Remember the explicit choice (C). nil means "no explicit choice" — don't
+	// clobber a prior remembered selection.
+	if sel != nil {
+		_ = mcptools.SaveLastChoice(*sel)
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────

@@ -14,6 +14,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/detect"
+	"github.com/cajasmota/grafel/internal/install/mcptools"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -31,6 +32,8 @@ func newWizardCmd() *cobra.Command {
 		agentHooks     bool
 		runInstall     bool
 		noIndex        bool
+		mcpToolsCSV    string
+		noMCP          bool
 	)
 	cmd := &cobra.Command{
 		Use:   "wizard",
@@ -52,6 +55,17 @@ func newWizardCmd() *cobra.Command {
 				NoIndex:        noIndex,
 				ErrOut:         cmd.ErrOrStderr(),
 			}
+			// Resolve the MCP-tools selection from flags (#5344). --no-mcp wins
+			// and registers none; --mcp-tools=a,b registers exactly those; with
+			// neither flag the selection stays nil (interactive prompt, or
+			// back-compat "all detected" in non-interactive mode).
+			if noMCP {
+				none := []string{}
+				opts.MCPTools = &none
+			} else if cmd.Flags().Changed("mcp-tools") {
+				ids := splitCSV(mcpToolsCSV)
+				opts.MCPTools = &ids
+			}
 			return runWizard(out, opts)
 		},
 	}
@@ -67,6 +81,8 @@ func newWizardCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&agentHooks, "agent-hooks", false, "opt-in: install the Claude Code PreToolUse grep-interceptor hook that nudges toward grafel on structural greps (advisory-only, never blocks; Claude Code only)")
 	cmd.Flags().BoolVar(&runInstall, "install", true, "run install at the end")
 	cmd.Flags().BoolVar(&noIndex, "no-index", false, "skip indexing the group at the end (default: index with live progress; requires a running daemon)")
+	cmd.Flags().StringVar(&mcpToolsCSV, "mcp-tools", "", "comma-separated AI tool IDs to register the grafel MCP server in (e.g. claude,cursor); skips the interactive picker. Without this flag (and without --no-mcp), interactive runs prompt and non-interactive runs register every detected tool")
+	cmd.Flags().BoolVar(&noMCP, "no-mcp", false, "do not register the grafel MCP server in any AI tool")
 	return cmd
 }
 
@@ -81,7 +97,12 @@ type wizardOptions struct {
 	AgentHooks          bool
 	RunInstall          bool
 	NoIndex             bool
-	ErrOut              io.Writer // stderr sink for warnings; nil → os.Stderr
+	// MCPTools, when non-nil, is the resolved selection of AI tool IDs to
+	// register the grafel MCP server in (#5344): nil = no explicit choice
+	// (prompt interactively, or all-detected non-interactively), empty = none,
+	// [ids] = exactly those. Set from --mcp-tools / --no-mcp.
+	MCPTools *[]string
+	ErrOut   io.Writer // stderr sink for warnings; nil → os.Stderr
 }
 
 // errWriter returns the configured stderr sink, defaulting to os.Stderr.
@@ -214,9 +235,20 @@ func finishWizard(out io.Writer, cfg *registry.GroupConfig, opts wizardOptions) 
 		cfg.GroupDocs = opts.GroupDocs
 	}
 
+	// Step 4b — choose which AI tools get the grafel MCP server (#5344). Only
+	// prompt interactively when no explicit selection was passed via flags. The
+	// non-interactive path leaves opts.MCPTools as-is (nil → all detected).
+	if opts.MCPTools == nil && !opts.NonInteractive {
+		sel, err := promptMCPTools()
+		if err != nil {
+			return err
+		}
+		opts.MCPTools = sel
+	}
+
 	// Steps 5-7 — persist + register + manifests + install. Shared with the
 	// non-interactive `group add` command via applyGroupConfig.
-	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall}); err != nil {
+	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: opts.MCPTools}); err != nil {
 		return err
 	}
 
@@ -233,6 +265,43 @@ func finishWizard(out io.Writer, cfg *registry.GroupConfig, opts wizardOptions) 
 		return nil
 	}
 	return maybeIndexGroup(out, opts.errWriter(), cfg.Name, opts.NoIndex)
+}
+
+// promptMCPTools runs the non-TTY (huh) MCP-tools picker (#5344). It returns a
+// non-nil selection of tool IDs to register the grafel MCP server in, defaulted
+// per the B+C heuristic (recently-used / previously-configured checked,
+// remembered last choice overriding). When ≤1 tool is detected the picker is
+// skipped and the detected set is auto-used (nil when none are detected, which
+// preserves the all-detected back-compat behaviour downstream).
+func promptMCPTools() (*[]string, error) {
+	tools := mcptools.Detect()
+	if len(tools) == 0 {
+		return nil, nil // nothing detected — keep back-compat (register all)
+	}
+	if len(tools) == 1 {
+		sel := []string{tools[0].ID}
+		return &sel, nil
+	}
+	opts := make([]huh.Option[string], 0, len(tools))
+	for _, t := range tools {
+		label := t.DisplayName
+		if t.HasGrafel {
+			label += " (configured)"
+		}
+		opts = append(opts, huh.NewOption(label, t.ID).Selected(t.DefaultSelected))
+	}
+	selected := mcptools.DefaultSelection(tools)
+	if err := huh.NewMultiSelect[string]().
+		Title("Configure MCP for which tools?").
+		Description("Your AI agents that can query this graph.\n" + navHintMulti).
+		Options(opts...).
+		Height(wizardListHeight(len(tools))).
+		Value(&selected).
+		WithTheme(wizardTheme()).
+		Run(); err != nil {
+		return nil, err
+	}
+	return &selected, nil
 }
 
 // maybeIndexGroup indexes group with live progress unless noIndex is set. A
@@ -262,6 +331,11 @@ type groupApplyOptions struct {
 	SkipWatchers bool
 	SkipMCP      bool
 	SkipRules    bool
+	// MCPTools, when non-nil, restricts MCP registration to the named tool
+	// adapter IDs — the wizard's "choose which AI tools get the grafel MCP"
+	// selection (#5344). nil preserves today's behaviour (all enabled tools);
+	// an empty slice registers none. Threaded straight into install.Options.
+	MCPTools *[]string
 }
 
 // applyGroupConfig persists the group config, registers it in the global
@@ -300,9 +374,18 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 		SkipWatchers:   ga.SkipWatchers,
 		SkipMCP:        ga.SkipMCP,
 		SkipRulesFiles: ga.SkipRules,
+		MCPTools:       ga.MCPTools,
 	})
 	if err != nil {
 		return nil, err
+	}
+	// Remember the chosen MCP tools so a later wizard run defaults to them (C,
+	// #5344). Only persist when a concrete selection was made (non-nil); a nil
+	// selection means "no explicit choice" and must not clobber a prior one.
+	if ga.MCPTools != nil {
+		if perr := mcptools.SaveLastChoice(*ga.MCPTools); perr != nil {
+			fmt.Fprintf(out, "warning: could not remember MCP tool choice: %v\n", perr)
+		}
 	}
 	fmt.Fprintf(out, "installed %d hooks, %d watchers, %d MCP entries\n",
 		len(res.HooksInstalled), len(res.WatcherUnits), len(res.MCPSettings))

@@ -1416,6 +1416,24 @@ export interface WizardRepo {
   modules?: string[];
 }
 
+/**
+ * One detected MCP-capable AI tool offered in the wizard's "Configure MCP for
+ * which tools?" step (#5344). Mirrors v2MCPToolStatus in internal/dashboard.
+ */
+export interface MCPToolStatus {
+  id: string;
+  displayName: string;
+  /** The tool's config already contains a grafel entry (shown as "configured"). */
+  hasGrafel: boolean;
+  /** The smart (recently-used / previously-configured / remembered) default. */
+  defaultSelected: boolean;
+}
+
+/** Reply from GET /api/v2/mcp-tools/detect (#5344). */
+export interface MCPToolsDetectReply {
+  tools: MCPToolStatus[];
+}
+
 /* ------------------------------------------------------------------ *
  * Real-time per-repo / per-MODULE indexing progress (#1527). Streamed as
  * SSE `progress` events from GET /api/index-progress/:group. Mirrors the Go

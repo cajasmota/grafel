@@ -56,6 +56,7 @@ import type {
   UpdateApplyReply,
   ScanInspectReply,
   WizardRepo,
+  MCPToolsDetectReply,
   FsListReply,
   ModuleAnalysisResponse,
   GroupRefsResponse,
@@ -193,13 +194,22 @@ export const api = {
     }),
 
   /**
+   * GET /api/v2/mcp-tools/detect — list the detected MCP-capable AI tools with
+   * the smart-default (recently-used / previously-configured) selection so the
+   * wizard's "Configure MCP for which tools?" step can render checkboxes (#5344).
+   */
+  detectMCPTools: () => requestV2<MCPToolsDetectReply>("/mcp-tools/detect"),
+
+  /**
    * POST /api/v2/groups/from-scan — create a group, register the scanned repos,
    * and enqueue an async index job. Returns a 202 JobAck the wizard streams.
+   * `mcpTools` (#5344): when provided, registers the grafel MCP server in exactly
+   * those tool IDs (empty = none); omit for back-compat (every detected tool).
    */
-  createGroupFromScan: (name: string, repos: WizardRepo[]) =>
+  createGroupFromScan: (name: string, repos: WizardRepo[], mcpTools?: string[]) =>
     requestV2<JobAck>("/groups/from-scan", {
       method: "POST",
-      body: JSON.stringify({ name, repos }),
+      body: JSON.stringify(mcpTools === undefined ? { name, repos } : { name, repos, mcpTools }),
     }),
 
   /**

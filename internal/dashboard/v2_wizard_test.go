@@ -284,6 +284,53 @@ func TestV2CreateGroupFromScan_RequiresRepos(t *testing.T) {
 	}
 }
 
+// TestV2DetectMCPTools returns the detected MCP-capable tools with the smart
+// default (#5344). HOME is redirected to an isolated dir holding one Claude
+// config so the detector sees exactly one tool, default-checked (recent).
+func TestV2DetectMCPTools(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(home, ".config"))
+	// A fresh ~/.claude.json (recent mtime) → detected + default-checked.
+	if err := os.WriteFile(filepath.Join(home, ".claude.json"), []byte(`{"mcpServers":{}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ts, _ := newWizardTestServer(t, func(proto.RebuildArgs) (proto.RebuildReply, error) {
+		return proto.RebuildReply{}, nil
+	})
+	resp, err := http.Get(ts.URL + "/api/v2/mcp-tools/detect")
+	if err != nil {
+		t.Fatalf("GET mcp-tools/detect: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d; want 200", resp.StatusCode)
+	}
+	var env struct {
+		OK   bool                  `json:"ok"`
+		Data v2MCPToolsDetectReply `json:"data"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&env); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if !env.OK {
+		t.Fatalf("not ok: %+v", env)
+	}
+	var claude *v2MCPToolStatus
+	for i := range env.Data.Tools {
+		if env.Data.Tools[i].ID == "claude" {
+			claude = &env.Data.Tools[i]
+		}
+	}
+	if claude == nil {
+		t.Fatalf("claude not detected; tools=%+v", env.Data.Tools)
+	}
+	if !claude.DefaultSelected {
+		t.Errorf("claude (recent config) should be default-selected: %+v", *claude)
+	}
+}
+
 // jsonQuote quotes a string for safe embedding in a JSON literal.
 func jsonQuote(s string) string {
 	b, _ := json.Marshal(s)

@@ -43,6 +43,19 @@ type Options struct {
 	// either the explicit option OR the persisted feature flag enables it.
 	// CLAUDE CODE ONLY; advisory-only; never blocks.
 	InstallAgentHooks bool
+	// MCPTools, when non-nil, restricts MCP registration to the named tool
+	// adapter IDs (e.g. {"claude","cursor"}) — the wizard's "choose which AI
+	// tools get the grafel MCP server" selection (#5344). Semantics:
+	//
+	//   - nil   → back-compat: register every enabled MCP-supporting tool
+	//             (today's behaviour; existing non-interactive callers).
+	//   - []    → register NONE (the --no-mcp / "none selected" case).
+	//   - [ids] → register exactly the listed tools (filtered to the enabled
+	//             MCP-supporting set; unknown/non-MCP IDs are ignored).
+	//
+	// The filter is by adapter ID, applied on top of the enabled-tools set, so
+	// a tool the group config doesn't enable is never registered even if named.
+	MCPTools *[]string
 }
 
 // Result reports what an Apply call did so the CLI can print a summary.
@@ -225,7 +238,15 @@ func Apply(opts Options) (*Result, error) {
 		if err != nil {
 			return nil, err
 		}
-		for _, tool := range enabledMCPTools(adaptersForRepo) {
+		// The wizard MCP-tools selection (#5344) filters the enabled
+		// MCP-supporting adapters by ID before registration. A nil selection
+		// preserves today's behaviour (every enabled tool); a non-nil one —
+		// including an empty slice (register none) — is honoured exactly.
+		mcpAdapters := adaptersForRepo
+		if opts.MCPTools != nil {
+			mcpAdapters = filterAdaptersByID(adaptersForRepo, *opts.MCPTools)
+		}
+		for _, tool := range enabledMCPTools(mcpAdapters) {
 			if opts.DryRun {
 				p, _ := mcpreg.SettingsPath(tool)
 				res.MCPSettings = append(res.MCPSettings, p)
@@ -274,6 +295,24 @@ func enabledRulesTargets(adapters []tooladapter.Adapter) []string {
 				out = append(out, t)
 				delete(want, t)
 			}
+		}
+	}
+	return out
+}
+
+// filterAdaptersByID keeps only the adapters whose ID is in the selected set,
+// preserving registry order. Used by the wizard MCP-tools selection (#5344) so
+// MCP registration targets exactly the tools the user chose. An empty selection
+// yields no adapters (register none).
+func filterAdaptersByID(adapters []tooladapter.Adapter, selected []string) []tooladapter.Adapter {
+	want := make(map[string]bool, len(selected))
+	for _, id := range selected {
+		want[id] = true
+	}
+	var out []tooladapter.Adapter
+	for _, a := range adapters {
+		if want[a.ID()] {
+			out = append(out, a)
 		}
 	}
 	return out
