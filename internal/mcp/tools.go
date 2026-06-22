@@ -2842,6 +2842,12 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	totals["is_indexing"] = ix.IsIndexing
 	if ix.IsIndexing {
 		totals["indexing_in_flight"] = ix.InFlight
+		// #5349 A3: surface an in-flight group-scope algorithm pass so a
+		// coordinator can tell the daemon is busy recomputing communities /
+		// centrality over the union, not just reindexing a repo.
+		if ix.GroupAlgoInFlight > 0 {
+			totals["group_algo_in_flight"] = ix.GroupAlgoInFlight
+		}
 		if !ix.StartedAt.IsZero() {
 			totals["indexing_started_at"] = ix.StartedAt.UTC().Format(time.RFC3339)
 		}

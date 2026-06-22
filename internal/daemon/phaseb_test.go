@@ -91,9 +91,9 @@ func TestPhaseB_FileWriteTriggersReindex(t *testing.T) {
 			indexedCh <- p
 			return nil
 		},
-		SchedulerLinks: func(_ context.Context, _ string) error { return nil },
-		SchedulerAlgo:  func(_ context.Context, _ string) error { return nil },
-		GroupsForRepo:  func(_ string) []string { return nil },
+		SchedulerLinks:     func(_ context.Context, _ string) error { return nil },
+		SchedulerGroupAlgo: func(_ context.Context, _ string) error { return nil },
+		GroupsForRepo:      func(_ string) []string { return nil },
 	}
 
 	_, cleanup := runDaemonWithPhaseBForTest(t, []string{repo}, cfg)
@@ -148,9 +148,9 @@ func TestPhaseB_RapidWritesCoalesce(t *testing.T) {
 			mu.Unlock()
 			return nil
 		},
-		SchedulerLinks: func(_ context.Context, _ string) error { return nil },
-		SchedulerAlgo:  func(_ context.Context, _ string) error { return nil },
-		GroupsForRepo:  func(_ string) []string { return nil },
+		SchedulerLinks:     func(_ context.Context, _ string) error { return nil },
+		SchedulerGroupAlgo: func(_ context.Context, _ string) error { return nil },
+		GroupsForRepo:      func(_ string) []string { return nil },
 	}
 
 	_, cleanup := runDaemonWithPhaseBForTest(t, []string{repo}, cfg)
@@ -200,10 +200,10 @@ func TestPhaseB_StatusRPCReflectsWatcher(t *testing.T) {
 		Rebuild: func(_ proto.RebuildArgs) ([]string, string, error) {
 			return nil, "", nil
 		},
-		SchedulerIndex: func(_ context.Context, _ string, _ string) error { return nil },
-		SchedulerLinks: func(_ context.Context, _ string) error { return nil },
-		SchedulerAlgo:  func(_ context.Context, _ string) error { return nil },
-		GroupsForRepo:  func(_ string) []string { return nil },
+		SchedulerIndex:     func(_ context.Context, _ string, _ string) error { return nil },
+		SchedulerLinks:     func(_ context.Context, _ string) error { return nil },
+		SchedulerGroupAlgo: func(_ context.Context, _ string) error { return nil },
+		GroupsForRepo:      func(_ string) []string { return nil },
 	}
 	_, cleanup := runDaemonWithPhaseBForTest(t, []string{repo}, cfg)
 	defer cleanup()

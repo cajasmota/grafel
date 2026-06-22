@@ -4,13 +4,15 @@
 // pool, then schedules:
 //
 //   - a debounced cross-repo link recompute per group (10s),
-//   - optionally, a debounced graph-algorithm pass per repo (30s) — only
-//     when GRAFEL_EAGER_ALGO=true (S2 of #2149). By default the algo
-//     pass is suppressed here; rank-sensitive MCP tools trigger it on-demand
-//     via the algo.Cache path instead.
+//   - a debounced GROUP-scope graph-algorithm pass (30s), chained off the
+//     SUCCESS path of the link pass (#5349 A3, epic #5350). Algorithms now run
+//     ONCE over the assembled group union — so cross-repo edges are finally
+//     seen — and write the <group>-algo.json overlay. This replaces the old
+//     per-repo algo pass (a single-repo group is the degenerate one-repo
+//     union). N repo reindexes → 1 link pass → 1 group-algo pass.
 //
-// The link recompute and algorithm pass run via caller-supplied callbacks so
-// the scheduler stays free of extractor + graph package dependencies.
+// The link recompute and group-algorithm pass run via caller-supplied callbacks
+// so the scheduler stays free of extractor + graph package dependencies.
 //
 // Concurrency cap (post-#644): the scheduler now applies RSS-budget
 // admission control on top of the worker pool. Before a queued job
@@ -72,10 +74,14 @@ type RefCaptureFn func(repoPath string) string
 // LinksFn re-runs the cross-repo link passes for a group.
 type LinksFn func(ctx context.Context, group string) error
 
-// AlgoFn runs the graph-algorithm pass for a repo (community detection,
-// PageRank, articulation points). It is scheduled after a successful
-// index settles and is cancelled+rescheduled on any further write.
-type AlgoFn func(ctx context.Context, repoPath string) error
+// GroupAlgoFn runs the graph-algorithm pass ONCE over the assembled union of a
+// group's per-repo graphs (community detection, PageRank, betweenness,
+// articulation points) and writes the <group>-algo.json overlay (#5349 A3,
+// epic #5350). It is chained off the SUCCESS path of the link pass — so N repo
+// reindexes coalesce into one link pass and then one group-algo pass — and is
+// cancelled+rescheduled on any further link completion. It replaces the old
+// per-repo AlgoFn: a single-repo group is the degenerate one-repo union.
+type GroupAlgoFn func(ctx context.Context, group string) error
 
 // GroupsForRepoFn returns the group names a repo participates in.
 // Provided by the caller so the scheduler does not import the registry.
@@ -121,14 +127,14 @@ type IncrementalFn func(ctx context.Context, repoPath string, ref string) Increm
 // Config wires the scheduler. All function fields are required; nil
 // causes Enqueue to short-circuit with a logged warning.
 type Config struct {
-	Workers       int           // worker pool size; defaults to 2
-	LinkDebounce  time.Duration // group settling window; defaults to 10s
-	AlgoDebounce  time.Duration // per-repo algo delay; defaults to 30s
-	Index         IndexFn
-	Links         LinksFn
-	Algorithms    AlgoFn
-	GroupsForRepo GroupsForRepoFn
-	Logger        *slog.Logger
+	Workers           int           // worker pool size; defaults to 2
+	LinkDebounce      time.Duration // group settling window; defaults to 10s
+	GroupAlgoDebounce time.Duration // group-algo settling window after a link pass; defaults to 30s
+	Index             IndexFn
+	Links             LinksFn
+	GroupAlgo         GroupAlgoFn
+	GroupsForRepo     GroupsForRepoFn
+	Logger            *slog.Logger
 
 	// BudgetMB caps the total predicted RSS of concurrently running
 	// index jobs (megabytes). 0 disables admission control entirely
@@ -284,18 +290,22 @@ type Scheduler struct {
 	// no lost update (the marker is set AFTER the run snapshots its input, so
 	// a change landing mid-run still triggers the follow-up). N events during
 	// a reindex → 1 follow-up, not N. Guarded by mu.
-	dirty        map[string]bool
-	pendingRefs  map[string]string // repo → ref captured at last Enqueue (overwritten on re-enqueue)
-	pendingQ     []string          // ordered admission queue
-	queueLen     int               // pending + admitted-but-not-yet-running
-	usedMB       int64             // sum of inflight MB
-	linkTimers   map[string]*time.Timer
-	linkPending  map[string]bool
-	algoTimers   map[string]*time.Timer
-	algoPending  map[string]bool
-	algoCancel   map[string]context.CancelFunc
-	indexedRepos map[string]repoStats
-	recentLog    []LogEntry
+	dirty       map[string]bool
+	pendingRefs map[string]string // repo → ref captured at last Enqueue (overwritten on re-enqueue)
+	pendingQ    []string          // ordered admission queue
+	queueLen    int               // pending + admitted-but-not-yet-running
+	usedMB      int64             // sum of inflight MB
+	linkTimers  map[string]*time.Timer
+	linkPending map[string]bool
+	// Per-GROUP algorithm pass (#5349 A3). Mirrors the link timer machinery:
+	// debounce timer + pending flag + in-flight cancel func, all keyed by group.
+	// Replaces the old per-repo algo timers — algorithms now run once over the
+	// assembled group union, chained off link completion.
+	groupAlgoTimers  map[string]*time.Timer
+	groupAlgoPending map[string]bool
+	groupAlgoCancel  map[string]context.CancelFunc
+	indexedRepos     map[string]repoStats
+	recentLog        []LogEntry
 
 	// deadManAt tracks when the pending queue became non-empty with no
 	// admitted jobs. The dead-man goroutine force-admits a job when this
@@ -369,8 +379,8 @@ func New(cfg Config) *Scheduler {
 	if cfg.LinkDebounce <= 0 {
 		cfg.LinkDebounce = 10 * time.Second
 	}
-	if cfg.AlgoDebounce <= 0 {
-		cfg.AlgoDebounce = 30 * time.Second
+	if cfg.GroupAlgoDebounce <= 0 {
+		cfg.GroupAlgoDebounce = groupAlgoDebounceFromEnv()
 	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "sched")
@@ -384,25 +394,25 @@ func New(cfg Config) *Scheduler {
 	algoCap := resolveAlgoCap(cfg.AlgoCap)
 	shutdownCtx, shutdownCancel := context.WithCancel(context.Background())
 	return &Scheduler{
-		cfg:            cfg,
-		logger:         cfg.Logger,
-		enq:            make(chan enqueueRequest, 64),
-		jobs:           make(chan jobToken, cfg.Workers),
-		wake:           make(chan struct{}, 1),
-		stop:           make(chan struct{}),
-		algoSem:        make(chan struct{}, algoCap),
-		inflight:       map[string]int64{},
-		pendingIndex:   map[string]bool{},
-		dirty:          map[string]bool{},
-		pendingRefs:    map[string]string{},
-		linkTimers:     map[string]*time.Timer{},
-		linkPending:    map[string]bool{},
-		algoTimers:     map[string]*time.Timer{},
-		algoPending:    map[string]bool{},
-		algoCancel:     map[string]context.CancelFunc{},
-		indexedRepos:   map[string]repoStats{},
-		shutdownCtx:    shutdownCtx,
-		shutdownCancel: shutdownCancel,
+		cfg:              cfg,
+		logger:           cfg.Logger,
+		enq:              make(chan enqueueRequest, 64),
+		jobs:             make(chan jobToken, cfg.Workers),
+		wake:             make(chan struct{}, 1),
+		stop:             make(chan struct{}),
+		algoSem:          make(chan struct{}, algoCap),
+		inflight:         map[string]int64{},
+		pendingIndex:     map[string]bool{},
+		dirty:            map[string]bool{},
+		pendingRefs:      map[string]string{},
+		linkTimers:       map[string]*time.Timer{},
+		linkPending:      map[string]bool{},
+		groupAlgoTimers:  map[string]*time.Timer{},
+		groupAlgoPending: map[string]bool{},
+		groupAlgoCancel:  map[string]context.CancelFunc{},
+		indexedRepos:     map[string]repoStats{},
+		shutdownCtx:      shutdownCtx,
+		shutdownCancel:   shutdownCancel,
 	}
 }
 
@@ -447,10 +457,10 @@ func (s *Scheduler) Stop() {
 	for _, t := range s.linkTimers {
 		t.Stop()
 	}
-	for _, t := range s.algoTimers {
+	for _, t := range s.groupAlgoTimers {
 		t.Stop()
 	}
-	for _, c := range s.algoCancel {
+	for _, c := range s.groupAlgoCancel {
 		c()
 	}
 }
@@ -503,7 +513,9 @@ func (s *Scheduler) dedupLoop() {
 		case req := <-s.enq:
 			p := req.repoPath
 			s.mu.Lock()
-			s.cancelAlgoLocked(p)
+			// (Per-repo algo cancellation removed in #5349 A3 — the algorithm
+			// pass is now per-group and re-armed off link completion, so a new
+			// repo enqueue no longer needs to cancel a per-repo algo timer.)
 			if _, running := s.inflight[p]; running {
 				// Already running for this repo (#5138): do NOT start a
 				// second concurrent reindex. Mark the repo dirty so that
@@ -697,7 +709,7 @@ func (s *Scheduler) busyLocked() bool {
 	if len(s.inflight) > 0 || s.queueLen > 0 || len(s.pendingQ) > 0 {
 		return true
 	}
-	for _, p := range s.algoPending {
+	for _, p := range s.groupAlgoPending {
 		if p {
 			return true
 		}
@@ -1002,8 +1014,13 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		dur.String()+" peak="+formatMB(observedPeakMB))
 	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur, "peak_heap_mb", observedPeakMB, "alloc_diff_mb", allocDiff)
 
-	// Schedule downstream passes.
-	s.scheduleAlgo(repoPath)
+	// Schedule the downstream cross-repo link pass for each group this repo
+	// belongs to. The group-scope algorithm pass is NOT scheduled here — it is
+	// chained off the SUCCESS path of the link pass (scheduleGroupAlgo, called
+	// from runLinks) so that N repo reindexes coalesce into one link pass and
+	// then exactly one group-algo pass (#5349 A3). The old per-repo algorithm
+	// pass (scheduleAlgo) is removed: a single-repo group is the degenerate
+	// one-repo union, computed by the group pass.
 	if s.cfg.GroupsForRepo != nil {
 		for _, g := range s.cfg.GroupsForRepo(repoPath) {
 			s.scheduleLinks(g)
@@ -1047,116 +1064,127 @@ func (s *Scheduler) runLinks(ctx context.Context, group string) {
 		return
 	}
 	s.logEvent("links_ok", "", group+" "+time.Since(t0).Truncate(time.Millisecond).String())
+
+	// SUCCESS path (#5349 A3): cross-repo phantom edges are now settled in each
+	// repo's graph.fb, so arm the debounced group-scope algorithm pass. Because
+	// scheduleLinks already coalesced a burst of repo reindexes into this one
+	// link pass, chaining the algo pass here means N file saves → 1 link pass →
+	// 1 group-algo pass. Re-arm (cancel previous) on every link completion.
+	s.scheduleGroupAlgo(group)
 }
 
-// eagerAlgoEnabled reports whether the post-reindex automatic algorithm pass
-// is enabled. By default (S2 of #2149) the pass is suppressed; set
-// GRAFEL_EAGER_ALGO=true to restore pre-S2 behaviour.
-func eagerAlgoEnabled() bool {
-	v := os.Getenv("GRAFEL_EAGER_ALGO")
-	return v == "1" || v == "true" || v == "yes"
-}
+// groupAlgoDebounceDefault is the settling window between a successful link
+// pass and the group-scope algorithm pass it triggers. 30s mirrors the old
+// per-repo AlgoDebounce and is comfortably past the link-pass cadence so a
+// burst of repo reindexes lands a single coalesced group-algo pass.
+const groupAlgoDebounceDefault = 30 * time.Second
 
-// scheduleAlgo (re)arms the per-repo algorithm pass timer. Any pending
-// pass is cancelled first; a new pass starts the 30s window over.
-//
-// S2 (#2152): the automatic post-reindex pass is suppressed unless
-// GRAFEL_EAGER_ALGO=true. Rank-sensitive MCP tools trigger the pass
-// on-demand via the algo.Cache path so the post-reindex CPU cost is zero.
-func (s *Scheduler) scheduleAlgo(repoPath string) {
-	if s.cfg.Algorithms == nil {
-		return
+// groupAlgoDebounceFromEnv resolves the group-algo debounce, honoring
+// GRAFEL_GROUP_ALGO_DEBOUNCE (a Go duration string, e.g. "45s"). An unset or
+// unparseable value falls back to groupAlgoDebounceDefault.
+func groupAlgoDebounceFromEnv() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("GRAFEL_GROUP_ALGO_DEBOUNCE")); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
 	}
-	if !eagerAlgoEnabled() {
-		// S2: cancel any pending pass (new write invalidates a previously
-		// scheduled run) but do NOT schedule a new one.
-		s.mu.Lock()
-		s.cancelAlgoLocked(repoPath)
-		s.mu.Unlock()
+	return groupAlgoDebounceDefault
+}
+
+// scheduleGroupAlgo (re)arms the per-GROUP algorithm pass timer. Any pending
+// pass for the group is cancelled first; a new link completion starts the
+// debounce window over. The pass runs once over the assembled group union and
+// writes the <group>-algo.json overlay (A2). It is the replacement for the old
+// per-repo scheduleAlgo: a single-repo group is the degenerate one-repo union.
+func (s *Scheduler) scheduleGroupAlgo(group string) {
+	if s.cfg.GroupAlgo == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.cancelAlgoLocked(repoPath)
-	s.algoPending[repoPath] = true
-	s.algoTimers[repoPath] = time.AfterFunc(s.cfg.AlgoDebounce, func() {
+	s.cancelGroupAlgoLocked(group)
+	s.groupAlgoPending[group] = true
+	s.groupAlgoTimers[group] = time.AfterFunc(s.cfg.GroupAlgoDebounce, func() {
 		s.mu.Lock()
-		s.algoPending[repoPath] = false
-		delete(s.algoTimers, repoPath)
+		s.groupAlgoPending[group] = false
+		delete(s.groupAlgoTimers, group)
 		// Derive the per-run cancel context from shutdownCtx (not
-		// context.Background()) so that when Stop() is called, all in-flight
-		// algo passes receive cancellation — matching the treatment of runIndex
-		// and runLinks. Fixes issue #2493.
+		// context.Background()) so that on Stop() the in-flight group-algo pass
+		// — which may fork a subprocess — receives cancellation. Mirrors runIndex
+		// and runLinks. Fixes the leak class of issue #2493.
 		ctx, cancel := context.WithCancel(s.shutdownCtx)
-		s.algoCancel[repoPath] = cancel
+		s.groupAlgoCancel[group] = cancel
 		s.mu.Unlock()
 
-		s.runAlgo(ctx, repoPath)
+		s.runGroupAlgo(ctx, group)
 
 		s.mu.Lock()
-		delete(s.algoCancel, repoPath)
+		delete(s.groupAlgoCancel, group)
 		s.mu.Unlock()
 	})
 }
 
-// cancelAlgoLocked stops any pending timer or cancels an in-flight
-// algorithm pass for the given repo. MUST be called with s.mu held.
-func (s *Scheduler) cancelAlgoLocked(repoPath string) {
-	if t, ok := s.algoTimers[repoPath]; ok {
+// cancelGroupAlgoLocked stops any pending timer or cancels an in-flight
+// group-algorithm pass for the given group. MUST be called with s.mu held.
+func (s *Scheduler) cancelGroupAlgoLocked(group string) {
+	if t, ok := s.groupAlgoTimers[group]; ok {
 		t.Stop()
-		delete(s.algoTimers, repoPath)
-		s.algoPending[repoPath] = false
+		delete(s.groupAlgoTimers, group)
+		s.groupAlgoPending[group] = false
 	}
-	if c, ok := s.algoCancel[repoPath]; ok {
+	if c, ok := s.groupAlgoCancel[group]; ok {
 		c()
-		delete(s.algoCancel, repoPath)
+		delete(s.groupAlgoCancel, group)
 	}
 }
 
-func (s *Scheduler) runAlgo(ctx context.Context, repoPath string) {
+func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 	// Acquire the concurrency semaphore before starting the CPU/heap-intensive
-	// algorithm pass. This enforces the AlgoCap and prevents all N repos from
-	// running Louvain/PageRank/articulation simultaneously (#2141 root-cause C
-	// / #2140 hyp-2). The acquire is interruptible via ctx so a cancellation
-	// (new write arrives for this repo) doesn't block forever.
-	cap := cap(s.algoSem)
-	s.logger.Info("algo-pass: starting", "repo", repoPath, "cap", cap)
+	// group-algorithm pass. This enforces the AlgoCap and prevents a group pass
+	// from running concurrently with another capped pass (#2141 root-cause C).
+	// The acquire is interruptible via ctx so a cancellation (a new link pass
+	// completes, or daemon shutdown) doesn't block forever.
+	capN := cap(s.algoSem)
+	s.logger.Info("group-algo: starting", "group", group, "cap", capN)
 	select {
 	case s.algoSem <- struct{}{}:
 		// acquired
 	case <-ctx.Done():
-		s.logEvent("algo_cancelled", repoPath, "waiting for algo-sem slot")
+		s.logEvent("group_algo_cancelled", "", group+": waiting for algo-sem slot")
 		return
 	case <-s.stop:
 		return
 	}
 	defer func() { <-s.algoSem }()
 
-	s.logEvent("algo_start", repoPath, fmt.Sprintf("cap=%d", cap))
+	// Surface the in-flight group-algo pass to grafel_stats' is_indexing
+	// (#5349 A3): a coordinator querying the MCP sees the daemon is busy with a
+	// group pass, not just per-repo reindexes. Cleared in the deferred decrement
+	// even on cancel/error.
+	indexstate.GroupAlgoBegin()
+	defer indexstate.GroupAlgoEnd()
+
+	s.logEvent("group_algo_start", "", fmt.Sprintf("%s cap=%d", group, capN))
 	t0 := time.Now()
-	err := s.cfg.Algorithms(ctx, repoPath)
+	err := s.cfg.GroupAlgo(ctx, group)
 	if err != nil {
 		if ctx.Err() != nil {
-			s.logEvent("algo_cancelled", repoPath, "")
+			s.logEvent("group_algo_cancelled", "", group)
 			return
 		}
-		s.logEvent("algo_err", repoPath, err.Error())
-		s.logger.Error("sched: algo failed", "repo", repoPath, "err", err)
+		s.logEvent("group_algo_err", "", group+": "+err.Error())
+		s.logger.Error("sched: group-algo failed", "group", group, "err", err)
 		return
 	}
-	s.mu.Lock()
-	stats := s.indexedRepos[repoPath]
-	stats.LastAlgo = time.Now()
-	stats.AlgoCount++
-	s.indexedRepos[repoPath] = stats
-	s.mu.Unlock()
-	s.logEvent("algo_ok", repoPath, time.Since(t0).Truncate(time.Millisecond).String())
+	s.logEvent("group_algo_ok", "", group+" "+time.Since(t0).Truncate(time.Millisecond).String())
 }
 
 // Snapshot reports current scheduler state for the Status RPC.
 type Snapshot struct {
-	QueueLen     int
-	InFlight     []InFlightJob
+	QueueLen int
+	InFlight []InFlightJob
+	// PendingAlgo lists groups with a debounced GROUP-algo pass armed (#5349
+	// A3). The per-repo algo pass was removed; this is now group-keyed.
 	PendingAlgo  []string
 	PendingLinks []string
 	IndexedRepos []RepoSnapshot
@@ -1207,9 +1235,12 @@ func (s *Scheduler) Snapshot() Snapshot {
 	}
 	// Deterministic ordering — helps both /status output and tests.
 	sort.Slice(out.InFlight, func(i, j int) bool { return out.InFlight[i].Path < out.InFlight[j].Path })
-	for p := range s.algoPending {
-		if s.algoPending[p] {
-			out.PendingAlgo = append(out.PendingAlgo, p)
+	// PendingAlgo now reports pending GROUP-algo passes (#5349 A3): the
+	// per-repo algo pass was removed, so the field carries group names with a
+	// debounced group-algo pass armed.
+	for g := range s.groupAlgoPending {
+		if s.groupAlgoPending[g] {
+			out.PendingAlgo = append(out.PendingAlgo, g)
 		}
 	}
 	sort.Strings(out.PendingAlgo)

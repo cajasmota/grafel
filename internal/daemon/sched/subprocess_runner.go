@@ -186,3 +186,74 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	}
 	return nil
 }
+
+// RunSubprocessGroupAlgo forks `grafel group-algo <group> --write` for one
+// group-scope algorithm pass and waits for it to exit (#5349 A3). Running the
+// pass in a short-lived child isolates the heavy union-graph heap (gonum graph
+// + betweenness scratch, ~300–600MB on a 28k-entity union per plan §2.2) from
+// the daemon: the OS reclaims it on child exit, mirroring the v0.1.1 subprocess
+// indexer (S5). The child writes the <group>-algo.json overlay; the daemon's
+// MCP apply path picks up the fresh overlay by mtime on the next group load.
+//
+// Cancellation: ctx.Done() (daemon shutdown, or a newer link pass superseding
+// this one) sends SIGTERM to the child via exec.CommandContext.
+//
+// The child inherits the daemon's full environment (GRAFEL_HOME /
+// GRAFEL_DAEMON_ROOT) so it resolves the same group config + state dirs and
+// writes the overlay into the same ~/.grafel/groups directory.
+func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logger) error {
+	binary, err := os.Executable()
+	if err != nil {
+		return fmt.Errorf("subprocess-group-algo: resolve binary: %w", err)
+	}
+
+	cmd := exec.CommandContext(ctx, binary, "group-algo", group, "--write")
+	cmd.Env = os.Environ()
+
+	stderrPipe, err := cmd.StderrPipe()
+	if err != nil {
+		return fmt.Errorf("subprocess-group-algo: stderr pipe: %w", err)
+	}
+	// group-algo prints stats to stdout; forward it to the daemon log too.
+	stdoutPipe, err := cmd.StdoutPipe()
+	if err != nil {
+		return fmt.Errorf("subprocess-group-algo: stdout pipe: %w", err)
+	}
+
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("subprocess-group-algo: start: %w", err)
+	}
+	pid := cmd.Process.Pid
+	if logger != nil {
+		logger.Info("subprocess-group-algo: started", "pid", pid, "group", group)
+	}
+
+	drain := func(r interface{ Read([]byte) (int, error) }, tag string, done chan struct{}) {
+		defer close(done)
+		sc := bufio.NewScanner(r)
+		for sc.Scan() {
+			if logger != nil {
+				logger.Info(tag, "pid", pid, "line", sc.Text())
+			}
+		}
+	}
+	stdoutDone := make(chan struct{})
+	stderrDone := make(chan struct{})
+	go drain(stdoutPipe, "[group-algo]", stdoutDone)
+	go drain(stderrPipe, "[group-algo]", stderrDone)
+
+	<-stdoutDone
+	<-stderrDone
+	waitErr := cmd.Wait()
+
+	if waitErr != nil {
+		if ctx.Err() != nil {
+			return fmt.Errorf("subprocess-group-algo: cancelled: %w", ctx.Err())
+		}
+		return fmt.Errorf("subprocess-group-algo: child exit: %w", waitErr)
+	}
+	if logger != nil {
+		logger.Info("subprocess-group-algo: completed", "pid", pid, "group", group)
+	}
+	return nil
+}

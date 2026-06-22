@@ -356,36 +356,28 @@ func TestPythonEmbeddedRelationshipsReachOutput(t *testing.T) {
 // every entity should have community_id/centrality/pagerank populated and the
 // document should expose communities/algorithm_stats. With Pass 4 off, those
 // fields stay nil/empty.
+// TestPass4Algorithms_AttributesPresent is now the REGRESSION GUARD for the
+// #5349 A3 per-repo-pass removal: the per-repo index no longer computes graph
+// algorithms (communities/centrality/pagerank). Those are computed ONCE over
+// the assembled group union by the daemon's group-algo scheduler and applied
+// via the <group>-algo.json overlay at MCP load. So a per-repo index — with or
+// without --skip-pass=algorithms — must NOT populate the per-entity algo
+// attributes or the corpus AlgorithmStats/Communities. The graph.fb schema
+// fields are kept (vestigial, one release) but left at their sentinels.
 func TestPass4Algorithms_AttributesPresent(t *testing.T) {
-	full := runIndexerOn(t, "testdata/crossfile_go", "crossfile_go", nil)
-	skipped := runIndexerOn(t, "testdata/crossfile_go", "crossfile_go", []string{"algorithms"})
-
-	if full.AlgorithmStats == nil {
-		t.Fatal("full run: AlgorithmStats nil")
-	}
-	if len(full.Communities) == 0 {
-		t.Fatal("full run: Communities empty")
-	}
-	withAttrs := 0
-	for _, e := range full.Entities {
-		if e.CommunityID != nil && e.PageRank != nil && e.Centrality != nil {
-			withAttrs++
+	for _, skip := range [][]string{nil, {"algorithms"}} {
+		doc := runIndexerOn(t, "testdata/crossfile_go", "crossfile_go", skip)
+		if doc.AlgorithmStats != nil {
+			t.Errorf("skip=%v: per-repo index should NOT compute AlgorithmStats now (group pass owns it), got %+v", skip, doc.AlgorithmStats)
 		}
-	}
-	if withAttrs == 0 {
-		t.Fatal("full run: no entity has community_id+pagerank+centrality")
-	}
-
-	if skipped.AlgorithmStats != nil {
-		t.Errorf("skipped run: AlgorithmStats should be nil, got %+v", skipped.AlgorithmStats)
-	}
-	if len(skipped.Communities) != 0 {
-		t.Errorf("skipped run: Communities should be empty, got %d", len(skipped.Communities))
-	}
-	for _, e := range skipped.Entities {
-		if e.CommunityID != nil || e.PageRank != nil || e.Centrality != nil {
-			t.Errorf("skipped run: entity %s has algo attrs set", e.ID)
-			break
+		if len(doc.Communities) != 0 {
+			t.Errorf("skip=%v: per-repo Communities should be empty (group pass owns it), got %d", skip, len(doc.Communities))
+		}
+		for _, e := range doc.Entities {
+			if e.CommunityID != nil || e.PageRank != nil || e.Centrality != nil {
+				t.Errorf("skip=%v: entity %s has per-repo algo attrs set; the per-repo pass was removed in #5349 A3", skip, e.ID)
+				break
+			}
 		}
 	}
 }

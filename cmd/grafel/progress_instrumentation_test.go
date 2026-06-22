@@ -146,6 +146,10 @@ func TestIndexerProgress_NoOpPublisher(t *testing.T) {
 
 // TestIndexerProgress_AlgorithmEvents verifies that algorithm events are
 // emitted when Pass 4 runs (i.e. PassGraphAlgo is NOT skipped).
+// TestIndexerProgress_AlgorithmEvents is now the regression guard for the
+// #5349 A3 per-repo-pass removal: the per-repo index no longer runs the graph
+// algorithm pass, so NO PhaseAlgorithms / community / centrality progress
+// events fire during a per-repo index (the group-algo scheduler owns them).
 func TestIndexerProgress_AlgorithmEvents(t *testing.T) {
 	col := &progress.SliceCollector{}
 	idx := newTestIndexer(t, "crossfile_go", nil, "")
@@ -156,24 +160,19 @@ func TestIndexerProgress_AlgorithmEvents(t *testing.T) {
 		t.Fatalf("Run: %v", err)
 	}
 
-	algoEventSeen := false
 	for _, e := range col.Events {
-		if e.Phase == progress.PhaseAlgorithms && e.AlgorithmName != "" {
-			algoEventSeen = true
-			break
+		switch e.Phase {
+		case progress.PhaseAlgorithms, progress.PhaseBuildCommunities, progress.PhaseComputeCentrality:
+			t.Errorf("per-repo index emitted algo phase %q; the per-repo algorithm pass was removed in #5349 A3", e.Phase)
 		}
-	}
-	// At least one AlgorithmEvent (with a named algorithm) must have fired.
-	if !algoEventSeen {
-		t.Error("no named PhaseAlgorithms event emitted; expected AlgorithmEvent with algorithm_name set")
 	}
 }
 
-// TestIndexerProgress_GranularAssemblyPhases verifies that the granular
-// graph-assembly phases (#5334) are emitted during a per-repo index and that
-// they appear in the expected relative order: community detection precedes
-// centrality, both precede the flow walkers, and writing the graph is the last
-// assembly phase before done.
+// TestIndexerProgress_GranularAssemblyPhases verifies the granular
+// graph-assembly phases (#5334) that REMAIN per-repo after the #5349 A3
+// per-repo-algo removal: the flow walkers still run and graph-writing is still
+// the last assembly phase before done. The community/centrality phases no
+// longer fire per-repo (the group-algo scheduler owns them).
 func TestIndexerProgress_GranularAssemblyPhases(t *testing.T) {
 	col := &progress.SliceCollector{}
 	idx := newTestIndexer(t, "crossfile_go", nil, "")
@@ -192,14 +191,18 @@ func TestIndexerProgress_GranularAssemblyPhases(t *testing.T) {
 	}
 
 	required := []string{
-		progress.PhaseBuildCommunities,
-		progress.PhaseComputeCentrality,
 		progress.PhaseComputeFlows,
 		progress.PhaseWriteGraph,
 	}
 	for _, p := range required {
 		if _, ok := firstIdx[p]; !ok {
 			t.Errorf("granular phase %q never emitted (seen: %v)", p, firstIdx)
+		}
+	}
+	// The per-repo algorithm phases must NOT fire anymore (#5349 A3).
+	for _, p := range []string{progress.PhaseBuildCommunities, progress.PhaseComputeCentrality, progress.PhaseAlgorithms} {
+		if _, ok := firstIdx[p]; ok {
+			t.Errorf("per-repo algo phase %q still emitted; removed in #5349 A3", p)
 		}
 	}
 	if t.Failed() {
@@ -213,15 +216,8 @@ func TestIndexerProgress_GranularAssemblyPhases(t *testing.T) {
 				a, firstIdx[a], b, firstIdx[b])
 		}
 	}
-	assertBefore(progress.PhaseBuildCommunities, progress.PhaseComputeCentrality)
-	assertBefore(progress.PhaseComputeCentrality, progress.PhaseComputeFlows)
 	assertBefore(progress.PhaseComputeFlows, progress.PhaseWriteGraph)
 	assertBefore(progress.PhaseWriteGraph, progress.PhaseDone)
-
-	// The coarse PhaseAlgorithms is retained as a fallback and must still fire.
-	if _, ok := firstIdx[progress.PhaseAlgorithms]; !ok {
-		t.Error("coarse PhaseAlgorithms fallback no longer emitted")
-	}
 }
 
 // TestIndexerProgress_SkipAlgorithms verifies that algorithm events are NOT

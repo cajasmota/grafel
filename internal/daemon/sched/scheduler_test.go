@@ -53,49 +53,122 @@ func TestEnqueueDedups(t *testing.T) {
 	}
 }
 
-// TestAlgoDebounceCancelOnWrite verifies that a new Enqueue during the
+// (former TestAlgoDebounceCancelOnWrite — replaced by the group-algo tests
+// below after the per-repo algo pass was removed in #5349 A3.)
+//
+// TestGroupAlgoCoalescesRepoReindexes verifies that a new Enqueue during the
 // algo debounce window cancels the pending algo pass.
-func TestAlgoDebounceCancelOnWrite(t *testing.T) {
-	// This test validates debounce behaviour which requires the eager algo path.
-	t.Setenv("GRAFEL_EAGER_ALGO", "true")
-	var indexCalls atomic.Int32
-	var algoCalls atomic.Int32
+// TestGroupAlgoCoalescesRepoReindexes is the #5349 A3 debounce/coalesce
+// acceptance: 5 rapid repo reindexes in one group collapse to exactly ONE link
+// pass and ONE group-algo pass. The group-algo timer is armed off the link
+// pass's success path, so the link debounce coalesces the reindex burst and the
+// group-algo debounce coalesces on top of that.
+func TestGroupAlgoCoalescesRepoReindexes(t *testing.T) {
+	var (
+		mu             sync.Mutex
+		linkCalls      int
+		groupAlgoCalls int
+	)
+	groupsFor := func(p string) []string {
+		switch p {
+		case "/a", "/b", "/c", "/d", "/e":
+			return []string{"shared"}
+		default:
+			return nil
+		}
+	}
 	s := New(Config{
-		Workers:      1,
-		AlgoDebounce: 500 * time.Millisecond,
-		Index: func(_ context.Context, _ string, _ string) error {
-			indexCalls.Add(1)
+		Workers:           5,
+		LinkDebounce:      80 * time.Millisecond,
+		GroupAlgoDebounce: 80 * time.Millisecond,
+		Index:             func(_ context.Context, _ string, _ string) error { return nil },
+		Links: func(_ context.Context, g string) error {
+			mu.Lock()
+			linkCalls++
+			mu.Unlock()
 			return nil
 		},
-		Algorithms: func(_ context.Context, _ string) error {
-			algoCalls.Add(1)
+		GroupAlgo: func(_ context.Context, g string) error {
+			if g != "shared" {
+				t.Errorf("unexpected group %q", g)
+			}
+			mu.Lock()
+			groupAlgoCalls++
+			mu.Unlock()
 			return nil
 		},
+		GroupsForRepo: groupsFor,
 	})
 	s.Start()
 	defer s.Stop()
 
-	s.Enqueue("/repo")
-	// Wait for the first index to complete and schedule the algo pass.
-	time.Sleep(50 * time.Millisecond)
-	if got := indexCalls.Load(); got < 1 {
-		t.Fatalf("expected first index by now, got %d", got)
+	// 5 rapid reindexes across the group's repos.
+	for _, r := range []string{"/a", "/b", "/c", "/d", "/e"} {
+		s.Enqueue(r)
 	}
-	// Trigger another write 200ms into the 500ms algo window.
-	time.Sleep(200 * time.Millisecond)
-	s.Enqueue("/repo")
-	// The original algo timer would have fired at ~500ms — make sure
-	// it does NOT, because the second Enqueue cancelled it.
-	time.Sleep(400 * time.Millisecond) // now ~650ms past first index
-	if got := algoCalls.Load(); got != 0 {
-		t.Errorf("algo should be cancelled by mid-window write, got %d calls", got)
+
+	// Allow: index burst → link debounce(80ms)+run → group-algo debounce(80ms)+run.
+	time.Sleep(600 * time.Millisecond)
+
+	mu.Lock()
+	gotLinks, gotAlgo := linkCalls, groupAlgoCalls
+	mu.Unlock()
+	if gotLinks != 1 {
+		t.Errorf("expected exactly 1 coalesced link pass, got %d", gotLinks)
 	}
-	// Wait for the rescheduled algo to fire (500ms after 2nd index;
-	// 2nd index ran instantly after 2nd Enqueue at ~250ms mark, so
-	// the rescheduled algo fires at ~750ms after first index).
-	time.Sleep(500 * time.Millisecond)
-	if got := algoCalls.Load(); got != 1 {
-		t.Errorf("expected rescheduled algo to fire exactly once, got %d", got)
+	if gotAlgo != 1 {
+		t.Errorf("expected exactly 1 coalesced group-algo pass, got %d", gotAlgo)
+	}
+}
+
+// TestGroupAlgoReArmsOnNewLinkCompletion verifies the group-algo timer is
+// cancelled+rescheduled when a fresh link pass completes mid-debounce, so two
+// separated reindex bursts still produce a single (latest) group-algo pass per
+// settled window rather than a stale one.
+func TestGroupAlgoReArmsOnNewLinkCompletion(t *testing.T) {
+	var (
+		mu             sync.Mutex
+		groupAlgoCalls int
+	)
+	groupsFor := func(p string) []string {
+		if p == "/a" || p == "/b" {
+			return []string{"shared"}
+		}
+		return nil
+	}
+	s := New(Config{
+		Workers:           2,
+		LinkDebounce:      30 * time.Millisecond,
+		GroupAlgoDebounce: 200 * time.Millisecond,
+		Index:             func(_ context.Context, _ string, _ string) error { return nil },
+		Links:             func(_ context.Context, _ string) error { return nil },
+		GroupAlgo: func(_ context.Context, _ string) error {
+			mu.Lock()
+			groupAlgoCalls++
+			mu.Unlock()
+			return nil
+		},
+		GroupsForRepo: groupsFor,
+	})
+	s.Start()
+	defer s.Stop()
+
+	s.Enqueue("/a")
+	time.Sleep(100 * time.Millisecond) // first link pass done, group-algo armed (200ms)
+	s.Enqueue("/b")                    // second burst → re-arms the group-algo timer
+	time.Sleep(150 * time.Millisecond) // first group-algo timer would have fired (~at 100+200) — but re-armed
+	mu.Lock()
+	mid := groupAlgoCalls
+	mu.Unlock()
+	if mid != 0 {
+		t.Errorf("group-algo fired before the re-armed window settled, got %d", mid)
+	}
+	time.Sleep(400 * time.Millisecond)
+	mu.Lock()
+	got := groupAlgoCalls
+	mu.Unlock()
+	if got != 1 {
+		t.Errorf("expected exactly 1 group-algo pass after settle, got %d", got)
 	}
 }
 
@@ -217,88 +290,80 @@ func TestPerRepoIndexerMutex(t *testing.T) {
 	}
 }
 
-// TestAlgoCapLimitsConcurrency verifies that at most AlgoCap algorithm passes
-// run simultaneously. We use 10 repos and cap at 2 — the concurrently-active
-// count must never exceed 2.
-func TestAlgoCapLimitsConcurrency(t *testing.T) {
-	// Cap test requires the eager path so the scheduler actually fires passes.
-	t.Setenv("GRAFEL_EAGER_ALGO", "true")
-	const numRepos = 10
-	const cap = 2
-
+// TestGroupAlgoCapLimitsConcurrency verifies the group-algo pass acquires the
+// algoSem cap (#5349 A3): with AlgoCap=1, two concurrently-armed group passes
+// (different groups) never overlap. We drive each group via its own repo and
+// gate the GroupAlgo hook so both would-be passes are live at once if uncapped.
+func TestGroupAlgoCapLimitsConcurrency(t *testing.T) {
+	const cap = 1
 	var (
-		mu            sync.Mutex
-		activeAlgo    int
-		maxActiveAlgo int
+		mu        sync.Mutex
+		active    int
+		maxActive int
 	)
-
-	// Gate channel: algo passes block until the test releases them.
 	gate := make(chan struct{})
-	// Count down: when all algo passes have started, close startedAll.
-	startedAll := make(chan struct{})
-	var started atomic.Int32
+	started := make(chan struct{}, 4)
 
-	s := New(Config{
-		Workers:      numRepos, // allow all indexers to run in parallel
-		AlgoDebounce: 10 * time.Millisecond,
-		AlgoCap:      cap,
-		Index: func(_ context.Context, _ string, _ string) error {
+	groupsFor := func(p string) []string {
+		switch p {
+		case "/g1repo":
+			return []string{"g1"}
+		case "/g2repo":
+			return []string{"g2"}
+		default:
 			return nil
-		},
-		Algorithms: func(ctx context.Context, _ string) error {
+		}
+	}
+	s := New(Config{
+		Workers:           4,
+		LinkDebounce:      10 * time.Millisecond,
+		GroupAlgoDebounce: 10 * time.Millisecond,
+		AlgoCap:           cap,
+		Index:             func(_ context.Context, _ string, _ string) error { return nil },
+		Links:             func(_ context.Context, _ string) error { return nil },
+		GroupAlgo: func(ctx context.Context, _ string) error {
 			mu.Lock()
-			activeAlgo++
-			if activeAlgo > maxActiveAlgo {
-				maxActiveAlgo = activeAlgo
+			active++
+			if active > maxActive {
+				maxActive = active
 			}
 			mu.Unlock()
-
-			if started.Add(1) == numRepos {
-				close(startedAll)
-			}
-
-			// Block until the gate opens or the context is cancelled.
+			started <- struct{}{}
 			select {
 			case <-gate:
 			case <-ctx.Done():
 			}
-
 			mu.Lock()
-			activeAlgo--
+			active--
 			mu.Unlock()
 			return nil
 		},
+		GroupsForRepo: groupsFor,
 	})
 	s.Start()
 	defer s.Stop()
 
-	repos := []string{
-		"/repo1", "/repo2", "/repo3", "/repo4", "/repo5",
-		"/repo6", "/repo7", "/repo8", "/repo9", "/repo10",
-	}
-	for _, r := range repos {
-		s.Enqueue(r)
-	}
+	s.Enqueue("/g1repo")
+	s.Enqueue("/g2repo")
 
-	// Wait for all algo passes to at least begin, with a generous timeout.
+	// Wait for the first group-algo pass to enter (the second is blocked on the
+	// cap), then release.
 	select {
-	case <-startedAll:
-	case <-time.After(5 * time.Second):
-		// Not all passes started within timeout — still check the cap.
+	case <-started:
+	case <-time.After(3 * time.Second):
+		t.Fatal("no group-algo pass started")
 	}
-
-	mu.Lock()
-	got := maxActiveAlgo
-	mu.Unlock()
-
-	// Release the gate so the scheduler can drain.
+	time.Sleep(100 * time.Millisecond) // give a second pass a chance to (wrongly) start
 	close(gate)
 
+	mu.Lock()
+	got := maxActive
+	mu.Unlock()
 	if got > cap {
-		t.Errorf("algo cap violated: max concurrent algo passes = %d, want ≤ %d", got, cap)
+		t.Errorf("group-algo cap violated: max concurrent = %d, want ≤ %d", got, cap)
 	}
 	if got < 1 {
-		t.Errorf("no algo passes ran; test may be misconfigured")
+		t.Errorf("no group-algo pass ran; test misconfigured")
 	}
 }
 
@@ -462,6 +527,59 @@ func TestRunLinksUsesShutdownCtx(t *testing.T) {
 	case <-done:
 	case <-time.After(2 * time.Second):
 		t.Error("Stop() did not return after Links callback exited")
+	}
+}
+
+// TestGroupAlgoCancelledOnStop is the #5349 A3 cancel acceptance: a daemon
+// Stop() (SIGTERM) mid group-algo pass cancels the pass's ctx cleanly, the
+// hook observes ctx.Done(), and Stop() returns without a goroutine leak.
+func TestGroupAlgoCancelledOnStop(t *testing.T) {
+	algoStarted := make(chan struct{})
+	algoCtxCancelled := make(chan struct{})
+
+	s := New(Config{
+		Workers:           1,
+		LinkDebounce:      10 * time.Millisecond,
+		GroupAlgoDebounce: 10 * time.Millisecond,
+		Index:             func(_ context.Context, _ string, _ string) error { return nil },
+		Links:             func(_ context.Context, _ string) error { return nil },
+		GroupAlgo: func(ctx context.Context, _ string) error {
+			close(algoStarted)
+			select {
+			case <-ctx.Done():
+				close(algoCtxCancelled)
+				return ctx.Err()
+			case <-time.After(5 * time.Second):
+				return nil
+			}
+		},
+		GroupsForRepo: func(_ string) []string { return []string{"g"} },
+	})
+	s.Start()
+	s.Enqueue("/repo")
+
+	select {
+	case <-algoStarted:
+	case <-time.After(3 * time.Second):
+		t.Fatal("group-algo callback never started")
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.Stop()
+		close(done)
+	}()
+
+	select {
+	case <-algoCtxCancelled:
+		// correct: shutdownCtx cancellation reached the group-algo callback.
+	case <-time.After(2 * time.Second):
+		t.Error("Stop() did not cancel the group-algo callback context")
+	}
+	select {
+	case <-done:
+	case <-time.After(2 * time.Second):
+		t.Error("Stop() did not return after group-algo callback exited")
 	}
 }
 

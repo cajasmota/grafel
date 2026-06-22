@@ -26,7 +26,28 @@ import (
 var (
 	inFlight        atomic.Int64
 	startedUnixNano atomic.Int64
+	// groupAlgoInFlight counts in-flight GROUP-algorithm passes (#5349 A3).
+	// Tracked separately from index jobs so is_indexing reflects a background
+	// group-algo pass without conflating it with a reactive reindex count.
+	groupAlgoInFlight atomic.Int64
 )
+
+// GroupAlgoBegin records the start of a group-algorithm pass. Safe to call from
+// any goroutine; balanced by GroupAlgoEnd (deferred at the call site).
+func GroupAlgoBegin() {
+	if prev := groupAlgoInFlight.Add(1); prev == 1 && inFlight.Load() == 0 {
+		// First activity of an otherwise-idle daemon — stamp the busy-period
+		// start so indexing_started_at is populated for a pure group-algo pass.
+		startedUnixNano.CompareAndSwap(0, time.Now().UnixNano())
+	}
+}
+
+// GroupAlgoEnd records the completion of a group-algorithm pass. Clamped at 0.
+func GroupAlgoEnd() {
+	if n := groupAlgoInFlight.Add(-1); n < 0 {
+		groupAlgoInFlight.Store(0)
+	}
+}
 
 // Set records the current number of in-flight index jobs. It is idempotent and
 // safe to call from any goroutine. On the transition into a busy period
@@ -47,10 +68,14 @@ func Set(n int) {
 
 // Snapshot is a point-in-time view of the indexing state.
 type Snapshot struct {
-	// IsIndexing is true when at least one index job is in flight.
+	// IsIndexing is true when at least one index job OR a group-algorithm pass
+	// is in flight.
 	IsIndexing bool
 	// InFlight is the number of index jobs currently running.
 	InFlight int
+	// GroupAlgoInFlight is the number of group-algorithm passes currently
+	// running (#5349 A3).
+	GroupAlgoInFlight int
 	// StartedAt is the wall-clock start of the current busy period, or the
 	// zero Time when idle.
 	StartedAt time.Time
@@ -60,9 +85,11 @@ type Snapshot struct {
 // goroutine, including an MCP request handler.
 func Get() Snapshot {
 	n := inFlight.Load()
+	ga := groupAlgoInFlight.Load()
 	s := Snapshot{
-		IsIndexing: n > 0,
-		InFlight:   int(n),
+		IsIndexing:        n > 0 || ga > 0,
+		InFlight:          int(n),
+		GroupAlgoInFlight: int(ga),
 	}
 	if started := startedUnixNano.Load(); started > 0 {
 		s.StartedAt = time.Unix(0, started)
