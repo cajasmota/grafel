@@ -98,13 +98,13 @@ func header(current Step, width int) string {
 		case s.step == current:
 			seg = railActiveStyle.Render(s.label)
 		case s.step < current:
-			seg = railDoneStyle.Render("✓ " + s.label)
+			seg = railDoneStyle.Render(g.Check + " " + s.label)
 		default:
 			seg = railPendingStyle.Render(s.label)
 		}
 		rail = append(rail, seg)
 		if i < len(stepRail)-1 {
-			rail = append(rail, railSepStyle.Render("›"))
+			rail = append(rail, railSepStyle.Render(g.RailSep))
 		}
 	}
 	railLine := lipgloss.JoinHorizontal(lipgloss.Center, rail...)
@@ -148,15 +148,30 @@ func frame(current Step, body, hint string, width, height int) string {
 	return lipgloss.JoinVertical(lipgloss.Left, head, renderedBody, foot)
 }
 
-// Common footer hints per screen.
-const (
-	hintList     = "↑/↓ move · enter confirm · / filter · esc back · ctrl-c quit"
-	hintMulti    = "↑/↓ move · space select · a all · n none · enter confirm · / filter · esc back · ctrl-c quit"
-	hintInput    = "type to edit · enter confirm · esc back · ctrl-c quit"
-	hintInputOpt = "optional · enter to skip · esc back · ctrl-c quit"
-	hintIndex    = "indexing… · ctrl-c quit"
-	hintDone     = "enter / q to finish"
-)
+// Common footer hints per screen. These are functions (not consts) because they
+// interpolate the active glyph set (arrows, middot separators, ellipsis), which
+// is chosen at runtime for ASCII-vs-Unicode terminals (#5340).
+func hintList() string {
+	return g.ArrowUp + "/" + g.ArrowDown + " move " + g.MidDot + " enter confirm " + g.MidDot + " / filter " + g.MidDot + " esc back " + g.MidDot + " ctrl-c quit"
+}
+
+func hintMulti() string {
+	return g.ArrowUp + "/" + g.ArrowDown + " move " + g.MidDot + " space select " + g.MidDot + " a all " + g.MidDot + " n none " + g.MidDot + " enter confirm " + g.MidDot + " / filter " + g.MidDot + " esc back " + g.MidDot + " ctrl-c quit"
+}
+
+func hintInput() string {
+	return "type to edit " + g.MidDot + " enter confirm " + g.MidDot + " esc back " + g.MidDot + " ctrl-c quit"
+}
+
+func hintInputOpt() string {
+	return "optional " + g.MidDot + " enter to skip " + g.MidDot + " esc back " + g.MidDot + " ctrl-c quit"
+}
+
+func hintIndex() string {
+	return "indexing" + g.Ellipsis + " " + g.MidDot + " ctrl-c quit"
+}
+
+func hintDone() string { return "enter / q to finish" }
 
 // truncate shortens s to max display columns, appending an ellipsis.
 func truncate(s string, max int) string {
@@ -171,5 +186,5 @@ func truncate(s string, max int) string {
 	if len(runes) > max-1 {
 		runes = runes[:max-1]
 	}
-	return strings.TrimRight(string(runes), " ") + "…"
+	return strings.TrimRight(string(runes), " ") + g.Ellipsis
 }

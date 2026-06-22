@@ -299,7 +299,7 @@ func (m Model) enterSelect() (tea.Model, tea.Cmd) {
 
 	title, cands := m.drv.Candidates(m.res.Action)
 	// Append the rescan entry.
-	cands = append(cands, Candidate{Label: "scan a different folder…", Value: RescanSentinel})
+	cands = append(cands, Candidate{Label: "scan a different folder" + g.Ellipsis, Value: RescanSentinel})
 	m.selectList = newMultiListModel(title, cands)
 	m.selectList.context = "Choose which repositories to include in this group."
 	m.scr = scrSelect
@@ -361,7 +361,7 @@ func (m Model) updateGroupPick(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.res.AddToGroup = m.groupPick.value()
 		// Now pick repos to add.
 		title, cands := m.drv.Candidates(ActionGroup)
-		cands = append(cands, Candidate{Label: "scan a different folder…", Value: RescanSentinel})
+		cands = append(cands, Candidate{Label: "scan a different folder" + g.Ellipsis, Value: RescanSentinel})
 		m.selectList = newMultiListModel(title, cands)
 		m.selectList.context = "Choose which repositories to add to “" + m.res.AddToGroup + "”."
 		m.scr = scrSelect
@@ -460,28 +460,28 @@ func (m Model) View() string {
 	switch m.scr {
 	case scrAction:
 		body = m.actionList.view(m.bodyHeight())
-		hint = hintList
+		hint = hintList()
 	case scrSelect:
 		body = m.selectList.view(m.bodyHeight())
-		hint = hintMulti
+		hint = hintMulti()
 	case scrGroupPick:
 		body = m.groupPick.view(m.bodyHeight())
-		hint = hintList
+		hint = hintList()
 	case scrName:
 		body = m.nameInput.view()
-		hint = hintInput
+		hint = hintInput()
 	case scrDocs:
 		body = m.docsInput.view()
-		hint = hintInputOpt
+		hint = hintInputOpt()
 	case scrIndex:
 		body = m.idx.view()
-		hint = hintIndex
+		hint = hintIndex()
 	case scrDone:
 		body = m.idx.view()
-		hint = hintDone
+		hint = hintDone()
 	}
 	if m.err != "" {
-		body = errStyle.Render("⚠ "+m.err) + "\n\n" + body
+		body = errStyle.Render(g.Warn+" "+m.err) + "\n\n" + body
 	}
 	return frame(m.step, body, hint, m.width, m.height)
 }
