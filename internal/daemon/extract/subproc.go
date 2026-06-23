@@ -133,6 +133,10 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 		ByCrossExt: map[string]int{},
 	}
 
+	// A4 parse-error canary (#5414): accumulate per-language ERROR-node stats
+	// from each parse so the coordinator can compare the run against baseline.
+	canary := treesitter.NewParseErrorCanary()
+
 	crossExtractors := cross.AllExtractors()
 	runExtract := !opts.SkipPasses["extract"]
 	runFramework := !opts.SkipPasses["framework"]
@@ -312,6 +316,10 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 		}
 		if pr, perr := parser.Parse(ctx, content, parseLang); perr == nil && pr != nil {
 			file.Tree = pr.Tree
+			// A4 canary: fold this parse's ERROR-node ratio into the
+			// per-language accumulator (keyed by the classifier language,
+			// not the tsx parse override, so .tsx rolls up under typescript).
+			canary.Observe(cr.Language, pr.ErrorRatio, pr.NodeCount)
 		}
 
 		// Pass 1 — per-language extraction.
@@ -453,6 +461,10 @@ func Run(ctx context.Context, opts SubprocessOptions) error {
 	var ms runtime.MemStats
 	runtime.ReadMemStats(&ms)
 	stats.RSSBytes = ms.Sys
+	// A4 canary: ship the per-language ERROR-node snapshot with the stats.
+	if snap := canary.Snapshot(); len(snap) > 0 {
+		stats.ParseErrors = snap
+	}
 	emit(Envelope{Type: KindStats, Stats: &stats})
 
 	return bw.Flush()

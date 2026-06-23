@@ -21,6 +21,7 @@
 package extract
 
 import (
+	"github.com/cajasmota/grafel/internal/treesitter"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -77,6 +78,11 @@ type BatchStats struct {
 	ByLang     map[string]int `json:"by_lang,omitempty"`
 	ByCrossExt map[string]int `json:"by_cross_ext,omitempty"`
 	RSSBytes   uint64         `json:"rss_bytes"`
+
+	// ParseErrors is the per-language ERROR-node accumulator for the A4
+	// parse-error canary (#5414). Each subprocess reports its node-weighted
+	// per-language error stats; the coordinator merges them across batches.
+	ParseErrors map[string]treesitter.LangErrorStats `json:"parse_errors,omitempty"`
 
 	// Pass1Plumbed counters (issue #2447): track how many files had
 	// FileInput.Pass1Entities non-empty (True) vs empty (False) when

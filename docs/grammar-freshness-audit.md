@@ -136,6 +136,78 @@ The freshness alarm is live as a scheduled GitHub Action plus a small Go tool.
   (e.g. after a catch-up bump). The cron itself reports against the committed
   manifest and does not auto-commit, keeping the Action read-only on the repo.
 
+## 4b. A4 — runtime parse-error-node canary (#5414)
+
+The gold-standard, **version-agnostic** freshness alarm. A2 tells you a grammar's
+upstream has moved; A4 tells you that the bundled grammar is *actually failing to
+parse* the code you index — the direct symptom of unhandled new syntax —
+regardless of any version number.
+
+### What it tracks
+
+tree-sitter is error-tolerant: when it hits syntax it does not recognise it emits
+`ERROR` nodes instead of failing. A per-parse `ErrorRatio = error_nodes /
+total_nodes` already exists on `ParseResult` (`internal/treesitter/parser.go`),
+used today only as a per-file gate (`maxErrorRatio = 0.10`) and an OTel span
+attribute. A4 **aggregates that ratio per language across an index run**,
+node-weighted, and compares it to a baseline:
+
+- For every parse, both the in-process path (`cmd/grafel/index.go`) and the
+  subprocess path (`internal/daemon/extract/subproc.go`) fold the parse's
+  `ErrorRatio` + `NodeCount` into a per-language accumulator
+  (`treesitter.ParseErrorCanary`). `.tsx`/`.jsx` files roll up under
+  `typescript`/`javascript` (keyed by the classifier language, not the tsx parse
+  override).
+- The subprocess path reports its per-language stats in `BatchStats.ParseErrors`;
+  the coordinator (`internal/daemon/extract/coordinator.go`) merges them across
+  batches into `Result.ParseErrors`.
+- Per language the canary records **files parsed, total nodes, error nodes**, and
+  the node-weighted **aggregate error rate** (`error_nodes / total_nodes`).
+
+### Where to read it (the stats surface)
+
+The report is written into the `graph-stats.json` sidecar next to `graph.json`
+(`internal/graph/graph.go` `GraphStatsSidecar`):
+
+- `parse_error_spike` — top-level boolean alarm. `true` ⇒ at least one language
+  spiked vs baseline. Dashboards / a future cron can read this without decoding
+  the full report.
+- `parse_error_canary` — the full `treesitter.CanaryReport`: the thresholds used,
+  the overall `spiked` flag, and a per-language array with `current_rate`,
+  `baseline_rate`, `delta`, `files`, `total_nodes`, `error_nodes`, `spiked`, and a
+  `reason` (`"abs"` or `"rel"`).
+
+On a spike the indexer also logs a `WARN parse-error canary SPIKE language=… …`
+line to stderr at index time, pointing back to this document.
+
+### Baseline + spike detection
+
+- The baseline lives at **`docs/grammar-canary-baseline.json`** (committed
+  source-of-truth) — overridable with `GRAFEL_CANARY_BASELINE`. Its JSON shape is
+  exactly a `Snapshot()` (`{version, by_lang: {lang: {files, total_nodes,
+  error_nodes}}}`), so a known-good run's snapshot can be persisted back as the
+  next baseline. A **missing** baseline file is not an error: a first-ever run
+  records without spiking.
+- A language **spikes** when either test trips (zero-tolerant — a language with no
+  parsed nodes never spikes):
+  - **absolute:** `current_rate − baseline_rate ≥ GRAFEL_CANARY_ABS_DELTA`
+    (default **0.02**, i.e. +2 percentage points). Always applies, including for a
+    first-seen language above the threshold.
+  - **relative:** `current_rate ≥ baseline_rate × GRAFEL_CANARY_REL_FACTOR`
+    (default **2.0**, i.e. doubled). Only applies once the baseline carries
+    ≥ 200 nodes and a non-zero rate, so noise on tiny baselines does not raise
+    false alarms.
+
+### Refreshing the baseline
+
+Because the baseline captures what the **bundled grammars** produce (not any one
+repo), it travels with the grammar, not the indexed code. After a deliberate
+grammar change (e.g. the B1 catch-up bump) or once a spike is confirmed-benign,
+refresh it: take a clean index run's `parse_error_canary.languages[].{total_nodes,
+error_nodes,files}` (or call `treesitter.SaveBaseline`) and commit the updated
+`docs/grammar-canary-baseline.json`. A rising baseline that you accept is how you
+acknowledge "this is the new normal for this grammar."
+
 ## 5. Sequencing (Part D)
 
 1. **B3 (this audit + `grammars.lock`)** ✓ + A1/A2 freshness alarm.

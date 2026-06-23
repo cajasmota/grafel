@@ -22,6 +22,7 @@ import (
 	bazelextract "github.com/cajasmota/grafel/internal/extractors/bazel"
 	configextract "github.com/cajasmota/grafel/internal/extractors/config"
 	"github.com/cajasmota/grafel/internal/resolve"
+	"github.com/cajasmota/grafel/internal/treesitter"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -252,6 +253,11 @@ type Result struct {
 	Subprocesses   int
 	NonFatalErrors []string
 
+	// ParseErrors is the merged per-language ERROR-node accumulator across
+	// every subprocess, for the A4 parse-error canary (#5414). Empty when no
+	// subprocess reported any parse stats.
+	ParseErrors map[string]treesitter.LangErrorStats
+
 	// Pass1Plumbed counters (issue #2447): aggregated from every subprocess.
 	// See BatchStats for full semantics, including heterogeneous-repo
 	// expectations (issue #2464): FalseCount > 0 is normal on multi-language
@@ -375,8 +381,9 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 	stderr = newSyncWriter(stderr)
 
 	res := &Result{
-		ByLang:     map[string]int{},
-		ByCrossExt: map[string]int{},
+		ByLang:      map[string]int{},
+		ByCrossExt:  map[string]int{},
+		ParseErrors: map[string]treesitter.LangErrorStats{},
 	}
 	var mu sync.Mutex
 
@@ -479,6 +486,15 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 					res.PeakRSSBytes = stats.RSSBytes
 				}
 				res.SubprocessRSS = append(res.SubprocessRSS, stats.RSSBytes)
+				// A4 canary: merge this subprocess's per-language ERROR-node
+				// stats into the run total (#5414).
+				for lang, pe := range stats.ParseErrors {
+					agg := res.ParseErrors[lang]
+					agg.Files += pe.Files
+					agg.TotalNodes += pe.TotalNodes
+					agg.ErrorNodes += pe.ErrorNodes
+					res.ParseErrors[lang] = agg
+				}
 				res.Pass1PlumbedTrueCount += stats.Pass1PlumbedTrueCount
 				res.Pass1PlumbedFalseCount += stats.Pass1PlumbedFalseCount
 			}

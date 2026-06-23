@@ -369,6 +369,12 @@ type indexerStats struct {
 	pass1RelsByLang map[string]int
 	pass3RelsByExt  map[string]int
 
+	// parseCanary accumulates per-language ERROR-node stats across the run
+	// for the A4 parse-error canary (#5414). Both the in-process and the
+	// subprocess paths fold their parses in here; the sidecar build runs
+	// baseline-vs-current spike detection on the snapshot.
+	parseCanary *treesitter.ParseErrorCanary
+
 	// PORT-EXT: external-entity synthesis counters (Pass 4.5).
 	extSynth external.Stats
 
@@ -449,6 +455,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		stats: indexerStats{
 			pass1RelsByLang: make(map[string]int),
 			pass3RelsByExt:  make(map[string]int),
+			parseCanary:     treesitter.NewParseErrorCanary(),
 		},
 	}
 	for _, opt := range opts {
@@ -594,6 +601,11 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 			}
 		}
 
+		// A4 parse-error canary (#5414): compute the per-language ERROR-node
+		// report (baseline-vs-current spike detection) once, so it can ride
+		// along in the stats sidecar and a WARN line is logged on a spike.
+		canaryRaw, canarySpiked := idx.buildParseErrorCanary()
+
 		// Sidecar: corpus-level metrics for `grafel doctor` and the future
 		// MCP `graph_stats` tool. Only written when Pass 4 actually ran.
 		if doc.AlgorithmStats != nil {
@@ -608,6 +620,8 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 				GodNodes:           doc.AlgorithmStats.NumGodNodes,
 				ArticulationPoints: doc.AlgorithmStats.NumArticulationPts,
 				RuntimeMS:          doc.AlgorithmStats.RuntimeMS,
+				ParseErrorCanary:   canaryRaw,
+				ParseErrorSpike:    canarySpiked,
 			}
 			if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
 				fmt.Fprintf(os.Stderr, "grafel: sidecar write failed: %v\n", err)
@@ -978,6 +992,9 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		for k, v := range res.ByCrossExt {
 			i.stats.pass3RelsByExt[k] += v
 		}
+		// A4 canary (#5414): fold the coordinator's merged per-language
+		// ERROR-node stats into the run accumulator.
+		i.stats.parseCanary.MergeStats(res.ParseErrors)
 		// Issue #2447: propagate Pass1Plumbed counters from subprocess path.
 		i.stats.pass1PlumbedTrue += res.Pass1PlumbedTrueCount
 		i.stats.pass1PlumbedFalse += res.Pass1PlumbedFalseCount
@@ -2466,6 +2483,62 @@ func carryForwardAlgoAttrs(cur, prev *graph.Document) {
 // centrality, pagerank, is_*-flags) are attached in place; corpus aggregates
 // are appended to the Document and copied into the graph-stats.json sidecar
 // at write time.
+// parseCanaryBaselinePath returns the path to the committed per-language
+// parse-error baseline. GRAFEL_CANARY_BASELINE overrides it; otherwise it is
+// docs/grammar-canary-baseline.json under the grafel source tree (resolved
+// from the running binary's repo when available, else relative to cwd). The
+// baseline travels with the grammar, not the indexed repo, because it captures
+// what the bundled grammars produce — not properties of any one codebase.
+func parseCanaryBaselinePath() string {
+	if p := os.Getenv("GRAFEL_CANARY_BASELINE"); p != "" {
+		return p
+	}
+	return filepath.Join("docs", "grammar-canary-baseline.json")
+}
+
+// buildParseErrorCanary runs the A4 canary (#5414): it snapshots the run's
+// per-language ERROR-node stats, loads the committed baseline, classifies each
+// language for a spike, logs a WARN line per spiking language, and returns the
+// report as raw JSON (for the stats sidecar) plus the top-level spike flag.
+// Returns (nil, false) when nothing was parsed (heuristic-only index) so the
+// sidecar field is simply omitted.
+func (i *Indexer) buildParseErrorCanary() (json.RawMessage, bool) {
+	if i.stats.parseCanary == nil {
+		return nil, false
+	}
+	snap := i.stats.parseCanary.Snapshot()
+	if len(snap) == 0 {
+		return nil, false
+	}
+
+	baselinePath := parseCanaryBaselinePath()
+	baseline, err := treesitter.LoadBaseline(baselinePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "grafel: parse-error canary: baseline load failed: %v\n", err)
+		baseline = nil
+	}
+
+	rep := treesitter.Classify(snap, baseline, treesitter.ThresholdsFromEnv())
+
+	if rep.Spiked {
+		for _, l := range rep.Languages {
+			if !l.Spiked {
+				continue
+			}
+			fmt.Fprintf(os.Stderr,
+				"grafel: WARN parse-error canary SPIKE language=%s current=%.4f baseline=%.4f delta=%.4f reason=%s files=%d nodes=%d (possible unhandled new syntax / stale grammar — see docs/grammar-freshness-audit.md A4)\n",
+				l.Language, l.CurrentRate, l.BaselineRate, l.Delta, l.Reason, l.Files, l.TotalNodes)
+		}
+	}
+
+	raw, mErr := json.Marshal(rep)
+	if mErr != nil {
+		fmt.Fprintf(os.Stderr, "grafel: parse-error canary: marshal failed: %v\n", mErr)
+		return nil, rep.Spiked
+	}
+	return json.RawMessage(raw), rep.Spiked
+}
+
 func (i *Indexer) runPass4Algorithms(doc *graph.Document) {
 	i.runPass4AlgorithmsWithProgress(doc, nil)
 }
@@ -2785,6 +2858,13 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				if pr, perr := i.parser.Parse(ctx, content, parseLang); perr == nil && pr != nil {
 					file.Tree = pr.Tree
 					cf.tree = pr.Tree
+					// A4 canary (#5414): fold this parse's ERROR-node ratio
+					// into the per-language accumulator. Key by the classifier
+					// language (not the tsx parse override) so .tsx/.jsx roll
+					// up under typescript/javascript. Guarded by mu below.
+					mu.Lock()
+					i.stats.parseCanary.Observe(cr.Language, pr.ErrorRatio, pr.NodeCount)
+					mu.Unlock()
 				}
 
 				if !runExtract {
