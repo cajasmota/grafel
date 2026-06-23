@@ -23,6 +23,7 @@ import (
 	"os"
 	"sort"
 
+	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 )
 
@@ -48,6 +49,14 @@ func runGroupAlgo(args []string) int {
 		return 2
 	}
 	group := positional[0]
+
+	// This subcommand is the heavy background analytics child (Louvain +
+	// PageRank + betweenness over the whole group union). Lower its OS
+	// scheduling priority so even its capped cores yield to foreground work —
+	// the v0.1.3 CPU regression starved a consumer's test harness. No-op on
+	// Windows. The GOMAXPROCS cap is applied by the parent (env, default 2);
+	// nice is best-effort self-renice so it holds however the child is spawned.
+	sched.NiceSelf()
 
 	// --diff (#5349 A4): run the differential validator (per-repo-old vs
 	// group-new) and emit a machine-readable JSON report on stdout. It writes

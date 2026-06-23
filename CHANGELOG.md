@@ -9,6 +9,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Fixed
+- **group-algo no longer pins the machine (CPU regression, v0.1.3):** the
+  background group-scope analytics pass (Louvain + PageRank + betweenness over
+  the whole group union) ran at the host's full GOMAXPROCS and re-fired on a
+  30s debounce, so on a 12-core machine it sat at **500–1000% CPU for hours** and
+  starved foreground work. It now runs **capped to 2 cores** (Go `GOMAXPROCS`,
+  env `GRAFEL_GROUP_ALGO_CPU` to override — set `=1` for a single core; was
+  effectively `NumCPU`), **niced (+10 OS priority demotion on Unix, no-op on
+  Windows)** so even those cores yield to a consumer's CI/dev harness, and with a
+  **3-minute debounce** (was 30s, env `GRAFEL_GROUP_ALGO_DEBOUNCE`) so a burst of
+  commits coalesces into one pass instead of re-triggering on nearly every push.
+  The `cap=` start-log now reports the real per-pass core cap, not the semaphore
+  concurrency. Betweenness already self-samples above 8k nodes (K=512 pivots), so
+  no change there; a follow-up may lower K further under the new cap.
 - **Cached group re-applies the group-algo overlay when its file advances (#5403):** `State.Group()` now os.Stats the overlay on the serve path and re-stamps only when the mtime advances past the memoized value, so a recomputed overlay (scheduler or manual `group-algo --write`) takes effect without a daemon restart. Cheap (one stat/query), absence-tolerant. (Scheduler-trigger half for settled groups deferred for live validation.)
 - **Daemon no longer exits on transient `Accept()` errors (#5424):**
   `acceptLoop` previously returned the serve loop on **any** `Accept()` error

@@ -9,9 +9,34 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"strconv"
 	"strings"
 	"sync/atomic"
 )
+
+// groupAlgoGOMAXPROCSDefault is the per-child CPU cap (Go GOMAXPROCS) for the
+// background group-algorithm subprocess. The pass (Louvain + PageRank +
+// betweenness over the whole group union) is the heaviest analytics job the
+// daemon runs. Without a cap the child inherits the daemon's GOMAXPROCS (= host
+// core count) and the Go runtime spins one worker thread per core — the v0.1.3
+// CPU regression where it pinned a 12-core machine at 500–1000% for hours.
+//
+// Default 2 mirrors GRAFEL_EXTRACT_GOMAXPROCS: "the less the better" for a
+// background job. The user can set GRAFEL_GROUP_ALGO_CPU=1 to throttle it to a
+// single core.
+const groupAlgoGOMAXPROCSDefault = 2
+
+// GroupAlgoGOMAXPROCS resolves the GOMAXPROCS cap applied to the group-algo
+// subprocess, honouring GRAFEL_GROUP_ALGO_CPU (a strictly-positive integer; 1
+// is valid). Unset, empty, non-numeric, or <= 0 → groupAlgoGOMAXPROCSDefault.
+func GroupAlgoGOMAXPROCS() int {
+	if raw := strings.TrimSpace(os.Getenv("GRAFEL_GROUP_ALGO_CPU")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	return groupAlgoGOMAXPROCSDefault
+}
 
 // SubprocessIndexEnabled reports whether the daemon should run each
 // reindex job as a short-lived child process (S5 of issue #2155) instead
@@ -208,7 +233,18 @@ func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logg
 	}
 
 	cmd := exec.CommandContext(ctx, binary, "group-algo", group, "--write")
-	cmd.Env = os.Environ()
+	// Bound the child's Go runtime to GroupAlgoGOMAXPROCS() cores (default 2,
+	// env GRAFEL_GROUP_ALGO_CPU) so the background analytics pass cannot scale
+	// its worker pool to the full host core count — the v0.1.3 CPU regression.
+	// GOMAXPROCS is appended last so it wins over any inherited value. Mirrors
+	// the extract subprocess (GRAFEL_EXTRACT_GOMAXPROCS).
+	gomaxprocs := GroupAlgoGOMAXPROCS()
+	cmd.Env = append(os.Environ(), "GOMAXPROCS="+strconv.Itoa(gomaxprocs))
+	// Lower the child's OS scheduling priority (nice +10) so even its capped
+	// cores yield to foreground work (a consumer's CI / dev harness). No-op /
+	// guarded off on platforms without setpriority (e.g. Windows). See
+	// applyGroupAlgoNice (platform-split files).
+	applyGroupAlgoNice(cmd)
 
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {

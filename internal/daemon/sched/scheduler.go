@@ -1074,10 +1074,16 @@ func (s *Scheduler) runLinks(ctx context.Context, group string) {
 }
 
 // groupAlgoDebounceDefault is the settling window between a successful link
-// pass and the group-scope algorithm pass it triggers. 30s mirrors the old
-// per-repo AlgoDebounce and is comfortably past the link-pass cadence so a
-// burst of repo reindexes lands a single coalesced group-algo pass.
-const groupAlgoDebounceDefault = 30 * time.Second
+// pass and the group-scope algorithm pass it triggers. The group-algo pass
+// (Louvain + PageRank + betweenness over the whole group union) is the
+// heaviest background job the daemon runs, so the debounce is deliberately
+// long: a burst of commits/reindexes within the window coalesces into ONE
+// pass instead of re-firing the analytics on nearly every push. Raised from
+// 30s to 180s after a CPU regression (v0.1.3) where back-to-back commits kept
+// re-triggering the pass and pinned a 12-core machine for hours. The window is
+// comfortably past the link-pass cadence. Override with
+// GRAFEL_GROUP_ALGO_DEBOUNCE.
+const groupAlgoDebounceDefault = 180 * time.Second
 
 // groupAlgoDebounceFromEnv resolves the group-algo debounce, honoring
 // GRAFEL_GROUP_ALGO_DEBOUNCE (a Go duration string, e.g. "45s"). An unset or
@@ -1144,7 +1150,12 @@ func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
 	// from running concurrently with another capped pass (#2141 root-cause C).
 	// The acquire is interruptible via ctx so a cancellation (a new link pass
 	// completes, or daemon shutdown) doesn't block forever.
-	capN := cap(s.algoSem)
+	// The semaphore capacity (cap(s.algoSem)) only bounds how many algo passes
+	// may run CONCURRENTLY — it is NOT the CPU draw of a single pass. The actual
+	// core usage of the (subprocess) pass is its GOMAXPROCS. Log that real value
+	// so `cap=` reflects the cores the pass can consume, not the old, misleading
+	// NumCPU/2 concurrency number (the CPU-regression diagnosis confusion).
+	capN := GroupAlgoGOMAXPROCS()
 	s.logger.Info("group-algo: starting", "group", group, "cap", capN)
 	select {
 	case s.algoSem <- struct{}{}:
