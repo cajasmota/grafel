@@ -21,8 +21,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
-	tsdockerfile "github.com/smacker/go-tree-sitter/dockerfile"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -50,7 +49,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	)
 	defer span.End()
 
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		span.SetAttributes(
 			attribute.Int("file_line_count", 0),
 			attribute.Int("entity_count", 0),
@@ -60,12 +59,15 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	}
 
 	// Reuse pre-parsed tree or parse inline.
-	tree := file.Tree
+	tree := file.TSTree
 	if tree == nil {
-		parser := sitter.NewParser()
-		parser.SetLanguage(tsdockerfile.GetLanguage())
+		parser, perr := dockerfileAdapter.NewParser(dockerfileGrammar())
+		if perr != nil {
+			return nil, perr
+		}
+		defer parser.Close()
 		var err error
-		tree, err = parser.ParseCtx(ctx, nil, file.Content)
+		tree, err = parser.Parse(file.Content)
 		if err != nil {
 			return nil, err
 		}
@@ -117,7 +119,7 @@ type dockerfileData struct {
 }
 
 // buildDockerfileEntity walks the CST and returns a single file-level entity.
-func buildDockerfileEntity(root *sitter.Node, file extractor.FileInput) (types.EntityRecord, int) {
+func buildDockerfileEntity(root ts.Node, file extractor.FileInput) (types.EntityRecord, int) {
 	if root == nil {
 		return types.EntityRecord{}, 0
 	}
@@ -233,7 +235,7 @@ func buildProperties(d *dockerfileData) map[string]string {
 
 // collectFrom processes a FROM instruction: accumulates stage metadata and
 // emits an IMPORTS edge (file → base-image).
-func collectFrom(node *sitter.Node, file extractor.FileInput, currentStage *string, d *dockerfileData) {
+func collectFrom(node ts.Node, file extractor.FileInput, currentStage *string, d *dockerfileData) {
 	spec := childByType(node, "image_spec")
 	if spec == nil {
 		return
@@ -288,14 +290,14 @@ func collectFrom(node *sitter.Node, file extractor.FileInput, currentStage *stri
 	})
 }
 
-func collectRun(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+func collectRun(node ts.Node, file extractor.FileInput, d *dockerfileData) {
 	sig := strings.TrimSpace(nodeText(node, file.Content))
 	if sig != "" {
 		d.runCommands = append(d.runCommands, sig)
 	}
 }
 
-func collectCopy(node *sitter.Node, file extractor.FileInput, currentStage string, d *dockerfileData) {
+func collectCopy(node ts.Node, file extractor.FileInput, currentStage string, d *dockerfileData) {
 	sig := strings.TrimSpace(nodeText(node, file.Content))
 	if sig != "" {
 		d.copyInstructions = append(d.copyInstructions, sig)
@@ -335,14 +337,14 @@ func collectCopy(node *sitter.Node, file extractor.FileInput, currentStage strin
 	}
 }
 
-func collectAdd(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+func collectAdd(node ts.Node, file extractor.FileInput, d *dockerfileData) {
 	sig := strings.TrimSpace(nodeText(node, file.Content))
 	if sig != "" {
 		d.copyInstructions = append(d.copyInstructions, sig)
 	}
 }
 
-func collectExpose(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+func collectExpose(node ts.Node, file extractor.FileInput, d *dockerfileData) {
 	portNode := childByType(node, "expose_port")
 	if portNode == nil {
 		return
@@ -353,7 +355,7 @@ func collectExpose(node *sitter.Node, file extractor.FileInput, d *dockerfileDat
 	}
 }
 
-func collectEnv(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+func collectEnv(node ts.Node, file extractor.FileInput, d *dockerfileData) {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch == nil || ch.Type() != "env_pair" {
@@ -370,7 +372,7 @@ func collectEnv(node *sitter.Node, file extractor.FileInput, d *dockerfileData) 
 	}
 }
 
-func collectArg(node *sitter.Node, file extractor.FileInput, d *dockerfileData) {
+func collectArg(node ts.Node, file extractor.FileInput, d *dockerfileData) {
 	nameNode := childByField(node, "name")
 	if nameNode == nil {
 		return
@@ -381,7 +383,7 @@ func collectArg(node *sitter.Node, file extractor.FileInput, d *dockerfileData) 
 	}
 }
 
-func collectEntrypointOrCmd(node *sitter.Node, file extractor.FileInput, instruction string, d *dockerfileData) {
+func collectEntrypointOrCmd(node ts.Node, file extractor.FileInput, instruction string, d *dockerfileData) {
 	sig := strings.TrimSpace(nodeText(node, file.Content))
 	if sig == "" {
 		sig = instruction
@@ -392,7 +394,7 @@ func collectEntrypointOrCmd(node *sitter.Node, file extractor.FileInput, instruc
 // ── tree-sitter helpers ───────────────────────────────────────────────────────
 
 // nodeText returns the UTF-8 text span of a node in the source.
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -400,7 +402,7 @@ func nodeText(node *sitter.Node, src []byte) string {
 }
 
 // childByField returns the first child with the given field name.
-func childByField(node *sitter.Node, field string) *sitter.Node {
+func childByField(node ts.Node, field string) ts.Node {
 	for i := range node.ChildCount() {
 		if node.FieldNameForChild(int(i)) == field {
 			return node.Child(int(i))
@@ -410,7 +412,7 @@ func childByField(node *sitter.Node, field string) *sitter.Node {
 }
 
 // childByType returns the first child with the given node type.
-func childByType(node *sitter.Node, t string) *sitter.Node {
+func childByType(node ts.Node, t string) ts.Node {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch != nil && ch.Type() == t {

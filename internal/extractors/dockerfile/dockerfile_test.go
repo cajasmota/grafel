@@ -5,26 +5,30 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsdockerfile "github.com/smacker/go-tree-sitter/dockerfile"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/dockerfile"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsdockerfile.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsdockerfile.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
 	return tree
 }
 
-func extractEntities(t *testing.T, path, src string, tree *sitter.Tree) []types.EntityRecord {
+func extractEntities(t *testing.T, path, src string, tree ts.Tree) []types.EntityRecord {
 	t.Helper()
 	ext, ok := extractor.Get("dockerfile")
 	if !ok {
@@ -34,7 +38,7 @@ func extractEntities(t *testing.T, path, src string, tree *sitter.Tree) []types.
 		Path:     path,
 		Content:  []byte(src),
 		Language: "dockerfile",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -85,7 +89,7 @@ func TestDockerfileExtractor_NilTree(t *testing.T) {
 		Path:     "Dockerfile",
 		Content:  []byte("FROM ubuntu:22.04\n"),
 		Language: "dockerfile",
-		Tree:     nil, // nil tree → empty result per spec
+		TSTree:   nil, // nil tree → empty result per spec
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
