@@ -723,6 +723,12 @@ func (s *Server) routes() http.Handler {
 	// Carries pagerank + source_file for cosmos.gl node sizing + module group-by.
 	// PH1c (#2087): accepts ?ref= to query a specific git ref's graph.
 	mux.HandleFunc("GET /api/v2/graph/{group}", s.handleV2Graph)
+	// Streaming graph (#5446, increment 1): SSE stream of the SAME node/edge
+	// shape as /api/v2/graph/{group}, important-first, so the frontend can feed
+	// Cosmos progressively instead of waiting for the whole payload. Path ends
+	// in /stream so withGzip leaves it uncompressed (chunks flush live). Streams
+	// from the warm cache only; a cold group returns 503 (warm-up is separate).
+	mux.HandleFunc("GET /api/v2/graph/{group}/stream", s.handleV2GraphStream)
 
 	// PH1c (#2087): list available refs (branches/tags) for each repo in the group.
 	// Returns which refs have an indexed graph on disk and their tier (hot/cold).
