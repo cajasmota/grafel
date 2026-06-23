@@ -2,7 +2,7 @@
 
 [← Back to the MCP tools index](../mcp-tools.md)
 
-Walk edges, find paths, and follow flows between entities. For new code prefer `grafel_neighbors` over the deprecated `expand` / `find_callers` / `find_callees` aliases.
+Walk edges, find paths, and follow flows between entities. `grafel_neighbors` and the explicit `grafel_expand` / `grafel_find_callers` / `grafel_find_callees` are all first-class — reach for whichever reads clearest (`find_callers` for inbound callers, `find_callees` for outbound callees).
 
 ---
 
@@ -12,23 +12,21 @@ Graph neighbors of an entity.
 
 Key parameters: `entity_id` (required), `direction` (`in`/`out`/`both`, default `both`), `depth` (default 1), `token_budget` (default 800), `fields[]`.
 
-Output: list of neighboring entities with edge kind + direction. Supersedes `find_callers`/`find_callees`.
+Output: list of neighboring entities with edge kind + direction. The directional `find_callers`/`find_callees` are first-class equivalents for when the explicit name reads clearer.
 
 ---
 
 ## `grafel_expand`
 
-*Deprecated alias* of `grafel_neighbors`. Returns neighbors of `entity_id`.
+Return the neighbors of `entity_id` out to a given depth. Equivalent to `grafel_neighbors`; first-class, kept for the explicit name.
 
 Key parameters: `entity_id` (or deprecated `node`), `depth` (default 1), `token_budget` (default 800), `repo_filter[]`, `fields[]`.
-
-> **Deprecation**: prefer `grafel_neighbors` for new code.
 
 ---
 
 ## `grafel_find_callers`
 
-*Deprecated alias* of `grafel_neighbors(direction=in)` — inbound callers.
+Inbound callers of `entity_id` (equivalent to `grafel_neighbors(direction=in)`); first-class.
 
 Results are **ranked by call frequency** (descending) within each hop level, then alphabetically. Frequency is summed from `Properties["count"]` on CALLS edges (or 1.0 per raw edge when count is absent).
 
@@ -36,17 +34,13 @@ Key parameters: `entity_id` (required), `depth` (default 1), `token_budget` (def
 
 **Route-literal resolution.** If `entity_id` starts with `/` AND does not match any entity by ID or name, the handler treats it as an in-app route literal: it searches NAVIGATES_TO edges whose `ToID == "route:<literal>"` (or whose `Properties["route"]` equals the literal) and returns the push-site callers directly. Each caller carries `file`, `line`, `route`, and `params_keys`. Response includes `resolved_as: "navigation_route"`.
 
-> **Deprecation**: prefer `grafel_neighbors(direction=in)` for new code.
-
 ---
 
 ## `grafel_find_callees`
 
-*Deprecated alias* of `grafel_neighbors(direction=out)` — outbound callees.
+Outbound callees of `entity_id` (equivalent to `grafel_neighbors(direction=out)`); first-class.
 
 Key parameters: `entity_id` (required), `depth` (default 1), `token_budget` (default 800).
-
-> **Deprecation**: prefer `grafel_neighbors(direction=out)` for new code.
 
 ---
 

@@ -58,9 +58,9 @@ Walk edges, find paths, and follow flows between entities.
 | Tool | One-line purpose |
 |------|-----------------|
 | [`grafel_neighbors`](mcp-tools/graph-traversal.md#grafel_neighbors) | Graph neighbors of an entity. `direction=in\|out\|both` (default `both`). |
-| [`grafel_expand`](mcp-tools/graph-traversal.md#grafel_expand) | *Deprecated alias* of `grafel_neighbors`. |
-| [`grafel_find_callers`](mcp-tools/graph-traversal.md#grafel_find_callers) | *Deprecated alias* of `grafel_neighbors(direction=in)`. Ranked by call frequency. |
-| [`grafel_find_callees`](mcp-tools/graph-traversal.md#grafel_find_callees) | *Deprecated alias* of `grafel_neighbors(direction=out)`. |
+| [`grafel_expand`](mcp-tools/graph-traversal.md#grafel_expand) | Neighbors of an entity out to a given depth (equivalent to `grafel_neighbors`). |
+| [`grafel_find_callers`](mcp-tools/graph-traversal.md#grafel_find_callers) | Inbound callers (equivalent to `grafel_neighbors(direction=in)`). Ranked by call frequency. |
+| [`grafel_find_callees`](mcp-tools/graph-traversal.md#grafel_find_callees) | Outbound callees (equivalent to `grafel_neighbors(direction=out)`). |
 | [`grafel_find_paths`](mcp-tools/graph-traversal.md#grafel_find_paths) | Shortest path between two entities with confidence score. |
 | [`grafel_trace`](mcp-tools/graph-traversal.md#grafel_trace) | Confidence-weighted shortest path (Dijkstra) between two nodes. |
 | [`grafel_traces`](mcp-tools/graph-traversal.md#grafel_traces) | Pre-computed process-flow traces. `action=list\|get\|follow`. |
@@ -72,7 +72,7 @@ Modules, communities, HTTP surface, topology, flows, and impact.
 
 | Tool | One-line purpose |
 |------|-----------------|
-| [`grafel_clusters`](mcp-tools/cross-cutting-analysis.md#grafel_clusters) | Louvain communities with top-ranked entities. Fast module map. |
+| [`grafel_clusters`](mcp-tools/cross-cutting-analysis.md#grafel_clusters) | Louvain communities with top-ranked entities. Group-scoped (can span repos) when the group-algo overlay is applied. Fast module map. |
 | [`grafel_module_analysis`](mcp-tools/cross-cutting-analysis.md#grafel_module_analysis) | Module-level SCC + PageRank + betweenness. `action=cycles\|centrality\|all`. |
 | [`grafel_import_cycles`](mcp-tools/cross-cutting-analysis.md#grafel_import_cycles) | IMPORTS cycle clusters per repo (Tarjan SCC). |
 | [`grafel_quality_cycles`](mcp-tools/cross-cutting-analysis.md#grafel_quality_cycles) | Detect import cycles via Tarjan SCC; weakest edge + fix hint. |

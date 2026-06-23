@@ -51,6 +51,7 @@ The graph lives entirely on your machine — local-first by design, as called ou
 - **Process flow tracing** — pre-computed BFS from entry points (route handlers, `main`, framework hooks) stored as traceable chains; ad-hoc follow from any entity on demand.
 - **Message-bus topology** — topic/broker/service groupings for event-driven systems; publisher and subscriber orphan detection.
 - **Cross-repo dependency graph** — index a folder of repos as one group; edges span repo boundaries with confidence scores; diff graph state between any two indexed refs.
+- **Cross-repo group-level intelligence** — communities and importance (PageRank/centrality) are computed once over the assembled group graph, not per repo, so they reflect cross-repo structure: a community can span repos when cross-repo links connect them, and a backend entity called from the frontend or mobile gets the importance that wiring earns. Surfaced in `grafel_clusters` (with `repos[]`/`cross_repo`), `grafel_inspect`, `grafel_orient`, and `grafel_stats`.
 - **Documentation and analysis skills** — a 15-skill family (tech docs, business docs, security audit, consultant panel, patterns) all driven off the graph, invokable from Claude Code as slash commands.
 - **Real-time dashboard** — 19 surfaces (Graph, Flows, Event-flows, Topology, Paths, Links, GraphQL, IaC, Docs, Security, Taint, DI, Error-flow, Quality, Settings, Pending, Operations, Compare, Missing) embedded in the daemon, no separate server, at `http://127.0.0.1:47274`.
 

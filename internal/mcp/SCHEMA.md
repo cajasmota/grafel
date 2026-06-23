@@ -111,7 +111,7 @@ Agents using these names will receive a "tool not found" error — update to the
 | [`grafel_expand`](#grafel_expand) | Return neighbors of a node out to a given depth. |
 | [`grafel_trace`](#grafel_trace) | Confidence-weighted shortest path between two nodes. |
 | [`grafel_traces`](#grafel_traces) | Process-flow traces (action: list\|get\|follow). |
-| [`grafel_clusters`](#grafel_clusters) | List Louvain communities across the loaded graphs. |
+| [`grafel_clusters`](#grafel_clusters) | List Louvain communities; group-scoped (can span repos via `repos[]`/`cross_repo`) when the group-algo overlay is applied. |
 | [`grafel_stats`](#grafel_stats) | Corpus-level metrics for the resolved group. |
 | [`grafel_enrichments`](#grafel_enrichments) | Manage enrichment candidates (action: list\|submit\|reject). |
 | [`grafel_cross_links`](#grafel_cross_links) | Manage cross-repo link candidates (action: list\|accept\|reject). |
@@ -135,9 +135,9 @@ Agents using these names will receive a "tool not found" error — update to the
 | `grafel_endpoint_posture` | Per-endpoint/function posture: error_flow (throws/catches → ExceptionType), rate_limit, deprecation/version, feature_gates (GATED_BY → FeatureFlag), and HTTP/gRPC/tRPC auth. `entity_id` for one entity; omit for a repo-wide scan (facet/path_contains/method filters). |
 | `grafel_control_flow` | On-demand (not persisted) per-function control-flow graph for the flowchart view (#4819): nodes (start/decision/loop/process/return/throw/end) + edges (seq/branch_true/branch_false/loop_back/exit), with predicate text on decision/loop nodes and effect annotations on process nodes, plus cyclomatic complexity. `entity_id` required; `detail`=outline\|decisions\|data\|full for token control. Languages: python + jsts validated. |
 | [`grafel_effective_contract`](#grafel_effective_contract) | Per-verb effective contract of a ViewSet/controller (kind, status, error_statuses, serializer, pagination, permissions). |
-| `grafel_neighbors` | Graph neighbors of `entity_id` (`direction=in\|out\|both`, default `both`). **Unifies `find_callers` + `find_callees` (#1753).** |
-| [`grafel_find_callers`](#grafel_find_callers) | **Deprecated alias** of `grafel_neighbors(direction=in)`. Removed next release. |
-| [`grafel_find_callees`](#grafel_find_callees) | **Deprecated alias** of `grafel_neighbors(direction=out)`. Removed next release. |
+| `grafel_neighbors` | Graph neighbors of `entity_id` (`direction=in\|out\|both`, default `both`). Generalizes `find_callers` + `find_callees` (#1753). |
+| [`grafel_find_callers`](#grafel_find_callers) | Inbound callers (equivalent to `grafel_neighbors(direction=in)`). First-class. |
+| [`grafel_find_callees`](#grafel_find_callees) | Outbound callees (equivalent to `grafel_neighbors(direction=out)`). First-class. |
 | [`grafel_impact_radius`](#grafel_impact_radius) | Blast-radius analysis with per-entity risk score. |
 | [`grafel_find_dead_code`](#grafel_find_dead_code) | Entities with 0 inbound/outbound project edges. |
 | [`grafel_auth_coverage`](#grafel_auth_coverage) | Security audit: flag HTTP endpoints missing auth decorators/middleware. |
@@ -321,6 +321,7 @@ Previously named `grafel_describe` (renamed in #668).
 |------|------|----------|---------|-------------|
 | `label_or_id` | string | yes | — | Entity ID, `<repo>::<localId>`, qualified name (case-insensitive), or label (case-insensitive). |
 | `verbose` | boolean | no | `false` | Restore `end_line`, `language`, `repo`, `pagerank`, `community_id`, `properties` (#1739). |
+| `include` | string[] | no | `[]` | Opt-in projections. `community`/`pagerank`/`centrality` surface the group-algo overlay values (#5396) on the narrow (non-verbose) payload — `centrality` is surfaced here for the first time, and god-node / articulation-point flags ride along. `call_contexts` adds control-flow attribution on outbound CALLS edges (#4832). |
 | `repo_filter` | string[] | no | `[]` | Common arg. |
 | `group`, `cwd` | string | no | — | Common args. |
 
@@ -380,7 +381,10 @@ were in the graph but invisible to read tools — only CALLS + the DI subset wer
 projected.
 
 With `verbose=true`, the response also includes `end_line`, `language`, `repo`,
-`pagerank`, `community_id`, and `properties`.
+`pagerank`, `community_id`, and `properties`. The `pagerank`/`community_id`
+(and, via `include`, `centrality`) values come from the group-algo overlay when
+one is applied — so they reflect the cross-repo union, not a per-repo pass — and
+are simply omitted when no overlay is present (absence-tolerant).
 
 If the call resolves to a single repo, `id` is local; otherwise it is prefixed.
 Returns a tool error when no entity matches.
@@ -556,8 +560,15 @@ Three sub-actions selected via the required `action` argument:
 
 ### `grafel_clusters`
 
-List Louvain communities pre-baked into each repo's `graph.json` (see
-ADR-0005).
+List Louvain communities. When a group-algo overlay
+(`~/.grafel/groups/<group>-algo.json`) is present, communities are computed once
+over the **assembled group graph** (the union of every repo plus the cross-repo
+links), so a single community can span more than one repo (#5396, #5349). Each
+row then reports the `repos` its members occupy and a `cross_repo` flag; a
+`repo_filter` naming only one repo of a cross-repo community still surfaces that
+community. With no overlay present (absence-tolerant), behavior falls back to the
+per-repo Louvain communities baked into each repo's `graph.fb` (see ADR-0005),
+and each row is tagged to a single `repo`.
 
 Previously named `grafel_list_clusters` (renamed in #668).
 
@@ -570,19 +581,24 @@ Previously named `grafel_list_clusters` (renamed in #668).
 | `min_size` | number | no | `20` | Minimum community size to include. Pass `0` to return all communities regardless of size. Added in #2289 (PR #2310); declared in schema by #2318. |
 | `group`, `cwd` | string | no | — | Common args. |
 
-**Output** — JSON array:
+**Output** — JSON array. With the group-algo overlay applied, each community row
+carries the `repos` its members span and a `cross_repo` flag (`true` when
+`len(repos) > 1`):
 
 ```json
 [
   {
-    "repo": "mobile-app",
-    "id": 3,
+    "id": 80,
     "size": 47,
     "modularity": 0.412,
-    "top_entities": ["OrderViewSet", "OrderSerializer", "OrderModel"]
+    "top_entities": ["OrderViewSet", "OrderSerializer", "OrderModel"],
+    "repos": ["api-backend", "core-mobile"],
+    "cross_repo": true
   }
 ]
 ```
+
+Without the overlay, the per-repo fallback rows carry a single `repo` instead.
 
 ---
 

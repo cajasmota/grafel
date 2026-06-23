@@ -8,11 +8,11 @@ Modules, communities, HTTP surface, message topology, flows, and change impact.
 
 ## `grafel_clusters`
 
-Louvain communities across loaded graphs — a fast module map.
+Louvain communities — a fast module map. When the group-algo overlay is applied, communities are computed over the assembled group graph (union of all repos + cross-repo links), so a community can span repos; otherwise it falls back to the per-repo communities baked into each `graph.fb`.
 
 Key parameters: `repo_filter[]`, `top_entities_limit` (default 3), `min_size` (default 20).
 
-Output: list of community clusters with representative entities.
+Output: list of community clusters with representative entities. Group-scoped rows carry `repos[]` and a `cross_repo` flag; per-repo fallback rows carry a single `repo`.
 
 ---
 

@@ -56,6 +56,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   fully functional. The `node`→`entity_id` param alias on `grafel_expand`
   (#1916) is unaffected.
 
+- **MCP `tools/list` token trim — per-connect handshake ~7592 → ~6113 tokens
+  (−1479, −19.5%) (Refs #5387):** strip the blanket annotation-hint block
+  (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) that
+  mcp-go's `NewTool` stamps on every tool by default. The four hints were
+  identical across all 68 registered tools and inaccurate (read-only query
+  tools like `grafel_find` were advertised as destructive), so they were pure
+  duplicated boilerplate. A centralized `addTool` helper resets the annotation
+  to empty when it still carries exactly the `NewTool` default, so it serializes
+  as `{}` instead of the ~89-char hint block; all 68 registrations route
+  through it. No change to the tool surface (names, params, types, enums,
+  required-sets, handlers) or behavior — measured by `cmd/mcp-audit`. (The live
+  daemon bridge `MCPToolInfo` never emitted annotations, so this is zero-change
+  there and a win for the stock mcp-go stdio path / the audited budget.)
+
 - **Graph algorithms now run once per GROUP via a debounced/capped/background
   scheduler; the per-repo algorithm pass is removed (Refs #5355, #5349):**
   communities, PageRank, betweenness, god-nodes and articulation points are now
@@ -668,19 +682,6 @@ and graph schema may change between minor versions.
 ---
 
 ## [Unreleased] — v1.0-rc (2026-05-21, overnight session)
-
-### Changed
-
-- **MCP `tools/list` token trim** — strip the blanket annotation-hint block
-  (`readOnlyHint`/`destructiveHint`/`idempotentHint`/`openWorldHint`) that
-  mcp-go's `NewTool` stamps on every tool by default. The hints were identical
-  across all 68 tools and inaccurate (read-only query tools were advertised as
-  destructive), so they were pure duplicated boilerplate. Cuts the per-connect
-  handshake from ~7592 → ~6113 tokens (−1479, −19.5%) as measured by
-  `cmd/mcp-audit`, with no change to the tool surface (names, params, types,
-  enums, required-sets, handlers) or behavior. Note: the live daemon bridge
-  (`MCPToolInfo`) never emitted annotations, so this is zero-change there and a
-  win for the stock mcp-go stdio path / the audited budget. (Refs #5386)
 
 ### Dashboard — new surfaces and nav
 

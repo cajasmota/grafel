@@ -22,9 +22,9 @@ description-shrink #1742 Phase-C lands.
 | 5 | `grafel_inspect`               | RENAME                 | `grafel_get_entity`    | Generic name → `get_<object>` per #1765. |
 | 6 | `grafel_get_source`            | KEEP                   | `grafel_get_source`    | Already conforms to `get_<object>`. |
 | 7 | `grafel_neighbors` *(new)*     | KEEP                   | `grafel_neighbors`     | Folds find_callers + find_callees (#1753). |
-| 8 | `grafel_find_callers`          | DROP (next release)    | (use neighbors)            | Deprecated alias; kept this release for compat. |
-| 9 | `grafel_find_callees`          | DROP (next release)    | (use neighbors)            | Deprecated alias; kept this release for compat. |
-|10 | `grafel_expand`                | DROP (next release)    | `grafel_neighbors`     | Functionality folds into neighbors (direction=both). Stays this release; description points to neighbors. |
+| 8 | `grafel_find_callers`          | KEEP                   | `grafel_find_callers`  | Un-deprecated (#5386/#5393): metrics show active use; first-class directional alias of `neighbors(direction=in)`. |
+| 9 | `grafel_find_callees`          | KEEP                   | `grafel_find_callees`  | Un-deprecated (#5386/#5393): first-class directional alias of `neighbors(direction=out)`. |
+|10 | `grafel_expand`                | KEEP                   | `grafel_expand`        | Un-deprecated (#5386/#5393): first-class equivalent of `neighbors(direction=both)`; agents reach for the explicit name. |
 |11 | `grafel_trace`                 | KEEP                   | `grafel_shortest_path` | Verb-only name; rename next release. |
 |12 | `grafel_traces`                | KEEP                   | `grafel_flows`         | Noun-only name; conflict with existing `grafel_flows` (process-flow). Fold both under one process-flow surface next release. |
 |13 | `grafel_find_paths`            | KEEP                   | `grafel_find_paths`    | Verb_object — conforms. |
@@ -75,7 +75,7 @@ This PR ships:
 - `max_results` ceiling + `min_score` floor on find (#1807, #1921)
 - `notifications/tools/list_changed` emission when registry mutates (#1772)
 - `query` confirmed as canonical search arg (#1770) — already landed via #2003
-- Deprecation-aliased `find_callers` / `find_callees` continue to work
+- `find_callers` / `find_callees` un-deprecated and first-class again (#5386/#5393)
 - Audit doc + rename map (this file) (#1765)
 - Handshake budget bumped 3,200 → 3,500 to seat the additions
 
