@@ -1,0 +1,53 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": [
+    "config:recommended",
+    ":dependencyDashboard",
+    ":semanticCommits"
+  ],
+  "_comment": "A1 dependency-bump automation (epic #5359, milestone 0.1.4). General Go-module freshness PLUS grammar-ready: the per-language grammar modules land here once B2 (#5418) migrates off the single smacker binding. NOTE: the current grammar binding (smacker/go-tree-sitter) is unmaintained and pinned at its own upstream HEAD, so Renovate finds nothing newer on it today — A2 (#5411, per-grammar cron) is the real grammar alarm. See docs/grammar-freshness-audit.md.",
+  "timezone": "UTC",
+  "schedule": [
+    "before 6am on the first day of the month"
+  ],
+  "prConcurrentLimit": 5,
+  "prHourlyLimit": 2,
+  "rangeStrategy": "bump",
+  "labels": [
+    "dependencies"
+  ],
+  "dependencyDashboard": true,
+  "dependencyDashboardTitle": "Renovate dependency dashboard (A1, #5359)",
+  "separateMajorMinor": true,
+  "separateMultipleMajor": true,
+  "postUpdateOptions": [
+    "gomodTidy"
+  ],
+  "packageRules": [
+    {
+      "description": "Group routine Go module updates into one PR to limit noise.",
+      "matchManagers": [
+        "gomod"
+      ],
+      "groupName": "go modules"
+    },
+    {
+      "description": "Grammar dep (and future per-language grammar modules) get their own labeled PR so a bump routes to the B1 benchmark gate, NEVER to auto-merge. The smacker binding is unmaintained today; this primes A1 for the day it revives or B2 (#5418) splits grammars into per-language modules.",
+      "matchPackageNames": [
+        "github.com/smacker/go-tree-sitter",
+        "github.com/tree-sitter/go-tree-sitter",
+        "/^github.com/tree-sitter/tree-sitter-/"
+      ],
+      "groupName": "tree-sitter grammars",
+      "labels": [
+        "dependencies",
+        "grammar-bump"
+      ],
+      "addLabels": [
+        "needs-benchmark"
+      ],
+      "automerge": false,
+      "minimumReleaseAge": "3 days"
+    }
+  ]
+}

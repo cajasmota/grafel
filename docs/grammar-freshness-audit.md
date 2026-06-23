@@ -208,10 +208,56 @@ error_nodes,files}` (or call `treesitter.SaveBaseline`) and commit the updated
 `docs/grammar-canary-baseline.json`. A rising baseline that you accept is how you
 acknowledge "this is the new normal for this grammar."
 
+## 4c. A1 — Renovate dependency-bump automation (#5410)
+
+General Go-module bump automation, wired and **grammar-ready**.
+
+- **Config:** [`renovate.json`](../renovate.json) at the repo root. Extends
+  `config:recommended` + dependency dashboard, runs on a **monthly** schedule to
+  limit PR noise, groups routine Go modules into one PR, and uses
+  `separateMajorMinor` / `separateMultipleMajor`. No auto-merge anywhere. There
+  is **no** `.github/dependabot.yml` — Renovate is the single dependency-bump
+  tool (don't double up).
+- **Grammar routing:** a dedicated `packageRules` entry matches the grammar
+  binding (`smacker/go-tree-sitter`), the official decouple target
+  (`tree-sitter/go-tree-sitter`), and any future per-language
+  `tree-sitter/tree-sitter-<lang>` modules. Those bumps get a distinct
+  `grammar-bump` + `needs-benchmark` label so a grammar bump routes to the B1
+  benchmark gate, **never** auto-merge.
+- **Honest framing — A1 is blind today.** As §1 establishes, the smacker binding
+  is pinned at its own upstream HEAD and unmaintained, so Renovate finds nothing
+  newer on it. A1 still earns its place for (a) the repo's *other* Go deps, and
+  (b) the day the binding revives or **B2 (#5418)** splits grammars into
+  per-language modules — at which point Renovate auto-PRs each grammar
+  independently. Until then, **A2 (#5411) is the real grammar alarm.**
+
+## 4d. A3 — language-release calendar (#5413)
+
+The **proactive** leg: fire ahead of known release dates rather than waiting for
+an alarm to catch up.
+
+- **Doc:** [`docs/language-release-calendar.md`](./language-release-calendar.md)
+  — a cadence table for the predictable-cadence languages (Java Mar/Sep, C#/.NET
+  Nov, Python Oct, Go Feb/Aug, TS ~quarterly, Rust ~6wk, Swift ~Sep, PHP Nov,
+  Ruby Dec, …; irregular ones marked as such), plus a per-release checklist that
+  feeds the **C1 triage process (#5415)** — for each version N, verify the new
+  syntax parses (via the A4 canary / A2 cron) and that the extractors model the
+  new constructs (modeling gap → C2 recipe #5416, C3 backfill #5417).
+- **Cron:** `.github/workflows/language-release-calendar.yml` — monthly cron +
+  `workflow_dispatch`, no push/PR (free-tier policy), minimal perms
+  (`issues: write`, `contents: read`). It computes the predictable release
+  windows landing in the next ~8 weeks and opens/updates a **single idempotent
+  reminder issue** (stable label `grammar-release-watch`) pointing back at the
+  calendar.
+- **How it complements the alarms:** A2 tells you a grammar's upstream moved; A4
+  tells you parsing is *actually* failing; **A3 nudges you before either gap
+  opens** for a scheduled release. All three reconcile against
+  [`grammars.lock`](../grammars.lock).
+
 ## 5. Sequencing (Part D)
 
-1. **B3 (this audit + `grammars.lock`)** ✓ + A1/A2 freshness alarm.
+1. **B3 (this audit + `grammars.lock`)** ✓ + **A1** Renovate ✓ + **A2** cron ✓.
 2. **B1** catch-up bump behind the fidelity/coverage benchmark.
-3. **A3** calendar + **A4** parse-error canary.
+3. **A3** calendar ✓ + **A4** parse-error canary ✓.
 4. **C1/C2** process; **C3** backfill for the catch-up window.
 5. **B2** decoupling — assessment, may slip past 0.1.4.

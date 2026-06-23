@@ -9,6 +9,30 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Language-release calendar + reminder cron (#5413, #5359 A3):** a proactive
+  freshness nudge that fires ahead of known release windows. `docs/language-release-calendar.md`
+  documents the cadence for the predictable-cadence languages (Java Mar/Sep,
+  C#/.NET Nov, Python Oct, Go Feb/Aug, TS ~quarterly, Rust ~6wk, Swift ~Sep,
+  PHP Nov, Ruby Dec; irregular ones marked) plus a per-release checklist that
+  feeds the C1 triage process (#5415) — for each version N, verify the new
+  syntax parses (A4 canary / A2 cron) and that extractors model the new
+  constructs. `.github/workflows/language-release-calendar.yml` (monthly cron +
+  `workflow_dispatch`, no push/PR) opens/updates a single idempotent reminder
+  issue (stable `grammar-release-watch` label) for the windows in the next
+  ~8 weeks. Minimal permissions (`issues: write`, `contents: read`).
+- **Renovate dependency-bump automation (#5410, #5359 A1):** `renovate.json`
+  (extends `config:recommended` + dependency dashboard, monthly schedule,
+  grouped Go-module PRs, `separateMajorMinor`, no auto-merge). A dedicated rule
+  routes grammar-binding bumps (`smacker/go-tree-sitter`, the official
+  `tree-sitter/go-tree-sitter` decouple target, and any future per-language
+  `tree-sitter/tree-sitter-<lang>` modules) to a distinct `grammar-bump` +
+  `needs-benchmark` label so they hit the B1 benchmark gate, never auto-merge.
+  Honest framing: the pinned smacker binding is unmaintained (at its own
+  upstream HEAD), so Renovate finds nothing newer on it today — it earns its
+  place on the repo's other Go deps and goes grammar-live once B2 (#5418) splits
+  grammars into per-language modules; **A2 (#5411) remains the real grammar
+  alarm.** No Dependabot config exists (Renovate is the single bump tool). See
+  `docs/grammar-freshness-audit.md` §4c–4d.
 - **Per-language parse-error-node canary (#5414, #5359 A4):** the
   version-agnostic freshness alarm. During indexing, both the in-process and the
   subprocess extract paths now aggregate the existing per-parse tree-sitter
