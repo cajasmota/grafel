@@ -233,6 +233,141 @@ func TestDeadRef_skipsUnknownSentinel(t *testing.T) {
 	}
 }
 
+// TestDeadRef_retentionCapEvictsOldestGraceHeld: when more dead-in-git refs are
+// grace-protected than the retention cap allows, the oldest beyond the cap are
+// reaped while the N most-recent survive — and primary is never counted/reaped.
+func TestDeadRef_retentionCapEvictsOldestGraceHeld(t *testing.T) {
+	repo := mkLiveRepo(t)
+	refsRoot := filepath.Join(t.TempDir(), "refs")
+	now := time.Unix(1_700_000_000, 0)
+
+	// Primary, indexed long ago — survives on the primary guard, never counts.
+	writeRefStore(t, refsRoot, "main", 1000, now.Add(-100*time.Hour))
+
+	// 5 dead-in-git transient refs, ALL fresh (within 24h grace), distinct mtimes.
+	// merge-1 is oldest … merge-5 is newest.
+	for i := 1; i <= 5; i++ {
+		writeRefStore(t, refsRoot, "merge-"+itoa(i), 80, now.Add(-time.Duration(6-i)*time.Hour))
+	}
+
+	ff := &fakeRefForgetter{held: map[[2]string]bool{
+		{repo, "merge-1"}: true, {repo, "merge-2"}: true,
+	}}
+	var dropped [][2]string
+	// git lists only main as live; the merge-* refs are all dead-in-git.
+	s := NewDeadRefSweeper(DeadRefConfig{
+		TrackedRepos:   func() []string { return []string{repo} },
+		LiveRefs:       func(string) (map[string]struct{}, bool) { return map[string]struct{}{"main": {}}, true },
+		PrimaryRef:     func(string) string { return "main" },
+		RefsDirForRepo: func(string) string { return refsRoot },
+		Tier:           ff,
+		DropReader:     func(rp, ref string) { dropped = append(dropped, [2]string{rp, ref}) },
+		GraceWindow:    24 * time.Hour,
+		RetentionCap:   3, // keep 3 newest grace-held; evict the 2 oldest.
+		Now:            func() time.Time { return now },
+	})
+
+	res := s.Sweep()
+
+	if res.RefsReaped != 2 || res.CapEvicted != 2 {
+		t.Fatalf("RefsReaped=%d CapEvicted=%d want 2/2", res.RefsReaped, res.CapEvicted)
+	}
+	// merge-1 and merge-2 (oldest) gone; merge-3..5 + main kept.
+	for _, gone := range []string{"merge-1", "merge-2"} {
+		if _, err := os.Stat(filepath.Join(refsRoot, gone)); !os.IsNotExist(err) {
+			t.Errorf("%s should have been cap-evicted: %v", gone, err)
+		}
+	}
+	for _, kept := range []string{"merge-3", "merge-4", "merge-5", "main"} {
+		if _, err := os.Stat(filepath.Join(refsRoot, kept)); err != nil {
+			t.Errorf("%s should have survived: %v", kept, err)
+		}
+	}
+	// Reader/slot drops only for the held evicted refs.
+	if res.SlotsForgotten != 2 {
+		t.Errorf("SlotsForgotten=%d want 2", res.SlotsForgotten)
+	}
+	if len(dropped) != 2 {
+		t.Errorf("DropReader calls=%v want 2", dropped)
+	}
+}
+
+// TestDeadRef_retentionCapNeverEvictsPrimary: a fresh primary ref is never
+// counted toward or evicted by the retention cap, even when many transient
+// dead refs exceed the cap. With a cap of 1, exactly the newest transient ref
+// is kept and the primary always survives.
+func TestDeadRef_retentionCapNeverEvictsPrimary(t *testing.T) {
+	repo := mkLiveRepo(t)
+	refsRoot := filepath.Join(t.TempDir(), "refs")
+	now := time.Unix(1_700_000_000, 0)
+
+	// Primary, fresh — must survive regardless of the cap and never be counted.
+	writeRefStore(t, refsRoot, "main", 1000, now.Add(-1*time.Hour))
+	// 3 fresh dead transient refs; merge-3 is newest.
+	for i := 1; i <= 3; i++ {
+		writeRefStore(t, refsRoot, "merge-"+itoa(i), 80, now.Add(-time.Duration(4-i)*time.Hour))
+	}
+
+	s := NewDeadRefSweeper(DeadRefConfig{
+		TrackedRepos:   func() []string { return []string{repo} },
+		LiveRefs:       func(string) (map[string]struct{}, bool) { return map[string]struct{}{"main": {}}, true },
+		PrimaryRef:     func(string) string { return "main" },
+		RefsDirForRepo: func(string) string { return refsRoot },
+		GraceWindow:    24 * time.Hour,
+		RetentionCap:   1, // keep 1 newest transient; primary excluded from count.
+		Now:            func() time.Time { return now },
+	})
+
+	res := s.Sweep()
+
+	if res.CapEvicted != 2 { // merge-1, merge-2 evicted; merge-3 kept.
+		t.Fatalf("CapEvicted=%d want 2", res.CapEvicted)
+	}
+	if _, err := os.Stat(filepath.Join(refsRoot, "main")); err != nil {
+		t.Errorf("primary reaped by cap: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(refsRoot, "merge-3")); err != nil {
+		t.Errorf("newest transient (within cap) reaped: %v", err)
+	}
+}
+
+// TestDeadRef_retentionCapDisabled: a negative cap disables the backstop — all
+// grace-held dead refs survive regardless of count.
+func TestDeadRef_retentionCapDisabled(t *testing.T) {
+	repo := mkLiveRepo(t)
+	refsRoot := filepath.Join(t.TempDir(), "refs")
+	now := time.Unix(1_700_000_000, 0)
+	for i := 1; i <= 20; i++ {
+		writeRefStore(t, refsRoot, "merge-"+itoa(i), 80, now.Add(-1*time.Hour))
+	}
+	s := NewDeadRefSweeper(DeadRefConfig{
+		TrackedRepos:   func() []string { return []string{repo} },
+		LiveRefs:       func(string) (map[string]struct{}, bool) { return map[string]struct{}{}, true },
+		PrimaryRef:     func(string) string { return "main" },
+		RefsDirForRepo: func(string) string { return refsRoot },
+		GraceWindow:    24 * time.Hour,
+		RetentionCap:   -1, // disabled
+		Now:            func() time.Time { return now },
+	})
+	res := s.Sweep()
+	if res.RefsReaped != 0 || res.CapEvicted != 0 {
+		t.Fatalf("cap disabled: RefsReaped=%d CapEvicted=%d want 0/0", res.RefsReaped, res.CapEvicted)
+	}
+}
+
+// itoa is a tiny strconv.Itoa to avoid an extra import in this table.
+func itoa(i int) string {
+	if i == 0 {
+		return "0"
+	}
+	var b []byte
+	for i > 0 {
+		b = append([]byte{byte('0' + i%10)}, b...)
+		i /= 10
+	}
+	return string(b)
+}
+
 // TestDeadRef_reaperDrivesSweep: the Reaper invokes the dead-ref sweep on its
 // Sweep() and surfaces the result.
 func TestDeadRef_reaperDrivesSweep(t *testing.T) {
