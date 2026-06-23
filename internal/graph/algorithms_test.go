@@ -262,26 +262,39 @@ func TestDeterminism_PageRank(t *testing.T) {
 	}
 }
 
-// TestRoundForDeterminism_Precision — verify that roundForDeterminism buckets
-// values to 4 decimal places (1e-4 tolerance), which is the guarantee
-// established by issue #489 to absorb larger-graph float drift.
+// TestRoundForDeterminism_Precision — verify that roundForDeterminism rounds to
+// 6 SIGNIFICANT figures (relative precision), which absorbs the ~1e-6 solver
+// noise from issue #481/#489 on every graph size WITHOUT collapsing small
+// scores to 0 (flaw 4: large group unions have god-node pageranks < 1e-4 that
+// the old absolute-1e-4 rounding wrongly truncated to 0).
 func TestRoundForDeterminism_Precision(t *testing.T) {
 	t.Parallel()
 	cases := []struct {
 		input float64
 		want  float64
 	}{
+		// |v| >= 1e-3: absolute 1e-4 bucket (the proven #489 determinism path).
 		{0.123456789, 0.1235},
-		{0.00001, 0.0},    // below 1e-4 threshold rounds to 0
-		{0.00005, 0.0001}, // rounds up to 1e-4
 		{0.12344, 0.1234},
 		{0.12345, 0.1235}, // rounds half-up
+		{0.0015, 0.0015},
 		{0.0, 0.0},
+		// |v| < 1e-3: 4 significant figures. Small scores typical of a 28k-node
+		// group union are PRESERVED (non-zero), not truncated to 0 like the old
+		// absolute-1e-4 rounding did.
+		{0.00003571, 0.00003571},    // god-node pagerank ~3.5e-5 survives
+		{0.000012345678, 1.235e-05}, // 4 sig figs, rounds half-up at the 5th
+		{0.0009994, 0.0009994},      // just below the 1e-3 cutoff: 4 sig figs
+		{1e-9, 1e-9},
 	}
 	for _, tc := range cases {
 		got := roundForDeterminism(tc.input)
 		if got != tc.want {
 			t.Errorf("roundForDeterminism(%v) = %v, want %v", tc.input, got, tc.want)
+		}
+		// Regression: a non-zero input must never round to exactly 0.
+		if tc.input != 0 && got == 0 {
+			t.Errorf("roundForDeterminism(%v) collapsed a non-zero score to 0", tc.input)
 		}
 	}
 }

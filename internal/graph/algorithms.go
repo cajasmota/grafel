@@ -708,7 +708,9 @@ func runtimeMSFor(start time.Time) int64 {
 	return time.Since(start).Milliseconds()
 }
 
-// roundForDeterminism rounds a gonum-derived score to 4 decimal digits.
+// roundForDeterminism rounds a gonum-derived score so the on-disk bytes stay
+// stable across runs of the same input, WITHOUT collapsing small scores to 0.
+//
 // Issue #481 — gonum's PageRank and Betweenness implementations iterate
 // over node maps internally, so tiny floating-point reorderings accumulate
 // to differences of ~1e-8 across runs of the same input. The PageRank
@@ -717,15 +719,40 @@ func runtimeMSFor(start time.Time) int64 {
 // Issue #489 — on larger graphs (gin ~6.4k entities, spdlog ~1.8k entities)
 // the accumulated float drift crosses the 1e-5 boundary occasionally,
 // causing 2/10 runs to produce different byte output even though the logical
-// PageRank ranking is identical. Widening the rounding bucket to 1e-4 (4
-// decimal places) absorbs all solver-tolerance noise while still retaining
-// actionable score differences — practical PageRank delta thresholds for
-// ranking are well above 1e-4.
+// PageRank ranking is identical. The original fix rounded to a fixed 1e-4
+// ABSOLUTE bucket (4 decimal places), whose ~1e-4 quantum sits far above the
+// ~1e-6 drift, so it is byte-stable.
+//
+// Flaw 4 — that absolute 1e-4 bucket is wrong for LARGE GROUP UNIONS (#5349,
+// 28k+ entities): PageRank mass sums to 1 across all nodes, so the average
+// score is ~1/28000 ≈ 3.6e-5 and even a top-5% god-node's score can be well
+// below 1e-4. math.Round(v*1e4)/1e4 then collapses those values to 0,
+// producing the contradiction "flagged god-node, pagerank 0".
+//
+// Fix — a HYBRID quantum:
+//   - |v| >= 1e-3: keep the proven 1e-4 ABSOLUTE bucket. These mid/large
+//     scores carry drift up to ~1e-6, and the 1e-4 quantum (100× the drift)
+//     keeps them byte-stable exactly as before (issue #489 determinism).
+//   - |v| < 1e-3: round to 4 SIGNIFICANT figures instead. The quantum then
+//     scales DOWN with the value, so a 4e-5 god-node pagerank keeps a ~1e-7
+//     quantum — non-zero and well-ordered — while still being far coarser than
+//     the proportionally-tiny drift on such small scores (so byte output stays
+//     deterministic). This is the only regime large unions exercise.
 func roundForDeterminism(v float64) float64 {
 	if v == 0 || math.IsNaN(v) || math.IsInf(v, 0) {
 		return v
 	}
-	const scale = 1e4
+	const absoluteFloor = 1e-3 // below this, switch to significant-figure rounding
+	if math.Abs(v) >= absoluteFloor {
+		const scale = 1e4 // 4 decimal places (the proven #489 determinism bucket)
+		return math.Round(v*scale) / scale
+	}
+	// Significant-figure rounding for small scores: scale so the most-significant
+	// digit sits just left of the decimal point, round to (sigFigs-1) fractional
+	// digits, then scale back. Relative precision => never zeroes a non-zero value.
+	const sigFigs = 4
+	exp := math.Floor(math.Log10(math.Abs(v)))
+	scale := math.Pow(10, float64(sigFigs-1)-exp)
 	return math.Round(v*scale) / scale
 }
 

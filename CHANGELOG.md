@@ -9,6 +9,17 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Fixed
+- **group-algo overlay now reports god-nodes' real PageRank (was 0):** the
+  determinism rounding (`roundForDeterminism`) bucketed every score to a fixed
+  **1e-4 absolute** quantum. On large group unions (28k+ entities) PageRank mass
+  sums to 1 across all nodes, so even a top-5% **god-node**'s score is ~3–4e-5 —
+  below the bucket — and `math.Round(v*1e4)/1e4` collapsed it to **0**. The
+  overlay then showed a flagged god-node with `pagerank: 0`, a direct
+  contradiction (a god-node is by definition among the most central). Rounding is
+  now **hybrid**: scores ≥ 1e-3 keep the proven 1e-4 absolute bucket (issue #489
+  byte-determinism unchanged), while scores < 1e-3 round to **4 significant
+  figures** so small-but-meaningful values survive non-zero and stay ordered. The
+  `is_god` flag and `pagerank` value are now consistent.
 - **group-algo no longer pins the machine (CPU regression, v0.1.3):** the
   background group-scope analytics pass (Louvain + PageRank + betweenness over
   the whole group union) ran at the host's full GOMAXPROCS and re-fired on a
