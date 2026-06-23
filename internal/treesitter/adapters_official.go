@@ -11,13 +11,18 @@ import (
 	tscpp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/cpp"
 	tscsharp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/csharp"
 	tscss "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/css"
+	tselixir "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/elixir"
 	tsgolang "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/golang"
 	tshtml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/html"
 	tsjava "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/java"
 	tsjavascript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/javascript"
+	tsocaml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/ocaml"
+	tsphp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/php"
 	tspython "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/python"
 	tsruby "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/ruby"
 	tsrust "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/rust"
+	tsscala "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/scala"
+	tsswift "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/swift"
 	tstypescript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/typescript"
 	tsofficial "github.com/cajasmota/grafel/internal/treesitter/ts/official"
 	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
@@ -56,6 +61,17 @@ var migratedLanguages = map[string]ts.Language{
 	"css":  tscss.Language(),
 	"html": tshtml.Language(),
 	"ruby": tsruby.Language(),
+	// B2 cutover Part B batch 2 (#5418): official-binding providers — all ABI ≤14.
+	// kotlin and sql are deferred: their go bindings #include a generated
+	// src/parser.c that is unreachable from a module download (kotlin's lives
+	// outside the nested bindings/go module boundary; DerekStride/tree-sitter-sql
+	// .gitignores src/parser.c, so it is never committed). Both need the
+	// vendored-C track (cutover plan §3/§4), not this official-binding pattern.
+	"elixir": tselixir.Language(),
+	"ocaml":  tsocaml.Language(),
+	"php":    tsphp.Language(),
+	"scala":  tsscala.Language(),
+	"swift":  tsswift.Language(),
 }
 
 // abiProbeSource is trivial, valid source per migrated language for the ABI guard.
@@ -74,6 +90,11 @@ var abiProbeSource = map[string][]byte{
 	"css":        []byte(".a { color: red; }\n"),
 	"html":       []byte("<div><p>hi</p></div>\n"),
 	"ruby":       []byte("def f\n  1\nend\n"),
+	"elixir":     []byte("defmodule M do\n  def f, do: 1\nend\n"),
+	"ocaml":      []byte("let f x = x + 1\n"),
+	"php":        []byte("<?php function f() { return 1; }\n"),
+	"scala":      []byte("object M { def f: Int = 1 }\n"),
+	"swift":      []byte("func f() -> Int { return 1 }\n"),
 }
 
 // tsLanguageFor resolves a language to the official adapter (if migrated) or the
