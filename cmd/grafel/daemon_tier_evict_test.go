@@ -18,6 +18,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon/tier"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // writeTestGroup creates an isolated GRAFEL_HOME, registers a group with the
@@ -25,6 +26,7 @@ import (
 // registry resolves under the test's temp home.
 func writeTestGroup(t *testing.T, group string, repoPaths ...string) {
 	t.Helper()
+	testsupport.IsolateHome(t)
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 
 	cfgPath, err := registry.ConfigPathFor(group)

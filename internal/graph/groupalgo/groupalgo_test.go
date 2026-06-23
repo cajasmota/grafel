@@ -8,6 +8,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // fixtureGraphs builds two per-repo graphs that, when unioned, form ONE
@@ -189,6 +190,7 @@ func writeFixtureRepo(t *testing.T, slug, repoPath string, doc *graph.Document) 
 // RunGroupAlgorithms concatenate them and form a cross-repo community.
 func TestAssembleGroupGraph_OnDisk(t *testing.T) {
 	// Isolate all grafel state into the test tempdir.
+	testsupport.IsolateHome(t)
 	root := t.TempDir()
 	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
 	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
@@ -272,6 +274,7 @@ func TestAssembleGroupGraph_OnDisk(t *testing.T) {
 // TestRunGroupAlgorithms_EmptyGroup confirms a registered group with no indexed
 // repos yields an empty (non-nil) result and does not panic.
 func TestRunGroupAlgorithms_EmptyGroup(t *testing.T) {
+	testsupport.IsolateHome(t)
 	root := t.TempDir()
 	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
 	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))

@@ -579,6 +579,7 @@ func TestToolNameSurface(t *testing.T) {
 		"grafel_test_coverage", "grafel_license_audit",
 		"grafel_test_reachability",
 		"grafel_coverage_effectiveness",
+		"grafel_index_status",
 		"grafel_module_analysis", "grafel_diff_refs",
 		// #1742 subgraph retained (despite deprecation)
 		"grafel_subgraph",
@@ -721,8 +722,9 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 grafel_control_flow (#4822 on-demand per-function CFG, control-flow epic #4820 part (b)).
 	// +1 grafel_contract_test_effectiveness (#4893 tautological/oracle-blind spec detector).
 	// +1 grafel_coverage_effectiveness (#5063 reachability x line-coverage cross-product).
-	if got := len(allRegisteredTools); got != 68 {
-		t.Errorf("expected 68 registered tools, got %d — update this count if tools are added/removed (added grafel_coverage_effectiveness #5063)", got)
+	// +1 grafel_index_status (#5435 per-repo index freshness, no global-is_indexing block).
+	if got := len(allRegisteredTools); got != 69 {
+		t.Errorf("expected 69 registered tools, got %d — update this count if tools are added/removed (added grafel_index_status #5435)", got)
 	}
 }
 
@@ -3200,6 +3202,7 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"grafel_test_reachability":      {"group": "g"},
 		"grafel_coverage_effectiveness": {"group": "g"},
 		"grafel_module_analysis":        {"group": "g"},
+		"grafel_index_status":           {"group": "g"}, // #5435 per-repo index freshness
 		"grafel_secrets":                {"group": "g"},
 		"grafel_neighbors":              {"group": "g", "entity_id": "r1::a2", "direction": "both"},
 		"grafel_status":                 {"group": "g"},
@@ -3307,8 +3310,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 68 {
-		t.Errorf("expected 68 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_coverage_effectiveness #5063)", len(tools))
+	if len(tools) != 69 {
+		t.Errorf("expected 69 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_index_status #5435)", len(tools))
 	}
 
 	for _, st := range tools {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // #5403: OverlayNeedsRecompute is the settled-group freshness predicate the
@@ -32,6 +33,7 @@ func setupGroupWithOverlay(t *testing.T, name string, seedMtimes map[string]int6
 
 func registerTwoRepoGroup(t *testing.T, root, name string) {
 	t.Helper()
+	testsupport.IsolateHome(t)
 	repoA, repoB, _ := fixtureGraphs()
 	rA := writeFixtureRepo(t, "svc", filepath.Join(root, "repoA"), repoA)
 	rB := writeFixtureRepo(t, "web", filepath.Join(root, "repoB"), repoB)

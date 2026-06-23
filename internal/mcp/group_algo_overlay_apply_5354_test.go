@@ -14,6 +14,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/graph/groupalgo"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // applyFixtureDoc builds a tiny per-repo graph with slug-qualified IDs and NO
@@ -37,6 +38,7 @@ func applyFixtureDoc(slug string, names ...string) *graph.Document {
 // the resolved overlay path and current source mtimes.
 func setupApplyGroup(t *testing.T) (st *State, overlayPath string, curMtimes map[string]int64, serviceID, leafID string) {
 	t.Helper()
+	testsupport.IsolateHome(t)
 	root := t.TempDir()
 	home := filepath.Join(root, "home")
 	t.Setenv("GRAFEL_HOME", home)

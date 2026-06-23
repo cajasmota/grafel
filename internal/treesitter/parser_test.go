@@ -236,9 +236,9 @@ func TestParse_OTelSpan_EmittedOnUnsupportedLanguage(t *testing.T) {
 
 func TestSupportedLanguages_ReturnsExpectedCount(t *testing.T) {
 	langs := treesitter.SupportedLanguages()
-	// 29 entries: 28 unique grammars + "terraform" alias for "hcl".
-	// Added: groovy, proto.
-	const expected = 29
+	// 28 entries: 27 unique grammars + "terraform" alias for "hcl".
+	// Added: groovy, proto. Dropped: markdown (official-grammar flip, #5418).
+	const expected = 28
 	if len(langs) != expected {
 		t.Errorf("expected %d languages, got %d: %v", expected, len(langs), langs)
 	}

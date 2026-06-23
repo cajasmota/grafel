@@ -146,6 +146,7 @@ var wantToolParams = map[string]string{
 	"grafel_license_audit":               "cwd,group|req:",
 	"grafel_list_findings":               "cwd,group|req:",
 	"grafel_literal_parity":              "group_oracle,group_v3,set|req:group_oracle,group_v3,set",
+	"grafel_index_status":                "group,repo|req:",
 	"grafel_mcp_metrics":                 "days|req:",
 	"grafel_module_analysis":             "action,cwd,group,ref|req:",
 	"grafel_navigates":                   "cwd,direction,entity_id,group,limit,max_depth,mode,repo_filter,route,with_param|req:",

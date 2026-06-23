@@ -12,8 +12,8 @@ func TestLoadLock_RealManifest(t *testing.T) {
 	if l.Binding.PinnedDate != "2024-08-27" {
 		t.Errorf("binding pinned_date = %q, want 2024-08-27", l.Binding.PinnedDate)
 	}
-	if len(l.Grammars) != 28 {
-		t.Errorf("grammar count = %d, want 28", len(l.Grammars))
+	if len(l.Grammars) != 27 {
+		t.Errorf("grammar count = %d, want 27", len(l.Grammars))
 	}
 	for _, g := range l.Grammars {
 		if g.Language == "" || g.Source == "" {

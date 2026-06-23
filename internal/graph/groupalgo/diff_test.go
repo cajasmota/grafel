@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // TestDiffGroup_CrossRepoRankNonDecreasing is the A4 acceptance test: on the
@@ -14,6 +15,7 @@ import (
 // group-vs-repo (the core thesis — cross-repo inbound edges lift a hub's rank,
 // never lower it). The report must also marshal cleanly to JSON for CI.
 func TestDiffGroup_CrossRepoRankNonDecreasing(t *testing.T) {
+	testsupport.IsolateHome(t)
 	root := t.TempDir()
 	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
 	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
@@ -106,6 +108,7 @@ func TestDiffGroup_CrossRepoRankNonDecreasing(t *testing.T) {
 // TestDiffGroup_Empty confirms an empty group produces a clean report (assertion
 // trivially holds, no panic).
 func TestDiffGroup_Empty(t *testing.T) {
+	testsupport.IsolateHome(t)
 	root := t.TempDir()
 	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
 	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))

@@ -228,6 +228,30 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
     detection accepts both.
   - **elixir / ruby:** exception-flow `def` body scoping and `ENV['KEY']`
     element-reference index were the `== body` / `== obj` identity guards above.
+- **B2 cutover — full `go test ./...` suite greened after the flip (#5418):** the
+  3-OS build and the per-package extractor passes were green, but the **whole**
+  suite was not — the per-package runs missed cross-package failures. Fixed
+  without weakening any test:
+  - **Un-isolated tests caught by the #5443 registry sandbox guard.** Tests that
+    only set `GRAFEL_HOME` (not the full home/XDG set) still resolved the fleet
+    config path off the real config dir, so the guard correctly panicked to stop
+    them clobbering the developer's live `~/.config/grafel`. Added
+    `testsupport.IsolateHome(t)` to **8** tests across 3 packages:
+    `TestGroupsForRepoPath` (cmd/grafel, via `writeTestGroup`),
+    `TestDiffGroup_CrossRepoRankNonDecreasing` + `TestDiffGroup_Empty`,
+    `TestAssembleGroupGraph_OnDisk`, `TestRunGroupAlgorithms_EmptyGroup`,
+    `TestCurrentSourceMtimes_OnDisk`, the `registerTwoRepoGroup` helper (3
+    recompute tests), and `TestApplyOverlay_GroupValuesAppliedAtLoad`
+    (internal/mcp, via `setupApplyGroup`). The guard is unchanged.
+  - **Dropped-markdown grammar counts.** `TestSupportedLanguages_ReturnsExpectedCount`
+    (29 → 28) and `TestLoadLock_RealManifest` (28 → 27 grammars) updated to match
+    the parser registry and `grammars.lock` after markdown was dropped in the flip.
+  - **MCP tool-inventory tests** (pre-existing, surfaced by the full run): the
+    `grafel_index_status` tool (#5435) was registered but absent from the test
+    inventories — added it to `minimalArgs`, `wantPresent`, and `wantToolParams`
+    and bumped the registered-tool counts 68 → 69
+    (`TestElapsedMSCoverageAllTools`, `TestToolNameSurface`,
+    `TestToolParamNamesPreserved`).
 
 ### Changed
 - **B2 cutover, Step B — flipped to the official binding as the sole build;

@@ -12,6 +12,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // sampleResult builds a small GroupAlgoResult for overlay round-trip tests.
@@ -245,6 +246,7 @@ func TestOverlay_NoTornRead(t *testing.T) {
 // TestCurrentSourceMtimes_OnDisk verifies the slug→mtime helper reads real
 // graph.fb mtimes for a registered group (and skips never-indexed repos).
 func TestCurrentSourceMtimes_OnDisk(t *testing.T) {
+	testsupport.IsolateHome(t)
 	root := t.TempDir()
 	t.Setenv("GRAFEL_HOME", filepath.Join(root, "home"))
 	t.Setenv("GRAFEL_DAEMON_ROOT", filepath.Join(root, "daemon"))
