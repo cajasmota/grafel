@@ -9,6 +9,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Official tree-sitter grammar providers — batch B2, batch 4a (vendored C)
+  (#5418, B2 cutover Part B):** directly-vendorable grammar packages for
+  **proto, dockerfile, kotlin** under `internal/treesitter/ts/grammars/`, behind
+  the `ts_official` build tag. Unlike the go-get providers, these vendor the
+  grammar's committed `src/parser.c` (+ `scanner.c` and `tree_sitter/` headers
+  where present) directly into the package, with a hand-written official-style
+  cgo binding that calls the exported `tree_sitter_<name>()` symbol and wraps it
+  via `official.WrapLanguage` — compiled against the **official** runtime, no new
+  Go module. This is the only path for these three: proto
+  (`mitchellh/tree-sitter-proto`, ABI 13, MIT) has **no Go binding anywhere**;
+  dockerfile (`camdencheek/tree-sitter-dockerfile` v0.2.0, ABI 14, MIT, external
+  scanner) and kotlin (`fwcd/tree-sitter-kotlin` 0.3.8, ABI 14, MIT, external
+  scanner) commit an ABI-≤14 `parser.c` that their module go.mod / module
+  boundary makes unreachable to a `go get` of the binding (cutover plan §3/§4).
+  Each package carries a SPDX/source/ref attribution note for the license-audit
+  gate, a smoke-test ABI guard (top kind `source_file`), and is wired into
+  `adapters_official.go`'s `migratedLanguages` + `abiProbeSource`. (sql, hcl, and
+  groovy stay deferred to batch 4b — they need ABI-14 regeneration first.)
 - **Progressive graph rendering in the dashboard (#5446, increment 2):** the
   Graph screen now consumes the streaming endpoint (`GET /api/v2/graph/{group}/stream`)
   and feeds the GPU canvas (cosmos.gl) incrementally, so a large graph **builds
