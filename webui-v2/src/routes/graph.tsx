@@ -226,22 +226,15 @@ export default function GraphScreen() {
     [],
   );
 
-  // #5446 increment 2 — FINALIZE on stream done. The cosmos canvas auto-settles
-  // its layout the first time a non-empty graph lands and then PAUSES; while the
-  // graph streams in, later chunks seed new points without re-heating the
-  // (already-settled) sim, so mid-stream positions can look provisional. Once
-  // the full node set has streamed (`done`), trigger ONE canonical fresh
-  // re-layout — the exact routine the Reset button runs — so the complete graph
-  // settles cleanly and fits to the viewport. Fires once per group stream.
-  const finalizedRef = useRef(false);
-  useEffect(() => {
-    if (stream.phase === "streaming" || stream.phase === "warming") finalizedRef.current = false;
-    if (stream.phase === "done" && !finalizedRef.current && stream.state.payload.nodes.length > 0) {
-      finalizedRef.current = true;
-      s.requestRelayout();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stream.phase]);
+  // #5446 / #5455 — FINALIZE on stream done is now owned by the CANVAS. While the
+  // graph streams in, the canvas keeps the sim warm and grows the layout LIVE
+  // (seed-near-neighbor + gentle per-chunk re-heat), so by the time the stream
+  // ends the graph is already rendered and mostly settled. When the `streaming`
+  // prop flips false (on `done`), the canvas runs a short final cool-down + fit on
+  // the live positions it already produced — a polish step, not a destructive full
+  // re-seed. We deliberately DON'T trigger a full requestRelayout() here anymore:
+  // that re-seeded from the unspread packed positions and reshuffled the whole
+  // graph, undoing the live-grown layout the user just watched build up.
 
   // ── ?node= deep-link: restore on mount, persist on selection change ──────────
   // On first render, if the URL carries ?node=<id>, apply it as the selected
@@ -759,6 +752,7 @@ export default function GraphScreen() {
                 nodes={egoNodes}
                 edges={egoEdges}
                 isFocusView={focusActive}
+                streaming={stream.phase === "streaming" && !focusActive}
                 selectedNodeId={s.selectedNodeId}
                 hoveredNodeId={s.hoveredNodeId}
                 isDark={isDark}

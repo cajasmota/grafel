@@ -84,6 +84,26 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (`docs/c3-feature-impact-analysis.md`)
 
 ### Fixed
+- **Streamed graph now renders and grows LIVE from the first chunk (#5455,
+  epic #5446):** the progressive Graph screen showed a climbing
+  "building graph… N / total" counter while the WebGL canvas stayed **blank**,
+  then the whole graph popped in at once on `done`. The force-directed canvas
+  auto-settled the first chunk and then **paused** the simulation, so nodes
+  added by later chunks were pushed into the GPU buffers but never laid out (the
+  sim was paused) and sat invisible until the end. The canvas now has a
+  **streaming mode**: each chunk keeps the simulation warm and **gently re-heats**
+  it (`Graph.start(0.35)` — a low-alpha pulse, not a full reset), so the newly
+  arrived nodes are laid out and rendered immediately and the graph **grows +
+  jiggles live** from the first chunk. New nodes are **seeded next to an
+  already-placed neighbor** (their primary edge endpoint, with a small jitter) —
+  or near the centroid of the placed mass when they have no placed neighbor yet —
+  so they don't all fly in from the origin. On `done` the canvas runs a short
+  final cool-down + camera fit on the layout the live stream already produced (a
+  polish step, not the first paint) instead of the previous destructive full
+  re-layout that reshuffled the whole graph. Small graphs still stream in a
+  single round-trip and look instant; the progress counter, warming state, and
+  mid-stream fallback are unchanged. A partial streamed layout is never persisted
+  to the layout cache. Frontend only.
 - **Tests can no longer clobber a developer's real `~/.config/grafel` fleet
   config (#5443):** a group-overlay test resolved the fleet-config path
   (`registry.ConfigPathFor` → `registry.ConfigDir`) without redirecting

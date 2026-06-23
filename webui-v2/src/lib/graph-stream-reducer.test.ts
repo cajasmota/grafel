@@ -96,6 +96,22 @@ describe("graph-stream-reducer", () => {
     expect(s.payload.nodes).toHaveLength(2);
   });
 
+  it("appends new nodes to the TAIL, preserving earlier indices (#5455 live-grow invariant)", () => {
+    // The canvas's incremental live-render seeds only the TRAILING (newly arrived)
+    // nodes near a placed neighbor and leaves the already-placed prefix put. That
+    // depends on the reducer APPENDING new chunks — never reordering or reindexing
+    // earlier ones — so index i is stable across chunks for a node already present.
+    let s = applyMeta(initialStreamState(), meta);
+    s = applyChunk(s, chunk1);
+    const idsAfter1 = s.payload.nodes.map((n) => n.id);
+    expect(idsAfter1).toEqual(["a", "b"]);
+    s = applyChunk(s, chunk2);
+    const idsAfter2 = s.payload.nodes.map((n) => n.id);
+    // The earlier nodes keep their positions; the new node is strictly appended.
+    expect(idsAfter2.slice(0, idsAfter1.length)).toEqual(idsAfter1);
+    expect(idsAfter2[idsAfter2.length - 1]).toBe("c");
+  });
+
   it("applyDone marks the stream finished", () => {
     let s = applyMeta(initialStreamState(), meta);
     s = applyChunk(s, chunk1);

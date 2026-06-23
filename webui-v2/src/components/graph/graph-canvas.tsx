@@ -228,6 +228,18 @@ export interface GraphCanvasProps {
   isFocusView: boolean;
   /** changes to this nonce force a fresh re-layout (skip cache). */
   relayoutNonce: number;
+  /**
+   * #5455 — true while the graph is actively STREAMING in (epic #5446). In this
+   * mode the canvas must NOT settle-and-pause after the first chunk: instead it
+   * keeps the simulation warm and GENTLY re-heats on each data push so the nodes
+   * that later chunks add get laid out and rendered live (the graph grows +
+   * jiggles from the first chunk), rather than sitting unplaced/invisible until
+   * `done`. New nodes are seeded near an already-placed neighbor so they don't
+   * fly in from the origin. When streaming ends the normal settle/fit (a
+   * relayoutNonce bump on `done`) finalizes the layout. Defaults to false, so the
+   * non-streaming (full-payload / focus / reset) paths are unchanged.
+   */
+  streaming?: boolean;
   onNodeClick: (node: GraphNode | null) => void;
   onNodeHover: (node: GraphNode | null) => void;
   onSettled: () => void;
@@ -302,6 +314,7 @@ function GraphCanvasInner(
     focusedCommunityId,
     isFocusView,
     relayoutNonce,
+    streaming = false,
     onNodeClick,
     onNodeHover,
     onSettled,
@@ -344,6 +357,15 @@ function GraphCanvasInner(
   const hoveredRef = useRef<string | null>(hoveredNodeId);
   hoveredRef.current = hoveredNodeId;
   const relayoutRef = useRef(relayoutNonce);
+  // #5455 — live streaming flag for the mount-only data-push / settle handlers.
+  const streamingRef = useRef(streaming);
+  streamingRef.current = streaming;
+  // #5455 — number of points the engine currently holds laid-out positions for.
+  // Used by the streaming data-push to detect which trailing nodes are NEW (just
+  // arrived in this chunk) so it can seed them near a placed neighbor and re-heat
+  // the sim, instead of resetting the whole layout. Reset whenever a fresh settle
+  // re-seeds the full buffer (kickFreshSettle) or the node set is swapped.
+  const placedCountRef = useRef(0);
 
   const idToIdx = useMemo(() => {
     const m = new Map<string, number>();
@@ -955,7 +977,11 @@ function GraphCanvasInner(
     // while Reset (re-run sim) looked right. Skip the cache write on a degenerate
     // (collapsed / tiny-bbox) layout so the next load re-settles instead of
     // restoring junk. (We never load a degenerate cache either — see load paths.)
-    if (positions.length > 0 && !isDegenerateLayout(positions)) {
+    // #5455 — never persist a layout cache for a PARTIAL streamed graph: a
+    // mid-stream settle holds only the chunks received so far, and caching it
+    // would make the next reload restore an incomplete graph. The `done` relayout
+    // settles + caches the complete graph.
+    if (positions.length > 0 && !isDegenerateLayout(positions) && !streamingRef.current) {
       saveLayout(group, nodeIds, positions);
     }
 
@@ -1128,6 +1154,9 @@ function GraphCanvasInner(
     g.render();
     g.create();
     g.start(1);
+    // #5455 — a fresh settle re-seeds the FULL buffer, so every current node now
+    // has a position; the streaming data-push only seeds nodes beyond this count.
+    placedCountRef.current = p.positions.length / 2;
     const capMs = Math.max(500, Math.min(6000, (simRef.current.settleTime ?? 2.0) * 1000));
     // Mid-settle re-heat: a single alpha pass partway through cools down before the
     // strong center/gravity finish pulling the islands inward (the hollow-ring
@@ -1341,6 +1370,75 @@ function GraphCanvasInner(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // #5455 — STREAMING re-heat alpha. A gentle pulse (not a full 1.0 reset) so the
+  // existing, already-placed mass barely shifts while the freshly-seeded new
+  // nodes are pulled into place by the link-spring/center. Low enough that the
+  // graph "jiggles as it grows" rather than fully reshuffling every chunk.
+  const STREAM_REHEAT_ALPHA = 0.35;
+
+  // #5455 — build the position buffer for a STREAMING data push. The first
+  // `placed` nodes keep their CURRENT live positions (so the laid-out mass stays
+  // put); every node beyond `placed` is NEW (just arrived in this chunk) and is
+  // seeded NEAR an already-placed neighbor (its primary edge endpoint) with a
+  // small jitter — or, if it has no placed neighbor yet, near the centroid of the
+  // placed mass — so new nodes don't all spawn at the origin and explode in. The
+  // running sim then refines these seeds live.
+  const seedStreamingPositions = useCallback(
+    (live: number[] | Float32Array, placed: number): Float32Array => {
+      const target = packed.positions; // length = current node count * 2
+      const out = new Float32Array(target.length);
+      // Keep the already-placed prefix at its live (laid-out) position.
+      const keep = Math.min(placed * 2, live.length, out.length);
+      for (let i = 0; i < keep; i++) out[i] = live[i];
+
+      // Centroid of the placed mass = fallback seed for new nodes with no placed
+      // neighbor (e.g. the first nodes of a brand-new community).
+      let cx = 0;
+      let cy = 0;
+      let cn = 0;
+      for (let i = 0; i + 1 < keep; i += 2) {
+        const x = live[i];
+        const y = live[i + 1];
+        if (Number.isFinite(x) && Number.isFinite(y)) {
+          cx += x;
+          cy += y;
+          cn++;
+        }
+      }
+      if (cn > 0) {
+        cx /= cn;
+        cy /= cn;
+      }
+
+      // Seed each NEW node near a placed neighbor (or the centroid) + jitter.
+      const placedCount = keep / 2;
+      for (let i = placedCount; i < target.length / 2; i++) {
+        const n = nodes[i];
+        let sx = cx;
+        let sy = cy;
+        const nbId = n ? renderedDegree.primary.get(n.id) : undefined;
+        const j = nbId !== undefined ? idToIdx.get(nbId) : undefined;
+        if (j !== undefined && j < placedCount) {
+          // Neighbor already placed → seed right beside it.
+          sx = out[j * 2];
+          sy = out[j * 2 + 1];
+        } else if (n) {
+          // No placed neighbor yet → keep the packed group-center seed (which is
+          // already near the middle) but bias it toward the placed centroid so it
+          // lands in the existing mass, not off in the seed field.
+          sx = (packed.positions[i * 2] + cx) / 2;
+          sy = (packed.positions[i * 2 + 1] + cy) / 2;
+        }
+        const a = Math.random() * 2 * Math.PI;
+        const r = Math.random() * 40;
+        out[i * 2] = sx + r * Math.cos(a);
+        out[i * 2 + 1] = sy + r * Math.sin(a);
+      }
+      return sanitizePositions(out).array;
+    },
+    [packed, nodes, renderedDegree, idToIdx],
+  );
+
   // ── data push (positions / colors / sizes / clusters / links) ───────────────
   useEffect(() => {
     const g = graphRef.current;
@@ -1350,6 +1448,38 @@ function GraphCanvasInner(
     // buffer; the empty-state overlay (below) is shown instead.
     if (!renderable) return;
     const prev = g.getPointPositions();
+
+    // #5455 — STREAMING-GROW path. While the graph streams in, each chunk grows
+    // the node set. The first chunk seeds + starts a normal warm settle; every
+    // SUBSEQUENT chunk that ADDS nodes must NOT settle-and-pause — it seeds the
+    // new nodes near a placed neighbor, keeps the already-placed mass put, pushes
+    // the buffers, and GENTLY re-heats the running sim so the new nodes are laid
+    // out and rendered LIVE (the graph grows + jiggles from the first chunk). The
+    // final settle/fit is the `done` relayout the route triggers.
+    const grew = packed.positions.length > prev.length && prev.length > 0;
+    if (streaming && grew && placedCountRef.current > 0) {
+      const seeded = seedStreamingPositions(prev, placedCountRef.current);
+      g.setPointPositions(seeded);
+      g.setPointSizes(packed.sizes);
+      g.setPointClusters(packed.clusters);
+      g.setPointClusterStrength(packed.clusterStrength);
+      g.setPointColors(packPointColors());
+      g.setLinks(linkData.links);
+      g.setLinkColors(packLinkColors());
+      g.setLinkWidths(packLinkWidths());
+      g.render();
+      g.create();
+      // Keep the sim warm: a gentle re-heat so the new nodes settle into place
+      // without fully reshuffling the placed graph. Never pause during a stream.
+      hasSettledRef.current = false;
+      didAutoStartRef.current = true;
+      g.unpause();
+      g.start(STREAM_REHEAT_ALPHA);
+      placedCountRef.current = packed.positions.length / 2;
+      scheduleLabels();
+      return;
+    }
+
     if (hasSettledRef.current && prev.length === packed.positions.length) {
       // Fix #1562: re-pin the settled geometry, but sanitize first so a diverged
       // layout never gets pushed back into the engine.
@@ -1378,9 +1508,12 @@ function GraphCanvasInner(
         kickFreshSettleRef.current();
       }
     }
-    if (hasSettledRef.current) g.pause();
+    // #5455 — don't freeze a graph that is still streaming in: keep the sim warm
+    // so the next chunk's nodes can be laid out. Only the normal (non-streaming)
+    // settled path re-pauses here.
+    if (hasSettledRef.current && !streaming) g.pause();
     scheduleLabels();
-  }, [renderable, packed, packPointColors, linkData, packLinkColors, packLinkWidths, group, nodeIds, scheduleLabels]);
+  }, [renderable, packed, packPointColors, linkData, packLinkColors, packLinkWidths, group, nodeIds, scheduleLabels, streaming, seedStreamingPositions]);
 
   // ── recolor on theme / colorMode ────────────────────────────────────────────
   useEffect(() => {
@@ -1435,6 +1568,38 @@ function GraphCanvasInner(
     kickFreshSettleRef.current();
   }, [relayoutNonce, packed]);
 
+  // ── #5455: STREAMING FINALIZE — gentle settle + fit when the stream ends ──────
+  // While streaming, the data-push keeps the sim warm and grows the graph live, so
+  // by the time `streaming` flips false (`done`) the graph is ALREADY rendered and
+  // mostly settled. We must NOT throw that away with a fresh full re-seed (which
+  // would reshuffle the whole graph from the unspread packed seeds). Instead, run a
+  // SHORT final cool-down on the CURRENT live positions, then doSettle (which fits
+  // the camera + caches the now-complete layout). This is the polish step — not the
+  // first paint. Only fires on the true→false streaming transition.
+  const wasStreamingRef = useRef(streaming);
+  useEffect(() => {
+    const was = wasStreamingRef.current;
+    wasStreamingRef.current = streaming;
+    if (!(was && !streaming)) return; // only on stream end
+    const g = graphRef.current;
+    if (!g) return;
+    if (!renderableRef.current) return;
+    // A brief gentle re-heat to let the last chunk's nodes finish settling, then a
+    // hard cap → doSettle (fit + cache the complete graph). Keeps the layout the
+    // live stream already produced; doesn't re-seed from scratch.
+    hasSettledRef.current = false;
+    didAutoStartRef.current = true;
+    if (capTimerRef.current) clearTimeout(capTimerRef.current);
+    if (reheatTimerRef.current) clearTimeout(reheatTimerRef.current);
+    reheatedRef.current = true; // skip the early-cool-down guard — this IS the final settle
+    g.unpause();
+    g.start(STREAM_REHEAT_ALPHA);
+    capTimerRef.current = setTimeout(() => {
+      if (!hasSettledRef.current) doSettleRef.current();
+    }, 900);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [streaming]);
+
   // ── #4641: AUTO-SETTLE on first data load (the recurring "explode"/clumped
   //    bug, #4492/#2107). On the very first render of a NON-EMPTY renderable
   //    graph the canvas used to arrive clumped — the seed positions paused
@@ -1478,6 +1643,12 @@ function GraphCanvasInner(
   useEffect(() => {
     if (autoCorrectDoneRef.current) return;
     if (!renderable) return; // crash-guard: never seed/start an empty graph
+    // #5455 — while the graph is STREAMING in, the live-grow data-push owns the
+    // layout (seed-near-neighbor + gentle re-heat per chunk). The auto-correct
+    // verify-retry kick re-seeds the WHOLE buffer from the unspread packed seeds,
+    // which would reshuffle the growing graph every cycle — skip it during a
+    // stream. The `done` relayout runs the canonical settle once complete.
+    if (streaming) return;
     const g = graphRef.current;
     if (!g) return;
 
@@ -1573,7 +1744,10 @@ function GraphCanvasInner(
       cancelled = true;
       if (verifyTimer) clearTimeout(verifyTimer);
     };
-  }, [renderable, group, nodeIds]);
+    // #5455 — `streaming` is a dep so the controller re-arms when the stream ends
+    // (streaming → false on `done`), letting the post-stream graph self-correct if
+    // the final settle ever arrives collapsed.
+  }, [renderable, group, nodeIds, streaming]);
 
   // ── re-layout when the node SET changes (Fix #1548-3 ego enter/exit) ─────────
   // Entering/leaving focus swaps `group` (…::ego) and the node set. The settled
