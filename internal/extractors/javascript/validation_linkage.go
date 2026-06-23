@@ -44,8 +44,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
-	sitter "github.com/smacker/go-tree-sitter"
 )
 
 // validatorMethodLibrary maps a recognised validation method name to the
@@ -98,7 +98,7 @@ var dtoDecorators = map[string]bool{
 // operation's entity ID at emit time (the same contract as every other
 // per-body relationship emitter). ToID is the synthetic `validator:<lib>`
 // stub.
-func (x *extractor) extractValidationEdge(call *sitter.Node) (types.RelationshipRecord, bool) {
+func (x *extractor) extractValidationEdge(call ts.Node) (types.RelationshipRecord, bool) {
 	if call == nil || call.Type() != "call_expression" {
 		return types.RelationshipRecord{}, false
 	}
@@ -174,7 +174,7 @@ func validatesEdge(library, method, line string) types.RelationshipRecord {
 // which carries a `type` annotation. We require BOTH a recognised DTO
 // decorator AND a class-shaped (PascalCase, non-primitive) type so a bare
 // `@Body() body: any` is not over-claimed.
-func (x *extractor) extractDTOParamEdges(params *sitter.Node) []types.RelationshipRecord {
+func (x *extractor) extractDTOParamEdges(params ts.Node) []types.RelationshipRecord {
 	if params == nil {
 		return nil
 	}
@@ -220,7 +220,7 @@ func (x *extractor) extractDTOParamEdges(params *sitter.Node) []types.Relationsh
 
 // paramDTODecorator returns the recognised NestJS DTO decorator name
 // (Body/Query/Param) applied to a parameter node, or "" when none.
-func paramDTODecorator(x *extractor, param *sitter.Node) string {
+func paramDTODecorator(x *extractor, param ts.Node) string {
 	for i := 0; i < int(param.ChildCount()); i++ {
 		c := param.Child(i)
 		if c == nil || c.Type() != "decorator" {
@@ -236,7 +236,7 @@ func paramDTODecorator(x *extractor, param *sitter.Node) string {
 
 // decoratorLeafName returns the leaf identifier of a `decorator` node,
 // handling both `@Body` and `@Body()` (call_expression) shapes.
-func decoratorLeafName(x *extractor, dec *sitter.Node) string {
+func decoratorLeafName(x *extractor, dec ts.Node) string {
 	for i := 0; i < int(dec.ChildCount()); i++ {
 		c := dec.Child(i)
 		if c == nil {
@@ -335,7 +335,7 @@ func isSchemaVarName(name string) bool {
 //	Yup.object(...)   → "yup"
 //	ajv.compile(...)  → "ajv"
 //	new Ajv().compile → also caught at call-site level
-func schemaLibraryFromCall(n *sitter.Node, nodeText func(*sitter.Node) string) (library string, ok bool) {
+func schemaLibraryFromCall(n ts.Node, nodeText func(ts.Node) string) (library string, ok bool) {
 	if n == nil || n.Type() != "call_expression" {
 		return "", false
 	}
@@ -369,13 +369,13 @@ func schemaLibraryFromCall(n *sitter.Node, nodeText func(*sitter.Node) string) (
 // call (zod/joi/yup/ajv). Returns a map from variable name to library name
 // (e.g. "createUserSchema" → "zod"). Only module-scope declarations are
 // considered (the walker stops at function bodies).
-func (x *extractor) buildSchemaLibDTOs(root *sitter.Node) map[string]string {
+func (x *extractor) buildSchemaLibDTOs(root ts.Node) map[string]string {
 	if root == nil {
 		return nil
 	}
 	result := make(map[string]string)
-	var scan func(n *sitter.Node, depth int)
-	scan = func(n *sitter.Node, depth int) {
+	var scan func(n ts.Node, depth int)
+	scan = func(n ts.Node, depth int) {
 		if n == nil {
 			return
 		}
@@ -431,7 +431,7 @@ func (x *extractor) buildSchemaLibDTOs(root *sitter.Node) map[string]string {
 // This is the Express/Fastify-family analogue of extractDTOParamEdges for
 // NestJS: instead of a @Body() decorator, the DTO is a top-level z.object /
 // Joi.object / yup.object / ajv.compile schema variable.
-func (x *extractor) extractSchemaDTOEdge(call *sitter.Node) (types.RelationshipRecord, bool) {
+func (x *extractor) extractSchemaDTOEdge(call ts.Node) (types.RelationshipRecord, bool) {
 	if call == nil || call.Type() != "call_expression" || len(x.schemaLibDTOs) == 0 {
 		return types.RelationshipRecord{}, false
 	}
@@ -480,7 +480,7 @@ func (x *extractor) extractSchemaDTOEdge(call *sitter.Node) (types.RelationshipR
 // be called after buildSchemaLibDTOs populates x.schemaLibDTOs and before
 // walk() runs so that schema entities are present in the graph even when no
 // handler references them in the same file.
-func (x *extractor) emitSchemaLibDTOEntities(root *sitter.Node) {
+func (x *extractor) emitSchemaLibDTOEntities(root ts.Node) {
 	if len(x.schemaLibDTOs) == 0 {
 		return
 	}
@@ -488,8 +488,8 @@ func (x *extractor) emitSchemaLibDTOEntities(root *sitter.Node) {
 		return
 	}
 	// Walk only the top-level to find the value node for each matching var.
-	var scan func(n *sitter.Node, depth int)
-	scan = func(n *sitter.Node, depth int) {
+	var scan func(n ts.Node, depth int)
+	scan = func(n ts.Node, depth int) {
 		if n == nil {
 			return
 		}

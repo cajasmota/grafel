@@ -15,7 +15,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tstsx "github.com/smacker/go-tree-sitter/typescript/tsx"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
@@ -29,15 +29,18 @@ func extractAngularTanstack(t *testing.T) []types.EntityRecord {
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	p := sitter.NewParser()
-	p.SetLanguage(tstsx.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, content)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstsx.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(content)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	ext, _ := extreg.Get("typescript")
 	ents, err := ext.Extract(context.Background(), extreg.FileInput{
-		Path: path, Content: content, Language: "typescript", Tree: tree,
+		Path: path, Content: content, Language: "typescript", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

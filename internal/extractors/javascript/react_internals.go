@@ -31,7 +31,7 @@
 package javascript
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // stampProp sets a property on the most-recently-emitted entity (the one a
@@ -52,7 +52,7 @@ func (x *extractor) stampLastEntityProp(key, val string) {
 // Suspense / portal idioms and stamps the matching properties on the entity at
 // the supplied index. idx must point at the SCOPE.Operation entity the caller
 // just emitted for this component.
-func (x *extractor) decorateReactComponentInternals(body *sitter.Node, idx int) {
+func (x *extractor) decorateReactComponentInternals(body ts.Node, idx int) {
 	if body == nil || idx < 0 || idx >= len(x.entities) {
 		return
 	}
@@ -76,7 +76,7 @@ func (x *extractor) decorateReactComponentInternals(body *sitter.Node, idx int) 
 // bodyRendersSuspense reports whether the function body contains a JSX
 // <Suspense> element (opening or self-closing). React.Suspense (member
 // expression) is also matched.
-func (x *extractor) bodyRendersSuspense(body *sitter.Node) bool {
+func (x *extractor) bodyRendersSuspense(body ts.Node) bool {
 	jsxNodes := findAllNodes(body, "jsx_opening_element", "jsx_self_closing_element")
 	for _, jx := range jsxNodes {
 		nameNode := jx.ChildByFieldName("name")
@@ -95,7 +95,7 @@ func (x *extractor) bodyRendersSuspense(body *sitter.Node) bool {
 // bodyUsesCreatePortal reports whether the function body calls createPortal —
 // either bare `createPortal(...)` (named import) or member
 // `ReactDOM.createPortal(...)` / `reactDom.createPortal(...)`.
-func (x *extractor) bodyUsesCreatePortal(body *sitter.Node) bool {
+func (x *extractor) bodyUsesCreatePortal(body ts.Node) bool {
 	calls := findAllNodes(body, "call_expression")
 	for _, c := range calls {
 		if x.calleeLeaf(c) == "createPortal" {
@@ -108,7 +108,7 @@ func (x *extractor) bodyUsesCreatePortal(body *sitter.Node) bool {
 // calleeLeaf returns the leaf identifier of a call_expression's callee: the
 // bare identifier, or the property of a member-expression callee. Returns ""
 // for shapes it cannot reduce (e.g. computed-member callees).
-func (x *extractor) calleeLeaf(call *sitter.Node) string {
+func (x *extractor) calleeLeaf(call ts.Node) string {
 	if call == nil || call.Type() != "call_expression" {
 		return ""
 	}
@@ -138,7 +138,7 @@ func (x *extractor) calleeLeaf(call *sitter.Node) string {
 //   - Pure template:       import(`./SettingsPanel`)  → "./SettingsPanel"
 //   - Interpolated tmpl:   import(`./panels/${name}`) → "./panels/{*}"
 //   - Computed/call expr:  import(getPath())          → "" (unresolvable)
-func (x *extractor) lazyImportModule(valueNode *sitter.Node) string {
+func (x *extractor) lazyImportModule(valueNode ts.Node) string {
 	if x.calleeLeaf(valueNode) != "lazy" {
 		return ""
 	}
@@ -176,14 +176,14 @@ func (x *extractor) lazyImportModule(valueNode *sitter.Node) string {
 // callee leaf is "lazy". Used by extractor.go to unconditionally stamp
 // react_lazy=true on lazy wrapper entities regardless of whether the import
 // specifier is resolvable (issue #2958).
-func (x *extractor) isLazyWrapper(valueNode *sitter.Node) bool {
+func (x *extractor) isLazyWrapper(valueNode ts.Node) bool {
 	return x.calleeLeaf(valueNode) == "lazy"
 }
 
 // classIsErrorBoundary reports whether a class body declares the React error
 // boundary contract: an instance componentDidCatch method or a static
 // getDerivedStateFromError method.
-func (x *extractor) classIsErrorBoundary(body *sitter.Node) bool {
+func (x *extractor) classIsErrorBoundary(body ts.Node) bool {
 	if body == nil {
 		return false
 	}

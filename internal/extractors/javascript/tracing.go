@@ -26,7 +26,7 @@ package javascript
 import (
 	"strconv"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -48,7 +48,7 @@ var jsTracingSpanMethods = map[string]bool{
 
 // extractTracingSpanHits walks a function/method/arrow body and returns one
 // jsSpanHit per OpenTelemetry span-creation call found.
-func (x *extractor) extractTracingSpanHits(body *sitter.Node) []jsSpanHit {
+func (x *extractor) extractTracingSpanHits(body ts.Node) []jsSpanHit {
 	if body == nil {
 		return nil
 	}
@@ -75,7 +75,7 @@ func (x *extractor) extractTracingSpanHits(body *sitter.Node) []jsSpanHit {
 		hit := jsSpanHit{api: method, line: line}
 
 		args := call.ChildByFieldName("arguments")
-		var nameNode *sitter.Node
+		var nameNode ts.Node
 		if args != nil {
 			nameNode = firstMeaningfulArg(args)
 		}
@@ -107,7 +107,7 @@ func (x *extractor) extractTracingSpanHits(body *sitter.Node) []jsSpanHit {
 // x.entities for every OpenTelemetry span-creation site found in body. Called
 // immediately after a function/method/arrow entity is emitted (alongside
 // stampDiscriminators / stampBranchConditions).
-func (x *extractor) stampTracingSpans(body *sitter.Node) {
+func (x *extractor) stampTracingSpans(body ts.Node) {
 	if body == nil || len(x.entities) == 0 {
 		return
 	}

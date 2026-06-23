@@ -45,7 +45,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -117,7 +117,7 @@ type fileSymbol struct {
 //
 // Safe to call with an empty entity slice — degenerates to a no-op. Safe
 // to call when the file has no function bodies — degenerates to a no-op.
-func (x *extractor) emitReferences(root *sitter.Node) {
+func (x *extractor) emitReferences(root ts.Node) {
 	if root == nil || len(x.entities) == 0 {
 		return
 	}
@@ -189,8 +189,8 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 	// since they have no entity index). buildReferenceTargetID will handle
 	// the case where a symbol has no entity index by constructing a
 	// structural ref target.
-	var collectConstSymbols func(n *sitter.Node)
-	collectConstSymbols = func(n *sitter.Node) {
+	var collectConstSymbols func(n ts.Node)
+	collectConstSymbols = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -300,8 +300,8 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 	// stack. We push when entering a function-like body and pop on the
 	// way out. The frame stack is shared across recursion; we use an
 	// explicit traversal so the pop point is deterministic.
-	var walk func(n *sitter.Node, fstack []frame)
-	walk = func(n *sitter.Node, fstack []frame) {
+	var walk func(n ts.Node, fstack []frame)
+	walk = func(n ts.Node, fstack []frame) {
 		if n == nil {
 			return
 		}
@@ -516,7 +516,7 @@ func (x *extractor) emitReferences(root *sitter.Node) {
 //
 // Issue #711.
 func (x *extractor) emitExportClauseReferences(
-	root *sitter.Node,
+	root ts.Node,
 	symbols map[string]fileSymbol,
 	fileEntIdx int,
 	seen map[edgeKey]bool,
@@ -525,8 +525,8 @@ func (x *extractor) emitExportClauseReferences(
 		return
 	}
 	fromName := x.entities[fileEntIdx].Name
-	var visit func(n *sitter.Node)
-	visit = func(n *sitter.Node) {
+	var visit func(n ts.Node)
+	visit = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -646,7 +646,7 @@ func buildReferenceTargetID(lang, filePath, name, targetKind string) string {
 // produce an edge to a non-existent target, so over-classifying a few
 // declarations as uses costs at worst a self-edge (filtered by the
 // `from == to` check in emit).
-func isDeclarationPosition(n *sitter.Node) bool {
+func isDeclarationPosition(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -695,7 +695,7 @@ func isDeclarationPosition(n *sitter.Node) bool {
 // portion is a property_identifier (not identifier), so the
 // identifier walk doesn't touch it. CALLS still emits its edge to the
 // trailing property name.
-func isCallCallee(n *sitter.Node) bool {
+func isCallCallee(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -723,7 +723,7 @@ func isCallCallee(n *sitter.Node) bool {
 // inside the value land at the outer frame (or no frame, at file
 // scope) and produce no REFERENCES edge — better than over-attributing
 // to a const that isn't actually function-shaped.
-func isFunctionLikeValue(n *sitter.Node) bool {
+func isFunctionLikeValue(n ts.Node) bool {
 	if n == nil {
 		return false
 	}

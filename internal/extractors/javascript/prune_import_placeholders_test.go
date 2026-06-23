@@ -15,7 +15,8 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tstypescript "github.com/smacker/go-tree-sitter/typescript/typescript"
 
 	"github.com/cajasmota/grafel/internal/extractor"
@@ -64,11 +65,14 @@ func findImportOnAny742(ents []types.EntityRecord, spec string) *types.Relations
 	return nil
 }
 
-func parseTS742(t *testing.T, src []byte) *sitter.Tree {
+func parseTS742(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tstypescript.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstypescript.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -83,7 +87,7 @@ func extractTS742(t *testing.T, src, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "typescript",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

@@ -46,7 +46,7 @@ package javascript
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // expressFrameworkPkgs is the set of npm package specifiers that introduce
@@ -112,7 +112,7 @@ type frameworkDSLTracker struct {
 //   - variable_declarator nodes whose value is an await_expression
 //     wrapping a member-expression call to NestFactory.create (capturing
 //     `const app = await NestFactory.create(AppModule)`).
-func (x *extractor) buildFrameworkDSLTracker(root *sitter.Node) *frameworkDSLTracker {
+func (x *extractor) buildFrameworkDSLTracker(root ts.Node) *frameworkDSLTracker {
 	t := &frameworkDSLTracker{
 		expressLocals:       make(map[string]bool),
 		nestFactoryLocals:   make(map[string]bool),
@@ -149,8 +149,8 @@ func (x *extractor) buildFrameworkDSLTracker(root *sitter.Node) *frameworkDSLTra
 //     app. Handled by checking if the callee is itself a call_expression
 //     whose function is `require` and whose argument is an express-family
 //     package string.
-func (t *frameworkDSLTracker) scanForFrameworkLocals(x *extractor, root *sitter.Node) {
-	stack := make([]*sitter.Node, 0, 64)
+func (t *frameworkDSLTracker) scanForFrameworkLocals(x *extractor, root ts.Node) {
+	stack := make([]ts.Node, 0, 64)
 	stack = append(stack, root)
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
@@ -180,7 +180,7 @@ func (t *frameworkDSLTracker) scanForFrameworkLocals(x *extractor, root *sitter.
 //   - `const app = express()`                   → expressLocals["app"]
 //   - `const app = require("express")()`        → expressLocals["app"]
 //   - `const app = await NestFactory.create(..)` → nestFactoryLocals["app"]
-func (t *frameworkDSLTracker) processVariableDeclarator(x *extractor, n *sitter.Node) {
+func (t *frameworkDSLTracker) processVariableDeclarator(x *extractor, n ts.Node) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil || nameNode.Type() != "identifier" {
 		return
@@ -239,7 +239,7 @@ func (t *frameworkDSLTracker) processVariableDeclarator(x *extractor, n *sitter.
 //   - `express.Router()` or `app.use(express.Router())` style (Router factory)
 //   - `require("express")()` — CommonJS factory
 //   - `fastify()`, `new Fastify()`, `Hono()`, `new Koa()` — analogous
-func (t *frameworkDSLTracker) isExpressFactoryCall(x *extractor, callNode *sitter.Node) bool {
+func (t *frameworkDSLTracker) isExpressFactoryCall(x *extractor, callNode ts.Node) bool {
 	fn := callNode.ChildByFieldName("function")
 	if fn == nil {
 		return false
@@ -265,7 +265,7 @@ func (t *frameworkDSLTracker) isExpressFactoryCall(x *extractor, callNode *sitte
 }
 
 // isRequireExpressCall returns true when callNode is `require("<express-pkg>")`.
-func (t *frameworkDSLTracker) isRequireExpressCall(x *extractor, callNode *sitter.Node) bool {
+func (t *frameworkDSLTracker) isRequireExpressCall(x *extractor, callNode ts.Node) bool {
 	if callNode.Type() != "call_expression" {
 		return false
 	}
@@ -297,7 +297,7 @@ func (t *frameworkDSLTracker) isRequireExpressCall(x *extractor, callNode *sitte
 // `NestFactory.create(...)` (any number of arguments; the import-path
 // check is deferred to the caller — NestFactory is always from @nestjs/core
 // in real-world code but we match by name to avoid a package-binding walk).
-func (t *frameworkDSLTracker) isNestFactoryCreateCall(x *extractor, callNode *sitter.Node) bool {
+func (t *frameworkDSLTracker) isNestFactoryCreateCall(x *extractor, callNode ts.Node) bool {
 	fn := callNode.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "member_expression" {
 		return false
@@ -318,7 +318,7 @@ func (t *frameworkDSLTracker) isNestFactoryCreateCall(x *extractor, callNode *si
 // This is the per-call gate: if the receiver is a known framework local,
 // the CALLS edge produced for this call should carry
 // Properties["receiver_package"] = "express".
-func (t *frameworkDSLTracker) receiverPackageForCall(x *extractor, callNode *sitter.Node) string {
+func (t *frameworkDSLTracker) receiverPackageForCall(x *extractor, callNode ts.Node) string {
 	if t == nil {
 		return ""
 	}
@@ -353,7 +353,7 @@ func (t *frameworkDSLTracker) receiverPackageForCall(x *extractor, callNode *sit
 //
 // Stops at depth 4 to avoid spending time on deeply-nested expressions
 // that are unlikely to be framework chains. Returns "" on any miss.
-func (x *extractor) frameworkReceiverIdent(obj *sitter.Node) string {
+func (x *extractor) frameworkReceiverIdent(obj ts.Node) string {
 	const maxDepth = 4
 	cur := obj
 	for depth := 0; depth < maxDepth; depth++ {

@@ -14,7 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tsjavascript "github.com/smacker/go-tree-sitter/javascript"
 	tstypescript "github.com/smacker/go-tree-sitter/typescript/typescript"
 
@@ -98,13 +99,18 @@ func TestClassArrow_Measurement(t *testing.T) {
 				if err != nil {
 					return nil
 				}
-				parser := sitter.NewParser()
+				var grammar ts.Language
 				if lang == "typescript" {
-					parser.SetLanguage(tstypescript.GetLanguage())
+					grammar = tssmacker.WrapLanguage(tstypescript.GetLanguage())
 				} else {
-					parser.SetLanguage(tsjavascript.GetLanguage())
+					grammar = tssmacker.WrapLanguage(tsjavascript.GetLanguage())
 				}
-				tree, parseErr := parser.ParseCtx(context.Background(), nil, body)
+				parser, parserErr := tssmacker.New().NewParser(grammar)
+				if parserErr != nil {
+					return nil
+				}
+				defer parser.Close()
+				tree, parseErr := parser.Parse(body)
 				if parseErr != nil || tree == nil {
 					return nil
 				}
@@ -112,7 +118,7 @@ func TestClassArrow_Measurement(t *testing.T) {
 					Path:     p,
 					Content:  body,
 					Language: lang,
-					Tree:     tree,
+					TSTree:   tree,
 				})
 				if extractErr != nil {
 					return nil

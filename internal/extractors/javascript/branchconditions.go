@@ -29,7 +29,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -65,7 +65,7 @@ type branchHit struct {
 // extractBranchHits walks a function/method/arrow body and returns one
 // branchHit per unique condition expression found in an if/ternary/switch
 // whose controlling expression contains a comparison operator.
-func (x *extractor) extractBranchHits(body *sitter.Node) []branchHit {
+func (x *extractor) extractBranchHits(body ts.Node) []branchHit {
 	if body == nil {
 		return nil
 	}
@@ -74,7 +74,7 @@ func (x *extractor) extractBranchHits(body *sitter.Node) []branchHit {
 
 	defer func() { _ = recover() }()
 
-	add := func(cond *sitter.Node, kind branchKind) {
+	add := func(cond ts.Node, kind branchKind) {
 		if cond == nil {
 			return
 		}
@@ -122,7 +122,7 @@ func (x *extractor) extractBranchHits(body *sitter.Node) []branchHit {
 // comparison. It handles binary comparisons directly, and descends through
 // logical && / || compositions so `if (a < b && c !== d)` is recognised by its
 // first comparison operand. A bare boolean (`if (this.enabled)`) returns false.
-func (x *extractor) branchComparisonOp(n *sitter.Node) (string, bool) {
+func (x *extractor) branchComparisonOp(n ts.Node) (string, bool) {
 	if n == nil {
 		return "", false
 	}
@@ -154,7 +154,7 @@ func (x *extractor) branchComparisonOp(n *sitter.Node) (string, bool) {
 // member access or plain identifier worth recording as a branch discriminant
 // (e.g. `this._status`, `mode`). Calls, literals and complex expressions are
 // excluded to keep the signal focused on stateful branching.
-func isBranchOperand(n *sitter.Node) bool {
+func isBranchOperand(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -166,7 +166,7 @@ func isBranchOperand(n *sitter.Node) bool {
 }
 
 // binaryOperator returns the operator token of a binary_expression node.
-func (x *extractor) binaryOperator(n *sitter.Node) string {
+func (x *extractor) binaryOperator(n ts.Node) string {
 	if n == nil {
 		return ""
 	}
@@ -185,7 +185,7 @@ func (x *extractor) binaryOperator(n *sitter.Node) string {
 
 // unwrapParen strips a single layer of parenthesized_expression so callers see
 // the inner comparison directly.
-func unwrapParen(n *sitter.Node) *sitter.Node {
+func unwrapParen(n ts.Node) ts.Node {
 	if n != nil && n.Type() == "parenthesized_expression" {
 		// the inner expression is the named child
 		for i := 0; i < int(n.ChildCount()); i++ {
@@ -207,7 +207,7 @@ func normalizeBranchExpr(s string) string {
 // stampBranchConditions stamps Properties["branch_conditions"] on the last
 // entity appended to x.entities and emits BRANCHES_ON edges (#2885). Called
 // immediately after stampDiscriminators for each emitted method/function/arrow.
-func (x *extractor) stampBranchConditions(body *sitter.Node) {
+func (x *extractor) stampBranchConditions(body ts.Node) {
 	if body == nil || len(x.entities) == 0 {
 		return
 	}

@@ -175,6 +175,17 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   100% smacker-backed and link-safe; this is mechanical, behavior-preserving
   plumbing — the full python+java extractor suites pass unchanged (zero fidelity
   delta). Mirrors the Phase-0 Go-extractor migration.
+- **Migrated the `javascript`+`typescript` extractors to the `ts.Node`
+  abstraction (smacker-backed, no behavior change)** — B2 Phase 1 (#5418). The
+  JS/TS extractor (which handles both `javascript` and `typescript`) now
+  traverses the binding-agnostic `internal/treesitter/ts` façade
+  (`ts.Node`/`ts.Tree`) and reads the shared `FileInput.TSTree` instead of the
+  concrete `smacker/go-tree-sitter` `*sitter.Node`/`*sitter.Tree`. No inline
+  parse fallback exists (the extractor early-returns when no tree is supplied),
+  so no grammar provider was added; test tree-helpers build `ts.Tree` via the
+  smacker adapter and stamp `TSTree`. Default builds stay 100% smacker-backed and
+  link-safe; mechanical and behavior-preserving — the javascript+typescript
+  extractor suite passes unchanged (zero fidelity delta).
 
 ## [0.1.3] — 2026-06-23
 

@@ -49,7 +49,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -166,7 +166,7 @@ var platformBranchCallees = map[string]bool{
 // emitMobileNavigationSignals runs the four mobile dimensions over the file's
 // AST and decorates entities[0] (the file entity) with summary properties plus
 // reused-kind edges. Called from Extract() after emitPlatformVariantRelationships.
-func (x *extractor) emitMobileNavigationSignals(root *sitter.Node) {
+func (x *extractor) emitMobileNavigationSignals(root ts.Node) {
 	if root == nil || len(x.entities) == 0 {
 		return
 	}
@@ -237,7 +237,7 @@ func isNativeModuleSpecifier(spec string) bool {
 // emitNativeModuleSignals detects native-bridge imports and access and stamps
 // the file entity's `native_modules` property plus a `native_module=1` marker
 // on the matching IMPORTS edge (no new edge kind).
-func (x *extractor) emitNativeModuleSignals(root *sitter.Node, fileEnt *types.EntityRecord) {
+func (x *extractor) emitNativeModuleSignals(root ts.Node, fileEnt *types.EntityRecord) {
 	var mods []string
 	var deps []nativeBridgeDep
 
@@ -386,7 +386,7 @@ func (x *extractor) emitNativeModuleSignals(root *sitter.Node, fileEnt *types.En
 // enclosingCall walks up from a member_expression to the call_expression that
 // invokes it (so TurboModuleRegistry.get('Foo') resolves from the .get member
 // to the call carrying the 'Foo' argument), or returns nil.
-func enclosingCall(mem *sitter.Node) *sitter.Node {
+func enclosingCall(mem ts.Node) ts.Node {
 	for n := mem.Parent(); n != nil; n = n.Parent() {
 		switch n.Type() {
 		case "call_expression":
@@ -470,7 +470,7 @@ func ensurePropsRel(rel *types.RelationshipRecord) {
 }
 
 // stringArg returns the first string-literal argument of a call, unquoted, or "".
-func stringArg(x *extractor, call *sitter.Node) string {
+func stringArg(x *extractor, call ts.Node) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
@@ -488,7 +488,7 @@ func stringArg(x *extractor, call *sitter.Node) string {
 // JSX declarations, stamping `navigators` / `screens` on the file entity and
 // emitting one NAVIGATES_TO edge per declared screen (via=screen_config) so the
 // linker can match screens to route call sites.
-func (x *extractor) emitNavigatorScreenSignals(root *sitter.Node, fileEnt *types.EntityRecord) {
+func (x *extractor) emitNavigatorScreenSignals(root ts.Node, fileEnt *types.EntityRecord) {
 	var navigators, screens []string
 
 	// 1. Navigator factory calls: const Stack = createStackNavigator().
@@ -577,7 +577,7 @@ func isScreenTag(tag string) bool {
 
 // addFileNavEdge appends a NAVIGATES_TO edge to the file entity for a declared
 // screen/route or deep-link target.
-func (x *extractor) addFileNavEdge(fileEnt *types.EntityRecord, route, via string, node *sitter.Node, tag string) {
+func (x *extractor) addFileNavEdge(fileEnt *types.EntityRecord, route, via string, node ts.Node, tag string) {
 	props := map[string]string{
 		"route": route,
 		"line":  strconv.Itoa(int(node.StartPoint().Row) + 1),
@@ -604,7 +604,7 @@ func (x *extractor) addFileNavEdge(fileEnt *types.EntityRecord, route, via strin
 // literal argument of a NativeScript frame.navigate({ moduleName: 'x' }) call,
 // or "" if absent. A bare-string first argument (frame.navigate('home')) is
 // also accepted.
-func (x *extractor) moduleNameArg(call *sitter.Node) string {
+func (x *extractor) moduleNameArg(call ts.Node) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
@@ -637,13 +637,13 @@ func (x *extractor) moduleNameArg(call *sitter.Node) string {
 
 // jsxAttrValue returns the string/template-literal value of the named attribute
 // on a JSX opening/self-closing element, or "" if absent or non-literal.
-func jsxAttrValue(x *extractor, el *sitter.Node, attrName string) string {
+func jsxAttrValue(x *extractor, el ts.Node, attrName string) string {
 	for i := 0; i < int(el.ChildCount()); i++ {
 		attr := el.Child(i)
 		if attr == nil || attr.Type() != "jsx_attribute" {
 			continue
 		}
-		var nameChild *sitter.Node
+		var nameChild ts.Node
 		for j := 0; j < int(attr.ChildCount()); j++ {
 			c := attr.Child(j)
 			if c != nil && (c.Type() == "property_identifier" || c.Type() == "identifier") {
@@ -689,7 +689,7 @@ func jsxAttrValue(x *extractor, el *sitter.Node, attrName string) string {
 // Linking.getInitialURL, and a `linking` config object with prefixes + screens —
 // and stamps `deep_link_prefixes` / `deep_link_screens` plus NAVIGATES_TO edges
 // (via=deep_link) on the file entity.
-func (x *extractor) emitDeepLinkSignals(root *sitter.Node, fileEnt *types.EntityRecord) {
+func (x *extractor) emitDeepLinkSignals(root ts.Node, fileEnt *types.EntityRecord) {
 	var prefixes, screens []string
 
 	// 1. Linking.createURL('/path') / Linking.openURL — the call form is already
@@ -747,7 +747,7 @@ func (x *extractor) emitDeepLinkSignals(root *sitter.Node, fileEnt *types.Entity
 	// 2. A `linking = { prefixes: [...], config: { screens: {...} } }` object —
 	//    the React Navigation deep-link config shape.
 	for _, declr := range findAllNodes(root, "variable_declarator", "pair") {
-		var nameNode, valNode *sitter.Node
+		var nameNode, valNode ts.Node
 		if declr.Type() == "variable_declarator" {
 			nameNode = declr.ChildByFieldName("name")
 			valNode = declr.ChildByFieldName("value")
@@ -782,7 +782,7 @@ func (x *extractor) emitDeepLinkSignals(root *sitter.Node, fileEnt *types.Entity
 
 // parseLinkingConfig extracts the prefixes array entries and the config.screens
 // key names from a React Navigation `linking` config object literal.
-func (x *extractor) parseLinkingConfig(obj *sitter.Node) (prefixes, screens []string) {
+func (x *extractor) parseLinkingConfig(obj ts.Node) (prefixes, screens []string) {
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		pair := obj.Child(i)
 		if pair == nil || pair.Type() != "pair" {
@@ -814,7 +814,7 @@ func (x *extractor) parseLinkingConfig(obj *sitter.Node) (prefixes, screens []st
 
 // linkingScreenKeys returns the screen-name keys from a `config: { screens: {…} }`
 // object — the top-level keys under `screens`.
-func (x *extractor) linkingScreenKeys(config *sitter.Node) []string {
+func (x *extractor) linkingScreenKeys(config ts.Node) []string {
 	var out []string
 	for i := 0; i < int(config.ChildCount()); i++ {
 		pair := config.Child(i)
@@ -850,7 +850,7 @@ func (x *extractor) linkingScreenKeys(config *sitter.Node) []string {
 // on the file entity. The generic branch_conditions pass already emits
 // BRANCHES_ON edges for the `Platform.OS === 'ios'` comparison shape; this
 // summary makes the platform dimension first-class and queryable.
-func (x *extractor) emitPlatformBranchSignals(root *sitter.Node, fileEnt *types.EntityRecord) {
+func (x *extractor) emitPlatformBranchSignals(root ts.Node, fileEnt *types.EntityRecord) {
 	var branches []string
 
 	// 1. File-variant split (.ios.tsx / .android.tsx) — the file IS a platform

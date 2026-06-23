@@ -5,7 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tsjavascript "github.com/smacker/go-tree-sitter/javascript"
 	tstypescript "github.com/smacker/go-tree-sitter/typescript/typescript"
 
@@ -19,11 +20,14 @@ import (
 // --------------------------------------------------------------------------
 
 // parseJS parses source with the JavaScript grammar and returns the tree.
-func parseJS(t *testing.T, src []byte) *sitter.Tree {
+func parseJS(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tsjavascript.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsjavascript.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parseJS: %v", err)
 	}
@@ -31,11 +35,14 @@ func parseJS(t *testing.T, src []byte) *sitter.Tree {
 }
 
 // parseTS parses source with the TypeScript grammar and returns the tree.
-func parseTS(t *testing.T, src []byte) *sitter.Tree {
+func parseTS(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tstypescript.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstypescript.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parseTS: %v", err)
 	}
@@ -43,7 +50,7 @@ func parseTS(t *testing.T, src []byte) *sitter.Tree {
 }
 
 // extract runs the extractor and returns the entity slice.
-func extract(t *testing.T, content []byte, language string, tree *sitter.Tree) []types.EntityRecord {
+func extract(t *testing.T, content []byte, language string, tree ts.Tree) []types.EntityRecord {
 	t.Helper()
 	e := &jsExtractorShim{}
 	got, err := e.extract(content, language, tree)
@@ -56,13 +63,13 @@ func extract(t *testing.T, content []byte, language string, tree *sitter.Tree) [
 // jsExtractorShim invokes the real JSExtractor via the extreg.Extractor interface.
 type jsExtractorShim struct{}
 
-func (s *jsExtractorShim) extract(content []byte, language string, tree *sitter.Tree) ([]types.EntityRecord, error) {
+func (s *jsExtractorShim) extract(content []byte, language string, tree ts.Tree) ([]types.EntityRecord, error) {
 	e := javascript.New()
 	return e.Extract(context.Background(), extreg.FileInput{
 		Path:     "test.go",
 		Content:  content,
 		Language: language,
-		Tree:     tree,
+		TSTree:   tree,
 	})
 }
 

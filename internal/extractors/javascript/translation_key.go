@@ -31,7 +31,7 @@ package javascript
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -39,7 +39,7 @@ import (
 // emitTranslationKeyEdges scans the AST for i18n key references rooted at a
 // recognised i18n context and appends translation-key entities +
 // USES_TRANSLATION edges to x.entities. x.entities[0] MUST be the file entity.
-func (x *extractor) emitTranslationKeyEdges(root *sitter.Node) {
+func (x *extractor) emitTranslationKeyEdges(root ts.Node) {
 	if root == nil || len(x.entities) == 0 {
 		return
 	}
@@ -47,8 +47,8 @@ func (x *extractor) emitTranslationKeyEdges(root *sitter.Node) {
 
 	var uses []extreg.TranslationUse
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -100,7 +100,7 @@ func (x *extractor) fileHasI18nImport() bool {
 // jsTranslationCall resolves a call_expression to an i18n key when the call is
 // a recognised translation invocation AND its first argument is a static
 // string literal. Returns (key, framework-tag, true) or ("","",false).
-func (x *extractor) jsTranslationCall(call *sitter.Node, hasI18nImport bool) (string, string, bool) {
+func (x *extractor) jsTranslationCall(call ts.Node, hasI18nImport bool) (string, string, bool) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return "", "", false
@@ -153,7 +153,7 @@ func (x *extractor) jsTranslationCall(call *sitter.Node, hasI18nImport bool) (st
 // static string literal (single/double quote, or a backtick template with NO
 // substitutions). Returns ok=false for a dynamic key (identifier, interpolated
 // template, member access, concatenation) — the honest-partial boundary.
-func (x *extractor) jsFirstStringArg(call *sitter.Node) (string, bool) {
+func (x *extractor) jsFirstStringArg(call ts.Node) (string, bool) {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return "", false
@@ -190,7 +190,7 @@ func (x *extractor) jsFirstStringArg(call *sitter.Node) (string, bool) {
 
 // jsTemplateHasSubstitution reports whether a template_string node contains a
 // `${...}` interpolation (template_substitution child).
-func jsTemplateHasSubstitution(n *sitter.Node) bool {
+func jsTemplateHasSubstitution(n ts.Node) bool {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		if c := n.Child(i); c != nil && c.Type() == "template_substitution" {
 			return true
@@ -202,7 +202,7 @@ func jsTemplateHasSubstitution(n *sitter.Node) bool {
 // jsxTransKey extracts the static `i18nKey="..."` attribute value from a
 // `<Trans i18nKey="x">` element. Returns ("", false) when the element is not a
 // Trans element, has no i18nKey, or the attribute value is dynamic ({expr}).
-func (x *extractor) jsxTransKey(el *sitter.Node) (string, bool) {
+func (x *extractor) jsxTransKey(el ts.Node) (string, bool) {
 	nameNode := el.ChildByFieldName("name")
 	if nameNode == nil {
 		return "", false
@@ -247,7 +247,7 @@ func (x *extractor) jsxTransKey(el *sitter.Node) (string, bool) {
 // "$t"). Returns ("", "") when the receiver is neither a plain identifier nor
 // `this`. (Distinct from external_service.go's jsMemberRootAndTail, which
 // flattens a deep dotted tail and rejects a `this` root.)
-func (x *extractor) i18nMemberRootTail(member *sitter.Node) (string, string) {
+func (x *extractor) i18nMemberRootTail(member ts.Node) (string, string) {
 	prop := member.ChildByFieldName("property")
 	obj := member.ChildByFieldName("object")
 	if prop == nil || obj == nil {

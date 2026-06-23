@@ -38,8 +38,8 @@ package javascript
 import (
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
-	sitter "github.com/smacker/go-tree-sitter"
 )
 
 // PropViaDestructuredBinding is the Properties["via"] value stamped on CALLS
@@ -86,14 +86,14 @@ type destructureBinding struct {
 // to avoid collecting bindings that are not visible at the caller's scope level.
 //
 // Returns nil when no relevant bindings are found (fast-path).
-func (x *extractor) buildDestructureBindings(scope *sitter.Node) map[string]*destructureBinding {
+func (x *extractor) buildDestructureBindings(scope ts.Node) map[string]*destructureBinding {
 	if scope == nil {
 		return nil
 	}
 
 	result := make(map[string]*destructureBinding)
 
-	stack := make([]*sitter.Node, 0, 32)
+	stack := make([]ts.Node, 0, 32)
 	stack = append(stack, scope)
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
@@ -142,7 +142,7 @@ func (x *extractor) buildDestructureBindings(scope *sitter.Node) map[string]*des
 // When the LHS is a plain identifier and the RHS is a Zustand hook call whose
 // first argument is a simple member-expression arrow (s => s.action or s => s?.action),
 // one binding is registered: localName → actionName via=zustand_selector.
-func (x *extractor) scanDestructureDeclarator(decl *sitter.Node, out map[string]*destructureBinding) {
+func (x *extractor) scanDestructureDeclarator(decl ts.Node, out map[string]*destructureBinding) {
 	nameNode := decl.ChildByFieldName("name")
 	if nameNode == nil {
 		return
@@ -263,7 +263,7 @@ func (x *extractor) scanDestructureDeclarator(decl *sitter.Node, out map[string]
 // return calleeBase="" so the action name is used directly (it is already unique
 // within the store namespace in practice).  For React Query fields like "mutate",
 // the local field name is itself the canonical target.
-func (x *extractor) classifyDestructureRHS(value *sitter.Node) (via, calleeBase string) {
+func (x *extractor) classifyDestructureRHS(value ts.Node) (via, calleeBase string) {
 	if value == nil {
 		return "", ""
 	}
@@ -322,7 +322,7 @@ func (x *extractor) classifyDestructureRHS(value *sitter.Node) (via, calleeBase 
 // Returns (storeVar, actionName) on success or ("", "") when the node does not match.
 // Issue #2631 — storeVar is returned so callers can build the qualified entity ID
 // <storeVar>::<actionName> instead of the bare action name.
-func (x *extractor) parseSelectorArrowFn(value *sitter.Node) (string, string) {
+func (x *extractor) parseSelectorArrowFn(value ts.Node) (string, string) {
 	if value == nil || value.Type() != "call_expression" {
 		return "", ""
 	}
@@ -342,7 +342,7 @@ func (x *extractor) parseSelectorArrowFn(value *sitter.Node) (string, string) {
 		return "", ""
 	}
 	// Find the first non-punctuation child of the arguments node.
-	var arrowNode *sitter.Node
+	var arrowNode ts.Node
 	for i := 0; i < int(argsNode.ChildCount()); i++ {
 		child := argsNode.Child(i)
 		if child == nil {
@@ -372,7 +372,7 @@ func (x *extractor) parseSelectorArrowFn(value *sitter.Node) (string, string) {
 	// For optional_chain (s?.x) the grammar nests differently; normalise by
 	// accepting either member_expression or optional_chain and extracting the
 	// rightmost property identifier.
-	var propNode *sitter.Node
+	var propNode ts.Node
 	switch bodyNode.Type() {
 	case "member_expression":
 		// Verify that the object side is the arrow param — prevents chained
@@ -408,7 +408,7 @@ func (x *extractor) parseSelectorArrowFn(value *sitter.Node) (string, string) {
 // calleeLeafName extracts the trailing identifier name from a function expression node.
 // For `identifier` nodes returns the name directly.
 // For `member_expression` nodes returns the property name.
-func (x *extractor) calleeLeafName(fn *sitter.Node) string {
+func (x *extractor) calleeLeafName(fn ts.Node) string {
 	if fn == nil {
 		return ""
 	}

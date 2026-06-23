@@ -3,7 +3,7 @@ package javascript
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -48,7 +48,7 @@ import (
 // No name is synthesised, and a clause with no resolvable leaf type contributes
 // no edge. Each ToID carries the implementer/target names in Properties for
 // docgen (ClassManifest bases/interfaces) parity with the Java path.
-func (x *extractor) classHeritageRels(class *sitter.Node, className string) []types.RelationshipRecord {
+func (x *extractor) classHeritageRels(class ts.Node, className string) []types.RelationshipRecord {
 	if class == nil || className == "" {
 		return nil
 	}
@@ -94,7 +94,7 @@ func (x *extractor) classHeritageRels(class *sitter.Node, className string) []ty
 // identifiers, type_identifiers, generic_type (Foo<T>), member/qualified names
 // (ns.Foo) — and reduces each to its leaf type name via heritageLeafTypeName.
 // Punctuation tokens (the `extends`/`implements` keywords, commas) are skipped.
-func (x *extractor) heritageClauseTypeNames(clause *sitter.Node) []string {
+func (x *extractor) heritageClauseTypeNames(clause ts.Node) []string {
 	var out []string
 	seen := map[string]bool{}
 	for k := 0; k < int(clause.ChildCount()); k++ {
@@ -153,7 +153,7 @@ var nestMappedTypeHelpers = map[string]bool{
 // arguments of a mapped-type helper call (PartialType(X) -> ["X"]). It returns
 // nil for any call whose callee is not a recognized NestJS mapped-type helper,
 // so non-mapped extends-call shapes contribute no edge (#4845).
-func mappedTypeBaseNames(x *extractor, call *sitter.Node) []string {
+func mappedTypeBaseNames(x *extractor, call ts.Node) []string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return nil

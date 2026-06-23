@@ -54,7 +54,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -89,7 +89,7 @@ var testBlockCallNames = map[string]bool{
 // function/class declarations.
 //
 // No-op for non-test files and for test files with no module-level blocks.
-func (x *extractor) emitTestScopeOwner(root *sitter.Node) {
+func (x *extractor) emitTestScopeOwner(root ts.Node) {
 	if root == nil || !isJSTestFile(x.filePath) {
 		return
 	}
@@ -135,8 +135,8 @@ func (x *extractor) emitTestScopeOwner(root *sitter.Node) {
 // Blocks may be nested (describe → it); we recurse into a matched block's
 // callback so inner it() bodies are mined too, but we do NOT descend into
 // named function/class declarations (their calls already have owners).
-func (x *extractor) collectTestBlockBodies(root *sitter.Node) []*sitter.Node {
-	var out []*sitter.Node
+func (x *extractor) collectTestBlockBodies(root ts.Node) []ts.Node {
+	var out []ts.Node
 	x.walkTestBlocks(root, &out)
 	return out
 }
@@ -144,7 +144,7 @@ func (x *extractor) collectTestBlockBodies(root *sitter.Node) []*sitter.Node {
 // walkTestBlocks recursively finds test-block call callbacks. It treats a
 // call_expression whose callee leaf is a test-block name as a block, records
 // its callback body, and recurses into that body to catch nested blocks.
-func (x *extractor) walkTestBlocks(n *sitter.Node, out *[]*sitter.Node) {
+func (x *extractor) walkTestBlocks(n ts.Node, out *[]ts.Node) {
 	if n == nil {
 		return
 	}
@@ -172,7 +172,7 @@ func (x *extractor) walkTestBlocks(n *sitter.Node, out *[]*sitter.Node) {
 // arrow/function callback, or nil when the call is not a recognised test
 // block or carries no function callback. Handles `describe('x', () => {...})`,
 // `it('y', async () => {...})`, and `it('y', function () {...})`.
-func (x *extractor) testBlockCallbackBody(call *sitter.Node) *sitter.Node {
+func (x *extractor) testBlockCallbackBody(call ts.Node) ts.Node {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return nil

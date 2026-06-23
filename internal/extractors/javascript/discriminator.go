@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -43,8 +43,8 @@ type discriminatorHit struct {
 // and returns a comma-separated "var=value" string for every discriminator
 // comparison found. Returns "" when no discriminators are found or body is nil.
 //
-// Signature: func (x *extractor) extractDiscriminators(body *sitter.Node) string
-func (x *extractor) extractDiscriminators(body *sitter.Node) string {
+// Signature: func (x *extractor) extractDiscriminators(body ts.Node) string
+func (x *extractor) extractDiscriminators(body ts.Node) string {
 	hits := x.extractDiscriminatorHits(body)
 	if len(hits) == 0 {
 		return ""
@@ -59,7 +59,7 @@ func (x *extractor) extractDiscriminators(body *sitter.Node) string {
 // extractDiscriminatorHits walks the body and returns one discriminatorHit per
 // unique (var, literal) pair found. Used by stampDiscriminators (#2666) to
 // emit DISCRIMINATES_ON edges with line + literal properties.
-func (x *extractor) extractDiscriminatorHits(body *sitter.Node) []discriminatorHit {
+func (x *extractor) extractDiscriminatorHits(body ts.Node) []discriminatorHit {
 	if body == nil {
 		return nil
 	}
@@ -96,7 +96,7 @@ func (x *extractor) extractDiscriminatorHits(body *sitter.Node) []discriminatorH
 //
 // Symmetric form: if LHS is a literal and RHS is an identifier (e.g. `1 === status`)
 // the pair is also captured with (identifier, literal) order.
-func (x *extractor) discriminatorFromBinary(n *sitter.Node) (varName, litVal string, ok bool) {
+func (x *extractor) discriminatorFromBinary(n ts.Node) (varName, litVal string, ok bool) {
 	if n == nil || n.Type() != "binary_expression" {
 		return "", "", false
 	}
@@ -157,7 +157,7 @@ func (x *extractor) discriminatorFromBinary(n *sitter.Node) (varName, litVal str
 // a literal). Note: unary_expression where operator is "-" followed by a number
 // literal (negative numbers) would be missed; that is an acceptable trade-off
 // since negative numeric discriminators are uncommon in real UI code.
-func isDiscriminatorLiteral(n *sitter.Node) bool {
+func isDiscriminatorLiteral(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -174,7 +174,7 @@ func isDiscriminatorLiteral(n *sitter.Node) bool {
 // discriminatorLiteralValue extracts the display value from a literal node.
 // String literals have their surrounding quotes stripped. Other literals
 // return their raw text.
-func (x *extractor) discriminatorLiteralValue(n *sitter.Node) string {
+func (x *extractor) discriminatorLiteralValue(n ts.Node) string {
 	if n == nil {
 		return ""
 	}
@@ -200,7 +200,7 @@ func (x *extractor) discriminatorLiteralValue(n *sitter.Node) string {
 // stampDiscriminators stamps Properties["discriminators"] on the last entity
 // appended to x.entities when the discriminators string is non-empty.
 // Called immediately after emitting a function/method/arrow entity.
-func (x *extractor) stampDiscriminators(body *sitter.Node) {
+func (x *extractor) stampDiscriminators(body ts.Node) {
 	if body == nil || len(x.entities) == 0 {
 		return
 	}

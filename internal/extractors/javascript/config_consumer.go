@@ -21,7 +21,7 @@
 package javascript
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -29,15 +29,15 @@ import (
 // emitConfigConsumerEdges scans the AST for config-read shapes and appends
 // config-key entities + DEPENDS_ON_CONFIG edges to x.entities. x.entities[0]
 // MUST be the file entity. Safe with an empty tree.
-func (x *extractor) emitConfigConsumerEdges(root *sitter.Node) {
+func (x *extractor) emitConfigConsumerEdges(root ts.Node) {
 	if root == nil || len(x.entities) == 0 {
 		return
 	}
 
 	var reads []extreg.ConfigRead
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -92,7 +92,7 @@ func (x *extractor) emitConfigConsumerEdges(root *sitter.Node) {
 
 // jsMemberConfigKey returns the config key for process.env.KEY or
 // import.meta.env.KEY member expressions, or "" otherwise.
-func jsMemberConfigKey(x *extractor, n *sitter.Node) string {
+func jsMemberConfigKey(x *extractor, n ts.Node) string {
 	obj := n.ChildByFieldName("object")
 	prop := n.ChildByFieldName("property")
 	if obj == nil || prop == nil || prop.Type() != "property_identifier" {
@@ -108,7 +108,7 @@ func jsMemberConfigKey(x *extractor, n *sitter.Node) string {
 
 // jsSubscriptConfigKey returns the config key for process.env['KEY'] /
 // import.meta.env['KEY'] subscript expressions with a literal string index.
-func jsSubscriptConfigKey(x *extractor, n *sitter.Node) string {
+func jsSubscriptConfigKey(x *extractor, n ts.Node) string {
 	obj := n.ChildByFieldName("object")
 	idx := n.ChildByFieldName("index")
 	if obj == nil || idx == nil {
@@ -126,7 +126,7 @@ func jsSubscriptConfigKey(x *extractor, n *sitter.Node) string {
 
 // jsConfigGetKey returns the config key for a node-config `config.get('k')` /
 // `config.has('k')` call with a literal string argument, or "".
-func jsConfigGetKey(x *extractor, call *sitter.Node) string {
+func jsConfigGetKey(x *extractor, call ts.Node) string {
 	fn := call.ChildByFieldName("function")
 	args := call.ChildByFieldName("arguments")
 	if fn == nil || args == nil || fn.Type() != "member_expression" {

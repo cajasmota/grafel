@@ -26,7 +26,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // osStatRegular reports whether absPath stats as a regular file. Used
@@ -173,13 +173,13 @@ func dottedModuleFromPath(p string) string {
 //
 // The slice is ordered by source position so emitter output is stable
 // across runs.
-func (x *extractor) collectFileImports(root *sitter.Node) []importBinding {
+func (x *extractor) collectFileImports(root ts.Node) []importBinding {
 	var out []importBinding
 	x.collectFileImportsNode(root, &out)
 	return out
 }
 
-func (x *extractor) collectFileImportsNode(n *sitter.Node, out *[]importBinding) {
+func (x *extractor) collectFileImportsNode(n ts.Node, out *[]importBinding) {
 	if n == nil {
 		return
 	}
@@ -207,7 +207,7 @@ func (x *extractor) collectFileImportsNode(n *sitter.Node, out *[]importBinding)
 //
 // Anything else (type-only imports, dynamic import()) is silently
 // dropped — the receiver binder won't have type information for those.
-func (x *extractor) collectFromImportStatement(n *sitter.Node, out *[]importBinding) {
+func (x *extractor) collectFromImportStatement(n ts.Node, out *[]importBinding) {
 	// Specifier (the "..." string) is the import_statement's source field.
 	source := x.findStringChild(n)
 	if source == "" {
@@ -357,7 +357,7 @@ func firstExistingJSPath(repoRoot, candidate string) string {
 //	identifier                 → default import (`express` in `import express from`)
 //	namespace_import           → `* as ns`
 //	named_imports              → `{ Foo, Bar as Baz }`
-func (x *extractor) parseImportClause(clause *sitter.Node, importPath, dotted, resolved string, aliasResolved bool, out *[]importBinding) {
+func (x *extractor) parseImportClause(clause ts.Node, importPath, dotted, resolved string, aliasResolved bool, out *[]importBinding) {
 	count := int(clause.ChildCount())
 	for i := 0; i < count; i++ {
 		ch := clause.Child(i)
@@ -402,7 +402,7 @@ func (x *extractor) parseImportClause(clause *sitter.Node, importPath, dotted, r
 
 // parseNamedImports walks a named_imports node (`{ Foo, Bar as Baz }`)
 // and appends one binding per import_specifier descendant.
-func (x *extractor) parseNamedImports(named *sitter.Node, importPath, dotted, resolved string, aliasResolved bool, out *[]importBinding) {
+func (x *extractor) parseNamedImports(named ts.Node, importPath, dotted, resolved string, aliasResolved bool, out *[]importBinding) {
 	count := int(named.ChildCount())
 	for i := 0; i < count; i++ {
 		ch := named.Child(i)
@@ -436,7 +436,7 @@ func (x *extractor) parseNamedImports(named *sitter.Node, importPath, dotted, re
 
 // findStringChild returns the unquoted text of the first "string" child
 // of n, or "" when none exists.
-func (x *extractor) findStringChild(n *sitter.Node) string {
+func (x *extractor) findStringChild(n ts.Node) string {
 	count := int(n.ChildCount())
 	for i := 0; i < count; i++ {
 		ch := n.Child(i)
@@ -450,7 +450,7 @@ func (x *extractor) findStringChild(n *sitter.Node) string {
 // firstIdentifier returns the text of the first descendant of n whose
 // Type() is "identifier", or "" when none exists. Used to pull the
 // local name out of `* as ns` and quirky import_specifier shapes.
-func (x *extractor) firstIdentifier(n *sitter.Node) string {
+func (x *extractor) firstIdentifier(n ts.Node) string {
 	if n == nil {
 		return ""
 	}
@@ -472,7 +472,7 @@ func (x *extractor) firstIdentifier(n *sitter.Node) string {
 
 // childFieldText returns the text of a named-field child of n, or ""
 // when the field is absent or empty.
-func (x *extractor) childFieldText(n *sitter.Node, field string) string {
+func (x *extractor) childFieldText(n ts.Node, field string) string {
 	if n == nil {
 		return ""
 	}

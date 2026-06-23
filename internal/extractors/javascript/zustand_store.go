@@ -50,8 +50,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
-	sitter "github.com/smacker/go-tree-sitter"
 )
 
 // PropViaZustandStore is the value for Properties["via"] stamped on CALLS
@@ -72,7 +72,7 @@ type zustandTracker struct {
 	// the AST node of the function value. Populated alongside storeActions so
 	// that emitStoreActionEntities can derive source-line ranges for each action
 	// method entity (issue #2626).
-	storeActionNodes map[string]map[string]*sitter.Node
+	storeActionNodes map[string]map[string]ts.Node
 
 	// storePartializeFields maps a store variable name to the list of field
 	// names that appear in the partialize config (issue #2626).
@@ -85,7 +85,7 @@ type zustandTracker struct {
 // importByLocal map and an AST walk to find create() assignments.
 //
 // Returns nil when no "zustand" import is found in the file (fast-path).
-func (x *extractor) buildZustandTracker(root *sitter.Node) *zustandTracker {
+func (x *extractor) buildZustandTracker(root ts.Node) *zustandTracker {
 	if x.importByLocal == nil {
 		return nil
 	}
@@ -118,7 +118,7 @@ func (x *extractor) buildZustandTracker(root *sitter.Node) *zustandTracker {
 
 	t := &zustandTracker{
 		storeActions:          make(map[string]map[string]bool),
-		storeActionNodes:      make(map[string]map[string]*sitter.Node),
+		storeActionNodes:      make(map[string]map[string]ts.Node),
 		storePartializeFields: make(map[string][]string),
 	}
 	if root != nil {
@@ -138,8 +138,8 @@ func (x *extractor) buildZustandTracker(root *sitter.Node) *zustandTracker {
 //
 // For each match it records the action keys (function-valued object properties)
 // in storeActions[<storeVar>].
-func (t *zustandTracker) scanForStores(x *extractor, root *sitter.Node, createLocals map[string]bool) {
-	stack := make([]*sitter.Node, 0, 64)
+func (t *zustandTracker) scanForStores(x *extractor, root ts.Node, createLocals map[string]bool) {
+	stack := make([]ts.Node, 0, 64)
 	stack = append(stack, root)
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
@@ -159,7 +159,7 @@ func (t *zustandTracker) scanForStores(x *extractor, root *sitter.Node, createLo
 
 // processVariableDeclarator checks whether the declarator is a zustand create()
 // call and records the action keys.
-func (t *zustandTracker) processVariableDeclarator(x *extractor, n *sitter.Node, createLocals map[string]bool) {
+func (t *zustandTracker) processVariableDeclarator(x *extractor, n ts.Node, createLocals map[string]bool) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil || nameNode.Type() != "identifier" {
 		return
@@ -204,7 +204,7 @@ func (t *zustandTracker) processVariableDeclarator(x *extractor, n *sitter.Node,
 // unwrapToCallExpression unwraps TS generic call expressions like `create<T>(...)`
 // which tree-sitter may parse as a call_expression wrapping a generic identifier.
 // Returns the call_expression node or nil.
-func unwrapToCallExpression(n *sitter.Node) *sitter.Node {
+func unwrapToCallExpression(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -218,7 +218,7 @@ func unwrapToCallExpression(n *sitter.Node) *sitter.Node {
 
 // isZustandCreateCall returns true when callNode is a call to a local `create`
 // binding that originated from the "zustand" import.
-func (t *zustandTracker) isZustandCreateCall(x *extractor, callNode *sitter.Node, createLocals map[string]bool) bool {
+func (t *zustandTracker) isZustandCreateCall(x *extractor, callNode ts.Node, createLocals map[string]bool) bool {
 	fn := callNode.ChildByFieldName("function")
 	if fn == nil {
 		return false
@@ -265,7 +265,7 @@ func (t *zustandTracker) isZustandCreateCall(x *extractor, callNode *sitter.Node
 // When the first arg to the create() call is itself a call_expression
 // (a middleware wrapper like persist/devtools/immer), we unwrap one level
 // to find the factory arrow/function_expression inside the middleware call.
-func extractStoreActionsWithNodes(x *extractor, createCall *sitter.Node) (map[string]bool, map[string]*sitter.Node) {
+func extractStoreActionsWithNodes(x *extractor, createCall ts.Node) (map[string]bool, map[string]ts.Node) {
 	args := createCall.ChildByFieldName("arguments")
 	if args == nil {
 		return nil, nil
@@ -273,7 +273,7 @@ func extractStoreActionsWithNodes(x *extractor, createCall *sitter.Node) (map[st
 	// Find the first arrow_function or function_expression argument.
 	// If the first non-punctuation arg is a call_expression (middleware wrapper),
 	// unwrap one level to find the factory inside that middleware call.
-	var factoryNode *sitter.Node
+	var factoryNode ts.Node
 	for i := 0; i < int(args.ChildCount()); i++ {
 		ch := args.Child(i)
 		if ch == nil {
@@ -326,7 +326,7 @@ func extractStoreActionsWithNodes(x *extractor, createCall *sitter.Node) (map[st
 // itself a call_expression (nested middleware), it recurses one level.
 //
 // Returns the factory node or nil when the shape is not recognised.
-func extractFactoryFromMiddlewareCall(_ *extractor, middlewareCall *sitter.Node) *sitter.Node {
+func extractFactoryFromMiddlewareCall(_ *extractor, middlewareCall ts.Node) ts.Node {
 	if middlewareCall == nil || middlewareCall.Type() != "call_expression" {
 		return nil
 	}
@@ -358,7 +358,7 @@ func extractFactoryFromMiddlewareCall(_ *extractor, middlewareCall *sitter.Node)
 //	create(factory, { name: 'auth', partialize: (s) => ({ user: s.user, token: s.token }) })
 //
 // Returns nil when no partialize config is found. Issue #2626.
-func extractPartializeFields(x *extractor, createCall *sitter.Node) []string {
+func extractPartializeFields(x *extractor, createCall ts.Node) []string {
 	args := createCall.ChildByFieldName("arguments")
 	if args == nil {
 		return nil
@@ -413,7 +413,7 @@ func extractPartializeFields(x *extractor, createCall *sitter.Node) []string {
 
 // collectPartializeReturnKeys collects the object keys returned by the
 // partialize arrow: (s) => ({ user: s.user, token: s.token }) → ["user", "token"].
-func collectPartializeReturnKeys(x *extractor, fnNode *sitter.Node) []string {
+func collectPartializeReturnKeys(x *extractor, fnNode ts.Node) []string {
 	if fnNode == nil {
 		return nil
 	}
@@ -451,7 +451,7 @@ func collectPartializeReturnKeys(x *extractor, fnNode *sitter.Node) []string {
 //	(set, get) => ({ queue: [], enqueue: fn })   → parenthesized_expression → object
 //	(set, get) => { return { ... } }             → statement_block → return → object
 //	(set, get) => { return persist({ ... }) }    → NOT directly an object (ignored)
-func findObjectLiteral(body *sitter.Node) *sitter.Node {
+func findObjectLiteral(body ts.Node) ts.Node {
 	if body == nil {
 		return nil
 	}
@@ -497,9 +497,9 @@ func findObjectLiteral(body *sitter.Node) *sitter.Node {
 // alongside a map from key to the function-value AST node (for line ranges).
 // Plain state values (arrays, primitives, identifiers that are not functions)
 // are excluded so we don't emit spurious CALLS edges. Issue #2626.
-func collectFunctionValuedKeysWithNodes(x *extractor, obj *sitter.Node) (map[string]bool, map[string]*sitter.Node) {
+func collectFunctionValuedKeysWithNodes(x *extractor, obj ts.Node) (map[string]bool, map[string]ts.Node) {
 	actions := make(map[string]bool)
-	nodes := make(map[string]*sitter.Node)
+	nodes := make(map[string]ts.Node)
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		pair := obj.Child(i)
 		if pair == nil || pair.Type() != "pair" {
@@ -551,7 +551,7 @@ func (t *zustandTracker) emitStoreActionEntities(x *extractor) {
 		nodeMap := t.storeActionNodes[storeVar]
 		partFields := strings.Join(t.storePartializeFields[storeVar], ",")
 		for actionName := range actionNames {
-			var fnNode *sitter.Node
+			var fnNode ts.Node
 			if nodeMap != nil {
 				fnNode = nodeMap[actionName]
 			}
@@ -583,7 +583,7 @@ func (t *zustandTracker) emitStoreActionEntities(x *extractor) {
 
 // isFunctionNode returns true when the node is an arrow_function or
 // function_expression (i.e., a function-valued property → an action).
-func isFunctionNode(n *sitter.Node) bool {
+func isFunctionNode(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -602,7 +602,7 @@ func isFunctionNode(n *sitter.Node) bool {
 //
 // The outer call_expression has a function of type member_expression whose
 // object is itself a call_expression (getState() call).
-func (t *zustandTracker) zustandGetStateActionEdges(x *extractor, callNode *sitter.Node, callerName string) []types.RelationshipRecord {
+func (t *zustandTracker) zustandGetStateActionEdges(x *extractor, callNode ts.Node, callerName string) []types.RelationshipRecord {
 	if t == nil {
 		return nil
 	}
@@ -656,7 +656,7 @@ func (t *zustandTracker) zustandGetStateActionEdges(x *extractor, callNode *sitt
 
 // resolveGetStateCall returns the store variable name when node is a call
 // of the form `<storeVar>.getState()`. Returns "" otherwise.
-func (t *zustandTracker) resolveGetStateCall(x *extractor, node *sitter.Node) string {
+func (t *zustandTracker) resolveGetStateCall(x *extractor, node ts.Node) string {
 	if node == nil || node.Type() != "call_expression" {
 		return ""
 	}
@@ -694,7 +694,7 @@ func (t *zustandTracker) resolveGetStateCall(x *extractor, node *sitter.Node) st
 //	outer: `<inner>()`  where inner = `<storeVar>(s => s.<action>)`
 //
 // We emit a CALLS edge from callerName → actionName with via=zustand_store.
-func (t *zustandTracker) zustandSelectorActionEdges(x *extractor, callNode *sitter.Node, callerName string) []types.RelationshipRecord {
+func (t *zustandTracker) zustandSelectorActionEdges(x *extractor, callNode ts.Node, callerName string) []types.RelationshipRecord {
 	if t == nil {
 		return nil
 	}
@@ -704,7 +704,7 @@ func (t *zustandTracker) zustandSelectorActionEdges(x *extractor, callNode *sitt
 	}
 	// The function of the outer call must be a parenthesized call or call_expression
 	// (the selector invocation).
-	var innerCall *sitter.Node
+	var innerCall ts.Node
 	switch fn.Type() {
 	case "call_expression":
 		innerCall = fn

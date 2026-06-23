@@ -48,8 +48,8 @@ package javascript
 import (
 	"strconv"
 
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
-	sitter "github.com/smacker/go-tree-sitter"
 )
 
 // PropViaGraphQLDataLoader is the value stamped on Properties["via"] for every
@@ -72,7 +72,7 @@ type dataLoaderTracker struct {
 //
 // Returns nil when no "dataloader" import is found (fast-path) or when the
 // file contains no statically-named loader.
-func (x *extractor) buildDataLoaderTracker(root *sitter.Node) *dataLoaderTracker {
+func (x *extractor) buildDataLoaderTracker(root ts.Node) *dataLoaderTracker {
 	if x.importByLocal == nil || root == nil {
 		return nil
 	}
@@ -106,8 +106,8 @@ func (x *extractor) buildDataLoaderTracker(root *sitter.Node) *dataLoaderTracker
 //
 // the loader entity (named by the LHS) and a BATCHES edge to the wrapped batch
 // function when it can be statically resolved.
-func (t *dataLoaderTracker) scanForLoaders(x *extractor, root *sitter.Node, ctorLocals map[string]bool) {
-	stack := []*sitter.Node{root}
+func (t *dataLoaderTracker) scanForLoaders(x *extractor, root ts.Node, ctorLocals map[string]bool) {
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -130,7 +130,7 @@ func (t *dataLoaderTracker) scanForLoaders(x *extractor, root *sitter.Node, ctor
 
 // processAssignment records a loader when valueNode is `new DataLoader(...)`
 // and nameNode is a simple identifier / property name.
-func (t *dataLoaderTracker) processAssignment(x *extractor, nameNode, valueNode *sitter.Node, ctorLocals map[string]bool) {
+func (t *dataLoaderTracker) processAssignment(x *extractor, nameNode, valueNode ts.Node, ctorLocals map[string]bool) {
 	if nameNode == nil || valueNode == nil {
 		return
 	}
@@ -172,7 +172,7 @@ func (t *dataLoaderTracker) processAssignment(x *extractor, nameNode, valueNode 
 //   - member_expression     → the trailing property ("this.userLoader" → "userLoader")
 //
 // Returns "" for destructuring / computed / unsupported shapes.
-func loaderLHSName(x *extractor, nameNode *sitter.Node) string {
+func loaderLHSName(x *extractor, nameNode ts.Node) string {
 	switch nameNode.Type() {
 	case "identifier", "property_identifier", "shorthand_property_identifier":
 		return x.nodeText(nameNode)
@@ -187,7 +187,7 @@ func loaderLHSName(x *extractor, nameNode *sitter.Node) string {
 
 // isDataLoaderConstruction reports whether newExpr is `new DataLoader(...)`
 // where the constructor identifier is bound to the "dataloader" package.
-func isDataLoaderConstruction(x *extractor, newExpr *sitter.Node, ctorLocals map[string]bool) bool {
+func isDataLoaderConstruction(x *extractor, newExpr ts.Node, ctorLocals map[string]bool) bool {
 	ctor := newExpr.ChildByFieldName("constructor")
 	if ctor == nil {
 		return false
@@ -217,12 +217,12 @@ func isDataLoaderConstruction(x *extractor, newExpr *sitter.Node, ctorLocals map
 // Returns "" when the batch function cannot be named statically (inline
 // multi-statement body, member-expression callee, etc.). In that honest-partial
 // case the loader entity is still emitted; only the BATCHES edge is omitted.
-func dataLoaderBatchFn(x *extractor, newExpr *sitter.Node) string {
+func dataLoaderBatchFn(x *extractor, newExpr ts.Node) string {
 	args := newExpr.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
 	}
-	var firstArg *sitter.Node
+	var firstArg ts.Node
 	for i := 0; i < int(args.ChildCount()); i++ {
 		ch := args.Child(i)
 		if ch == nil {
@@ -256,7 +256,7 @@ func dataLoaderBatchFn(x *extractor, newExpr *sitter.Node) string {
 //
 // Returns "" when the body is not a simple single-call delegation or when the
 // callee is not a bare identifier (e.g. `this.batch(ids)`).
-func delegatedCallName(x *extractor, body *sitter.Node) string {
+func delegatedCallName(x *extractor, body ts.Node) string {
 	if body == nil {
 		return ""
 	}
@@ -298,7 +298,7 @@ func delegatedCallName(x *extractor, body *sitter.Node) string {
 //	userLoader.load(id)            object = identifier
 //	this.userLoader.load(id)       object = member_expression (trailing prop)
 //	context.userLoader.load(id)    object = member_expression (trailing prop)
-func (t *dataLoaderTracker) dataLoaderLoadEdges(x *extractor, callNode *sitter.Node) []types.RelationshipRecord {
+func (t *dataLoaderTracker) dataLoaderLoadEdges(x *extractor, callNode ts.Node) []types.RelationshipRecord {
 	if t == nil {
 		return nil
 	}
@@ -337,7 +337,7 @@ func (t *dataLoaderTracker) dataLoaderLoadEdges(x *extractor, callNode *sitter.N
 //   - identifier            → its text ("userLoader")
 //   - member_expression     → the trailing property ("this.userLoader" /
 //     "context.loaders.userLoader" → "userLoader")
-func loaderReceiverName(x *extractor, obj *sitter.Node) string {
+func loaderReceiverName(x *extractor, obj ts.Node) string {
 	if obj == nil {
 		return ""
 	}

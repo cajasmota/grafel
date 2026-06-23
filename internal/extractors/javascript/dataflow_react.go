@@ -29,7 +29,7 @@ package javascript
 import (
 	"fmt"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -48,7 +48,7 @@ import (
 //
 // A second `ref`/context parameter (forwardRef) is ignored — only the first
 // parameter carries props in React.
-func (x *extractor) extractComponentProps(params *sitter.Node, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
+func (x *extractor) extractComponentProps(params ts.Node, componentName string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	if params == nil || !isComponentName(componentName) {
 		return nil, nil
 	}
@@ -60,7 +60,7 @@ func (x *extractor) extractComponentProps(params *sitter.Node, componentName str
 	var ents []types.EntityRecord
 	var rels []types.RelationshipRecord
 
-	emit := func(propName, sig string, node *sitter.Node) {
+	emit := func(propName, sig string, node ts.Node) {
 		if propName == "" {
 			return
 		}
@@ -123,7 +123,7 @@ func (x *extractor) extractComponentProps(params *sitter.Node, componentName str
 
 // firstFormalParameter returns the first non-punctuation child of a
 // formal_parameters node (the parameter list `( … )`).
-func firstFormalParameter(params *sitter.Node) *sitter.Node {
+func firstFormalParameter(params ts.Node) ts.Node {
 	for i := 0; i < int(params.ChildCount()); i++ {
 		c := params.Child(i)
 		if c == nil {
@@ -141,7 +141,7 @@ func firstFormalParameter(params *sitter.Node) *sitter.Node {
 // bindingPatternOf unwraps a TS required_parameter/optional_parameter to its
 // `pattern` child, or returns the node directly when it is already a pattern
 // (JS grammar shape).
-func bindingPatternOf(param *sitter.Node) *sitter.Node {
+func bindingPatternOf(param ts.Node) ts.Node {
 	switch param.Type() {
 	case "required_parameter", "optional_parameter":
 		if p := param.ChildByFieldName("pattern"); p != nil {
@@ -164,7 +164,7 @@ func bindingPatternOf(param *sitter.Node) *sitter.Node {
 // object_pattern, handling shorthand (`{ title }`), renamed (`{ title: t }`),
 // and defaulted (`{ count = 0 }`) forms. The key (exported name) is captured —
 // it is the prop the parent passes.
-func objectPatternFields(x *extractor, pat *sitter.Node) []string {
+func objectPatternFields(x *extractor, pat ts.Node) []string {
 	var out []string
 	seen := map[string]bool{}
 	add := func(name string) {

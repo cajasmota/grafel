@@ -35,7 +35,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -67,7 +67,7 @@ var reAngularRoutePath = regexp.MustCompile(`\bpath\s*:\s*['"]([^'"]*)['"]`)
 // returns one NAVIGATES_TO edge per distinct route. The receiver must look like
 // a Router (a `router`-suffixed identifier or `.router` member access) so plain
 // array .navigate-like calls are not misread.
-func (x *extractor) angularNavigationRels(body *sitter.Node, className string) []types.RelationshipRecord {
+func (x *extractor) angularNavigationRels(body ts.Node, className string) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}
@@ -127,7 +127,7 @@ func angularLooksLikeRouter(recvText string) bool {
 // (`['/users', id]`); navigateByUrl() takes a string. Array commands are joined
 // with '/' and dynamic (non-literal) segments are normalised to the {*}
 // sentinel so the route matches server-side definitions.
-func angularNavRouteArg(x *extractor, call *sitter.Node, method string) string {
+func angularNavRouteArg(x *extractor, call ts.Node, method string) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
@@ -150,7 +150,7 @@ func angularNavRouteArg(x *extractor, call *sitter.Node, method string) string {
 // angularURLCommandsToRoute joins an Angular URL-command array (`['/users', id,
 // 'edit']`) into a single route string. String-literal segments are kept;
 // dynamic segments (identifiers, member expressions) become the {*} sentinel.
-func angularURLCommandsToRoute(x *extractor, arr *sitter.Node) string {
+func angularURLCommandsToRoute(x *extractor, arr ts.Node) string {
 	var segs []string
 	for i := 0; i < int(arr.ChildCount()); i++ {
 		c := arr.Child(i)
@@ -181,7 +181,7 @@ func angularURLCommandsToRoute(x *extractor, arr *sitter.Node) string {
 // directives and returns one NAVIGATES_TO edge per distinct destination. Both
 // the string form (routerLink="/x") and binding form ([routerLink]="['/x']")
 // are recognised. The component's source node anchors the line number.
-func (x *extractor) angularRouterLinkRels(template, className string, anchor *sitter.Node) []types.RelationshipRecord {
+func (x *extractor) angularRouterLinkRels(template, className string, anchor ts.Node) []types.RelationshipRecord {
 	if template == "" {
 		return nil
 	}
@@ -248,7 +248,7 @@ func angularRouterLinkValue(raw string) string {
 // forChild route-table declarations and returns one NAVIGATES_TO edge per
 // declared `path:` segment. This captures the route *definitions* (the
 // declarative half of router_pattern) distinct from imperative navigation.
-func (x *extractor) angularRouteTableRels(body *sitter.Node, className string) []types.RelationshipRecord {
+func (x *extractor) angularRouteTableRels(body ts.Node, className string) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}
@@ -296,7 +296,7 @@ func (x *extractor) angularRouteTableRels(body *sitter.Node, className string) [
 // The signal bindings declared in the body are collected first so a `.set`/
 // `.update` call is only treated as a state setter when its receiver is a known
 // signal (avoiding false positives on Set.add-style methods).
-func (x *extractor) angularStateSetterEmission(body *sitter.Node, className string) []types.EntityRecord {
+func (x *extractor) angularStateSetterEmission(body ts.Node, className string) []types.EntityRecord {
 	if body == nil {
 		return nil
 	}
@@ -305,7 +305,7 @@ func (x *extractor) angularStateSetterEmission(body *sitter.Node, className stri
 	var ents []types.EntityRecord
 	seen := map[string]bool{}
 
-	emit := func(name, stateName, sig string, props map[string]string, node *sitter.Node) {
+	emit := func(name, stateName, sig string, props map[string]string, node ts.Node) {
 		if name == "" || seen[name] {
 			return
 		}
@@ -408,7 +408,7 @@ func (x *extractor) angularStateSetterEmission(body *sitter.Node, className stri
 // Subject ctors). The two name sets gate `.set`/`.update`/`.mutate` (signals)
 // and `.next` (subjects) setter detection so those methods are only treated as
 // state mutations when their receiver is a known reactive container.
-func (x *extractor) angularSignalBindings(body *sitter.Node) (signals, subjects map[string]bool) {
+func (x *extractor) angularSignalBindings(body ts.Node) (signals, subjects map[string]bool) {
 	signals = map[string]bool{}
 	subjects = map[string]bool{}
 	for _, decl := range findAllNodes(body, "variable_declarator", "public_field_definition", "field_definition") {
@@ -483,7 +483,7 @@ func angularSignalLeafName(recvText string) string {
 // store.dispatch(...). For `dispatch(loadUser())` → "loadUser"; for
 // `dispatch({ type: '[User] Load' })` → the type string. Returns "" when the
 // shape is unrecognised.
-func angularDispatchActionName(x *extractor, call *sitter.Node) string {
+func angularDispatchActionName(x *extractor, call ts.Node) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""

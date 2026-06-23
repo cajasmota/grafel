@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tstsx "github.com/smacker/go-tree-sitter/typescript/tsx"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
@@ -24,12 +24,12 @@ func TestIssue2854_RealData_AngularComponent(t *testing.T) {
 	if err != nil {
 		t.Skipf("real-world angular fixture not present: %v", err)
 	}
-	p := sitter.NewParser()
-	p.SetLanguage(tstsx.GetLanguage())
-	tree, _ := p.ParseCtx(context.Background(), nil, content)
+	parser, _ := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstsx.GetLanguage()))
+	defer parser.Close()
+	tree, _ := parser.Parse(content)
 	ext, _ := extreg.Get("typescript")
 	ents, err := ext.Extract(context.Background(), extreg.FileInput{
-		Path: path, Content: content, Language: "typescript", Tree: tree,
+		Path: path, Content: content, Language: "typescript", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

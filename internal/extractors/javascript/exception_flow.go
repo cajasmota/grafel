@@ -25,7 +25,7 @@
 package javascript
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -33,15 +33,15 @@ import (
 // emitExceptionFlowEdges scans the AST for typed throw / instanceof-catch
 // shapes and appends exception-type entities + THROWS / CATCHES edges to
 // x.entities. x.entities[0] MUST be the file entity. Safe with an empty tree.
-func (x *extractor) emitExceptionFlowEdges(root *sitter.Node) {
+func (x *extractor) emitExceptionFlowEdges(root ts.Node) {
 	if root == nil || len(x.entities) == 0 {
 		return
 	}
 
 	var edges []extreg.ExceptionEdge
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -97,9 +97,9 @@ func (x *extractor) emitExceptionFlowEdges(root *sitter.Node) {
 // (including `throw new mod.X(...)` → bare X), or "" for any non-`new` throw
 // (re-throw of a variable, object literal, computed expression) — those carry
 // no identifiable type and are dropped.
-func jsThrowType(x *extractor, throwNode *sitter.Node) string {
+func jsThrowType(x *extractor, throwNode ts.Node) string {
 	// The thrown expression is the first named child of throw_statement.
-	var expr *sitter.Node
+	var expr ts.Node
 	for i := 0; i < int(throwNode.NamedChildCount()); i++ {
 		c := throwNode.NamedChild(i)
 		if c != nil {
@@ -131,15 +131,15 @@ func jsThrowType(x *extractor, throwNode *sitter.Node) string {
 // bindings are untyped, the instanceof test is the only informative catch
 // signal. Returns nil when the catch body contains no instanceof test (untyped
 // catch → no CATCHES edge, honest-partial).
-func jsCatchInstanceofTypes(x *extractor, catchNode *sitter.Node) []string {
+func jsCatchInstanceofTypes(x *extractor, catchNode ts.Node) []string {
 	body := catchNode.ChildByFieldName("body")
 	if body == nil {
 		return nil
 	}
 	seen := map[string]bool{}
 	var out []string
-	var scan func(n *sitter.Node)
-	scan = func(n *sitter.Node) {
+	var scan func(n ts.Node)
+	scan = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -165,7 +165,7 @@ func jsCatchInstanceofTypes(x *extractor, catchNode *sitter.Node) []string {
 
 // jsInstanceofTypeName extracts the bare type name from the right-hand side of
 // an instanceof test: an identifier, or a qualified `mod.Type` member.
-func jsInstanceofTypeName(x *extractor, right *sitter.Node) string {
+func jsInstanceofTypeName(x *extractor, right ts.Node) string {
 	switch right.Type() {
 	case "identifier", "type_identifier":
 		return x.nodeText(right)

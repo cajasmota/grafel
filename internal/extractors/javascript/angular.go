@@ -35,7 +35,7 @@ import (
 	"regexp"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -205,7 +205,7 @@ var reAngularPascalTag = regexp.MustCompile(`<([a-z][a-z0-9]*-[a-z0-9-]*|[A-Z][A
 // (and, when the class is inside an export_statement, the export_statement's
 // previous siblings are folded in because the decorator is a child of the
 // export_statement in that grammar shape).
-func (x *extractor) angularDecoratorFor(class *sitter.Node) (string, *sitter.Node) {
+func (x *extractor) angularDecoratorFor(class ts.Node) (string, ts.Node) {
 	if class == nil {
 		return "", nil
 	}
@@ -231,7 +231,7 @@ func (x *extractor) angularDecoratorFor(class *sitter.Node) (string, *sitter.Nod
 
 // decoratorIdent returns the decorator's identifier name and its underlying
 // call_expression (when the decorator is a call like `@Component({...})`).
-func (x *extractor) decoratorIdent(dec *sitter.Node) (string, *sitter.Node) {
+func (x *extractor) decoratorIdent(dec ts.Node) (string, ts.Node) {
 	for i := 0; i < int(dec.ChildCount()); i++ {
 		c := dec.Child(i)
 		switch c.Type() {
@@ -251,7 +251,7 @@ func (x *extractor) decoratorIdent(dec *sitter.Node) (string, *sitter.Node) {
 // service/pipe/module) for a decorated class. It returns true when the class
 // was Angular-decorated and fully handled (the generic class path should be
 // skipped). The decorator name + call node come from angularDecoratorFor.
-func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *sitter.Node) bool {
+func (x *extractor) handleAngularClass(n ts.Node, decorator string, call ts.Node) bool {
 	subtype, ok := angularClassDecorators[decorator]
 	if !ok {
 		return false
@@ -436,13 +436,13 @@ func (x *extractor) handleAngularClass(n *sitter.Node, decorator string, call *s
 // (selector, template) from a decorator call's first object-literal argument.
 // templateUrl is recorded under "template_url" but does not yield RENDERS edges
 // (the markup lives in a separate file the extractor does not parse here).
-func (x *extractor) angularDecoratorMeta(call *sitter.Node) map[string]string {
+func (x *extractor) angularDecoratorMeta(call ts.Node) map[string]string {
 	out := map[string]string{}
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return out
 	}
-	var obj *sitter.Node
+	var obj ts.Node
 	for i := 0; i < int(args.ChildCount()); i++ {
 		if args.Child(i).Type() == "object" {
 			obj = args.Child(i)
@@ -481,7 +481,7 @@ func (x *extractor) angularDecoratorMeta(call *sitter.Node) map[string]string {
 // the class constructor's parameter list, e.g. `constructor(private http:
 // HttpClient, store: Store)` → ["HttpClient", "Store"]. These are Angular's DI
 // "context" dependencies (context_extraction capability).
-func (x *extractor) angularConstructorInjections(body *sitter.Node) []string {
+func (x *extractor) angularConstructorInjections(body ts.Node) []string {
 	var out []string
 	seen := map[string]bool{}
 	for i := 0; i < int(body.ChildCount()); i++ {
@@ -574,7 +574,7 @@ var angularInputOutputDecorators = map[string]string{
 // fields and returns one SCOPE.Operation subtype="component_prop" per field.
 // The Angular grammar shape is a `public_field_definition` whose first child is
 // a `decorator` (see the AST dump in this package's tests).
-func (x *extractor) angularInputOutputProps(body *sitter.Node, className string) []types.EntityRecord {
+func (x *extractor) angularInputOutputProps(body ts.Node, className string) []types.EntityRecord {
 	var out []types.EntityRecord
 	seen := map[string]bool{}
 	for i := 0; i < int(body.ChildCount()); i++ {
@@ -651,7 +651,7 @@ var angularHTTPMethods = map[string]bool{
 // fixed to "http" — any member_expression `this.X.<verb>(...)` where <verb> is
 // an HttpClient method is treated as a fetch site (the field's declared type is
 // HttpClient by Angular convention).
-func (x *extractor) angularDataFetching(body *sitter.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
+func (x *extractor) angularDataFetching(body ts.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	var ents []types.EntityRecord
 	var rels []types.RelationshipRecord
 	seen := map[string]bool{}
@@ -725,7 +725,7 @@ func (x *extractor) angularDataFetching(body *sitter.Node, className string) ([]
 // angularFirstStringArg returns the first string-literal argument of a call
 // expression, stripped of quotes, or "" when the first argument is not a
 // string literal.
-func angularFirstStringArg(x *extractor, call *sitter.Node) string {
+func angularFirstStringArg(x *extractor, call ts.Node) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
@@ -773,7 +773,7 @@ var angularStateContainerFactories = map[string]string{
 //	ngrx    : this.store.select(...) / this.store.dispatch(...)
 //	          → CALLS edge to the Store method (unchanged; kept so the Redux
 //	            store path does not regress)
-func (x *extractor) angularStateManagement(body *sitter.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
+func (x *extractor) angularStateManagement(body ts.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	if body == nil {
 		return nil, nil
 	}
@@ -782,7 +782,7 @@ func (x *extractor) angularStateManagement(body *sitter.Node, className string) 
 	seenStore := map[string]bool{}
 	seenState := map[string]bool{}
 
-	emitContainer := func(name, lib, primitive, sig string, node *sitter.Node) {
+	emitContainer := func(name, lib, primitive, sig string, node ts.Node) {
 		if name == "" || seenState[name] {
 			return
 		}
@@ -900,7 +900,7 @@ var reAngularBranch = regexp.MustCompile(`(\*ngIf|\*ngFor|\*ngSwitchCase|\*ngSwi
 // distinct directive kind (Data Flow / branch_conditions). The component's
 // source node provides the location anchor (inline templates do not carry
 // independent line numbers in this extractor).
-func (x *extractor) angularBranchConditions(template, className string, anchor *sitter.Node) []types.EntityRecord {
+func (x *extractor) angularBranchConditions(template, className string, anchor ts.Node) []types.EntityRecord {
 	var out []types.EntityRecord
 	seen := map[string]bool{}
 	start, end := lines(anchor)

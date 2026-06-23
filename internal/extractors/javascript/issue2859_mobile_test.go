@@ -38,7 +38,7 @@ func extractFixture(t *testing.T, relPath string) []types.EntityRecord {
 		Path:     relPath,
 		Content:  content,
 		Language: "typescript",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract %s: %v", relPath, err)

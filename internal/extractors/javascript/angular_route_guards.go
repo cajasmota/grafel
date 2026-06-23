@@ -44,7 +44,7 @@ package javascript
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -64,7 +64,7 @@ var angularGuardArrayKeys = map[string]bool{
 // walk) that scans every route-config object literal for guard/resolver bindings
 // and emits route → guard/resolver CLASS USES edges. It is a no-op on files with
 // no Angular route config.
-func (x *extractor) angularRouteGuards(root *sitter.Node) {
+func (x *extractor) angularRouteGuards(root ts.Node) {
 	if root == nil {
 		return
 	}
@@ -85,7 +85,7 @@ func (x *extractor) angularRouteGuards(root *sitter.Node) {
 // …). Requiring a guard key — not merely `path` — keeps the pass tightly scoped
 // to routes that actually bind a guard, so a plain `{ path, component }` route
 // emits no spurious USES edge (the regression invariant).
-func (x *extractor) angularLooksLikeRoute(obj *sitter.Node) bool {
+func (x *extractor) angularLooksLikeRoute(obj ts.Node) bool {
 	for _, key := range x.angularObjectKeys(obj) {
 		if angularGuardArrayKeys[key] || key == "resolve" {
 			return true
@@ -96,7 +96,7 @@ func (x *extractor) angularLooksLikeRoute(obj *sitter.Node) bool {
 
 // angularObjectKeys returns the property-key names of an object literal's direct
 // `pair` children (shorthand/spread entries are skipped).
-func (x *extractor) angularObjectKeys(obj *sitter.Node) []string {
+func (x *extractor) angularObjectKeys(obj ts.Node) []string {
 	var keys []string
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		pair := obj.Child(i)
@@ -115,7 +115,7 @@ func (x *extractor) angularObjectKeys(obj *sitter.Node) []string {
 // segment, normalised so an empty default path renders as "<index>". When the
 // route object has no `path` (a pathless layout route) it falls back to
 // "<route>" so the edge still carries an anchor.
-func (x *extractor) angularRoutePathLabel(obj *sitter.Node) string {
+func (x *extractor) angularRoutePathLabel(obj ts.Node) string {
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		pair := obj.Child(i)
 		if pair == nil || pair.Type() != "pair" {
@@ -137,7 +137,7 @@ func (x *extractor) angularRoutePathLabel(obj *sitter.Node) string {
 // own the route's guard USES edges: the nearest enclosing class entity when the
 // route array sits in a class body, otherwise the file entity (index 0). The
 // index is guaranteed valid (the file entity always exists).
-func (x *extractor) angularRouteOwner(obj *sitter.Node) (string, int) {
+func (x *extractor) angularRouteOwner(obj ts.Node) (string, int) {
 	for n := obj.Parent(); n != nil; n = n.Parent() {
 		if n.Type() != "class_declaration" {
 			continue
@@ -159,7 +159,7 @@ func (x *extractor) angularRouteOwner(obj *sitter.Node) (string, int) {
 // object-map (di_role=resolver) and best-effort functional guards (the
 // inject(Service) target). Duplicate (target, role) pairs within a route are
 // de-duplicated.
-func (x *extractor) angularRouteGuardEdges(obj *sitter.Node, route, owner string) []types.RelationshipRecord {
+func (x *extractor) angularRouteGuardEdges(obj ts.Node, route, owner string) []types.RelationshipRecord {
 	var edges []types.RelationshipRecord
 	seen := map[string]bool{}
 
@@ -233,7 +233,7 @@ type angularGuardTarget struct {
 // identifier element is a class guard. An arrow-function element is a functional
 // guard — best-effort resolved to the first `inject(Service)` class referenced
 // in its body; if none is statically recoverable the element is dropped.
-func (x *extractor) angularGuardArrayTargets(arr *sitter.Node) []angularGuardTarget {
+func (x *extractor) angularGuardArrayTargets(arr ts.Node) []angularGuardTarget {
 	if arr == nil || arr.Type() != "array" {
 		return nil
 	}
@@ -262,7 +262,7 @@ func (x *extractor) angularGuardArrayTargets(arr *sitter.Node) []angularGuardTar
 // of an inline functional guard: the first-argument identifier of an
 // `inject(ServiceClass)` call inside the arrow body. Returns "" when no static
 // inject(...) target is present (the honest-skip path).
-func (x *extractor) angularFunctionalGuardService(fn *sitter.Node) string {
+func (x *extractor) angularFunctionalGuardService(fn ts.Node) string {
 	for _, call := range findAllNodes(fn, "call_expression") {
 		callee := call.ChildByFieldName("function")
 		if callee == nil || x.nodeText(callee) != "inject" {

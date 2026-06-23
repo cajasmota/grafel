@@ -103,7 +103,7 @@ func extractTSFixture4480(t *testing.T, fixture, repoPath string) []types.Entity
 	tree := parseTS(t, src)
 	e := javascript.New()
 	ents, err := e.Extract(context.Background(), extreg.FileInput{
-		Path: repoPath, Language: "typescript", Content: src, Tree: tree,
+		Path: repoPath, Language: "typescript", Content: src, TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("extract %s: %v", fixture, err)

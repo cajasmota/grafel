@@ -14,7 +14,8 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tsjavascript "github.com/smacker/go-tree-sitter/javascript"
 	tstypescript "github.com/smacker/go-tree-sitter/typescript/typescript"
 
@@ -24,11 +25,14 @@ import (
 )
 
 // parseJSDSL parses JS source with the JS grammar.
-func parseJSDSL(t *testing.T, src []byte) *sitter.Tree {
+func parseJSDSL(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tsjavascript.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsjavascript.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parseJS: %v", err)
 	}
@@ -36,11 +40,14 @@ func parseJSDSL(t *testing.T, src []byte) *sitter.Tree {
 }
 
 // parseTSDSL parses TS source with the TS grammar.
-func parseTSDSL(t *testing.T, src []byte) *sitter.Tree {
+func parseTSDSL(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tstypescript.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstypescript.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parseTS: %v", err)
 	}
@@ -48,14 +55,14 @@ func parseTSDSL(t *testing.T, src []byte) *sitter.Tree {
 }
 
 // runDSL extracts entities from src in the given language.
-func runDSL(t *testing.T, src, language, path string, tree *sitter.Tree) []types.EntityRecord {
+func runDSL(t *testing.T, src, language, path string, tree ts.Tree) []types.EntityRecord {
 	t.Helper()
 	ext, _ := extractor.Get(language)
 	ents, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:     path,
 		Content:  []byte(src),
 		Language: language,
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

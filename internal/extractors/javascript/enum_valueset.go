@@ -18,7 +18,7 @@ package javascript
 //     (`string | Foo`) is NOT an enumerated value-set → no node.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -26,7 +26,7 @@ import (
 // emitTSEnumValueSet builds the value-carrying SCOPE.Enum node for a TS
 // `enum_declaration`, capturing each member's explicit literal value when the
 // member is an `enum_assignment` with a string/number RHS.
-func (x *extractor) emitTSEnumValueSet(n *sitter.Node, name string) {
+func (x *extractor) emitTSEnumValueSet(n ts.Node, name string) {
 	body := n.ChildByFieldName("body")
 	if body == nil {
 		return
@@ -83,7 +83,7 @@ func (x *extractor) emitTSEnumValueSet(n *sitter.Node, name string) {
 // ONLY when the RHS is a union_type whose EVERY arm is a literal_type wrapping
 // a string/number literal. Any non-literal arm (type reference, predefined
 // type, object type) disqualifies the alias — it is not an enumerated value-set.
-func (x *extractor) emitTSLiteralUnionValueSet(n *sitter.Node, name string) {
+func (x *extractor) emitTSLiteralUnionValueSet(n ts.Node, name string) {
 	valueNode := n.ChildByFieldName("value")
 	if valueNode == nil || valueNode.Type() != "union_type" {
 		return
@@ -105,7 +105,7 @@ func (x *extractor) emitTSLiteralUnionValueSet(n *sitter.Node, name string) {
 // one EnumMember per literal arm. It returns false the moment it encounters a
 // non-literal arm (type reference, predefined type, object type) so the caller
 // emits no value-set node for a non-enumerated union.
-func collectUnionLiterals(u *sitter.Node, x *extractor, out *[]extreg.EnumMember) bool {
+func collectUnionLiterals(u ts.Node, x *extractor, out *[]extreg.EnumMember) bool {
 	for i := 0; i < int(u.ChildCount()); i++ {
 		arm := u.Child(i)
 		if arm == nil || !arm.IsNamed() {
@@ -143,7 +143,7 @@ func collectUnionLiterals(u *sitter.Node, x *extractor, out *[]extreg.EnumMember
 // enumerated constant set and emits no node. The `as const` assertion is the
 // strong signal but not required (a permission-style all-literal map qualifies);
 // any non-literal value disqualifies the object.
-func (x *extractor) emitTSConstObjectValueSet(name string, valueNode *sitter.Node) {
+func (x *extractor) emitTSConstObjectValueSet(name string, valueNode ts.Node) {
 	if name == "" || valueNode == nil {
 		return
 	}
@@ -199,7 +199,7 @@ func (x *extractor) emitTSConstObjectValueSet(name string, valueNode *sitter.Nod
 // `satisfies` assertion is the author's explicit "this is a closed, immutable
 // value-set" signal that distinguishes the v3 PermissionPage map (#4420) from
 // an incidental config object.
-func unwrapAsConstObject(valueNode *sitter.Node) *sitter.Node {
+func unwrapAsConstObject(valueNode ts.Node) ts.Node {
 	switch valueNode.Type() {
 	case "as_expression", "satisfies_expression":
 		if inner := valueNode.NamedChild(0); inner != nil && inner.Type() == "object" {
@@ -212,7 +212,7 @@ func unwrapAsConstObject(valueNode *sitter.Node) *sitter.Node {
 // constObjectKey reduces an object-literal key node to its bare key string,
 // handling `property_identifier` (Foo:), `string` ('Foo':) and `number` keys.
 // Computed keys ([expr]:) yield "" (skipped).
-func constObjectKey(keyNode *sitter.Node, x *extractor) string {
+func constObjectKey(keyNode ts.Node, x *extractor) string {
 	if keyNode == nil {
 		return ""
 	}
@@ -230,7 +230,7 @@ func constObjectKey(keyNode *sitter.Node, x *extractor) string {
 // tsLiteralValue returns the statically-known literal text of a TS value node
 // (string / number / unary minus number), with surrounding quotes stripped.
 // Returns "" for non-literal nodes so callers can treat that as "not a literal".
-func tsLiteralValue(n *sitter.Node, x *extractor) string {
+func tsLiteralValue(n ts.Node, x *extractor) string {
 	if n == nil {
 		return ""
 	}

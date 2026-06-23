@@ -40,7 +40,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -135,7 +135,7 @@ var navigationReceiverNames = map[string]bool{
 //
 //  4. No first arg (e.g. router.back()):
 //     →  route='<back>'
-func extractNavigationCall(x *extractor, call *sitter.Node) (route string, params []string, varRef string, ok bool) {
+func extractNavigationCall(x *extractor, call ts.Node) (route string, params []string, varRef string, ok bool) {
 	if call == nil {
 		return "", nil, "", false
 	}
@@ -212,7 +212,7 @@ func extractNavigationCall(x *extractor, call *sitter.Node) (route string, param
 
 // firstMeaningfulArg returns the first child of an arguments node that is not
 // a punctuation token ("(", ")", ",").
-func firstMeaningfulArg(args *sitter.Node) *sitter.Node {
+func firstMeaningfulArg(args ts.Node) ts.Node {
 	for i := 0; i < int(args.ChildCount()); i++ {
 		ch := args.Child(i)
 		if ch == nil {
@@ -230,7 +230,7 @@ func firstMeaningfulArg(args *sitter.Node) *sitter.Node {
 // extractObjectFormRoute parses an object literal node for the
 // `pathname` key and the `params` key, returning the route, param key names,
 // and any variable reference (#2672).
-func extractObjectFormRoute(x *extractor, obj *sitter.Node) (route string, params []string, varRef string, ok bool) {
+func extractObjectFormRoute(x *extractor, obj ts.Node) (route string, params []string, varRef string, ok bool) {
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		child := obj.Child(i)
 		if child == nil {
@@ -273,7 +273,7 @@ func extractObjectFormRoute(x *extractor, obj *sitter.Node) (route string, param
 //
 // If the params value is not an object literal, the params slice will be empty
 // and varRef will be non-empty (variable reference case).
-func extractParamKeys(x *extractor, obj *sitter.Node) (params []string, varRef string) {
+func extractParamKeys(x *extractor, obj ts.Node) (params []string, varRef string) {
 	if obj == nil {
 		return nil, ""
 	}
@@ -324,7 +324,7 @@ func extractParamKeys(x *extractor, obj *sitter.Node) (params []string, varRef s
 //   - "via"         : "navigation_call" (traceability tag)
 //   - "_var_ref"    : (temporary, #2672) variable name if params was a reference;
 //     removed after resolution
-func emitNavigationEdge(route string, params []string, varRef string, call *sitter.Node) types.RelationshipRecord {
+func emitNavigationEdge(route string, params []string, varRef string, call ts.Node) types.RelationshipRecord {
 	toID := "route:" + route
 	props := map[string]string{
 		"route": route,
@@ -388,12 +388,12 @@ func (x *extractor) isNavigationHookVar(varName string) bool {
 // pass to resolve the binding to extract param keys.
 type paramsVarRef struct {
 	varName    string
-	sourceNode *sitter.Node
+	sourceNode ts.Node
 }
 
 // recordParamsVarRef records a variable reference for later resolution. Called
 // during initial extraction when a params: <identifier> is encountered.
-func (x *extractor) recordParamsVarRef(varName string, sourceNode *sitter.Node) {
+func (x *extractor) recordParamsVarRef(varName string, sourceNode ts.Node) {
 	if x.paramsVarRefs == nil {
 		x.paramsVarRefs = make([]*paramsVarRef, 0, 8)
 	}
@@ -411,7 +411,7 @@ func (x *extractor) recordParamsVarRef(varName string, sourceNode *sitter.Node) 
 // This is called once per file from Extract() (alongside buildHookVarToModule)
 // and stored on x.navHookVars so extractNavigationCall can consult it via
 // isNavigationHookVar without needing to re-traverse the AST. Phase 2 of #2658.
-func buildNavigationHookVarTable(x *extractor, root *sitter.Node) map[string]bool {
+func buildNavigationHookVarTable(x *extractor, root ts.Node) map[string]bool {
 	if root == nil {
 		return nil
 	}
@@ -420,7 +420,7 @@ func buildNavigationHookVarTable(x *extractor, root *sitter.Node) map[string]boo
 	// Walk the AST looking for:
 	//   const <varName> = <hookName>(...)
 	// where <hookName> ∈ navigationHookNames.
-	stack := make([]*sitter.Node, 0, 64)
+	stack := make([]ts.Node, 0, 64)
 	stack = append(stack, root)
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
@@ -464,7 +464,7 @@ func buildNavigationHookVarTable(x *extractor, root *sitter.Node) map[string]boo
 //
 // Issue #2672: same-file symbol-table resolution for params_keys from variable
 // references. This is a lightweight approach that avoids cross-file data flow.
-func (x *extractor) resolveParamsVarRefs(root *sitter.Node) {
+func (x *extractor) resolveParamsVarRefs(root ts.Node) {
 	if len(x.paramsVarRefs) == 0 {
 		return
 	}
@@ -482,7 +482,7 @@ func (x *extractor) resolveParamsVarRefs(root *sitter.Node) {
 // object literal as its RHS. Returns the extracted keys if found, or nil
 // otherwise. The search looks for the MOST RECENT binding that satisfies the
 // constraints (last-in-scope semantics).
-func (x *extractor) findVariableBinding(root *sitter.Node, varName string, refNode *sitter.Node) []string {
+func (x *extractor) findVariableBinding(root ts.Node, varName string, refNode ts.Node) []string {
 	if root == nil || varName == "" {
 		return nil
 	}
@@ -494,10 +494,10 @@ func (x *extractor) findVariableBinding(root *sitter.Node, varName string, refNo
 	//   2. assignment_expression nodes where LHS is the variable and RHS is an object literal
 	// We collect all candidates and pick the one with the highest row number
 	// that is still before refRow (last-in-scope wins).
-	var bestBinding *sitter.Node
+	var bestBinding ts.Node
 	bestRow := int32(-1) // Use -1 as initial value so any valid row (>=0) will be "better"
 
-	stack := make([]*sitter.Node, 0, 128)
+	stack := make([]ts.Node, 0, 128)
 	stack = append(stack, root)
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
@@ -569,7 +569,7 @@ func (x *extractor) findVariableBinding(root *sitter.Node, varName string, refNo
 
 // isObjectLiteral reports whether a node is an object literal, possibly wrapped
 // in parentheses (unwraps once).
-func isObjectLiteral(node *sitter.Node) bool {
+func isObjectLiteral(node ts.Node) bool {
 	if node == nil {
 		return false
 	}
@@ -595,7 +595,7 @@ func isObjectLiteral(node *sitter.Node) bool {
 // extractParamKeysFromObjectNode is similar to extractParamKeys but directly
 // operates on an object literal node (assumed to be valid). Used by
 // findVariableBinding to extract keys from a resolved variable binding.
-func extractParamKeysFromObjectNode(x *extractor, obj *sitter.Node) []string {
+func extractParamKeysFromObjectNode(x *extractor, obj ts.Node) []string {
 	if obj == nil {
 		return nil
 	}
@@ -702,12 +702,12 @@ func (x *extractor) isNavigatorFnVar(varName string) bool {
 // disjoint receiver semantics — conflating them would cause `useNavigate()`'s
 // return value (a function, not an object) to be matched against
 // receiver-method patterns it cannot satisfy.
-func buildNavigatorFnVarTable(x *extractor, root *sitter.Node) map[string]bool {
+func buildNavigatorFnVarTable(x *extractor, root ts.Node) map[string]bool {
 	if root == nil {
 		return nil
 	}
 	out := make(map[string]bool)
-	stack := make([]*sitter.Node, 0, 64)
+	stack := make([]ts.Node, 0, 64)
 	stack = append(stack, root)
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
@@ -762,7 +762,7 @@ func buildNavigatorFnVarTable(x *extractor, root *sitter.Node) map[string]bool {
 //     navigate({pathname, search, hash})):
 //     navigate({pathname: '/x', search: '?q=1'})
 //     → route='/x', params=['search']
-func extractDirectNavigatorCall(x *extractor, call *sitter.Node) (route string, params []string, ok bool) {
+func extractDirectNavigatorCall(x *extractor, call ts.Node) (route string, params []string, ok bool) {
 	if call == nil {
 		return "", nil, false
 	}
@@ -825,7 +825,7 @@ func extractDirectNavigatorCall(x *extractor, call *sitter.Node) (route string, 
 
 // firstTwoMeaningfulArgs returns the first and second non-punctuation children
 // of an arguments node. Either return may be nil when fewer args are present.
-func firstTwoMeaningfulArgs(args *sitter.Node) (first, second *sitter.Node) {
+func firstTwoMeaningfulArgs(args ts.Node) (first, second ts.Node) {
 	count := 0
 	for i := 0; i < int(args.ChildCount()); i++ {
 		ch := args.Child(i)
@@ -852,7 +852,7 @@ func firstTwoMeaningfulArgs(args *sitter.Node) (first, second *sitter.Node) {
 // `state:` key whose value is itself an object literal, returns that nested
 // object's keys (the most informative case). Otherwise returns the top-level
 // option keys — useful for surfacing `replace`, `relative`, etc.
-func extractNavigateOptionsKeys(x *extractor, obj *sitter.Node) []string {
+func extractNavigateOptionsKeys(x *extractor, obj ts.Node) []string {
 	if obj == nil {
 		return nil
 	}
@@ -912,7 +912,7 @@ var jsxNavTagToProp = map[string][]string{
 //
 // Self-renders are not a concern here: navigation tags are imported components
 // from react-router-dom / next-link, never the enclosing component itself.
-func (x *extractor) extractJSXNavigationRelationships(body *sitter.Node) []types.RelationshipRecord {
+func (x *extractor) extractJSXNavigationRelationships(body ts.Node) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}
@@ -974,7 +974,7 @@ func (x *extractor) extractJSXNavigationRelationships(body *sitter.Node) []types
 //
 // Non-literal expressions (identifiers, member expressions, function calls)
 // return "" — they require runtime evaluation we don't do.
-func jsxNavRouteFromAttrs(x *extractor, jx *sitter.Node, propNames []string) (string, int) {
+func jsxNavRouteFromAttrs(x *extractor, jx ts.Node, propNames []string) (string, int) {
 	line := int(jx.StartPoint().Row) + 1
 	for i := 0; i < int(jx.ChildCount()); i++ {
 		attr := jx.Child(i)
@@ -982,7 +982,7 @@ func jsxNavRouteFromAttrs(x *extractor, jx *sitter.Node, propNames []string) (st
 			continue
 		}
 		// First child is the attribute name (property_identifier).
-		var nameChild *sitter.Node
+		var nameChild ts.Node
 		for j := 0; j < int(attr.ChildCount()); j++ {
 			c := attr.Child(j)
 			if c != nil && (c.Type() == "property_identifier" || c.Type() == "identifier") {

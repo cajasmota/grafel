@@ -76,7 +76,7 @@ func extractTS4671(t *testing.T, src []byte, path string) []entityRec4671 {
 		Path:     path,
 		Content:  src,
 		Language: "typescript",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

@@ -3,7 +3,7 @@ package javascript
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // Issue #4858 — per-field validation constraints for DTO fields.
@@ -88,7 +88,7 @@ var scalarArgDecorators = map[string]bool{
 // (or `field_definition`) node and returns the recognised class-validator
 // constraints as a compact, source-ordered list. Returns nil when the field
 // carries no class-validator decorators.
-func (x *extractor) fieldValidations(field *sitter.Node) []string {
+func (x *extractor) fieldValidations(field ts.Node) []string {
 	if field == nil {
 		return nil
 	}
@@ -124,7 +124,7 @@ func (x *extractor) fieldValidations(field *sitter.Node) []string {
 // call_expression when it is a simple numeric / string / identifier literal.
 // Compound arguments (objects, arrays, regexes, expressions) yield "" so the
 // caller falls back to the bare decorator name.
-func firstScalarArg(x *extractor, call *sitter.Node) string {
+func firstScalarArg(x *extractor, call ts.Node) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""

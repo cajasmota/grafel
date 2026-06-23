@@ -44,7 +44,7 @@ package javascript
 import (
 	"strconv"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -90,7 +90,7 @@ var jsPromClientMethods = map[string]bool{
 // prom-client metric declarations and returns a var→metric-name map. A metric
 // whose `name` property is non-literal (or absent) maps to "" (known-metric,
 // dynamic-name). Returns nil when no prom-client metric is declared (fast-path).
-func (x *extractor) buildMetricVars(root *sitter.Node) map[string]string {
+func (x *extractor) buildMetricVars(root ts.Node) map[string]string {
 	if root == nil {
 		return nil
 	}
@@ -126,7 +126,7 @@ func (x *extractor) buildMetricVars(root *sitter.Node) map[string]string {
 // constructor: `new client.Counter(...)` → "Counter", `new Counter(...)` →
 // "Counter". Returns "" when the constructor is neither an identifier nor a
 // member_expression.
-func (x *extractor) newExprConstructorName(newExpr *sitter.Node) string {
+func (x *extractor) newExprConstructorName(newExpr ts.Node) string {
 	if newExpr == nil || newExpr.Type() != "new_expression" {
 		return ""
 	}
@@ -161,7 +161,7 @@ func (x *extractor) newExprConstructorName(newExpr *sitter.Node) string {
 // (name, true) when the options object is present; (name="", true) when the
 // `name` property is absent or non-literal (dynamic); (..., false) when there is
 // no object argument at all.
-func (x *extractor) metricCtorName(newExpr *sitter.Node) (string, bool) {
+func (x *extractor) metricCtorName(newExpr ts.Node) (string, bool) {
 	args := newExpr.ChildByFieldName("arguments")
 	if args == nil {
 		return "", false
@@ -179,7 +179,7 @@ func (x *extractor) metricCtorName(newExpr *sitter.Node) (string, bool) {
 // objectStringProp returns the string-literal value of the property named key in
 // an object literal. The bool is true when a property with that key exists; when
 // true and the value is non-literal the returned string is "".
-func (x *extractor) objectStringProp(obj *sitter.Node, key string) (string, bool) {
+func (x *extractor) objectStringProp(obj ts.Node, key string) (string, bool) {
 	if obj == nil || obj.Type() != "object" {
 		return "", false
 	}
@@ -207,7 +207,7 @@ func (x *extractor) objectStringProp(obj *sitter.Node, key string) (string, bool
 // extractObservabilityHits walks a function/method/arrow body and returns one
 // jsInstrHit per non-OTel instrumentation site (Sentry span/transaction,
 // dd-trace tracer.trace/wrap, prom-client metric mutation).
-func (x *extractor) extractObservabilityHits(body *sitter.Node) []jsInstrHit {
+func (x *extractor) extractObservabilityHits(body ts.Node) []jsInstrHit {
 	if body == nil {
 		return nil
 	}
@@ -275,7 +275,7 @@ func (x *extractor) extractObservabilityHits(body *sitter.Node) []jsInstrHit {
 // firstArgObjectName returns the string `name` property of the first
 // object-literal argument in args. The bool is false when the first arg is not
 // an object literal at all.
-func (x *extractor) firstArgObjectName(args *sitter.Node) (string, bool) {
+func (x *extractor) firstArgObjectName(args ts.Node) (string, bool) {
 	if args == nil {
 		return "", false
 	}
@@ -288,7 +288,7 @@ func (x *extractor) firstArgObjectName(args *sitter.Node) (string, bool) {
 
 // firstArgString returns the value of the first string-literal argument in args,
 // or "" when the first meaningful argument is not a string literal.
-func (x *extractor) firstArgString(args *sitter.Node) string {
+func (x *extractor) firstArgString(args ts.Node) string {
 	if args == nil {
 		return ""
 	}
@@ -303,7 +303,7 @@ func (x *extractor) firstArgString(args *sitter.Node) string {
 // x.entities for every non-OTel instrumentation site found in body. Called
 // immediately after a function/method/arrow entity is emitted, alongside
 // stampTracingSpans (the OTel pass).
-func (x *extractor) stampObservability(body *sitter.Node) {
+func (x *extractor) stampObservability(body ts.Node) {
 	if body == nil || len(x.entities) == 0 {
 		return
 	}

@@ -17,7 +17,7 @@
 package javascript
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -48,7 +48,7 @@ import (
 //
 // The frame is append-only: `base` is never mutated. When at least one
 // local is discovered we copy `base` into a fresh frame first.
-func (x *extractor) withLocalReceiverTypes(body *sitter.Node, base *classBindings) *classBindings {
+func (x *extractor) withLocalReceiverTypes(body ts.Node, base *classBindings) *classBindings {
 	if body == nil {
 		return base
 	}
@@ -112,7 +112,7 @@ func (x *extractor) withLocalReceiverTypes(body *sitter.Node, base *classBinding
 //     `<x>.resolve(ClassName)`        — NestJS DI resolution: a member call
 //     whose method is get/resolve and whose
 //     sole argument is a class identifier.
-func (x *extractor) localReceiverBinding(decl *sitter.Node) (string, string) {
+func (x *extractor) localReceiverBinding(decl ts.Node) (string, string) {
 	if decl == nil {
 		return "", ""
 	}
@@ -141,7 +141,7 @@ func (x *extractor) localReceiverBinding(decl *sitter.Node) (string, string) {
 // construction idiom. Handles `new ClassName(...)` and the NestJS DI
 // `<container>.get(ClassName)` / `.resolve(ClassName)` shapes. Awaited DI
 // (`await module.resolve(X)`) is unwrapped first.
-func (x *extractor) constructedTypeName(value *sitter.Node) string {
+func (x *extractor) constructedTypeName(value ts.Node) string {
 	if value == nil {
 		return ""
 	}
@@ -195,7 +195,7 @@ func (x *extractor) constructedTypeName(value *sitter.Node) string {
 // token is intentionally NOT typed — there is no class identifier to bind).
 // Returns "" for any other call shape so non-DI calls (e.g. array.get(0))
 // are ignored.
-func (x *extractor) diResolvedTypeName(call *sitter.Node) string {
+func (x *extractor) diResolvedTypeName(call ts.Node) string {
 	if call == nil {
 		return ""
 	}
@@ -219,7 +219,7 @@ func (x *extractor) diResolvedTypeName(call *sitter.Node) string {
 	// Find the single positional class-identifier argument. More than one
 	// positional argument, or a non-identifier first argument (string DI
 	// token, options object), disqualifies the binding.
-	var typeArg *sitter.Node
+	var typeArg ts.Node
 	posCount := 0
 	count := int(args.ChildCount())
 	for i := 0; i < count; i++ {
@@ -261,7 +261,7 @@ func (x *extractor) diResolvedTypeName(call *sitter.Node) string {
 //
 // `method` is the trailing property identifier already extracted by the
 // caller; we only resolve the receiver here.
-func (x *extractor) receiverTypedTarget(memberExpr *sitter.Node, method string, frame *classBindings) string {
+func (x *extractor) receiverTypedTarget(memberExpr ts.Node, method string, frame *classBindings) string {
 	if memberExpr == nil || method == "" || frame == nil {
 		return ""
 	}
@@ -298,7 +298,7 @@ func (x *extractor) receiverTypedTarget(memberExpr *sitter.Node, method string, 
 // expressions, function-call results) returns "" so the caller drops
 // to the bare-name fallback. Conservative bias: better miss than
 // misresolve.
-func (x *extractor) receiverIdent(obj *sitter.Node) string {
+func (x *extractor) receiverIdent(obj ts.Node) string {
 	if obj == nil {
 		return ""
 	}
@@ -349,7 +349,7 @@ func (x *extractor) receiverIdent(obj *sitter.Node) string {
 //
 // Untyped parameters (`function f(x)`) and parameter destructuring
 // shapes are silently skipped.
-func (x *extractor) functionParamFrame(params *sitter.Node, base *classBindings) *classBindings {
+func (x *extractor) functionParamFrame(params ts.Node, base *classBindings) *classBindings {
 	if params == nil && base == nil {
 		return nil
 	}
@@ -392,7 +392,7 @@ func (x *extractor) functionParamFrame(params *sitter.Node, base *classBindings)
 //     parameter properties.
 //
 // Anything else (untyped fields, methods, getters/setters) is skipped.
-func (x *extractor) collectClassFields(body *sitter.Node, out map[string]string) {
+func (x *extractor) collectClassFields(body ts.Node, out map[string]string) {
 	if body == nil {
 		return
 	}
@@ -450,7 +450,7 @@ func (x *extractor) collectClassFields(body *sitter.Node, out map[string]string)
 // properties for injection, so the rule above (require an access
 // modifier) covers the dominant pattern. Bare-typed constructor
 // parameters do not become class fields (matching TS semantics).
-func (x *extractor) collectConstructorParamProperties(ctor *sitter.Node, out map[string]string) {
+func (x *extractor) collectConstructorParamProperties(ctor ts.Node, out map[string]string) {
 	params := ctor.ChildByFieldName("parameters")
 	if params == nil {
 		return
@@ -481,7 +481,7 @@ func (x *extractor) collectConstructorParamProperties(ctor *sitter.Node, out map
 // declared inline). The grammar exposes the modifier as an
 // `accessibility_modifier` child; `readonly` is a separate
 // `readonly` token.
-func (x *extractor) hasAccessModifier(p *sitter.Node) bool {
+func (x *extractor) hasAccessModifier(p ts.Node) bool {
 	count := int(p.ChildCount())
 	for i := 0; i < count; i++ {
 		ch := p.Child(i)
@@ -500,7 +500,7 @@ func (x *extractor) hasAccessModifier(p *sitter.Node) bool {
 // parameter node. Handles required_parameter and optional_parameter
 // shapes; returns ("", "") when the parameter is untyped or uses a
 // destructuring pattern the extractor does not analyse.
-func (x *extractor) paramNameAndType(p *sitter.Node) (string, string) {
+func (x *extractor) paramNameAndType(p ts.Node) (string, string) {
 	if p == nil {
 		return "", ""
 	}
@@ -532,7 +532,7 @@ func (x *extractor) paramNameAndType(p *sitter.Node) (string, string) {
 //
 // Union and intersection types return "" — picking one branch would
 // be arbitrary.
-func (x *extractor) typeAnnotationLeaf(ann *sitter.Node) string {
+func (x *extractor) typeAnnotationLeaf(ann ts.Node) string {
 	if ann == nil {
 		return ""
 	}
@@ -555,7 +555,7 @@ func (x *extractor) typeAnnotationLeaf(ann *sitter.Node) string {
 }
 
 // typeNodeLeaf walks a type node and returns its leaf type identifier.
-func (x *extractor) typeNodeLeaf(t *sitter.Node) string {
+func (x *extractor) typeNodeLeaf(t ts.Node) string {
 	if t == nil {
 		return ""
 	}

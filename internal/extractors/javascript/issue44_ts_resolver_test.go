@@ -60,7 +60,7 @@ func extractTS(t *testing.T, src []byte, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  src,
 		Language: "typescript",
-		Tree:     nil, // extractor will parse internally when Tree is nil
+		TSTree:   nil, // no tree supplied → extractor returns no entities
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

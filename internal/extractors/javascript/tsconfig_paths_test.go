@@ -14,7 +14,8 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tstypescript "github.com/smacker/go-tree-sitter/typescript/typescript"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
@@ -23,11 +24,14 @@ import (
 
 // parseTSForAlias is a minimal helper that parses TypeScript source with
 // the tree-sitter TypeScript grammar, used only by this file.
-func parseTSForAlias(t *testing.T, src []byte) *sitter.Tree {
+func parseTSForAlias(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tstypescript.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstypescript.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parseTSForAlias: %v", err)
 	}
@@ -36,7 +40,7 @@ func parseTSForAlias(t *testing.T, src []byte) *sitter.Tree {
 
 // extractWithRepo runs the JS/TS extractor with RepoRoot set so alias and
 // filesystem-existence checks are exercised end-to-end.
-func extractWithRepo(t *testing.T, repoRoot, filePath string, content []byte, tree *sitter.Tree) []types.EntityRecord {
+func extractWithRepo(t *testing.T, repoRoot, filePath string, content []byte, tree ts.Tree) []types.EntityRecord {
 	t.Helper()
 	e := New()
 	entities, err := e.Extract(context.Background(), extreg.FileInput{
@@ -44,7 +48,7 @@ func extractWithRepo(t *testing.T, repoRoot, filePath string, content []byte, tr
 		RepoRoot: repoRoot,
 		Content:  content,
 		Language: "typescript",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

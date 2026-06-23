@@ -9,7 +9,7 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tstsx "github.com/smacker/go-tree-sitter/typescript/tsx"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
@@ -18,9 +18,12 @@ import (
 
 func extractAngular(t *testing.T, content []byte) []types.EntityRecord {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tstsx.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, content)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstsx.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(content)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -29,7 +32,7 @@ func extractAngular(t *testing.T, content []byte) []types.EntityRecord {
 		Path:     "app.component.ts",
 		Content:  content,
 		Language: "typescript",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

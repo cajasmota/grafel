@@ -12,7 +12,8 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tsjavascript "github.com/smacker/go-tree-sitter/javascript"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
@@ -20,11 +21,14 @@ import (
 )
 
 // parseJSForConfig is a local parse helper so this file is self-contained.
-func parseJSForConfig(t *testing.T, src []byte) *sitter.Tree {
+func parseJSForConfig(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tsjavascript.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsjavascript.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parseJSForConfig: %v", err)
 	}
@@ -40,7 +44,7 @@ func extractWithCfg(t *testing.T, src []byte, cfg *extreg.ExtractorConfig) []ent
 		Path:     "test.js",
 		Content:  src,
 		Language: "javascript",
-		Tree:     tree,
+		TSTree:   tree,
 		Config:   cfg,
 	})
 	if err != nil {

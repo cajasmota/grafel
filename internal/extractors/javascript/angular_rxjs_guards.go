@@ -42,7 +42,7 @@ import (
 	"regexp"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -84,7 +84,7 @@ var angularRxjsSubjects = map[string]bool{
 // and subjects (issue #2874 — rxjs_pattern_detection). Each entity carries the
 // component name + framework so it is attributable to the class via the
 // CONTAINS edges handleAngularClass appends.
-func (x *extractor) angularRxjsPatterns(body *sitter.Node, className string) []types.EntityRecord {
+func (x *extractor) angularRxjsPatterns(body ts.Node, className string) []types.EntityRecord {
 	if body == nil {
 		return nil
 	}
@@ -211,7 +211,7 @@ func (x *extractor) angularRxjsPatterns(body *sitter.Node, className string) []t
 // call's argument list. Every call_expression argument is treated as an
 // operator stage; its callee leaf name is the operator. Bare identifiers (a
 // pre-built operator reference passed without a call) are also captured.
-func (x *extractor) angularPipeOperators(call *sitter.Node) []string {
+func (x *extractor) angularPipeOperators(call ts.Node) []string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return nil
@@ -330,7 +330,7 @@ var angularGuardFnTypes = map[string]string{
 // angularClassGuardSubtype inspects a class_declaration's heritage clause and
 // returns ("angular_guard"|"angular_interceptor", interfaceName) when the class
 // implements an Angular guard or HttpInterceptor interface, else ("", "").
-func (x *extractor) angularClassGuardSubtype(class *sitter.Node) (string, string) {
+func (x *extractor) angularClassGuardSubtype(class ts.Node) (string, string) {
 	if class == nil {
 		return "", ""
 	}
@@ -376,7 +376,7 @@ func (x *extractor) angularClassGuardSubtype(class *sitter.Node) (string, string
 // IMPLEMENTS edge to the guard interface). The role vocabulary matches the
 // functional form (angularFunctionalGuards) so guard/interceptor queries are
 // uniform across class and functional shapes.
-func (x *extractor) angularGuardClassRels(class *sitter.Node, className string) (role, iface string, rels []types.RelationshipRecord) {
+func (x *extractor) angularGuardClassRels(class ts.Node, className string) (role, iface string, rels []types.RelationshipRecord) {
 	subtype, iface := x.angularClassGuardSubtype(class)
 	if subtype == "" {
 		return "", "", nil
@@ -403,7 +403,7 @@ func (x *extractor) angularGuardClassRels(class *sitter.Node, className string) 
 // siblings). It emits one SCOPE.Component entity per match (subtype
 // angular_guard / angular_interceptor) so functional guards are first-class
 // alongside the class form. Called as a program-level pass from Extract.
-func (x *extractor) angularFunctionalGuards(root *sitter.Node) {
+func (x *extractor) angularFunctionalGuards(root ts.Node) {
 	if root == nil {
 		return
 	}

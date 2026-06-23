@@ -39,7 +39,7 @@ func extractTS4378(t *testing.T, path, src string) []types.EntityRecord {
 		Path:     path,
 		Language: "typescript",
 		Content:  []byte(src),
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract %s: %v", path, err)

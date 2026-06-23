@@ -6,7 +6,8 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tstsx "github.com/smacker/go-tree-sitter/typescript/tsx"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
@@ -14,11 +15,14 @@ import (
 )
 
 // parseTSX parses source with the TypeScript TSX grammar (JSX-enabled).
-func parseTSX(t *testing.T, src []byte) *sitter.Tree {
+func parseTSX(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tstsx.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tstsx.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parseTSX: %v", err)
 	}
@@ -26,14 +30,14 @@ func parseTSX(t *testing.T, src []byte) *sitter.Tree {
 }
 
 // extractTSX runs the extractor on TSX source.
-func extractTSX(t *testing.T, content []byte, tree *sitter.Tree) []types.EntityRecord {
+func extractTSX(t *testing.T, content []byte, tree ts.Tree) []types.EntityRecord {
 	t.Helper()
 	ext, _ := extreg.Get("typescript")
 	ents, err := ext.Extract(context.Background(), extreg.FileInput{
 		Path:     "test.tsx",
 		Content:  content,
 		Language: "typescript",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

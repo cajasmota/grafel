@@ -48,8 +48,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
-	sitter "github.com/smacker/go-tree-sitter"
 )
 
 // Property `via` values stamped on React-Ecosystem entities/edges so the
@@ -374,7 +374,7 @@ func (x *extractor) buildReactEcosystemImports() *reactEcosystemImports {
 // resolveFactory returns the canonical factory name a call's callee resolves to
 // (via import binding when available, falling back to the bare leaf name so
 // re-exported / namespace-accessed factories still match). Returns "".
-func (r *reactEcosystemImports) resolveFactory(x *extractor, call *sitter.Node) string {
+func (r *reactEcosystemImports) resolveFactory(x *extractor, call ts.Node) string {
 	leaf := factoryLeaf(x, call)
 	if leaf == "" {
 		return ""
@@ -392,11 +392,11 @@ func (r *reactEcosystemImports) resolveFactory(x *extractor, call *sitter.Node) 
 
 // factoryLeaf returns the leaf identifier of a call/new callee: bare identifier
 // or the .property of a member expression. "" when not reducible.
-func factoryLeaf(x *extractor, n *sitter.Node) string {
+func factoryLeaf(x *extractor, n ts.Node) string {
 	if n == nil {
 		return ""
 	}
-	var fn *sitter.Node
+	var fn ts.Node
 	switch n.Type() {
 	case "call_expression", "new_expression":
 		fn = n.ChildByFieldName("function")
@@ -427,7 +427,7 @@ func factoryLeaf(x *extractor, n *sitter.Node) string {
 // variable_declarator and emits the decorated slice/store/api + endpoint/hook
 // entities and CONTAINS edges. Mirrors emitStoreActionEntities (#2626): runs
 // before walk() so emitted entities are present for the rest of extraction.
-func (x *extractor) extractReactEcosystem(root *sitter.Node) {
+func (x *extractor) extractReactEcosystem(root ts.Node) {
 	r := x.buildReactEcosystemImports()
 	if r == nil || root == nil {
 		return
@@ -438,7 +438,7 @@ func (x *extractor) extractReactEcosystem(root *sitter.Node) {
 }
 
 // reactEcosystemDeclarator handles `const <name> = <factory>(...)` shapes.
-func (x *extractor) reactEcosystemDeclarator(r *reactEcosystemImports, d *sitter.Node) {
+func (x *extractor) reactEcosystemDeclarator(r *reactEcosystemImports, d ts.Node) {
 	nameNode := d.ChildByFieldName("name")
 	valueNode := d.ChildByFieldName("value")
 	if nameNode == nil || valueNode == nil || nameNode.Type() != "identifier" {
@@ -482,7 +482,7 @@ func (x *extractor) reactEcosystemDeclarator(r *reactEcosystemImports, d *sitter
 // resolveAtomFactory returns the atom-store binding a call's callee resolves to,
 // via the import binding (so an aliased `import { atom as a }` still matches).
 // Returns the zero binding when the leaf is not a tracked atom factory.
-func (r *reactEcosystemImports) resolveAtomFactory(x *extractor, valueNode *sitter.Node) atomFactoryBinding {
+func (r *reactEcosystemImports) resolveAtomFactory(x *extractor, valueNode ts.Node) atomFactoryBinding {
 	leaf := factoryLeaf(x, valueNode)
 	if leaf == "" {
 		return atomFactoryBinding{}
@@ -497,7 +497,7 @@ func (r *reactEcosystemImports) resolveAtomFactory(x *extractor, valueNode *sitt
 // atom or store declaration (#2894 PR2). For Recoil atoms/selectors the `key:`
 // string is stamped (atoms are keyed by a globally-unique string). Decorate-only
 // (#2839): SCOPE.Component subtype, no new EntityKind.
-func (x *extractor) emitAtomStore(name string, valueNode *sitter.Node, ab atomFactoryBinding) {
+func (x *extractor) emitAtomStore(name string, valueNode ts.Node, ab atomFactoryBinding) {
 	subtype := atomStoreSubtype(ab.library, ab.factory)
 	props := map[string]string{
 		"kind":         "SCOPE.Component",
@@ -526,7 +526,7 @@ func (x *extractor) emitAtomStore(name string, valueNode *sitter.Node, ab atomFa
 // surfaces as a USES_HOOK edge via the generic hook pass (react.go); this pass
 // adds the SWR-specific decoration (key + which SWR hook) so the data-fetching
 // idiom is queryable. No-op when swr is not imported. Decorate-only (#2839).
-func (x *extractor) decorateSWR(root *sitter.Node) {
+func (x *extractor) decorateSWR(root ts.Node) {
 	r := x.buildReactEcosystemImports()
 	if r == nil || !r.hasSWR {
 		return
@@ -540,7 +540,7 @@ func (x *extractor) decorateSWR(root *sitter.Node) {
 			}
 		}
 	}
-	scan := func(name string, body *sitter.Node) {
+	scan := func(name string, body ts.Node) {
 		if name == "" || body == nil {
 			return
 		}
@@ -618,7 +618,7 @@ func (x *extractor) decorateSWR(root *sitter.Node) {
 //
 // Decorate-only (#2839): no new EntityKind/RelationshipKind. No-op when neither
 // react-hook-form nor formik is imported.
-func (x *extractor) decorateForms(root *sitter.Node) {
+func (x *extractor) decorateForms(root ts.Node) {
 	r := x.buildReactEcosystemImports()
 	if r == nil || (!r.hasRHF && !r.hasFormik) {
 		return
@@ -632,7 +632,7 @@ func (x *extractor) decorateForms(root *sitter.Node) {
 			}
 		}
 	}
-	scan := func(name string, body *sitter.Node) {
+	scan := func(name string, body ts.Node) {
 		if name == "" || body == nil {
 			return
 		}
@@ -703,7 +703,7 @@ type formInfo struct {
 // Formik takes precedence on library when both appear (a Formik consumer may
 // also import RHF transitively, but the rendered <Formik> is the authoritative
 // form). Field names and resolver schema are recovered only from literals.
-func (x *extractor) collectFormInfo(r *reactEcosystemImports, body *sitter.Node) formInfo {
+func (x *extractor) collectFormInfo(r *reactEcosystemImports, body ts.Node) formInfo {
 	info := formInfo{
 		hooks:      map[string]bool{},
 		components: map[string]bool{},
@@ -770,7 +770,7 @@ func (x *extractor) collectFormInfo(r *reactEcosystemImports, body *sitter.Node)
 
 // collectRHFResolver inspects a useForm({ resolver: zodResolver(schema) }) call
 // and records the resolver schema library + schema identifier when recoverable.
-func (x *extractor) collectRHFResolver(r *reactEcosystemImports, call *sitter.Node, info *formInfo) {
+func (x *extractor) collectRHFResolver(r *reactEcosystemImports, call ts.Node, info *formInfo) {
 	obj := configObjectArg(call)
 	if obj == nil {
 		return
@@ -806,7 +806,7 @@ func (x *extractor) collectRHFResolver(r *reactEcosystemImports, call *sitter.No
 
 // collectFormikSchema inspects useFormik({ validationSchema: schema }) and
 // records the schema expression text when present.
-func (x *extractor) collectFormikSchema(call *sitter.Node, info *formInfo) {
+func (x *extractor) collectFormikSchema(call ts.Node, info *formInfo) {
 	obj := configObjectArg(call)
 	if obj == nil {
 		return
@@ -818,7 +818,7 @@ func (x *extractor) collectFormikSchema(call *sitter.Node, info *formInfo) {
 
 // collectFormikSchemaJSX inspects a <Formik validationSchema={schema}> opening
 // element and records the schema expression text.
-func (x *extractor) collectFormikSchemaJSX(jx *sitter.Node, info *formInfo) {
+func (x *extractor) collectFormikSchemaJSX(jx ts.Node, info *formInfo) {
 	for i := 0; i < int(jx.ChildCount()); i++ {
 		attr := jx.Child(i)
 		if attr == nil || attr.Type() != "jsx_attribute" {
@@ -844,7 +844,7 @@ func (x *extractor) collectFormikSchemaJSX(jx *sitter.Node, info *formInfo) {
 
 // jsxStringAttr returns the string-literal value of a JSX attribute (e.g.
 // `name="email"`), unquoted. Returns "" for expression-container or missing.
-func jsxStringAttr(x *extractor, jx *sitter.Node, attrName string) string {
+func jsxStringAttr(x *extractor, jx ts.Node, attrName string) string {
 	for i := 0; i < int(jx.ChildCount()); i++ {
 		attr := jx.Child(i)
 		if attr == nil || attr.Type() != "jsx_attribute" || attr.ChildCount() == 0 {
@@ -878,7 +878,7 @@ func sortedKeys(m map[string]bool) []string {
 // CONTAINS edge slice→reducer. The generated action creators share the reducer
 // names (RTK derives them 1:1), so we stamp the reducer count + names on the
 // slice entity.
-func (x *extractor) emitReduxSlice(name string, valueNode *sitter.Node) {
+func (x *extractor) emitReduxSlice(name string, valueNode ts.Node) {
 	call := unwrapCall(valueNode)
 	if call == nil {
 		return
@@ -929,7 +929,7 @@ func (x *extractor) emitReduxSlice(name string, valueNode *sitter.Node) {
 
 // emitReduxStore emits a SCOPE.Component subtype="redux_store" decorated with
 // the configured reducer slice keys.
-func (x *extractor) emitReduxStore(name string, valueNode *sitter.Node, canon string) {
+func (x *extractor) emitReduxStore(name string, valueNode ts.Node, canon string) {
 	call := unwrapCall(valueNode)
 	props := map[string]string{
 		"kind":    "SCOPE.Component",
@@ -948,7 +948,7 @@ func (x *extractor) emitReduxStore(name string, valueNode *sitter.Node, canon st
 // emitAsyncThunk emits a SCOPE.Operation subtype="redux_async_thunk" for a
 // createAsyncThunk action creator (redux_async_flow). The type-prefix string
 // (first arg) is stamped so the dispatched action type is queryable.
-func (x *extractor) emitAsyncThunk(name string, valueNode *sitter.Node) {
+func (x *extractor) emitAsyncThunk(name string, valueNode ts.Node) {
 	call := unwrapCall(valueNode)
 	props := map[string]string{
 		"kind":    "SCOPE.Operation",
@@ -970,7 +970,7 @@ func (x *extractor) emitAsyncThunk(name string, valueNode *sitter.Node) {
 // http_method (query→GET / mutation→derived) + the endpoint's query path so the
 // later link pass can wire them to backend endpoints. injected=true for
 // injectEndpoints (extends an existing api).
-func (x *extractor) emitRTKQueryApi(name string, valueNode *sitter.Node, injected bool) {
+func (x *extractor) emitRTKQueryApi(name string, valueNode ts.Node, injected bool) {
 	call := unwrapCall(valueNode)
 	if call == nil {
 		return
@@ -1028,7 +1028,7 @@ func (x *extractor) emitRTKQueryApi(name string, valueNode *sitter.Node, injecte
 
 // stampEcosystem emits a lightweight decorated SCOPE.Component for entities we
 // recognise but don't decompose (QueryClient instance, createEntityAdapter).
-func (x *extractor) stampEcosystem(name string, valueNode *sitter.Node, via, subtype string) {
+func (x *extractor) stampEcosystem(name string, valueNode ts.Node, via, subtype string) {
 	props := map[string]string{
 		"kind":    "SCOPE.Component",
 		"subtype": subtype,
@@ -1046,7 +1046,7 @@ func (x *extractor) stampEcosystem(name string, valueNode *sitter.Node, via, sub
 // stamped saga_role="watcher"; saga workers using put/call/select are stamped
 // saga_role="worker". Epics (functions whose body calls .pipe(...ofType(...)))
 // are stamped redux_epic="true". Decoration only (#2839) — no new entity.
-func (x *extractor) decorateReduxAsyncFlow(root *sitter.Node) {
+func (x *extractor) decorateReduxAsyncFlow(root ts.Node) {
 	r := x.buildReactEcosystemImports()
 	if r == nil || (!r.hasSaga && !x.fileImportsReduxObservable()) {
 		return
@@ -1061,7 +1061,7 @@ func (x *extractor) decorateReduxAsyncFlow(root *sitter.Node) {
 			}
 		}
 	}
-	scan := func(name string, defNode, body *sitter.Node) {
+	scan := func(name string, defNode, body ts.Node) {
 		if name == "" || body == nil {
 			return
 		}
@@ -1169,7 +1169,7 @@ func angularTanstackInjectKind(leaf string) string {
 // @tanstack/angular-query-experimental is imported. Decorate-only (#2839): the
 // SCOPE.Operation kind is reused, mirroring how angularDataFetching models
 // HttpClient call sites.
-func (x *extractor) angularTanstackQuery(body *sitter.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
+func (x *extractor) angularTanstackQuery(body ts.Node, className string) ([]types.EntityRecord, []types.RelationshipRecord) {
 	if body == nil || !x.fileImportsTanstackAngular() {
 		return nil, nil
 	}
@@ -1240,7 +1240,7 @@ func (x *extractor) fileImportsReduxObservable() bool {
 // Returns (watcher, worker, epic). A body using takeEvery/takeLatest/takeLeading
 // is a watcher; one using put/call/select/fork is a worker; one calling
 // .pipe(...) with ofType(...) is an epic.
-func (x *extractor) sagaBodyRoles(r *reactEcosystemImports, body *sitter.Node) (watcher, worker, epic bool) {
+func (x *extractor) sagaBodyRoles(r *reactEcosystemImports, body ts.Node) (watcher, worker, epic bool) {
 	for _, c := range findAllNodes(body, "call_expression") {
 		leaf := factoryLeaf(x, c)
 		switch leaf {
@@ -1262,7 +1262,7 @@ func (x *extractor) sagaBodyRoles(r *reactEcosystemImports, body *sitter.Node) (
 
 // unwrapCall returns the call_expression inside valueNode, unwrapping a single
 // `await`/parenthesised layer. Returns nil when valueNode is not a call.
-func unwrapCall(n *sitter.Node) *sitter.Node {
+func unwrapCall(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -1282,7 +1282,7 @@ func unwrapCall(n *sitter.Node) *sitter.Node {
 }
 
 // firstStringArg returns the first string-literal argument of a call, unquoted.
-func firstStringArg(x *extractor, call *sitter.Node) string {
+func firstStringArg(x *extractor, call ts.Node) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
@@ -1297,7 +1297,7 @@ func firstStringArg(x *extractor, call *sitter.Node) string {
 }
 
 // configObjectArg returns the first object-literal argument of a call.
-func configObjectArg(call *sitter.Node) *sitter.Node {
+func configObjectArg(call ts.Node) ts.Node {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return nil
@@ -1312,7 +1312,7 @@ func configObjectArg(call *sitter.Node) *sitter.Node {
 }
 
 // objectPairValue returns the value node for a given key in an object literal.
-func objectPairValue(x *extractor, obj *sitter.Node, key string) *sitter.Node {
+func objectPairValue(x *extractor, obj ts.Node, key string) ts.Node {
 	if obj == nil {
 		return nil
 	}
@@ -1333,7 +1333,7 @@ func objectPairValue(x *extractor, obj *sitter.Node, key string) *sitter.Node {
 }
 
 // sliceConfigName returns the `name:` string from a createSlice config object.
-func sliceConfigName(x *extractor, call *sitter.Node) string {
+func sliceConfigName(x *extractor, call ts.Node) string {
 	obj := configObjectArg(call)
 	if obj == nil {
 		return ""
@@ -1347,7 +1347,7 @@ func sliceConfigName(x *extractor, call *sitter.Node) string {
 
 // sliceReducers returns the reducer keys (and their function-value nodes) from
 // the `reducers:` object of a createSlice config.
-func sliceReducers(x *extractor, call *sitter.Node) ([]string, map[string]*sitter.Node) {
+func sliceReducers(x *extractor, call ts.Node) ([]string, map[string]ts.Node) {
 	obj := configObjectArg(call)
 	if obj == nil {
 		return nil, nil
@@ -1357,7 +1357,7 @@ func sliceReducers(x *extractor, call *sitter.Node) ([]string, map[string]*sitte
 		return nil, nil
 	}
 	var keys []string
-	nodes := map[string]*sitter.Node{}
+	nodes := map[string]ts.Node{}
 	for i := 0; i < int(reducersObj.ChildCount()); i++ {
 		child := reducersObj.Child(i)
 		if child == nil {
@@ -1392,7 +1392,7 @@ func sliceReducers(x *extractor, call *sitter.Node) ([]string, map[string]*sitte
 
 // configureStoreReducerKeys returns the slice keys from `reducer: { a, b }` of a
 // configureStore config (or the combined keys when reducer is combineReducers).
-func configureStoreReducerKeys(x *extractor, call *sitter.Node) []string {
+func configureStoreReducerKeys(x *extractor, call ts.Node) []string {
 	obj := configObjectArg(call)
 	if obj == nil {
 		return nil
@@ -1415,7 +1415,7 @@ func configureStoreReducerKeys(x *extractor, call *sitter.Node) []string {
 }
 
 // objectKeys returns the keys of an object literal (pairs + shorthand).
-func objectKeys(x *extractor, obj *sitter.Node) []string {
+func objectKeys(x *extractor, obj ts.Node) []string {
 	var keys []string
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		ch := obj.Child(i)
@@ -1445,11 +1445,11 @@ type rtkEndpoint struct {
 	name string
 	kind string // query | mutation
 	path string // best-effort query path string
-	node *sitter.Node
+	node ts.Node
 }
 
 // rtkReducerPath returns the `reducerPath:` string from a createApi config.
-func rtkReducerPath(x *extractor, call *sitter.Node) string {
+func rtkReducerPath(x *extractor, call ts.Node) string {
 	obj := configObjectArg(call)
 	if obj == nil {
 		return ""
@@ -1463,7 +1463,7 @@ func rtkReducerPath(x *extractor, call *sitter.Node) string {
 
 // rtkQueryEndpoints extracts endpoints from the `endpoints: (builder) => ({...})`
 // arrow of a createApi / injectEndpoints config.
-func rtkQueryEndpoints(x *extractor, call *sitter.Node) []rtkEndpoint {
+func rtkQueryEndpoints(x *extractor, call ts.Node) []rtkEndpoint {
 	obj := configObjectArg(call)
 	if obj == nil {
 		return nil
@@ -1509,7 +1509,7 @@ func rtkQueryEndpoints(x *extractor, call *sitter.Node) []rtkEndpoint {
 
 // arrowBody returns the body node of an arrow_function (or the node itself when
 // it is already an object/parenthesized expression).
-func arrowBody(n *sitter.Node) *sitter.Node {
+func arrowBody(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -1521,7 +1521,7 @@ func arrowBody(n *sitter.Node) *sitter.Node {
 
 // builderEndpointKind returns "query" or "mutation" for `builder.query(...)` /
 // `builder.mutation(...)`. "" otherwise.
-func builderEndpointKind(x *extractor, n *sitter.Node) string {
+func builderEndpointKind(x *extractor, n ts.Node) string {
 	call := unwrapCall(n)
 	if call == nil {
 		return ""
@@ -1538,7 +1538,7 @@ func builderEndpointKind(x *extractor, n *sitter.Node) string {
 
 // endpointQueryPath best-effort extracts the path string from a builder endpoint
 // config's `query: () => '/path'` (or `query: () => ({ url: '/path' })`).
-func endpointQueryPath(x *extractor, n *sitter.Node) string {
+func endpointQueryPath(x *extractor, n ts.Node) string {
 	call := unwrapCall(n)
 	if call == nil {
 		return ""

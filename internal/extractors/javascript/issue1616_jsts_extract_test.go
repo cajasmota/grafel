@@ -22,7 +22,7 @@ func extractAtPath(t *testing.T, content []byte, language, path string) []types.
 		Path:     path,
 		Content:  content,
 		Language: language,
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

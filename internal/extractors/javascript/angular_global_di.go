@@ -42,7 +42,7 @@ import (
 	"regexp"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -93,7 +93,7 @@ var reAngularIdent = regexp.MustCompile(`\b([A-Za-z_][A-Za-z0-9_]*)\b`)
 // x.entities: it appends global USES edges onto the declaring @NgModule entity
 // (already emitted by handleAngularClass) and, when a standalone bootstrap is
 // present, emits a synthetic `app` entity owning the bootstrap USES edges.
-func (x *extractor) angularGlobalProviders(root *sitter.Node) {
+func (x *extractor) angularGlobalProviders(root ts.Node) {
 	if root == nil {
 		return
 	}
@@ -224,7 +224,7 @@ func angularProviderObjectSpans(body string) [][2]int {
 // angularModuleProviders scans every @NgModule-decorated class for its
 // providers array and appends a module → bound-class USES edge (global=true)
 // per provider onto the already-emitted module entity.
-func (x *extractor) angularModuleProviders(root *sitter.Node) {
+func (x *extractor) angularModuleProviders(root ts.Node) {
 	for _, dec := range findAllNodes(root, "decorator") {
 		name, call := x.decoratorIdent(dec)
 		if name != "NgModule" || call == nil {
@@ -254,7 +254,7 @@ func (x *extractor) angularModuleProviders(root *sitter.Node) {
 // hangs the app → target USES edges (global=true) off it, mirroring the NestJS
 // bootstrap `app` owner (#4329). Functional interceptors registered via
 // `provideHttpClient(withInterceptors([fn]))` also become app → fn edges.
-func (x *extractor) angularBootstrapProviders(root *sitter.Node) {
+func (x *extractor) angularBootstrapProviders(root ts.Node) {
 	for _, call := range findAllNodes(root, "call_expression") {
 		fn := call.ChildByFieldName("function")
 		if fn == nil || x.nodeText(fn) != "bootstrapApplication" {
@@ -337,7 +337,7 @@ func angularGlobalUsesEdge(owner string, e angularProviderEdge, framework, via s
 
 // decoratedClassName returns the name of the class a decorator node decorates,
 // by scanning the decorator's parent for the sibling class_declaration.
-func (x *extractor) decoratedClassName(dec *sitter.Node) string {
+func (x *extractor) decoratedClassName(dec ts.Node) string {
 	parent := dec.Parent()
 	if parent == nil {
 		return ""
@@ -355,12 +355,12 @@ func (x *extractor) decoratedClassName(dec *sitter.Node) string {
 // array of a decorator call's first object-literal argument (e.g. the
 // `providers` array of @NgModule), or "" when absent. Raw text is used so the
 // uniform provider-object / bare-class parsing (shared with NestJS) applies.
-func (x *extractor) angularDecoratorArrayRaw(call *sitter.Node, key string) string {
+func (x *extractor) angularDecoratorArrayRaw(call ts.Node, key string) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
 	}
-	var obj *sitter.Node
+	var obj ts.Node
 	for i := 0; i < int(args.ChildCount()); i++ {
 		if args.Child(i).Type() == "object" {
 			obj = args.Child(i)
@@ -375,7 +375,7 @@ func (x *extractor) angularDecoratorArrayRaw(call *sitter.Node, key string) stri
 
 // angularOptionsProvidersRaw returns the raw `providers: [...]` array body from
 // the second (options) argument of a bootstrapApplication(App, {providers}) call.
-func (x *extractor) angularOptionsProvidersRaw(args *sitter.Node) string {
+func (x *extractor) angularOptionsProvidersRaw(args ts.Node) string {
 	// Find object-literal arguments (skip the leading component identifier).
 	for i := 0; i < int(args.ChildCount()); i++ {
 		c := args.Child(i)
@@ -391,7 +391,7 @@ func (x *extractor) angularOptionsProvidersRaw(args *sitter.Node) string {
 
 // angularObjectArrayRaw returns the raw text inside the `key: [...]` array value
 // of an object-literal node, or "" when the key is absent / not an array.
-func (x *extractor) angularObjectArrayRaw(obj *sitter.Node, key string) string {
+func (x *extractor) angularObjectArrayRaw(obj ts.Node, key string) string {
 	for i := 0; i < int(obj.ChildCount()); i++ {
 		pair := obj.Child(i)
 		if pair.Type() != "pair" {
@@ -430,7 +430,7 @@ func (x *extractor) entityIndexByName(name string) int {
 // ensureAngularAppEntity returns the index of the synthetic `app` entity,
 // emitting it (once) when absent. The entity owns the bootstrap global USES
 // edges so the bound classes are retained and resolve through the symbol table.
-func (x *extractor) ensureAngularAppEntity(anchor *sitter.Node) int {
+func (x *extractor) ensureAngularAppEntity(anchor ts.Node) int {
 	if idx := x.entityIndexByName(angularAppEntityName); idx >= 0 {
 		return idx
 	}

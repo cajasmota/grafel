@@ -32,7 +32,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -85,7 +85,7 @@ func (e *JSExtractor) Language() string {
 
 // Extract processes a parsed JS/TS source file and returns entity records.
 //
-// The tree-sitter parse tree (file.Tree) may be nil for empty files, in which
+// The tree-sitter parse tree (file.TSTree) may be nil for empty files, in which
 // case an empty slice is returned. Partial results are returned when individual
 // node queries fail; errors are logged but never abort the full extraction.
 func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
@@ -99,7 +99,7 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 	)
 	defer span.End()
 
-	if len(file.Content) == 0 || file.Tree == nil {
+	if len(file.Content) == 0 || file.TSTree == nil {
 		span.SetAttributes(
 			attribute.Int("entity_count", 0),
 			attribute.Int("relationship_count", 0),
@@ -107,7 +107,7 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		return nil, nil
 	}
 
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	if root == nil {
 		return nil, nil
 	}
@@ -676,7 +676,7 @@ type classBindings struct {
 }
 
 // nodeText returns the UTF-8 text of a tree-sitter node.
-func (x *extractor) nodeText(n *sitter.Node) string {
+func (x *extractor) nodeText(n ts.Node) string {
 	if n == nil {
 		return ""
 	}
@@ -689,7 +689,7 @@ func (x *extractor) nodeText(n *sitter.Node) string {
 }
 
 // lines returns (startLine, endLine) for a node, 1-indexed.
-func lines(n *sitter.Node) (int, int) {
+func lines(n ts.Node) (int, int) {
 	start := int(n.StartPoint().Row) + 1
 	end := int(n.EndPoint().Row) + 1
 	return start, end
@@ -708,7 +708,7 @@ func (x *extractor) qualify(name string) string {
 }
 
 // emit appends an entity to the extraction results.
-func (x *extractor) emit(name, kind string, n *sitter.Node, subtype string, sig string) {
+func (x *extractor) emit(name, kind string, n ts.Node, subtype string, sig string) {
 	if name == "" || name == "?" {
 		return
 	}
@@ -717,7 +717,7 @@ func (x *extractor) emit(name, kind string, n *sitter.Node, subtype string, sig 
 
 // emitWithRels appends an entity to the extraction results carrying the
 // supplied embedded relationships.
-func (x *extractor) emitWithRels(name, kind string, n *sitter.Node, subtype string, sig string, rels []types.RelationshipRecord) {
+func (x *extractor) emitWithRels(name, kind string, n ts.Node, subtype string, sig string, rels []types.RelationshipRecord) {
 	if name == "" || name == "?" {
 		return
 	}
@@ -763,7 +763,7 @@ func (x *extractor) tagLocalScope(from int) {
 // emitWithProps appends an entity to the extraction results using a caller-supplied
 // Properties map rather than the default {"kind": ..., "subtype": ...} map.
 // Used by handlers that need to store structured metadata (fields, generics, etc.).
-func (x *extractor) emitWithProps(name, kind string, n *sitter.Node, subtype string, sig string, props map[string]string, rels []types.RelationshipRecord) {
+func (x *extractor) emitWithProps(name, kind string, n ts.Node, subtype string, sig string, props map[string]string, rels []types.RelationshipRecord) {
 	if name == "" || name == "?" {
 		return
 	}
@@ -800,7 +800,7 @@ var txOperationSubtypes = map[string]bool{
 // `.transaction(...)` call (or @Transaction() decorator) is lexically present
 // in the entity's source span. No transitive propagation — a callee that merely
 // receives an EntityManager but does not open a transaction is not stamped.
-func (x *extractor) stampTransactional(e *types.EntityRecord, n *sitter.Node, subtype string) {
+func (x *extractor) stampTransactional(e *types.EntityRecord, n ts.Node, subtype string) {
 	if n == nil || !txOperationSubtypes[subtype] {
 		return
 	}
@@ -817,7 +817,7 @@ func (x *extractor) stampTransactional(e *types.EntityRecord, n *sitter.Node, su
 // typed CALLS edges can resolve `this.<field>.<method>` and `<field>.<method>`
 // shapes to the import-declared type (issue #421). cb is nil outside a
 // class body.
-func (x *extractor) walk(n *sitter.Node, parentClass string, cb *classBindings) {
+func (x *extractor) walk(n ts.Node, parentClass string, cb *classBindings) {
 	if n == nil {
 		return
 	}
@@ -873,7 +873,7 @@ func (x *extractor) walk(n *sitter.Node, parentClass string, cb *classBindings) 
 	x.walkChildren(n, parentClass, cb)
 }
 
-func (x *extractor) walkChildren(n *sitter.Node, parentClass string, cb *classBindings) {
+func (x *extractor) walkChildren(n ts.Node, parentClass string, cb *classBindings) {
 	count := int(n.ChildCount())
 	for i := 0; i < count; i++ {
 		x.walk(n.Child(i), parentClass, cb)
@@ -881,7 +881,7 @@ func (x *extractor) walkChildren(n *sitter.Node, parentClass string, cb *classBi
 }
 
 // handleFunctionDeclaration handles: function foo(...) { ... }
-func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string, cb *classBindings) {
+func (x *extractor) handleFunctionDeclaration(n ts.Node, parentClass string, cb *classBindings) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
@@ -950,7 +950,7 @@ func (x *extractor) handleFunctionDeclaration(n *sitter.Node, parentClass string
 // Emits one CONTAINS edge per method/operation entity declared directly inside
 // the class body. The CONTAINS source is the class entity (FromID empty →
 // substituted at emit time); the target is the bare method name.
-func (x *extractor) handleClassDeclaration(n *sitter.Node) {
+func (x *extractor) handleClassDeclaration(n ts.Node) {
 	nameNode := n.ChildByFieldName("name")
 	className := x.nodeText(nameNode)
 	if className == "" {
@@ -1046,7 +1046,7 @@ func (x *extractor) handleClassDeclaration(n *sitter.Node) {
 }
 
 // handleMethodDefinition handles method definitions inside class bodies.
-func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string, cb *classBindings) {
+func (x *extractor) handleMethodDefinition(n ts.Node, _ string, cb *classBindings) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" || name == "constructor" {
@@ -1103,7 +1103,7 @@ func (x *extractor) handleMethodDefinition(n *sitter.Node, _ string, cb *classBi
 // NOT tagged (it is an ordinary property writer, not an observable state
 // setter), and the notify-call form must target a string-keyed property to
 // avoid catching unrelated set() calls (e.g. Set#add aliased to set).
-func (x *extractor) isNativeScriptStateSetter(body *sitter.Node) bool {
+func (x *extractor) isNativeScriptStateSetter(body ts.Node) bool {
 	if body == nil {
 		return false
 	}
@@ -1113,7 +1113,7 @@ func (x *extractor) isNativeScriptStateSetter(body *sitter.Node) bool {
 // bodyNotifiesObservable returns true when the statement block contains a
 // call to notifyPropertyChange(...) or this.set("<prop>", ...) — the two
 // NativeScript Observable mutation primitives.
-func (x *extractor) bodyNotifiesObservable(n *sitter.Node) bool {
+func (x *extractor) bodyNotifiesObservable(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -1174,7 +1174,7 @@ func (x *extractor) bodyNotifiesObservable(n *sitter.Node) bool {
 //
 // The emitted entity subtype is "method" — consistent with how
 // handleMethodDefinition classifies class methods.
-func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass string, cb *classBindings) {
+func (x *extractor) handlePublicFieldDefinition(n ts.Node, parentClass string, cb *classBindings) {
 	// TypeScript grammar: "name" field; JavaScript grammar: "property" field.
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil {
@@ -1299,7 +1299,7 @@ func (x *extractor) handlePublicFieldDefinition(n *sitter.Node, parentClass stri
 // Also emits one EXTENDS relationship per base interface so the graph
 // captures the structural type hierarchy without requiring a resolver pass.
 // (issue #1343)
-func (x *extractor) handleInterfaceDeclaration(n *sitter.Node) {
+func (x *extractor) handleInterfaceDeclaration(n ts.Node) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
@@ -1427,7 +1427,7 @@ func (x *extractor) handleInterfaceDeclaration(n *sitter.Node) {
 //   - "type_body"  : raw text of the right-hand-side type expression
 //
 // (issue #1343)
-func (x *extractor) handleTypeAliasDeclaration(n *sitter.Node) {
+func (x *extractor) handleTypeAliasDeclaration(n ts.Node) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
@@ -1560,7 +1560,7 @@ func schemaFieldSignature(name string, optional bool, ann string) string {
 // colon and surrounding whitespace stripped, or "" when the member is
 // untyped. Works for public_field_definition, property_signature and
 // method_signature alike.
-func (x *extractor) fieldTypeAnnotation(member *sitter.Node) string {
+func (x *extractor) fieldTypeAnnotation(member ts.Node) string {
 	typeNode := member.ChildByFieldName("type")
 	if typeNode == nil {
 		return ""
@@ -1574,7 +1574,7 @@ func (x *extractor) fieldTypeAnnotation(member *sitter.Node) string {
 
 // fieldIsOptional reports whether a member declares the TypeScript optional
 // marker `?` (e.g. `name?: string`) as a direct child token.
-func (x *extractor) fieldIsOptional(member *sitter.Node) bool {
+func (x *extractor) fieldIsOptional(member ts.Node) bool {
 	for j := 0; j < int(member.ChildCount()); j++ {
 		if ch := member.Child(j); ch != nil && ch.Type() == "?" {
 			return true
@@ -1583,7 +1583,7 @@ func (x *extractor) fieldIsOptional(member *sitter.Node) bool {
 	return false
 }
 
-func (x *extractor) emitSchemaMemberFields(body *sitter.Node, owner string) ([]string, []types.RelationshipRecord) {
+func (x *extractor) emitSchemaMemberFields(body ts.Node, owner string) ([]string, []types.RelationshipRecord) {
 	if body == nil || owner == "" {
 		return nil, nil
 	}
@@ -1635,7 +1635,7 @@ func (x *extractor) emitSchemaMemberFields(body *sitter.Node, owner string) ([]s
 //   - "members" : comma-separated list of enum member names
 //
 // (issue #1343)
-func (x *extractor) handleEnumDeclaration(n *sitter.Node) {
+func (x *extractor) handleEnumDeclaration(n ts.Node) {
 	nameNode := n.ChildByFieldName("name")
 	name := x.nodeText(nameNode)
 	if name == "" {
@@ -1678,7 +1678,7 @@ func (x *extractor) handleEnumDeclaration(n *sitter.Node) {
 }
 
 // handleVariableDeclaration handles: const/let foo = (...) => {...} or = function(...) {...}
-func (x *extractor) handleVariableDeclaration(n *sitter.Node, parentClass string, cb *classBindings) {
+func (x *extractor) handleVariableDeclaration(n ts.Node, parentClass string, cb *classBindings) {
 	count := int(n.ChildCount())
 	for i := 0; i < count; i++ {
 		child := n.Child(i)
@@ -1689,7 +1689,7 @@ func (x *extractor) handleVariableDeclaration(n *sitter.Node, parentClass string
 }
 
 // handleVariableDeclarator processes a single variable_declarator node.
-func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string, cb *classBindings) {
+func (x *extractor) handleVariableDeclarator(n ts.Node, parentClass string, cb *classBindings) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil {
 		return
@@ -1974,7 +1974,7 @@ func (x *extractor) handleVariableDeclarator(n *sitter.Node, parentClass string,
 // the dotted shapes (`styled.div`, `createSlice(...).reducer`,
 // `Animated.createAnimatedComponent(...)`) we walk down the function
 // child to find the leaf identifier.
-func (x *extractor) isFunctionWrapperCall(n *sitter.Node) bool {
+func (x *extractor) isFunctionWrapperCall(n ts.Node) bool {
 	if n == nil || n.Type() != "call_expression" {
 		return false
 	}
@@ -2063,7 +2063,7 @@ func isHOCName(leaf string) bool {
 }
 
 // callArgCount returns the number of named argument nodes in a call_expression.
-func callArgCount(n *sitter.Node) int {
+func callArgCount(n ts.Node) int {
 	args := n.ChildByFieldName("arguments")
 	if args == nil {
 		return 0
@@ -2084,7 +2084,7 @@ func callArgCount(n *sitter.Node) int {
 //
 // Recognised factories: createContext (React), createNamedContext (common
 // utility wrapper shape), createOptionalContext (pattern from some React libs).
-func (x *extractor) isContextFactory(n *sitter.Node) bool {
+func (x *extractor) isContextFactory(n ts.Node) bool {
 	if n == nil || n.Type() != "call_expression" {
 		return false
 	}
@@ -2112,7 +2112,7 @@ func (x *extractor) isContextFactory(n *sitter.Node) bool {
 // function_expression body inside a wrapper-call value, or nil. Used
 // to attribute CALLS to the wrapped function rather than the wrapper
 // call expression as a whole.
-func (x *extractor) findInnerFunctionBody(n *sitter.Node) *sitter.Node {
+func (x *extractor) findInnerFunctionBody(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -2155,7 +2155,7 @@ func (x *extractor) findInnerFunctionBody(n *sitter.Node) *sitter.Node {
 // expression, producing a cluster of entities all reporting the same
 // start_line. Anchoring on the bound identifier attributes each entity to
 // its real declaration line.
-func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, opLift bool, stateHook bool, parentClass string, cb *classBindings) {
+func (x *extractor) emitDestructuredEntities(pattern, valueNode ts.Node, opLift bool, stateHook bool, parentClass string, cb *classBindings) {
 	if pattern == nil {
 		return
 	}
@@ -2168,7 +2168,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 	// anchorFor returns the node to use for line numbers for a given
 	// binding: the binding's own identifier node when available, else the
 	// shared fallback (#1616).
-	anchorFor := func(bind *sitter.Node) *sitter.Node {
+	anchorFor := func(bind ts.Node) ts.Node {
 		if bind != nil {
 			return bind
 		}
@@ -2194,8 +2194,8 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 		subtype = "const"
 	}
 
-	var walk func(p *sitter.Node, arrayIdx int)
-	walk = func(p *sitter.Node, arrayIdx int) {
+	var walk func(p ts.Node, arrayIdx int)
+	walk = func(p ts.Node, arrayIdx int) {
 		if p == nil {
 			return
 		}
@@ -2310,7 +2310,7 @@ func (x *extractor) emitDestructuredEntities(pattern, valueNode *sitter.Node, op
 
 // firstIdentifierChild returns the first identifier-typed child of n, or nil.
 // Used to dig out the bound name from a rest_pattern wrapper.
-func firstIdentifierChild(n *sitter.Node) *sitter.Node {
+func firstIdentifierChild(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -2327,7 +2327,7 @@ func firstIdentifierChild(n *sitter.Node) *sitter.Node {
 // represents a JS/TS primitive literal (string, number, boolean, null, undefined,
 // template literal). Used by handleVariableDeclarator (#1968) to decide whether
 // a top-level const declaration should be emitted as SCOPE.Schema/constant.
-func isPrimitiveLiteralNode(n *sitter.Node) bool {
+func isPrimitiveLiteralNode(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -2347,7 +2347,7 @@ func isPrimitiveLiteralNode(n *sitter.Node) bool {
 // primitiveNodeValue returns the raw text of a primitive literal node, trimmed
 // of surrounding quotes for string nodes so the stored value is the bare string
 // content. Returns "" for non-string nodes or when the text is empty.
-func (x *extractor) primitiveNodeValue(n *sitter.Node) string {
+func (x *extractor) primitiveNodeValue(n ts.Node) string {
 	if n == nil {
 		return ""
 	}
@@ -2372,7 +2372,7 @@ func (x *extractor) primitiveNodeValue(n *sitter.Node) string {
 // isStateHookCall returns true when the RHS is a call to one of the built-in
 // React state hooks that return a [value, setter] tuple. Used by #513 to tag
 // array-pattern setters with subtype="state_setter".
-func isStateHookCall(x *extractor, valueNode *sitter.Node) bool {
+func isStateHookCall(x *extractor, valueNode ts.Node) bool {
 	if valueNode == nil || valueNode.Type() != "call_expression" {
 		return false
 	}
@@ -2423,7 +2423,7 @@ func isStateHookCall(x *extractor, valueNode *sitter.Node) bool {
 // non-callable bound name produces no false positives, only a slightly
 // wider candidate set for legitimate callable leaves like `mutate`,
 // `refetch`, `setError`.
-func isMutationStyleHookCall(x *extractor, valueNode *sitter.Node) bool {
+func isMutationStyleHookCall(x *extractor, valueNode ts.Node) bool {
 	if valueNode == nil || valueNode.Type() != "call_expression" {
 		return false
 	}
@@ -2540,7 +2540,7 @@ func isMutationStyleHookName(leaf string) bool {
 // frame carries the receiver-type bindings visible in the caller's scope:
 // merged class fields (from the enclosing class body) + the caller's own
 // typed parameters. nil means "no typed receiver lookup possible".
-func (x *extractor) extractCallRelationships(body *sitter.Node, callerName string, frame *classBindings) []types.RelationshipRecord {
+func (x *extractor) extractCallRelationships(body ts.Node, callerName string, frame *classBindings) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -2803,7 +2803,7 @@ var reactQueryConfigKeys = map[string]bool{
 // isReactHookCallee returns true when the call_expression's callee name
 // matches the React hook naming convention: starts with "use" followed by
 // an uppercase letter (e.g. useQuery, useMutation, useInspections).
-func isReactHookCallee(x *extractor, call *sitter.Node) bool {
+func isReactHookCallee(x *extractor, call ts.Node) bool {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return false
@@ -2825,7 +2825,7 @@ func isReactHookCallee(x *extractor, call *sitter.Node) bool {
 // For each such key whose value is an arrow_function or function_expression,
 // it emits CALLS edges from callerName to every call inside the callback body,
 // marking them with Properties["via"]="react_query_hook". Issue #2554.
-func (x *extractor) extractReactQueryHookCalls(call *sitter.Node, callerName string, frame *classBindings, seen map[string]bool) []types.RelationshipRecord {
+func (x *extractor) extractReactQueryHookCalls(call ts.Node, callerName string, frame *classBindings, seen map[string]bool) []types.RelationshipRecord {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return nil
@@ -2869,7 +2869,7 @@ func (x *extractor) extractReactQueryHookCalls(call *sitter.Node, callerName str
 				valNode = valNode.Child(1)
 			}
 			// Only traverse arrow_function and function_expression values.
-			var callbackBody *sitter.Node
+			var callbackBody ts.Node
 			switch valNode.Type() {
 			case "arrow_function":
 				callbackBody = valNode.ChildByFieldName("body")
@@ -2928,7 +2928,7 @@ func (x *extractor) extractReactQueryHookCalls(call *sitter.Node, callerName str
 //     it or drop it).
 //
 // Issue #2553.
-func (x *extractor) dispatchMapCallEdges(call *sitter.Node, callerName string) []types.RelationshipRecord {
+func (x *extractor) dispatchMapCallEdges(call ts.Node, callerName string) []types.RelationshipRecord {
 	if x.dispatchMaps == nil || call == nil {
 		return nil
 	}
@@ -3052,7 +3052,7 @@ func isBuiltinMethodName(method string) bool {
 // ref ("scope:operation:method:<lang>:<resolved_file>:<method>") instead
 // of the bare trailing identifier. This lets the resolver bind the call
 // to the imported class's method without going through bare-name lookup.
-func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
+func (x *extractor) callTarget(call ts.Node, frame *classBindings) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		// new_expression uses "constructor" field.
@@ -3185,7 +3185,7 @@ func (x *extractor) callTarget(call *sitter.Node, frame *classBindings) string {
 // The cross-file resolver (or the react_props cross-extractor) will bind
 // local tags to the declaring entity. Self-renders (caller == tag name) are
 // skipped.
-func (x *extractor) extractJSXRendersRelationships(body *sitter.Node, callerName string) []types.RelationshipRecord {
+func (x *extractor) extractJSXRendersRelationships(body ts.Node, callerName string) []types.RelationshipRecord {
 	if body == nil || !isComponentName(callerName) {
 		return nil
 	}
@@ -3278,12 +3278,12 @@ func (x *extractor) extractJSXRendersRelationships(body *sitter.Node, callerName
 // entity, which lands in bug-extractor. With the map, callTarget rewrites
 // the target to "ext:<module>" so the external synthesiser handles it
 // correctly. Issue #44 (TS/JS resolver slice).
-func (x *extractor) buildHookVarToModule(root *sitter.Node) map[string]string {
+func (x *extractor) buildHookVarToModule(root ts.Node) map[string]string {
 	if root == nil || x.importByLocal == nil {
 		return nil
 	}
 	result := make(map[string]string)
-	stack := make([]*sitter.Node, 0, 64)
+	stack := make([]ts.Node, 0, 64)
 	stack = append(stack, root)
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
@@ -3343,7 +3343,7 @@ func (x *extractor) buildHookVarToModule(root *sitter.Node) map[string]string {
 //
 // Issue #2553 — surfaced by core-mobile's offline-sync subsystem where
 // syncEngine.ts dispatches through syncResolvers via RESOLVERS[action.kind](args).
-func (x *extractor) buildDispatchMaps(root *sitter.Node) map[string]*dispatchMapInfo {
+func (x *extractor) buildDispatchMaps(root ts.Node) map[string]*dispatchMapInfo {
 	if root == nil {
 		return nil
 	}
@@ -3479,7 +3479,7 @@ func (x *extractor) buildDispatchMaps(root *sitter.Node) map[string]*dispatchMap
 // Only direct call targets (identifier or member_expression property) are
 // returned; nested call chains are not traversed to avoid over-approximation.
 // Deduplication is applied so each target appears at most once.
-func (x *extractor) callTargetsInFunctionNode(fn *sitter.Node) []string {
+func (x *extractor) callTargetsInFunctionNode(fn ts.Node) []string {
 	if fn == nil {
 		return nil
 	}
@@ -3531,7 +3531,7 @@ func isComponentName(name string) bool {
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
 // Iterative to stay safe on deeply-nested trees.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -3539,8 +3539,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -3570,7 +3570,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 // "mod"` produces two edges); the parent SCOPE.Component entity is
 // shared across bindings of the same module so the existing dedup
 // shape is preserved.
-func (x *extractor) collectImports(root *sitter.Node) {
+func (x *extractor) collectImports(root ts.Node) {
 	seen := make(map[string]bool)
 	// Group import bindings by module spec so we can attach all
 	// bindings as separate IMPORTS edges on a single import entity.
@@ -3582,7 +3582,7 @@ func (x *extractor) collectImports(root *sitter.Node) {
 	x.collectImportsNode(root, seen, bindingsByModule)
 }
 
-func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool, bindingsByModule map[string][]*importBinding) {
+func (x *extractor) collectImportsNode(n ts.Node, seen map[string]bool, bindingsByModule map[string][]*importBinding) {
 	if n == nil {
 		return
 	}
@@ -3643,7 +3643,7 @@ func (x *extractor) collectImportsNode(n *sitter.Node, seen map[string]bool, bin
 // without destructuring fall back to a single IMPORTS edge with no
 // per-binding properties so existing downstream consumers still see
 // at least one edge per module.
-func (x *extractor) emitImport(module string, n *sitter.Node, bindings []*importBinding) {
+func (x *extractor) emitImport(module string, n ts.Node, bindings []*importBinding) {
 	// Use the full module path as the entity name for parity with Python indexer.
 	start, end := lines(n)
 	// Issue #570 — FromID is the importing file's path. The extractor

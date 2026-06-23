@@ -25,7 +25,7 @@
 package javascript
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -63,7 +63,7 @@ var builtinReactHooks = map[string]bool{
 // when callerName is itself a component (PascalCase) or a custom hook
 // (use-prefixed) — the contexts in which React's Rules of Hooks permit hook
 // calls — so utility functions don't pick up spurious edges.
-func (x *extractor) extractHookCalls(body *sitter.Node, callerName string) []types.RelationshipRecord {
+func (x *extractor) extractHookCalls(body ts.Node, callerName string) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}

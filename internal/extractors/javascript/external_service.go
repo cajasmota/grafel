@@ -36,7 +36,7 @@ package javascript
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -45,7 +45,7 @@ import (
 // rooted at a recognised external-service import and appends external-service
 // entities + DEPENDS_ON_SERVICE edges to x.entities. x.entities[0] MUST be the
 // file entity. Safe with an empty tree or no imports.
-func (x *extractor) emitServiceDependencyEdges(root *sitter.Node) {
+func (x *extractor) emitServiceDependencyEdges(root ts.Node) {
 	if root == nil || len(x.entities) == 0 || len(x.importByLocal) == 0 {
 		return
 	}
@@ -57,8 +57,8 @@ func (x *extractor) emitServiceDependencyEdges(root *sitter.Node) {
 
 	var calls []extreg.ServiceCall
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -117,7 +117,7 @@ func (x *extractor) emitServiceDependencyEdges(root *sitter.Node) {
 // For AWS client constructors (`new S3Client(...)`, `new SESClient(...)`) the
 // service is derived from the constructor name suffix, since aws-sdk v3 names
 // the service in the class.
-func (x *extractor) jsNewExpressionService(newNode *sitter.Node) (string, string) {
+func (x *extractor) jsNewExpressionService(newNode ts.Node) (string, string) {
 	ctor := newNode.ChildByFieldName("constructor")
 	if ctor == nil {
 		return "", ""
@@ -161,7 +161,7 @@ func (x *extractor) jsNewExpressionService(newNode *sitter.Node) (string, string
 // is either a known SDK import binding (`sgMail.send`, `Sentry.init`) or a
 // local variable previously constructed from an SDK (`stripe.charges.create`).
 // Returns the service and the dotted operation tail, or "" when no SDK root.
-func (x *extractor) jsCallService(call *sitter.Node, localVarService map[string]string) (string, string) {
+func (x *extractor) jsCallService(call ts.Node, localVarService map[string]string) (string, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "member_expression" {
 		return "", ""
@@ -200,7 +200,7 @@ func (x *extractor) importedServiceRoot(local string) string {
 // the dotted property tail. For `stripe.charges.create` it returns ("stripe",
 // "charges.create"); for `sgMail.send` it returns ("sgMail", "send"). Returns
 // ("", "") when the chain does not root at a plain identifier.
-func (x *extractor) jsMemberRootAndTail(member *sitter.Node) (string, string) {
+func (x *extractor) jsMemberRootAndTail(member ts.Node) (string, string) {
 	var parts []string
 	node := member
 	for node != nil && node.Type() == "member_expression" {

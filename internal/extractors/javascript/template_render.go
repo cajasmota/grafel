@@ -24,7 +24,7 @@
 package javascript
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -32,15 +32,15 @@ import (
 // emitTemplateRenderEdges scans the AST for Express/Koa `<res>.render('view')`
 // calls and appends template entities + RENDERS edges to x.entities.
 // x.entities[0] MUST be the file entity. Safe with an empty tree.
-func (x *extractor) emitTemplateRenderEdges(root *sitter.Node) {
+func (x *extractor) emitTemplateRenderEdges(root ts.Node) {
 	if root == nil || len(x.entities) == 0 {
 		return
 	}
 
 	var edges []extreg.TemplateEdge
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -91,7 +91,7 @@ func (x *extractor) emitTemplateRenderEdges(root *sitter.Node) {
 // (res / ctx / response, case-insensitive) and the first argument is a plain
 // string literal. Returns "" otherwise (non-render method, non-response
 // receiver, or dynamic first argument → drop).
-func (x *extractor) jsRenderCallTemplate(call *sitter.Node) string {
+func (x *extractor) jsRenderCallTemplate(call ts.Node) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "member_expression" {
 		return ""

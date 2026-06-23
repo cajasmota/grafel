@@ -47,7 +47,7 @@ package javascript
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 )
@@ -219,7 +219,7 @@ func nodeStdlibCanonical(spec string) string {
 // `this.<field>` is NOT supported here: Node.js stdlib imports go into
 // the file scope, not into class fields. The receiver-binder in
 // receiver.go covers the typed-class-field shape independently.
-func (x *extractor) receiverNodeStdlibTarget(memberExpr *sitter.Node, method string) string {
+func (x *extractor) receiverNodeStdlibTarget(memberExpr ts.Node, method string) string {
 	if memberExpr == nil || method == "" {
 		return ""
 	}
