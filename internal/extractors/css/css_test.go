@@ -4,18 +4,22 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tscss "github.com/smacker/go-tree-sitter/css"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/css"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tscss.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tscss.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -49,7 +53,7 @@ func TestCSSExtractor_Selectors(t *testing.T) {
 		Path:     "styles.css",
 		Content:  []byte(src),
 		Language: "css",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -82,7 +86,7 @@ func TestCSSExtractor_CSSVariables(t *testing.T) {
 		Path:     "vars.css",
 		Content:  []byte(src),
 		Language: "css",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -112,7 +116,7 @@ func TestCSSExtractor_Keyframes(t *testing.T) {
 		Path:     "anim.css",
 		Content:  []byte(src),
 		Language: "css",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

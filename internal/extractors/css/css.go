@@ -31,7 +31,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -86,11 +86,11 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		return entities, nil
 	default:
 		// Plain CSS: tree-sitter parse required.
-		if file.Tree == nil {
+		if file.TSTree == nil {
 			return nil, nil
 		}
 		var entities []types.EntityRecord
-		root := file.Tree.RootNode()
+		root := file.TSTree.RootNode()
 		extractCSS(root, file, &entities)
 		extractor.TagRelationshipsLanguage(entities, "css")
 		extractor.TagEntitiesLanguage(entities, "css")
@@ -99,13 +99,13 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 }
 
 // extractCSS traverses the CSS tree collecting all entity types.
-func extractCSS(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func extractCSS(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	// Collect selectors, keyframes, at_rules in one pass.
 	seenVars := make(map[string]bool)
 	walkCSS(root, file, seenVars, out)
 }
 
-func walkCSS(node *sitter.Node, file extractor.FileInput, seenVars map[string]bool, out *[]types.EntityRecord) {
+func walkCSS(node ts.Node, file extractor.FileInput, seenVars map[string]bool, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -138,14 +138,14 @@ func walkCSS(node *sitter.Node, file extractor.FileInput, seenVars map[string]bo
 	}
 }
 
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
 	return string(src[node.StartByte():node.EndByte()])
 }
 
-func childByType(node *sitter.Node, types ...string) *sitter.Node {
+func childByType(node ts.Node, types ...string) ts.Node {
 	typeSet := make(map[string]bool, len(types))
 	for _, t := range types {
 		typeSet[t] = true
@@ -159,7 +159,7 @@ func childByType(node *sitter.Node, types ...string) *sitter.Node {
 	return nil
 }
 
-func buildSelector(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildSelector(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	selectorsNode := childByType(node, "selectors")
 	if selectorsNode == nil {
 		return types.EntityRecord{}, false
@@ -184,7 +184,7 @@ func buildSelector(node *sitter.Node, file extractor.FileInput) (types.EntityRec
 	}, true
 }
 
-func buildKeyframe(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildKeyframe(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	nameNode := childByType(node, "keyframes_name")
 	name := "?"
 	if nameNode != nil {
@@ -203,7 +203,7 @@ func buildKeyframe(node *sitter.Node, file extractor.FileInput) (types.EntityRec
 	}, true
 }
 
-func buildAtRule(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildAtRule(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	kwNode := childByType(node, "at_keyword")
 	if kwNode == nil {
 		return types.EntityRecord{}, false
@@ -240,7 +240,7 @@ func buildAtRule(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 //
 // Media queries trailing the directive (e.g. `screen`, `print`) are
 // ignored — they don't change the import target.
-func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	module := importModuleRef(node, file.Content)
 	if module == "" {
 		return types.EntityRecord{}, false
@@ -266,7 +266,7 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 // importModuleRef extracts the imported module path from an import_statement
 // node, handling both bare-string and url(...) forms. Returns "" if no
 // module ref can be located.
-func importModuleRef(node *sitter.Node, src []byte) string {
+func importModuleRef(node ts.Node, src []byte) string {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch == nil {
@@ -290,7 +290,7 @@ func importModuleRef(node *sitter.Node, src []byte) string {
 
 // unquoteStringValue strips the surrounding "" or ” quote tokens from a
 // tree-sitter string_value node and returns the inner text.
-func unquoteStringValue(node *sitter.Node, src []byte) string {
+func unquoteStringValue(node ts.Node, src []byte) string {
 	raw := nodeText(node, src)
 	raw = strings.TrimSpace(raw)
 	if len(raw) >= 2 {
@@ -302,7 +302,7 @@ func unquoteStringValue(node *sitter.Node, src []byte) string {
 	return raw
 }
 
-func buildVariable(node *sitter.Node, file extractor.FileInput, seen map[string]bool) (types.EntityRecord, bool) {
+func buildVariable(node ts.Node, file extractor.FileInput, seen map[string]bool) (types.EntityRecord, bool) {
 	propNode := childByType(node, "property_name")
 	if propNode == nil {
 		return types.EntityRecord{}, false

@@ -124,6 +124,7 @@ func (w node) StartByte() uint32       { return uint32(w.n.StartByte()) }
 func (w node) EndByte() uint32         { return uint32(w.n.EndByte()) }
 
 func (w node) ChildByFieldName(f string) ts.Node { return wrapNode(w.n.ChildByFieldName(f)) }
+func (w node) FieldNameForChild(i int) string    { return w.n.FieldNameForChild(uint32(i)) }
 func (w node) Parent() ts.Node                   { return wrapNode(w.n.Parent()) }
 func (w node) PrevSibling() ts.Node              { return wrapNode(w.n.PrevSibling()) }
 

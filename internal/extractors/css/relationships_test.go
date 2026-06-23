@@ -63,7 +63,7 @@ body { color: red; }
 		Path:     "main.css",
 		Content:  []byte(src),
 		Language: "css",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -176,7 +176,7 @@ func TestCSSExtractor_NoCalls(t *testing.T) {
 	tree := parseForTest(t, cssSrc)
 	ext, _ := extractor.Get("css")
 	entities, _ := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "x.css", Content: []byte(cssSrc), Language: "css", Tree: tree,
+		Path: "x.css", Content: []byte(cssSrc), Language: "css", TSTree: tree,
 	})
 	for _, e := range entities {
 		for _, r := range e.Relationships {
@@ -206,7 +206,7 @@ $x: 1;
 		var input extractor.FileInput
 		input = extractor.FileInput{Path: path, Content: src, Language: "css"}
 		if path == "a.css" {
-			input.Tree = parseForTest(t, string(src))
+			input.TSTree = parseForTest(t, string(src))
 		}
 		entities, _ := ext.Extract(context.Background(), input)
 		for _, e := range entities {

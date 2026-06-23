@@ -58,6 +58,11 @@ type Node interface {
 	NamedChildCount() uint32
 	// ChildByFieldName returns the child bound to the given grammar field, or nil.
 	ChildByFieldName(field string) Node
+	// FieldNameForChild returns the grammar field name of the child at index i,
+	// or "" if that child is unnamed or i is out of range. Maps to both bindings'
+	// Node.FieldNameForChild() (smacker takes int, the official binding uint32;
+	// the adapters reconcile the width).
+	FieldNameForChild(i int) string
 	// Parent returns the parent node, or nil for the root.
 	Parent() Node
 	// PrevSibling returns the node's previous sibling (named or anonymous), or
