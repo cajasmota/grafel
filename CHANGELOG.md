@@ -42,6 +42,28 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (0 keeps no grace-protected dead refs); a negative int disables the cap
   backstop; unparseable values fall back to the default. Mirrors the existing
   `GRAFEL_TIER_*`/`GRAFEL_EXTRACT_GOMAXPROCS` env pattern.
+- **Official tree-sitter grammar providers — batch B2, batch 3 (source-swaps)
+  (#5418, B2 cutover Part B):** ABI-14-pinned official-runtime grammar packages
+  for **lua, toml, yaml** under `internal/treesitter/ts/grammars/`, mirroring the
+  Phase-0 Go provider and wired into `migratedLanguages` behind the `ts_official`
+  build tag (each with an ABI smoke-parse guard test asserting a non-nil,
+  non-error root of the expected top kind: lua `chunk`, toml `document`, yaml
+  `stream`). Unlike the version-only batches, these are **recorded source-swaps**:
+  each moves off its dead, binding-less bundled repo (lua `Azganoth/…`, toml/yaml
+  `ikatyang/…`, all without a Go binding) onto the maintained
+  **`tree-sitter-grammars`** org, whose `bindings/go` depends on the official
+  runtime — a freshness win and the one-runtime requirement (cutover plan §5).
+  `grammars.lock`'s `source` is updated for all four source-swap languages.
+  Pins: tree-sitter-lua `v0.3.0` (v0.4.0+ ABI 15), tree-sitter-toml `v0.7.0`
+  (latest), tree-sitter-yaml `v0.7.2` (latest; still ABI 14, parser.c-verified) —
+  all `LANGUAGE_VERSION 14`, inside the v0.24.0 runtime's 13–14 window.
+  **hcl is intentionally deferred to the vendored-C track:** the
+  `tree-sitter-grammars/tree-sitter-hcl` `bindings/go` only exists from `v1.2.0`
+  (ABI 15, SIGSEGVs at `RootNode`), and the ABI-14 tags (`v1.1.0`/`v1.1.1`) ship
+  **no Go binding** — so hcl cannot use this go-get-a-binding pattern (cutover
+  plan §3/§4). The **default build is unchanged** (100% smacker); the
+  `ts_official` path is only populated so the eventual default-flip has these
+  providers ready and validated. Additive prep — not the big-bang flip.
 - **Official tree-sitter grammar providers — batch B2
   (#5418, B2 cutover Part B):** ABI-≤14-pinned official-runtime grammar packages
   for **elixir, ocaml, php, scala, swift** under

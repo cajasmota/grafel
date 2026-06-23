@@ -16,6 +16,7 @@ import (
 	tshtml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/html"
 	tsjava "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/java"
 	tsjavascript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/javascript"
+	tslua "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/lua"
 	tsocaml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/ocaml"
 	tsphp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/php"
 	tspython "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/python"
@@ -23,7 +24,9 @@ import (
 	tsrust "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/rust"
 	tsscala "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/scala"
 	tsswift "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/swift"
+	tstoml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/toml"
 	tstypescript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/typescript"
+	tsyaml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/yaml"
 	tsofficial "github.com/cajasmota/grafel/internal/treesitter/ts/official"
 	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
@@ -72,6 +75,16 @@ var migratedLanguages = map[string]ts.Language{
 	"php":    tsphp.Language(),
 	"scala":  tsscala.Language(),
 	"swift":  tsswift.Language(),
+	// B2 cutover Part B batch 3 (#5418): source-swap providers — off the dead,
+	// binding-less bundled repos onto the maintained tree-sitter-grammars org
+	// (a freshness win + the one-runtime requirement), all ABI 14. hcl is
+	// deferred to the vendored-C track: the tree-sitter-grammars/tree-sitter-hcl
+	// bindings/go only exists from v1.2.0 (ABI 15, SIGSEGVs at RootNode), and the
+	// ABI-14 tags (v1.1.0/v1.1.1) ship no Go binding — so it cannot use this
+	// go-get-a-binding pattern (cutover plan §3/§4).
+	"lua":  tslua.Language(),
+	"toml": tstoml.Language(),
+	"yaml": tsyaml.Language(),
 }
 
 // abiProbeSource is trivial, valid source per migrated language for the ABI guard.
@@ -95,6 +108,9 @@ var abiProbeSource = map[string][]byte{
 	"php":        []byte("<?php function f() { return 1; }\n"),
 	"scala":      []byte("object M { def f: Int = 1 }\n"),
 	"swift":      []byte("func f() -> Int { return 1 }\n"),
+	"lua":        []byte("local function f() return 1 end\n"),
+	"toml":       []byte("[table]\nkey = \"value\"\n"),
+	"yaml":       []byte("key: value\n"),
 }
 
 // tsLanguageFor resolves a language to the official adapter (if migrated) or the
