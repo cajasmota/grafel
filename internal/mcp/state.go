@@ -854,10 +854,58 @@ func (s *State) reloadLocked() (int, bool, error) {
 }
 
 // Group returns a loaded group by name, or nil.
+//
+// Overlay-freshness check (#5403): the group-algo overlay is applied at group
+// LOAD (during Reload, via applyGroupAlgoOverlay). A long-running daemon caches
+// the group, so a settled group whose <group>-algo.json overlay is recomputed
+// mid-session (by the scheduler after a reindex, or a manual
+// `grafel group-algo --write`) keeps serving the LAST-APPLIED state until a
+// restart — the apply was never re-called on the cached group. Here, on the
+// canonical group-serving entry path (used by clusters/inspect/orient/stats),
+// we cheaply os.Stat the overlay file and, only when its mtime ADVANCES past the
+// memoized grp.algoMt, re-call applyGroupAlgoOverlay so the fresh overlay takes
+// effect without a reload. The stat is the only per-query cost; the overlay is
+// re-read/re-stamped solely when the file genuinely advanced (the #5402 per-repo
+// memo then re-stamps exactly the repos that need it). Absence-tolerant: a
+// missing overlay → no re-apply (today's behavior). Runs under s.mu, the same
+// lock applyGroupAlgoOverlay holds during Reload, so the shared apply/memo
+// fields are mutated race-free.
 func (s *State) Group(name string) *LoadedGroup {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return s.groups[name]
+	grp := s.groups[name]
+	if grp != nil {
+		s.refreshGroupAlgoOverlayLocked(grp)
+	}
+	return grp
+}
+
+// refreshGroupAlgoOverlayLocked re-applies the group-algo overlay to an
+// already-loaded group when its overlay file mtime has advanced past the
+// memoized grp.algoMt (#5403). Cheap by design: a single os.Stat; the overlay
+// is re-read and re-stamped only when the file advanced. Absence/stat-error →
+// no-op (the overlay may legitimately not exist yet). Caller must hold s.mu.
+func (s *State) refreshGroupAlgoOverlayLocked(grp *LoadedGroup) {
+	path := grp.algoFile
+	if path == "" {
+		var err error
+		if path, err = groupalgo.OverlayPath(grp.Name); err != nil || path == "" {
+			return
+		}
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		// Absent/unreadable overlay → no-op. If the group had previously applied
+		// an overlay that has since been removed, applyGroupAlgoOverlay (on the
+		// next Reload) handles the clear; per-query we stay non-destructive.
+		return
+	}
+	// Only re-apply when the file genuinely advanced. grp.algoApplied false with a
+	// present file (overlay appeared after a load that saw none) also re-applies.
+	if grp.algoApplied && !fi.ModTime().After(grp.algoMt) {
+		return
+	}
+	applyGroupAlgoOverlay(grp)
 }
 
 // SnapshotGroups returns a stable list of loaded group pointers.
