@@ -10,6 +10,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **Group-algo overlay now keeps surfacing on `inspect`/`orient`/`stats`/`clusters`
+  after a repo is reparsed — incl. `core-mobile` (Fixes #5400, #5401, #5397):**
+  `applyGroupAlgoOverlay` memoized the per-entity stamp at the **group** level by
+  the overlay FILE's mtime. But a repo's `graph.fb` can be rewritten (a reparse →
+  fresh `doc.Entities` carrying the per-repo sentinel `community_id:-1`) AFTER the
+  overlay was first applied. With the file-level memo, that reparsed repo was
+  never re-stamped and silently reverted to `community_id:-1` — exactly the
+  `core-mobile` symptom (#5401): `grafel_orient` showed `community_id:-1` for its
+  entities, `grafel_inspect` surfaced no algo fields at all (#5400), and
+  `grafel_stats` + `grafel_clusters repo_filter=core-mobile` reported 0
+  communities (#5397) — even though the overlay placed core-mobile in community
+  80. The stamp memo is now **per repo**: a repo is re-stamped whenever its
+  `graph.fb` was reparsed since the last stamp (or the overlay file advanced), so
+  the overlay community/pagerank/centrality survive a mid-session reparse of any
+  one repo. `grafel_stats` now also derives each repo's community count from the
+  overlay-stamped per-entity `community_id` (matching `grafel_clusters`) instead
+  of the now-empty per-repo `Doc.Communities`. Fully absence-tolerant.
+
 - **MCP read-side now serves the group-algo overlay instead of per-repo Louvain
   (Fixes #5396, #5397):** the group-level overlay (`~/.grafel/groups/<group>-algo.json`)
   was computed correctly and stamped onto entities by `applyGroupAlgoOverlay`,

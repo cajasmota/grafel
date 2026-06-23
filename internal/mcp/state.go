@@ -317,6 +317,20 @@ type LoadedRepo struct {
 	// first successful load.
 	contentHash uint64
 	loadErr     string // populated when last reload failed; doc may be stale
+
+	// algoStampedMt is the lr.mtime value at which applyGroupAlgoOverlay last
+	// stamped the group overlay (CommunityID/PageRank/Centrality/god/articulation)
+	// onto this repo's in-memory entities (#5400/#5401). The overlay apply is
+	// memoized at the GROUP level by the overlay file's own mtime, but a repo's
+	// graph.fb can be rewritten (reparse → fresh doc.Entities with the per-repo
+	// sentinel community ids, e.g. -1) AFTER the overlay was first applied. When
+	// that happens the overlay file mtime is unchanged, so the group-level memo
+	// would skip re-stamping and the reparsed repo's entities silently revert to
+	// community_id:-1 (the core-mobile symptom in #5401). Tracking the stamped
+	// mtime per repo lets the apply re-stamp exactly the repos that were reparsed
+	// since the last stamp, regardless of the overlay-file memo. The zero value
+	// means "never stamped", so a freshly-loaded repo is always (re-)stamped.
+	algoStampedMt time.Time
 }
 
 // resetIndexes re-arms every lazy-index sync.Once and clears the cached
@@ -1071,17 +1085,33 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 		return
 	}
 
-	// Memoize: skip re-stamping when neither the overlay nor the graphs changed.
-	// We re-apply whenever the overlay mtime advanced OR a repo was reparsed
-	// this reload (which would have reset entity fields to graph.fb values).
-	if grp.algoApplied && fi.ModTime().Equal(grp.algoMt) {
-		// Still set the summary (cheap; keeps grp.Communities authoritative).
-		grp.Communities = ov.Communities
-		return
-	}
+	// The community summary is always cheap to refresh and keeps grp.Communities
+	// authoritative for the clusters path even when no per-entity re-stamp is
+	// needed this reload.
+	grp.Communities = ov.Communities
+
+	// Memoization is now PER REPO, not group-wide (#5400/#5401). The previous
+	// group-level memo skipped ALL re-stamping whenever the overlay file mtime
+	// was unchanged — but a repo's graph.fb can be rewritten AFTER the overlay
+	// was first applied (a reparse produces fresh doc.Entities carrying the
+	// per-repo sentinel community ids, e.g. -1). With the group memo, that
+	// reparsed repo never got re-stamped and silently reverted to
+	// community_id:-1 (the core-mobile symptom in #5401; the same staleness
+	// also left grafel_inspect surfacing nothing in #5400). We re-stamp a repo
+	// whenever EITHER the overlay file advanced (overlayChanged) OR that repo's
+	// graph.fb was reparsed since we last stamped it (lr.mtime moved). This
+	// re-stamps exactly the repos that need it and is a no-op for the steady
+	// state where neither the overlay nor any graph changed.
+	overlayChanged := !grp.algoApplied || !fi.ModTime().Equal(grp.algoMt)
 
 	for _, lr := range grp.Repos {
 		if lr == nil || lr.Doc == nil {
+			continue
+		}
+		// Skip a repo only when the overlay is unchanged AND this repo was not
+		// reparsed since we last stamped it. The zero algoStampedMt (never
+		// stamped) always falls through to (re-)stamp.
+		if !overlayChanged && lr.mtime.Equal(lr.algoStampedMt) {
 			continue
 		}
 		ents := lr.Doc.Entities
@@ -1103,9 +1133,9 @@ func applyGroupAlgoOverlay(grp *LoadedGroup) {
 		// against the freshly-stamped group values rather than stale per-repo
 		// ones (mirrors the resetIndexes() call after a reparse).
 		lr.resetIndexes()
+		lr.algoStampedMt = lr.mtime
 	}
 
-	grp.Communities = ov.Communities
 	grp.algoMt = fi.ModTime()
 	grp.algoApplied = true
 }

@@ -2889,6 +2889,29 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 	}
 	sort.Strings(names)
 	totalImport, totalBug := 0, 0
+	// #5397/#5401: when the group-algo overlay is applied (lg.Communities set),
+	// the per-repo Louvain summary (r.Doc.Communities) is empty — the per-repo
+	// pass was removed in A3 — so reporting len(r.Doc.Communities) understates
+	// (core-mobile showed 0). Recover each repo's community count from the
+	// overlay-stamped per-entity CommunityID instead, matching what
+	// grafel_clusters surfaces. -1/-2 sentinels (ungrouped) are not counted.
+	overlayCommByRepo := map[string]int{}
+	if len(lg.Communities) > 0 {
+		for n, r := range lg.Repos {
+			if r == nil || r.Doc == nil {
+				continue
+			}
+			seen := map[int]struct{}{}
+			for i := range r.Doc.Entities {
+				cid := r.Doc.Entities[i].CommunityID
+				if cid == nil || *cid < 0 {
+					continue
+				}
+				seen[*cid] = struct{}{}
+			}
+			overlayCommByRepo[n] = len(seen)
+		}
+	}
 	// Collect the loaded repos so we can pass them to computeUnresolvedBreakdown
 	// without a second pass over the names slice.
 	var loadedRepos []*LoadedRepo
@@ -2906,11 +2929,15 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 		rImport, rBug := countEdgesForFidelity(r)
 		totalImport += rImport
 		totalBug += rBug
+		commCount := len(r.Doc.Communities)
+		if len(lg.Communities) > 0 {
+			commCount = overlayCommByRepo[name]
+		}
 		repoStats = append(repoStats, map[string]any{
 			"repo":          name,
 			"entities":      len(r.Doc.Entities),
 			"relationships": len(r.Doc.Relationships),
-			"communities":   len(r.Doc.Communities),
+			"communities":   commCount,
 		})
 		loadedRepos = append(loadedRepos, r)
 	}
