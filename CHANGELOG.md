@@ -9,6 +9,7 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Fixed
+- **Cached group re-applies the group-algo overlay when its file advances (#5403):** `State.Group()` now os.Stats the overlay on the serve path and re-stamps only when the mtime advances past the memoized value, so a recomputed overlay (scheduler or manual `group-algo --write`) takes effect without a daemon restart. Cheap (one stat/query), absence-tolerant. (Scheduler-trigger half for settled groups deferred for live validation.)
 - **Daemon no longer exits on transient `Accept()` errors (#5424):**
   `acceptLoop` previously returned the serve loop on **any** `Accept()` error
   other than `net.ErrClosed`, which made `Run` unlink the unix socket and drop
