@@ -193,6 +193,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (`docs/c3-feature-impact-analysis.md`)
 
 ### Fixed
+- **Test-isolation: `grafel install` fresh-install test escaped the #5443
+  sandbox guard on Linux/Windows CI (#5418):**
+  `TestIssue2683_FreshInstall_WritesAllSixFiles` (and its sibling rules-file
+  tests in `cmd/grafel`) redirected `HOME`/`GRAFEL_HOME` into a `t.TempDir()`
+  but not `XDG_CONFIG_HOME`. `registry.ConfigDir()` honors `XDG_CONFIG_HOME`
+  first, which on the Linux/Windows GitHub runners points at the real
+  `~/.config`, so `install.Apply` → `SaveGroupConfig` resolved the fleet config
+  under the real home and tripped the write-path guard — a panic that surfaced
+  on Linux/Windows but not on macOS (where `XDG_CONFIG_HOME` is unset and the
+  path fell back to the redirected `HOME`). Switched the shared `applyWithStubs`
+  helper to `testsupport.IsolateHome(t)`, which redirects all of
+  `HOME`/`XDG_CONFIG_HOME`/`GRAFEL_HOME` into the sandbox. Audited every test
+  calling a guarded writer (`SaveGroupConfig`/`AddGroup`/`install.Apply`/
+  `ConfigPathFor`); this was the only un-isolated one.
+  ([`cmd/grafel/issue2683_rules_files_test.go`](cmd/grafel/issue2683_rules_files_test.go))
 - **B2 cutover, C3 (c) — extractors adapted to the official grammars' changed
   node shapes (#5418):** the big-bang flip (Step B) swapped all grammars to
   fresher official versions whose CST node shapes differ from the 2024-08

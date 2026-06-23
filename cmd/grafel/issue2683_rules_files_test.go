@@ -19,6 +19,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/rulesfiles"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // twoRepoGroup builds a GroupConfig with two empty repo directories on
@@ -48,11 +49,13 @@ func twoRepoGroup(t *testing.T) (root string, repos []string, cfg *registry.Grou
 // except rules-file writing.
 func applyWithStubs(t *testing.T, group string, cfg *registry.GroupConfig) *install.Result {
 	t.Helper()
-	// Redirect grafel state to a private tmp dir so we never touch
-	// the developer's real ~/.grafel during tests.
-	state := t.TempDir()
-	t.Setenv("GRAFEL_HOME", state)
-	t.Setenv("HOME", state)
+	// Redirect grafel state AND config (HOME/XDG_CONFIG_HOME/GRAFEL_HOME)
+	// into a private tmp dir so install.Apply's SaveGroupConfig writes the
+	// <group>.fleet.json under the sandbox, never the developer's real
+	// ~/.config/grafel (see #5443). A bare HOME+GRAFEL_HOME redirect is NOT
+	// enough: ConfigDir() honors XDG_CONFIG_HOME first, which on Linux/Windows
+	// CI points at the real home — so isolate via the shared helper.
+	testsupport.IsolateHome(t)
 
 	res, err := install.Apply(install.Options{
 		Group:        group,
