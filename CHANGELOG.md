@@ -51,6 +51,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (`docs/c3-feature-impact-analysis.md`)
 
 ### Fixed
+- **Dead-ref GC now bounds grace-protected transient refs (retention cap,
+  #5440):** the dead-ref sweeper (#5236) reaps refs git no longer knows about,
+  but its 24h grace window had no backstop. A high-churn workload — the rewrite
+  agent's `merge-NNNN` branches, created + deleted minutes apart but each indexed
+  — left every deleted ref's fresh ~80MB `graph.fb` grace-protected for a full
+  24h. On `core-backend-v3` this piled up **~1GB of dead-ref graphs** (12
+  `merge-NNNN` dirs alongside `main` while `git for-each-ref` showed only
+  `main`), mmap'd into the daemon and inflating RSS to ~1.6GB. The sweeper now
+  applies a **retention cap** (`DefaultRefRetentionCap` = 8) per repo: of the
+  dead-in-git refs the grace window protects, only the N most-recently-indexed
+  are kept; the oldest beyond the cap are reaped immediately (mmap released via
+  the existing `DropReader` path before unlink, Windows-safe). Live / primary /
+  HEAD / active-worktree refs and the `_unknown` sentinel never count toward the
+  cap and are never evicted by it; the fail-closed git-enumeration guard is
+  unchanged. Runs on the existing reaper cadence — no new goroutine.
 - **group-algo overlay now reports god-nodes' real PageRank (was 0):** the
   determinism rounding (`roundForDeterminism`) bucketed every score to a fixed
   **1e-4 absolute** quantum. On large group unions (28k+ entities) PageRank mass

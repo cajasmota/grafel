@@ -31,6 +31,15 @@
 //   - Grace window: a ref whose graph.fb was written within GraceWindow
 //     (default 24h) is kept, so an in-flight / just-finished index pass is
 //     never raced into deletion.
+//   - Retention cap: the grace window alone has no backstop against a
+//     high-churn workload that creates+deletes many transient refs (e.g. the
+//     rewrite agent's `merge-NNNN` branches). Each is indexed, then deleted
+//     from git minutes later, but its fresh graph.fb keeps it grace-protected
+//     for 24h — so ~1GB of dead-ref graphs piled up on core-backend-v3 (#5440).
+//     RetentionCap bounds the number of dead-in-git refs the grace window may
+//     protect per repo: the N most-recently-indexed are kept, the rest are
+//     reaped immediately. Live/primary/HEAD/worktree refs never count toward
+//     the cap and are never reaped by it.
 //   - Fail-closed: if git ref enumeration fails for a repo, that repo is
 //     skipped entirely — nothing is reaped. A flaky/locked git can never cause
 //     a live ref's graph to be nuked.
@@ -42,6 +51,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
@@ -94,6 +104,14 @@ type DeadRefConfig struct {
 	// 24h. A negative value disables the grace guard (tests).
 	GraceWindow time.Duration
 
+	// RetentionCap bounds the number of dead-in-git ref graphs the grace window
+	// may protect per repo. When more than RetentionCap dead-in-git refs are
+	// grace-protected, the oldest (by graph.fb mtime) beyond the cap are reaped
+	// immediately — the backstop against high-churn transient-ref creation
+	// (#5440). Live/primary/HEAD/worktree refs never count toward the cap.
+	// Default (zero): DefaultRefRetentionCap. A negative value disables the cap.
+	RetentionCap int
+
 	// Now returns the current time; nil → time.Now. Injected in tests.
 	Now func() time.Time
 
@@ -114,7 +132,16 @@ type DeadRefResult struct {
 	SlotsForgotten int
 	// FreedBytes is the total bytes reclaimed from deleted ref store dirs.
 	FreedBytes int64
+	// CapEvicted is the number of grace-protected dead refs reaped by the
+	// retention cap (i.e. they would have survived on the grace window alone).
+	CapEvicted int
 }
+
+// DefaultRefRetentionCap is the default ceiling on grace-protected dead-in-git
+// ref graphs kept per repo. Picked as a small backstop: enough headroom for a
+// handful of genuinely in-flight reindexes, low enough that a high-churn
+// transient-ref workload cannot pile up ~1GB of dead graphs (#5440).
+const DefaultRefRetentionCap = 8
 
 // DeadRefSweeper reclaims store dirs + resident graphs for refs/worktrees that
 // git no longer knows about, within still-present repos.
@@ -132,6 +159,9 @@ func NewDeadRefSweeper(cfg DeadRefConfig) *DeadRefSweeper {
 	}
 	if cfg.GraceWindow == 0 {
 		cfg.GraceWindow = 24 * time.Hour
+	}
+	if cfg.RetentionCap == 0 {
+		cfg.RetentionCap = DefaultRefRetentionCap
 	}
 	if cfg.Now == nil {
 		cfg.Now = time.Now
@@ -161,6 +191,7 @@ func (s *DeadRefSweeper) Sweep() DeadRefResult {
 			"repos_scanned", res.ReposScanned,
 			"repos_skipped", res.ReposSkipped,
 			"refs_reaped", res.RefsReaped,
+			"cap_evicted", res.CapEvicted,
 			"slots_forgotten", res.SlotsForgotten,
 			"freed_bytes", res.FreedBytes)
 	}
@@ -198,6 +229,10 @@ func (s *DeadRefSweeper) sweepRepo(repo string, res *DeadRefResult) {
 
 	graceCutoff := s.cfg.Now().Add(-s.cfg.GraceWindow)
 
+	// graceHeld collects dead-in-git refs that the grace window protects, so the
+	// retention cap can evict the oldest beyond the cap as a backstop (#5440).
+	var graceHeld []graceHeldRef
+
 	for _, e := range stored {
 		if !e.IsDir() {
 			continue
@@ -217,31 +252,88 @@ func (s *DeadRefSweeper) sweepRepo(repo string, res *DeadRefResult) {
 			continue
 		}
 		refDir := filepath.Join(refsDir, refSafe)
-		// Guard: grace window — keep recently-indexed refs.
+		// Guard: grace window — defer recently-indexed refs to the retention-cap
+		// pass below rather than keeping them unconditionally. The cap evicts the
+		// oldest of these when there are too many (high-churn transient refs);
+		// the rest are kept exactly as before.
 		if s.cfg.GraceWindow >= 0 && recentlyIndexed(refDir, graceCutoff) {
-			s.logger.Info("deadref: ref dead in git but recently indexed — keeping (grace window)", "repo", repo, "ref", ref)
+			graceHeld = append(graceHeld, graceHeldRef{ref: ref, dir: refDir, mtime: refGraphMtime(refDir)})
 			continue
 		}
 
-		// Reap: remove store dir, drop reader, forget slot.
-		sz, rmErr := s.removeRefStore(refDir)
-		if rmErr != nil {
-			s.logger.Warn("deadref: ref store removal failed (non-fatal)", "repo", repo, "ref", ref, "dir", refDir, "err", rmErr)
-			continue
-		}
-		res.RefsReaped++
-		if sz > 0 {
-			res.FreedBytes += sz
-		}
-		s.logger.Info("deadref: reaped dead ref", "repo", repo, "ref", ref, "dir", refDir, "freed_bytes", sz)
+		s.reapRef(repo, ref, refDir, res, false)
+	}
 
-		if s.cfg.DropReader != nil {
-			s.cfg.DropReader(repo, ref)
+	// Retention-cap backstop: of the grace-protected dead refs, keep only the
+	// RetentionCap most-recently-indexed; reap the rest (oldest first).
+	if s.cfg.RetentionCap >= 0 && len(graceHeld) > s.cfg.RetentionCap {
+		// Newest first so the head of the slice is the keep-set.
+		sort.Slice(graceHeld, func(i, j int) bool {
+			return graceHeld[i].mtime.After(graceHeld[j].mtime)
+		})
+		for _, h := range graceHeld[s.cfg.RetentionCap:] {
+			s.logger.Info("deadref: grace-protected dead ref over retention cap — reaping", "repo", repo, "ref", h.ref, "cap", s.cfg.RetentionCap)
+			if s.reapRef(repo, h.ref, h.dir, res, true) {
+				res.CapEvicted++
+			}
 		}
-		if s.cfg.Tier != nil && s.cfg.Tier.ForgetRef(repo, ref) {
-			res.SlotsForgotten++
+		for _, h := range graceHeld[:s.cfg.RetentionCap] {
+			s.logger.Info("deadref: ref dead in git but recently indexed — keeping (grace window, within cap)", "repo", repo, "ref", h.ref)
+		}
+	} else {
+		for _, h := range graceHeld {
+			s.logger.Info("deadref: ref dead in git but recently indexed — keeping (grace window)", "repo", repo, "ref", h.ref)
 		}
 	}
+}
+
+// graceHeldRef is a dead-in-git ref kept by the grace window, a candidate for
+// retention-cap eviction.
+type graceHeldRef struct {
+	ref   string
+	dir   string
+	mtime time.Time
+}
+
+// reapRef removes a ref's store dir, drops its cached reader, and forgets its
+// tier slot, updating res. Returns true when the store dir was removed. The
+// caller logs the higher-level reason; reapRef logs the reap itself.
+func (s *DeadRefSweeper) reapRef(repo, ref, refDir string, res *DeadRefResult, capEvict bool) bool {
+	sz, rmErr := s.removeRefStore(refDir)
+	if rmErr != nil {
+		s.logger.Warn("deadref: ref store removal failed (non-fatal)", "repo", repo, "ref", ref, "dir", refDir, "err", rmErr)
+		return false
+	}
+	res.RefsReaped++
+	if sz > 0 {
+		res.FreedBytes += sz
+	}
+	s.logger.Info("deadref: reaped dead ref", "repo", repo, "ref", ref, "dir", refDir, "freed_bytes", sz, "cap_evicted", capEvict)
+
+	if s.cfg.DropReader != nil {
+		s.cfg.DropReader(repo, ref)
+	}
+	if s.cfg.Tier != nil && s.cfg.Tier.ForgetRef(repo, ref) {
+		res.SlotsForgotten++
+	}
+	return true
+}
+
+// refGraphMtime returns the newest graph.fb / graph.json mtime under refDir, or
+// the zero time when neither exists. Used to order grace-protected refs for the
+// retention cap (oldest evicted first).
+func refGraphMtime(refDir string) time.Time {
+	var newest time.Time
+	for _, name := range []string{"graph.fb", "graph.json"} {
+		fi, err := os.Stat(filepath.Join(refDir, name))
+		if err != nil {
+			continue
+		}
+		if fi.ModTime().After(newest) {
+			newest = fi.ModTime()
+		}
+	}
+	return newest
 }
 
 // recentlyIndexed reports whether the ref dir holds a graph.fb (or graph.json)
