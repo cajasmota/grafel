@@ -9,6 +9,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Progressive graph rendering in the dashboard (#5446, increment 2):** the
+  Graph screen now consumes the streaming endpoint (`GET /api/v2/graph/{group}/stream`)
+  and feeds the GPU canvas (cosmos.gl) incrementally, so a large graph **builds
+  up live** with a "building graph… N / total nodes" counter and a subtle
+  progress bar instead of a long blank wait. The SSE consumer accumulates the
+  `meta` → `chunk…` → `done` events into the same normalized payload the
+  full-payload fetch produces (a pure, unit-tested reducer), so it is a drop-in
+  data source. A cold group (503) shows a "warming index…" state and retries
+  with a bounded, capped backoff; a mid-stream drop falls back to the
+  full-payload fetch (identical shape) so the graph still loads. On `done` the
+  canvas runs one canonical re-layout so the complete graph settles cleanly and
+  fits the viewport. A tiny graph still streams in a single round-trip, so the
+  small-graph case stays effectively instant. Frontend only this increment.
 - **Streaming graph endpoint for progressive load (#5446, increment 1):** a new
   `GET /api/v2/graph/{group}/stream` SSE endpoint streams the same node/edge
   shape as `/api/v2/graph/{group}` but progressively — a `meta` event first

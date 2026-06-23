@@ -51,12 +51,17 @@ function normalize(w: GraphPayloadWire): GraphPayload {
 export function useGraph(
   groupId: string,
   opts?: { repos?: string[]; filterKind?: string; lod?: string },
+  queryOpts?: { enabled?: boolean },
 ) {
   return useQuery({
     queryKey: graphQueryKey(groupId, opts?.repos, opts?.filterKind, opts?.lod),
     queryFn: async () => normalize(await api.getGraph(groupId, opts)),
     // The payload is large + server-cached (ETag/304); keep it warm.
     staleTime: 5 * 60 * 1000,
+    // #5446 — the full-payload fetch is the FALLBACK path: the Graph screen
+    // prefers the progressive SSE stream and only enables this when the stream
+    // fails. Defaults to enabled so other callers keep their eager behavior.
+    enabled: queryOpts?.enabled ?? true,
   });
 }
 
