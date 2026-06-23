@@ -9,6 +9,11 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Fixed
+- **`TestOverlay_NoTornRead` greens on Windows CI:** the writer now tolerates a
+  transient atomic-rename failure under the artificial 4-reader stress (a failed
+  swap is not a torn read — readers still see the prior complete file) and readers
+  sleep 1ms between reads so the rename reliably finds a window. Asserts the real
+  property (zero torn reads) plus that writes make progress. Unix unchanged.
 
 - **Windows CI green for the group-algo overlay (no production behavior change on
   Unix):** the overlay's atomic temp+rename now **retries on the transient
