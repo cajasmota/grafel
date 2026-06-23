@@ -19,7 +19,7 @@ func runPHP(t *testing.T, src, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

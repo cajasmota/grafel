@@ -41,7 +41,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -59,7 +59,7 @@ func (e *Extractor) Language() string { return "csharp" }
 
 // Extract walks the tree-sitter CST and returns entity records for the C# file.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -69,7 +69,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	imports := collectImportNames(root, file.Content)
 	// Issue #4374 — per-file cross-namespace context (namespaces, usings,
 	// aliases, `using static` types) used to bind qualified cross-namespace
@@ -106,7 +106,7 @@ type classCtx struct {
 // every Component/Operation/Schema entity so the resolver can build a
 // namespace-keyed member index for cross-namespace CALLS binding.
 func walk(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	parentType string,
 	ns string,
@@ -271,7 +271,7 @@ func stampNamespace(rec *types.EntityRecord, ns string) {
 
 // findTypeBody returns the declaration_list child of a class/interface/
 // struct declaration, or nil when the type has no body.
-func findTypeBody(node *sitter.Node) *sitter.Node {
+func findTypeBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch != nil && ch.Type() == "declaration_list" {
@@ -282,7 +282,7 @@ func findTypeBody(node *sitter.Node) *sitter.Node {
 }
 
 // buildComponent creates a SCOPE.Component entity for class/interface/struct declarations.
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -304,7 +304,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 // buildEnumEntity creates a SCOPE.Schema entity (subtype="enum") for enum declarations.
 // Enum member names are collected and stored in the Signature field as a comma-separated
 // list so the graph carries the full member set without additional enrichment.
-func buildEnumEntity(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildEnumEntity(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -347,7 +347,7 @@ func buildEnumEntity(node *sitter.Node, file extractor.FileInput) (types.EntityR
 // capturing each member's explicit literal value (`Active = 1`) when present.
 // Members with no explicit value (`Active,` — C# auto-assigns the position) are
 // recorded value-less; honest-partial avoids fabricating the implicit ordinal.
-func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildEnumValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -394,7 +394,7 @@ func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.Entit
 //
 // Issue #65 parity: when parentType is non-empty, Name is emitted as
 // "<parentType>.<member>".
-func buildOperation(node *sitter.Node, file extractor.FileInput, subtype, parentType string) (types.EntityRecord, bool) {
+func buildOperation(node ts.Node, file extractor.FileInput, subtype, parentType string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -434,7 +434,7 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype, parent
 // `using A = System.Console;` (alias) →
 //
 //	local_name="A", source_module="System", imported_name="Console"
-func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	raw, alias := extractUsingTargetWithAlias(node, file.Content)
 	if raw == "" {
 		return types.EntityRecord{}, false
@@ -486,7 +486,7 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 // `using A = X.Y;`. The path itself appears as a sibling
 // qualified_name / identifier / member_access_expression child without
 // a field name.
-func extractUsingTargetWithAlias(node *sitter.Node, src []byte) (string, string) {
+func extractUsingTargetWithAlias(node ts.Node, src []byte) (string, string) {
 	var alias string
 	// Detect alias via the "name" field (only present in `using A = X.Y;`).
 	if n := node.ChildByFieldName("name"); n != nil && n.Type() == "identifier" {
@@ -531,7 +531,7 @@ func extractUsingTargetWithAlias(node *sitter.Node, src []byte) (string, string)
 // collectImportNames scans the file for top-level using_directive nodes
 // and returns a set of locally-bound simple names. Used by the receiver
 // binder as a confirming signal for PascalCase static-call shapes.
-func collectImportNames(root *sitter.Node, src []byte) map[string]bool {
+func collectImportNames(root ts.Node, src []byte) map[string]bool {
 	if root == nil {
 		return nil
 	}
@@ -560,7 +560,7 @@ func collectImportNames(root *sitter.Node, src []byte) map[string]bool {
 // or locals produce dotted "<Type>.<method>" targets; PascalCase bare
 // receivers stay dotted; everything else falls back to the bare leaf.
 func extractCallRelationships(
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	callerName string,
 	cc *classCtx,
@@ -640,7 +640,7 @@ func extractCallRelationships(
 // csharpCallTarget resolves the callee target from an invocation_expression
 // or object_creation_expression node.
 func csharpCallTarget(
-	call *sitter.Node,
+	call ts.Node,
 	src []byte,
 	cc *classCtx,
 	paramTypes map[string]string,
@@ -693,7 +693,7 @@ func csharpCallTarget(
 // receiverTypeName returns the declared type of a member-access receiver
 // when statically determinable, or "" otherwise.
 func receiverTypeName(
-	obj *sitter.Node,
+	obj ts.Node,
 	src []byte,
 	cc *classCtx,
 	paramTypes map[string]string,
@@ -762,7 +762,7 @@ func isPascalCase(s string) bool {
 //
 // Multi-declarator fields (`int x, y;`) bind every variable to the
 // declared type. Fields without a parseable type are dropped.
-func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
+func collectFieldTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -825,7 +825,7 @@ func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
 
 // collectParamTypes returns parameter-name → leaf-type for every formal
 // parameter on a method/constructor declaration.
-func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
+func collectParamTypes(node ts.Node, src []byte) map[string]string {
 	if node == nil {
 		return nil
 	}
@@ -855,7 +855,7 @@ func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
 // collectLocalVarTypes walks descendants of body and returns
 // local-name → declared leaf type for local_declaration_statement
 // nodes. Implicitly-typed `var` declarations are not bound.
-func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -954,7 +954,7 @@ func isImplicitVarType(declType string) bool {
 // emitted. Target-typed `new(...)` is handled on the explicit-declared-type
 // path (the declared type is concrete there), so it is intentionally NOT
 // inferred here (an implicit `var x = new();` does not type-check in C#).
-func inferImplicitLocalType(declarator *sitter.Node, src []byte) string {
+func inferImplicitLocalType(declarator ts.Node, src []byte) string {
 	if declarator == nil {
 		return ""
 	}
@@ -1013,12 +1013,12 @@ var diServiceTypeArgMethods = map[string]bool{
 // taken from the invocation's function node: either a bare `generic_name`
 // (`GetRequiredService<T>()`) or a `member_access_expression` whose `name` is a
 // `generic_name` (`sp.GetRequiredService<T>()`).
-func diServiceTypeArg(call *sitter.Node, src []byte) string {
+func diServiceTypeArg(call ts.Node, src []byte) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return ""
 	}
-	var gen *sitter.Node
+	var gen ts.Node
 	switch fn.Type() {
 	case "generic_name":
 		gen = fn
@@ -1047,7 +1047,7 @@ func diServiceTypeArg(call *sitter.Node, src []byte) string {
 	if tal == nil {
 		return ""
 	}
-	var args []*sitter.Node
+	var args []ts.Node
 	for i := 0; i < int(tal.NamedChildCount()); i++ {
 		if c := tal.NamedChild(i); c != nil {
 			args = append(args, c)
@@ -1065,7 +1065,7 @@ func diServiceTypeArg(call *sitter.Node, src []byte) string {
 // leafTypeName returns the leaf type identifier of a C# type node,
 // stripping generic parameters, nullable markers, and array suffixes.
 // Returns "" for type nodes the function can't characterise.
-func leafTypeName(typ *sitter.Node, src []byte) string {
+func leafTypeName(typ ts.Node, src []byte) string {
 	if typ == nil {
 		return ""
 	}
@@ -1108,7 +1108,7 @@ func leafTypeName(typ *sitter.Node, src []byte) string {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -1116,8 +1116,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -1135,7 +1135,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 }
 
 // findChildByType returns the first direct child of node with type t.
-func findChildByType(node *sitter.Node, t string) *sitter.Node {
+func findChildByType(node ts.Node, t string) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -1149,7 +1149,7 @@ func findChildByType(node *sitter.Node, t string) *sitter.Node {
 }
 
 // nodeText returns the source text covered by node.
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -1157,7 +1157,7 @@ func nodeText(node *sitter.Node, src []byte) string {
 }
 
 // childFieldText extracts the text of a named child field (e.g. "name").
-func childFieldText(node *sitter.Node, field string, src []byte) string {
+func childFieldText(node ts.Node, field string, src []byte) string {
 	child := node.ChildByFieldName(field)
 	if child == nil {
 		return ""
@@ -1167,7 +1167,7 @@ func childFieldText(node *sitter.Node, field string, src []byte) string {
 
 // buildMethodSignature builds a Python-parity method signature for C#.
 // Collapses multi-line declarations, strips attribute args, keeps visibility.
-func buildMethodSignature(src []byte, node *sitter.Node) string {
+func buildMethodSignature(src []byte, node ts.Node) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	// Strip attribute arguments FIRST to remove braces inside attribute args
 	// like [HttpGet("{id}")] → [HttpGet], before body-brace search.
@@ -1187,7 +1187,7 @@ func buildMethodSignature(src []byte, node *sitter.Node) string {
 
 // buildClassSignature returns a short signature for class/interface declarations.
 // Strips attributes and inheritance to match Python convention: "public class Name".
-func buildClassSignature(node *sitter.Node, src []byte) string {
+func buildClassSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]

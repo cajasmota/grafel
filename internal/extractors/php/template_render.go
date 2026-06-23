@@ -25,7 +25,7 @@ package php
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -37,7 +37,7 @@ import (
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitTemplateRenderEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -45,8 +45,8 @@ func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entiti
 
 	var edges []extractor.TemplateEdge
 
-	var walk func(n *sitter.Node, enclosingClass, enclosing string)
-	walk = func(n *sitter.Node, enclosingClass, enclosing string) {
+	var walk func(n ts.Node, enclosingClass, enclosing string)
+	walk = func(n ts.Node, enclosingClass, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -94,7 +94,7 @@ func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entiti
 // phpViewCallTemplate returns the literal Blade view name + detector label when
 // the call is the Laravel `view('name')` global helper with a literal first
 // string argument, or ("","") otherwise (including dynamic names → drop).
-func phpViewCallTemplate(call *sitter.Node, src []byte) (string, string) {
+func phpViewCallTemplate(call ts.Node, src []byte) (string, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "name" {
 		return "", ""
@@ -112,7 +112,7 @@ func phpViewCallTemplate(call *sitter.Node, src []byte) (string, string) {
 // phpViewMakeTemplate returns the literal Blade view name + detector label when
 // the call is the Laravel `View::make('name')` facade with a literal first
 // string argument, or ("","") otherwise.
-func phpViewMakeTemplate(call *sitter.Node, src []byte) (string, string) {
+func phpViewMakeTemplate(call ts.Node, src []byte) (string, string) {
 	nameNode := call.ChildByFieldName("name")
 	if nameNode == nil || nameNode.Type() != "name" {
 		return "", ""

@@ -18,7 +18,7 @@ func runRuby(t *testing.T, src string) []types.EntityRecord {
 		Path:     "test.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -100,7 +100,7 @@ end
 		Path:     nativePath,
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

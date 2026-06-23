@@ -40,7 +40,7 @@ package php
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -66,7 +66,7 @@ func phpExceptionLeaf(raw string) string {
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -78,8 +78,8 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 	// walk(), which dots only the immediate parent). enclosing is the host
 	// SCOPE.Operation Name (`<class>.<method>` for methods, bare leaf for free
 	// functions), or "" at file scope.
-	var walk func(n *sitter.Node, enclosingClass, enclosing string)
-	walk = func(n *sitter.Node, enclosingClass, enclosing string) {
+	var walk func(n ts.Node, enclosingClass, enclosing string)
+	walk = func(n ts.Node, enclosingClass, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -138,7 +138,7 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 // when the thrown value is `new X(...)`. The type leaf is the first
 // `name` / `qualified_name` child after the `new` keyword (the `type` field is
 // not consistently set across grammar revisions).
-func phpThrowType(throwNode *sitter.Node, src []byte) string {
+func phpThrowType(throwNode ts.Node, src []byte) string {
 	creation := findFirstChildOfType(throwNode, "object_creation_expression")
 	if creation == nil {
 		return "" // `throw $e;` or `throw mk();` — no NEW type
@@ -161,7 +161,7 @@ func phpThrowType(throwNode *sitter.Node, src []byte) string {
 //
 // PHP has no untyped `catch { }` (the type_list is mandatory), so this never
 // needs to drop a bare catch — every clause yields at least one type.
-func phpCatchTypes(catchNode *sitter.Node, src []byte) []string {
+func phpCatchTypes(catchNode ts.Node, src []byte) []string {
 	typeList := catchNode.ChildByFieldName("type")
 	if typeList == nil {
 		typeList = findFirstChildOfType(catchNode, "type_list")

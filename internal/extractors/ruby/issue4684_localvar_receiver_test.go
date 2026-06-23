@@ -4,10 +4,10 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsruby "github.com/smacker/go-tree-sitter/ruby"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -26,13 +26,16 @@ import (
 
 func parseRubyFixture(t *testing.T, path, src string) extractor.FileInput {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tsruby.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsruby.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
-	return extractor.FileInput{Path: path, Language: "ruby", Content: []byte(src), Tree: tree}
+	return extractor.FileInput{Path: path, Language: "ruby", Content: []byte(src), TSTree: tree}
 }
 
 func extractRuby(t *testing.T, path, src string) []types.EntityRecord {

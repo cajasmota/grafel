@@ -22,7 +22,7 @@ func extractPHPRecords(t *testing.T, src string) []types.EntityRecord {
 		Path:     "cfg.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

@@ -23,7 +23,7 @@ func extractPHPForConst(t *testing.T, path, src string) []types.EntityRecord {
 		t.Fatal("php extractor not registered")
 	}
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: path, Content: []byte(src), Language: "php", Tree: tree,
+		Path: path, Content: []byte(src), Language: "php", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

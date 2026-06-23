@@ -23,7 +23,7 @@ package csharp
 // not a value-set).
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -33,7 +33,7 @@ import (
 // class body and emits value-set nodes for the two C# constant-collection
 // shapes. className names the enclosing class (used as the const-group node
 // name). Appended nodes never replace the field entities the default walk emits.
-func emitConstCollectionsForClass(body *sitter.Node, file extractor.FileInput, className string, out *[]types.EntityRecord) {
+func emitConstCollectionsForClass(body ts.Node, file extractor.FileInput, className string, out *[]types.EntityRecord) {
 	if body == nil {
 		return
 	}
@@ -73,7 +73,7 @@ func emitConstCollectionsForClass(body *sitter.Node, file extractor.FileInput, c
 
 // fieldConstKind reports whether a field_declaration carries the `const`
 // modifier, or both `static` and `readonly` modifiers.
-func fieldConstKind(fld *sitter.Node) (isConst, isStaticReadonly bool) {
+func fieldConstKind(fld ts.Node) (isConst, isStaticReadonly bool) {
 	var static, readonly bool
 	for i := 0; i < int(fld.ChildCount()); i++ {
 		ch := fld.Child(i)
@@ -100,7 +100,7 @@ func fieldConstKind(fld *sitter.Node) (isConst, isStaticReadonly bool) {
 // value and 1-indexed line. ok=false when the field is not a single
 // string-literal-valued declarator (e.g. a Dictionary map, an int const, or a
 // non-literal initialiser).
-func constStringField(fld *sitter.Node, file extractor.FileInput) (name, value string, line int, ok bool) {
+func constStringField(fld ts.Node, file extractor.FileInput) (name, value string, line int, ok bool) {
 	decl := findChildByType(fld, "variable_declaration")
 	if decl == nil {
 		return "", "", 0, false
@@ -146,7 +146,7 @@ func constStringField(fld *sitter.Node, file extractor.FileInput) (name, value s
 // the field is not a Dictionary-shaped map, has no initialiser entries, or any
 // entry is not a {string-literal key, string-literal value} pair (honest-partial
 // closed value-set).
-func buildConstMapValueSet(fld *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildConstMapValueSet(fld ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	decl := findChildByType(fld, "variable_declaration")
 	if decl == nil {
 		return types.EntityRecord{}, false
@@ -197,7 +197,7 @@ func buildConstMapValueSet(fld *sitter.Node, file extractor.FileInput) (types.En
 // either nested `{ "k", "v" }` element initialisers or `["k"] = "v"` indexer
 // assignments. It returns ok=false the moment any entry is not a
 // string-literal/string-literal pair so a non-closed map emits no node.
-func collectMapInitMembers(init *sitter.Node, file extractor.FileInput) ([]extractor.EnumMember, bool) {
+func collectMapInitMembers(init ts.Node, file extractor.FileInput) ([]extractor.EnumMember, bool) {
 	var members []extractor.EnumMember
 	for i := 0; i < int(init.ChildCount()); i++ {
 		entry := init.Child(i)
@@ -229,7 +229,7 @@ func collectMapInitMembers(init *sitter.Node, file extractor.FileInput) ([]extra
 // twoStringLiterals reads the first two string_literal children of a nested
 // `{ "k", "v" }` element initializer. ok=false when fewer than two string
 // literals are present (a non-string key or value disqualifies the map).
-func twoStringLiterals(entry *sitter.Node, file extractor.FileInput) (key, val string, ok bool) {
+func twoStringLiterals(entry ts.Node, file extractor.FileInput) (key, val string, ok bool) {
 	var lits []string
 	for i := 0; i < int(entry.ChildCount()); i++ {
 		ch := entry.Child(i)
@@ -247,7 +247,7 @@ func twoStringLiterals(entry *sitter.Node, file extractor.FileInput) (key, val s
 // indexerAssignment reads an `["key"] = "value"` assignment_expression: the key
 // is the string_literal inside the element_binding_expression, the value is the
 // string_literal RHS. ok=false when either side is not a string literal.
-func indexerAssignment(entry *sitter.Node, file extractor.FileInput) (key, val string, ok bool) {
+func indexerAssignment(entry ts.Node, file extractor.FileInput) (key, val string, ok bool) {
 	binding := findChildByType(entry, "element_binding_expression")
 	if binding == nil {
 		return "", "", false
@@ -275,7 +275,7 @@ func indexerAssignment(entry *sitter.Node, file extractor.FileInput) (key, val s
 // findDeepStringLiteral returns the text of the first string_literal found in a
 // shallow DFS of node, or "" when none is present. Used to pull the key out of
 // an `["key"]` element_binding_expression's `argument` wrapper.
-func findDeepStringLiteral(node *sitter.Node, file extractor.FileInput) string {
+func findDeepStringLiteral(node ts.Node, file extractor.FileInput) string {
 	if node == nil {
 		return ""
 	}
@@ -294,7 +294,7 @@ func findDeepStringLiteral(node *sitter.Node, file extractor.FileInput) string {
 // the surrounding quotes stripped. Tree-sitter exposes the content as a
 // `string_literal_content` child; falling back to StripLiteralQuotes over the
 // raw token covers verbatim/interpolated tokens that lack that child.
-func stringLiteralText(lit *sitter.Node, src []byte) string {
+func stringLiteralText(lit ts.Node, src []byte) string {
 	if lit == nil {
 		return ""
 	}

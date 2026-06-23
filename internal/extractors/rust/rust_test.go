@@ -5,20 +5,27 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsrust "github.com/smacker/go-tree-sitter/rust"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/rust"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
-// parseForTest parses Rust source using the real grammar.
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+// parseForTest parses Rust source into a ts.Tree via the smacker adapter. Tests
+// stamp the result on FileInput.TSTree (which the migrated Rust extractor
+// consumes); the smacker adapter keeps these tests linkable in the default build
+// while exercising the ts façade (B2 #5418).
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsrust.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsrust.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -60,7 +67,7 @@ fn create_user(name: String) -> User {
 		Path:     "main.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -112,7 +119,7 @@ func extractRust(t *testing.T, path, src string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract %q: %v", path, err)
@@ -252,7 +259,7 @@ struct Foo {
 		Path:     "foo.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -293,7 +300,7 @@ enum Color {
 		Path:     "color.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -323,7 +330,7 @@ trait Animal {
 		Path:     "animal.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -353,7 +360,7 @@ fn create_user(name: String) -> User {
 		Path:     "func.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -385,7 +392,7 @@ fn main() {}
 		Path:     "imports.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -416,7 +423,7 @@ func TestRustExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.rs",
 		Content:  []byte(""),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -433,7 +440,7 @@ func TestRustExtractor_NilTree(t *testing.T) {
 		Path:     "nil.rs",
 		Content:  []byte("fn main() {}"),
 		Language: "rust",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -460,7 +467,7 @@ fn bad_function(x: u32
 		Path:     "malformed.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on malformed file: %v", err)
@@ -502,7 +509,7 @@ use super::parent::Other;
 		Path:     "imports.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -552,7 +559,7 @@ func TestRustExtractor_ImportRootOnly(t *testing.T) {
 		Path:     "root_only.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -587,7 +594,7 @@ impl Foo {
 		Path:     "foo.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -650,7 +657,7 @@ impl B { fn world(&self) {} }
 		Path:     "multi.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -695,7 +702,7 @@ impl Processor for MyImpl {
 		Path:     "processor.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -732,7 +739,7 @@ fn use_repo(r: &dyn Repo) {
 		Path:     "repo.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -768,7 +775,7 @@ trait MyTrait {
 		Path:     "trait.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -804,7 +811,7 @@ fn method1() -> u32 { 1 }
 		Path:     "lines.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -842,7 +849,7 @@ pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 		Path:     "types.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -880,7 +887,7 @@ func findRustEntity(t *testing.T, src, subtype, name string) map[string]string {
 	tree := parseForTest(t, src)
 	ext, _ := extractor.Get("rust")
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "ts.rs", Content: []byte(src), Language: "rust", Tree: tree,
+		Path: "ts.rs", Content: []byte(src), Language: "rust", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -943,7 +950,7 @@ trait Animal: Eq + Clone {
 	tree := parseForTest(t, src)
 	ext, _ := extractor.Get("rust")
 	got, _ := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "animal.rs", Content: []byte(src), Language: "rust", Tree: tree,
+		Path: "animal.rs", Content: []byte(src), Language: "rust", TSTree: tree,
 	})
 
 	var props map[string]string
@@ -1054,7 +1061,7 @@ func TestRustExtractor_TypeAlias_Properties(t *testing.T) {
 		Path:     "types.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

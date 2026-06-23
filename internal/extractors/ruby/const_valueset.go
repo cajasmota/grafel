@@ -35,7 +35,7 @@ package ruby
 // rather than being dropped, so the key set stays complete for a parity-audit.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -48,7 +48,7 @@ import (
 //
 // kind_hint is "ruby_const_hash" for hash collections and "ruby_const_array"
 // for array collections, so a downstream consumer can tell the member shape.
-func buildConstCollectionValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildConstCollectionValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	if node == nil || node.Type() != "assignment" {
 		return types.EntityRecord{}, false
 	}
@@ -98,7 +98,7 @@ func buildConstCollectionValueSet(node *sitter.Node, file extractor.FileInput) (
 // buildConstCollectionValueSet, so it is excluded here).
 //
 // kind_hint is "ruby_const_module".
-func buildModuleConstGroupValueSet(scopeName string, body *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildModuleConstGroupValueSet(scopeName string, body ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	if body == nil || scopeName == "" {
 		return types.EntityRecord{}, false
 	}
@@ -142,7 +142,7 @@ func buildModuleConstGroupValueSet(scopeName string, body *sitter.Node, file ext
 // `{ a: 1 }.freeze` tree-sitter wraps the hash in a `call` whose receiver is
 // the hash; this returns that hash. A bare `{ a: 1 }` / `%w[..]` returns the
 // node unchanged.
-func unwrapFreeze(n *sitter.Node) *sitter.Node {
+func unwrapFreeze(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -165,7 +165,7 @@ func unwrapFreeze(n *sitter.Node) *sitter.Node {
 
 // isCollectionNode reports whether n is one of the literal collection node
 // types this extractor materialises into a value-set.
-func isCollectionNode(n *sitter.Node) bool {
+func isCollectionNode(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -180,7 +180,7 @@ func isCollectionNode(n *sitter.Node) bool {
 // (`core_admin:`) and string/rocket keys (`'free' => 10`) are both handled.
 // A non-literal value records its source expression text (#4427) rather than
 // being dropped.
-func constHashMembers(hash *sitter.Node, src []byte) []extractor.EnumMember {
+func constHashMembers(hash ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	for i := 0; i < int(hash.ChildCount()); i++ {
 		pair := hash.Child(i)
@@ -225,7 +225,7 @@ func constHashMembers(hash *sitter.Node, src []byte) []extractor.EnumMember {
 // (`%w[...]`) / `symbol_array` (`%i[...]`) node. Each element's literal becomes
 // BOTH the member key and value so the value-set carries the literal set; a
 // non-literal element records its expression text.
-func constArrayMembers(arr *sitter.Node, src []byte) []extractor.EnumMember {
+func constArrayMembers(arr ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	for i := 0; i < int(arr.ChildCount()); i++ {
 		el := arr.Child(i)
@@ -257,7 +257,7 @@ func constArrayMembers(arr *sitter.Node, src []byte) []extractor.EnumMember {
 // non-literal node (a method call, an interpolation) — the trimmed source
 // EXPRESSION TEXT (#4427: non-literal values are recorded as expression text,
 // not dropped).
-func constScalarValue(n *sitter.Node, src []byte) string {
+func constScalarValue(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}

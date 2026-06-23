@@ -24,7 +24,7 @@ package php
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -36,7 +36,7 @@ import (
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitConfigConsumerEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitConfigConsumerEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -44,8 +44,8 @@ func emitConfigConsumerEdges(root *sitter.Node, file extractor.FileInput, entiti
 
 	var reads []extractor.ConfigRead
 
-	var walk func(n *sitter.Node, enclosingClass, enclosing string)
-	walk = func(n *sitter.Node, enclosingClass, enclosing string) {
+	var walk func(n ts.Node, enclosingClass, enclosing string)
+	walk = func(n ts.Node, enclosingClass, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -97,7 +97,7 @@ func emitConfigConsumerEdges(root *sitter.Node, file extractor.FileInput, entiti
 //	getenv('X')          → "env_getenv"
 //	env('X')             → "laravel_env"     (Laravel global helper)
 //	config('app.x')      → "laravel_config"  (Laravel global helper)
-func phpFunctionCallConfigKey(call *sitter.Node, src []byte) (string, string) {
+func phpFunctionCallConfigKey(call ts.Node, src []byte) (string, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "name" {
 		return "", ""
@@ -124,10 +124,10 @@ func phpFunctionCallConfigKey(call *sitter.Node, src []byte) (string, string) {
 // $_SERVER['X']) subscript expression with a literal string index, or "".
 //
 // tree-sitter-php shape: (subscript_expression (variable_name) (string ...)).
-func phpSuperglobalEnvKey(n *sitter.Node, src []byte) string {
+func phpSuperglobalEnvKey(n ts.Node, src []byte) string {
 	// The subscripted object is the first child; the index is field "index" in
 	// most grammar revisions, else the last named child.
-	var obj *sitter.Node
+	var obj ts.Node
 	for i := 0; i < int(n.NamedChildCount()); i++ {
 		obj = n.NamedChild(i)
 		break
@@ -155,7 +155,7 @@ func phpSuperglobalEnvKey(n *sitter.Node, src []byte) string {
 // phpFirstStringArg returns the literal content of the first string argument in
 // an `arguments` node, or "" when the first argument is missing or non-literal
 // (dynamic) — honest-partial.
-func phpFirstStringArg(args *sitter.Node, src []byte) string {
+func phpFirstStringArg(args ts.Node, src []byte) string {
 	if args == nil || args.NamedChildCount() == 0 {
 		return ""
 	}
@@ -174,7 +174,7 @@ func phpFirstStringArg(args *sitter.Node, src []byte) string {
 // phpStringLiteral extracts the literal content of a PHP string node, dropping
 // the surrounding quotes. Returns "" for an interpolated (encapsed) string that
 // contains a variable / expression — honest-partial, no fabrication.
-func phpStringLiteral(node *sitter.Node, src []byte) string {
+func phpStringLiteral(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}

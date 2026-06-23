@@ -26,7 +26,7 @@ package php
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -43,7 +43,7 @@ var laravelTransHelpers = map[string]bool{
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitTranslationKeyEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitTranslationKeyEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -51,8 +51,8 @@ func emitTranslationKeyEdges(root *sitter.Node, file extractor.FileInput, entiti
 
 	var uses []extractor.TranslationUse
 
-	var walk func(n *sitter.Node, enclosingClass, enclosing string)
-	walk = func(n *sitter.Node, enclosingClass, enclosing string) {
+	var walk func(n ts.Node, enclosingClass, enclosing string)
+	walk = func(n ts.Node, enclosingClass, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -96,7 +96,7 @@ func emitTranslationKeyEdges(root *sitter.Node, file extractor.FileInput, entiti
 // phpTranslationCall returns the literal key when the call is a recognised
 // Laravel translation helper (`__`, `trans`, `trans_choice`) with a static
 // first string argument, or ("", false).
-func phpTranslationCall(call *sitter.Node, src []byte) (string, bool) {
+func phpTranslationCall(call ts.Node, src []byte) (string, bool) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "name" {
 		return "", false

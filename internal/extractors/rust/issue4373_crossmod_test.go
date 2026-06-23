@@ -23,13 +23,13 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsrust "github.com/smacker/go-tree-sitter/rust"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/rust"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/resolve"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -45,15 +45,19 @@ func extractRustCrateForTest(t *testing.T, files map[string]string) []types.Enti
 	}
 	var merged []types.EntityRecord
 	for rel, src := range files {
-		parser := sitter.NewParser()
-		parser.SetLanguage(tsrust.GetLanguage())
-		tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+		parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsrust.GetLanguage()))
 		if err != nil {
+			t.Fatalf("parser init %s: %v", rel, err)
+		}
+		tree, err := parser.Parse([]byte(src))
+		if err != nil {
+			parser.Close()
 			t.Fatalf("parse %s: %v", rel, err)
 		}
 		ents, err := ext.Extract(context.Background(), extractor.FileInput{
-			Path: rel, Language: "rust", Content: []byte(src), Tree: tree,
+			Path: rel, Language: "rust", Content: []byte(src), TSTree: tree,
 		})
+		parser.Close()
 		if err != nil {
 			t.Fatalf("extract %s: %v", rel, err)
 		}

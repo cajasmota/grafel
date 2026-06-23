@@ -32,7 +32,7 @@ public enum OrderStatus
 		Path:     "OrderStatus.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -62,7 +62,7 @@ func TestCSharpExtractor_EnumSimpleOneLine(t *testing.T) {
 		Path:     "Color.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -88,7 +88,7 @@ func TestCSharpExtractor_RecordDeclarationPositional(t *testing.T) {
 		Path:     "UserDto.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -120,7 +120,7 @@ public record OrderRecord
 		Path:     "OrderRecord.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -154,7 +154,7 @@ public record InvoiceDto(string Number, decimal Amount);
 		Path:     "types.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

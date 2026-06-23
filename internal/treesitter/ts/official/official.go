@@ -125,6 +125,7 @@ func (w node) EndByte() uint32         { return uint32(w.n.EndByte()) }
 
 func (w node) ChildByFieldName(f string) ts.Node { return wrapNode(w.n.ChildByFieldName(f)) }
 func (w node) Parent() ts.Node                   { return wrapNode(w.n.Parent()) }
+func (w node) PrevSibling() ts.Node              { return wrapNode(w.n.PrevSibling()) }
 
 // StartPoint/EndPoint map the official StartPosition()/EndPosition() and narrow
 // the uint Row/Column to uint32 to match ts.Point.

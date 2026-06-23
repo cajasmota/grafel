@@ -18,7 +18,7 @@ package ruby
 // skipped — only literal hash/array forms produce a node.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -27,7 +27,7 @@ import (
 // buildRailsEnumValueSet inspects a `call` node and, when it is a Rails
 // `enum <name>: {...}` / `enum <name>: [...]` / `enum :<name>, {...}`
 // declaration, returns the SCOPE.Enum value-set node for it.
-func buildRailsEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildRailsEnumValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	if node == nil || node.Type() != "call" {
 		return types.EntityRecord{}, false
 	}
@@ -57,7 +57,7 @@ func buildRailsEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.
 // railsEnumNameAndValues extracts the enum attribute name and the node holding
 // its members from a `enum` call's argument_list. Handles both the
 // `status: {...}` pair form and the `:status, {...}` positional form.
-func railsEnumNameAndValues(args *sitter.Node, src []byte) (string, *sitter.Node) {
+func railsEnumNameAndValues(args ts.Node, src []byte) (string, ts.Node) {
 	// Pair form: `enum status: { ... }` → a single `pair` argument.
 	if pair := firstChildOfType(args, "pair"); pair != nil {
 		key := pairKeyName(pair, src)
@@ -68,7 +68,7 @@ func railsEnumNameAndValues(args *sitter.Node, src []byte) (string, *sitter.Node
 	}
 	// Positional form: `enum :status, { ... }` → simple_symbol then hash/array.
 	var name string
-	var values *sitter.Node
+	var values ts.Node
 	for i := 0; i < int(args.ChildCount()); i++ {
 		ch := args.Child(i)
 		if ch == nil || !ch.IsNamed() {
@@ -93,7 +93,7 @@ func railsEnumNameAndValues(args *sitter.Node, src []byte) (string, *sitter.Node
 
 // railsEnumMembers builds EnumMembers from a hash (`{ active: 0 }`) or array
 // (`[:active, :archived]`) value node.
-func railsEnumMembers(val *sitter.Node, src []byte) []extractor.EnumMember {
+func railsEnumMembers(val ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	switch val.Type() {
 	case "hash":
@@ -131,7 +131,7 @@ func railsEnumMembers(val *sitter.Node, src []byte) []extractor.EnumMember {
 
 // railsLiteral returns the statically-known literal value of a hash value node,
 // or "" for non-literal values (honest-partial).
-func railsLiteral(n *sitter.Node, src []byte) string {
+func railsLiteral(n ts.Node, src []byte) string {
 	switch n.Type() {
 	case "integer", "float":
 		return nodeText(n, src)
@@ -145,7 +145,7 @@ func railsLiteral(n *sitter.Node, src []byte) string {
 
 // --- small node helpers (local to this file) ---------------------------------
 
-func rubyCallIsNamed(call *sitter.Node, src []byte, name string) bool {
+func rubyCallIsNamed(call ts.Node, src []byte, name string) bool {
 	if m := call.ChildByFieldName("method"); m != nil {
 		return nodeText(m, src) == name
 	}
@@ -156,7 +156,7 @@ func rubyCallIsNamed(call *sitter.Node, src []byte, name string) bool {
 	return false
 }
 
-func pairKeyName(pair *sitter.Node, src []byte) string {
+func pairKeyName(pair ts.Node, src []byte) string {
 	if k := pair.ChildByFieldName("key"); k != nil {
 		return trimLeadingColon(nodeText(k, src))
 	}
@@ -169,7 +169,7 @@ func pairKeyName(pair *sitter.Node, src []byte) string {
 	return ""
 }
 
-func pairValueNode(pair *sitter.Node) *sitter.Node {
+func pairValueNode(pair ts.Node) ts.Node {
 	if v := pair.ChildByFieldName("value"); v != nil {
 		return v
 	}
@@ -183,7 +183,7 @@ func pairValueNode(pair *sitter.Node) *sitter.Node {
 	return nil
 }
 
-func nodeIsHashOrArray(n *sitter.Node) bool {
+func nodeIsHashOrArray(n ts.Node) bool {
 	return n != nil && (n.Type() == "hash" || n.Type() == "array")
 }
 
@@ -194,7 +194,7 @@ func trimLeadingColon(s string) string {
 	return s
 }
 
-func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func firstChildOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -207,7 +207,7 @@ func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
 	return nil
 }
 
-func nodeText(n *sitter.Node, src []byte) string {
+func nodeText(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}

@@ -4,19 +4,26 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsruby "github.com/smacker/go-tree-sitter/ruby"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/ruby"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-// parseForTest parses Ruby source using the real grammar.
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+// parseForTest parses Ruby source into a ts.Tree via the smacker adapter. Tests
+// stamp the result on FileInput.TSTree (which the migrated Ruby extractor
+// consumes); the smacker adapter keeps these tests linkable in the default build
+// while exercising the ts façade (B2 #5418).
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsruby.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsruby.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -47,7 +54,7 @@ end
 		Path:     "user.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -91,7 +98,7 @@ end
 		Path:     "foo.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -132,7 +139,7 @@ end
 		Path:     "module.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -164,7 +171,7 @@ end
 		Path:     "svc.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -192,7 +199,7 @@ func TestRubyExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.rb",
 		Content:  []byte(""),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -209,7 +216,7 @@ func TestRubyExtractor_NilTree(t *testing.T) {
 		Path:     "nil.rb",
 		Content:  []byte("class Foo; end"),
 		Language: "ruby",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -236,7 +243,7 @@ def orphan_method(x
 		Path:     "malformed.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on malformed file: %v", err)
@@ -274,7 +281,7 @@ end
 		Path:     "lines.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

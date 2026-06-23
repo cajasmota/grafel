@@ -17,7 +17,7 @@ func runRust(t *testing.T, src string) []types.EntityRecord {
 		Path:     "test.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

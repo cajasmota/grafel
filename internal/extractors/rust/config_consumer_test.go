@@ -23,7 +23,7 @@ func extractRustForConfig(t *testing.T, src string) []types.EntityRecord {
 		Path:     "config.rs",
 		Content:  []byte(src),
 		Language: "rust",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

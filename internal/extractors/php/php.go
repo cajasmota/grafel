@@ -37,7 +37,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -55,7 +55,7 @@ func (e *Extractor) Language() string { return "php" }
 
 // Extract walks the tree-sitter CST and returns entity records for the PHP file.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -65,7 +65,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	walk(root, file, "", &entities)
 	// Issue #3641 (epic #3625) — config-key consumption edges
 	// (getenv / $_ENV / Laravel env() / config()) → shared SCOPE.Config nodes.
@@ -111,7 +111,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // file scope) — methods declared inside a class body are emitted with
 // Name="<Class>.<method>" so two classes in the same file declaring a
 // same-named method produce distinct entity IDs (issue #145).
-func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *[]types.EntityRecord) {
+func walk(node ts.Node, file extractor.FileInput, parentClass string, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -301,7 +301,7 @@ func walk(node *sitter.Node, file extractor.FileInput, parentClass string, out *
 // Eloquent / Laravel framework labelling is applied via tagEloquent:
 // models, migrations and controllers get framework="laravel" plus a kind
 // discriminator in Properties.
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -333,7 +333,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 //	                       (e.g. "Active='active',Inactive='inactive'").
 //	                       Omitted for pure enums (no backing type).
 //	"enum_backing_type"  → "string" or "int" when a backing type is declared.
-func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildEnum(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -397,7 +397,7 @@ func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord,
 // phpEnumBackingType returns the backing type text ("string"/"int") of a
 // backed PHP 8.1 enum, or "" for pure enums. Tree-sitter PHP grammar
 // places the backing type as a child node between `:` and the body.
-func phpEnumBackingType(node *sitter.Node, src []byte) string {
+func phpEnumBackingType(node ts.Node, src []byte) string {
 	// Scan direct children for a named_type or primitive_type child that
 	// follows the colon token. The colon itself appears as a ":" leaf.
 	seenColon := false
@@ -425,7 +425,7 @@ func phpEnumBackingType(node *sitter.Node, src []byte) string {
 // trait/enum node, trying the named "body" field first and falling back to
 // scanning for a declaration_list or enum_declaration_list child. This is
 // needed because older grammar revisions may not label the body field.
-func phpDeclBody(node *sitter.Node) *sitter.Node {
+func phpDeclBody(node ts.Node) ts.Node {
 	if body := node.ChildByFieldName("body"); body != nil {
 		return body
 	}
@@ -440,7 +440,7 @@ func phpDeclBody(node *sitter.Node) *sitter.Node {
 }
 
 // buildOperation creates an Operation entity for method/function declarations.
-func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildOperation(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -460,7 +460,7 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string)
 }
 
 // buildNamespace emits a Component representing a PHP namespace.
-func buildNamespace(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildNamespace(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		// Fallback: extract text after "namespace " keyword
@@ -508,7 +508,7 @@ func buildNamespace(node *sitter.Node, file extractor.FileInput) (types.EntityRe
 // Aliases are intentionally stripped: the synth allowlist matches on the
 // root namespace segment (Symfony, Doctrine, Twig, ...), so emitting the
 // canonical FQN gives the synth `\`-branch a clean root to classify.
-func buildUseImports(node *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+func buildUseImports(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 	if node == nil {
 		return nil
 	}
@@ -547,7 +547,7 @@ func buildUseImports(node *sitter.Node, file extractor.FileInput) []types.Entity
 
 // buildUseGroup expands a `namespace_use_group` node by joining each
 // clause's name onto the shared prefix. Issue #102.
-func buildUseGroup(group *sitter.Node, file extractor.FileInput, prefix string) []types.EntityRecord {
+func buildUseGroup(group ts.Node, file extractor.FileInput, prefix string) []types.EntityRecord {
 	if group == nil || prefix == "" {
 		return nil
 	}
@@ -573,7 +573,7 @@ func buildUseGroup(group *sitter.Node, file extractor.FileInput, prefix string) 
 // useClauseFQN returns the qualified-name text of a namespace_use_clause,
 // stripping any trailing `as Alias` segment. Returns "" when the clause
 // has no qualified_name child (defensive — malformed input).
-func useClauseFQN(clause *sitter.Node, src []byte) string {
+func useClauseFQN(clause ts.Node, src []byte) string {
 	for i := range int(clause.ChildCount()) {
 		ch := clause.Child(i)
 		// `qualified_name` / `name` cover plain `use` clauses;
@@ -662,7 +662,7 @@ func useImportRecord(fqn, srcPath string) types.EntityRecord {
 }
 
 // childFieldText extracts the text of a named child field.
-func childFieldText(node *sitter.Node, field string, src []byte) string {
+func childFieldText(node ts.Node, field string, src []byte) string {
 	child := node.ChildByFieldName(field)
 	if child == nil {
 		return ""
@@ -674,7 +674,7 @@ func childFieldText(node *sitter.Node, field string, src []byte) string {
 // Python strips visibility modifiers and return types, keeping only:
 //
 //	function name(params)
-func buildMethodSignature(node *sitter.Node, src []byte) string {
+func buildMethodSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "\n"); idx >= 0 {
 		raw = raw[:idx]
@@ -702,7 +702,7 @@ func buildMethodSignature(node *sitter.Node, src []byte) string {
 }
 
 // buildClassSignature constructs a readable signature up to the class body.
-func buildClassSignature(node *sitter.Node, src []byte, name string) string {
+func buildClassSignature(node ts.Node, src []byte, name string) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		return strings.TrimSpace(raw[:idx])
@@ -716,7 +716,7 @@ func buildClassSignature(node *sitter.Node, src []byte, name string) string {
 // findFirstChildOfType returns the first direct child whose Type() == kind.
 // Used as a fallback when ChildByFieldName("body") fails on older grammar
 // revisions that didn't label the body field.
-func findFirstChildOfType(n *sitter.Node, kind string) *sitter.Node {
+func findFirstChildOfType(n ts.Node, kind string) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -730,7 +730,7 @@ func findFirstChildOfType(n *sitter.Node, kind string) *sitter.Node {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -738,8 +738,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -779,7 +779,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 // FromID is left empty so buildDocument substitutes the caller's entity ID
 // at emit time. Self-recursion (target leaf == callerName, dotted match
 // against parentClass + "." + callerName included) is dropped.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, parentClass string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName, parentClass string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -834,7 +834,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, parentC
 // phpCallTarget resolves the callee target from one of the four PHP
 // invocation nodes. Returns (target, receiverType). receiverType is "" when
 // no static type for the receiver is determinable. Issue #376.
-func phpCallTarget(call *sitter.Node, src []byte, parentClass string, locals map[string]string) (string, string) {
+func phpCallTarget(call ts.Node, src []byte, parentClass string, locals map[string]string) (string, string) {
 	switch call.Type() {
 	case "function_call_expression":
 		fn := call.ChildByFieldName("function")
@@ -918,7 +918,7 @@ func phpCallTarget(call *sitter.Node, src []byte, parentClass string, locals map
 		// this as a constructor reference so framework classes
 		// (Symfony Request, Doctrine EntityManager, …) appear as
 		// outgoing edges from the calling method.
-		var typeNode *sitter.Node
+		var typeNode ts.Node
 		// `type`/`name` fields are not consistently set across grammar
 		// revisions; the type is the first `name` or `qualified_name`
 		// child after the `new` keyword.
@@ -961,7 +961,7 @@ var docblockVarRE = regexp.MustCompile(`@var\s+\??([A-Za-z_\\][A-Za-z0-9_\\]*)\s
 //
 // Returned keys carry the leading `$` so callers can match them directly
 // against `variable_name` token text.
-func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -980,7 +980,7 @@ func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
 			continue
 		}
 		// Type leaf — first name/qualified_name child of the new-expr.
-		var typeNode *sitter.Node
+		var typeNode ts.Node
 		for i := range int(right.ChildCount()) {
 			ch := right.Child(i)
 			if ch.Type() == "name" || ch.Type() == "qualified_name" {

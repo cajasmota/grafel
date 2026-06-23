@@ -23,7 +23,7 @@ func extractPHP4686(t *testing.T, path, src string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

@@ -39,7 +39,7 @@ package rust
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // rustCrossCtx is the per-file context used to translate a call-site path
@@ -77,7 +77,7 @@ type rustCrossCtx struct {
 // buildRustCrossCtx builds the per-file cross-module resolution context from
 // the file path and its `use` declarations. root is the tree-sitter root node;
 // src the file bytes; filePath the repo-relative source path.
-func buildRustCrossCtx(root *sitter.Node, src []byte, filePath string) *rustCrossCtx {
+func buildRustCrossCtx(root ts.Node, src []byte, filePath string) *rustCrossCtx {
 	ctx := &rustCrossCtx{aliases: map[string][]string{}}
 	ctx.crateSrc, ctx.selfModDir, ctx.superModDir = rustModuleDirs(filePath)
 	if ctx.crateSrc == "" {
@@ -165,7 +165,7 @@ func pathDir(p string) string {
 // Grouped uses (`use a::{b, c as d}`) are intentionally NOT expanded — they
 // rarely qualify a call by alias and adding them risks mis-binding; the
 // conservative skip leaves the bare-name fallback in place.
-func collectRustUseAliases(root *sitter.Node, src []byte, ctx *rustCrossCtx) {
+func collectRustUseAliases(root ts.Node, src []byte, ctx *rustCrossCtx) {
 	for _, u := range findAllNodes(root, "use_declaration") {
 		raw := strings.TrimSpace(string(src[u.StartByte():u.EndByte()]))
 		raw = stripRustVisibility(raw)

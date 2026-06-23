@@ -186,6 +186,18 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   smacker adapter and stamp `TSTree`. Default builds stay 100% smacker-backed and
   link-safe; mechanical and behavior-preserving — the javascript+typescript
   extractor suite passes unchanged (zero fidelity delta).
+- **Migrated the `ruby`, `php`, `csharp` and `rust` extractors to the `ts.Node`
+  abstraction (smacker-backed, no behavior change)** — B2 Phase 1 (#5418). All
+  four extractors now traverse the binding-agnostic `internal/treesitter/ts`
+  façade (`ts.Node`/`ts.Tree`) and read the shared `FileInput.TSTree` instead of
+  the concrete `smacker/go-tree-sitter` `*sitter.Node`/`*sitter.Tree`. Each
+  early-returns when no tree is supplied (no inline parse fallback), so no grammar
+  provider was added; test tree-helpers build `ts.Tree` via the smacker adapter
+  and stamp `TSTree`. The `ts.Node` façade gains a `PrevSibling()` method (added
+  to both the smacker and official adapters) that the Rust extractor's
+  derive-macro scan requires. Default builds stay 100% smacker-backed and
+  link-safe; mechanical and behavior-preserving — the ruby+php+csharp+rust
+  extractor suites pass unchanged (zero fidelity delta).
 
 ## [0.1.3] — 2026-06-23
 

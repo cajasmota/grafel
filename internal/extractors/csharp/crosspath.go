@@ -32,7 +32,7 @@ package csharp
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // csharpCrossCtx is the per-file resolution context derived from the file's
@@ -64,7 +64,7 @@ type csharpCrossCtx struct {
 
 // buildCrossCtx scans the compilation unit for namespace + using declarations
 // and assembles the per-file C# cross-namespace context.
-func buildCrossCtx(root *sitter.Node, src []byte) *csharpCrossCtx {
+func buildCrossCtx(root ts.Node, src []byte) *csharpCrossCtx {
 	if root == nil {
 		return nil
 	}
@@ -134,7 +134,7 @@ type qualifiedCallBinding struct {
 // unqualified bare calls, unresolvable chains) so the base extractor's target
 // is used unchanged.
 func (c *csharpCrossCtx) resolveQualifiedCall(
-	fn *sitter.Node,
+	fn ts.Node,
 	src []byte,
 	cc *classCtx,
 	locals map[string]string,
@@ -225,7 +225,7 @@ func (c *csharpCrossCtx) resolveQualifiedCall(
 // alias_qualified_name (`global::App`) into its dotted segments. Returns
 // (nil, false) the moment a non-static node (e.g. `this`, an invocation, an
 // element access) appears — those are instance chains the base extractor owns.
-func flattenStaticPath(n *sitter.Node, src []byte) ([]string, bool) {
+func flattenStaticPath(n ts.Node, src []byte) ([]string, bool) {
 	if n == nil {
 		return nil, false
 	}

@@ -46,7 +46,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	extreg "github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -58,7 +58,7 @@ import (
 // the main walk so it never interferes with the struct/enum Component entities
 // the walk already emits — the value-set node is an ADDITIONAL, name-searchable
 // view of the same source-of-truth, keyed on a distinct QualifiedName.
-func emitRustConstValueSets(root *sitter.Node, src []byte, filePath string, out *[]types.EntityRecord) {
+func emitRustConstValueSets(root ts.Node, src []byte, filePath string, out *[]types.EntityRecord) {
 	if root == nil {
 		return
 	}
@@ -129,7 +129,7 @@ func emitRustConstValueSets(root *sitter.Node, src []byte, filePath string, out 
 // calls (rustInsertMembers). One value-set is emitted per binding with a
 // literal-insert body. Also covers `once_cell` Lazy maps when expressed via the
 // same insert pattern.
-func emitRustLazyStaticValueSets(macro *sitter.Node, src []byte, filePath string, out *[]types.EntityRecord) {
+func emitRustLazyStaticValueSets(macro ts.Node, src []byte, filePath string, out *[]types.EntityRecord) {
 	if rustMacroName(macro, src) != "lazy_static" {
 		return
 	}
@@ -181,7 +181,7 @@ func emitRustLazyStaticValueSets(macro *sitter.Node, src []byte, filePath string
 // `enum_item`. Each enum_variant contributes its name; an explicit `= <literal>`
 // discriminant contributes the value. Data-carrying variants (tuple/struct)
 // record the name only. Emitted ONLY when the enum has ≥1 variant.
-func emitRustEnumValueSet(node *sitter.Node, src []byte, filePath string, out *[]types.EntityRecord) {
+func emitRustEnumValueSet(node ts.Node, src []byte, filePath string, out *[]types.EntityRecord) {
 	name := childFieldText(node, "name", src)
 	if name == "" {
 		if id := firstChildOfType(node, "type_identifier"); id != nil {
@@ -249,7 +249,7 @@ func emitRustEnumValueSet(node *sitter.Node, src []byte, filePath string, out *[
 // lazy_static!/once_cell map), emits a value-set node and returns true. A plain
 // scalar binding (or any non-map value) returns false so the caller can fold it
 // into the module constant group.
-func emitRustConstCollection(item *sitter.Node, src []byte, filePath string, out *[]types.EntityRecord) bool {
+func emitRustConstCollection(item ts.Node, src []byte, filePath string, out *[]types.EntityRecord) bool {
 	name := childFieldText(item, "name", src)
 	if name == "" {
 		if id := firstChildOfType(item, "identifier"); id != nil {
@@ -306,7 +306,7 @@ func emitRustConstCollection(item *sitter.Node, src []byte, filePath string, out
 // rustInitExpr returns the initializer expression node of a const_item /
 // static_item — the named expression child appearing after the `=` token.
 // Returns nil when the item has no initializer.
-func rustInitExpr(item *sitter.Node) *sitter.Node {
+func rustInitExpr(item ts.Node) ts.Node {
 	sawEq := false
 	for i := 0; i < int(item.ChildCount()); i++ {
 		ch := item.Child(i)
@@ -329,7 +329,7 @@ func rustInitExpr(item *sitter.Node) *sitter.Node {
 // literals; any other element disqualifies the whole map (ok=false). A single
 // literal-element array (`["a", "b"]`, a value LIST) yields name=value members
 // where key==value, so a const value list is still an enumerable set.
-func rustSliceTupleMembers(arr *sitter.Node, src []byte) ([]extreg.EnumMember, bool) {
+func rustSliceTupleMembers(arr ts.Node, src []byte) ([]extreg.EnumMember, bool) {
 	var members []extreg.EnumMember
 	sawTuple := false
 	for i := 0; i < int(arr.ChildCount()); i++ {
@@ -340,7 +340,7 @@ func rustSliceTupleMembers(arr *sitter.Node, src []byte) ([]extreg.EnumMember, b
 		switch el.Type() {
 		case "tuple_expression":
 			sawTuple = true
-			var lits []*sitter.Node
+			var lits []ts.Node
 			for j := 0; j < int(el.ChildCount()); j++ {
 				c := el.Child(j)
 				if c != nil && c.IsNamed() {
@@ -380,7 +380,7 @@ func rustSliceTupleMembers(arr *sitter.Node, src []byte) ([]extreg.EnumMember, b
 // across `=>` tokens. It also recognises a lazy_static! body whose statements
 // are `m.insert(<lit>, <lit>)` calls. Returns ok=false when no literal pair is
 // found, so a non-map macro emits no node.
-func rustPhfMapMembers(macro *sitter.Node, src []byte) ([]extreg.EnumMember, bool) {
+func rustPhfMapMembers(macro ts.Node, src []byte) ([]extreg.EnumMember, bool) {
 	macroName := rustMacroName(macro, src)
 	tt := firstChildOfType(macro, "token_tree")
 	if tt == nil {
@@ -430,9 +430,9 @@ func rustPhfMapMembers(macro *sitter.Node, src []byte) ([]extreg.EnumMember, boo
 // call statements (the canonical lazy_static! / once_cell HashMap build form)
 // and returns one member per insert. The receiver / method-name tokens are
 // ignored; only the literal argument pair matters.
-func rustInsertMembers(tt *sitter.Node, src []byte) []extreg.EnumMember {
+func rustInsertMembers(tt ts.Node, src []byte) []extreg.EnumMember {
 	var members []extreg.EnumMember
-	stack := []*sitter.Node{tt}
+	stack := []ts.Node{tt}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -466,7 +466,7 @@ func rustInsertMembers(tt *sitter.Node, src []byte) []extreg.EnumMember {
 // const_item / static_item's initializer when it is a plain scalar literal
 // (string / int / float / bool / char). Returns "" for collection / non-literal
 // initializers (which are handled by emitRustConstCollection or skipped).
-func rustScalarLiteralValue(item *sitter.Node, src []byte) string {
+func rustScalarLiteralValue(item ts.Node, src []byte) string {
 	val := rustInitExpr(item)
 	if val == nil {
 		return ""
@@ -476,7 +476,7 @@ func rustScalarLiteralValue(item *sitter.Node, src []byte) string {
 
 // rustLiteralText returns the normalised literal text of a Rust literal node
 // (quotes stripped for strings/chars), or "" when n is not a literal.
-func rustLiteralText(n *sitter.Node, src []byte) string {
+func rustLiteralText(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -492,7 +492,7 @@ func rustLiteralText(n *sitter.Node, src []byte) string {
 }
 
 // isRustLiteralNode reports whether n is a Rust literal value node.
-func isRustLiteralNode(n *sitter.Node) bool {
+func isRustLiteralNode(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -507,7 +507,7 @@ func isRustLiteralNode(n *sitter.Node) bool {
 
 // flatNode pairs a token-tree descendant node with its 1-based source line.
 type flatNode struct {
-	node *sitter.Node
+	node ts.Node
 	line int
 }
 
@@ -515,7 +515,7 @@ type flatNode struct {
 // EXCEPT it does not descend into nested token_tree groups whose own children
 // are arguments (so a `phf_map!` arrow body is read at one level). The `=>`
 // arrow tokens are unnamed but significant, so they are included explicitly.
-func flattenNamed(tt *sitter.Node) []flatNode {
+func flattenNamed(tt ts.Node) []flatNode {
 	var out []flatNode
 	for i := 0; i < int(tt.ChildCount()); i++ {
 		ch := tt.Child(i)
@@ -553,7 +553,7 @@ func nextLiteral(flat []flatNode, i int, src []byte) string {
 
 // literalChildren returns the normalised literal texts of the direct named
 // literal children of node (used for `insert(<lit>, <lit>)` argument trees).
-func literalChildren(node *sitter.Node, src []byte) []string {
+func literalChildren(node ts.Node, src []byte) []string {
 	var out []string
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
@@ -568,13 +568,13 @@ func literalChildren(node *sitter.Node, src []byte) []string {
 // both a plain `identifier` (`phf_map!`) and a path-qualified
 // `scoped_identifier` (`lazy_static::lazy_static!`) — for the latter the LAST
 // path segment (the macro name) is returned.
-func rustMacroName(macro *sitter.Node, src []byte) string {
+func rustMacroName(macro ts.Node, src []byte) string {
 	if id := firstChildOfType(macro, "identifier"); id != nil {
 		return nodeTextR(id, src)
 	}
 	if sc := firstChildOfType(macro, "scoped_identifier"); sc != nil {
 		// Last identifier child is the macro name.
-		var last *sitter.Node
+		var last ts.Node
 		for i := 0; i < int(sc.ChildCount()); i++ {
 			if ch := sc.Child(i); ch != nil && ch.Type() == "identifier" {
 				last = ch
@@ -588,7 +588,7 @@ func rustMacroName(macro *sitter.Node, src []byte) string {
 }
 
 // firstChildOfType returns the first direct child of node with the given type.
-func firstChildOfType(node *sitter.Node, kind string) *sitter.Node {
+func firstChildOfType(node ts.Node, kind string) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -603,7 +603,7 @@ func firstChildOfType(node *sitter.Node, kind string) *sitter.Node {
 
 // nextSiblingOfType returns the first sibling AFTER index i (among parent's
 // children) whose type matches kind.
-func nextSiblingOfType(parent *sitter.Node, i int, kind string) *sitter.Node {
+func nextSiblingOfType(parent ts.Node, i int, kind string) ts.Node {
 	for j := i + 1; j < int(parent.ChildCount()); j++ {
 		ch := parent.Child(j)
 		if ch != nil && ch.Type() == kind {
@@ -614,7 +614,7 @@ func nextSiblingOfType(parent *sitter.Node, i int, kind string) *sitter.Node {
 }
 
 // nodeTextR returns the source text of a node.
-func nodeTextR(n *sitter.Node, src []byte) string {
+func nodeTextR(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}

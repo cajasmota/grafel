@@ -15,7 +15,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/txscope"
@@ -34,7 +34,7 @@ func (e *Extractor) Language() string { return "ruby" }
 
 // Extract walks the tree-sitter CST and returns entity records for the Ruby file.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -44,7 +44,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	walk(root, file, &entities)
 	// Issue #3641 (epic #3625) — config-key consumption edges
 	// (ENV['X'] / ENV.fetch('X')) → shared SCOPE.Config config_key nodes.
@@ -97,7 +97,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // per method declared inside the body, every method body emits CALLS edges
 // with stub to_id, and top-level `require`/`require_relative`/`load` calls
 // emit IMPORTS module entities mirroring the Python extractor's shape.
-func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -260,7 +260,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 // All three shapes resolve to a bare callee name; FromID is left empty so
 // buildDocument substitutes the caller's entity ID at emit time. Self-recursion
 // is dropped.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -268,7 +268,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 	var rels []types.RelationshipRecord
 	// addAt appends a CALLS edge with a 1-based line number sourced from the
 	// tree-sitter node that represents the call site.
-	addAt := func(target string, callNode *sitter.Node) {
+	addAt := func(target string, callNode ts.Node) {
 		if target == "" || target == callerName {
 			return
 		}
@@ -308,7 +308,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 // Ruby's tree-sitter grammar uses field names "method" (the called name)
 // and "receiver" (optional left-hand side). Falls back to the first
 // identifier child for older grammar variants.
-func rubyCallTarget(call *sitter.Node, src []byte) string {
+func rubyCallTarget(call ts.Node, src []byte) string {
 	if m := call.ChildByFieldName("method"); m != nil {
 		t := m.Type()
 		if t == "identifier" || t == "constant" || t == "operator" {
@@ -329,7 +329,7 @@ func rubyCallTarget(call *sitter.Node, src []byte) string {
 // when an ActiveRecord `Model.transaction do ... end` / `Model.transaction { }`
 // block is lexically present in the method's source span. No transitive
 // propagation — only the method where `transaction do` appears is stamped.
-func stampRubyTx(node *sitter.Node, file extractor.FileInput, props map[string]string) map[string]string {
+func stampRubyTx(node ts.Node, file extractor.FileInput, props map[string]string) map[string]string {
 	src := string(file.Content[node.StartByte():node.EndByte()])
 	return txscope.DetectRuby(src).Apply(props)
 }
@@ -337,7 +337,7 @@ func stampRubyTx(node *sitter.Node, file extractor.FileInput, props map[string]s
 // buildRequireImport emits a SCOPE.Component module entity with a single
 // IMPORTS relationship for top-level require / require_relative / load calls.
 // Returns (_, false) for any other call node.
-func buildRequireImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildRequireImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	// Only consider call nodes whose method identifier is one of the loaders.
 	method := node.ChildByFieldName("method")
 	if method == nil {
@@ -410,7 +410,7 @@ func buildRequireImport(node *sitter.Node, file extractor.FileInput) (types.Enti
 // Returns "" when no constant is recoverable (e.g. a leaf that isn't a legal
 // constant stem). The synth layer keys the per-symbol node by this name; an
 // over-eager guess merely mints an extra node, so we stay conservative.
-func rubyRequireConstant(node *sitter.Node, file extractor.FileInput, mname, raw string) string {
+func rubyRequireConstant(node ts.Node, file extractor.FileInput, mname, raw string) string {
 	if mname == "autoload" {
 		// `autoload :Const, 'path'` — first argument is the explicit symbol.
 		if args := node.ChildByFieldName("arguments"); args != nil {
@@ -490,7 +490,7 @@ func rubyCamelizeConstant(leaf string) string {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -498,8 +498,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -517,7 +517,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 // Rails-specific framework labelling is applied via tagRails:
 // controllers, models, migrations and routes get framework="rails" plus
 // a kind discriminator in Properties.
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -539,7 +539,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 }
 
 // buildMethod creates an Operation entity for method definitions.
-func buildMethod(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildMethod(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -564,7 +564,7 @@ func buildMethod(node *sitter.Node, file extractor.FileInput, subtype string) (t
 }
 
 // childFieldText extracts the text of a named child field.
-func childFieldText(node *sitter.Node, field string, src []byte) string {
+func childFieldText(node ts.Node, field string, src []byte) string {
 	child := node.ChildByFieldName(field)
 	if child == nil {
 		return ""
@@ -573,7 +573,7 @@ func childFieldText(node *sitter.Node, field string, src []byte) string {
 }
 
 // buildMethodSignature builds a def signature (first line).
-func buildMethodSignature(node *sitter.Node, src []byte) string {
+func buildMethodSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "\n"); idx >= 0 {
 		return strings.TrimSpace(raw[:idx])
@@ -582,7 +582,7 @@ func buildMethodSignature(node *sitter.Node, src []byte) string {
 }
 
 // buildClassSignature constructs a readable signature for class/module.
-func buildClassSignature(node *sitter.Node, src []byte, name string) string {
+func buildClassSignature(node ts.Node, src []byte, name string) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "\n"); idx >= 0 {
 		return strings.TrimSpace(raw[:idx])

@@ -27,13 +27,13 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tscsharp "github.com/smacker/go-tree-sitter/csharp"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/csharp"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/resolve"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -45,15 +45,19 @@ func extractCSharpProjectForTest(t *testing.T, files map[string]string) []types.
 	}
 	var merged []types.EntityRecord
 	for rel, src := range files {
-		parser := sitter.NewParser()
-		parser.SetLanguage(tscsharp.GetLanguage())
-		tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+		parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tscsharp.GetLanguage()))
 		if err != nil {
+			t.Fatalf("parser init %s: %v", rel, err)
+		}
+		tree, err := parser.Parse([]byte(src))
+		if err != nil {
+			parser.Close()
 			t.Fatalf("parse %s: %v", rel, err)
 		}
 		ents, err := ext.Extract(context.Background(), extractor.FileInput{
-			Path: rel, Language: "csharp", Content: []byte(src), Tree: tree,
+			Path: rel, Language: "csharp", Content: []byte(src), TSTree: tree,
 		})
+		parser.Close()
 		if err != nil {
 			t.Fatalf("extract %s: %v", rel, err)
 		}

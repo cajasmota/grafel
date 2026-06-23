@@ -29,7 +29,7 @@
 package csharp
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -41,7 +41,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -51,8 +51,8 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 	// enclosingClass is the innermost type name (matching buildOperation, which
 	// prefixes only the immediate parent type). enclosingMethod is the host
 	// SCOPE.Operation Name (`<class>.<method>`), or "" at file scope.
-	var walk func(n *sitter.Node, enclosingClass, enclosingMethod string)
-	walk = func(n *sitter.Node, enclosingClass, enclosingMethod string) {
+	var walk func(n ts.Node, enclosingClass, enclosingMethod string)
+	walk = func(n ts.Node, enclosingClass, enclosingMethod string) {
 		if n == nil {
 			return
 		}
@@ -103,7 +103,7 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 // (`throw;`) or a re-throw of a variable (`throw ex;`) which carries no NEW
 // type. The raw (possibly qualified) type text is returned verbatim;
 // extractor.NormalizeExceptionType collapses it to the bare class name.
-func csharpThrowType(throwNode *sitter.Node, src []byte) string {
+func csharpThrowType(throwNode ts.Node, src []byte) string {
 	creation := findChildByType(throwNode, "object_creation_expression")
 	if creation == nil {
 		return "" // `throw;` or `throw ex;` — no NEW type
@@ -130,7 +130,7 @@ func csharpThrowType(throwNode *sitter.Node, src []byte) string {
 // The `when (...)` filter is a separate catch_filter_clause sibling and is
 // never inspected, so only the declared type is recorded. C# has no `|`
 // multi-catch (that shape parses as an ERROR node and yields no type here).
-func csharpCatchType(catchNode *sitter.Node, src []byte) string {
+func csharpCatchType(catchNode ts.Node, src []byte) string {
 	decl := findChildByType(catchNode, "catch_declaration")
 	if decl == nil {
 		return "" // bare `catch { }` — untyped, honest drop

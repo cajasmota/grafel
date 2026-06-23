@@ -5,7 +5,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -42,7 +42,7 @@ import (
 // the RSpec custom extractor's e2e_route_calls path (#4371) and is unchanged.
 //
 // No-op for non-spec files and for spec files whose blocks resolve no CALLS.
-func emitRubyTestScopeOwner(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitRubyTestScopeOwner(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if root == nil || !isRubySpecFile(file.Path) {
 		return
 	}
@@ -195,7 +195,7 @@ func rubyCamelize(snake string) string {
 // The suite Name is namespaced (`minitest_suite:<file>:<Class>`) so the
 // resolver's by-name index never confuses it with the production class of the
 // same base name and re-orphans it (the #4366 MergeWithCustom / #4343 lesson).
-func emitRubyMinitestSuite(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitRubyMinitestSuite(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if root == nil || !isRubyTestFile(file.Path) {
 		return
 	}
@@ -268,7 +268,7 @@ func isMinitestSuperclass(super string) bool {
 // a Minitest test-case class body. Only methods whose name starts with `test_`
 // (or is exactly `test`) are Minitest examples; helpers / `setup` / `teardown`
 // are excluded from the count.
-func countMinitestExamples(cls *sitter.Node, src []byte) int {
+func countMinitestExamples(cls ts.Node, src []byte) int {
 	n := 0
 	for _, m := range findAllNodes(cls, "method") {
 		name := childFieldText(m, "name", src)
@@ -325,7 +325,7 @@ func isRubyTestFile(path string) bool {
 // rspecBlock is an RSpec example/hook block body paired with the class constant
 // of the nearest enclosing `describe`/`context` (for `described_class` typing).
 type rspecBlock struct {
-	body           *sitter.Node
+	body           ts.Node
 	describedClass string
 }
 
@@ -345,13 +345,13 @@ var rspecBlockMethods = map[string]bool{
 // matched block's body so inner `it` bodies are mined too, threading the
 // described-class down. We do NOT descend into `method`/`singleton_method`
 // declarations — walk() already owns their CALLS edges.
-func collectRSpecBlockBodies(root *sitter.Node, src []byte) []rspecBlock {
+func collectRSpecBlockBodies(root ts.Node, src []byte) []rspecBlock {
 	var out []rspecBlock
 	walkRSpecBlocks(root, src, "", &out)
 	return out
 }
 
-func walkRSpecBlocks(n *sitter.Node, src []byte, describedClass string, out *[]rspecBlock) {
+func walkRSpecBlocks(n ts.Node, src []byte, describedClass string, out *[]rspecBlock) {
 	if n == nil {
 		return
 	}
@@ -389,7 +389,7 @@ func walkRSpecBlocks(n *sitter.Node, src []byte, describedClass string, out *[]r
 // rspecBlockMethodName returns the RSpec DSL block method name (it/describe/...)
 // of a `call` node when it is one of rspecBlockMethods, or "" otherwise. Handles
 // both the bare form (`it 'x' do`) and the `RSpec.describe X do` receiver form.
-func rspecBlockMethodName(call *sitter.Node, src []byte) string {
+func rspecBlockMethodName(call ts.Node, src []byte) string {
 	m := call.ChildByFieldName("method")
 	if m == nil {
 		// Bare `it 'x' do` parses with the method as the first identifier child.
@@ -414,7 +414,7 @@ func rspecBlockMethodName(call *sitter.Node, src []byte) string {
 
 // rubyDoBlockBody returns the body_statement of a call's trailing `do ... end`
 // block (or `{ ... }` brace block), or nil when the call has no block.
-func rubyDoBlockBody(call *sitter.Node) *sitter.Node {
+func rubyDoBlockBody(call ts.Node) ts.Node {
 	for i := 0; i < int(call.ChildCount()); i++ {
 		ch := call.Child(i)
 		if ch.Type() == "do_block" || ch.Type() == "block" {
@@ -435,7 +435,7 @@ func rubyDoBlockBody(call *sitter.Node) *sitter.Node {
 // rspecConstantArg returns the first constant argument of a `describe X`/
 // `context X` call (e.g. `RSpec.describe ProposalsController` → "ProposalsController"),
 // or "" when the first argument is a string label / not a constant.
-func rspecConstantArg(call *sitter.Node, src []byte) string {
+func rspecConstantArg(call ts.Node, src []byte) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		for i := 0; i < int(call.ChildCount()); i++ {
@@ -470,7 +470,7 @@ func rspecConstantArg(call *sitter.Node, src []byte) string {
 // CALLS edge here; bare unresolvable calls (DSL matchers like `expect`,
 // `have_http_status`) are dropped — the test-scope owner exists to credit the
 // production handler the spec exercises, not to enumerate matcher noise.
-func extractTestScopeCallRelationships(body *sitter.Node, src []byte, describedClass string) []types.RelationshipRecord {
+func extractTestScopeCallRelationships(body ts.Node, src []byte, describedClass string) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}
@@ -507,7 +507,7 @@ func extractTestScopeCallRelationships(body *sitter.Node, src []byte, describedC
 // `described_class` keyword, typed from the enclosing describe). A factory
 // helper (`x = make_thing()`), a namespaced/unknown receiver, or a non-`.new`
 // RHS yields no entry — honest exclusion. First binding wins on re-assign.
-func rubyLocalReceiverTypes(body *sitter.Node, src []byte, describedClass string) map[string]string {
+func rubyLocalReceiverTypes(body ts.Node, src []byte, describedClass string) map[string]string {
 	var locals map[string]string
 	for _, a := range findAllNodes(body, "assignment") {
 		lhs := a.ChildByFieldName("left")
@@ -540,7 +540,7 @@ func rubyLocalReceiverTypes(body *sitter.Node, src []byte, describedClass string
 // or "" when the RHS is not a recognised user-class construction. Handles
 // `ProposalsController.new` (PascalCase constant receiver) and
 // `described_class.new` (typed from the enclosing describe constant).
-func rubyConstructedClass(call *sitter.Node, src []byte, describedClass string) string {
+func rubyConstructedClass(call ts.Node, src []byte, describedClass string) string {
 	method := call.ChildByFieldName("method")
 	if method == nil || string(src[method.StartByte():method.EndByte()]) != "new" {
 		return ""
@@ -568,7 +568,7 @@ func rubyConstructedClass(call *sitter.Node, src []byte, describedClass string) 
 // typed local / known constant. A receiver that is a PascalCase constant
 // (`ProposalsController.create`) types directly. The `.new` constructor itself
 // and DSL/bare calls without a typed receiver are dropped.
-func rubyTypedCallTarget(call *sitter.Node, src []byte, locals map[string]string) string {
+func rubyTypedCallTarget(call ts.Node, src []byte, locals map[string]string) string {
 	method := call.ChildByFieldName("method")
 	if method == nil {
 		return ""

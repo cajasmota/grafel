@@ -48,7 +48,7 @@ package rust
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -59,7 +59,7 @@ import (
 //
 // records[0] MUST be the file entity. Mutates *records in place. Safe with
 // nil / empty input.
-func emitConfigConsumerEdges(root *sitter.Node, src []byte, records *[]types.EntityRecord) {
+func emitConfigConsumerEdges(root ts.Node, src []byte, records *[]types.EntityRecord) {
 	if root == nil || records == nil || len(*records) == 0 {
 		return
 	}
@@ -73,8 +73,8 @@ func emitConfigConsumerEdges(root *sitter.Node, src []byte, records *[]types.Ent
 
 	var reads []extractor.ConfigRead
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -115,7 +115,7 @@ func emitConfigConsumerEdges(root *sitter.Node, src []byte, records *[]types.Ent
 // makes a method's FromName "Foo.method", matching the receiver-qualified names
 // the main walk emits for SCOPE.Operation methods so the edge attaches to the
 // right host.
-func rustImplOwnerName(fn *sitter.Node, src []byte) string {
+func rustImplOwnerName(fn ts.Node, src []byte) string {
 	for p := fn.Parent(); p != nil; p = p.Parent() {
 		if p.Type() == "impl_item" {
 			if t := p.ChildByFieldName("type"); t != nil {
@@ -139,7 +139,7 @@ func rustImplOwnerName(fn *sitter.Node, src []byte) string {
 //	env::var("KEY") / std::env::var("KEY") / env::var_os("KEY")  → "env_var"
 //	dotenvy::var("KEY")                                          → "dotenvy"
 //	Env::prefixed("PREFIX")                                      → "figment"
-func rustConfigKeyFromCall(call *sitter.Node, src []byte) (string, string) {
+func rustConfigKeyFromCall(call ts.Node, src []byte) (string, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil && call.ChildCount() > 0 {
 		fn = call.Child(0)
@@ -204,7 +204,7 @@ func rustConfigKeyFromCall(call *sitter.Node, src []byte) (string, string) {
 
 // fieldName returns the method/field name of a field_expression's `field`
 // child, or "" when absent.
-func fieldName(fieldExpr *sitter.Node, src []byte) string {
+func fieldName(fieldExpr ts.Node, src []byte) string {
 	if fieldExpr == nil {
 		return ""
 	}

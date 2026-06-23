@@ -12,7 +12,8 @@
 // Surface scope. The interface is deliberately minimal — it mirrors only the
 // CST methods grafel actually calls (verified by grepping the extractor layer:
 // Type/Kind, Child, ChildByFieldName, NamedChild, ChildCount, NamedChildCount,
-// StartByte/EndByte, StartPoint/EndPoint, Parent, IsNamed, IsError, String).
+// StartByte/EndByte, StartPoint/EndPoint, Parent, PrevSibling, IsNamed,
+// IsError, String).
 // grafel does not use the native query engine (Query/QueryCursor) anywhere, nor
 // tree cursors, so those are intentionally absent. Text extraction is done by
 // the callers via byte-slicing on StartByte/EndByte, so no Content/Utf8Text
@@ -59,6 +60,10 @@ type Node interface {
 	ChildByFieldName(field string) Node
 	// Parent returns the parent node, or nil for the root.
 	Parent() Node
+	// PrevSibling returns the node's previous sibling (named or anonymous), or
+	// nil when the node is the first child of its parent. Maps to both bindings'
+	// Node.PrevSibling().
+	PrevSibling() Node
 
 	// StartByte / EndByte are byte offsets into the source buffer.
 	StartByte() uint32

@@ -23,7 +23,7 @@ package ruby
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -35,15 +35,15 @@ import (
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitConfigConsumerEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitConfigConsumerEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
 
 	var reads []extractor.ConfigRead
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -80,7 +80,7 @@ func emitConfigConsumerEdges(root *sitter.Node, src []byte, entities *[]types.En
 // with a literal string index, or "" otherwise.
 //
 // tree-sitter-ruby shape: (element_reference object: (constant) (string ...)).
-func rubyEnvElementKey(n *sitter.Node, src []byte) string {
+func rubyEnvElementKey(n ts.Node, src []byte) string {
 	obj := n.ChildByFieldName("object")
 	if obj == nil || strings.TrimSpace(rubyNodeText(obj, src)) != "ENV" {
 		return ""
@@ -102,7 +102,7 @@ func rubyEnvElementKey(n *sitter.Node, src []byte) string {
 
 // rubyEnvFetchKey returns the config key for an ENV.fetch('KEY' [, default])
 // call with a literal first string argument, or "" otherwise.
-func rubyEnvFetchKey(n *sitter.Node, src []byte) string {
+func rubyEnvFetchKey(n ts.Node, src []byte) string {
 	recv := n.ChildByFieldName("receiver")
 	method := n.ChildByFieldName("method")
 	if recv == nil || method == nil {
@@ -128,7 +128,7 @@ func rubyEnvFetchKey(n *sitter.Node, src []byte) string {
 // rubyStringContent extracts the literal content of a tree-sitter-ruby string
 // node, dropping the surrounding quotes. Returns "" for an interpolated string
 // (one carrying an `interpolation` child) — honest-partial, no fabrication.
-func rubyStringContent(strNode *sitter.Node, src []byte) string {
+func rubyStringContent(strNode ts.Node, src []byte) string {
 	for i := 0; i < int(strNode.NamedChildCount()); i++ {
 		if strNode.NamedChild(i).Type() == "interpolation" {
 			return "" // dynamic content → skip
@@ -146,7 +146,7 @@ func rubyStringContent(strNode *sitter.Node, src []byte) string {
 }
 
 // rubyNodeText returns the raw source text spanned by node.
-func rubyNodeText(node *sitter.Node, src []byte) string {
+func rubyNodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}

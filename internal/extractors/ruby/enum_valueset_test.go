@@ -19,7 +19,7 @@ func extractRubyForEnum(t *testing.T, path, src string) []types.EntityRecord {
 		t.Fatal("ruby extractor not registered")
 	}
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: path, Content: []byte(src), Language: "ruby", Tree: tree,
+		Path: path, Content: []byte(src), Language: "ruby", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

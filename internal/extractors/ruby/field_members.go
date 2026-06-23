@@ -3,7 +3,7 @@ package ruby
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -29,7 +29,7 @@ import (
 func emitRubyAttrFields(
 	records *[]types.EntityRecord,
 	ownerIdx int,
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	ownerName, filePath string,
 ) {
@@ -66,7 +66,7 @@ func emitRubyAttrFields(
 // member, with class→field CONTAINS edges, mirroring the data-class shape the
 // shape walker expects. Returns nil when the assignment is not a Struct.new /
 // Data.define form.
-func emitRubyStructDefine(node *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+func emitRubyStructDefine(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 	if node == nil || node.Type() != "assignment" {
 		return nil
 	}
@@ -125,7 +125,7 @@ func emitRubyStructDefine(node *sitter.Node, file extractor.FileInput) []types.E
 
 // rubyFieldEntity builds a SCOPE.Schema/field entity for member `field` of
 // owner `owner`, positioned at `at`.
-func rubyFieldEntity(owner, field, source, filePath string, at *sitter.Node) types.EntityRecord {
+func rubyFieldEntity(owner, field, source, filePath string, at ts.Node) types.EntityRecord {
 	dotted := owner + "." + field
 	return types.EntityRecord{
 		Name:          dotted,
@@ -151,7 +151,7 @@ func rubyFieldEntity(owner, field, source, filePath string, at *sitter.Node) typ
 // rubyCallIdentifier returns the bare method name of a `call` node, whether it
 // carries an explicit "method" field (receiver.method form) or a leading
 // identifier child (bare attr_accessor form).
-func rubyCallIdentifier(call *sitter.Node, src []byte) string {
+func rubyCallIdentifier(call ts.Node, src []byte) string {
 	if m := call.ChildByFieldName("method"); m != nil {
 		return nodeText(m, src)
 	}
@@ -165,7 +165,7 @@ func rubyCallIdentifier(call *sitter.Node, src []byte) string {
 
 // rubyCallSymbolArgs returns the bare names of the simple_symbol arguments of a
 // `call` node (`attr_accessor :a, :b` → ["a","b"]).
-func rubyCallSymbolArgs(call *sitter.Node, src []byte) []string {
+func rubyCallSymbolArgs(call ts.Node, src []byte) []string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		for i := 0; i < int(call.ChildCount()); i++ {

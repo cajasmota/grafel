@@ -38,7 +38,7 @@ package php
 // member (its literal in the Name slot) so the member roster stays complete.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -47,14 +47,14 @@ import (
 // emitConstValueSets walks the CST and appends one SCOPE.Enum value-set node
 // per recognised PHP constant collection (array-const map, class-const group,
 // backed enum, define() map). Called from Extract after the structural walk.
-func emitConstValueSets(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitConstValueSets(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	walkConstValueSets(node, file, "", out)
 }
 
 // walkConstValueSets is a class-aware DFS. parentType is the bare name of the
 // immediately-enclosing class/interface/trait (or "" at file scope) so a group
 // of scalar class constants can be named after its declaring type.
-func walkConstValueSets(node *sitter.Node, file extractor.FileInput, parentType string, out *[]types.EntityRecord) {
+func walkConstValueSets(node ts.Node, file extractor.FileInput, parentType string, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -104,7 +104,7 @@ func walkConstValueSets(node *sitter.Node, file extractor.FileInput, parentType 
 // in a const_declaration whose value is an array literal. A `const` with a
 // scalar value contributes nothing here (scalars are grouped at class scope by
 // buildClassConstGroup). Returns nil for empty arrays (honest-partial).
-func buildArrayConstValueSets(node *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+func buildArrayConstValueSets(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 	var recs []types.EntityRecord
 	for i := range int(node.ChildCount()) {
 		el := node.Child(i)
@@ -135,7 +135,7 @@ func buildArrayConstValueSets(node *sitter.Node, file extractor.FileInput) []typ
 // Array-valued constants are excluded (they get their own node via
 // buildArrayConstValueSets). Returns ok=false when the type has no scalar
 // constants (honest-partial).
-func buildClassConstGroup(typeName string, body *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildClassConstGroup(typeName string, body ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	if typeName == "" || body == nil {
 		return types.EntityRecord{}, false
 	}
@@ -178,7 +178,7 @@ func buildClassConstGroup(typeName string, body *sitter.Node, file extractor.Fil
 // buildEnumValueSet emits a value-set node for a PHP 8.1 enum_declaration,
 // mapping each case name to its backing value (pure enums emit value-less
 // members). Additive to the SCOPE.Schema/enum node from buildEnum.
-func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildEnumValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -211,7 +211,7 @@ func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.Entit
 // buildDefineValueSet emits a value-set node for a `define('NAME', [...])`
 // call whose second argument is an array literal. Non-array define() calls
 // and dynamic names emit nothing (honest-partial).
-func buildDefineValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildDefineValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	fn := node.ChildByFieldName("function")
 	if fn == nil {
 		fn = firstChildOfTypePHP(node, "name")
@@ -228,7 +228,7 @@ func buildDefineValueSet(node *sitter.Node, file extractor.FileInput) (types.Ent
 	}
 
 	var name string
-	var arr *sitter.Node
+	var arr ts.Node
 	for i := range int(args.ChildCount()) {
 		a := args.Child(i)
 		if a == nil || a.Type() != "argument" {
@@ -263,7 +263,7 @@ func buildDefineValueSet(node *sitter.Node, file extractor.FileInput) (types.Ent
 // (bare value, no `=>`) becomes a value-less member whose name is the literal
 // (so the roster stays complete for a list of constants). Non-literal values
 // record their source expression text rather than being dropped.
-func arrayMembers(arr *sitter.Node, src []byte) []extractor.EnumMember {
+func arrayMembers(arr ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	for i := range int(arr.ChildCount()) {
 		el := arr.Child(i)
@@ -292,8 +292,8 @@ func arrayMembers(arr *sitter.Node, src []byte) []extractor.EnumMember {
 // value nodes. When the element has a `=>` token the named child before it is
 // the key and the one after it the value; otherwise it is a list element and
 // the (single) named child is the value (key == nil).
-func arrayElementKeyValue(el *sitter.Node) (key, val *sitter.Node) {
-	var named []*sitter.Node
+func arrayElementKeyValue(el ts.Node) (key, val ts.Node) {
+	var named []ts.Node
 	hasArrow := false
 	for i := range int(el.ChildCount()) {
 		ch := el.Child(i)
@@ -319,9 +319,9 @@ func arrayElementKeyValue(el *sitter.Node) (key, val *sitter.Node) {
 
 // constElementValue returns the statically-known literal of a const_element's
 // value, or the raw expression text for a non-literal value (honest-partial).
-func constElementValue(el *sitter.Node, src []byte) string {
+func constElementValue(el ts.Node, src []byte) string {
 	// The value node is the last named child after the `=` token.
-	var val *sitter.Node
+	var val ts.Node
 	seenEq := false
 	for i := range int(el.ChildCount()) {
 		ch := el.Child(i)
@@ -346,7 +346,7 @@ func constElementValue(el *sitter.Node, src []byte) string {
 // literals are unquoted; integer / float / boolean / name literals are
 // returned verbatim. Any other (computed / dynamic) expression returns its
 // source text so the value is recorded rather than dropped (honest-partial).
-func literalValueNode(n *sitter.Node, src []byte) string {
+func literalValueNode(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -362,7 +362,7 @@ func literalValueNode(n *sitter.Node, src []byte) string {
 
 // --- small node helpers (local to this file) ---------------------------------
 
-func firstChildOfTypePHP(n *sitter.Node, typ string) *sitter.Node {
+func firstChildOfTypePHP(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -375,7 +375,7 @@ func firstChildOfTypePHP(n *sitter.Node, typ string) *sitter.Node {
 	return nil
 }
 
-func firstNamedChild(n *sitter.Node) *sitter.Node {
+func firstNamedChild(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -391,14 +391,14 @@ func firstNamedChild(n *sitter.Node) *sitter.Node {
 // firstNamedChildText returns the text of the first named child whose type is
 // excludeAfter-agnostic match by type, used as a fallback when the "name"
 // field is unlabelled in the grammar revision.
-func firstNamedChildText(n *sitter.Node, typ string, src []byte) string {
+func firstNamedChildText(n ts.Node, typ string, src []byte) string {
 	if c := firstChildOfTypePHP(n, typ); c != nil {
 		return nodeTextPHP(c, src)
 	}
 	return ""
 }
 
-func nodeTextPHP(n *sitter.Node, src []byte) string {
+func nodeTextPHP(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}

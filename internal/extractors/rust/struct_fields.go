@@ -3,7 +3,7 @@ package rust
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -29,7 +29,7 @@ import (
 //	Name      = "<Owner>.<wire>"
 //	Signature = "<type> <wire>"
 func emitRustStructFields(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	ownerName string,
 ) []types.EntityRecord {
@@ -45,7 +45,7 @@ func emitRustStructFields(
 // "<Enum>.<Variant>.<field>". Tuple/unit variants carry no named fields and
 // contribute none (best-effort: Rust has no field name to model).
 func emitRustEnumVariantFields(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	ownerName string,
 ) []types.EntityRecord {
@@ -84,7 +84,7 @@ func emitRustEnumVariantFields(
 // field_declaration_list, applying the serde rename/skip attribute that
 // immediately precedes each field.
 func rustFieldsFromList(
-	body *sitter.Node,
+	body ts.Node,
 	file extractor.FileInput,
 	owner string,
 ) []types.EntityRecord {
@@ -164,7 +164,7 @@ func rustFieldsFromList(
 // rustSerdeAttr parses an attribute_item, returning the serde rename target
 // (if any) and whether the field is serde-skipped. Mirrors the regex logic in
 // internal/custom/rust/fw_validation.go so the wire names align for dedup.
-func rustSerdeAttr(attr *sitter.Node, src []byte) (rename string, skip bool) {
+func rustSerdeAttr(attr ts.Node, src []byte) (rename string, skip bool) {
 	text := string(src[attr.StartByte():attr.EndByte()])
 	if !strings.Contains(text, "serde") {
 		return "", false
@@ -186,7 +186,7 @@ func rustSerdeAttr(attr *sitter.Node, src []byte) (rename string, skip bool) {
 
 // findRustFieldList returns the field_declaration_list child of a struct_item,
 // or nil for a tuple/unit struct (no named fields).
-func findRustFieldList(node *sitter.Node) *sitter.Node {
+func findRustFieldList(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -197,7 +197,7 @@ func findRustFieldList(node *sitter.Node) *sitter.Node {
 }
 
 // findChildOfType returns the first direct child of n with the given type.
-func findChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func findChildOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}

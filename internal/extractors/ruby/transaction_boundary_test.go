@@ -19,7 +19,7 @@ func extractRubyTx(t *testing.T, src string) []types.EntityRecord {
 		t.Fatal("ruby extractor not registered")
 	}
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "account.rb", Content: []byte(src), Language: "ruby", Tree: tree,
+		Path: "account.rb", Content: []byte(src), Language: "ruby", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

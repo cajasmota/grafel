@@ -6,20 +6,27 @@ import (
 	"strconv"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tscsharp "github.com/smacker/go-tree-sitter/csharp"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/csharp"
 	"github.com/cajasmota/grafel/internal/treesitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-// parseForTest parses C# source using the real grammar.
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+// parseForTest parses C# source into a ts.Tree via the smacker adapter. Tests
+// stamp the result on FileInput.TSTree (which the migrated C# extractor
+// consumes); the smacker adapter keeps these tests linkable in the default build
+// while exercising the ts façade (B2 #5418).
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tscsharp.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tscsharp.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -61,7 +68,7 @@ namespace SampleApi
 		Path:     "service.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -109,7 +116,7 @@ public class Foo
 		Path:     "foo.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -149,7 +156,7 @@ public interface IRepository
 		Path:     "repo.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -180,7 +187,7 @@ public class Svc
 		Path:     "svc.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -214,7 +221,7 @@ public class Foo {}
 		Path:     "imports.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -245,7 +252,7 @@ func TestCSharpExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.cs",
 		Content:  []byte(""),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -262,7 +269,7 @@ func TestCSharpExtractor_NilTree(t *testing.T) {
 		Path:     "nil.cs",
 		Content:  []byte("public class Foo {}"),
 		Language: "csharp",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -296,7 +303,7 @@ func TestCSharpExtractor_LineNumbers(t *testing.T) {
 		Path:     "lines.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -331,7 +338,7 @@ public class Caller {
 		Path:     "test.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

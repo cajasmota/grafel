@@ -29,7 +29,7 @@ package ruby
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -40,15 +40,15 @@ import (
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitTranslationKeyEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitTranslationKeyEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
 
 	var uses []extractor.TranslationUse
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -78,7 +78,7 @@ func emitTranslationKeyEdges(root *sitter.Node, src []byte, entities *[]types.En
 //
 //	I18n.t('x') / I18n.translate('x')  → explicit-receiver i18n
 //	t('.relative')                     → relative-key i18n (leading dot)
-func rubyTranslationCall(call *sitter.Node, src []byte) (string, bool) {
+func rubyTranslationCall(call ts.Node, src []byte) (string, bool) {
 	method := call.ChildByFieldName("method")
 	if method == nil {
 		return "", false
@@ -116,7 +116,7 @@ func rubyTranslationCall(call *sitter.Node, src []byte) (string, bool) {
 
 // rubyFirstStringArg returns the first positional argument when it is a static
 // string literal, or ("", false) for a dynamic / symbol / interpolated arg.
-func rubyFirstStringArg(call *sitter.Node, src []byte) (string, bool) {
+func rubyFirstStringArg(call ts.Node, src []byte) (string, bool) {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return "", false

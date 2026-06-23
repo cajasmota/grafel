@@ -29,7 +29,7 @@ package ruby
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -41,15 +41,15 @@ import (
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitTemplateRenderEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitTemplateRenderEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
 
 	var edges []extractor.TemplateEdge
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -83,7 +83,7 @@ func emitTemplateRenderEdges(root *sitter.Node, src []byte, entities *[]types.En
 //
 // A bare receiver (`obj.render`) is NOT a Rails controller render and is
 // rejected. Symbol args (render :index) and variable/object args are dropped.
-func rubyRenderTemplate(call *sitter.Node, src []byte) (string, string) {
+func rubyRenderTemplate(call ts.Node, src []byte) (string, string) {
 	// Must be a receiver-less `render ...` call (Rails controller DSL).
 	if recv := call.ChildByFieldName("receiver"); recv != nil {
 		return "", ""
@@ -136,7 +136,7 @@ func rubyRenderTemplate(call *sitter.Node, src []byte) (string, string) {
 // rubyPairParts returns the hash_key_symbol name and, if the value is a literal
 // string, its content — for a `key: 'value'` pair. A non-string value yields
 // ("key", "").
-func rubyPairParts(pair *sitter.Node, src []byte) (string, string) {
+func rubyPairParts(pair ts.Node, src []byte) (string, string) {
 	var key, val string
 	if k := pair.ChildByFieldName("key"); k != nil {
 		key = strings.TrimSpace(rubyNodeText(k, src))

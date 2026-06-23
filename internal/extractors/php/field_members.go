@@ -3,7 +3,7 @@ package php
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -29,8 +29,8 @@ import (
 //	Name      = "<Owner>.<member>"
 //	Signature = "<type> $<member>"
 func emitPhpFieldMembers(
-	node *sitter.Node,
-	body *sitter.Node,
+	node ts.Node,
+	body ts.Node,
 	src []byte,
 	ownerName, filePath string,
 ) ([]types.EntityRecord, string) {
@@ -41,7 +41,7 @@ func emitPhpFieldMembers(
 	var fields []types.EntityRecord
 	seen := make(map[string]bool)
 
-	add := func(name, typ string, at *sitter.Node) {
+	add := func(name, typ string, at ts.Node) {
 		name = strings.TrimPrefix(name, "$")
 		if name == "" || seen[name] {
 			return
@@ -122,7 +122,7 @@ func emitPhpFieldMembers(
 
 // phpVariableName returns the bare identifier of a variable_name node
 // (`$name` → "name").
-func phpVariableName(vn *sitter.Node, src []byte) string {
+func phpVariableName(vn ts.Node, src []byte) string {
 	if id := findFirstChildOfType(vn, "name"); id != nil {
 		return string(src[id.StartByte():id.EndByte()])
 	}
@@ -132,7 +132,7 @@ func phpVariableName(vn *sitter.Node, src []byte) string {
 // phpDeclaredType returns the textual type annotation that precedes the
 // property_element / variable_name in a property_declaration or
 // property_promotion_parameter. Returns "" for untyped members.
-func phpDeclaredType(n *sitter.Node, src []byte) string {
+func phpDeclaredType(n ts.Node, src []byte) string {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		switch ch.Type() {
@@ -148,7 +148,7 @@ func phpDeclaredType(n *sitter.Node, src []byte) string {
 // declaration's base_clause (`class A extends B` → "B"), or "" for none.
 // Interfaces appear under class_interface_clause and are intentionally
 // excluded.
-func phpBaseClassName(node *sitter.Node, src []byte) string {
+func phpBaseClassName(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}

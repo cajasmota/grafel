@@ -34,7 +34,7 @@ func rbExtract(t *testing.T, src, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

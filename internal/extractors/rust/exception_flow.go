@@ -70,7 +70,7 @@ package rust
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -82,7 +82,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -95,8 +95,8 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 	//   - impl Type { fn } → impl-qualified ("Type.find")
 	// implType is the current impl's implementing-type name ("" when not in an
 	// impl), so a nested function_item inside an impl gets "Type.fn".
-	var walk func(n *sitter.Node, enclosingFn, implType string)
-	walk = func(n *sitter.Node, enclosingFn, implType string) {
+	var walk func(n ts.Node, enclosingFn, implType string)
+	walk = func(n ts.Node, enclosingFn, implType string) {
 		if n == nil {
 			return
 		}
@@ -164,7 +164,7 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 // rustImplTypeName returns the implementing-type name of an impl_item, mirroring
 // buildImpl's resolution (the "type" field, with a type_identifier/generic_type
 // fallback). Returns "" if it cannot be resolved.
-func rustImplTypeName(n *sitter.Node, src []byte) string {
+func rustImplTypeName(n ts.Node, src []byte) string {
 	if ty := n.ChildByFieldName("type"); ty != nil {
 		return nodeStr(ty, src)
 	}
@@ -178,7 +178,7 @@ func rustImplTypeName(n *sitter.Node, src []byte) string {
 }
 
 // childIdentText returns the text of a node's "name" field, or "" if absent.
-func childIdentText(n *sitter.Node, src []byte) string {
+func childIdentText(n ts.Node, src []byte) string {
 	if name := n.ChildByFieldName("name"); name != nil {
 		return nodeStr(name, src)
 	}
@@ -207,7 +207,7 @@ func childIdentText(n *sitter.Node, src []byte) string {
 //	Err(Box::new(e))       scoped ctor whose leading segment `Box` would be
 //	                       credited; this is the boxed-trait-object false-positive
 //	                       guarded against by rejecting the `Box` leading segment.
-func rustThrowFromCall(call *sitter.Node, src []byte) string {
+func rustThrowFromCall(call ts.Node, src []byte) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "identifier" || nodeStr(fn, src) != "Err" {
 		return ""
@@ -249,7 +249,7 @@ func rustThrowFromCall(call *sitter.Node, src []byte) string {
 // rustThrowFromOkOr recognises `recv.ok_or(<type-arg>)` /
 // `recv.ok_or_else(|| <type-expr>)` — the Option→Result conversions that inject
 // a specific error type into a Result — and returns that error TYPE, or "".
-func rustThrowFromOkOr(call *sitter.Node, src []byte) string {
+func rustThrowFromOkOr(call ts.Node, src []byte) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "field_expression" {
 		return ""
@@ -284,7 +284,7 @@ func rustThrowFromOkOr(call *sitter.Node, src []byte) string {
 // The macro token_tree is an unparsed token stream; we scan it for the LAST
 // `Ident :: Ident` run (the error expression) and credit its leading segment.
 // `bail!("plain message")` (string only) yields "".
-func rustThrowFromMacro(mac *sitter.Node, src []byte) string {
+func rustThrowFromMacro(mac ts.Node, src []byte) string {
 	name := mac.ChildByFieldName("macro")
 	if name == nil {
 		return ""
@@ -312,7 +312,7 @@ func rustThrowFromMacro(mac *sitter.Node, src []byte) string {
 
 // rustCatchFromMapErr recognises `recv.map_err(|e: T| ..)` and returns the typed
 // closure-parameter type T (the error being handled), or "".
-func rustCatchFromMapErr(call *sitter.Node, src []byte) string {
+func rustCatchFromMapErr(call ts.Node, src []byte) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "field_expression" {
 		return ""
@@ -354,7 +354,7 @@ func rustCatchFromMapErr(call *sitter.Node, src []byte) string {
 //	Err(NotFoundError)     inner identifier         → NotFoundError
 //	Err(MyError::Bad)      inner scoped_identifier  → MyError (enum → ENUM type)
 //	Err(_) / Err(e)        wildcard / binding       → "" (no type, no edge)
-func rustCatchFromErrPattern(pat *sitter.Node, src []byte) string {
+func rustCatchFromErrPattern(pat ts.Node, src []byte) string {
 	if pat == nil || pat.Type() != "tuple_struct_pattern" {
 		return ""
 	}
@@ -364,7 +364,7 @@ func rustCatchFromErrPattern(pat *sitter.Node, src []byte) string {
 		return ""
 	}
 	// The inner element after the `Err` ctor is the matched payload pattern.
-	var inner *sitter.Node
+	var inner ts.Node
 	seenCtor := false
 	for i := 0; i < int(pat.NamedChildCount()); i++ {
 		c := pat.NamedChild(i)
@@ -405,7 +405,7 @@ func rustCatchFromErrPattern(pat *sitter.Node, src []byte) string {
 //	MyError::Variant       scoped_identifier  → MyError
 //	MyError::new()         call → scoped fn    → MyError
 //	MyError                identifier          → MyError (if type-shaped)
-func rustErrorExprType(expr *sitter.Node, src []byte) string {
+func rustErrorExprType(expr ts.Node, src []byte) string {
 	if expr == nil {
 		return ""
 	}
@@ -455,7 +455,7 @@ func rustErrorTypeToken(raw string) string {
 // scoped_identifier (`MyError::NotFound` → `MyError`, `a::b::C` → `a`). For Rust
 // error paths the leading segment is the carrying TYPE. Returns "" if the node
 // has no leading identifier.
-func leadingScopedSegment(n *sitter.Node, src []byte) string {
+func leadingScopedSegment(n ts.Node, src []byte) string {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		c := n.Child(i)
 		switch c.Type() {
@@ -486,14 +486,14 @@ func looksLikeTypeName(id string) bool {
 
 // --- small CST helpers (kept local so the pass is self-contained) ---
 
-func nodeStr(n *sitter.Node, src []byte) string {
+func nodeStr(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
 	return string(src[n.StartByte():n.EndByte()])
 }
 
-func firstNamedChild(n *sitter.Node) *sitter.Node {
+func firstNamedChild(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -503,7 +503,7 @@ func firstNamedChild(n *sitter.Node) *sitter.Node {
 	return n.NamedChild(0)
 }
 
-func childOfType(n *sitter.Node, typ string) *sitter.Node {
+func childOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -517,7 +517,7 @@ func childOfType(n *sitter.Node, typ string) *sitter.Node {
 
 // closureBody returns the body expression of a closure_expression (the child
 // after the closure_parameters), or nil.
-func closureBody(cl *sitter.Node) *sitter.Node {
+func closureBody(cl ts.Node) ts.Node {
 	if cl == nil {
 		return nil
 	}
@@ -540,7 +540,7 @@ func closureBody(cl *sitter.Node) *sitter.Node {
 // matchArmPattern returns the tuple_struct_pattern inside a match_arm's
 // match_pattern, or nil. A match_arm is `match_pattern => body`; the pattern
 // wraps the actual pattern (here we want `Err(..)`).
-func matchArmPattern(arm *sitter.Node) *sitter.Node {
+func matchArmPattern(arm ts.Node) ts.Node {
 	mp := childOfType(arm, "match_pattern")
 	if mp == nil {
 		return nil
@@ -550,6 +550,6 @@ func matchArmPattern(arm *sitter.Node) *sitter.Node {
 
 // letConditionPattern returns the tuple_struct_pattern inside a let_condition
 // (`let Err(..) = expr`), or nil.
-func letConditionPattern(lc *sitter.Node) *sitter.Node {
+func letConditionPattern(lc ts.Node) ts.Node {
 	return childOfType(lc, "tuple_struct_pattern")
 }

@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -43,7 +43,7 @@ import (
 // path — this owner is purely for closure-body CALLS.
 //
 // No-op for non-test files and for spec files whose closures resolve no CALLS.
-func emitPHPTestScopeOwner(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitPHPTestScopeOwner(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if root == nil || !isPHPTestFile(file.Path) {
 		return
 	}
@@ -112,13 +112,13 @@ var pestBlockMethods = map[string]bool{
 // closure's body so inner it() closures are mined too. We do NOT descend into a
 // `method_declaration` / `function_definition` — walk() already owns their CALLS
 // edges (no double-emit).
-func collectPestClosureBodies(root *sitter.Node, src []byte) []*sitter.Node {
-	var out []*sitter.Node
+func collectPestClosureBodies(root ts.Node, src []byte) []ts.Node {
+	var out []ts.Node
 	walkPestBlocks(root, src, &out)
 	return out
 }
 
-func walkPestBlocks(n *sitter.Node, src []byte, out *[]*sitter.Node) {
+func walkPestBlocks(n ts.Node, src []byte, out *[]ts.Node) {
 	if n == nil {
 		return
 	}
@@ -147,7 +147,7 @@ func walkPestBlocks(n *sitter.Node, src []byte, out *[]*sitter.Node) {
 // isPestDSLCall reports whether a function_call_expression invokes a bare Pest
 // DSL function (it/test/describe/beforeEach/...). The callee must be a plain
 // `name` leaf — a namespaced or variable callee is not a Pest global.
-func isPestDSLCall(call *sitter.Node, src []byte) bool {
+func isPestDSLCall(call ts.Node, src []byte) bool {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "name" {
 		return false
@@ -162,7 +162,7 @@ func isPestDSLCall(call *sitter.Node, src []byte) bool {
 // callback, or a higher-order chain). The closure is the
 // anonymous_function_creation_expression / arrow_function inside the call's
 // `arguments`.
-func pestClosureBody(call *sitter.Node) *sitter.Node {
+func pestClosureBody(call ts.Node) ts.Node {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return nil
@@ -170,7 +170,7 @@ func pestClosureBody(call *sitter.Node) *sitter.Node {
 	for i := 0; i < int(args.NamedChildCount()); i++ {
 		arg := args.NamedChild(i)
 		// `arguments` wraps each value in an `argument` node.
-		var val *sitter.Node = arg
+		var val ts.Node = arg
 		if arg.Type() == "argument" && arg.NamedChildCount() > 0 {
 			val = arg.NamedChild(0)
 		}

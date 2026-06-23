@@ -22,7 +22,7 @@ func extractRuby(t *testing.T, path, src string) []types.EntityRecord {
 		t.Fatal("ruby extractor not registered")
 	}
 	recs, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: path, Content: []byte(src), Language: "ruby", Tree: tree,
+		Path: path, Content: []byte(src), Language: "ruby", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -289,7 +289,7 @@ func TestLiveFireRb(t *testing.T) {
 		t.Fatal("ruby extractor not registered")
 	}
 	recs, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "app/models/accounts.rb", Content: src, Language: "ruby", Tree: res.Tree,
+		Path: "app/models/accounts.rb", Content: src, Language: "ruby", TSTree: res.TSTree,
 	})
 	if err != nil {
 		t.Fatal(err)

@@ -1,7 +1,7 @@
 package csharp
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -27,8 +27,8 @@ import (
 //	Name      = "<Owner>.<member>"
 //	Signature = "<type> <member>"
 func emitFieldMembers(
-	node *sitter.Node,
-	body *sitter.Node,
+	node ts.Node,
+	body ts.Node,
 	src []byte,
 	ownerName, filePath string,
 ) ([]types.EntityRecord, []string) {
@@ -39,7 +39,7 @@ func emitFieldMembers(
 	var fields []types.EntityRecord
 	seen := make(map[string]bool)
 
-	add := func(name, typ string, startNode *sitter.Node) {
+	add := func(name, typ string, startNode ts.Node) {
 		if name == "" || seen[name] {
 			return
 		}
@@ -134,7 +134,7 @@ func emitFieldMembers(
 // caller). C# does not distinguish base class from implemented interfaces in
 // the grammar's base_list, so we return all of them; the in-file filter keeps
 // only types we actually modeled.
-func csBaseTypeNames(node *sitter.Node, src []byte) []string {
+func csBaseTypeNames(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
 	}

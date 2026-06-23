@@ -24,7 +24,7 @@ package php
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -65,7 +65,7 @@ var laravelControllerBaseClasses = map[string]struct{}{
 // grammar does not expose the base class as a named field — it sits as
 // a `base_clause` child whose first meaningful token is the parent
 // class name.
-func classExtends(node *sitter.Node, src []byte) string {
+func classExtends(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -106,7 +106,7 @@ func classExtends(node *sitter.Node, src []byte) string {
 //
 // The function is purely additive: if no Laravel signal is detected,
 // the record is left untouched.
-func tagEloquent(rec *types.EntityRecord, node *sitter.Node, src []byte, path string) {
+func tagEloquent(rec *types.EntityRecord, node ts.Node, src []byte, path string) {
 	if rec == nil {
 		return
 	}

@@ -22,7 +22,7 @@ func extractRubyRecords(t *testing.T, src string) []types.EntityRecord {
 		Path:     "cfg.rb",
 		Content:  []byte(src),
 		Language: "ruby",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

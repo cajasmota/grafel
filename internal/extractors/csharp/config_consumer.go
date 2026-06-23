@@ -24,7 +24,7 @@ package csharp
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -36,15 +36,15 @@ import (
 //
 // (*entities)[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitConfigConsumerEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitConfigConsumerEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
 
 	var reads []extractor.ConfigRead
 
-	var walk func(n *sitter.Node, enclosingType, enclosing string)
-	walk = func(n *sitter.Node, enclosingType, enclosing string) {
+	var walk func(n ts.Node, enclosingType, enclosing string)
+	walk = func(n ts.Node, enclosingType, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -90,7 +90,7 @@ func emitConfigConsumerEdges(root *sitter.Node, src []byte, entities *[]types.En
 //	<cfg>.GetConnectionString("name")                  → "get_connection_string"
 //	<cfg>.GetSection("k") / <cfg>.GetRequiredSection   → "get_section"
 //	Environment.GetEnvironmentVariable("X")            → "env_var"
-func csharpInvocationConfigKey(call *sitter.Node, src []byte) (string, string) {
+func csharpInvocationConfigKey(call ts.Node, src []byte) (string, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "member_access_expression" {
 		return "", ""
@@ -150,7 +150,7 @@ func csharpInvocationConfigKey(call *sitter.Node, src []byte) (string, string) {
 // csharpElementAccessConfigKey returns the config key for a
 // Configuration["KEY"] / _config["KEY"] element-access expression with a
 // literal string index, or "".
-func csharpElementAccessConfigKey(n *sitter.Node, src []byte) string {
+func csharpElementAccessConfigKey(n ts.Node, src []byte) string {
 	exprNode := n.ChildByFieldName("expression")
 	if exprNode == nil {
 		// expression is the first child when the field is unnamed.
@@ -166,7 +166,7 @@ func csharpElementAccessConfigKey(n *sitter.Node, src []byte) string {
 		return ""
 	}
 	// The subscript lives in the bracketed_argument_list child.
-	var bracket *sitter.Node
+	var bracket ts.Node
 	for i := 0; i < int(n.NamedChildCount()); i++ {
 		if n.NamedChild(i).Type() == "bracketed_argument_list" {
 			bracket = n.NamedChild(i)
@@ -203,7 +203,7 @@ func csharpLooksLikeConfig(recv string) bool {
 // csharpFirstStringArg returns the literal content of the first string argument
 // in an argument_list / bracketed_argument_list node, or "" when the first
 // argument is missing or non-literal (dynamic) — honest-partial.
-func csharpFirstStringArg(args *sitter.Node, src []byte) string {
+func csharpFirstStringArg(args ts.Node, src []byte) string {
 	if args == nil {
 		return ""
 	}
@@ -230,7 +230,7 @@ func csharpFirstStringArg(args *sitter.Node, src []byte) string {
 // dropping the surrounding quotes. Handles regular, verbatim (@"..."), and
 // interpolated strings — returns "" for an interpolated string carrying an
 // `interpolation` part (dynamic), honest-partial.
-func csharpStringLiteral(node *sitter.Node, src []byte) string {
+func csharpStringLiteral(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}

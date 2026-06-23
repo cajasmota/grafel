@@ -20,7 +20,7 @@ func extractCSharpExc(t *testing.T, src string) []types.EntityRecord {
 		Path:     "svc.cs",
 		Content:  []byte(src),
 		Language: "csharp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

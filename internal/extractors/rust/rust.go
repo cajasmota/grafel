@@ -25,7 +25,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -43,7 +43,7 @@ func (e *Extractor) Language() string { return "rust" }
 
 // Extract walks the tree-sitter CST and returns entity records for the Rust file.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -56,25 +56,25 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// Issue #4373 — per-file cross-module call-path resolution context, built
 	// once from the file path + `use` declarations and threaded into call
 	// extraction so cross-module CALLS carry a stamped module qualifier.
-	crossCtx := buildRustCrossCtx(file.Tree.RootNode(), file.Content, file.Path)
-	walk(file.Tree.RootNode(), file, &entities, crossCtx)
+	crossCtx := buildRustCrossCtx(file.TSTree.RootNode(), file.Content, file.Path)
+	walk(file.TSTree.RootNode(), file, &entities, crossCtx)
 	// Epic #3628 — error-flow topology: typed THROWS / CATCHES edges to the
 	// shared SCOPE.ExceptionType convergence node. Runs after walk so the
 	// host SCOPE.Operation entities (including impl-qualified method names)
 	// already exist for FromName attachment.
-	emitExceptionFlowEdges(file.Tree.RootNode(), file.Content, &entities)
+	emitExceptionFlowEdges(file.TSTree.RootNode(), file.Content, &entities)
 	// Ticket #4431 — index const/static constant collections (const slice maps,
 	// phf_map!/lazy_static! maps, module constant groups) and data-enums as
 	// queryable SCOPE.Enum value-sets, reusing the shared cross-language builder
 	// (extends #4420/#4429). Append-only supplemental pass: it never replaces the
 	// struct/enum Component entities the walk already emitted.
-	emitRustConstValueSets(file.Tree.RootNode(), file.Content, file.Path, &entities)
+	emitRustConstValueSets(file.TSTree.RootNode(), file.Content, file.Path, &entities)
 	// Issue #5020 — config-consumption topology: literal env/config-crate key
 	// reads (env::var / dotenvy::var / figment Env::prefixed) become shared
 	// SCOPE.Config config-key nodes + DEPENDS_ON_CONFIG edges from the reading
 	// function, the config-change blast radius (parity with go/java/php/python).
 	// Append-only supplemental pass; entities[0] is the file entity.
-	emitConfigConsumerEdges(file.Tree.RootNode(), file.Content, &entities)
+	emitConfigConsumerEdges(file.TSTree.RootNode(), file.Content, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "rust")
 	extractor.TagEntitiesLanguage(entities, "rust")
@@ -87,7 +87,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // per function_item declared inside their declaration_list, every
 // function_item body emits CALLS edges with stub to_id, and use_declaration
 // nodes already emit IMPORTS (untouched).
-func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord, crossCtx *rustCrossCtx) {
+func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, crossCtx *rustCrossCtx) {
 	if node == nil {
 		return
 	}
@@ -233,7 +233,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 
 // findRustDeclList returns the declaration_list child of a trait_item or
 // impl_item, or nil when the body is missing.
-func findRustDeclList(node *sitter.Node) *sitter.Node {
+func findRustDeclList(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() == "declaration_list" {
@@ -252,7 +252,7 @@ func findRustDeclList(node *sitter.Node) *sitter.Node {
 // "Foo"); it enables `self.method()` calls to resolve to "Foo.method".
 // paramTypes maps parameter names to their declared types so that calls
 // through typed receivers (e.g. `r: &dyn Repo`) resolve to "Repo.method".
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerName string, paramTypes map[string]string, crossCtx *rustCrossCtx) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName, ownerName string, paramTypes map[string]string, crossCtx *rustCrossCtx) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -311,7 +311,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, ownerNa
 // ["OrderService","new"]), or nil for bare / receiver / macro calls. The
 // caller uses it to stamp a cross-module qualifier so the resolver can bind to
 // the exact callee module instead of the ambiguity-prone bare leaf.
-func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes map[string]string) (string, []string) {
+func rustCallTarget(call ts.Node, src []byte, ownerName string, paramTypes map[string]string) (string, []string) {
 	switch call.Type() {
 	case "call_expression":
 		fn := call.ChildByFieldName("function")
@@ -394,7 +394,7 @@ func rustCallTarget(call *sitter.Node, src []byte, ownerName string, paramTypes 
 // path keywords (which appear as crate/self/super nodes). Turbofish generics
 // are stripped per-segment by splitRustPath. Returns nil when the path cannot
 // be cleanly segmented (e.g. contains a non-identifier element).
-func rustScopedPathSegments(node *sitter.Node, src []byte) []string {
+func rustScopedPathSegments(node ts.Node, src []byte) []string {
 	raw := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
 	if raw == "" {
 		return nil
@@ -409,7 +409,7 @@ func rustScopedPathSegments(node *sitter.Node, src []byte) []string {
 //
 // Issue #616 — used by extractCallRelationships to qualify dyn-receiver
 // CALLS edges (e.g. `r.find(1)` → "Repo.find").
-func collectRustParamTypes(node *sitter.Node, src []byte) map[string]string {
+func collectRustParamTypes(node ts.Node, src []byte) map[string]string {
 	out := map[string]string{}
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
@@ -468,7 +468,7 @@ func normalizeRustType(typ string) string {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -476,8 +476,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -502,7 +502,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 //	enum   → "variants" (variant idents), "generics", "derives"
 //	trait  → "methods" (signature + default-body fn idents),
 //	          "supertraits", "generics", plus EXTENDS edges per supertrait
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -563,7 +563,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 // rustGenerics returns a comma-separated list of generic type-parameter names
 // declared on a struct/enum/trait/type item (the `type_parameters` field).
 // Lifetime params (`'a`) and const params are included as written.
-func rustGenerics(node *sitter.Node, src []byte) string {
+func rustGenerics(node ts.Node, src []byte) string {
 	tp := node.ChildByFieldName("type_parameters")
 	if tp == nil {
 		return ""
@@ -584,7 +584,7 @@ func rustGenerics(node *sitter.Node, src []byte) string {
 // rustStructFields returns the field names of a struct_item. For a named-field
 // struct it returns the field identifiers; for a tuple struct it returns the
 // positional indices ("0, 1, ..."); for a unit struct it returns "".
-func rustStructFields(node *sitter.Node, src []byte) string {
+func rustStructFields(node ts.Node, src []byte) string {
 	body := node.ChildByFieldName("body")
 	if body == nil {
 		// Tuple/unit structs place the field list in an unnamed child.
@@ -629,7 +629,7 @@ func rustStructFields(node *sitter.Node, src []byte) string {
 
 // isRustTypeNode reports whether a node represents a type expression that would
 // occupy a positional slot in a tuple struct's ordered field list.
-func isRustTypeNode(n *sitter.Node) bool {
+func isRustTypeNode(n ts.Node) bool {
 	switch n.Type() {
 	case "(", ")", ",", "visibility_modifier":
 		return false
@@ -641,7 +641,7 @@ func isRustTypeNode(n *sitter.Node) bool {
 // an enum_item's enum_variant_list. Tuple (`Foo(i32)`), struct
 // (`Bar { x: u8 }`), and discriminant (`Baz = 1`) variants all contribute their
 // leading identifier.
-func rustEnumVariants(node *sitter.Node, src []byte) string {
+func rustEnumVariants(node ts.Node, src []byte) string {
 	body := node.ChildByFieldName("body")
 	if body == nil {
 		return ""
@@ -662,7 +662,7 @@ func rustEnumVariants(node *sitter.Node, src []byte) string {
 // rustTraitMethods returns a comma-separated list of method names declared in a
 // trait's declaration_list — both required signatures (function_signature_item)
 // and provided/default methods (function_item).
-func rustTraitMethods(node *sitter.Node, src []byte) string {
+func rustTraitMethods(node ts.Node, src []byte) string {
 	body := findRustDeclList(node)
 	if body == nil {
 		return ""
@@ -681,7 +681,7 @@ func rustTraitMethods(node *sitter.Node, src []byte) string {
 
 // rustSupertraits returns the supertrait names from a trait_item's `bounds`
 // field (e.g. `trait A: B + C` → ["B", "C"]). Lifetime bounds are skipped.
-func rustSupertraits(node *sitter.Node, src []byte) []string {
+func rustSupertraits(node ts.Node, src []byte) []string {
 	bounds := node.ChildByFieldName("bounds")
 	if bounds == nil {
 		return nil
@@ -707,7 +707,7 @@ func rustSupertraits(node *sitter.Node, src []byte) []string {
 // a type via `#[derive(...)]`. Derive attributes are emitted by the grammar as
 // `attribute_item` siblings immediately preceding the type item, so we scan
 // backwards over the previous siblings (skipping other attributes / comments).
-func rustDerives(node *sitter.Node, src []byte) string {
+func rustDerives(node ts.Node, src []byte) string {
 	var out []string
 	for prev := node.PrevSibling(); prev != nil; prev = prev.PrevSibling() {
 		t := prev.Type()
@@ -724,8 +724,8 @@ func rustDerives(node *sitter.Node, src []byte) string {
 
 // rustParseDerive extracts the derive names from a single attribute_item node
 // when it is a `#[derive(...)]`; returns nil for non-derive attributes.
-func rustParseDerive(attr *sitter.Node, src []byte) []string {
-	var inner *sitter.Node
+func rustParseDerive(attr ts.Node, src []byte) []string {
+	var inner ts.Node
 	for i := 0; i < int(attr.ChildCount()); i++ {
 		if attr.Child(i).Type() == "attribute" {
 			inner = attr.Child(i)
@@ -758,7 +758,7 @@ func rustParseDerive(attr *sitter.Node, src []byte) []string {
 
 // buildImpl creates a Component entity for impl blocks.
 // impl_item uses "type" field (impl Foo) or "trait" + "type" (impl Trait for Foo).
-func buildImpl(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildImpl(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	// "type" field holds the implementing type.
 	name := childFieldText(node, "type", file.Content)
 	if name == "" {
@@ -790,7 +790,7 @@ func buildImpl(node *sitter.Node, file extractor.FileInput) (types.EntityRecord,
 }
 
 // buildOperation creates an Operation entity for function items.
-func buildOperation(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildOperation(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -818,7 +818,7 @@ func buildOperation(node *sitter.Node, file extractor.FileInput) (types.EntityRe
 // (`type X = Y;`). The aliased type is captured in the "aliased_type" property.
 //
 // Issue #3269 — type_alias_extraction capability.
-func buildTypeAlias(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildTypeAlias(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -862,7 +862,7 @@ func buildTypeAlias(node *sitter.Node, file extractor.FileInput) (types.EntityRe
 //     intra-crate references; emitting them as IMPORTS guarantees a
 //     bug-extractor since they cannot be on any external allowlist.
 //     We drop them entirely.
-func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	raw := strings.TrimSpace(string(file.Content[node.StartByte():node.EndByte()]))
 	// Visibility modifiers — `pub use ...`, `pub(crate) use ...`,
 	// `pub(super) use ...`. Strip the modifier before the `use` token.
@@ -1091,7 +1091,7 @@ func stripRustVisibility(s string) string {
 }
 
 // childFieldText extracts the text of a named child field.
-func childFieldText(node *sitter.Node, field string, src []byte) string {
+func childFieldText(node ts.Node, field string, src []byte) string {
 	child := node.ChildByFieldName(field)
 	if child == nil {
 		return ""
@@ -1100,7 +1100,7 @@ func childFieldText(node *sitter.Node, field string, src []byte) string {
 }
 
 // buildFnSignature builds the function signature (up to the body block).
-func buildFnSignature(node *sitter.Node, src []byte) string {
+func buildFnSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, " {"); idx >= 0 {
 		return strings.TrimSpace(raw[:idx])
@@ -1112,7 +1112,7 @@ func buildFnSignature(node *sitter.Node, src []byte) string {
 }
 
 // buildTypeSignature constructs a readable signature for struct/enum/trait/impl.
-func buildTypeSignature(node *sitter.Node, src []byte, name string) string {
+func buildTypeSignature(node ts.Node, src []byte, name string) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		return strings.TrimSpace(raw[:idx])

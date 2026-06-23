@@ -5,19 +5,26 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsphp "github.com/smacker/go-tree-sitter/php"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/php"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-// parseForTest parses PHP source using the real grammar.
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+// parseForTest parses PHP source into a ts.Tree via the smacker adapter. Tests
+// stamp the result on FileInput.TSTree (which the migrated PHP extractor
+// consumes); the smacker adapter keeps these tests linkable in the default build
+// while exercising the ts façade (B2 #5418).
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsphp.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsphp.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -55,7 +62,7 @@ function handleRequest(string $method): void {}
 		Path:     "controller.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -102,7 +109,7 @@ class Foo {
 		Path:     "foo.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -141,7 +148,7 @@ interface IRepository {
 		Path:     "repo.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -171,7 +178,7 @@ class Svc {
 		Path:     "svc.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -204,7 +211,7 @@ function handleRequest(string $method): void {
 		Path:     "func.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -229,7 +236,7 @@ func TestPHPExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.php",
 		Content:  []byte(""),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -246,7 +253,7 @@ func TestPHPExtractor_NilTree(t *testing.T) {
 		Path:     "nil.php",
 		Content:  []byte("<?php class Foo {}"),
 		Language: "php",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -272,7 +279,7 @@ class BadClass {
 		Path:     "malformed.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on malformed file: %v", err)
@@ -320,7 +327,7 @@ class PostType extends AbstractType {}
 		Path:     "src/Form/PostType.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -377,7 +384,7 @@ class PostType extends AbstractType {}
 		Path:     "src/Form/PostType.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -442,7 +449,7 @@ class Alpha {
 		Path:     "lines.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -481,7 +488,7 @@ class OrderRepo {
 		Path:     "repos.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -566,7 +573,7 @@ enum Direction {
 		Path:     "direction.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -617,7 +624,7 @@ enum Status: string {
 		Path:     "status.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -672,7 +679,7 @@ enum Priority: int {
 		Path:     "priority.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -721,7 +728,7 @@ interface Repository {
 		Path:     "repository.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -800,7 +807,7 @@ trait Timestampable {
 		Path:     "timestampable.php",
 		Content:  []byte(src),
 		Language: "php",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

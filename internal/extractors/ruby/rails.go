@@ -24,7 +24,7 @@ package ruby
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -61,7 +61,7 @@ var railsModelSuperclasses = map[string]struct{}{
 //
 // will yield a field child `superclass` whose subtree serialises back
 // to "< Bar". We strip the leading "< " to return just "Bar".
-func classSuperclass(node *sitter.Node, src []byte) string {
+func classSuperclass(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -80,7 +80,7 @@ func classSuperclass(node *sitter.Node, src []byte) string {
 //
 // The function is purely additive: if no Rails signal is detected, the
 // record is left untouched.
-func tagRails(rec *types.EntityRecord, node *sitter.Node, src []byte, path string) {
+func tagRails(rec *types.EntityRecord, node ts.Node, src []byte, path string) {
 	if rec == nil {
 		return
 	}

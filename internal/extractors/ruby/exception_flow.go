@@ -33,7 +33,7 @@
 package ruby
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -47,7 +47,7 @@ import (
 // *entities in place. Safe with nil / empty input. raise / rescue / rescue_from
 // outside any method (class or module scope, e.g. a controller-level
 // `rescue_from`) attach to the file entity via EmitExceptionEdges's fallback.
-func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -58,8 +58,8 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 	// rescue / rescue_from is attributed to the right SCOPE.Operation (matched by
 	// Name inside EmitExceptionEdges). The method NAME mirrors operation naming in
 	// ruby.go (buildMethod uses the bare `name` field), so attribution is exact.
-	var walk func(n *sitter.Node, current string)
-	walk = func(n *sitter.Node, current string) {
+	var walk func(n ts.Node, current string)
+	walk = func(n ts.Node, current string) {
 		if n == nil {
 			return
 		}
@@ -113,7 +113,7 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 // Returns "" for `raise "msg"` (string → implicit RuntimeError), bare `raise`
 // (re-raise — which the grammar exposes as a lone `identifier`, never a call
 // with arguments, so it never reaches here), and `raise var` / computed types.
-func rubyRaiseType(raiseCall *sitter.Node, src []byte) string {
+func rubyRaiseType(raiseCall ts.Node, src []byte) string {
 	args := raiseCall.ChildByFieldName("arguments")
 	if args == nil {
 		return "" // bare `raise` re-raise (no arguments) — no static type
@@ -143,7 +143,7 @@ func rubyRaiseType(raiseCall *sitter.Node, src []byte) string {
 //
 // Untyped catch-alls (bare `rescue`) carry no static class → dropped, matching
 // the flagship catch-all convention (precision over recall).
-func rubyRescueTypes(rescueNode *sitter.Node, src []byte) []string {
+func rubyRescueTypes(rescueNode ts.Node, src []byte) []string {
 	exc := rescueNode.ChildByFieldName("exceptions")
 	if exc == nil {
 		return nil // bare `rescue => e` / `rescue` — catch-all, no type
@@ -174,7 +174,7 @@ func rubyRescueTypes(rescueNode *sitter.Node, src []byte) []string {
 //
 // Only `constant` / `scope_resolution` arguments yield a type; `pair`
 // (keyword args like `with:`) and anything else are skipped (honest-partial).
-func rubyRescueFromTypes(call *sitter.Node, src []byte) []string {
+func rubyRescueFromTypes(call ts.Node, src []byte) []string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return nil
@@ -195,7 +195,7 @@ func rubyRescueFromTypes(call *sitter.Node, src []byte) []string {
 }
 
 // firstNamedChildRuby returns the first named child of n, or nil.
-func firstNamedChildRuby(n *sitter.Node) *sitter.Node {
+func firstNamedChildRuby(n ts.Node) ts.Node {
 	if n == nil || n.NamedChildCount() == 0 {
 		return nil
 	}
