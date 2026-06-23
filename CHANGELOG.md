@@ -9,6 +9,18 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Streaming graph endpoint for progressive load (#5446, increment 1):** a new
+  `GET /api/v2/graph/{group}/stream` SSE endpoint streams the same node/edge
+  shape as `/api/v2/graph/{group}` but progressively — a `meta` event first
+  (`total_nodes`/`total_edges` for a progress counter), then `chunk` events of
+  ~750 nodes (plus the edges that became deliverable) ordered **important-first**
+  (centrality/PageRank descending from the group-algo overlay, falling back to
+  connectivity/degree when no overlay is present), then a final `{"done":true}`.
+  This lets the renderer (GPU canvas) start painting the most central part of a
+  large graph immediately instead of waiting for the whole payload to serialise.
+  Streams from the warm cache only (never force-loads); a cold group returns the
+  503 not-loaded signal. The existing full-payload endpoint is unchanged, so the
+  frontend can switch with no data-model change. Backend only this increment.
 - **Env-tunable dead-ref retention cap (`GRAFEL_REF_RETENTION_CAP`, #5447):** the
   ceiling on grace-protected dead-in-git ref graphs the daemon keeps per repo
   (default 8) can now be overridden via the environment, letting an operator
