@@ -2857,6 +2857,7 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				}
 				if pr, perr := i.parser.Parse(ctx, content, parseLang); perr == nil && pr != nil {
 					file.Tree = pr.Tree
+					file.TSTree = pr.TSTree
 					cf.tree = pr.Tree
 					// A4 canary (#5414): fold this parse's ERROR-node ratio
 					// into the per-language accumulator. Key by the classifier

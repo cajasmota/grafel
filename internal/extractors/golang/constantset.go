@@ -44,7 +44,7 @@ package golang
 // so the two never double-emit for the same declaration.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -55,13 +55,13 @@ import (
 // and emits one SCOPE.Enum value-set node per qualifying collection. `named` is
 // the set of same-file enum-base type names already owned by extractGoEnums; a
 // const block typed by one of those is left to that path (no double-emit).
-func extractGoConstantSets(root *sitter.Node, src []byte, filePath string, named map[string]bool) []types.EntityRecord {
+func extractGoConstantSets(root ts.Node, src []byte, filePath string, named map[string]bool) []types.EntityRecord {
 	if root == nil {
 		return nil
 	}
 	var out []types.EntityRecord
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -89,7 +89,7 @@ func extractGoConstantSets(root *sitter.Node, src []byte, filePath string, named
 // named by the shared type (foreign-typed group) or by the members' common
 // identifier prefix (untyped idiomatic enum). Returns ok=false when no such
 // name can be derived (incidental const grouping), preserving precision.
-func buildGoConstBlockValueSet(constDecl *sitter.Node, src []byte, filePath string, named map[string]bool) (types.EntityRecord, bool) {
+func buildGoConstBlockValueSet(constDecl ts.Node, src []byte, filePath string, named map[string]bool) (types.EntityRecord, bool) {
 	// A single-spec const declaration (`const Pi = 3.14`) is not a collection.
 	specCount := 0
 	for i := 0; i < int(constDecl.ChildCount()); i++ {
@@ -162,7 +162,7 @@ func buildGoConstBlockValueSet(constDecl *sitter.Node, src []byte, filePath stri
 // buildGoConstMapValueSets handles a `var X = map[K]V{...}` package-level
 // constant map (and grouped `var ( X = map...; Y = map... )` blocks), emitting
 // one value-set per qualifying map-literal-valued var_spec.
-func buildGoConstMapValueSets(varDecl *sitter.Node, src []byte, filePath string) []types.EntityRecord {
+func buildGoConstMapValueSets(varDecl ts.Node, src []byte, filePath string) []types.EntityRecord {
 	var out []types.EntityRecord
 	for i := 0; i < int(varDecl.ChildCount()); i++ {
 		spec := varDecl.Child(i)
@@ -195,7 +195,7 @@ func buildGoConstMapValueSets(varDecl *sitter.Node, src []byte, filePath string)
 
 // mapLiteralValue returns the literal_value node of a var_spec whose RHS is a
 // `map[K]V{...}` composite literal, or nil when the RHS is not a map literal.
-func mapLiteralValue(spec *sitter.Node) *sitter.Node {
+func mapLiteralValue(spec ts.Node) ts.Node {
 	el := firstChildOfType(spec, "expression_list")
 	if el == nil {
 		return nil
@@ -217,14 +217,14 @@ func mapLiteralValue(spec *sitter.Node) *sitter.Node {
 // Keys must be string literals (a constant-map key); values capture the static
 // literal or "" for non-literal value expressions (the key stays enumerable).
 // anyLiteral reports whether at least one value was a static literal.
-func goMapMembers(lit *sitter.Node, src []byte) (members []extractor.EnumMember, anyLiteral bool) {
+func goMapMembers(lit ts.Node, src []byte) (members []extractor.EnumMember, anyLiteral bool) {
 	for i := 0; i < int(lit.ChildCount()); i++ {
 		ke := lit.Child(i)
 		if ke == nil || ke.Type() != "keyed_element" {
 			continue
 		}
 		// keyed_element children: literal_element (key), ':', literal_element (value).
-		var elems []*sitter.Node
+		var elems []ts.Node
 		for j := 0; j < int(ke.ChildCount()); j++ {
 			c := ke.Child(j)
 			if c != nil && c.Type() == "literal_element" {
@@ -253,7 +253,7 @@ func goMapMembers(lit *sitter.Node, src []byte) (members []extractor.EnumMember,
 
 // literalElementString returns the string-literal text of a key literal_element
 // (quotes stripped), or "" when the element is not a string literal.
-func literalElementString(le *sitter.Node, src []byte) string {
+func literalElementString(le ts.Node, src []byte) string {
 	for i := 0; i < int(le.ChildCount()); i++ {
 		c := le.Child(i)
 		if c == nil {
@@ -270,7 +270,7 @@ func literalElementString(le *sitter.Node, src []byte) string {
 // literalElementLiteral returns the static literal value of a value
 // literal_element (string quotes stripped; int/float verbatim), or "" for a
 // non-literal value expression (call, identifier, composite).
-func literalElementLiteral(le *sitter.Node, src []byte) string {
+func literalElementLiteral(le ts.Node, src []byte) string {
 	for i := 0; i < int(le.ChildCount()); i++ {
 		c := le.Child(i)
 		if c == nil || !c.IsNamed() {

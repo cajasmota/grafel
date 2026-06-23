@@ -1,6 +1,15 @@
-// Package treesitter provides a parser factory backed by smacker/go-tree-sitter.
-// It supports 26 languages from the bundled grammars and enforces a 10% syntax
-// error ratio gate before returning a ParseResult to callers.
+// Package treesitter provides a parser factory over the grafel-owned ts binding
+// abstraction (internal/treesitter/ts). It supports the bundled grammars and
+// enforces a 10% syntax error ratio gate before returning a ParseResult.
+//
+// Binding routing (B2, ADR 0023, #5418). Each language is routed to an adapter:
+// the smacker adapter (default for every grammar) or the official
+// tree-sitter/go-tree-sitter adapter (migrated languages — Go, under the
+// ts_official build tag). The set of migrated languages and the resolver are
+// supplied by build-tagged files (adapters_default.go / adapters_official.go);
+// ParseResult.TSTree is the binding-agnostic tree consumed by migrated
+// extractors, while ParseResult.Tree keeps exposing the concrete smacker tree
+// for grammars not yet migrated.
 package treesitter
 
 import (
@@ -10,6 +19,10 @@ import (
 	"sync"
 
 	sitter "github.com/smacker/go-tree-sitter"
+
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
+
 	"github.com/smacker/go-tree-sitter/bash"
 	"github.com/smacker/go-tree-sitter/c"
 	"github.com/smacker/go-tree-sitter/cpp"
@@ -111,6 +124,16 @@ func init() {
 	}
 }
 
+// migratedLanguages, tsLanguageFor and abiGuard are provided by build-tagged
+// files (adapters_default.go / adapters_official.go). In the default build
+// migratedLanguages is empty, so every language parses through the smacker
+// adapter and the binary links only the smacker runtime. Under -tags ts_official
+// the migrated set includes Go (official binding). See adapters_default.go for
+// the co-link rationale.
+
+// smackerAdapter is the always-present smacker binding adapter.
+var smackerAdapter = tssmacker.New()
+
 // SupportedLanguages returns the sorted list of language names accepted by
 // the factory. The slice is a copy — callers may not modify it.
 func SupportedLanguages() []string {
@@ -153,8 +176,16 @@ func SupportedLanguages() []string {
 
 // ParseResult holds the output of a single Parse call.
 type ParseResult struct {
-	// Tree is the concrete syntax tree returned by tree-sitter.
+	// Tree is the concrete syntax tree returned by the smacker binding. It is
+	// populated ONLY for languages still on the smacker adapter (every language
+	// except the B2-migrated ones). It is nil for migrated languages (e.g. go),
+	// whose tree lives in TSTree. Non-migrated extractors read this field as
+	// before; the field stays until all languages migrate (ADR 0023, #5418).
 	Tree *sitter.Tree
+	// TSTree is the binding-agnostic parse tree, ALWAYS populated (for both
+	// smacker and official languages). Migrated extractors (Go) consume this via
+	// the ts façade; as more extractors migrate they switch from Tree to TSTree.
+	TSTree ts.Tree
 	// Language is the normalised language name used for the parse.
 	Language string
 	// ErrorRatio is the fraction of ERROR nodes in the tree
@@ -205,13 +236,14 @@ func (f *ParserFactory) Parse(ctx context.Context, source []byte, language strin
 	ctx, span := f.tracer.Start(ctx, "treesitter.parse")
 	defer span.End()
 
-	lang, ok := languageRegistry[language]
-	if !ok {
-		span.SetAttributes(
-			attribute.String("language", language),
-			attribute.Int("file_size_bytes", len(source)),
-		)
-		return nil, fmt.Errorf("%w: %s", ErrUnsupportedLanguage, language)
+	if _, present := languageRegistry[language]; !present {
+		if _, migrated := migratedLanguages[language]; !migrated {
+			span.SetAttributes(
+				attribute.String("language", language),
+				attribute.Int("file_size_bytes", len(source)),
+			)
+			return nil, fmt.Errorf("%w: %s", ErrUnsupportedLanguage, language)
+		}
 	}
 
 	// Fast-path: empty source.
@@ -230,6 +262,18 @@ func (f *ParserFactory) Parse(ctx context.Context, source []byte, language strin
 		}, nil
 	}
 
+	if _, migrated := migratedLanguages[language]; migrated {
+		return f.parseOfficial(span, source, language)
+	}
+	return f.parseSmacker(ctx, span, source, language)
+}
+
+// parseSmacker is the unchanged-behaviour path for languages still on the
+// smacker binding. It produces the concrete *sitter.Tree (for the legacy Tree
+// field) and wraps it for TSTree.
+func (f *ParserFactory) parseSmacker(ctx context.Context, span trace.Span, source []byte, language string) (*ParseResult, error) {
+	lang := languageRegistry[language]
+
 	// Issue #481 — serialise parse calls across goroutines (see
 	// ParserFactory godoc for the rationale).
 	parseMu.Lock()
@@ -245,20 +289,12 @@ func (f *ParserFactory) Parse(ctx context.Context, source []byte, language strin
 	root := tree.RootNode()
 	total, errNodes := countNodes(root)
 
-	var errorRatio float64
-	if total > 0 {
-		errorRatio = float64(errNodes) / float64(total)
-	}
-
-	span.SetAttributes(
-		attribute.String("language", language),
-		attribute.Int("file_size_bytes", len(source)),
-		attribute.Float64("error_ratio", errorRatio),
-		attribute.Int("node_count", total),
-	)
+	errorRatio := ratio(total, errNodes)
+	setParseSpan(span, language, len(source), errorRatio, total)
 
 	result := &ParseResult{
 		Tree:       tree,
+		TSTree:     tssmacker.WrapTree(tree),
 		Language:   language,
 		ErrorRatio: errorRatio,
 		NodeCount:  total,
@@ -267,8 +303,98 @@ func (f *ParserFactory) Parse(ctx context.Context, source []byte, language strin
 	if errorRatio > maxErrorRatio {
 		return result, fmt.Errorf("%w: language=%s error_ratio=%.4f", ErrHighSyntaxErrorRate, language, errorRatio)
 	}
-
 	return result, nil
+}
+
+// abiGuardOnce ensures the ABI guard runs at most once per migrated language.
+var abiGuardOnce sync.Map // language -> *sync.Once
+
+// parseOfficial is the migrated path (official binding) for B2 languages.
+// It runs the ABI guard once per language before the first real parse, so an
+// ABI-incompatible grammar fails loudly here instead of SIGSEGV'ing on RootNode.
+func (f *ParserFactory) parseOfficial(span trace.Span, source []byte, language string) (*ParseResult, error) {
+	onceI, _ := abiGuardOnce.LoadOrStore(language, &sync.Once{})
+	var guardErr error
+	onceI.(*sync.Once).Do(func() { guardErr = abiGuard(language) })
+	if guardErr != nil {
+		return nil, guardErr
+	}
+
+	lang, adapter, _ := tsLanguageFor(language)
+
+	// Issue #481 — keep parse serialisation. Re-test whether the official
+	// binding still needs it (ADR 0023 §5); conservatively retained for now.
+	parseMu.Lock()
+	p, err := adapter.NewParser(lang)
+	if err != nil {
+		parseMu.Unlock()
+		return nil, fmt.Errorf("treesitter: parser init failed for language %s: %w", language, err)
+	}
+	tree, err := p.Parse(source)
+	p.Close()
+	parseMu.Unlock()
+	if err != nil {
+		return nil, fmt.Errorf("treesitter: parse failed for language %s: %w", language, err)
+	}
+	if tree == nil {
+		return nil, fmt.Errorf("treesitter: parse produced nil tree for language %s", language)
+	}
+
+	total, errNodes := countNodesTS(tree.RootNode())
+	errorRatio := ratio(total, errNodes)
+	setParseSpan(span, language, len(source), errorRatio, total)
+
+	result := &ParseResult{
+		Tree:       nil, // official path: tree lives in TSTree only
+		TSTree:     tree,
+		Language:   language,
+		ErrorRatio: errorRatio,
+		NodeCount:  total,
+	}
+	if errorRatio > maxErrorRatio {
+		return result, fmt.Errorf("%w: language=%s error_ratio=%.4f", ErrHighSyntaxErrorRate, language, errorRatio)
+	}
+	return result, nil
+}
+
+func ratio(total, errNodes int) float64 {
+	if total > 0 {
+		return float64(errNodes) / float64(total)
+	}
+	return 0
+}
+
+func setParseSpan(span trace.Span, language string, size int, errorRatio float64, total int) {
+	span.SetAttributes(
+		attribute.String("language", language),
+		attribute.Int("file_size_bytes", size),
+		attribute.Float64("error_ratio", errorRatio),
+		attribute.Int("node_count", total),
+	)
+}
+
+// countNodesTS is the binding-agnostic counterpart of countNodes, traversing the
+// ts façade. Iterative to avoid stack overflow on deeply nested trees.
+func countNodesTS(root ts.Node) (total, errNodes int) {
+	if root == nil {
+		return 0, 0
+	}
+	stack := []ts.Node{root}
+	for len(stack) > 0 {
+		n := stack[len(stack)-1]
+		stack = stack[:len(stack)-1]
+		total++
+		if n.IsError() {
+			errNodes++
+		}
+		childCount := int(n.ChildCount())
+		for i := 0; i < childCount; i++ {
+			if c := n.Child(i); c != nil {
+				stack = append(stack, c)
+			}
+		}
+	}
+	return total, errNodes
 }
 
 // countNodes performs a depth-first traversal of the tree and returns the

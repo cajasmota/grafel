@@ -35,7 +35,7 @@ package golang
 import (
 	"fmt"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -49,7 +49,7 @@ import (
 // shapes: a panic inside the walker is recovered and converted into a
 // warn-level log so the primary extraction pipeline is never aborted
 // by a secondary-pass bug.
-func extractErrorHandlingPatterns(root *sitter.Node, src []byte, filePath string) []types.EntityRecord {
+func extractErrorHandlingPatterns(root ts.Node, src []byte, filePath string) []types.EntityRecord {
 	if root == nil {
 		return nil
 	}
@@ -94,7 +94,7 @@ func extractErrorHandlingPatterns(root *sitter.Node, src []byte, filePath string
 // For the init-statement form `if x, err := f(); err != nil { ... }`
 // the same "condition" field returns only the boolean side of the
 // expression — we do not need to walk around the initializer.
-func isErrNotNilIf(ifNode *sitter.Node, src []byte) bool {
+func isErrNotNilIf(ifNode ts.Node, src []byte) bool {
 	if ifNode == nil {
 		return false
 	}
@@ -142,7 +142,7 @@ func isErrNotNilIf(ifNode *sitter.Node, src []byte) bool {
 //
 // This matches the Python grafel behaviour which walks the same
 // set of local-error naming conventions.
-func isErrorIdent(n *sitter.Node, src []byte) bool {
+func isErrorIdent(n ts.Node, src []byte) bool {
 	if n == nil || n.Type() != "identifier" {
 		return false
 	}

@@ -51,7 +51,7 @@
 package golang
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // goVarTypes is a (varName → canonicalTypeName) map for a single
@@ -84,7 +84,7 @@ type goVarTypes map[string]string
 // adapter that lets the references pass share them.
 //
 // Passing nil for funcOrMethodNode is safe and returns nil.
-func buildFunctionVarTypes(funcOrMethodNode *sitter.Node, src []byte, ctorReturns map[string]string) goVarTypes {
+func buildFunctionVarTypes(funcOrMethodNode ts.Node, src []byte, ctorReturns map[string]string) goVarTypes {
 	if funcOrMethodNode == nil {
 		return nil
 	}

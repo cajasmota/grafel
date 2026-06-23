@@ -6,20 +6,28 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsgo "github.com/smacker/go-tree-sitter/golang"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/golang" // trigger init()
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
 // ---- helpers ----------------------------------------------------------------
 
-func parseGo(src []byte) *sitter.Tree {
-	p := sitter.NewParser()
-	p.SetLanguage(tsgo.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+// parseGo parses Go source into the binding-agnostic ts.Tree via the smacker
+// adapter. Tests stamp the result on FileInput.TSTree (which the Go extractor
+// consumes). Using the smacker adapter keeps these tests linkable in the default
+// build (no official runtime co-linked) while still exercising the ts façade.
+func parseGo(src []byte) ts.Tree {
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsgo.GetLanguage()))
+	if err != nil {
+		panic("test helper: parser init failed: " + err.Error())
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		panic("test helper: parse failed: " + err.Error())
 	}
@@ -41,7 +49,7 @@ func extractFromPath(src, path string) ([]interface{}, error) {
 		Path:     path,
 		Content:  content,
 		Language: "go",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		return nil, err
@@ -108,7 +116,7 @@ func Compute(x int) int {
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	results = stripFileEntity(results)
 
@@ -138,7 +146,7 @@ func (s *Store) Save(item string) error {
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -214,7 +222,7 @@ func (srv *Server) Run() error {
 		Path:     "server.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -247,7 +255,7 @@ type User struct {
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -294,7 +302,7 @@ type Reader interface {
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -332,7 +340,7 @@ func NewConfig(host string, port int) *Config {
 		Path:     "config.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -380,7 +388,7 @@ func TestExtractPackageDeclarationOnly(t *testing.T) {
 		Path:     "pkg.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -407,7 +415,7 @@ func broken( {
 		Path:     "broken.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	// err must be nil (partial results, no crash)
 	if err != nil {
@@ -495,7 +503,7 @@ func main() {
 		Path:     "main.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -532,7 +540,7 @@ func hello() {}
 		Path:     path,
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -561,7 +569,7 @@ func TestExtractGoldenFixture(t *testing.T) {
 		Path:     "testdata/fixtures/sources/go/sample_handler/sample_handler.go",
 		Content:  content,
 		Language: "go",
-		Tree:     parseGo(content),
+		TSTree:   parseGo(content),
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on golden fixture: %v", err)
@@ -894,7 +902,7 @@ func extractRecords(t *testing.T, src, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  content,
 		Language: "go",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -1524,7 +1532,7 @@ func TestRelationships_SampleHandlerFixture(t *testing.T) {
 		Path:     "testdata/fixtures/sources/go/sample_handler/sample_handler.go",
 		Content:  content,
 		Language: "go",
-		Tree:     parseGo(content),
+		TSTree:   parseGo(content),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -1634,7 +1642,7 @@ func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
 		Path:     "testdata/duplicate_methods.go.fixture",
 		Content:  content,
 		Language: "go",
-		Tree:     parseGo(content),
+		TSTree:   parseGo(content),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -1790,7 +1798,7 @@ func TestExtract_GenericMethodsFromFixture(t *testing.T) {
 		Path:     "testdata/duplicate_methods.go.fixture",
 		Content:  content,
 		Language: "go",
-		Tree:     parseGo(content),
+		TSTree:   parseGo(content),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -2429,7 +2437,7 @@ type contextKey int
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -2464,7 +2472,7 @@ type MyError = error
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -2496,7 +2504,7 @@ type NodePtr = *Node
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -2524,7 +2532,7 @@ type HandlerFunc func(w interface{}, r interface{})
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -2560,7 +2568,7 @@ type Namer interface{ Name() string }
 		Path:     "test.go",
 		Content:  []byte(src),
 		Language: "go",
-		Tree:     parseGo([]byte(src)),
+		TSTree:   parseGo([]byte(src)),
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -2626,7 +2634,7 @@ func TestExtract_TypeAliasFrameworkSpecific(t *testing.T) {
 			Path:     "test.go",
 			Content:  []byte(src),
 			Language: "go",
-			Tree:     parseGo([]byte(src)),
+			TSTree:   parseGo([]byte(src)),
 		})
 		if err != nil {
 			t.Fatalf("%s: extract: %v", a.typeName, err)

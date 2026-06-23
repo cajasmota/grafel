@@ -31,7 +31,7 @@ package golang
 import (
 	"strconv"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -46,7 +46,7 @@ type goSpanHit struct {
 // extractGoSpanHits walks a function/method body and returns one goSpanHit per
 // `<recv>.Start(ctx, "name")` OpenTelemetry span-creation call found in the
 // canonical two-result short-var form.
-func extractGoSpanHits(body *sitter.Node, src []byte) []goSpanHit {
+func extractGoSpanHits(body ts.Node, src []byte) []goSpanHit {
 	if body == nil {
 		return nil
 	}
@@ -92,7 +92,7 @@ func extractGoSpanHits(body *sitter.Node, src []byte) []goSpanHit {
 // firstCallExpr returns the first call_expression directly inside node's
 // expression list (or node itself when it is a call_expression). Returns nil
 // when no direct call_expression is present.
-func firstCallExpr(node *sitter.Node) *sitter.Node {
+func firstCallExpr(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -110,7 +110,7 @@ func firstCallExpr(node *sitter.Node) *sitter.Node {
 
 // goSpanFromStartCall inspects a call_expression and returns a goSpanHit when it
 // is an OpenTelemetry `<recv>.Start(ctx, <name>)` span-creation call.
-func goSpanFromStartCall(call *sitter.Node, src []byte) (goSpanHit, bool) {
+func goSpanFromStartCall(call ts.Node, src []byte) (goSpanHit, bool) {
 	if call == nil || call.Type() != "call_expression" {
 		return goSpanHit{}, false
 	}
@@ -143,7 +143,7 @@ func goSpanFromStartCall(call *sitter.Node, src []byte) (goSpanHit, bool) {
 // goTracingSpanEdges returns the INSTRUMENTS edges for every OpenTelemetry
 // span-creation site found in body. enclosingName is the bare function/method
 // name used to key the synthetic stub for dynamic span names ("span:<fn>").
-func goTracingSpanEdges(body *sitter.Node, enclosingName, fromID string, src []byte) []types.RelationshipRecord {
+func goTracingSpanEdges(body ts.Node, enclosingName, fromID string, src []byte) []types.RelationshipRecord {
 	hits := extractGoSpanHits(body, src)
 	if len(hits) == 0 {
 		return nil

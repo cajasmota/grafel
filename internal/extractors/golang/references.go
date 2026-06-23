@@ -89,7 +89,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -159,7 +159,7 @@ type goFrame struct {
 // edges to the enclosing operation entity.
 //
 // Mutates entities in place. Safe to call with an empty slice — no-op.
-func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord, structFields map[string]map[string]string) {
+func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord, structFields map[string]map[string]string) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -322,8 +322,8 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 		(*entities)[idx].Relationships = append((*entities)[idx].Relationships, rec)
 	}
 
-	var walk func(n *sitter.Node, fstack []goFrame)
-	walk = func(n *sitter.Node, fstack []goFrame) {
+	var walk func(n ts.Node, fstack []goFrame)
+	walk = func(n ts.Node, fstack []goFrame) {
 		if n == nil {
 			return
 		}
@@ -424,7 +424,7 @@ func findGoEntityIndex(entities []types.EntityRecord, emittedName, filePath stri
 //   - skip the receiver variable (`r` in `(r *Foo)`).
 //   - otherwise look up in bareSymbols and emit.
 func handleGoIdentifier(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []goFrame,
 	bareSymbols map[string]goSymbol,
@@ -472,7 +472,7 @@ func handleGoIdentifier(
 //     like `T.M`, etc.) UNLESS the selector is the function child of
 //     a call_expression — in which case CALLS owns it.
 func handleGoSelector(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []goFrame,
 	bareSymbols map[string]goSymbol,
@@ -592,7 +592,7 @@ func handleGoSelector(
 
 // isGoDeclarationPosition reports whether the identifier sits in a
 // position that DECLARES the name rather than USES it.
-func isGoDeclarationPosition(n *sitter.Node) bool {
+func isGoDeclarationPosition(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -672,7 +672,7 @@ func isGoDeclarationPosition(n *sitter.Node) bool {
 
 // isGoCallCallee reports whether the identifier node is the `function`
 // child of a `call_expression` node. CALLS owns that edge.
-func isGoCallCallee(n *sitter.Node) bool {
+func isGoCallCallee(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -686,7 +686,7 @@ func isGoCallCallee(n *sitter.Node) bool {
 // isGoSelectorOperand reports whether the identifier node is the
 // `operand` (or `field`) child of a selector_expression — those are
 // owned by handleGoSelector to avoid double-emission.
-func isGoSelectorOperand(n *sitter.Node) bool {
+func isGoSelectorOperand(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false

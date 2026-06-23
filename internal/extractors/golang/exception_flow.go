@@ -27,7 +27,7 @@ package golang
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -39,15 +39,15 @@ import (
 //
 // records[0] MUST be the file entity. Mutates *records in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, src []byte, records *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, src []byte, records *[]types.EntityRecord) {
 	if root == nil || records == nil || len(*records) == 0 {
 		return
 	}
 
 	var edges []extractor.ExceptionEdge
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -105,7 +105,7 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, records *[]types.Enti
 // return_statement: a bare `return ErrX` operand, or a sentinel wrapped in a
 // `fmt.Errorf(..., %w, ErrX)` call. Anonymous `errors.New(...)` / bare
 // `fmt.Errorf` and opaque `return err` pass-throughs yield nothing.
-func goReturnedNamedErrors(retNode *sitter.Node, src []byte) []string {
+func goReturnedNamedErrors(retNode ts.Node, src []byte) []string {
 	var out []string
 	seen := map[string]bool{}
 	add := func(name string) {
@@ -117,7 +117,7 @@ func goReturnedNamedErrors(retNode *sitter.Node, src []byte) []string {
 
 	// A return_statement's operands are in an expression_list (or a single
 	// expression). Inspect each operand.
-	var operands []*sitter.Node
+	var operands []ts.Node
 	for i := 0; i < int(retNode.NamedChildCount()); i++ {
 		c := retNode.NamedChild(i)
 		if c == nil {
@@ -163,7 +163,7 @@ func goReturnedNamedErrors(retNode *sitter.Node, src []byte) []string {
 // to a fmt.Errorf / errors.Wrap-style call (the `%w` operands). Only emitted
 // for calls whose callee is `fmt.Errorf` or `errors.Wrap*`; a plain
 // `errors.New("...")` has no sentinel argument and yields nothing.
-func goWrappedSentinels(call *sitter.Node, src []byte) []string {
+func goWrappedSentinels(call ts.Node, src []byte) []string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "selector_expression" {
 		return nil
@@ -203,7 +203,7 @@ func goWrappedSentinels(call *sitter.Node, src []byte) []string {
 // errors.As(err, &target) → ("<TargetType>", true) when the target's type is
 // statically recoverable from a sentinel-named identifier. Returns ("", false)
 // for non-matching calls.
-func goErrorsIsAsType(call *sitter.Node, src []byte) (string, bool) {
+func goErrorsIsAsType(call ts.Node, src []byte) (string, bool) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "selector_expression" {
 		return "", false

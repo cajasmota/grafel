@@ -35,7 +35,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/trace"
@@ -77,16 +77,24 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 		return nil, nil
 	}
 
-	// If a pre-parsed tree was supplied, reuse it. Otherwise parse inline.
-	tree := file.Tree
+	// If a pre-parsed (official-binding) tree was supplied by the pipeline,
+	// reuse it. Otherwise parse inline via the official adapter — this path is
+	// for direct test callers that hand the extractor raw content with no tree.
+	tree := file.TSTree
 	if tree == nil {
-		parser := sitter.NewParser()
-		parser.SetLanguage(goGrammar())
-		var err error
-		tree, err = parser.ParseCtx(ctx, nil, file.Content)
+		parser, err := goAdapter.NewParser(goGrammar())
+		if err != nil {
+			return nil, fmt.Errorf("golang extractor: parser init failed: %w", err)
+		}
+		defer parser.Close()
+		tree, err = parser.Parse(file.Content)
 		if err != nil {
 			return nil, fmt.Errorf("golang extractor: parse failed: %w", err)
 		}
+		if tree == nil {
+			return nil, fmt.Errorf("golang extractor: parse produced nil tree")
+		}
+		defer tree.Close()
 	}
 
 	root := tree.RootNode()
@@ -266,7 +274,7 @@ func (g *GoExtractor) Extract(ctx context.Context, file extractor.FileInput) ([]
 // ----------------------------------------------------------------
 
 // nodeText returns the UTF-8 text of a node from source bytes.
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -279,20 +287,20 @@ func nodeText(node *sitter.Node, src []byte) string {
 }
 
 // nodeLines returns (start_line, end_line) as 1-based line numbers.
-func nodeLines(node *sitter.Node) (int, int) {
+func nodeLines(node ts.Node) (int, int) {
 	return int(node.StartPoint().Row) + 1, int(node.EndPoint().Row) + 1
 }
 
 // findAll performs a depth-first search and returns all nodes of any of the
 // specified types. Iterative to avoid stack overflow on large files.
-func findAll(root *sitter.Node, types ...string) []*sitter.Node {
+func findAll(root ts.Node, types ...string) []ts.Node {
 	typeSet := make(map[string]bool, len(types))
 	for _, t := range types {
 		typeSet[t] = true
 	}
 
-	var results []*sitter.Node
-	stack := []*sitter.Node{root}
+	var results []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -319,12 +327,12 @@ var decisionTypes = map[string]bool{
 	"case":                        true,
 }
 
-func countDecisions(body *sitter.Node, src []byte) int {
+func countDecisions(body ts.Node, src []byte) int {
 	if body == nil {
 		return 0
 	}
 	count := 0
-	stack := []*sitter.Node{body}
+	stack := []ts.Node{body}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -352,7 +360,7 @@ func countDecisions(body *sitter.Node, src []byte) int {
 
 // hasExternalCalls reports whether the body uses any selector_expression
 // whose operand is an import package name.
-func hasExternalCalls(body *sitter.Node, importStems map[string]bool, src []byte) bool {
+func hasExternalCalls(body ts.Node, importStems map[string]bool, src []byte) bool {
 	if body == nil {
 		return false
 	}
@@ -371,7 +379,7 @@ func hasExternalCalls(body *sitter.Node, importStems map[string]bool, src []byte
 
 // collectImportStems returns a set of last-path-segment names from all
 // imports in the file (e.g. "net/http" → "http").
-func collectImportStems(root *sitter.Node, src []byte) map[string]bool {
+func collectImportStems(root ts.Node, src []byte) map[string]bool {
 	stems := make(map[string]bool)
 	for _, spec := range findAll(root, "import_spec") {
 		count := int(spec.ChildCount())
@@ -394,7 +402,7 @@ func collectImportStems(root *sitter.Node, src []byte) map[string]bool {
 // receiver — legal in Go but rare) it returns "". Used by issue #148's same-
 // package method-dispatch resolver path: when a call expression's operand
 // matches this name, the call is resolvable via `<package>.<receiver_type>.<method>`.
-func receiverParamName(recv *sitter.Node, src []byte) string {
+func receiverParamName(recv ts.Node, src []byte) string {
 	if recv == nil {
 		return ""
 	}
@@ -428,7 +436,7 @@ func receiverParamName(recv *sitter.Node, src []byte) string {
 // Issue #364: feeds extractCallRelationships so calls like `w.Write(...)` on
 // a parameter `w http.ResponseWriter` get a `receiver_type` stamp that the
 // synth pass can route to ext:net/http.
-func collectParamTypes(params *sitter.Node, src []byte) map[string]string {
+func collectParamTypes(params ts.Node, src []byte) map[string]string {
 	if params == nil {
 		return nil
 	}
@@ -535,7 +543,7 @@ func mergeVarTypes(outer, inner map[string]string) map[string]string {
 // Pointer types are stripped (`*Mux` → `Mux`) and generic type parameter
 // lists (`[T]`) are dropped so the synth lookup table can use a single
 // key per package type.
-func collectBodyVarTypes(body *sitter.Node, src []byte, ctorReturns map[string]string) map[string]string {
+func collectBodyVarTypes(body ts.Node, src []byte, ctorReturns map[string]string) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -629,7 +637,7 @@ func collectBodyVarTypes(body *sitter.Node, src []byte, ctorReturns map[string]s
 // typeOfExpression returns a textual type representation for an expression
 // AST node when it's recognisable as a static type, or "" otherwise. Used
 // by collectBodyVarTypes to type short/var declarations.
-func typeOfExpression(expr *sitter.Node, src []byte, ctorReturns map[string]string) string {
+func typeOfExpression(expr ts.Node, src []byte, ctorReturns map[string]string) string {
 	if expr == nil {
 		return ""
 	}
@@ -756,7 +764,7 @@ var goConstructorReturnTypes = map[string]string{
 
 // singleChildOfType reports whether n has exactly one named child, which
 // is of the requested type. Helper for collectBodyVarTypes.
-func singleChildOfType(n *sitter.Node, typ string) bool {
+func singleChildOfType(n ts.Node, typ string) bool {
 	if n == nil {
 		return false
 	}
@@ -768,7 +776,7 @@ func singleChildOfType(n *sitter.Node, typ string) bool {
 }
 
 // singleNamedChild reports whether n has exactly one named child.
-func singleNamedChild(n *sitter.Node) bool {
+func singleNamedChild(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -777,7 +785,7 @@ func singleNamedChild(n *sitter.Node) bool {
 
 // firstChildOfType returns the first child of n with the given type, or
 // nil. Helper for collectBodyVarTypes.
-func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func firstChildOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -792,7 +800,7 @@ func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
 }
 
 // firstNamedChild returns the first named child of n, or nil.
-func firstNamedChild(n *sitter.Node) *sitter.Node {
+func firstNamedChild(n ts.Node) ts.Node {
 	if n == nil || n.NamedChildCount() == 0 {
 		return nil
 	}
@@ -826,7 +834,7 @@ func canonicalTypeLiteral(t string) string {
 // the first '.') treats every instantiation as a distinct receiver.
 // We unwrap generic_type nodes to their first child (the bare type
 // identifier) so all instantiations share one canonical entity.
-func receiverTypeName(recv *sitter.Node, src []byte) string {
+func receiverTypeName(recv ts.Node, src []byte) string {
 	if recv == nil {
 		return ""
 	}
@@ -877,7 +885,7 @@ func receiverTypeName(recv *sitter.Node, src []byte) string {
 // unwrapGenericType returns the bare type identifier of a generic_type
 // AST node, stripping the type parameter list. Returns "" if no
 // type_identifier child is found.
-func unwrapGenericType(node *sitter.Node, src []byte) string {
+func unwrapGenericType(node ts.Node, src []byte) string {
 	for j := 0; j < int(node.ChildCount()); j++ {
 		gc := node.Child(j)
 		if gc.Type() == "type_identifier" {
@@ -910,7 +918,7 @@ func unwrapGenericType(node *sitter.Node, src []byte) string {
 //   - The canonical return type is stored as a BARE type name (pointer
 //     stripped) so the resolver's same-package member lookup binds it directly
 //     — identical to the goSamePackageConstructorReturnTypes contract.
-func collectFileConstructorReturns(nodes []*sitter.Node, src []byte) map[string]string {
+func collectFileConstructorReturns(nodes []ts.Node, src []byte) map[string]string {
 	// Only constructors whose declared return type is a same-file STRUCT are
 	// accepted. A constructor declared to return an interface
 	// (`func NewCounter() Counter`) is intentionally excluded — the concrete
@@ -966,7 +974,7 @@ func collectFileConstructorReturns(nodes []*sitter.Node, src []byte) map[string]
 // first node's parentage and scan every type_spec once. A type_spec whose
 // `type` field is a `struct_type` is recorded; interfaces, aliases, funcs and
 // primitives are skipped.
-func collectFileStructTypeNames(nodes []*sitter.Node, src []byte) map[string]bool {
+func collectFileStructTypeNames(nodes []ts.Node, src []byte) map[string]bool {
 	out := map[string]bool{}
 	if len(nodes) == 0 {
 		return out
@@ -1002,7 +1010,7 @@ func collectFileStructTypeNames(nodes []*sitter.Node, src []byte) map[string]boo
 // a single unnamed result like `*Foo`) or a `parameter_list` (for `(T, error)`
 // or named results). We only accept the bare-node form, which guarantees a
 // single unnamed result.
-func samePackageNamedResultType(result *sitter.Node, src []byte) string {
+func samePackageNamedResultType(result ts.Node, src []byte) string {
 	if result == nil {
 		return ""
 	}
@@ -1030,7 +1038,7 @@ func samePackageNamedResultType(result *sitter.Node, src []byte) string {
 // Issue #1806: used by extractFunctions to build the same-file symbol table
 // passed into extractCallRelationships. Enables the intra-file / cross-file
 // distinction for bare-identifier CALLS edge emission.
-func collectIntraFileFuncNames(nodes []*sitter.Node, src []byte) map[string]struct{} {
+func collectIntraFileFuncNames(nodes []ts.Node, src []byte) map[string]struct{} {
 	funcs := make(map[string]struct{})
 	for _, n := range nodes {
 		if n.Type() != "function_declaration" {
@@ -1055,7 +1063,7 @@ func collectIntraFileFuncNames(nodes []*sitter.Node, src []byte) map[string]stru
 // RelationshipRecord values extracted from call_expression nodes inside its
 // body. Methods additionally carry a DEPENDS_ON edge to the receiver type
 // so the graph can traverse from method back to its owning schema.
-func extractFunctions(root *sitter.Node, src []byte, filePath string, structFields map[string]map[string]string, inTreeQualifiers map[string]string) ([]types.EntityRecord, int) {
+func extractFunctions(root ts.Node, src []byte, filePath string, structFields map[string]map[string]string, inTreeQualifiers map[string]string) ([]types.EntityRecord, int) {
 	importStems := collectImportStems(root, src)
 	nodes := findAll(root, "function_declaration", "method_declaration")
 
@@ -1326,7 +1334,7 @@ func extractFunctions(root *sitter.Node, src []byte, filePath string, structFiel
 // than bug-resolver — a v1 limitation documented in the comment above
 // (single-file confirmation at extraction time; cross-file resolution depends
 // on byPackageOperation being unambiguous).
-func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string, structFields map[string]map[string]string, intraFileFuncs map[string]struct{}, inTreeQualifiers map[string]string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName, recvVarName, recvType string, paramTypes map[string]string, filePath string, structFields map[string]map[string]string, intraFileFuncs map[string]struct{}, inTreeQualifiers map[string]string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -1357,8 +1365,8 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 		return ""
 	}
 
-	var visit func(n *sitter.Node)
-	visit = func(n *sitter.Node) {
+	var visit func(n ts.Node)
+	visit = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -1566,7 +1574,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName, recvVar
 // isSelectorCalleeOf reports whether sel is the `function` child of its
 // parent `call_expression`. When true, CALLS already owns the edge and the
 // method-value path must NOT emit a duplicate via_value edge.
-func isSelectorCalleeOf(sel *sitter.Node) bool {
+func isSelectorCalleeOf(sel ts.Node) bool {
 	if sel == nil {
 		return false
 	}
@@ -1592,7 +1600,7 @@ func isSelectorCalleeOf(sel *sitter.Node) bool {
 //	s.wrap("name", s.handleQueryGraph)   — operand == recvVarName
 //	var h = obj.Method                   — operand is a known variable
 //	register("foo", obj.Method)          — generic argument
-func selectorMethodValue(sel *sitter.Node, src []byte, recvVarName string) (string, bool, string) {
+func selectorMethodValue(sel ts.Node, src []byte, recvVarName string) (string, bool, string) {
 	if sel == nil {
 		return "", false, ""
 	}
@@ -1618,7 +1626,7 @@ func selectorMethodValue(sel *sitter.Node, src []byte, recvVarName string) (stri
 // Returns the bare function name, stripping any qualifying package or receiver
 // prefix. Returns "" if the call node has no resolvable function child
 // (e.g., higher-order call on a literal expression like `f()()`).
-func callExpressionTarget(call *sitter.Node, src []byte) string {
+func callExpressionTarget(call ts.Node, src []byte) string {
 	target, _, _ := callExpressionTargetWithOperand(call, src, "")
 	return target
 }
@@ -1635,7 +1643,7 @@ func callExpressionTarget(call *sitter.Node, src []byte) string {
 // extractCallRelationships to look up the operand's static type in the
 // caller's parameter map and stamp `receiver_type` for stdlib-interface
 // dispatch.
-func callExpressionTargetWithOperand(call *sitter.Node, src []byte, recvVarName string) (string, bool, string) {
+func callExpressionTargetWithOperand(call ts.Node, src []byte, recvVarName string) (string, bool, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return "", false, ""
@@ -1700,7 +1708,7 @@ func newTypeIndex() *typeIndex {
 // Returns entity records, the count of struct-type entities, and a typeIndex
 // describing all schemas and their method sets so later passes can compute
 // DEPENDS_ON (field types) and IMPLEMENTS (interface satisfaction) edges.
-func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.EntityRecord, int, *typeIndex) {
+func extractTypes(root ts.Node, src []byte, filePath string) ([]types.EntityRecord, int, *typeIndex) {
 	structCount := 0
 	var records []types.EntityRecord
 	idx := newTypeIndex()
@@ -1748,7 +1756,7 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 			// emit directly as type_alias without further subtype detection.
 			if specNodeType == "type_alias" {
 				// Find the underlying type node (the child after "=").
-				var aliasBody *sitter.Node
+				var aliasBody ts.Node
 				specCount0 := int(typeSpec.ChildCount())
 				for j := 0; j < specCount0; j++ {
 					ch := typeSpec.Child(j)
@@ -1783,7 +1791,7 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 
 			// Determine entity type: look for struct_type or interface_type child.
 			var entitySubtype string
-			var typeBody *sitter.Node
+			var typeBody ts.Node
 
 			specCount := int(typeSpec.ChildCount())
 			for j := 0; j < specCount; j++ {
@@ -1925,7 +1933,7 @@ func extractTypes(root *sitter.Node, src []byte, filePath string) ([]types.Entit
 // the file. Used to constrain DEPENDS_ON edges to intra-file references so
 // we avoid emitting edges for primitives and unresolved package-external
 // types.
-func collectDeclaredTypeNames(root *sitter.Node, src []byte) map[string]bool {
+func collectDeclaredTypeNames(root ts.Node, src []byte) map[string]bool {
 	names := make(map[string]bool)
 	// Collect both type_spec (named type) and type_alias (assignment alias)
 	// so DEPENDS_ON edges can reference either form.
@@ -1964,7 +1972,7 @@ func collectDeclaredTypeNames(root *sitter.Node, src []byte) map[string]bool {
 //
 // Edges are only emitted when the resolved target name is in knownTypeNames,
 // enforcing intra-file scoping.
-func extractStructFieldDependencies(body *sitter.Node, src []byte, ownerName string, knownTypeNames map[string]bool) []types.RelationshipRecord {
+func extractStructFieldDependencies(body ts.Node, src []byte, ownerName string, knownTypeNames map[string]bool) []types.RelationshipRecord {
 	if body == nil {
 		return nil
 	}
@@ -2015,7 +2023,7 @@ func extractStructFieldDependencies(body *sitter.Node, src []byte, ownerName str
 //   - Embedded fields (no name child) are SKIPPED — `Store` embedded in
 //     `UsersHandler` is rare in handler structs and the resolver path
 //     for embedded promotion is out of scope for #614.
-func collectStructFieldTypes(root *sitter.Node, src []byte) map[string]map[string]string {
+func collectStructFieldTypes(root ts.Node, src []byte) map[string]map[string]string {
 	if root == nil {
 		return nil
 	}
@@ -2033,7 +2041,7 @@ func collectStructFieldTypes(root *sitter.Node, src []byte) map[string]map[strin
 			}
 			structName := nodeText(nameNode, src)
 			// Find struct_type child (skip interface/type_alias).
-			var body *sitter.Node
+			var body ts.Node
 			specCount := int(spec.ChildCount())
 			for j := 0; j < specCount; j++ {
 				c := spec.Child(j)
@@ -2088,7 +2096,7 @@ func collectStructFieldTypes(root *sitter.Node, src []byte) map[string]map[strin
 // Used by extractCallRelationships to detect interface-field dispatch
 // (`h.Store.List()` inside `(h *UsersHandler).List`) so the resolver can
 // rebind the bare method target to the implementing struct's method.
-func selectorFieldOnReceiver(call *sitter.Node, src []byte, recvVarName string) (string, bool) {
+func selectorFieldOnReceiver(call ts.Node, src []byte, recvVarName string) (string, bool) {
 	if call == nil || recvVarName == "" {
 		return "", false
 	}
@@ -2118,7 +2126,7 @@ func selectorFieldOnReceiver(call *sitter.Node, src []byte, recvVarName string) 
 // type_identifier name found inside, flattening pointer/slice/array/map/
 // channel wrappers. Returns an empty slice for primitive types that don't
 // carry a type_identifier child (those appear as keywords, not identifiers).
-func resolveTypeReferences(node *sitter.Node, src []byte) []string {
+func resolveTypeReferences(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
 	}
@@ -2138,7 +2146,7 @@ func resolveTypeReferences(node *sitter.Node, src []byte) []string {
 // interfaceMethodName extracts the method name from a method_elem or
 // method_spec node inside an interface_type. Returns "" if the node has
 // no name child (embedded interface — covered separately if needed).
-func interfaceMethodName(node *sitter.Node, src []byte) string {
+func interfaceMethodName(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -2336,7 +2344,7 @@ func appendRelationshipTo(records []types.EntityRecord, target string, rel types
 // Properties["go_pkg_dir"] so the resolver's ResolveGoInTreeImports pass
 // can map them to the correct file-level SCOPE.Component entities. External
 // imports are left for the resolveImportToIDs pass to rewrite to ext: form.
-func extractImportEntities(root *sitter.Node, src []byte, filePath, moduleRoot string, replaces []goReplace) []types.EntityRecord {
+func extractImportEntities(root ts.Node, src []byte, filePath, moduleRoot string, replaces []goReplace) []types.EntityRecord {
 	var records []types.EntityRecord
 
 	for _, spec := range findAll(root, "import_spec") {

@@ -47,6 +47,26 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   a genuinely unrecoverable error exits.
 
 ### Added
+- **Binding-agnostic tree-sitter abstraction + Go on the official binding
+  (#5418, B2 Phase 0, ADR 0023):** new `internal/treesitter/ts` façade (a minimal
+  `Node`/`Tree`/`Parser`/`Language`/`Adapter` interface modelled on grafel's
+  *actual* CST usage — `Type`/`Child`/`ChildByFieldName`/`StartByte`/`StartPoint`
+  etc.; no query-engine surface) with two adapters: `ts/smacker` (wraps the
+  current, unmaintained `smacker/go-tree-sitter` with no behaviour change — every
+  grammar keeps running on it) and `ts/official` (wraps the maintained
+  `tree-sitter/go-tree-sitter` v0.24.0). The **Go extractor is migrated end-to-end
+  onto the façade** and parses via the official binding under `-tags ts_official`,
+  ABI-pinned to `tree-sitter-go` v0.23.4 (the runtime-v0.24.0-compatible pair; a
+  newer grammar compiles but SIGSEGVs at `RootNode` — ADR 0023 §6). Adds a startup
+  **ABI guard** (smoke-parses trivial source, asserts a sane non-error root before
+  any real file) and a per-grammar smoke test. **Co-link blocker found:** the
+  smacker and official bundles each statically vendor the same tree-sitter C
+  runtime under identical symbols, so a single binary linking both fails with
+  ~247 duplicate symbols on macOS — the official path is therefore opt-in behind a
+  build tag until Phase 1 resolves it; default builds link only smacker and every
+  grammar (incl. Go) works exactly as before. Remaining 27 grammars stay on
+  smacker; migration plan + per-language batch order in
+  `docs/treesitter-binding-migration-plan.md`.
 - **New-language-feature triage process (#5415, #5359 C1):**
   `docs/new-language-feature-triage.md` — the decision procedure that turns a new
   language version into scoped work. Each notable feature is classified

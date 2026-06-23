@@ -111,17 +111,20 @@ func wrapNode(n *sitter.Node) ts.Node {
 	return node{n: n}
 }
 
-func (w node) Type() string                         { return w.n.Type() }
-func (w node) Child(i int) ts.Node                  { return wrapNode(w.n.Child(i)) }
-func (w node) ChildCount() uint32                   { return w.n.ChildCount() }
-func (w node) NamedChild(i int) ts.Node             { return wrapNode(w.n.NamedChild(i)) }
-func (w node) NamedChildCount() uint32              { return w.n.NamedChildCount() }
-func (w node) ChildByFieldName(f string) ts.Node    { return wrapNode(w.n.ChildByFieldName(f)) }
-func (w node) Parent() ts.Node                      { return wrapNode(w.n.Parent()) }
-func (w node) StartByte() uint32                    { return w.n.StartByte() }
-func (w node) EndByte() uint32                      { return w.n.EndByte() }
-func (w node) StartPoint() ts.Point                 { p := w.n.StartPoint(); return ts.Point{Row: p.Row, Column: p.Column} }
-func (w node) EndPoint() ts.Point                   { p := w.n.EndPoint(); return ts.Point{Row: p.Row, Column: p.Column} }
-func (w node) IsNamed() bool                        { return w.n.IsNamed() }
-func (w node) IsError() bool                        { return w.n.IsError() }
-func (w node) String() string                       { return w.n.String() }
+func (w node) Type() string                      { return w.n.Type() }
+func (w node) Child(i int) ts.Node               { return wrapNode(w.n.Child(i)) }
+func (w node) ChildCount() uint32                { return w.n.ChildCount() }
+func (w node) NamedChild(i int) ts.Node          { return wrapNode(w.n.NamedChild(i)) }
+func (w node) NamedChildCount() uint32           { return w.n.NamedChildCount() }
+func (w node) ChildByFieldName(f string) ts.Node { return wrapNode(w.n.ChildByFieldName(f)) }
+func (w node) Parent() ts.Node                   { return wrapNode(w.n.Parent()) }
+func (w node) StartByte() uint32                 { return w.n.StartByte() }
+func (w node) EndByte() uint32                   { return w.n.EndByte() }
+func (w node) StartPoint() ts.Point {
+	p := w.n.StartPoint()
+	return ts.Point{Row: p.Row, Column: p.Column}
+}
+func (w node) EndPoint() ts.Point { p := w.n.EndPoint(); return ts.Point{Row: p.Row, Column: p.Column} }
+func (w node) IsNamed() bool      { return w.n.IsNamed() }
+func (w node) IsError() bool      { return w.n.IsError() }
+func (w node) String() string     { return w.n.String() }

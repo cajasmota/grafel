@@ -31,7 +31,7 @@ package golang
 //     the literal value.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -39,7 +39,7 @@ import (
 
 // extractGoEnums scans the file for const blocks typed by a same-file named
 // type and emits one SCOPE.Enum value-set node per such block.
-func extractGoEnums(root *sitter.Node, src []byte, filePath string) []types.EntityRecord {
+func extractGoEnums(root ts.Node, src []byte, filePath string) []types.EntityRecord {
 	if root == nil {
 		return nil
 	}
@@ -48,8 +48,8 @@ func extractGoEnums(root *sitter.Node, src []byte, filePath string) []types.Enti
 		return nil
 	}
 	var out []types.EntityRecord
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -70,10 +70,10 @@ func extractGoEnums(root *sitter.Node, src []byte, filePath string) []types.Enti
 // collectNamedTypes returns the set of type names declared in the file whose
 // underlying type is a primitive (int/string family) — the Go enum idiom. A
 // struct/interface/func type is excluded (those are never enum bases).
-func collectNamedTypes(root *sitter.Node, src []byte) map[string]bool {
+func collectNamedTypes(root ts.Node, src []byte) map[string]bool {
 	out := map[string]bool{}
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -96,7 +96,7 @@ func collectNamedTypes(root *sitter.Node, src []byte) map[string]bool {
 
 // typeSpecUnderlying returns the underlying-type node of a type_spec (the node
 // after the type name), or nil.
-func typeSpecUnderlying(spec *sitter.Node) *sitter.Node {
+func typeSpecUnderlying(spec ts.Node) ts.Node {
 	seenName := false
 	for i := 0; i < int(spec.ChildCount()); i++ {
 		ch := spec.Child(i)
@@ -115,14 +115,14 @@ func typeSpecUnderlying(spec *sitter.Node) *sitter.Node {
 // isEnumBaseType reports whether an underlying-type node is a primitive base a
 // Go enum is built on (a bare type_identifier naming an int/string/numeric
 // builtin). Struct/interface/map/func/etc. underlying types are not enum bases.
-func isEnumBaseType(under *sitter.Node) bool {
+func isEnumBaseType(under ts.Node) bool {
 	return under.Type() == "type_identifier"
 }
 
 // buildGoEnumValueSet builds the SCOPE.Enum node for one const block, when the
 // block is typed by a same-file named type. enumName is taken from the first
 // const_spec's type. Returns ok=false otherwise.
-func buildGoEnumValueSet(constDecl *sitter.Node, src []byte, filePath string, named map[string]bool) (types.EntityRecord, bool) {
+func buildGoEnumValueSet(constDecl ts.Node, src []byte, filePath string, named map[string]bool) (types.EntityRecord, bool) {
 	// Find the enum type from the first const_spec carrying a type identifier.
 	var enumType string
 	for i := 0; i < int(constDecl.ChildCount()); i++ {
@@ -165,7 +165,7 @@ func buildGoEnumValueSet(constDecl *sitter.Node, src []byte, filePath string, na
 
 // goConstSpecLiteral returns the statically-known literal value of a const_spec
 // RHS, or "" for iota / non-literal / absent values (honest-partial).
-func goConstSpecLiteral(spec *sitter.Node, src []byte) string {
+func goConstSpecLiteral(spec ts.Node, src []byte) string {
 	el := firstChildOfType(spec, "expression_list")
 	if el == nil {
 		return ""

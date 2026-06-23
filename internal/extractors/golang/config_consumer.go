@@ -27,7 +27,7 @@ package golang
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -38,15 +38,15 @@ import (
 //
 // records[0] MUST be the file entity. Mutates *records in place. Safe with
 // nil / empty input.
-func emitConfigConsumerEdges(root *sitter.Node, src []byte, records *[]types.EntityRecord) {
+func emitConfigConsumerEdges(root ts.Node, src []byte, records *[]types.EntityRecord) {
 	if root == nil || records == nil || len(*records) == 0 {
 		return
 	}
 
 	var reads []extractor.ConfigRead
 
-	var walk func(n *sitter.Node, enclosing string)
-	walk = func(n *sitter.Node, enclosing string) {
+	var walk func(n ts.Node, enclosing string)
+	walk = func(n ts.Node, enclosing string) {
 		if n == nil {
 			return
 		}
@@ -125,7 +125,7 @@ var viperGetMethods = map[string]bool{
 //
 //	os.Getenv("KEY") / os.LookupEnv("KEY")  → label "os_getenv"
 //	<recv>.GetString("key") (viper-family)   → label "viper"
-func goConfigKeyFromCall(call *sitter.Node, src []byte) (string, string) {
+func goConfigKeyFromCall(call ts.Node, src []byte) (string, string) {
 	fn := call.ChildByFieldName("function")
 	args := call.ChildByFieldName("arguments")
 	if fn == nil || args == nil || fn.Type() != "selector_expression" {

@@ -53,7 +53,7 @@ package golang
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -74,7 +74,7 @@ import (
 // package qualifier so the resolver can bind a cross-package call back to the
 // imported package's directory (issue #4332) instead of dropping the
 // package qualifier and emitting an ambiguity-prone bare name.
-func buildGoInTreeQualifiers(root *sitter.Node, src []byte, moduleRoot string, replaces []goReplace) map[string]string {
+func buildGoInTreeQualifiers(root ts.Node, src []byte, moduleRoot string, replaces []goReplace) map[string]string {
 	if root == nil || (moduleRoot == "" && len(replaces) == 0) {
 		return nil
 	}

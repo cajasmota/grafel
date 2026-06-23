@@ -1,21 +1,24 @@
 package golang
 
 import (
-	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsgo "github.com/smacker/go-tree-sitter/golang"
+
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-// parseGoInternal parses Go source inside the package test so we can
-// access unexported helpers (isErrorIdent, isNilLiteral,
-// binaryExprOperatorIs, firstAndLastValueChildren).
-func parseGoInternal(t *testing.T, src string) *sitter.Tree {
+// parseGoInternal parses Go source inside the package test (so it can reach
+// unexported helpers) into the binding-agnostic ts.Tree via the smacker adapter.
+func parseGoInternal(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tsgo.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsgo.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}

@@ -3,7 +3,7 @@ package golang
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -46,7 +46,7 @@ import (
 // an EXTENDS edge, keeping the graph conservative — package-external embeds
 // resolve cross-file is out of scope for this pass.
 func extractStructFieldEntities(
-	typeBody *sitter.Node,
+	typeBody ts.Node,
 	src []byte,
 	ownerName, filePath string,
 	knownTypeNames map[string]bool,
@@ -183,8 +183,8 @@ func goJSONWireName(tag string) (name string, skip bool) {
 // recursive findAll would mis-attribute nested-struct fields to the outer
 // struct; iterating only the immediate field_declaration_list children keeps
 // membership correct.
-func topLevelFieldDeclarations(structType *sitter.Node) []*sitter.Node {
-	var list *sitter.Node
+func topLevelFieldDeclarations(structType ts.Node) []ts.Node {
+	var list ts.Node
 	for i := 0; i < int(structType.ChildCount()); i++ {
 		if c := structType.Child(i); c.Type() == "field_declaration_list" {
 			list = c
@@ -194,7 +194,7 @@ func topLevelFieldDeclarations(structType *sitter.Node) []*sitter.Node {
 	if list == nil {
 		return nil
 	}
-	var out []*sitter.Node
+	var out []ts.Node
 	for i := 0; i < int(list.ChildCount()); i++ {
 		if c := list.Child(i); c.Type() == "field_declaration" {
 			out = append(out, c)

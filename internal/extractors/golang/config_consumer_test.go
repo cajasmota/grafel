@@ -25,7 +25,7 @@ func extractGoRaw(t *testing.T, src string) []types.EntityRecord {
 		Path:     "cfg.go",
 		Content:  content,
 		Language: "go",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

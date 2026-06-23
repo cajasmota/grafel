@@ -43,7 +43,7 @@ package golang
 import (
 	"strconv"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -96,14 +96,14 @@ var goPrometheusMetricMethods = map[string]bool{
 // file-level `var reqs = prometheus.NewCounter(...)` are honoured so a metric
 // declared once at package scope and mutated inside a handler resolves. Returns
 // nil when no metric is declared (zero cost for non-Prometheus files).
-func buildGoMetricRegistry(root *sitter.Node, src []byte) goMetricRegistry {
+func buildGoMetricRegistry(root ts.Node, src []byte) goMetricRegistry {
 	if root == nil {
 		return nil
 	}
 	var reg goMetricRegistry
 	defer func() { _ = recover() }()
 
-	add := func(varName string, call *sitter.Node) {
+	add := func(varName string, call ts.Node) {
 		if varName == "" || call == nil {
 			return
 		}
@@ -163,7 +163,7 @@ func buildGoMetricRegistry(root *sitter.Node, src []byte) goMetricRegistry {
 // goCallSelectorLeaf returns the trailing method/function name of a
 // call_expression whose function is a selector (`prometheus.NewCounter` →
 // "NewCounter") or a bare identifier (`NewCounter(...)` → "NewCounter").
-func goCallSelectorLeaf(call *sitter.Node, src []byte) string {
+func goCallSelectorLeaf(call ts.Node, src []byte) string {
 	if call == nil || call.Type() != "call_expression" {
 		return ""
 	}
@@ -188,7 +188,7 @@ func goCallSelectorLeaf(call *sitter.Node, src []byte) string {
 // literal argument; (name="", true) when the Name field is present but
 // non-literal or absent (dynamic); (..., false) when the argument is not a
 // composite literal at all (not a recognisable ctor → skip).
-func goPrometheusOptsName(call *sitter.Node, src []byte) (string, bool) {
+func goPrometheusOptsName(call ts.Node, src []byte) (string, bool) {
 	args := call.ChildByFieldName("arguments")
 	if args == nil || args.NamedChildCount() < 1 {
 		return "", false
@@ -232,7 +232,7 @@ func goPrometheusOptsName(call *sitter.Node, src []byte) (string, bool) {
 // unwrapLiteralElement returns the single meaningful child of a literal_element
 // wrapper node (tree-sitter Go wraps composite-literal keys/values in
 // literal_element), or the node itself when it is not a wrapper.
-func unwrapLiteralElement(n *sitter.Node) *sitter.Node {
+func unwrapLiteralElement(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -245,7 +245,7 @@ func unwrapLiteralElement(n *sitter.Node) *sitter.Node {
 // extractGoInstrHits collects every non-OTel instrumentation site (span or
 // metric) from a function/method body. metricReg resolves Prometheus metric
 // variables to metric names. enclosingName keys dynamic stubs.
-func extractGoInstrHits(body *sitter.Node, enclosingName string, metricReg goMetricRegistry, src []byte) []goInstrHit {
+func extractGoInstrHits(body ts.Node, enclosingName string, metricReg goMetricRegistry, src []byte) []goInstrHit {
 	if body == nil {
 		return nil
 	}
@@ -263,7 +263,7 @@ func extractGoInstrHits(body *sitter.Node, enclosingName string, metricReg goMet
 // goBodyInstrHit inspects a call_expression for a ddtrace / Sentry span-start or
 // a Prometheus metric mutation. Returns false when the call is not an
 // instrumentation call.
-func goBodyInstrHit(call *sitter.Node, enclosingName string, metricReg goMetricRegistry, src []byte) (goInstrHit, bool) {
+func goBodyInstrHit(call ts.Node, enclosingName string, metricReg goMetricRegistry, src []byte) (goInstrHit, bool) {
 	if call == nil || call.Type() != "call_expression" {
 		return goInstrHit{}, false
 	}
@@ -327,7 +327,7 @@ func goBodyInstrHit(call *sitter.Node, enclosingName string, metricReg goMetricR
 
 // goFirstStringArg returns the value of the first string-literal positional
 // argument in args, or "" when none is a string literal.
-func goFirstStringArg(args *sitter.Node, src []byte) string {
+func goFirstStringArg(args ts.Node, src []byte) string {
 	if args == nil {
 		return ""
 	}
@@ -344,7 +344,7 @@ func goFirstStringArg(args *sitter.Node, src []byte) string {
 // instrumentation site (ddtrace, Sentry, Prometheus) found in body. metricReg
 // resolves Prometheus metric variables to metric names. enclosingName keys
 // dynamic stubs. fromID is the enclosing operation entity ID.
-func goObservabilityEdges(body *sitter.Node, enclosingName, fromID string, metricReg goMetricRegistry, src []byte) []types.RelationshipRecord {
+func goObservabilityEdges(body ts.Node, enclosingName, fromID string, metricReg goMetricRegistry, src []byte) []types.RelationshipRecord {
 	hits := extractGoInstrHits(body, enclosingName, metricReg, src)
 	if len(hits) == 0 {
 		return nil

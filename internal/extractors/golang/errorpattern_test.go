@@ -45,7 +45,7 @@ func extractRecordsTyped(t *testing.T, src, path string) ([]types.EntityRecord, 
 		Path:     path,
 		Content:  content,
 		Language: "go",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 }
 
