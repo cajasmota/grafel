@@ -42,6 +42,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (0 keeps no grace-protected dead refs); a negative int disables the cap
   backstop; unparseable values fall back to the default. Mirrors the existing
   `GRAFEL_TIER_*`/`GRAFEL_EXTRACT_GOMAXPROCS` env pattern.
+- **Official tree-sitter grammar providers — batch B
+  (#5418, B2 cutover Part B):** ABI-14-pinned official-runtime grammar packages
+  for **bash, c, cpp, css, html, ruby** under `internal/treesitter/ts/grammars/`,
+  mirroring the Phase-0 Go provider and wired into `migratedLanguages` behind the
+  `ts_official` build tag (each with an ABI smoke-parse guard test asserting a
+  non-nil, non-error root of the expected top kind). Modules/versions:
+  tree-sitter-bash `v0.23.3`, tree-sitter-c `v0.23.6`, tree-sitter-cpp `v0.23.4`,
+  tree-sitter-css `v0.23.2`, tree-sitter-html `v0.23.2`, tree-sitter-ruby
+  `v0.23.1` — all `LANGUAGE_VERSION 14`, inside the v0.24.0 runtime's 13–14
+  window (cpp/html/ruby are already upstream-latest; bash/c/css pin back from an
+  ABI-15 latest). The **default build is unchanged** (100% smacker); the
+  `ts_official` path is only populated so the eventual default-flip has these
+  providers ready and validated. Additive prep — not the big-bang flip.
 - **Official tree-sitter grammar providers for the high-value languages
   (#5418, B2 cutover Part A):** ABI-14-pinned official-runtime grammar packages
   for **python, java, csharp, typescript (+tsx), javascript, rust** under

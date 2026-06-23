@@ -6,11 +6,17 @@ import (
 	"fmt"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tsbash "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/bash"
+	tsc "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/c"
+	tscpp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/cpp"
 	tscsharp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/csharp"
+	tscss "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/css"
 	tsgolang "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/golang"
+	tshtml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/html"
 	tsjava "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/java"
 	tsjavascript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/javascript"
 	tspython "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/python"
+	tsruby "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/ruby"
 	tsrust "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/rust"
 	tstypescript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/typescript"
 	tsofficial "github.com/cajasmota/grafel/internal/treesitter/ts/official"
@@ -43,6 +49,13 @@ var migratedLanguages = map[string]ts.Language{
 	"tsx":        tstypescript.LanguageTSX(),
 	"javascript": tsjavascript.Language(),
 	"rust":       tsrust.Language(),
+	// B2 cutover Part B (#5418): additive provider batch — all ABI 14.
+	"bash": tsbash.Language(),
+	"c":    tsc.Language(),
+	"cpp":  tscpp.Language(),
+	"css":  tscss.Language(),
+	"html": tshtml.Language(),
+	"ruby": tsruby.Language(),
 }
 
 // abiProbeSource is trivial, valid source per migrated language for the ABI guard.
@@ -55,6 +68,12 @@ var abiProbeSource = map[string][]byte{
 	"tsx":        []byte("const e = <div className=\"x\">hi</div>;\n"),
 	"javascript": []byte("function f() { return 1; }\n"),
 	"rust":       []byte("fn f() -> i32 { 1 }\n"),
+	"bash":       []byte("f() { echo hi; }\n"),
+	"c":          []byte("int f(void) { return 1; }\n"),
+	"cpp":        []byte("struct S { int f() { return 1; } };\n"),
+	"css":        []byte(".a { color: red; }\n"),
+	"html":       []byte("<div><p>hi</p></div>\n"),
+	"ruby":       []byte("def f\n  1\nend\n"),
 }
 
 // tsLanguageFor resolves a language to the official adapter (if migrated) or the
