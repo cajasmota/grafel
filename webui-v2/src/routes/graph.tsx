@@ -18,6 +18,7 @@ import { X, RotateCcw, SlidersHorizontal, Boxes } from "lucide-react";
 import { SearchInput, Pill, Kbd, useSetInsight } from "@/components/ui";
 import type { InsightValue } from "@/components/ui";
 import { useGraph } from "@/hooks/use-graph";
+import { useGraphStream } from "@/hooks/use-graph-stream";
 import { useModuleAnalysis } from "@/hooks/use-module-analysis";
 import {
   useGraphStore,
@@ -127,7 +128,34 @@ export default function GraphScreen() {
 
   const s = useGraphStore();
   const [searchParams, setSearchParams] = useSearchParams();
-  const { data, isLoading, isError } = useGraph(groupId, { lod: s.lod });
+
+  // #5446 increment 2 — PROGRESSIVE loading path. Prefer the SSE stream so a
+  // large graph builds up live (with a progress counter) instead of a long
+  // blank wait; the streamed node/edge shape is identical to the full-payload
+  // endpoint, so the screen + cosmos canvas consume the growing payload with no
+  // data-model change. If the stream drops mid-way we fall back to the
+  // full-payload fetch (same shape) so the graph still loads.
+  const stream = useGraphStream(groupId);
+  const streamFailed = stream.phase === "error";
+  // The full-payload fetch is the FALLBACK: only enabled once the stream has
+  // genuinely failed. A tiny graph still streams instantly (it's a single
+  // meta+chunk+done round-trip), so the small-graph case is not regressed.
+  const fallback = useGraph(groupId, { lod: s.lod }, { enabled: streamFailed });
+
+  // Unified view-model: the stream is the source of truth until it fails, then
+  // the fallback fetch takes over. `data` is the accumulating (or complete)
+  // payload; `isLoading` is true only while we have nothing renderable yet.
+  const streaming = stream.phase === "warming" || stream.phase === "streaming";
+  const data = streamFailed ? fallback.data : stream.state.payload;
+  const isLoading = streamFailed
+    ? fallback.isLoading
+    : // We're still loading until at least meta + the first nodes have landed.
+      !stream.state.hasMeta || stream.state.payload.nodes.length === 0;
+  const isError = streamFailed && fallback.isError;
+  // Progress affordance state for the "building graph… N / total" overlay.
+  const showStreamProgress =
+    !streamFailed && (streaming || (stream.phase === "done" && stream.state.payload.nodes.length === 0));
+  const isWarming = stream.phase === "warming";
   // #5147 coverage-kind overlay. The cosmos.gl WebGL engine renders nodes from
   // Float32 color buffers with NO per-node DOM/sprite layer, so a per-node tone
   // ring (as on the React-Flow surfaces) is genuinely infeasible here without a
@@ -197,6 +225,23 @@ export default function GraphScreen() {
     },
     [],
   );
+
+  // #5446 increment 2 — FINALIZE on stream done. The cosmos canvas auto-settles
+  // its layout the first time a non-empty graph lands and then PAUSES; while the
+  // graph streams in, later chunks seed new points without re-heating the
+  // (already-settled) sim, so mid-stream positions can look provisional. Once
+  // the full node set has streamed (`done`), trigger ONE canonical fresh
+  // re-layout — the exact routine the Reset button runs — so the complete graph
+  // settles cleanly and fits to the viewport. Fires once per group stream.
+  const finalizedRef = useRef(false);
+  useEffect(() => {
+    if (stream.phase === "streaming" || stream.phase === "warming") finalizedRef.current = false;
+    if (stream.phase === "done" && !finalizedRef.current && stream.state.payload.nodes.length > 0) {
+      finalizedRef.current = true;
+      s.requestRelayout();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stream.phase]);
 
   // ── ?node= deep-link: restore on mount, persist on selection change ──────────
   // On first render, if the URL carries ?node=<id>, apply it as the selected
@@ -672,7 +717,20 @@ export default function GraphScreen() {
           <div className="grid h-full place-items-center bg-bg">
             <div className="flex flex-col items-center gap-3 text-text-3">
               <div className="h-8 w-8 animate-spin rounded-full border-2 border-border border-t-accent" />
-              <span className="text-sm">Loading graph…</span>
+              {/* #5446 — distinguish a COLD group (daemon warming the index in
+                  the background, 503 + retry) from the normal initial wait. As
+                  soon as `meta` lands we know the total and switch to the live
+                  build-up counter (the overlay below), so this only ever shows
+                  before the first nodes arrive. */}
+              {isWarming ? (
+                <span className="text-sm">Warming index… preparing the graph</span>
+              ) : stream.totalNodes > 0 ? (
+                <span className="text-sm tabular-nums">
+                  Building graph… 0 / {stream.totalNodes.toLocaleString()} nodes
+                </span>
+              ) : (
+                <span className="text-sm">Loading graph…</span>
+              )}
             </div>
           </div>
         ) : isError ? (
@@ -761,6 +819,60 @@ export default function GraphScreen() {
               audioOn={replay.audioOn}
               onAudioToggle={replay.setAudioOn}
             />
+
+            {/* #5446 increment 2 — LIVE BUILD-UP progress affordance. While the
+                graph streams in, show a subtle top-center pill with the running
+                "N / total nodes" counter + a thin progress bar so a large graph
+                building up reads as deliberate progress, not a stall. The canvas
+                is already painting the nodes received so far underneath. Hidden
+                the moment `done` lands (showStreamProgress goes false). For a
+                tiny graph this flashes for a single frame, so it still looks
+                instant. Suppressed while focused so it doesn't fight the focus
+                banner. */}
+            {showStreamProgress && !focusActive ? (
+              <div className="absolute left-1/2 top-3 z-30 flex -translate-x-1/2 flex-col items-center gap-1.5 rounded-lg border border-accent/40 bg-surface/90 px-3.5 py-2 shadow-sm backdrop-blur-sm">
+                <div className="flex items-center gap-2 text-sm text-text">
+                  <div className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-border border-t-accent" />
+                  {isWarming ? (
+                    <span>Warming index…</span>
+                  ) : (
+                    <span className="tabular-nums">
+                      Building graph…{" "}
+                      <span className="font-medium text-text">
+                        {stream.loadedNodes.toLocaleString()}
+                      </span>
+                      {stream.totalNodes > 0 ? (
+                        <span className="text-text-3">
+                          {" "}
+                          / {stream.totalNodes.toLocaleString()}
+                        </span>
+                      ) : null}{" "}
+                      <span className="text-text-3">nodes</span>
+                    </span>
+                  )}
+                </div>
+                {/* Thin determinate bar (indeterminate shimmer while warming). */}
+                <div className="h-1 w-40 overflow-hidden rounded-full bg-border/60">
+                  <div
+                    className={`h-full rounded-full bg-accent transition-[width] duration-200 ease-out ${
+                      isWarming ? "animate-pulse" : ""
+                    }`}
+                    style={{
+                      width: isWarming
+                        ? "40%"
+                        : `${
+                            stream.totalNodes > 0
+                              ? Math.min(
+                                  100,
+                                  Math.round((stream.loadedNodes / stream.totalNodes) * 100),
+                                )
+                              : 5
+                          }%`,
+                    }}
+                  />
+                </div>
+              </div>
+            ) : null}
 
             {/* Fix #1548-3: clear "focused on X — exit" affordance. */}
             {focusActive ? (

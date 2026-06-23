@@ -308,6 +308,22 @@ export const api = {
   },
 
   /**
+   * #5446 increment 2 — the absolute URL for the progressive graph SSE stream
+   * (GET /api/v2/graph/:group/stream). Returned (not fetched) because the
+   * stream is consumed via EventSource, not the fetch wrapper; centralizing it
+   * here keeps the configurable v2 base URL in one place. The streamed
+   * node/edge JSON is byte-for-byte the full-payload shape, so the same
+   * normalize path applies.
+   */
+  graphStreamUrl: (groupId: string, params?: { repos?: string[]; filterKind?: string }) => {
+    const qs = new URLSearchParams();
+    if (params?.repos && params.repos.length > 0) qs.set("repos", params.repos.join(","));
+    if (params?.filterKind) qs.set("filter_kind", params.filterKind);
+    const suffix = qs.toString() ? `?${qs.toString()}` : "";
+    return `${BASE_V2}/graph/${encodeURIComponent(groupId)}/stream${suffix}`;
+  },
+
+  /**
    * GET /api/v2/groups/:group/modules/analysis — module-level GDS (SCC,
    * PageRank, betweenness over the aggregated module graph). Powers the
    * "Module overview" mode on the Graph screen (#1386, closes epic #1380
