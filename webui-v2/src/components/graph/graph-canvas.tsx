@@ -48,7 +48,7 @@ import {
   JARVIS_GLOW,
 } from "@/lib/graph-colors";
 import { saveLayout, loadLayout, isDegenerateLayout, isLayoutHealthy } from "@/lib/graph-layout-cache";
-import { isRenderableGraph } from "@/lib/graph-render-guard";
+import { isRenderableGraph, shouldStreamGrow } from "@/lib/graph-render-guard";
 import { shouldFitReplayStep } from "@/lib/replay-glow-visibility";
 import { shouldTrackSettleFit, isGenuineUserCameraMove } from "@/lib/settle-fit-follow";
 import {
@@ -1369,6 +1369,15 @@ function GraphCanvasInner(
       clearTimeout(reheatTimerRef.current);
       reheatTimerRef.current = null;
     }
+    // #5446 — Reset/re-layout must also clear any in-flight MCP-activity glow:
+    // cancel its rAF and restore the base point/link colors + sizes so glowed
+    // (amber/blue) edges and nodes don't persist through the re-explode. Without
+    // this the glow loop kept writing tinted buffers over the fresh layout.
+    if (glowRafRef.current !== null) {
+      cancelAnimationFrame(glowRafRef.current);
+      glowRafRef.current = null;
+    }
+    restoreGlowBuffersRef.current();
     g.setPointPositions(p.positions);
     g.setPointClusters(p.clusters);
     g.setPointClusterStrength(p.clusterStrength);
@@ -1718,9 +1727,21 @@ function GraphCanvasInner(
     // the buffers, and GENTLY re-heats the running sim so the new nodes are laid
     // out and rendered LIVE (the graph grows + jiggles from the first chunk). The
     // final settle/fit is the `done` relayout the route triggers.
-    const grew = packed.positions.length > prev.length && prev.length > 0;
-    if (streaming && grew && placedCountRef.current > 0) {
-      const seeded = seedStreamingPositions(prev, placedCountRef.current);
+    // #5446 — the streaming-grow trigger keys on the buffer ACTUALLY uploaded to
+    // cosmos (`prev`), NOT on placedCountRef. placedCountRef is only set once a
+    // settle has run (kickFreshSettle / streaming reheat), but the first settle is
+    // DEFERRED a frame (mount schedules kickFreshSettle via rAF) and a cache-hit
+    // mount settles WITHOUT ever setting it. When fast chunks arrive before that
+    // ref is populated, the old `placedCountRef.current > 0` guard sent every
+    // grown chunk down the non-streaming path, which (because didAutoStartRef is
+    // already latched during a stream) pushed the raw seed but never re-heated the
+    // sim — so the nodes were uploaded yet never laid out, and the canvas stayed
+    // blank until `done`. Deriving `placed` from prev.length makes EVERY grown
+    // chunk take the live-grow + reheat path. seedStreamingPositions already
+    // handles placed === 0 (it seeds the whole buffer near the group centers).
+    const placed = prev.length / 2;
+    if (shouldStreamGrow(streaming, prev.length, packed.positions.length)) {
+      const seeded = seedStreamingPositions(prev, placed);
       g.setPointPositions(seeded);
       g.setPointSizes(packed.sizes);
       g.setPointClusters(packed.clusters);
@@ -2184,6 +2205,25 @@ function GraphCanvasInner(
   // endpoints are in the highlighted node set (resolved against linkData.links,
   // which is index-based and parallel to the packed link color buffer).
   const glowRafRef = useRef<number | null>(null);
+  // #5446 — restore the BASE point + link colors/sizes, clearing any in-flight
+  // glow tint. The decay-end branch of the glow rAF restores its own snapshot, but
+  // when a pulse is SUPERSEDED (a new epoch / rapid replay-all) or the user hits
+  // Reset, the loop is only `cancelAnimationFrame`d — the half-amber buffers it
+  // last uploaded are left on the GPU, so glowed blue/amber edges + nodes
+  // accumulate and persist. Re-packing from the CURRENT base buffers (theme +
+  // colorMode aware) and uploading them guarantees no stale glow survives a
+  // cancel/supersede/Reset. Re-derived fresh (not from a closure snapshot) so it
+  // is correct even if the data/theme changed since the pulse started.
+  const restoreGlowBuffers = useCallback(() => {
+    const g = graphRef.current;
+    if (!g || !renderableRef.current) return;
+    g.setPointColors(packPointColors());
+    g.setPointSizes(packed.sizes);
+    g.setLinkColors(packLinkColors());
+    g.render();
+  }, [packPointColors, packed, packLinkColors]);
+  const restoreGlowBuffersRef = useRef(restoreGlowBuffers);
+  restoreGlowBuffersRef.current = restoreGlowBuffers;
   // #4643 — the CAPPED, in-view node-index set that the current glow is driving.
   // Shared with the dim-focus selection (applySelection) so both the glow and
   // the "dim everything else" behaviour operate on the SAME bounded set. Empty
@@ -2405,6 +2445,13 @@ function GraphCanvasInner(
       if (glowRafRef.current !== null) {
         cancelAnimationFrame(glowRafRef.current);
         glowRafRef.current = null;
+        // #5446 — the pulse was SUPERSEDED mid-flight (this cleanup runs because a
+        // new epoch is replacing it). cancelAnimationFrame alone leaves the last
+        // half-amber color/size buffers on the GPU, so glowed edges/nodes from the
+        // interrupted step persist (and accumulate across rapid replay-all). Restore
+        // the base buffers so no stale tint survives; the next epoch's frame loop
+        // re-tints from its own (now-clean) base immediately.
+        restoreGlowBuffersRef.current();
       }
       // #4643 — a new epoch supersedes this glow; the next effect run reasserts
       // the focus set from its own (capped) nodes, and a final empty highlight

@@ -55,3 +55,31 @@ export function textureSideFor(count: number): number {
   if (!Number.isFinite(count) || count <= 0) return MIN_TEXTURE_DIM;
   return clampTextureDim(Math.ceil(Math.sqrt(count)));
 }
+
+/**
+ * #5446 — should the canvas take the STREAMING-GROW upload path for this chunk?
+ *
+ * While a graph streams in, each chunk grows the node set. A grown chunk must be
+ * seeded + uploaded + re-heated LIVE so the canvas visibly grows; otherwise the
+ * new nodes sit in the GPU buffers, never laid out, and the graph stays blank
+ * until `done`.
+ *
+ * The trigger keys on the buffer COUNTS — `nextLen` is the new packed point
+ * buffer length, `prevLen` is the length of the buffer cosmos currently holds
+ * (`g.getPointPositions().length`). It deliberately does NOT depend on any
+ * post-settle "placed count": that value is only set after the first settle has
+ * run, and the first settle is deferred a frame (and a cache-hit mount settles
+ * without setting it), so gating on it dropped fast early chunks onto the
+ * non-streaming path — which never re-heated mid-stream. We grow whenever:
+ *   - we are streaming, AND
+ *   - the new buffer is strictly larger than what cosmos holds, AND
+ *   - cosmos already holds a non-empty buffer (the FIRST chunk, prevLen === 0,
+ *     goes through the normal fresh-settle seed instead).
+ */
+export function shouldStreamGrow(
+  streaming: boolean,
+  prevLen: number,
+  nextLen: number,
+): boolean {
+  return streaming && prevLen > 0 && nextLen > prevLen;
+}

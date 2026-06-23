@@ -84,6 +84,32 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (`docs/c3-feature-impact-analysis.md`)
 
 ### Fixed
+- **Graph view: streamed nodes now reach the canvas every chunk — no more
+  blank-until-done (#5446):** the progressive Graph screen showed a climbing
+  "building graph… N / total" counter while the WebGL canvas stayed blank, then
+  the whole graph popped in at once on `done`. The canvas had a streaming-grow
+  path (seed new nodes near a placed neighbour + re-heat the sim each chunk), but
+  its trigger was gated on an internal post-settle "placed count" ref that is
+  only populated **after** the first settle runs — and the first settle is
+  deferred a frame (a cache-hit mount settles without ever setting it). When
+  chunks arrived faster than that ref was set, every grown chunk fell through to
+  the non-streaming branch, which — because the auto-start flag is already
+  latched during a stream — uploaded the raw seed but never re-heated the
+  simulation, so later nodes sat in the GPU buffers, unlaid-out and invisible,
+  until the stream ended. The trigger now keys on the buffer **actually uploaded
+  to the canvas** (`shouldStreamGrow`, unit-tested) rather than the placed-count
+  ref, so every grown chunk takes the live-grow + re-heat path and the graph
+  visibly grows from the first chunk; the already-merged sim energy (#5461) and
+  camera tracker (#5459/#5463) then make the live explode actually visible.
+- **Graph view: MCP-activity glow no longer leaves stale amber/blue edges + nodes
+  (#5446):** the replay/activity glow restored the base point + link colours only
+  at the animation's natural decay-end. When a pulse was **superseded** (rapid
+  replay-all / the next epoch) or the user pressed **Reset**, the effect cleanup
+  only cancelled the animation frame — the half-tinted colour/size buffers it last
+  uploaded were left on the GPU, so glowed edges and nodes accumulated and
+  persisted. The base point/link colours + sizes are now restored on glow
+  cancel/supersede **and** on Reset, so no stale glow survives (the
+  consecutive-replay dim-focus behaviour is preserved).
 - **Graph view: Reset / re-explode no longer drifts the camera off-screen
   (#5462):** pressing **Reset** (or any path that triggers a fresh re-settle —
   group-by, layout change, deep-link re-explode) made the graph spread but the
