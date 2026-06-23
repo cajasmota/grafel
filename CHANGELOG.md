@@ -9,6 +9,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **B2 assessment — migrate to the official tree-sitter binding + per-language
+  modules (ADR-0023, #5418, #5359 B2):** a written go/no-go assessment of moving
+  off the unmaintained single `smacker/go-tree-sitter` dependency to the live
+  `tree-sitter/go-tree-sitter` (v0.24.0) with per-language grammar Go modules.
+  Covers the current usage surface (245 importing files / 1758 `Node` traversal
+  sites / no native-query usage), the API delta (`Type()→Kind()`,
+  `StartPoint()→StartPosition()`, unsigned ints, `NewLanguage(Language())`), a
+  per-language module-availability table (21/28 clean · 3 source-swaps · 2
+  caveats · 1 true gap — proto), CGO/release-matrix impact, an empirically
+  verified ABI-pinning hazard (PoC built one grammar; a runtime/grammar version
+  mismatch compiled but SIGSEGV'd at `RootNode()`), and a phased plan with the B1
+  benchmark gate + rollback. Recommendation: GO, phased behind an abstraction
+  layer; land Phase 0 (abstraction + 1 language) in 0.1.4, slip the rest.
 - **Language-release calendar + reminder cron (#5413, #5359 A3):** a proactive
   freshness nudge that fires ahead of known release windows. `docs/language-release-calendar.md`
   documents the cadence for the predictable-cadence languages (Java Mar/Sep,

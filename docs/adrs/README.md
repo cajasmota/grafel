@@ -28,6 +28,7 @@ decision itself, and the consequences we accepted.
 | [0020](0020-multi-branch-worktree.md) | Accepted | Multi-branch and worktree graph snapshots |
 | [0021](0021-engine-custom-extractors-rescue-remove-extend.md) | Accepted | Engine custom extractors — rescue / remove / extend |
 | [0022](0022-http-mcp-transport.md) | Proposed | Authenticated shared HTTP MCP transport for team deployments |
+| [0023](0023-migrate-to-official-tree-sitter-binding-per-language-modules.md) | Proposed | Migrate to official tree-sitter binding + per-language grammar modules (B2 assessment) |
 
 Numbers are append-only.
 
