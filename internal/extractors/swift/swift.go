@@ -2,7 +2,8 @@
 //
 // Extracted entities:
 //   - function_declaration  → Kind="SCOPE.Operation", Subtype="function"
-//   - class_declaration     → Kind="SCOPE.Component", Subtype="class"|"struct"|"enum"
+//   - class_declaration     → Kind="SCOPE.Component", Subtype="class"|"struct"|"enum"|"actor"
+//     (one shared grammar rule; "actor"/"distributed actor" → subtype="actor", #5417)
 //   - struct_declaration    → Kind="SCOPE.Component", Subtype="struct"
 //   - protocol_declaration  → Kind="SCOPE.Component", Subtype="protocol"
 //   - import_declaration    → IMPORTS relationship
@@ -86,21 +87,18 @@ func walkNode(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord)
 
 	switch node.Type() {
 	case "class_declaration":
-		// In smacker/go-tree-sitter/swift the node type "class_declaration"
-		// is used for class, struct and enum declarations. Distinguish by
-		// the first keyword child.
-		subtype := "class"
-		if node.ChildCount() > 0 {
-			kw := node.Child(0)
-			if kw != nil {
-				switch string(file.Content[kw.StartByte():kw.EndByte()]) {
-				case "struct":
-					subtype = "struct"
-				case "enum":
-					subtype = "enum"
-				}
-			}
-		}
+		// In tree-sitter-swift the node type "class_declaration" is used for
+		// class, struct, enum AND actor declarations — they share one grammar
+		// rule, distinguished by the leading declaration keyword.
+		//
+		// Issue #5417 (C3(b)) — `actor` / `distributed actor` are first-class
+		// Swift concurrency components. The fresher grammar emits them as
+		// `class_declaration` with an `"actor"` keyword child (plain actor) or
+		// a leading `modifiers > "distributed"` then `"actor"` (distributed
+		// actor). We surface them as SCOPE.Component subtype="actor",
+		// mirroring class/struct/enum, so concurrency components stop
+		// vanishing into the generic "class" bucket.
+		subtype := swiftDeclSubtype(node, file.Content)
 		rec, ok := buildComponent(node, file, subtype)
 		if !ok {
 			for i := range node.ChildCount() {
@@ -223,6 +221,38 @@ func walkBody(node ts.Node, file extractor.FileInput, fieldTypes map[string]stri
 	for i := range node.ChildCount() {
 		walkBody(node.Child(int(i)), file, fieldTypes, "", out)
 	}
+}
+
+// swiftDeclSubtype classifies a `class_declaration` node (the shared rule for
+// class / struct / enum / actor) by its leading declaration keyword.
+//
+// The keyword is an unnamed child of the declaration. It is usually a direct
+// child, but a leading `modifiers` node (e.g. `final class`, `distributed
+// actor`, `public struct`) may precede it. We scan the direct children for the
+// first recognised keyword token; for the `distributed actor` shape the
+// `distributed` modifier lives inside a `modifiers` node and the `actor`
+// keyword follows it as a direct child, so a direct-child scan still finds it.
+// Defaults to "class".
+func swiftDeclSubtype(node ts.Node, src []byte) string {
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch == nil || ch.IsNamed() {
+			// Keywords (class/struct/enum/actor) are anonymous tokens; named
+			// children (modifiers, type_identifier, bodies) are not keywords.
+			continue
+		}
+		switch string(src[ch.StartByte():ch.EndByte()]) {
+		case "struct":
+			return "struct"
+		case "enum":
+			return "enum"
+		case "actor":
+			return "actor"
+		case "class":
+			return "class"
+		}
+	}
+	return "class"
 }
 
 // findClassBody returns the body child of a class/struct/enum declaration.

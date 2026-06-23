@@ -9,6 +9,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Swift `actor` declarations as first-class concurrency components (#5417,
+  C3(b)):** `actor` and `distributed actor` types are now extracted as
+  `SCOPE.Component` with `subtype=actor`, mirroring how `class`/`struct`/`enum`
+  are modeled (one shared `class_declaration` grammar rule, classified by the
+  leading keyword). An actor's members extract identically to a class — each
+  method gets a `CONTAINS` edge and each stored property a `SCOPE.Schema`/field
+  — so concurrency components stop collapsing into the generic `class` bucket.
+  The other four C3(b) candidates from the impact analysis were verified against
+  the pinned ABI-14 grammars and **deferred as grammar-too-old**: C# extension
+  members (`tree-sitter-c-sharp` v0.23.1 has no `extension` node), Kotlin context
+  parameters, Python t-strings (PEP 750), and JS/TS `await using` — all
+  post-date their pinned grammar tags and currently parse to `ERROR`/misshaped
+  nodes, so no extractor code was added for them.
+  ([`internal/extractors/swift/swift.go`](internal/extractors/swift/swift.go))
 - **Official tree-sitter grammar providers — batch B2, batch 4a (vendored C)
   (#5418, B2 cutover Part B):** directly-vendorable grammar packages for
   **proto, dockerfile, kotlin** under `internal/treesitter/ts/grammars/`, behind
