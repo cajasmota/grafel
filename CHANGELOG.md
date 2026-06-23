@@ -9,6 +9,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Per-language parse-error-node canary (#5414, #5359 A4):** the
+  version-agnostic freshness alarm. During indexing, both the in-process and the
+  subprocess extract paths now aggregate the existing per-parse tree-sitter
+  `ErrorRatio` into a node-weighted **per-language ERROR-node rate**
+  (`internal/treesitter/canary.go`, threaded through `BatchStats.ParseErrors` →
+  coordinator → indexer). The rates, a baseline comparison, and a `spiked` flag
+  are written to the `graph-stats.json` sidecar (`parse_error_canary` +
+  top-level `parse_error_spike`), and a `WARN … SPIKE` line is logged when a
+  language's rate exceeds its baseline by the absolute (`GRAFEL_CANARY_ABS_DELTA`,
+  default +0.02) or relative (`GRAFEL_CANARY_REL_FACTOR`, default 2×) threshold —
+  the direct symptom of unhandled new syntax. The committed baseline lives at
+  `docs/grammar-canary-baseline.json` (override via `GRAFEL_CANARY_BASELINE`);
+  zero/absent-language tolerant. See `docs/grammar-freshness-audit.md` §4b.
 - **Grammar-freshness monthly cron + tracking issue (#5411, #5359 A2):** a
   scheduled GitHub Action (`.github/workflows/grammar-freshness.yml`, monthly
   cron + `workflow_dispatch`, no push/PR) plus a standalone Go checker

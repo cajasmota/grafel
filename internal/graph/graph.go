@@ -145,6 +145,17 @@ type GraphStatsSidecar struct {
 	GodNodes           int       `json:"god_nodes"`
 	ArticulationPoints int       `json:"articulation_points"`
 	RuntimeMS          int64     `json:"runtime_ms"`
+
+	// ParseErrorCanary is the A4 per-language parse-error-node canary report
+	// (#5414, epic #5359): per-language aggregate ERROR-node rates plus a
+	// baseline comparison and a spike flag. The shape is the JSON marshalling
+	// of treesitter.CanaryReport; kept as raw JSON here so the graph package
+	// does not depend on the treesitter package. Omitted when no parse stats
+	// were collected (e.g. a heuristic-only index).
+	ParseErrorCanary json.RawMessage `json:"parse_error_canary,omitempty"`
+	// ParseErrorSpike mirrors ParseErrorCanary.spiked at the top level so
+	// dashboards / crons can read the alarm without decoding the full report.
+	ParseErrorSpike bool `json:"parse_error_spike,omitempty"`
 }
 
 // WriteSidecar emits the graph-stats.json sidecar next to the main document.
