@@ -341,7 +341,21 @@ func (s *Server) findCallersStructured(_ context.Context, req mcpapi.CallToolReq
 				// callees-side JOINS_COLLECTION fix). inspect's semantic_edges emits
 				// these regardless of resolution; neighbors must not silently drop
 				// them.
-				if !isFileRefEdge && !isSemanticEdgeKind(dk) {
+				//
+				// #5475: extend the fallback to the REMAINING real caller edge kinds
+				// too (CALLS / TESTS / IMPLEMENTS / HANDLES / ROUTES_TO / … and the
+				// inheritance kinds). Every id that reaches this loop was discovered
+				// via isInboundNeighborKind, which is precisely the "this is a real
+				// caller relationship" gate — pure-structural noise (CONTAINS /
+				// DECLARES / DEFINES) is already excluded upstream. So when byID[id]
+				// is nil because the edge's FromID was never rewritten from a raw
+				// path / cross-repo placeholder to a stamped entity id (the linker /
+				// resolver rewrite gap), the caller is REAL and must not be silently
+				// dropped: emit a synthetic caller using the id, exactly as #2015 /
+				// #4288 do, so find_callers stops returning N-1 callers. The
+				// remaining guard only filters the genuinely-structural inbound kinds
+				// that should never have produced a caller in the first place.
+				if !isFileRefEdge && !isSemanticEdgeKind(dk) && !isInboundNeighborKind(dk) {
 					continue
 				}
 				name := id
@@ -949,8 +963,113 @@ func resolveImpactTarget(repos []*LoadedRepo, target string) impactResolution {
 		return impactResolution{candidates: byName}
 	}
 
-	// Pass 3: nothing matched.
-	return impactResolution{}
+	// Pass 2.5 (#5475): fuzzy fall-through. The exact id + exact name passes
+	// above are intentionally strict, but agents routinely pass a reference that
+	// grafel_find resolves and find_callers misses (e.g. a different-case name, a
+	// partial / suffix of a qualified name like "svc.Target", or a substring).
+	// grafel_find (handleSearchEntities) resolves these via a case-insensitive
+	// substring match on Name/QualifiedName, ranking an exact case-insensitive
+	// name first. Reuse that SAME logic here, but only as a fallback once the
+	// strict passes have missed — so the exact-match happy path is byte-for-byte
+	// unchanged and only genuine "would-have-errored" calls are rescued. We drop
+	// de-noise entities (file/module containers, shadows, schema fields) so the
+	// fuzzy candidate set stays signal, mirroring grafel_find's default ranking.
+	fuzzy := fuzzyMatchEntities(repos, probeForFuzzy(target))
+	switch len(fuzzy.hits) {
+	case 0:
+		// Nothing matched even fuzzily.
+		return impactResolution{}
+	case 1:
+		return impactResolution{repo: fuzzy.hits[0].repo, localID: fuzzy.hits[0].id}
+	default:
+		// A fuzzy probe legitimately matches many entities; surface the same
+		// disambiguation envelope the exact-name-ambiguous branch uses so the
+		// agent can re-issue against a precise entity_id rather than getting a
+		// bare error.
+		return impactResolution{candidates: fuzzy.candidates}
+	}
+}
+
+// probeForFuzzy normalises the fuzzy probe. An empty/whitespace probe must NOT
+// match every entity (substring "" matches all), so it is returned unchanged
+// and fuzzyMatchEntities short-circuits on it.
+func probeForFuzzy(target string) string { return strings.TrimSpace(target) }
+
+// fuzzyHit is a single fuzzy entity match.
+type fuzzyHit struct {
+	repo *LoadedRepo
+	id   string
+}
+
+// fuzzyMatchResult carries the fuzzy matches plus pre-built disambiguation
+// candidates (only meaningful when len(hits) > 1).
+type fuzzyMatchResult struct {
+	hits       []fuzzyHit
+	candidates []impactCandidate
+}
+
+// fuzzyMatchEntities is the SHARED fuzzy name lookup, extracted from grafel_find
+// (handleSearchEntities, #5475). It performs a case-insensitive substring match
+// on Name / QualifiedName across the in-scope repos, dropping de-noise entities,
+// and orders the matches so an exact case-insensitive Name match sorts first
+// (identical to handleSearchEntities' sort). When exactly one entity matches the
+// probe as a case-insensitive Name (and no other is exactly-named), that single
+// entity is treated as the unique resolution even if the substring also matched
+// other entities — this is the common "Caller" vs "CallerFactory" case.
+//
+// It is intentionally pure (no Server / request state) so resolveImpactTarget
+// and handleSearchEntities can both consume it without duplicating the match
+// rules that historically drift apart between the two surfaces.
+func fuzzyMatchEntities(repos []*LoadedRepo, probe string) fuzzyMatchResult {
+	if probe == "" {
+		return fuzzyMatchResult{}
+	}
+	ql := strings.ToLower(probe)
+
+	var exact []fuzzyHit
+	var exactC []impactCandidate
+	var sub []fuzzyHit
+	var subC []impactCandidate
+	for _, r := range repos {
+		if r == nil || r.Doc == nil {
+			continue
+		}
+		for i := range r.Doc.Entities {
+			e := &r.Doc.Entities[i]
+			if isNoise(e) {
+				continue
+			}
+			nameL := strings.ToLower(e.Name)
+			qnL := strings.ToLower(e.QualifiedName)
+			if !strings.Contains(nameL, ql) && !strings.Contains(qnL, ql) {
+				continue
+			}
+			cand := impactCandidate{
+				EntityID:   prefixedID(r.Repo, e.ID),
+				Name:       e.Name,
+				Kind:       stripScopePrefix(e.Kind),
+				Repo:       r.Repo,
+				SourceFile: e.SourceFile,
+			}
+			if nameL == ql || qnL == ql {
+				exact = append(exact, fuzzyHit{repo: r, id: e.ID})
+				exactC = append(exactC, cand)
+				continue
+			}
+			sub = append(sub, fuzzyHit{repo: r, id: e.ID})
+			subC = append(subC, cand)
+		}
+	}
+	// A unique exact-(case-insensitive) name/qualified-name match wins outright,
+	// even if substrings also matched — this mirrors grafel_find floating the
+	// exact name to the top and is what makes "caller" resolve to "Caller".
+	if len(exact) == 1 {
+		return fuzzyMatchResult{hits: exact[:1], candidates: exactC[:1]}
+	}
+	if len(exact) > 1 {
+		return fuzzyMatchResult{hits: exact, candidates: exactC}
+	}
+	return fuzzyMatchResult{hits: sub, candidates: subC}
 }
 
 // resolveEntityArg is the SHARED entity_id resolution path for the neighbor

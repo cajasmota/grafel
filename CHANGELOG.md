@@ -302,6 +302,26 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   and the smacker parser factory stay on the concrete binding by design.
 
 ### Fixed
+- **`find_callers`: fuzzy input resolution + recover dropped cross-repo callers
+  (#5475):** `find_callers` was the most-failed neighbor tool — a ~20-44%
+  "entity not found" rate for its heaviest consumer, plus a silent caller
+  under-report. Two bugs, one shared root cause (unresolved / cross-repo ids).
+  (1) The shared `resolveEntityArg` path resolved `entity_id` only by exact hex
+  id → exact unique Name/QualifiedName, then errored — while `find` resolved the
+  same reference fuzzily (different case, a qualified-name suffix like
+  `svc.Target`, a substring). It now falls through to the *same* case-insensitive
+  substring match `find` uses (extracted into a shared `fuzzyMatchEntities`
+  helper), preferring a unique exact-case-insensitive name and returning a
+  disambiguation envelope when the probe matches many; the exact-id + exact-name
+  happy path is byte-for-byte unchanged and a genuine miss still errors. (2) When
+  an inbound caller edge's `FromID` was an unresolved id (the cross-repo linker
+  never rewrote a raw path / placeholder to a stamped entity id), only file-ref
+  and projected-semantic edges got the synthetic-caller fallback; the remaining
+  real caller kinds (CALLS, TESTS, IMPLEMENTS, HANDLES, ROUTES_TO, inheritance,
+  …) were silently dropped, so `find_callers` returned N-1 callers. The fallback
+  now covers every id that reached the walk via the `isInboundNeighborKind`
+  gate. The resolver fix is shared, so `find_callees` / `neighbors` benefit too
+  (verified not regressed).
 - **Graph view: streamed nodes now reach the canvas every chunk — no more
   blank-until-done (#5446):** the progressive Graph screen showed a climbing
   "building graph… N / total" counter while the WebGL canvas stayed blank, then
