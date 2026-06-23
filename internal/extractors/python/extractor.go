@@ -1741,7 +1741,7 @@ func extractImports(root ts.Node, file extractor.FileInput) []types.EntityRecord
 		emittedAny := false
 		for i := 0; i < int(n.NamedChildCount()); i++ {
 			ch := n.NamedChild(i)
-			if ch == modNode {
+			if ts.SameNode(ch, modNode) {
 				continue
 			}
 			name, alias := dottedNameAndAlias(ch, file.Content)

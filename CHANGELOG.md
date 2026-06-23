@@ -178,6 +178,43 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   all gated on the B1 grammar-bump / B2 smacker-decouple cutover.
   (`docs/c3-feature-impact-analysis.md`)
 
+### Fixed
+- **B2 cutover, C3 (c) — extractors adapted to the official grammars' changed
+  node shapes (#5418):** the big-bang flip (Step B) swapped all grammars to
+  fresher official versions whose CST node shapes differ from the 2024-08
+  smacker snapshot, breaking ~27 extractor tests across 8 packages. Fixed
+  without weakening any test (the goldens stay the contract):
+  - **Systemic node-identity bug (root cause of most failures).** Many
+    extractors compared two `ts.Node` handles with `==` to ask "is this child
+    the call callee / module name / declaration name?" The official binding
+    returns a fresh wrapper struct per accessor call, so `==` is never true and
+    those guards silently mis-fired — leaking phantom CALLS/REFERENCES edges,
+    mis-attributing exception edges, and dropping relative-import names. Added
+    `ts.SameNode(a, b)` (identity by type + byte span) and routed every such
+    comparison through it across **python, golang, javascript, ruby, elixir**
+    (and preventively **java, kotlin**, whose grammars didn't shift shape but
+    carried the same latent `==`). Groovy's constructor-skip set, keyed by node,
+    was rekeyed by byte span for the same reason.
+  - **python:** relative-import dotted-name layout (`from .x import y`) and the
+    `from .x import y as z` alias, plus a duplicate nested-constructor REFERENCES
+    edge — all the `== modNode` / `isPyCallCallee` identity guards.
+  - **lua:** rewired for the current tree-sitter-lua shapes — `function_call`
+    `name` field with `dot_index_expression` / `method_index_expression` callees,
+    `arguments` (was `function_arguments`), `require(...)` and `local x =
+    require(...)` nested under `assignment_statement(variable_list/expression_list)`,
+    and `table_constructor`.
+  - **groovy:** the regenerated grammar has no enum rule and a flaky Gradle-DSL
+    parse — adapted enum detection to the bare `identifier(enum)`/`identifier(Name)`
+    + `closure` header and recovered valued constants from the contorted
+    `juxt_function_call` / `parenthesized_expression` token stream via an ordered
+    name↔value pairing; handled both `task name { }` (juxt) and `task name(...)`
+    (function_call) sibling shapes.
+  - **cpp:** pure-virtual `= 0` now parses as a bare `= number_literal(0)` inside
+    a method `field_declaration` (no `pure_virtual_clause` node) — abstract-class
+    detection accepts both.
+  - **elixir / ruby:** exception-flow `def` body scoping and `ENV['KEY']`
+    element-reference index were the `== body` / `== obj` identity guards above.
+
 ### Changed
 - **B2 cutover, Step B — flipped to the official binding as the sole build;
   removed smacker entirely (#5418):** every language now resolves to its

@@ -88,7 +88,7 @@ func rubyEnvElementKey(n ts.Node, src []byte) string {
 	// The index is the first string argument child after the object.
 	for i := 0; i < int(n.NamedChildCount()); i++ {
 		ch := n.NamedChild(i)
-		if ch == obj {
+		if ts.SameNode(ch, obj) {
 			continue
 		}
 		if ch.Type() == "string" {

@@ -69,7 +69,7 @@ func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]
 				body := findDefBody(n)
 				for i := 0; i < int(n.ChildCount()); i++ {
 					ch := n.Child(i)
-					if ch == body {
+					if ts.SameNode(ch, body) {
 						walk(ch, fnName)
 					} else {
 						walk(ch, current)

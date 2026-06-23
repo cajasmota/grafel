@@ -150,15 +150,26 @@ func walkGroovyWithContext(node ts.Node, file extractor.FileInput, imports []str
 	}
 
 	// #4914 — Groovy enum value-set. The grammar has no dedicated enum node:
-	// `enum X {…}` parses as a `declaration[enum, X]` header whose body is the
-	// following `closure` sibling. Detect enum headers among THIS node's
-	// children (where the header/closure sibling pair lives) and emit one
-	// SCOPE.Enum value-set each. Done here rather than in the `declaration`
-	// case because the case handler only receives the header node, not its
-	// parent/sibling context. See types.go.
+	// `enum X {…}` parses as an `enum`/`X` header pair whose body is the
+	// following `closure` sibling. Two header shapes are accepted:
+	//   - legacy smacker: a single `declaration[ identifier(enum), identifier(X) ]`
+	//   - current official (regenerated grammar): two bare `identifier`
+	//     siblings `enum` then `X` directly under the container.
+	// Detect enum headers among THIS node's children (where the
+	// header/closure sibling pair lives) and emit one SCOPE.Enum value-set
+	// each. Done here rather than in the `declaration` case because the case
+	// handler only receives the header node, not its parent/sibling context.
+	// See types.go.
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
-		if ch == nil || ch.Type() != "declaration" {
+		if ch == nil {
+			continue
+		}
+		// Legacy: declaration-wrapped header. Official: a bare `enum`
+		// identifier whose name + body follow as siblings.
+		isEnumHead := ch.Type() == "declaration" ||
+			(ch.Type() == "identifier" && nodeText(ch, file.Content) == "enum")
+		if !isEnumHead {
 			continue
 		}
 		if rec, ok := buildGroovyEnumValueSet(node, i, file); ok {
@@ -166,9 +177,73 @@ func walkGroovyWithContext(node ts.Node, file extractor.FileInput, imports []str
 		}
 	}
 
+	// Gradle task DSL — official grammar shape. `task clean { … }` and
+	// `task compileGroovy(type: X) { … }` now parse as a bare `identifier`
+	// ("task") followed by a sibling `juxt_function_call`/`function_call`
+	// whose `function` child is the task name (the legacy smacker grammar
+	// instead nested everything under one declaration/juxt_function_call,
+	// handled by the case clauses above). Pair the `task` keyword with its
+	// following call sibling here, where sibling context is available.
+	for i := 0; i < int(node.ChildCount()); i++ {
+		ch := node.Child(i)
+		if ch == nil || ch.Type() != "identifier" || nodeText(ch, file.Content) != "task" {
+			continue
+		}
+		if rec, ok := buildGradleTaskSibling(node, i, file, imports); ok {
+			*out = append(*out, rec)
+		}
+	}
+
 	for i := range node.ChildCount() {
 		walkGroovyWithContext(node.Child(int(i)), file, imports, out, inClass)
 	}
+}
+
+// buildGradleTaskSibling pairs a bare `task` identifier at taskIdx with the
+// following `juxt_function_call`/`function_call` sibling whose `function`
+// child names the task (the official grammar shape). Returns ok=false when no
+// such call sibling is found before the next statement boundary.
+func buildGradleTaskSibling(parent ts.Node, taskIdx int, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+	for i := taskIdx + 1; i < int(parent.ChildCount()); i++ {
+		ch := parent.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "juxt_function_call", "function_call":
+			fn := ch.ChildByFieldName("function")
+			if fn == nil {
+				fn = childByType(ch, "identifier")
+			}
+			if fn == nil {
+				return types.EntityRecord{}, false
+			}
+			name := nodeText(fn, file.Content)
+			if name == "" || name == "task" {
+				return types.EntityRecord{}, false
+			}
+			return types.EntityRecord{
+				Name:               name,
+				Kind:               "SCOPE.Operation",
+				Subtype:            "task",
+				SourceFile:         file.Path,
+				Language:           "groovy",
+				StartLine:          int(parent.Child(taskIdx).StartPoint().Row) + 1,
+				EndLine:            int(ch.EndPoint().Row) + 1,
+				Signature:          "task " + name,
+				EnrichmentRequired: false,
+				Properties: map[string]string{
+					"imports":    strings.Join(imports, ","),
+					"gradle_dsl": "task",
+				},
+			}, true
+		case "identifier", "closure":
+			// `task` directly followed by its name/body without a call wrapper
+			// is not the shape we handle here; stop scanning.
+			return types.EntityRecord{}, false
+		}
+	}
+	return types.EntityRecord{}, false
 }
 
 func nodeText(node ts.Node, src []byte) string {
@@ -552,17 +627,23 @@ func buildGradleTaskJuxt(node ts.Node, file extractor.FileInput, imports []strin
 	if argList == nil || argList.Type() != "argument_list" {
 		return types.EntityRecord{}, false
 	}
-	// Walk argument_list for a function_call whose identifier is the task name.
+	// Walk argument_list for the task name. The smacker grammar nested it
+	// in a `function_call` (`task foo(type: X)`); the official grammar's
+	// no-paren form (`task clean { … }`) puts the name as a bare
+	// `identifier` argument (the body closure is a detached sibling).
 	for i := range argList.ChildCount() {
 		child := argList.Child(int(i))
 		if child == nil {
 			continue
 		}
-		if child.Type() == "function_call" {
-			nameNode := childByType(child, "identifier")
-			if nameNode == nil {
-				continue
-			}
+		var nameNode ts.Node
+		switch child.Type() {
+		case "function_call":
+			nameNode = childByType(child, "identifier")
+		case "identifier":
+			nameNode = child
+		}
+		if nameNode != nil {
 			name := nodeText(nameNode, file.Content)
 			if name == "" || name == "task" {
 				continue
@@ -682,7 +763,7 @@ func extractCallRelationships(body ts.Node, src []byte, callerName string) []typ
 	seen := make(map[string]bool, len(calls))
 	rels := make([]types.RelationshipRecord, 0, len(calls))
 	for _, call := range calls {
-		if ctorCalls[call] {
+		if ctorCalls[spanOf(call)] {
 			continue
 		}
 		target, recv := groovyCallTargetWithLocals(call, src, localVarTypes)
@@ -804,11 +885,19 @@ func groovyCallTargetWithLocals(call ts.Node, src []byte, localVarTypes map[stri
 // operand of a `new` unary_op (i.e. constructor calls `new ClassName(...)`).
 // These are object instantiations, not outbound method CALLS, so they are
 // excluded from the CALLS edge set (#4749).
-func groovyConstructorCalls(body ts.Node) map[ts.Node]bool {
+// nodeSpan is a stable identity key for a CST node within one parse tree:
+// its (start, end) byte offsets. Required because the official tree-sitter
+// binding returns a fresh wrapper struct per accessor call, so `ts.Node`
+// values are not usable as comparable map keys (B2 #5418).
+type nodeSpan struct{ start, end uint32 }
+
+func spanOf(n ts.Node) nodeSpan { return nodeSpan{n.StartByte(), n.EndByte()} }
+
+func groovyConstructorCalls(body ts.Node) map[nodeSpan]bool {
 	if body == nil {
 		return nil
 	}
-	out := map[ts.Node]bool{}
+	out := map[nodeSpan]bool{}
 	for _, uo := range findAllNodes(body, "unary_op") {
 		hasNew := false
 		for j := 0; j < int(uo.ChildCount()); j++ {
@@ -822,7 +911,7 @@ func groovyConstructorCalls(body ts.Node) map[ts.Node]bool {
 		}
 		for j := 0; j < int(uo.ChildCount()); j++ {
 			if c := uo.Child(j); c != nil && c.Type() == "function_call" {
-				out[c] = true
+				out[spanOf(c)] = true
 			}
 		}
 	}

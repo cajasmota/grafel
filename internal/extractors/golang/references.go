@@ -497,7 +497,7 @@ func handleGoSelector(
 	}
 	isCallee := false
 	if parent := n.Parent(); parent != nil && parent.Type() == "call_expression" {
-		if fn := parent.ChildByFieldName("function"); fn == n {
+		if fn := parent.ChildByFieldName("function"); ts.SameNode(fn, n) {
 			isCallee = true
 		}
 	}
@@ -680,7 +680,7 @@ func isGoCallCallee(n ts.Node) bool {
 	if parent.Type() != "call_expression" {
 		return false
 	}
-	return parent.ChildByFieldName("function") == n
+	return ts.SameNode(parent.ChildByFieldName("function"), n)
 }
 
 // isGoSelectorOperand reports whether the identifier node is the
@@ -694,10 +694,10 @@ func isGoSelectorOperand(n ts.Node) bool {
 	if parent.Type() != "selector_expression" {
 		return false
 	}
-	if op := parent.ChildByFieldName("operand"); op == n {
+	if op := parent.ChildByFieldName("operand"); ts.SameNode(op, n) {
 		return true
 	}
-	if f := parent.ChildByFieldName("field"); f == n {
+	if f := parent.ChildByFieldName("field"); ts.SameNode(f, n) {
 		return true
 	}
 	return false

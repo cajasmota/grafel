@@ -141,7 +141,7 @@ func buildPythonImportMap(root ts.Node, file extractor.FileInput) pythonImportMa
 		}
 		for i := 0; i < int(n.NamedChildCount()); i++ {
 			ch := n.NamedChild(i)
-			if ch == modNode {
+			if ts.SameNode(ch, modNode) {
 				continue
 			}
 			name, alias := dottedNameAndAlias(ch, file.Content)

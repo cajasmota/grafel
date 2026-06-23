@@ -445,7 +445,7 @@ func (x *extractor) emitReferences(root ts.Node) {
 					// Skip if this member_expression is the callee of a call.
 					isThisCallee := false
 					if parent := n.Parent(); parent != nil && parent.Type() == "call_expression" {
-						if fn := parent.ChildByFieldName("function"); fn == n {
+						if fn := parent.ChildByFieldName("function"); ts.SameNode(fn, n) {
 							isThisCallee = true
 						}
 					}
@@ -669,7 +669,7 @@ func isDeclarationPosition(n ts.Node) bool {
 		return true
 	case "labeled_statement":
 		// `label: stmt` — the label child is the identifier; skip it.
-		if parent.ChildCount() > 0 && parent.Child(0) == n {
+		if parent.ChildCount() > 0 && ts.SameNode(parent.Child(0), n) {
 			return true
 		}
 	case "break_statement", "continue_statement":
@@ -702,11 +702,11 @@ func isCallCallee(n ts.Node) bool {
 	}
 	switch parent.Type() {
 	case "call_expression":
-		if fn := parent.ChildByFieldName("function"); fn == n {
+		if fn := parent.ChildByFieldName("function"); ts.SameNode(fn, n) {
 			return true
 		}
 	case "new_expression":
-		if c := parent.ChildByFieldName("constructor"); c == n {
+		if c := parent.ChildByFieldName("constructor"); ts.SameNode(c, n) {
 			return true
 		}
 	}

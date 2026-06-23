@@ -501,7 +501,7 @@ func handleKotlinNavigationExpression(
 	// CALLS owns that edge through its own resolver.
 	if parent := n.Parent(); parent != nil && parent.Type() == "call_expression" {
 		// Check if this is the first child (the callee head).
-		if parent.ChildCount() > 0 && parent.Child(0) == n {
+		if parent.ChildCount() > 0 && ts.SameNode(parent.Child(0), n) {
 			// Receiver position of a call — the call's own resolver
 			// builds the dotted target. Do NOT double-emit here.
 			return
@@ -642,7 +642,7 @@ func isKotlinDeclarationPosition(n ts.Node) bool {
 		// child as the declared name.
 		for i := 0; i < int(parent.ChildCount()); i++ {
 			ch := parent.Child(i)
-			if ch == n {
+			if ts.SameNode(ch, n) {
 				return true
 			}
 			if ch.Type() == "simple_identifier" || ch.Type() == "type_identifier" {
@@ -667,7 +667,7 @@ func isKotlinCallCallee(n ts.Node) bool {
 	if parent.Type() != "call_expression" {
 		return false
 	}
-	return parent.ChildCount() > 0 && parent.Child(0) == n
+	return parent.ChildCount() > 0 && ts.SameNode(parent.Child(0), n)
 }
 
 // isKotlinNavigationSuffixField reports whether the simple_identifier

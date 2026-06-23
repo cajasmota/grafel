@@ -64,7 +64,16 @@ func buildGroovyEnumValueSet(parent ts.Node, declIdx int, file extractor.FileInp
 	if decl == nil {
 		return types.EntityRecord{}, false
 	}
-	name := enumHeaderName(decl, file.Content)
+	name := ""
+	switch {
+	case decl.Type() == "declaration":
+		// Legacy smacker: declaration[ identifier(enum), identifier(Name) ].
+		name = enumHeaderName(decl, file.Content)
+	case decl.Type() == "identifier" && nodeText(decl, file.Content) == "enum":
+		// Current official grammar: bare `enum` identifier; the type name is
+		// the next `identifier` sibling.
+		name = nextIdentifierSibling(parent, declIdx, file.Content)
+	}
 	if name == "" {
 		return types.EntityRecord{}, false
 	}
@@ -102,6 +111,26 @@ func enumHeaderName(decl ts.Node, src []byte) string {
 	return ids[1]
 }
 
+// nextIdentifierSibling returns the text of the first `identifier` node that
+// follows declIdx in parent's child list (the enum type name in the official
+// grammar's bare-identifier header shape), or "" if a `closure` is reached
+// first.
+func nextIdentifierSibling(parent ts.Node, declIdx int, src []byte) string {
+	for i := declIdx + 1; i < int(parent.ChildCount()); i++ {
+		ch := parent.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "identifier":
+			return nodeText(ch, src)
+		case "closure":
+			return ""
+		}
+	}
+	return ""
+}
+
 // nextClosureSibling returns the first `closure` node that follows declIdx in
 // parent's child list, skipping anonymous separators, or nil.
 func nextClosureSibling(parent ts.Node, declIdx int) ts.Node {
@@ -137,27 +166,85 @@ func collectGroovyEnumMembers(body ts.Node, src []byte) []extractor.EnumMember {
 		members = append(members, extractor.EnumMember{Name: name, Value: value, Line: line})
 	}
 
+	// The regenerated (official) Groovy grammar has no enum rule, so a valued
+	// enum body parses into a contorted token soup, e.g.
+	//   `ACTIVE(1), INACTIVE(0)` →
+	//     juxt_function_call(identifier ACTIVE,
+	//        argument_list( (1) , identifier INACTIVE ))
+	//     parenthesized_expression( 0 )
+	// i.e. constant names and their parenthesised values are interleaved
+	// across sibling nodes and out of their natural nesting. To recover the
+	// members reliably we flatten the body into an ordered stream of
+	// "name" / "value" events (by source position) and pair each constant
+	// name with the value literal that immediately follows it, stopping at
+	// the first field/constructor declaration. The legacy smacker shapes
+	// (function_call / ERROR>parameter_list / parameter_list) still resolve
+	// through the same event extraction.
+	type ev struct {
+		isName bool
+		text   string
+		line   int
+	}
+	var events []ev
+	var collect func(n ts.Node, atBodyTop bool) bool // returns false → stop (hit a field/ctor)
+	collect = func(n ts.Node, atBodyTop bool) bool {
+		if n == nil {
+			return true
+		}
+		switch n.Type() {
+		case "declaration":
+			// Enum field (`double mass`) — constants are done.
+			return false
+		case "string":
+			events = append(events, ev{false, groovyStringLiteralContent(n, src), int(n.StartPoint().Row) + 1})
+			return true
+		case "number_literal", "true", "false":
+			events = append(events, ev{false, nodeText(n, src), int(n.StartPoint().Row) + 1})
+			return true
+		case "function_call":
+			// A function_call at body top with a closure arg is the enum
+			// constructor (`Planet(double m){…}`) — stop. Otherwise it is a
+			// legacy valued constant.
+			if atBodyTop && childByType(n, "closure") != nil {
+				return false
+			}
+			name, value := groovyEnumValuedConst(n, src)
+			if name != "" {
+				events = append(events, ev{true, name, int(n.StartPoint().Row) + 1})
+				if value != "" {
+					events = append(events, ev{false, value, int(n.StartPoint().Row) + 1})
+				}
+			}
+			return true
+		case "identifier":
+			// A bare constant name. Builtin type keywords never reach here as
+			// bare identifiers at enum-constant position.
+			events = append(events, ev{true, nodeText(n, src), int(n.StartPoint().Row) + 1})
+			return true
+		}
+		for i := 0; i < int(n.ChildCount()); i++ {
+			if !collect(n.Child(i), false) {
+				return false
+			}
+		}
+		return true
+	}
 	for i := 0; i < int(body.ChildCount()); i++ {
-		ch := body.Child(i)
-		if ch == nil {
+		if !collect(body.Child(i), true) {
+			break
+		}
+	}
+
+	// Pair each name with the value literal immediately following it.
+	for i := 0; i < len(events); i++ {
+		if !events[i].isName {
 			continue
 		}
-		switch ch.Type() {
-		case "declaration":
-			// First enum-body field/constructor declaration → constants are done.
-			return members
-		case "function_call":
-			// Valued constant: identifier(NAME) argument_list[ literal ].
-			name, value := groovyEnumValuedConst(ch, src)
-			if name != "" {
-				add(name, value, int(ch.StartPoint().Row)+1)
-			}
-		case "ERROR":
-			// Bare constants surface inside an ERROR node as a parameter_list.
-			collectEnumBareConsts(ch, src, add)
-		case "parameter_list":
-			collectEnumBareConsts(ch, src, add)
+		value := ""
+		if i+1 < len(events) && !events[i+1].isName {
+			value = events[i+1].text
 		}
+		add(events[i].text, value, events[i].line)
 	}
 	return members
 }

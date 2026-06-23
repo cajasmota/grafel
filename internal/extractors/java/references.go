@@ -475,7 +475,7 @@ func handleFieldAccess(
 	// Skip when this field_access IS the `object` child of a
 	// method_invocation — CALLS owns that edge through its own resolver.
 	if parent := n.Parent(); parent != nil && parent.Type() == "method_invocation" {
-		if obj := parent.ChildByFieldName("object"); obj == n {
+		if obj := parent.ChildByFieldName("object"); ts.SameNode(obj, n) {
 			// Receiver position of a call — the call's own resolver
 			// builds the dotted target. Do NOT double-emit here, but
 			// DO let the recursion descend so a static-context receiver
@@ -591,7 +591,7 @@ func isJavaCallCallee(n ts.Node) bool {
 	}
 	switch parent.Type() {
 	case "method_invocation":
-		return parent.ChildByFieldName("name") == n
+		return ts.SameNode(parent.ChildByFieldName("name"), n)
 	}
 	return false
 }
@@ -608,7 +608,7 @@ func isJavaFieldAccessField(n ts.Node) bool {
 	if parent.Type() != "field_access" {
 		return false
 	}
-	return parent.ChildByFieldName("field") == n
+	return ts.SameNode(parent.ChildByFieldName("field"), n)
 }
 
 // buildJavaReferenceTargetID emits a Format A structural-ref for the

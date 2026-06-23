@@ -1582,7 +1582,7 @@ func isSelectorCalleeOf(sel ts.Node) bool {
 	if parent == nil || parent.Type() != "call_expression" {
 		return false
 	}
-	return parent.ChildByFieldName("function") == sel
+	return ts.SameNode(parent.ChildByFieldName("function"), sel)
 }
 
 // selectorMethodValue extracts the method name from a selector_expression
@@ -1760,7 +1760,7 @@ func extractTypes(root ts.Node, src []byte, filePath string) ([]types.EntityReco
 				specCount0 := int(typeSpec.ChildCount())
 				for j := 0; j < specCount0; j++ {
 					ch := typeSpec.Child(j)
-					if ch == nameNode || ch.Type() == "=" {
+					if ts.SameNode(ch, nameNode) || ch.Type() == "=" {
 						continue
 					}
 					aliasBody = ch

@@ -424,7 +424,7 @@ func handleAttribute(
 	// Skip when this attribute IS the `function` child of an outer
 	// call_expression — CALLS owns that edge.
 	if parent := n.Parent(); parent != nil && parent.Type() == "call" {
-		if fn := parent.ChildByFieldName("function"); fn == n {
+		if fn := parent.ChildByFieldName("function"); ts.SameNode(fn, n) {
 			return
 		}
 	}
@@ -487,10 +487,10 @@ func isPyDeclarationPosition(n ts.Node) bool {
 	if parent == nil {
 		return false
 	}
-	if nameField := parent.ChildByFieldName("name"); nameField != nil && nameField == n {
+	if nameField := parent.ChildByFieldName("name"); ts.SameNode(nameField, n) {
 		return true
 	}
-	if leftField := parent.ChildByFieldName("left"); leftField != nil && leftField == n {
+	if leftField := parent.ChildByFieldName("left"); ts.SameNode(leftField, n) {
 		// Assignment LHS, augmented_assignment LHS, for-loop target.
 		pt := parent.Type()
 		if pt == "assignment" || pt == "augmented_assignment" ||
@@ -498,7 +498,7 @@ func isPyDeclarationPosition(n ts.Node) bool {
 			return true
 		}
 	}
-	if aliasField := parent.ChildByFieldName("alias"); aliasField != nil && aliasField == n {
+	if aliasField := parent.ChildByFieldName("alias"); ts.SameNode(aliasField, n) {
 		return true
 	}
 	switch parent.Type() {
@@ -510,7 +510,7 @@ func isPyDeclarationPosition(n ts.Node) bool {
 		// reference. Tree-sitter typically exposes this as field "name";
 		// already covered above, but explicit case keeps the filter
 		// robust to grammar-version drift.
-		if first := parent.NamedChild(0); first == n {
+		if first := parent.NamedChild(0); ts.SameNode(first, n) {
 			return true
 		}
 	}
@@ -528,7 +528,7 @@ func isPyCallCallee(n ts.Node) bool {
 	if parent.Type() != "call" {
 		return false
 	}
-	return parent.ChildByFieldName("function") == n
+	return ts.SameNode(parent.ChildByFieldName("function"), n)
 }
 
 // buildPyReferenceTargetID emits a Format A structural-ref for the

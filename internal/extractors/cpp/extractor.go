@@ -908,6 +908,14 @@ func cppClassMembers(body ts.Node, src []byte) (fields []map[string]interface{},
 			// Distinguish a data member from an inline method declaration.
 			// A function_declarator child ⇒ it's a method, not a field.
 			if cppFirstChildOfType(ch, "function_declarator") != nil {
+				// Pure-virtual method (`virtual T f() = 0;`) ⇒ abstract class.
+				// The current tree-sitter-cpp grammar represents the pure
+				// specifier as a bare `= number_literal(0)` inside the
+				// field_declaration (no dedicated pure_virtual_clause node);
+				// older grammars used a pure_virtual_clause child. Accept both.
+				if cppIsPureVirtualField(ch, src) {
+					abstract = true
+				}
 				continue
 			}
 			typeNode := ch.ChildByFieldName("type")
@@ -936,6 +944,34 @@ func cppClassMembers(body ts.Node, src []byte) (fields []map[string]interface{},
 		}
 	}
 	return fields, abstract
+}
+
+// cppIsPureVirtualField reports whether a method-bearing field_declaration is
+// a pure-virtual declaration (`virtual T f() = 0;`). It accepts both the
+// legacy `pure_virtual_clause` child and the current grammar's bare
+// `= number_literal(0)` representation. A leading `virtual` specifier is not
+// required (out-of-class `= 0` is not legal C++, so the `= 0` after a method
+// declarator is unambiguous).
+func cppIsPureVirtualField(field ts.Node, src []byte) bool {
+	if cppFirstChildOfType(field, "pure_virtual_clause") != nil {
+		return true
+	}
+	sawAssign := false
+	for i := 0; i < int(field.ChildCount()); i++ {
+		ch := field.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "=":
+			sawAssign = true
+		case "number_literal":
+			if sawAssign && strings.TrimSpace(nodeText(ch, src)) == "0" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // cppFirstChildOfType returns the first direct child of n with the given

@@ -384,7 +384,9 @@ func requireArgPath(call ts.Node, src []byte) string {
 			continue
 		}
 		switch ch.Type() {
-		case "function_arguments":
+		case "function_arguments", "arguments":
+			// `require("foo.bar")` — the arg list (smacker:
+			// function_arguments, official: arguments) wraps the string.
 			for j := range ch.ChildCount() {
 				arg := ch.Child(int(j))
 				if arg != nil && arg.Type() == "string" {
@@ -461,31 +463,50 @@ func walkForImportEdges(node ts.Node, file extractor.FileInput, out *[]types.Ent
 func analyzeRequireDecl(decl ts.Node, src []byte) (string, string, bool) {
 	var lhs string
 	var requirePath string
-	for i := 0; i < int(decl.ChildCount()); i++ {
-		ch := decl.Child(i)
-		if ch == nil {
-			continue
+	// Current tree-sitter-lua nests the binding inside an
+	// `assignment_statement` (variable_list / "=" / expression_list);
+	// the legacy smacker grammar exposed `variable_declarator` +
+	// `function_call` directly under variable_declaration. Walk a small
+	// subtree so both shapes resolve.
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
+		if n == nil {
+			return
 		}
-		switch ch.Type() {
+		switch n.Type() {
 		case "variable_declarator":
-			// The first identifier child is the bound name.
-			for j := 0; j < int(ch.ChildCount()); j++ {
-				gc := ch.Child(j)
-				if gc != nil && gc.Type() == "identifier" {
+			// Legacy: first identifier child is the bound name.
+			for j := 0; j < int(n.ChildCount()); j++ {
+				if gc := n.Child(j); gc != nil && gc.Type() == "identifier" && lhs == "" {
 					lhs = string(src[gc.StartByte():gc.EndByte()])
-					break
+				}
+			}
+		case "variable_list":
+			// Official: LHS target(s); take the first bare identifier.
+			for j := 0; j < int(n.ChildCount()); j++ {
+				if gc := n.Child(j); gc != nil && gc.Type() == "identifier" && lhs == "" {
+					lhs = string(src[gc.StartByte():gc.EndByte()])
 				}
 			}
 		case "function_call":
-			// require(...) or require "..."
-			if ch.ChildCount() > 0 {
-				head := ch.Child(0)
-				if head != nil && strings.TrimSpace(string(src[head.StartByte():head.EndByte()])) == "require" {
-					requirePath = requireArgPath(ch, src)
+			// require(...) or require "..." — the head (Child(0) / `name`
+			// field) is the `require` identifier.
+			head := n.ChildByFieldName("name")
+			if head == nil && n.ChildCount() > 0 {
+				head = n.Child(0)
+			}
+			if head != nil && strings.TrimSpace(string(src[head.StartByte():head.EndByte()])) == "require" {
+				if p := requireArgPath(n, src); p != "" {
+					requirePath = p
 				}
 			}
+			return
+		}
+		for j := 0; j < int(n.ChildCount()); j++ {
+			walk(n.Child(j))
 		}
 	}
+	walk(decl)
 	if requirePath == "" {
 		return "", "", false
 	}
@@ -546,38 +567,48 @@ func collectModuleTables(root ts.Node, file extractor.FileInput) map[string]type
 		hasLocal := false
 		var lhs string
 		hasEmptyTable := false
-		for j := 0; j < int(ch.ChildCount()); j++ {
-			c2 := ch.Child(j)
-			if c2 == nil {
-				continue
+		// Walk the variable_declaration subtree to handle both the legacy
+		// smacker shape (local / variable_declarator / tableconstructor as
+		// direct children) and the current official shape (local +
+		// assignment_statement(variable_list, "=", expression_list) with a
+		// `table_constructor` value).
+		var scan func(n ts.Node)
+		scan = func(n ts.Node) {
+			if n == nil {
+				return
 			}
-			switch c2.Type() {
+			switch n.Type() {
 			case "local":
 				hasLocal = true
-			case "variable_declarator":
-				for k := 0; k < int(c2.ChildCount()); k++ {
-					gc := c2.Child(k)
-					if gc != nil && gc.Type() == "identifier" {
+			case "variable_declarator", "variable_list":
+				for k := 0; k < int(n.ChildCount()); k++ {
+					if gc := n.Child(k); gc != nil && gc.Type() == "identifier" && lhs == "" {
 						lhs = string(src[gc.StartByte():gc.EndByte()])
-						break
 					}
 				}
-			case "tableconstructor":
-				// Empty table: only `{` and `}` children (no field children).
+				return
+			case "tableconstructor", "table_constructor":
+				// Empty table: only `{`/`}` children (no field children).
 				empty := true
-				for k := 0; k < int(c2.ChildCount()); k++ {
-					gc := c2.Child(k)
+				for k := 0; k < int(n.ChildCount()); k++ {
+					gc := n.Child(k)
 					if gc == nil {
 						continue
 					}
-					t := gc.Type()
-					if t != "{" && t != "}" {
+					if t := gc.Type(); t != "{" && t != "}" {
 						empty = false
 						break
 					}
 				}
 				hasEmptyTable = empty
+				return
 			}
+			for k := 0; k < int(n.ChildCount()); k++ {
+				scan(n.Child(k))
+			}
+		}
+		for j := 0; j < int(ch.ChildCount()); j++ {
+			scan(ch.Child(j))
 		}
 		if hasLocal && lhs != "" && hasEmptyTable {
 			out[lhs] = types.EntityRecord{
@@ -667,6 +698,28 @@ func luaCallTarget(call ts.Node, src []byte) string {
 	if call == nil || call.ChildCount() == 0 {
 		return ""
 	}
+	// Current tree-sitter-lua (official binding) exposes the callee under
+	// the `name` field of function_call: an `identifier` for bare calls,
+	// a `dot_index_expression(table, field)` for `foo.run(...)`, or a
+	// `method_index_expression(table, method)` for `obj:bar(...)`. The
+	// callee is the trailing field/method identifier; the receiver
+	// (`foo`/`obj`) must NOT be emitted as a CALLS target.
+	if name := call.ChildByFieldName("name"); name != nil {
+		switch name.Type() {
+		case "identifier":
+			return string(src[name.StartByte():name.EndByte()])
+		case "dot_index_expression":
+			if f := name.ChildByFieldName("field"); f != nil {
+				return string(src[f.StartByte():f.EndByte()])
+			}
+		case "method_index_expression":
+			if m := name.ChildByFieldName("method"); m != nil {
+				return string(src[m.StartByte():m.EndByte()])
+			}
+		}
+	}
+	// Legacy smacker-grammar fallback: flat identifier children followed by
+	// the argument list; the callee is the last identifier before the args.
 	last := ""
 	for i := 0; i < int(call.ChildCount()); i++ {
 		ch := call.Child(i)
@@ -674,9 +727,7 @@ func luaCallTarget(call ts.Node, src []byte) string {
 			continue
 		}
 		switch ch.Type() {
-		case "function_call_paren", "function_arguments", "string_argument":
-			// We've reached the argument list — return the last identifier
-			// we saw (the callee).
+		case "function_call_paren", "function_arguments", "arguments", "string_argument":
 			return last
 		case "identifier":
 			last = string(src[ch.StartByte():ch.EndByte()])

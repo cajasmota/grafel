@@ -87,6 +87,28 @@ type Node interface {
 	String() string
 }
 
+// SameNode reports whether a and b refer to the same node in the same tree.
+//
+// It MUST NOT be expressed as `a == b` on the interface values: the official
+// binding's adapter wraps each *tree-sitter Node in a fresh wrapper struct on
+// every accessor call (Child, ChildByFieldName, NamedChild, …), so two handles
+// to the same underlying node are not `==`-equal. (The retired smacker binding
+// happened to return comparable values, which is why several extractors used
+// `==`; the cutover to the official binding broke that assumption — B2 #5418.)
+//
+// Identity is established by node Type plus byte span: within a single parse
+// tree no two distinct nodes share both their start/end byte offsets and their
+// grammar symbol, so (Type, StartByte, EndByte) is a stable identity key.
+// nil on either side reports false unless both are nil.
+func SameNode(a, b Node) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return a.StartByte() == b.StartByte() &&
+		a.EndByte() == b.EndByte() &&
+		a.Type() == b.Type()
+}
+
 // Tree is a binding-agnostic parse tree. It owns C memory; callers that obtain a
 // Tree directly (rather than via a pooled ParseResult) should Close it.
 type Tree interface {
