@@ -17,7 +17,7 @@ func runScala(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Test.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

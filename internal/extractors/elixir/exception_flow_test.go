@@ -21,7 +21,7 @@ func extractEx(t *testing.T, src, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

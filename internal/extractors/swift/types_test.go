@@ -20,7 +20,7 @@ func extractSwift(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Types.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

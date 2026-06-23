@@ -30,7 +30,7 @@ import (
 	"fmt"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -48,12 +48,12 @@ func (e *Extractor) Language() string { return "proto" }
 
 // Extract walks the tree-sitter CST and returns entity records.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
 	var entities []types.EntityRecord
-	walkProto(file.Tree.RootNode(), file, &entities)
+	walkProto(file.TSTree.RootNode(), file, &entities)
 
 	// Append IMPORTS stub entities, one per `import "..."` directive.
 	importEntities := buildImportEntities(file)
@@ -64,14 +64,14 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	return entities, nil
 }
 
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
 	return string(src[node.StartByte():node.EndByte()])
 }
 
-func childByType(node *sitter.Node, types_ ...string) *sitter.Node {
+func childByType(node ts.Node, types_ ...string) ts.Node {
 	set := make(map[string]bool, len(types_))
 	for _, t := range types_ {
 		set[t] = true
@@ -101,7 +101,7 @@ func fileContainsRel(filePath, name string) types.RelationshipRecord {
 	}
 }
 
-func walkProto(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walkProto(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -136,7 +136,7 @@ func walkProto(node *sitter.Node, file extractor.FileInput, out *[]types.EntityR
 	}
 }
 
-func buildService(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildService(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	nameNode := childByType(node, "service_name")
 	if nameNode == nil {
 		return types.EntityRecord{}, false
@@ -189,7 +189,7 @@ func buildService(node *sitter.Node, file extractor.FileInput) (types.EntityReco
 	}, true
 }
 
-func buildRPC(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildRPC(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	// rpc: rpc <rpc_name> ( <msg_type> ) returns ( <msg_type> ) ;
 	nameNode := childByType(node, "rpc_name")
 	if nameNode == nil {
@@ -243,7 +243,7 @@ func buildRPC(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, 
 	}, true
 }
 
-func buildMessage(node *sitter.Node, file extractor.FileInput) ([]types.EntityRecord, bool) {
+func buildMessage(node ts.Node, file extractor.FileInput) ([]types.EntityRecord, bool) {
 	nameNode := childByType(node, "message_name")
 	if nameNode == nil {
 		return nil, false
@@ -334,7 +334,7 @@ func buildMessage(node *sitter.Node, file extractor.FileInput) ([]types.EntityRe
 // it coincides with the message→field CONTAINS edge target. Properties carry the
 // resolved field type and the proto label (repeated/optional/required) when one
 // is present.
-func buildField(file extractor.FileInput, parent, fname, ftype, label string, node *sitter.Node) types.EntityRecord {
+func buildField(file extractor.FileInput, parent, fname, ftype, label string, node ts.Node) types.EntityRecord {
 	props := map[string]string{"type": ftype}
 	if label != "" {
 		props["label"] = label
@@ -363,7 +363,7 @@ func buildField(file extractor.FileInput, parent, fname, ftype, label string, no
 	}
 }
 
-func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildEnum(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	nameNode := childByType(node, "enum_name")
 	if nameNode == nil {
 		return types.EntityRecord{}, false
@@ -422,7 +422,7 @@ func buildEnum(node *sitter.Node, file extractor.FileInput) (types.EntityRecord,
 //	  identifier   ← field name
 //	  =
 //	  field_number
-func fieldName(node *sitter.Node, src []byte) string {
+func fieldName(node ts.Node, src []byte) string {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch == nil {
@@ -450,7 +450,7 @@ var protoScalars = map[string]bool{
 // identifier, `=`, and the field number. The `type` node wraps either a scalar
 // keyword, a `message_or_enum_type`, or a `map_type` (`map<K, V>`); we return
 // the textual type (e.g. "string", "Order", "map<string, Order>").
-func fieldTypeAndLabel(node *sitter.Node, src []byte) (ftype, label string) {
+func fieldTypeAndLabel(node ts.Node, src []byte) (ftype, label string) {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch == nil {
@@ -482,7 +482,7 @@ func fieldTypeAndLabel(node *sitter.Node, src []byte) (ftype, label string) {
 //
 //	map_field
 //	  map  <  key_type  ,  type  >  identifier  =  field_number  ;
-func mapFieldTypeAndLabel(node *sitter.Node, src []byte) (ftype, label string) {
+func mapFieldTypeAndLabel(node ts.Node, src []byte) (ftype, label string) {
 	var key, val string
 	if k := childByType(node, "key_type"); k != nil {
 		key = strings.TrimSpace(nodeText(k, src))
@@ -535,7 +535,7 @@ func namedTypeRefs(ftype string) []string {
 //	  identifier   ← value name (e.g. UNKNOWN)
 //	  =
 //	  int_lit
-func enumValueName(node *sitter.Node, src []byte) string {
+func enumValueName(node ts.Node, src []byte) string {
 	if id := childByType(node, "identifier"); id != nil {
 		return nodeText(id, src)
 	}
@@ -547,7 +547,7 @@ func enumValueName(node *sitter.Node, src []byte) string {
 // each carrying an IMPORTS edge from file.Path → target. `import public`
 // imports carry Properties["public"]="true" on the relationship.
 func buildImportEntities(file extractor.FileInput) []types.EntityRecord {
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	var entities []types.EntityRecord
 	for i := range root.ChildCount() {
 		ch := root.Child(int(i))
@@ -590,7 +590,7 @@ func buildImportEntities(file extractor.FileInput) []types.EntityRecord {
 //	  [public|weak]   (optional modifier)
 //	  string          ("path/to.proto")
 //	  ;
-func parseImport(node *sitter.Node, src []byte) (path string, public bool) {
+func parseImport(node ts.Node, src []byte) (path string, public bool) {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch == nil {

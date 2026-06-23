@@ -37,7 +37,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -55,7 +55,7 @@ func (e *Extractor) Language() string { return "elixir" }
 
 // Extract walks the tree-sitter CST and returns entity records.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -65,11 +65,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	walkNode(file.Tree.RootNode(), file, &entities)
+	walkNode(file.TSTree.RootNode(), file, &entities)
 	// Epic #3628 — error_flow: emit THROWS / CATCHES edges from def/defp
 	// bodies to the shared SCOPE.ExceptionType convergence node for typed
 	// `raise Type` / `rescue e in [Type]` shapes.
-	emitExceptionFlowEdges(file.Tree.RootNode(), file, &entities)
+	emitExceptionFlowEdges(file.TSTree.RootNode(), file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "elixir")
 	extractor.TagEntitiesLanguage(entities, "elixir")
@@ -82,7 +82,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // def/defp declared inside the body, every def body is scanned for `call`
 // nodes that yield CALLS edges, and the four import forms (alias/import/
 // use/require) emit IMPORTS entities with the property contract.
-func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walkNode(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -143,7 +143,7 @@ func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRe
 
 // handleModule emits a SCOPE.Component for defmodule/defprotocol and walks
 // its body, then attaches a CONTAINS edge per def/defp found inside.
-func handleModule(node *sitter.Node, file extractor.FileInput, subtype string, out *[]types.EntityRecord) {
+func handleModule(node ts.Node, file extractor.FileInput, subtype string, out *[]types.EntityRecord) {
 	rec, ok := buildModule(node, file, subtype)
 	if !ok {
 		// Still descend so nested entities aren't lost.
@@ -182,7 +182,7 @@ func handleModule(node *sitter.Node, file extractor.FileInput, subtype string, o
 }
 
 // findDoBlock returns the `do_block` child of a call node, or nil.
-func findDoBlock(node *sitter.Node) *sitter.Node {
+func findDoBlock(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() == "do_block" {
@@ -198,7 +198,7 @@ func findDoBlock(node *sitter.Node) *sitter.Node {
 //   - Inline keyword form `defp foo, do: expr` — body is the `keywords`
 //     subtree under `arguments` (we return the arguments node and let the
 //     caller walk descendants).
-func findDefBody(node *sitter.Node) *sitter.Node {
+func findDefBody(node ts.Node) ts.Node {
 	if b := findDoBlock(node); b != nil {
 		return b
 	}
@@ -215,7 +215,7 @@ func findDefBody(node *sitter.Node) *sitter.Node {
 // callHeadName returns the head identifier of a call node — i.e. the first
 // child when it is an `identifier`. Returns "" for dotted heads like
 // `Repo.all` (those are method calls, not def-defining forms).
-func callHeadName(node *sitter.Node, src []byte) string {
+func callHeadName(node ts.Node, src []byte) string {
 	if node.ChildCount() == 0 {
 		return ""
 	}
@@ -259,7 +259,7 @@ var elixirCallStop = map[string]bool{
 //     trailing identifier
 //
 // Self-recursion is dropped. Keywords / def-defining forms are filtered.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -293,7 +293,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 }
 
 // elixirCallTarget resolves the callee name from a `call` node.
-func elixirCallTarget(call *sitter.Node, src []byte) string {
+func elixirCallTarget(call ts.Node, src []byte) string {
 	if call.ChildCount() == 0 {
 		return ""
 	}
@@ -315,7 +315,7 @@ func elixirCallTarget(call *sitter.Node, src []byte) string {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -323,8 +323,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -339,7 +339,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 }
 
 // buildSchema creates a SCOPE.Schema entity for Ecto `schema "table_name" do` calls.
-func buildSchema(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildSchema(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := extractFirstArg(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -361,7 +361,7 @@ func buildSchema(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 }
 
 // buildModule creates a SCOPE.Component entity for defmodule/defprotocol.
-func buildModule(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildModule(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := extractFirstArg(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -380,7 +380,7 @@ func buildModule(node *sitter.Node, file extractor.FileInput, subtype string) (t
 }
 
 // buildFunction creates a SCOPE.Operation entity for def/defp calls.
-func buildFunction(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildFunction(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := extractFunctionName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -415,7 +415,7 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, subtype string) 
 //	Properties["imported_name"] — equal to local_name.
 //	Properties["import_kind"]   — preserved discriminator: "alias",
 //	                              "import", "use", or "require".
-func buildImportRecord(node *sitter.Node, file extractor.FileInput, kind string) (types.EntityRecord, bool) {
+func buildImportRecord(node ts.Node, file extractor.FileInput, kind string) (types.EntityRecord, bool) {
 	raw := extractFirstArg(node, file.Content)
 	if raw == "" {
 		return types.EntityRecord{}, false
@@ -456,7 +456,7 @@ func buildImportRecord(node *sitter.Node, file extractor.FileInput, kind string)
 }
 
 // extractFirstArg returns the text of the first non-keyword argument of a call node.
-func extractFirstArg(node *sitter.Node, src []byte) string {
+func extractFirstArg(node ts.Node, src []byte) string {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if i == 0 {
@@ -478,7 +478,7 @@ func extractFirstArg(node *sitter.Node, src []byte) string {
 }
 
 // extractFunctionName extracts the function name from a def/defp call node.
-func extractFunctionName(node *sitter.Node, src []byte) string {
+func extractFunctionName(node ts.Node, src []byte) string {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if i == 0 {
@@ -506,7 +506,7 @@ func extractFunctionName(node *sitter.Node, src []byte) string {
 }
 
 // extractIdentifier finds the first identifier in a node subtree.
-func extractIdentifier(node *sitter.Node, src []byte) string {
+func extractIdentifier(node ts.Node, src []byte) string {
 	if node.Type() == "identifier" {
 		return string(src[node.StartByte():node.EndByte()])
 	}
@@ -519,7 +519,7 @@ func extractIdentifier(node *sitter.Node, src []byte) string {
 }
 
 // firstLine returns the first line of the node's source text.
-func firstLine(src []byte, node *sitter.Node) string {
+func firstLine(src []byte, node ts.Node) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "\n"); idx >= 0 {
 		return strings.TrimSpace(raw[:idx])

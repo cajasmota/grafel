@@ -45,7 +45,7 @@ package groovy
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -59,7 +59,7 @@ import (
 // parent is the node whose child list contains both `decl` (at index declIdx)
 // and the body closure — i.e. the enum's lexical container (source_file, a
 // class closure for a nested enum, …).
-func buildGroovyEnumValueSet(parent *sitter.Node, declIdx int, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildGroovyEnumValueSet(parent ts.Node, declIdx int, file extractor.FileInput) (types.EntityRecord, bool) {
 	decl := parent.Child(declIdx)
 	if decl == nil {
 		return types.EntityRecord{}, false
@@ -85,7 +85,7 @@ func buildGroovyEnumValueSet(parent *sitter.Node, declIdx int, file extractor.Fi
 
 // enumHeaderName returns the enum type name when decl is an `enum X` header
 // (`declaration[ identifier("enum"), identifier("X") ]`), or "" otherwise.
-func enumHeaderName(decl *sitter.Node, src []byte) string {
+func enumHeaderName(decl ts.Node, src []byte) string {
 	if decl == nil || decl.Type() != "declaration" {
 		return ""
 	}
@@ -104,7 +104,7 @@ func enumHeaderName(decl *sitter.Node, src []byte) string {
 
 // nextClosureSibling returns the first `closure` node that follows declIdx in
 // parent's child list, skipping anonymous separators, or nil.
-func nextClosureSibling(parent *sitter.Node, declIdx int) *sitter.Node {
+func nextClosureSibling(parent ts.Node, declIdx int) ts.Node {
 	for i := declIdx + 1; i < int(parent.ChildCount()); i++ {
 		ch := parent.Child(i)
 		if ch == nil {
@@ -125,7 +125,7 @@ func nextClosureSibling(parent *sitter.Node, declIdx int) *sitter.Node {
 // collectGroovyEnumMembers walks the enum body closure for constant members.
 // Collection stops at the first `declaration` (an enum field like
 // `double mass`), so the trailing constructor `function_call` is never counted.
-func collectGroovyEnumMembers(body *sitter.Node, src []byte) []extractor.EnumMember {
+func collectGroovyEnumMembers(body ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	seen := map[string]bool{}
 	add := func(name, value string, line int) {
@@ -166,7 +166,7 @@ func collectGroovyEnumMembers(body *sitter.Node, src []byte) []extractor.EnumMem
 // constant such as `ACTIVE(1)` or `HEARTS('red')`. The value is the single
 // leading literal argument (number/string/bool); multi-arg or non-literal
 // constructors keep the constant but drop the value.
-func groovyEnumValuedConst(fc *sitter.Node, src []byte) (string, string) {
+func groovyEnumValuedConst(fc ts.Node, src []byte) (string, string) {
 	nameNode := childByType(fc, "identifier")
 	if nameNode == nil {
 		return "", ""
@@ -198,7 +198,7 @@ func groovyEnumValuedConst(fc *sitter.Node, src []byte) (string, string) {
 
 // collectEnumBareConsts walks a parameter_list (possibly the direct node or a
 // descendant of an ERROR node) collecting bare constant identifiers.
-func collectEnumBareConsts(node *sitter.Node, src []byte, add func(name, value string, line int)) {
+func collectEnumBareConsts(node ts.Node, src []byte, add func(name, value string, line int)) {
 	for _, pl := range findAllNodes(node, "parameter_list") {
 		for i := 0; i < int(pl.ChildCount()); i++ {
 			p := pl.Child(i)
@@ -216,7 +216,7 @@ func collectEnumBareConsts(node *sitter.Node, src []byte, add func(name, value s
 
 // groovyStringLiteralContent returns the inner content of a `string` node,
 // stripping the surrounding quote tokens.
-func groovyStringLiteralContent(node *sitter.Node, src []byte) string {
+func groovyStringLiteralContent(node ts.Node, src []byte) string {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch != nil && ch.Type() == "string_content" {

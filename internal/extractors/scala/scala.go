@@ -34,7 +34,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -52,7 +52,7 @@ func (e *Extractor) Language() string { return "scala" }
 
 // Extract walks the tree-sitter CST and returns entity records.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -74,16 +74,16 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		// JS/TS fix from #570/#575.
 		entities = append(entities, extractor.FileEntity(file))
 	}
-	walkNode(file.Tree.RootNode(), file, nil, &entities)
+	walkNode(file.TSTree.RootNode(), file, nil, &entities)
 	// #4432 — index Scala constant collections / enumerations (object const
 	// groups, `val X = Map(...)`, Scala 3 `enum`, sealed-trait + case-object
 	// enumerations) as searchable SCOPE.Enum value-sets carrying structured
 	// members_json. Runs independently of the structural walk above.
-	emitConstantSets(file.Tree.RootNode(), file, &entities)
+	emitConstantSets(file.TSTree.RootNode(), file, &entities)
 	// Epic #3628 — error-flow topology: THROWS / CATCHES edges from functions
 	// to shared SCOPE.ExceptionType convergence nodes. Runs after the main
 	// walk so the SCOPE.Operation host entities exist for FromName attachment.
-	emitExceptionFlowEdges(file.Tree.RootNode(), file, &entities)
+	emitExceptionFlowEdges(file.TSTree.RootNode(), file, &entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
 	extractor.TagRelationshipsLanguage(entities, "scala")
 	extractor.TagEntitiesLanguage(entities, "scala")
@@ -119,7 +119,7 @@ type classCtx struct {
 // Issue #379: class/object/trait declarations attach CONTAINS edges per
 // function declared inside their template_body, and every function body
 // is scanned for call_expression descendants that yield CALLS edges.
-func walkNode(node *sitter.Node, file extractor.FileInput, cc *classCtx, out *[]types.EntityRecord) {
+func walkNode(node ts.Node, file extractor.FileInput, cc *classCtx, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -176,7 +176,7 @@ func walkNode(node *sitter.Node, file extractor.FileInput, cc *classCtx, out *[]
 // fields/parameters are passed down via classCtx so member functions can
 // resolve receiver types on call_expression nodes.
 func emitContainerWithMembers(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	subtype string,
 	out *[]types.EntityRecord,
@@ -246,7 +246,7 @@ func emitContainerWithMembers(
 
 // findTemplateBody returns the template_body child of a class/object/
 // trait declaration, or nil when the declaration has no body.
-func findTemplateBody(node *sitter.Node) *sitter.Node {
+func findTemplateBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() == "template_body" {
@@ -259,7 +259,7 @@ func findTemplateBody(node *sitter.Node) *sitter.Node {
 // findFunctionBody returns the block child of a function_definition that
 // holds the call expressions, or nil when the function is abstract
 // (function_declaration) / expression-body without a block.
-func findFunctionBody(node *sitter.Node) *sitter.Node {
+func findFunctionBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() == "block" {
@@ -277,7 +277,7 @@ func findFunctionBody(node *sitter.Node) *sitter.Node {
 // definition, var_definition and class_parameter. Generic parameters
 // are stripped so `List[Owner]` yields "List" — matching the java
 // resolver's index shape.
-func collectContainerFieldTypes(node *sitter.Node, src []byte) map[string]string {
+func collectContainerFieldTypes(node ts.Node, src []byte) map[string]string {
 	out := map[string]string{}
 
 	// Class parameters (`class C(val repo: Repo, x: Int)`).
@@ -321,7 +321,7 @@ func collectContainerFieldTypes(node *sitter.Node, src []byte) map[string]string
 // extractNamedTypePair returns (name, leafType) for a node that has a
 // direct identifier child followed (optionally) by a type_identifier or
 // generic_type child. Returns ("", "") when either is missing.
-func extractNamedTypePair(node *sitter.Node, src []byte) (string, string) {
+func extractNamedTypePair(node ts.Node, src []byte) (string, string) {
 	var name, typ string
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
@@ -354,7 +354,7 @@ func extractNamedTypePair(node *sitter.Node, src []byte) (string, string) {
 // type for every parameter declared on a function_definition /
 // function_declaration node. Used by the receiver binder so a call like
 // `p.go()` inside `def f(p: Param)` resolves to "Param.go".
-func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
+func collectParamTypes(node ts.Node, src []byte) map[string]string {
 	out := map[string]string{}
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
@@ -395,7 +395,7 @@ func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
 // class is not statically recoverable from a `new` or an explicit annotation.
 // First binding per name wins. Generic wrappers are stripped to the leaf type
 // (`new List[Owner]` → "List") to match the field/param index shape.
-func collectScalaLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+func collectScalaLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -425,7 +425,7 @@ func collectScalaLocalVarTypes(body *sitter.Node, src []byte) map[string]string 
 // scalaLocalVarName returns the bound name of a val_definition/var_definition —
 // the first direct `identifier` child (`val c: T = …` → "c"). Returns "" for a
 // pattern/destructuring binding with no plain identifier.
-func scalaLocalVarName(decl *sitter.Node, src []byte) string {
+func scalaLocalVarName(decl ts.Node, src []byte) string {
 	for i := 0; i < int(decl.ChildCount()); i++ {
 		ch := decl.Child(i)
 		if ch.Type() == "identifier" {
@@ -439,7 +439,7 @@ func scalaLocalVarName(decl *sitter.Node, src []byte) string {
 // instance_expression initializer constructs (`val c = new FooController(svc)` →
 // "FooController"). Returns "" when the RHS is not a direct `new` expression.
 // A generic_type leaf is stripped to its first type_identifier.
-func scalaInstanceExprType(decl *sitter.Node, src []byte) string {
+func scalaInstanceExprType(decl ts.Node, src []byte) string {
 	for i := 0; i < int(decl.ChildCount()); i++ {
 		ch := decl.Child(i)
 		if ch.Type() != "instance_expression" {
@@ -480,7 +480,7 @@ var scalaKeywordStop = map[string]bool{
 // Self-recursion is dropped to match the java/kotlin extractor dedup
 // semantics.
 func extractCallRelationships(
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	callerName string,
 	cc *classCtx,
@@ -549,7 +549,7 @@ func extractCallRelationships(
 // Returns (target, receiverType). receiverType is non-empty only when a
 // field_expression receiver bound to a known type.
 func scalaCallTarget(
-	call *sitter.Node,
+	call ts.Node,
 	src []byte,
 	cc *classCtx,
 	paramTypes map[string]string,
@@ -566,7 +566,7 @@ func scalaCallTarget(
 		// field_expression has children: identifier "." identifier ...
 		// Method = last identifier; receiver = first identifier.
 		var method, receiver string
-		var idents []*sitter.Node
+		var idents []ts.Node
 		for i := 0; i < int(first.ChildCount()); i++ {
 			ch := first.Child(i)
 			if ch.Type() == "identifier" {
@@ -631,7 +631,7 @@ func isPascalCase(s string) bool {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -639,8 +639,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -660,7 +660,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 // matches.
 //
 // Issue #690 — closes the Scala analog of the Python field orphan gap (#689).
-func buildScalaField(node *sitter.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+func buildScalaField(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -694,7 +694,7 @@ func buildScalaField(node *sitter.Node, file extractor.FileInput, parentType str
 // regardless of whether they carry a `val`/`var` modifier (case classes
 // generate accessors by default).
 func emitScalaCaseClassFields(
-	classNode *sitter.Node,
+	classNode ts.Node,
 	file extractor.FileInput,
 	className string,
 	classIdx int,
@@ -740,7 +740,7 @@ func emitScalaCaseClassFields(
 }
 
 // buildComponent creates a SCOPE.Component entity.
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -759,7 +759,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 }
 
 // buildOperation creates a SCOPE.Operation entity for function definitions.
-func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildOperation(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -796,7 +796,7 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string)
 // "import" identifier "." identifier ... [namespace_selectors |
 // namespace_wildcard | identifier]. We reconstruct the dotted base
 // path from the direct children.
-func buildImports(node *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+func buildImports(node ts.Node, file extractor.FileInput) []types.EntityRecord {
 	var pathParts []string
 	var selectors []string
 	hasWildcard := false
@@ -911,7 +911,7 @@ func buildImports(node *sitter.Node, file extractor.FileInput) []types.EntityRec
 }
 
 // extractName finds the name of a declaration node.
-func extractName(node *sitter.Node, src []byte) string {
+func extractName(node ts.Node, src []byte) string {
 	if child := node.ChildByFieldName("name"); child != nil {
 		return string(src[child.StartByte():child.EndByte()])
 	}
@@ -935,7 +935,7 @@ func extractName(node *sitter.Node, src []byte) string {
 }
 
 // firstLine returns the first line of the node's source text.
-func firstLine(src []byte, node *sitter.Node) string {
+func firstLine(src []byte, node ts.Node) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "\n"); idx >= 0 {
 		raw = raw[:idx]
@@ -945,7 +945,7 @@ func firstLine(src []byte, node *sitter.Node) string {
 
 // methodSignature extracts a clean method signature, truncating at body.
 // Matches Python's behavior: "def name(params): ReturnType" without body.
-func methodSignature(src []byte, node *sitter.Node) string {
+func methodSignature(src []byte, node ts.Node) string {
 	raw := firstLine(src, node)
 	// Remove "override " prefix for cleaner parity
 	raw = strings.TrimPrefix(raw, "override ")
@@ -960,7 +960,7 @@ func methodSignature(src []byte, node *sitter.Node) string {
 
 // classSignature extracts a clean class/trait signature without body.
 // Strips extends/with clauses and type parameters to match Python convention.
-func classSignature(src []byte, node *sitter.Node) string {
+func classSignature(src []byte, node ts.Node) string {
 	raw := firstLine(src, node)
 	// Truncate at opening brace or opening paren for case classes with params.
 	if idx := strings.Index(raw, "{"); idx >= 0 {

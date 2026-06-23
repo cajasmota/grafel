@@ -24,7 +24,7 @@ package kotlin
 // `"literal" to "literal"` pair (any non-literal pair disqualifies the map).
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -34,7 +34,7 @@ import (
 // `enum class`, capturing each entry's first string-literal constructor
 // argument as its value. ok=false when the declaration is not an enum class or
 // has no entries.
-func emitEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func emitEnumValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := firstChildOfType(node, file.Content, "type_identifier")
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -70,7 +70,7 @@ func emitEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.Entity
 // string-literal properties of an object/class body. groupName names the
 // enclosing object/class. ok=false when fewer than two such members exist (a
 // single constant is not an enumerated value-set).
-func emitConstGroupValueSet(body *sitter.Node, file extractor.FileInput, groupName string) (types.EntityRecord, bool) {
+func emitConstGroupValueSet(body ts.Node, file extractor.FileInput, groupName string) (types.EntityRecord, bool) {
 	if body == nil || groupName == "" {
 		return types.EntityRecord{}, false
 	}
@@ -106,7 +106,7 @@ func emitConstGroupValueSet(body *sitter.Node, file extractor.FileInput, groupNa
 // property_declaration (top-level or object/class-level). ok=false when the
 // initialiser is not a mapOf call, has no arguments, or any argument is not a
 // closed `"literal" to "literal"` pair (honest-partial).
-func emitMapValueSet(prop *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func emitMapValueSet(prop ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	varDecl := findChildByTypeKt(prop, "variable_declaration")
 	if varDecl == nil {
 		return types.EntityRecord{}, false
@@ -162,7 +162,7 @@ func emitMapValueSet(prop *sitter.Node, file extractor.FileInput) (types.EntityR
 // infixToPair reads a `"key" to "value"` infix_expression: the operator must be
 // the `to` infix function and both operands must be string literals. ok=false
 // otherwise (a non-`to` infix, or a non-literal operand).
-func infixToPair(infix *sitter.Node, file extractor.FileInput) (key, val string, ok bool) {
+func infixToPair(infix ts.Node, file extractor.FileInput) (key, val string, ok bool) {
 	// Shape: string_literal | simple_identifier("to") | string_literal.
 	var lits []string
 	sawTo := false
@@ -190,7 +190,7 @@ func infixToPair(infix *sitter.Node, file extractor.FileInput) (key, val string,
 
 // constValStringProp reads a `const val NAME = "literal"` property's name and
 // string value. ok=false when the initialiser is not a single string literal.
-func constValStringProp(prop *sitter.Node, file extractor.FileInput) (name, val string, ok bool) {
+func constValStringProp(prop ts.Node, file extractor.FileInput) (name, val string, ok bool) {
 	varDecl := findChildByTypeKt(prop, "variable_declaration")
 	if varDecl == nil {
 		return "", "", false
@@ -210,7 +210,7 @@ func constValStringProp(prop *sitter.Node, file extractor.FileInput) (name, val 
 // property modifier (`modifiers > property_modifier`). The grammar represents
 // the `const` keyword as the property_modifier node's own text (it has no child
 // `const` token), so the modifier text is compared directly.
-func hasConstModifier(prop *sitter.Node, src []byte) bool {
+func hasConstModifier(prop ts.Node, src []byte) bool {
 	mods := findChildByTypeKt(prop, "modifiers")
 	if mods == nil {
 		return false
@@ -229,7 +229,7 @@ func hasConstModifier(prop *sitter.Node, src []byte) bool {
 
 // firstStringArg returns the inner text of the first string_literal inside a
 // value_arguments node, or "" when none is present (a value-less enum entry).
-func firstStringArg(args *sitter.Node, file extractor.FileInput) string {
+func firstStringArg(args ts.Node, file extractor.FileInput) string {
 	if args == nil {
 		return ""
 	}
@@ -248,7 +248,7 @@ func firstStringArg(args *sitter.Node, file extractor.FileInput) string {
 // ktStringText returns the inner text of a Kotlin string_literal node. The
 // grammar exposes the body as `string_content` child(ren); falling back to
 // StripLiteralQuotes covers an empty / interpolated literal.
-func ktStringText(lit *sitter.Node, src []byte) string {
+func ktStringText(lit ts.Node, src []byte) string {
 	if lit == nil {
 		return ""
 	}
@@ -270,7 +270,7 @@ func isMapFactory(fn string) bool {
 
 // findChildByTypeKt returns the first direct child of node with the given type,
 // or nil.
-func findChildByTypeKt(node *sitter.Node, t string) *sitter.Node {
+func findChildByTypeKt(node ts.Node, t string) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -284,7 +284,7 @@ func findChildByTypeKt(node *sitter.Node, t string) *sitter.Node {
 }
 
 // nodeTextKt returns the source text spanned by node.
-func nodeTextKt(node *sitter.Node, src []byte) string {
+func nodeTextKt(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}

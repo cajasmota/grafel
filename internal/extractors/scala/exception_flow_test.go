@@ -22,7 +22,7 @@ func extractScalaRaw(t *testing.T, src string) []types.EntityRecord {
 		Path:     "demo.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

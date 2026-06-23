@@ -33,7 +33,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -51,7 +51,7 @@ func (e *Extractor) Language() string { return "kotlin" }
 
 // Extract walks the tree-sitter CST and returns entity records for the Kotlin file.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -61,7 +61,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	// #4375 — per-file cross-package context (package + imports). Threaded into
 	// the call extractor so a qualified `pkg.Type.method()` / imported-fn /
 	// `Type.method()` call stamps its resolved (package[, type], leaf) onto the
@@ -130,7 +130,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // per function declared inside the body, and every function body is scanned
 // for call_expression / call_suffix nodes that yield CALLS edges with stub
 // to_id. Imports are still NOT emitted.
-func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx *kotlinCrossCtx) {
+func walk(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord, ctx *kotlinCrossCtx) {
 	if node == nil {
 		return
 	}
@@ -351,7 +351,7 @@ func walk(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord
 
 // findClassBody returns the class_body / object_body / enum_class_body child
 // of a class/object declaration, or nil when the declaration has no body.
-func findClassBody(node *sitter.Node) *sitter.Node {
+func findClassBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		t := ch.Type()
@@ -365,7 +365,7 @@ func findClassBody(node *sitter.Node) *sitter.Node {
 // findFunctionBody returns the function_body child of a function_declaration,
 // or nil when the function is abstract / interface / expression-body without
 // a block. Tree-sitter-kotlin uses an unnamed `function_body` child.
-func findFunctionBody(node *sitter.Node) *sitter.Node {
+func findFunctionBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() == "function_body" {
@@ -406,7 +406,7 @@ var kotlinKeywordStop = map[string]bool{
 // `kotlin_call_type` (declaring type; absent for a top-level-function call), and
 // `call_leaf` (the bare callee name) so the resolver can bind it through the
 // package-keyed index instead of the ambiguous bare-name path.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string, ctx *kotlinCrossCtx) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string, ctx *kotlinCrossCtx) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -495,7 +495,7 @@ func stampKotlinEnclosingType(e *types.EntityRecord, typeName string) {
 // gathers `val`/`var` property_declaration and variable_declaration names. A
 // head segment matching one of these marks an INSTANCE receiver, which the
 // cross-package qualifier resolver must skip (no false static-qualifier stamp).
-func kotlinLocalValueNames(body *sitter.Node, src []byte) map[string]bool {
+func kotlinLocalValueNames(body ts.Node, src []byte) map[string]bool {
 	names := map[string]bool{}
 	for _, vd := range findAllNodes(body, "variable_declaration", "property_declaration") {
 		for i := 0; i < int(vd.ChildCount()); i++ {
@@ -527,7 +527,7 @@ func kotlinLocalValueNames(body *sitter.Node, src []byte) map[string]bool {
 // (e.g. `chat` for `chat.lastMessages.add()`), producing the
 // false-positive same-class field-access CALLS that dominated the
 // ktor-samples bug-extractor rate. Issue #122.
-func kotlinCallTarget(call *sitter.Node, src []byte) string {
+func kotlinCallTarget(call ts.Node, src []byte) string {
 	if !hasCallSuffix(call) {
 		return ""
 	}
@@ -541,7 +541,7 @@ func kotlinCallTarget(call *sitter.Node, src []byte) string {
 	case "navigation_expression":
 		// The callee name is the last `simple_identifier` of the
 		// trailing navigation_suffix (`.method`).
-		var lastSuffix *sitter.Node
+		var lastSuffix ts.Node
 		for i := 0; i < int(first.ChildCount()); i++ {
 			ch := first.Child(i)
 			if ch.Type() == "navigation_suffix" {
@@ -565,7 +565,7 @@ func kotlinCallTarget(call *sitter.Node, src []byte) string {
 // child. Tree-sitter-kotlin requires this child for a real invocation —
 // its presence (parentheses or trailing lambda) is what distinguishes a
 // method call from a bare identifier or property reference. Issue #122.
-func hasCallSuffix(call *sitter.Node) bool {
+func hasCallSuffix(call ts.Node) bool {
 	for i := 0; i < int(call.ChildCount()); i++ {
 		if call.Child(i).Type() == "call_suffix" {
 			return true
@@ -575,7 +575,7 @@ func hasCallSuffix(call *sitter.Node) bool {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -583,8 +583,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -609,7 +609,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 //   - otherwise          → "class"
 //
 // Issue #3275 — type-system CST extraction.
-func classDeclarationSubtype(node *sitter.Node, src []byte) string {
+func classDeclarationSubtype(node ts.Node, src []byte) string {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		switch node.Child(i).Type() {
 		case "interface":
@@ -633,7 +633,7 @@ func classDeclarationSubtype(node *sitter.Node, src []byte) string {
 //
 // Mirrors the Go and Python extractors which emit SCOPE.Schema/type_alias for
 // language-level type alias declarations (#3275 — type-system CST extraction).
-func buildTypeAlias(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildTypeAlias(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := firstChildOfType(node, file.Content, "type_identifier")
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -650,7 +650,7 @@ func buildTypeAlias(node *sitter.Node, file extractor.FileInput) (types.EntityRe
 }
 
 // buildComponent creates a Component entity for class/object declarations.
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	// Kotlin grammar uses type_identifier for class/object names (no "name" field).
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
@@ -695,7 +695,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 // `post(...)` — must only classify as external when the source file
 // imports an `io.ktor.server.*` package, per the same precision model
 // the Go chi-router gate uses, #131).
-func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	// import_header text shape: `import io.ktor.server.routing.*`
 	// or `import io.ktor.server.routing.get`. Strip the leading
 	// `import` keyword + trailing wildcard, comments, and the optional
@@ -749,7 +749,7 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 }
 
 // buildOperation creates an Operation entity for function declarations.
-func buildOperation(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildOperation(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	// Kotlin grammar uses simple_identifier for function names (no "name" field).
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
@@ -793,7 +793,7 @@ var springStereotypes = map[string]bool{
 //	qualified_name = "<source_file>::<class_name>"
 //	provenance     = "@<StereotypeName>" (e.g. "@RestController")
 //	source_type    = "class"
-func buildSpringService(node *sitter.Node, file extractor.FileInput, className string) (types.EntityRecord, bool) {
+func buildSpringService(node ts.Node, file extractor.FileInput, className string) (types.EntityRecord, bool) {
 	if className == "" {
 		return types.EntityRecord{}, false
 	}
@@ -856,7 +856,7 @@ func findSpringStereotype(header string) string {
 // the CONTAINS stub to the field entity.
 //
 // Issue #690 — closes the Kotlin analog of the Python field orphan gap (#689).
-func buildProperty(node *sitter.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+func buildProperty(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
 	// property_declaration structure:
 	//   binding_pattern_kind (val|var)
 	//   variable_declaration
@@ -912,7 +912,7 @@ func buildProperty(node *sitter.Node, file extractor.FileInput, parentType strin
 //	class_parameter carries binding_pattern_kind (val|var) when the
 //	parameter is a property; plain parameters have no such child.
 func emitPrimaryConstructorFields(
-	classNode *sitter.Node,
+	classNode ts.Node,
 	file extractor.FileInput,
 	className string,
 	classIdx int,
@@ -971,7 +971,7 @@ func emitPrimaryConstructorFields(
 }
 
 // childFieldText extracts the text of a named child field.
-func childFieldText(node *sitter.Node, field string, src []byte) string {
+func childFieldText(node ts.Node, field string, src []byte) string {
 	child := node.ChildByFieldName(field)
 	if child == nil {
 		return ""
@@ -980,7 +980,7 @@ func childFieldText(node *sitter.Node, field string, src []byte) string {
 }
 
 // firstChildOfType returns the text of the first direct child with the given node type.
-func firstChildOfType(node *sitter.Node, src []byte, nodeType string) string {
+func firstChildOfType(node ts.Node, src []byte, nodeType string) string {
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch.Type() == nodeType {
@@ -993,7 +993,7 @@ func firstChildOfType(node *sitter.Node, src []byte, nodeType string) string {
 // buildFunSignature builds a function signature (up to body).
 // Strips top-level annotations but keeps parameter annotations (e.g., @RequestBody).
 // Python convention: "fun name(@ParamAnnotation param: Type): ReturnType".
-func buildFunSignature(node *sitter.Node, src []byte) string {
+func buildFunSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	// Strip body block
 	if idx := strings.Index(raw, " {"); idx >= 0 {
@@ -1018,7 +1018,7 @@ func buildFunSignature(node *sitter.Node, src []byte) string {
 
 // buildClassSignature constructs a readable signature up to the class body.
 // Strips annotations to match Python convention: "class Foo" or "data class Foo(...)".
-func buildClassSignature(node *sitter.Node, src []byte, name string) string {
+func buildClassSignature(node ts.Node, src []byte, name string) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]

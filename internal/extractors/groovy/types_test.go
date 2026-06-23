@@ -4,26 +4,29 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsgroovy "github.com/smacker/go-tree-sitter/groovy"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
 // extractGroovy parses src and runs the Groovy extractor, returning all records.
 func extractGroovy(t *testing.T, src string) []types.EntityRecord {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsgroovy.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsgroovy.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	recs, err := (&Extractor{}).Extract(context.Background(), extractor.FileInput{
 		Path:    "Sample.groovy",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

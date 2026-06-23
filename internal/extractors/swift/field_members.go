@@ -3,7 +3,7 @@ package swift
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -28,7 +28,7 @@ import (
 //	Name      = "<Owner>.<prop>"
 //	Signature = "<type> <prop>"
 func emitSwiftFieldMembers(
-	node, body *sitter.Node,
+	node, body ts.Node,
 	src []byte,
 	ownerName, filePath string,
 ) ([]types.EntityRecord, []string) {
@@ -92,7 +92,7 @@ func emitSwiftFieldMembers(
 // swiftPropertyName returns the bound identifier of a property_declaration's
 // `pattern` child (the first simple_identifier). Tuple bindings
 // (`let (a, b)`) yield only the first identifier — best-effort.
-func swiftPropertyName(prop *sitter.Node, src []byte) string {
+func swiftPropertyName(prop ts.Node, src []byte) string {
 	pat := firstChildOfType(prop, "pattern")
 	if pat == nil {
 		return ""
@@ -108,7 +108,7 @@ func swiftPropertyName(prop *sitter.Node, src []byte) string {
 // distinguish a superclass from adopted protocols, so all are returned; the
 // caller's in-file filter keeps only types we actually modeled (a struct's
 // `: Codable` thus drops out, while `class B: A` keeps the in-file A).
-func swiftInheritedTypeNames(node *sitter.Node, src []byte) []string {
+func swiftInheritedTypeNames(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
 	}
@@ -126,7 +126,7 @@ func swiftInheritedTypeNames(node *sitter.Node, src []byte) []string {
 }
 
 // firstChildOfType returns the first direct child of n with the given type.
-func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func firstChildOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}

@@ -32,7 +32,7 @@ package scala
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -43,7 +43,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -51,8 +51,8 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 
 	var edges []extractor.ExceptionEdge
 
-	var walk func(n *sitter.Node, enclosingFn string)
-	walk = func(n *sitter.Node, enclosingFn string) {
+	var walk func(n ts.Node, enclosingFn string)
+	walk = func(n ts.Node, enclosingFn string) {
 		if n == nil {
 			return
 		}
@@ -101,7 +101,7 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 // `throw new X(...)` (the throw_expression's instance_expression child names
 // the type), or "" for a re-throw of a variable (`throw e`) — which carries no
 // NEW type — or any non-`new` thrown expression.
-func scalaThrowType(throwNode *sitter.Node, src []byte) string {
+func scalaThrowType(throwNode ts.Node, src []byte) string {
 	for i := 0; i < int(throwNode.ChildCount()); i++ {
 		c := throwNode.Child(i)
 		if c == nil || c.Type() != "instance_expression" {
@@ -118,7 +118,7 @@ func scalaThrowType(throwNode *sitter.Node, src []byte) string {
 // scalaIsRecoverCall reports whether a call_expression is a `.recover` /
 // `.recoverWith` invocation that carries a case_block handler — the Try / Future
 // error-recovery idiom whose typed cases catch specific exceptions.
-func scalaIsRecoverCall(call *sitter.Node, src []byte) bool {
+func scalaIsRecoverCall(call ts.Node, src []byte) bool {
 	if call.ChildCount() == 0 {
 		return false
 	}
@@ -138,7 +138,7 @@ func scalaIsRecoverCall(call *sitter.Node, src []byte) bool {
 		return false
 	}
 	// Trailing identifier of the field_expression is the method name.
-	var last *sitter.Node
+	var last ts.Node
 	for i := 0; i < int(first.ChildCount()); i++ {
 		if first.Child(i).Type() == "identifier" {
 			last = first.Child(i)
@@ -158,7 +158,7 @@ func scalaIsRecoverCall(call *sitter.Node, src []byte) bool {
 // static exception type and are skipped — precision over recall. Qualified
 // types (`java.io.IOException`) are normalized to their bare class downstream
 // by extractor.NormalizeExceptionType.
-func scalaCaseBlockCatchTypes(parent *sitter.Node, src []byte) []string {
+func scalaCaseBlockCatchTypes(parent ts.Node, src []byte) []string {
 	caseBlock := firstChildOfType(parent, "case_block")
 	if caseBlock == nil {
 		return nil
@@ -185,7 +185,7 @@ func scalaCaseBlockCatchTypes(parent *sitter.Node, src []byte) []string {
 // (`case _ =>`), a stable-identifier value pattern, or an extractor pattern
 // (`case NonFatal(e) =>`) — none of which name a statically-caught exception
 // type.
-func scalaTypedPatternType(caseClause *sitter.Node, src []byte) string {
+func scalaTypedPatternType(caseClause ts.Node, src []byte) string {
 	tp := firstChildOfType(caseClause, "typed_pattern")
 	if tp == nil {
 		return ""
@@ -217,7 +217,7 @@ func scalaTypedPatternType(caseClause *sitter.Node, src []byte) string {
 // (`java.io.IOException`) yields its full dotted text (normalized to the bare
 // leaf downstream). An `instance_expression` (`new X(...)`) yields the type of
 // its first type-bearing child. Returns "" for any other node.
-func scalaTypeNodeText(n *sitter.Node, src []byte) string {
+func scalaTypeNodeText(n ts.Node, src []byte) string {
 	switch n.Type() {
 	case "type_identifier", "stable_type_identifier":
 		return strings.TrimSpace(string(src[n.StartByte():n.EndByte()]))
@@ -244,7 +244,7 @@ func scalaTypeNodeText(n *sitter.Node, src []byte) string {
 // firstChildOfType returns the first depth-first descendant of n whose Type()
 // equals typ, or nil. Used to reach case_block / typed_pattern without
 // hard-coding child indices across grammar versions.
-func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func firstChildOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}

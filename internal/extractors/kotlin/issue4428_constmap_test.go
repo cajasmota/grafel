@@ -34,7 +34,7 @@ func extractKotlinRecords(t *testing.T, src, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

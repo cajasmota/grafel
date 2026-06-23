@@ -38,7 +38,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -47,7 +47,7 @@ import (
 // buildEnumValueSet parses an `enum` class_declaration into a SCOPE.Enum
 // value-set carrying its case members. Returns false when the enum has no
 // extractable cases (e.g. a generic-parameter-only forward decl).
-func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildEnumValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := enumName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -64,7 +64,7 @@ func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.Entit
 }
 
 // enumName returns the type_identifier name child of an enum declaration.
-func enumName(node *sitter.Node, src []byte) string {
+func enumName(node ts.Node, src []byte) string {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() == "type_identifier" {
@@ -77,7 +77,7 @@ func enumName(node *sitter.Node, src []byte) string {
 // collectEnumCases walks the enum_class_body for enum_entry nodes and emits
 // one EnumMember per declared case identifier. A `case a, b` group yields two
 // members; a `case x = <literal>` raw value is lifted to the member value.
-func collectEnumCases(body *sitter.Node, src []byte) []extractor.EnumMember {
+func collectEnumCases(body ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	for i := 0; i < int(body.ChildCount()); i++ {
 		entry := body.Child(i)
@@ -121,7 +121,7 @@ func collectEnumCases(body *sitter.Node, src []byte) []extractor.EnumMember {
 
 // buildTypeAlias parses a `typealias_declaration` into a SCOPE.Schema
 // type_alias record carrying the aliased type body.
-func buildTypeAlias(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildTypeAlias(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	var name, body string
 	sawEq := false
 	for i := 0; i < int(node.ChildCount()); i++ {

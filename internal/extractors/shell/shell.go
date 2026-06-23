@@ -34,7 +34,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -57,11 +57,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	}
 
 	// Fall back to regex if no tree is available.
-	if file.Tree == nil {
+	if file.TSTree == nil {
 		return extractRegex(file), nil
 	}
 
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	imports := collectSources(root, file.Content)
 
 	// Pass 1: IMPORTS — emit one stub entity per `source`/`.` command.
@@ -92,7 +92,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 }
 
 // walkShell performs a depth-first traversal collecting function_definition nodes.
-func walkShell(node *sitter.Node, file extractor.FileInput, imports []string, localFns map[string]bool, out *[]types.EntityRecord) {
+func walkShell(node ts.Node, file extractor.FileInput, imports []string, localFns map[string]bool, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -111,7 +111,7 @@ func walkShell(node *sitter.Node, file extractor.FileInput, imports []string, lo
 
 // findCompoundStatement returns the `compound_statement` body child of a
 // function_definition node, or nil.
-func findCompoundStatement(node *sitter.Node) *sitter.Node {
+func findCompoundStatement(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -125,7 +125,7 @@ func findCompoundStatement(node *sitter.Node) *sitter.Node {
 }
 
 // buildFunction creates a SCOPE.Operation entity for a function_definition node.
-func buildFunction(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildFunction(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
 		// Try first word child.
@@ -164,13 +164,13 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, imports []string
 // collectSources collects source/. commands as the legacy
 // Properties["imports"] string list (preserved for backwards compatibility
 // with the existing Operation-entity contract).
-func collectSources(root *sitter.Node, src []byte) []string {
+func collectSources(root ts.Node, src []byte) []string {
 	var imports []string
 	walkForSources(root, src, &imports)
 	return imports
 }
 
-func walkForSources(node *sitter.Node, src []byte, out *[]string) {
+func walkForSources(node ts.Node, src []byte, out *[]string) {
 	if node == nil {
 		return
 	}
@@ -191,7 +191,7 @@ func walkForSources(node *sitter.Node, src []byte, out *[]string) {
 //	  command_name
 //	    word "source"   (or word ".")
 //	  word "<path>"
-func sourceCommandArg(node *sitter.Node, src []byte) string {
+func sourceCommandArg(node ts.Node, src []byte) string {
 	if node == nil || node.Type() != "command" || node.ChildCount() < 2 {
 		return ""
 	}
@@ -222,11 +222,11 @@ func sourceCommandArg(node *sitter.Node, src []byte) string {
 // source/. command, each carrying a single IMPORTS edge file→path. Mirrors
 // the lua/dart/elixir contract: per-import entity records so the resolver
 // can dispatch on Properties["language"] (#90).
-func emitImportStubs(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitImportStubs(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	walkForImportStubs(root, file, out)
 }
 
-func walkForImportStubs(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walkForImportStubs(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -276,13 +276,13 @@ func makeImportStub(file extractor.FileInput, path string) types.EntityRecord {
 // restrict CALLS edges to identifiers known to be functions defined in this
 // file (the issue spec — bash can't reliably distinguish function calls from
 // external program invocations otherwise).
-func collectLocalFunctionNames(root *sitter.Node, src []byte) map[string]bool {
+func collectLocalFunctionNames(root ts.Node, src []byte) map[string]bool {
 	out := make(map[string]bool)
 	walkForFnNames(root, src, out)
 	return out
 }
 
-func walkForFnNames(node *sitter.Node, src []byte, out map[string]bool) {
+func walkForFnNames(node ts.Node, src []byte, out map[string]bool) {
 	if node == nil {
 		return
 	}
@@ -313,7 +313,7 @@ func walkForFnNames(node *sitter.Node, src []byte, out map[string]bool) {
 // command head inside body whose identifier matches a known local function
 // (localFns). External program invocations are dropped. Self-recursion is
 // dropped, results are deduped.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string, localFns map[string]bool) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string, localFns map[string]bool) []types.RelationshipRecord {
 	if body == nil || callerName == "" || len(localFns) == 0 {
 		return nil
 	}
@@ -329,8 +329,8 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 
 	// Walk the body in document order so a binding established earlier is visible
 	// to a later command head (last-write-wins / taint semantics).
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -372,14 +372,14 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 //	cmd=do_work        → Bind("cmd", "do_work")
 //	other="run_it"     → Bind("other", "run_it")
 //	bad=$(date)        → Taint("bad")
-func recordShellAssignment(n *sitter.Node, src []byte, binder *extractor.LiteralBindingResolver) {
+func recordShellAssignment(n ts.Node, src []byte, binder *extractor.LiteralBindingResolver) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil || nameNode.Type() != "variable_name" {
 		return
 	}
 	name := string(src[nameNode.StartByte():nameNode.EndByte()])
 	// The value is the first non-(variable_name,"=") child.
-	var val *sitter.Node
+	var val ts.Node
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		if ch == nil {
@@ -408,7 +408,7 @@ func recordShellAssignment(n *sitter.Node, src []byte, binder *extractor.Literal
 // a bare `word` (cmd=do_work) and a double/single-quoted `string` whose only
 // content is a single string_content child (other="run_it"). A quoted string
 // containing an expansion or anything other than literal text is rejected.
-func shellStringLiteral(val *sitter.Node, src []byte) (string, bool) {
+func shellStringLiteral(val ts.Node, src []byte) (string, bool) {
 	if val == nil {
 		return "", false
 	}
@@ -425,7 +425,7 @@ func shellStringLiteral(val *sitter.Node, src []byte) (string, bool) {
 	case "string":
 		// Accept only "literal" — exactly one string_content child between the
 		// quotes. Anything with an expansion/substitution child is non-static.
-		var content *sitter.Node
+		var content ts.Node
 		for i := 0; i < int(val.ChildCount()); i++ {
 			ch := val.Child(i)
 			if ch == nil {
@@ -465,7 +465,7 @@ func shellStringLiteral(val *sitter.Node, src []byte) (string, bool) {
 //	  command_name                            (or string wrapping it: "$cmd")
 //	    simple_expansion
 //	      $ ; variable_name "<var>"
-func commandHeadName(cmd *sitter.Node, src []byte, binder *extractor.LiteralBindingResolver) (head, dynVar string) {
+func commandHeadName(cmd ts.Node, src []byte, binder *extractor.LiteralBindingResolver) (head, dynVar string) {
 	if cmd == nil || cmd.ChildCount() == 0 {
 		return "", ""
 	}
@@ -496,7 +496,7 @@ func commandHeadName(cmd *sitter.Node, src []byte, binder *extractor.LiteralBind
 // exactly one `$var` simple_expansion, optionally wrapped in a double-quoted
 // string ("$var"); "" when the head is anything else (literal text, multiple
 // expansions, concatenations, ${var}-with-ops, etc.).
-func loneExpansionVar(nameNode *sitter.Node, src []byte) string {
+func loneExpansionVar(nameNode ts.Node, src []byte) string {
 	// Unwrap a single double-quoted string child.
 	node := nameNode
 	if c := singleSignificantChild(node); c != nil && c.Type() == "string" {
@@ -518,11 +518,11 @@ func loneExpansionVar(nameNode *sitter.Node, src []byte) string {
 // singleSignificantChild returns the unique non-quote child of node, or nil when
 // node has zero or more than one significant child. Quote (`"`) tokens are
 // ignored so a `"$var"` string is treated as wrapping a single expansion.
-func singleSignificantChild(node *sitter.Node) *sitter.Node {
+func singleSignificantChild(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
-	var only *sitter.Node
+	var only ts.Node
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch == nil || ch.Type() == "\"" {
@@ -537,7 +537,7 @@ func singleSignificantChild(node *sitter.Node) *sitter.Node {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -545,8 +545,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]

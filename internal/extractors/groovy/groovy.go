@@ -34,7 +34,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -52,11 +52,11 @@ func (e *Extractor) Language() string { return "groovy" }
 
 // Extract walks the tree-sitter CST and returns entity records.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	imports := collectImports(root, file.Content)
 	var entities []types.EntityRecord
 	// Issue #372: emit IMPORTS edges as standalone SCOPE.Component records
@@ -71,11 +71,11 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 
 // walkGroovy performs a depth-first traversal collecting entity nodes.
 // inClass tracks whether we're inside a class body (for method vs function distinction).
-func walkGroovy(node *sitter.Node, file extractor.FileInput, imports []string, out *[]types.EntityRecord) {
+func walkGroovy(node ts.Node, file extractor.FileInput, imports []string, out *[]types.EntityRecord) {
 	walkGroovyWithContext(node, file, imports, out, false)
 }
 
-func walkGroovyWithContext(node *sitter.Node, file extractor.FileInput, imports []string, out *[]types.EntityRecord, inClass bool) {
+func walkGroovyWithContext(node ts.Node, file extractor.FileInput, imports []string, out *[]types.EntityRecord, inClass bool) {
 	if node == nil {
 		return
 	}
@@ -171,14 +171,14 @@ func walkGroovyWithContext(node *sitter.Node, file extractor.FileInput, imports 
 	}
 }
 
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
 	return string(src[node.StartByte():node.EndByte()])
 }
 
-func childByType(node *sitter.Node, types_ ...string) *sitter.Node {
+func childByType(node ts.Node, types_ ...string) ts.Node {
 	set := make(map[string]bool, len(types_))
 	for _, t := range types_ {
 		set[t] = true
@@ -192,7 +192,7 @@ func childByType(node *sitter.Node, types_ ...string) *sitter.Node {
 	return nil
 }
 
-func buildClass(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildClass(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	nameNode := childByType(node, "identifier")
 	if nameNode == nil {
 		return types.EntityRecord{}, false
@@ -217,7 +217,7 @@ func buildClass(node *sitter.Node, file extractor.FileInput, imports []string) (
 	}, true
 }
 
-func buildMethod(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildMethod(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	name, sig := extractMethodSignature(node, file.Content)
 	if name == "" || name == "?" {
 		return types.EntityRecord{}, false
@@ -240,7 +240,7 @@ func buildMethod(node *sitter.Node, file extractor.FileInput, imports []string) 
 
 // buildFunctionAsMethod handles function_definition nodes inside a class body,
 // treating them as methods with proper signature extraction.
-func buildFunctionAsMethod(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildFunctionAsMethod(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	nameNode := childByType(node, "identifier")
 	if nameNode == nil {
 		return types.EntityRecord{}, false
@@ -267,7 +267,7 @@ func buildFunctionAsMethod(node *sitter.Node, file extractor.FileInput, imports 
 }
 
 // extractGroovySignature extracts the raw signature from a Groovy function/method node.
-func extractGroovySignature(node *sitter.Node, src []byte) string {
+func extractGroovySignature(node ts.Node, src []byte) string {
 	text := nodeText(node, src)
 	// Find the opening brace and take everything before it.
 	braceIdx := strings.Index(text, "{")
@@ -308,7 +308,7 @@ func normalizeMethodSignature(sig string) string {
 	return sig
 }
 
-func buildFunction(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildFunction(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	nameNode := childByType(node, "identifier")
 	if nameNode == nil {
 		return types.EntityRecord{}, false
@@ -335,7 +335,7 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, imports []string
 }
 
 // extractMethodSignature builds (name, signature) for a method_declaration node.
-func extractMethodSignature(node *sitter.Node, src []byte) (string, string) {
+func extractMethodSignature(node ts.Node, src []byte) (string, string) {
 	nameNode := childByType(node, "identifier")
 	name := "?"
 	if nameNode != nil {
@@ -380,13 +380,13 @@ func extractMethodSignature(node *sitter.Node, src []byte) (string, string) {
 }
 
 // collectImports gathers import_declaration nodes.
-func collectImports(root *sitter.Node, src []byte) []string {
+func collectImports(root ts.Node, src []byte) []string {
 	var imports []string
 	walkForImports(root, src, &imports)
 	return imports
 }
 
-func walkForImports(node *sitter.Node, src []byte, out *[]string) {
+func walkForImports(node ts.Node, src []byte, out *[]string) {
 	if node == nil {
 		return
 	}
@@ -405,7 +405,7 @@ func walkForImports(node *sitter.Node, src []byte, out *[]string) {
 // buildGradleTaskDeclaration detects `task taskName { ... }` — the smacker
 // Groovy grammar parses this as a declaration node whose first identifier
 // child is "task" and second identifier child is the task name.
-func buildGradleTaskDeclaration(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildGradleTaskDeclaration(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	// Collect all direct identifier children.
 	var ids []string
 	for i := range node.ChildCount() {
@@ -443,7 +443,7 @@ func buildGradleTaskDeclaration(node *sitter.Node, file extractor.FileInput, imp
 // smacker grammar parses this as a juxt_function_call whose first identifier
 // child is "apply" and whose argument list contains a map_item with key
 // "plugin" and a string value.
-func buildGradleApplyPlugin(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildGradleApplyPlugin(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	if node.ChildCount() < 2 {
 		return types.EntityRecord{}, false
 	}
@@ -481,7 +481,7 @@ func buildGradleApplyPlugin(node *sitter.Node, file extractor.FileInput, imports
 
 // extractPluginIDFromArgList walks an argument_list node looking for a
 // map_item whose key identifier is "plugin" and returns its string value.
-func extractPluginIDFromArgList(argList *sitter.Node, src []byte) string {
+func extractPluginIDFromArgList(argList ts.Node, src []byte) string {
 	for i := range argList.ChildCount() {
 		child := argList.Child(int(i))
 		if child == nil {
@@ -499,8 +499,8 @@ func extractPluginIDFromArgList(argList *sitter.Node, src []byte) string {
 
 // extractPluginIDFromMapItem checks a map_item node: key must be identifier
 // "plugin", value must be a string node — returns the string content.
-func extractPluginIDFromMapItem(mapItem *sitter.Node, src []byte) string {
-	var keyNode, valNode *sitter.Node
+func extractPluginIDFromMapItem(mapItem ts.Node, src []byte) string {
+	var keyNode, valNode ts.Node
 	for i := range mapItem.ChildCount() {
 		ch := mapItem.Child(int(i))
 		if ch == nil {
@@ -538,7 +538,7 @@ func extractPluginIDFromMapItem(mapItem *sitter.Node, src []byte) string {
 // grammar parses this as a juxt_function_call whose first identifier is "task"
 // and whose argument_list contains a function_call whose first identifier is
 // the task name.
-func buildGradleTaskJuxt(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildGradleTaskJuxt(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	if node.ChildCount() < 2 {
 		return types.EntityRecord{}, false
 	}
@@ -599,7 +599,7 @@ var groovyKeywordStop = map[string]bool{
 // findFunctionBody returns the closure child of a function_definition /
 // method_declaration that holds the call expressions, or nil when the
 // declaration has no body (abstract/interface method).
-func findFunctionBody(node *sitter.Node) *sitter.Node {
+func findFunctionBody(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -618,7 +618,7 @@ func findFunctionBody(node *sitter.Node) *sitter.Node {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -626,8 +626,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -656,7 +656,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 //     Properties[receiver_type]=<Type>.
 //   - function_call      → curried call (`f()(x)`); recurse to find the
 //     leaf method name.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -729,7 +729,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 // dotted_identifier receiver looks like a PascalCase type. This is the
 // no-locals convenience wrapper retained for callers that don't carry a
 // local-variable type table.
-func groovyCallTarget(call *sitter.Node, src []byte) (string, string) {
+func groovyCallTarget(call ts.Node, src []byte) (string, string) {
 	return groovyCallTargetWithLocals(call, src, nil)
 }
 
@@ -739,7 +739,7 @@ func groovyCallTarget(call *sitter.Node, src []byte) (string, string) {
 // initialiser, the target is resolved to `<Type>.<method>` (with
 // receiver_type=<Type>), exactly as a PascalCase static-receiver call is. The
 // table may be nil.
-func groovyCallTargetWithLocals(call *sitter.Node, src []byte, localVarTypes map[string]string) (string, string) {
+func groovyCallTargetWithLocals(call ts.Node, src []byte, localVarTypes map[string]string) (string, string) {
 	if call == nil || call.ChildCount() == 0 {
 		return "", ""
 	}
@@ -755,7 +755,7 @@ func groovyCallTargetWithLocals(call *sitter.Node, src []byte, localVarTypes map
 		// The trailing identifier is the method, the leading identifier
 		// is the receiver. Nested function_call children (`Service().run`)
 		// indicate chained-call receivers — fall back to bare leaf.
-		var idents []*sitter.Node
+		var idents []ts.Node
 		hasNestedCall := false
 		for i := 0; i < int(first.ChildCount()); i++ {
 			ch := first.Child(i)
@@ -804,11 +804,11 @@ func groovyCallTargetWithLocals(call *sitter.Node, src []byte, localVarTypes map
 // operand of a `new` unary_op (i.e. constructor calls `new ClassName(...)`).
 // These are object instantiations, not outbound method CALLS, so they are
 // excluded from the CALLS edge set (#4749).
-func groovyConstructorCalls(body *sitter.Node) map[*sitter.Node]bool {
+func groovyConstructorCalls(body ts.Node) map[ts.Node]bool {
 	if body == nil {
 		return nil
 	}
-	out := map[*sitter.Node]bool{}
+	out := map[ts.Node]bool{}
 	for _, uo := range findAllNodes(body, "unary_op") {
 		hasNew := false
 		for j := 0; j < int(uo.ChildCount()); j++ {
@@ -848,7 +848,7 @@ func groovyConstructorCalls(body *sitter.Node) map[*sitter.Node]bool {
 // the local is left out of the map, so its later receiver calls degrade to the
 // bare leaf and no spurious `<Class>.method` edge is forged (the Java #4682
 // negative-case guarantee).
-func collectGroovyLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+func collectGroovyLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -873,7 +873,7 @@ func collectGroovyLocalVarTypes(body *sitter.Node, src []byte) map[string]string
 
 // groovyDeclVarAndNewType returns (varName, ClassName) for a `declaration` node
 // whose RHS is a `new ClassName(...)` constructor, or ("","") otherwise.
-func groovyDeclVarAndNewType(decl *sitter.Node, src []byte) (string, string) {
+func groovyDeclVarAndNewType(decl ts.Node, src []byte) (string, string) {
 	// Find the `=` position; the var name is the identifier just before it.
 	eqIdx := -1
 	for i := 0; i < int(decl.ChildCount()); i++ {
@@ -885,7 +885,7 @@ func groovyDeclVarAndNewType(decl *sitter.Node, src []byte) (string, string) {
 	if eqIdx <= 0 {
 		return "", ""
 	}
-	var varNode *sitter.Node
+	var varNode ts.Node
 	for i := eqIdx - 1; i >= 0; i-- {
 		if ch := decl.Child(i); ch != nil && ch.Type() == "identifier" {
 			varNode = ch
@@ -911,14 +911,14 @@ func groovyDeclVarAndNewType(decl *sitter.Node, src []byte) (string, string) {
 // groovyNewTypeFromRHS returns the type-name identifier node of a
 // `new ClassName(...)` RHS that follows the `=` at eqIdx in decl, or nil when
 // the RHS is not a direct constructor call.
-func groovyNewTypeFromRHS(decl *sitter.Node, eqIdx int) *sitter.Node {
+func groovyNewTypeFromRHS(decl ts.Node, eqIdx int) ts.Node {
 	for i := eqIdx + 1; i < int(decl.ChildCount()); i++ {
 		ch := decl.Child(i)
 		if ch == nil || ch.Type() != "unary_op" {
 			continue
 		}
 		hasNew := false
-		var ctorCall *sitter.Node
+		var ctorCall ts.Node
 		for j := 0; j < int(ch.ChildCount()); j++ {
 			c := ch.Child(j)
 			if c == nil {
@@ -968,7 +968,7 @@ func isPascalCase(s string) bool {
 //	import foo.something.*      → ToID=foo.something, wildcard=1
 //	import static foo.Util.helper → ToID=foo.Util.helper, import_kind=static
 //	import static foo.Util.*    → ToID=foo.Util,  wildcard=1, import_kind=static
-func buildImportRecords(root *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+func buildImportRecords(root ts.Node, file extractor.FileInput) []types.EntityRecord {
 	imports := findAllNodes(root, "groovy_import", "import_declaration")
 	if len(imports) == 0 {
 		return nil
@@ -985,7 +985,7 @@ func buildImportRecords(root *sitter.Node, file extractor.FileInput) []types.Ent
 }
 
 // buildImportRecord builds a single import edge from a groovy_import node.
-func buildImportRecord(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildImportRecord(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	var path string
 	var alias string
 	hasWildcard := false

@@ -4,18 +4,22 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tslua "github.com/smacker/go-tree-sitter/lua"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/lua"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tslua.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tslua.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -52,7 +56,7 @@ return M
 		Path:     "module.lua",
 		Content:  []byte(src),
 		Language: "lua",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -96,7 +100,7 @@ end
 		Path:     "test.lua",
 		Content:  []byte(src),
 		Language: "lua",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -147,7 +151,7 @@ return Dog
 		Path:     "animal.lua",
 		Content:  []byte(src),
 		Language: "lua",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -195,7 +199,7 @@ return Derived
 		Path:     "derived.lua",
 		Content:  []byte(src),
 		Language: "lua",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -248,7 +252,7 @@ end
 		Path:     "test.lua",
 		Content:  []byte(src),
 		Language: "lua",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

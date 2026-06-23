@@ -30,7 +30,7 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tskotlin "github.com/smacker/go-tree-sitter/kotlin"
 
 	"github.com/cajasmota/grafel/internal/extractor"
@@ -48,14 +48,17 @@ func extractKotlinProjectForTest(t *testing.T, files map[string]string) []types.
 	}
 	var merged []types.EntityRecord
 	for rel, src := range files {
-		parser := sitter.NewParser()
-		parser.SetLanguage(tskotlin.GetLanguage())
-		tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+		parser, perr := tssmacker.New().NewParser(tssmacker.WrapLanguage(tskotlin.GetLanguage()))
+		if perr != nil {
+			t.Fatalf("parser init: %v", perr)
+		}
+		defer parser.Close()
+		tree, err := parser.Parse([]byte(src))
 		if err != nil {
 			t.Fatalf("parse %s: %v", rel, err)
 		}
 		ents, err := ext.Extract(context.Background(), extractor.FileInput{
-			Path: rel, Language: "kotlin", Content: []byte(src), Tree: tree,
+			Path: rel, Language: "kotlin", Content: []byte(src), TSTree: tree,
 		})
 		if err != nil {
 			t.Fatalf("extract %s: %v", rel, err)

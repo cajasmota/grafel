@@ -19,7 +19,7 @@ func extract(t *testing.T, path, src string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "proto",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

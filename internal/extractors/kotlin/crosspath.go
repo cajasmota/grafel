@@ -37,7 +37,7 @@ package kotlin
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 )
 
 // kotlinCrossCtx is the per-file resolution context derived from the file's
@@ -97,7 +97,7 @@ type kotlinCrossCtx struct {
 // tell from the import alone, so the imported leaf is registered in BOTH
 // importedTypes and importedFuncs and the resolver disambiguates by which
 // package index actually holds the (type, leaf) vs (leaf) binding.
-func buildKotlinCrossCtx(root *sitter.Node, src []byte) *kotlinCrossCtx {
+func buildKotlinCrossCtx(root ts.Node, src []byte) *kotlinCrossCtx {
 	if root == nil {
 		return nil
 	}
@@ -149,7 +149,7 @@ func buildKotlinCrossCtx(root *sitter.Node, src []byte) *kotlinCrossCtx {
 
 // kotlinPackageOfHeader returns the dotted package path of a package_header
 // node (`package com.app.services`), or "" when absent.
-func kotlinPackageOfHeader(n *sitter.Node, src []byte) string {
+func kotlinPackageOfHeader(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -170,7 +170,7 @@ func kotlinPackageOfHeader(n *sitter.Node, src []byte) string {
 // parseKotlinImport returns the dotted import path (wildcard suffix stripped),
 // the `as` alias (or ""), and whether the import is a `.*` wildcard. Mirrors
 // buildImport's text shaping so the two stay consistent.
-func parseKotlinImport(n *sitter.Node, src []byte) (full, alias string, star bool) {
+func parseKotlinImport(n ts.Node, src []byte) (full, alias string, star bool) {
 	raw := strings.TrimSpace(string(src[n.StartByte():n.EndByte()]))
 	raw = strings.TrimPrefix(raw, "import ")
 	raw = strings.TrimSpace(raw)
@@ -215,7 +215,7 @@ type qualifiedKotlinCall struct {
 // to the class method via a (package, Type=that class, leaf) stamp — the #4687
 // local-variable / MockK receiver-typing path. Empty/nil → no typed-local path.
 func (c *kotlinCrossCtx) resolveKotlinQualifiedCall(
-	call *sitter.Node,
+	call ts.Node,
 	src []byte,
 	localNames map[string]bool,
 	recvTypes map[string]string,
@@ -252,7 +252,7 @@ func (c *kotlinCrossCtx) resolveKotlinQualifiedCall(
 // trailing navigation_suffix identifier is the leaf; the segments before it are
 // the receiver path. A statically-qualified receiver maps to (package, type).
 func (c *kotlinCrossCtx) resolveKotlinNavigationCall(
-	nav *sitter.Node,
+	nav ts.Node,
 	src []byte,
 	localNames map[string]bool,
 	recvTypes map[string]string,
@@ -357,7 +357,7 @@ func (c *kotlinCrossCtx) resolveKotlinNavigationCall(
 // call (`val c = makeController()`), a method chain, a non-PascalCase callee, a
 // `mockk()` with no static type argument, a literal, a cast — anything whose
 // class is not statically recoverable. First binding per name wins.
-func kotlinLocalReceiverTypes(body *sitter.Node, src []byte) map[string]string {
+func kotlinLocalReceiverTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -389,7 +389,7 @@ func kotlinLocalReceiverTypes(body *sitter.Node, src []byte) map[string]string {
 // variable_declaration node from a property_declaration
 // (`val a: T = …` / `var a = …`). Returns ("", nil) when no variable_declaration
 // child is present (multi-declaration / destructuring shapes are skipped).
-func kotlinPropertyVarNameNode(decl *sitter.Node, src []byte) (string, *sitter.Node) {
+func kotlinPropertyVarNameNode(decl ts.Node, src []byte) (string, ts.Node) {
 	for i := 0; i < int(decl.ChildCount()); i++ {
 		ch := decl.Child(i)
 		if ch.Type() != "variable_declaration" {
@@ -409,11 +409,11 @@ func kotlinPropertyVarNameNode(decl *sitter.Node, src []byte) (string, *sitter.N
 // explicit type annotation (`a: XController` → "XController"), stripping any
 // package/generic wrapping by taking the first type_identifier descendant of the
 // user_type. Returns "" when the declaration has no explicit type.
-func kotlinUserTypeLeaf(vd *sitter.Node, src []byte) string {
+func kotlinUserTypeLeaf(vd ts.Node, src []byte) string {
 	if vd == nil {
 		return ""
 	}
-	var ut *sitter.Node
+	var ut ts.Node
 	for i := 0; i < int(vd.ChildCount()); i++ {
 		if vd.Child(i).Type() == "user_type" {
 			ut = vd.Child(i)
@@ -438,7 +438,7 @@ func kotlinUserTypeLeaf(vd *sitter.Node, src []byte) string {
 // kotlinPropertyInitCall returns the initializer call_expression of a
 // property_declaration (`val c = XController(svc)` → the `XController(svc)`
 // call_expression), or nil when the RHS is not a direct call expression.
-func kotlinPropertyInitCall(decl *sitter.Node) *sitter.Node {
+func kotlinPropertyInitCall(decl ts.Node) ts.Node {
 	// The RHS is the child following the `=` token. Find `=`, then the next
 	// non-trivial sibling.
 	sawEq := false
@@ -469,7 +469,7 @@ func kotlinPropertyInitCall(decl *sitter.Node) *sitter.Node {
 //
 // Returns "" for any other call (factory/`make()`, lowercase callee, `mockk()`
 // with no type argument, navigation chains) so the receiver stays bare.
-func kotlinConstructedOrMockType(call *sitter.Node, src []byte) string {
+func kotlinConstructedOrMockType(call ts.Node, src []byte) string {
 	if call == nil || call.ChildCount() == 0 {
 		return ""
 	}
@@ -495,7 +495,7 @@ func kotlinConstructedOrMockType(call *sitter.Node, src []byte) string {
 // kotlinCallSuffixTypeArg returns the leaf type_identifier of the first
 // type_arguments projection on a call_expression's call_suffix
 // (`mockk<XController>()` → "XController"), or "" when absent.
-func kotlinCallSuffixTypeArg(call *sitter.Node, src []byte) string {
+func kotlinCallSuffixTypeArg(call ts.Node, src []byte) string {
 	for i := 0; i < int(call.ChildCount()); i++ {
 		cs := call.Child(i)
 		if cs.Type() != "call_suffix" {
@@ -568,7 +568,7 @@ func appendUniqueKt(s []string, v string) []string {
 // expression, a call_expression, an index/element access, a string template,
 // etc.) appears in the receiver chain — those are instance chains the base
 // extractor owns.
-func flattenKotlinNavigation(n *sitter.Node, src []byte) ([]string, bool) {
+func flattenKotlinNavigation(n ts.Node, src []byte) ([]string, bool) {
 	if n == nil {
 		return nil, false
 	}
@@ -577,8 +577,8 @@ func flattenKotlinNavigation(n *sitter.Node, src []byte) ([]string, bool) {
 		return []string{string(src[n.StartByte():n.EndByte()])}, true
 	case "navigation_expression":
 		// navigation_expression → <receiver> navigation_suffix
-		var receiver *sitter.Node
-		var suffix *sitter.Node
+		var receiver ts.Node
+		var suffix ts.Node
 		for i := 0; i < int(n.ChildCount()); i++ {
 			ch := n.Child(i)
 			switch ch.Type() {

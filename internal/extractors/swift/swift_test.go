@@ -6,19 +6,23 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsswift "github.com/smacker/go-tree-sitter/swift"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/swift"
 	"github.com/cajasmota/grafel/internal/treesitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsswift.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsswift.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -57,7 +61,7 @@ protocol Repository {
 		Path:     "service.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -109,7 +113,7 @@ class Foo {
 		Path:     "foo.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -146,7 +150,7 @@ struct Point {
 		Path:     "point.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -176,7 +180,7 @@ protocol Drawable {
 		Path:     "drawable.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -208,7 +212,7 @@ class Svc {
 		Path:     "svc.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -239,7 +243,7 @@ class App {}
 		Path:     "app.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -290,7 +294,7 @@ class App {
 		Path:     "main.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -361,7 +365,7 @@ import Vapor
 		Path:     "imports.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -420,7 +424,7 @@ class C {
 		Path:     "c.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -481,7 +485,7 @@ class D {
 		Path:     "d.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -510,7 +514,7 @@ func TestSwiftExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.swift",
 		Content:  []byte(""),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -527,7 +531,7 @@ func TestSwiftExtractor_NilTree(t *testing.T) {
 		Path:     "nil.swift",
 		Content:  []byte("class Foo {}"),
 		Language: "swift",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)

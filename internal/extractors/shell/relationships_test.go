@@ -60,7 +60,7 @@ main() {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "test.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -88,7 +88,7 @@ foo() { :; }
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "test.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -140,7 +140,7 @@ other_thing() {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "test.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -175,7 +175,7 @@ main() {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "test.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -207,7 +207,7 @@ func TestShell_Calls_DropSelfRecursion(t *testing.T) {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "test.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -232,7 +232,7 @@ main() {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "test.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -258,7 +258,7 @@ main() { :; }
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "scripts/run.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -295,7 +295,7 @@ main() { helper; }
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "x.sh",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

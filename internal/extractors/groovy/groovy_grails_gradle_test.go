@@ -76,7 +76,7 @@ class Application extends GrailsAutoConfiguration {
 		Path:     "grails_application_class.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -100,7 +100,7 @@ class Application extends GrailsAutoConfiguration {
 		Path:     "Application.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -122,7 +122,7 @@ class Application extends GrailsAutoConfiguration {
 		Path:     "Application.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -154,7 +154,7 @@ func TestGrailsApplicationClass_MethodEntities(t *testing.T) {
 		Path:     "Application.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -197,7 +197,7 @@ class MyGrailsService {
 		Path:     "grails_application_lifecycle.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -224,7 +224,7 @@ func TestGrailsServiceMethods_KindAndSubtype(t *testing.T) {
 		Path:     "MyGrailsService.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -255,7 +255,7 @@ apply plugin: 'com.example.my-gradle-plugin'
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -277,7 +277,7 @@ func TestGradlePlugin_ApplyPlugin_Kind(t *testing.T) {
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -306,7 +306,7 @@ func TestGradlePlugin_TaskDeclaration_Basic(t *testing.T) {
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -327,7 +327,7 @@ func TestGradlePlugin_TaskDeclaration_Kind(t *testing.T) {
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -354,7 +354,7 @@ task buildJar(type: Jar) {
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -403,7 +403,7 @@ task integrationTest(dependsOn: compileGroovy) {
 		Path:     "gradle_plugin.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -428,7 +428,7 @@ task build(type: Jar) { }
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -454,7 +454,7 @@ task test { }
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -479,7 +479,7 @@ apply {
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -503,7 +503,7 @@ func TestGradlePlugin_GradlePropertySignature(t *testing.T) {
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -526,7 +526,7 @@ func TestGradlePlugin_PluginIDSignature(t *testing.T) {
 		Path:     "build.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

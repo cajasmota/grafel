@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tskotlin "github.com/smacker/go-tree-sitter/kotlin"
 
 	"github.com/cajasmota/grafel/internal/extractor"
@@ -20,9 +20,12 @@ import (
 // bubble up via t.Fatal so callers can assume non-nil non-empty output.
 func runKotlinExtract(t *testing.T, src string) []types.EntityRecord {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tskotlin.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, perr := tssmacker.New().NewParser(tssmacker.WrapLanguage(tskotlin.GetLanguage()))
+	if perr != nil {
+		t.Fatalf("parser init: %v", perr)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -31,7 +34,7 @@ func runKotlinExtract(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Demo.kt",
 		Language: "kotlin",
 		Content:  []byte(src),
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

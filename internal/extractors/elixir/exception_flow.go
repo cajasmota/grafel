@@ -29,7 +29,7 @@
 package elixir
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -42,7 +42,7 @@ import (
 // *entities in place. Safe with nil / empty input. raise / rescue outside any
 // def (module scope) attach to the file entity via EmitExceptionEdges's
 // fallback.
-func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -54,8 +54,8 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 	// enclosing-function scope. We track the nearest def/defp name so each
 	// raise / rescue is attributed to the right SCOPE.Operation (matched by
 	// Name inside EmitExceptionEdges).
-	var walk func(n *sitter.Node, current string)
-	walk = func(n *sitter.Node, current string) {
+	var walk func(n ts.Node, current string)
+	walk = func(n ts.Node, current string) {
 		if n == nil {
 			return
 		}
@@ -115,7 +115,7 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 // NOTE: `reraise err, __STACKTRACE__` is a DIFFERENT call head ("reraise"),
 // never reaches this function, and so emits no edge — honest, since the type
 // is a bound variable.
-func elixirRaiseType(raiseCall *sitter.Node, src []byte) string {
+func elixirRaiseType(raiseCall ts.Node, src []byte) string {
 	args := childOfType(raiseCall, "arguments")
 	if args == nil {
 		return ""
@@ -136,7 +136,7 @@ func elixirRaiseType(raiseCall *sitter.Node, src []byte) string {
 //	_ -> …  /  e -> …                  identifier (untyped catch-all)        → {}
 //
 // Untyped catch-alls and non-alias shapes yield nothing (honest-partial).
-func elixirRescueTypes(rescueBlock *sitter.Node, src []byte) []string {
+func elixirRescueTypes(rescueBlock ts.Node, src []byte) []string {
 	var out []string
 	for i := 0; i < int(rescueBlock.NamedChildCount()); i++ {
 		stab := rescueBlock.NamedChild(i)
@@ -171,7 +171,7 @@ func elixirRescueTypes(rescueBlock *sitter.Node, src []byte) []string {
 // aliasTokens collects exception-module tokens from a rescue RHS that is
 // either a single `alias` or a `list` of `alias` nodes. Non-alias elements
 // are skipped.
-func aliasTokens(n *sitter.Node, src []byte) []string {
+func aliasTokens(n ts.Node, src []byte) []string {
 	switch n.Type() {
 	case "alias":
 		return []string{nodeSrc(n, src)}
@@ -189,7 +189,7 @@ func aliasTokens(n *sitter.Node, src []byte) []string {
 }
 
 // childOfType returns the first direct child of n whose Type() == t, or nil.
-func childOfType(n *sitter.Node, t string) *sitter.Node {
+func childOfType(n ts.Node, t string) ts.Node {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		if ch != nil && ch.Type() == t {
@@ -200,7 +200,7 @@ func childOfType(n *sitter.Node, t string) *sitter.Node {
 }
 
 // firstNamedChild returns the first named child of n, or nil.
-func firstNamedChild(n *sitter.Node) *sitter.Node {
+func firstNamedChild(n ts.Node) ts.Node {
 	if n.NamedChildCount() == 0 {
 		return nil
 	}
@@ -208,7 +208,7 @@ func firstNamedChild(n *sitter.Node) *sitter.Node {
 }
 
 // nthNamedChild returns the i-th named child of n (0-based), or nil.
-func nthNamedChild(n *sitter.Node, i int) *sitter.Node {
+func nthNamedChild(n ts.Node, i int) ts.Node {
 	if i < 0 || i >= int(n.NamedChildCount()) {
 		return nil
 	}
@@ -216,6 +216,6 @@ func nthNamedChild(n *sitter.Node, i int) *sitter.Node {
 }
 
 // nodeSrc returns the verbatim source text spanned by n.
-func nodeSrc(n *sitter.Node, src []byte) string {
+func nodeSrc(n ts.Node, src []byte) string {
 	return string(src[n.StartByte():n.EndByte()])
 }

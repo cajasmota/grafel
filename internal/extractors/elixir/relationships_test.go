@@ -18,7 +18,7 @@ func runElixir(t *testing.T, src string) []types.EntityRecord {
 		Path:     "test.ex",
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

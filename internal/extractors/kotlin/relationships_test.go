@@ -17,7 +17,7 @@ func runKotlin(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Test.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

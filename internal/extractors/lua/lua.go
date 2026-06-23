@@ -42,7 +42,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -60,11 +60,11 @@ func (e *Extractor) Language() string { return "lua" }
 
 // Extract walks the tree-sitter CST and returns entity records.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	imports := collectRequires(root, file.Content)
 
 	var entities []types.EntityRecord
@@ -113,7 +113,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // global and local functions (local functions have a "local" keyword child).
 // "function_declaration" and "local_function" are kept for compatibility with
 // older grammar versions.
-func walkLua(node *sitter.Node, file extractor.FileInput, imports []string, moduleIdx map[string]int, out *[]types.EntityRecord) {
+func walkLua(node ts.Node, file extractor.FileInput, imports []string, moduleIdx map[string]int, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -162,7 +162,7 @@ func walkLua(node *sitter.Node, file extractor.FileInput, imports []string, modu
 // findFunctionBody returns the `function_body` child of a function node, or
 // nil. Used for both function_statement and the older function_declaration
 // shapes.
-func findFunctionBody(node *sitter.Node) *sitter.Node {
+func findFunctionBody(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -187,7 +187,7 @@ func findFunctionBody(node *sitter.Node) *sitter.Node {
 // "M" for `function M.foo`). It's "" for plain `function foo` and local
 // functions. The walker uses receiver to attach CONTAINS edges from
 // matching `local M = {}` module-table components (#375).
-func buildFunctionStatement(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, string, bool) {
+func buildFunctionStatement(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, string, bool) {
 	// Determine if this is a local function (has "local" keyword child).
 	isLocal := false
 	for i := range node.ChildCount() {
@@ -261,7 +261,7 @@ func buildFunctionStatement(node *sitter.Node, file extractor.FileInput, imports
 
 // buildFunctionDecl handles function_declaration nodes (global or dot/colon notation)
 // from older tree-sitter-lua grammar versions.
-func buildFunctionDecl(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, string, bool) {
+func buildFunctionDecl(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, string, bool) {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
 		return types.EntityRecord{}, "", false
@@ -305,9 +305,9 @@ func buildFunctionDecl(node *sitter.Node, file extractor.FileInput, imports []st
 }
 
 // buildLocalFunction handles local_function nodes (older grammars).
-func buildLocalFunction(node *sitter.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
+func buildLocalFunction(node ts.Node, file extractor.FileInput, imports []string) (types.EntityRecord, bool) {
 	// local_function: local function <identifier> <parameters> <block> end
-	var nameNode *sitter.Node
+	var nameNode ts.Node
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
 		if ch != nil && ch.Type() == "identifier" {
@@ -348,13 +348,13 @@ func buildLocalFunction(node *sitter.Node, file extractor.FileInput, imports []s
 // collectRequires gathers require("module") calls as the legacy
 // Properties["imports"] string list (preserved for backwards compatibility
 // with the existing Operation-entity contract).
-func collectRequires(root *sitter.Node, src []byte) []string {
+func collectRequires(root ts.Node, src []byte) []string {
 	var imports []string
 	walkForRequires(root, src, &imports)
 	return imports
 }
 
-func walkForRequires(node *sitter.Node, src []byte, out *[]string) {
+func walkForRequires(node ts.Node, src []byte, out *[]string) {
 	if node == nil {
 		return
 	}
@@ -374,7 +374,7 @@ func walkForRequires(node *sitter.Node, src []byte, out *[]string) {
 // requireArgPath extracts the string path from a `require(...)` /
 // `require "..."` function_call node. Returns "" if the head isn't require
 // or no string argument is present.
-func requireArgPath(call *sitter.Node, src []byte) string {
+func requireArgPath(call ts.Node, src []byte) string {
 	if call == nil || call.ChildCount() == 0 {
 		return ""
 	}
@@ -408,7 +408,7 @@ func requireArgPath(call *sitter.Node, src []byte) string {
 
 // extractStringContent extracts the string value from a string node,
 // handling both bare text and nested string_content child.
-func extractStringContent(node *sitter.Node, src []byte) string {
+func extractStringContent(node ts.Node, src []byte) string {
 	// Try string_content child first (smacker grammar).
 	for i := range node.ChildCount() {
 		ch := node.Child(int(i))
@@ -425,11 +425,11 @@ func extractStringContent(node *sitter.Node, src []byte) string {
 // require call, carrying an IMPORTS relationship. Mirrors the elixir/dart
 // pattern (#370/#369): each import is its own entity record so the resolver
 // can dispatch on Properties["language"].
-func emitImportRecords(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitImportRecords(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	walkForImportEdges(root, file, out)
 }
 
-func walkForImportEdges(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walkForImportEdges(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -458,7 +458,7 @@ func walkForImportEdges(node *sitter.Node, file extractor.FileInput, out *[]type
 // analyzeRequireDecl checks whether a variable_declaration node has the shape
 // `local <ident> = require("path")`. Returns the required path and the LHS
 // identifier on success.
-func analyzeRequireDecl(decl *sitter.Node, src []byte) (string, string, bool) {
+func analyzeRequireDecl(decl ts.Node, src []byte) (string, string, bool) {
 	var lhs string
 	var requirePath string
 	for i := 0; i < int(decl.ChildCount()); i++ {
@@ -534,7 +534,7 @@ func makeImportRecord(file extractor.FileInput, requirePath, lhs string) types.E
 // and returns it as a SCOPE.Component entity. CONTAINS edges are filled in
 // later by walkLua as it encounters `function <Name>.x` / `function <Name>:x`
 // declarations (#375).
-func collectModuleTables(root *sitter.Node, file extractor.FileInput) map[string]types.EntityRecord {
+func collectModuleTables(root ts.Node, file extractor.FileInput) map[string]types.EntityRecord {
 	src := file.Content
 	out := make(map[string]types.EntityRecord)
 	for i := 0; i < int(root.ChildCount()); i++ {
@@ -617,7 +617,7 @@ var luaCallStop = map[string]bool{
 //   - Method `obj:bar(args)`    — same, with `self_call_colon` instead of "."
 //
 // Self-recursion is dropped. `require` is filtered (handled by IMPORTS).
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -663,7 +663,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 // For bare `helper()` the first child is the only identifier and IS the
 // callee. The rule: take the LAST identifier child that appears before the
 // first paren/arguments/string-argument child.
-func luaCallTarget(call *sitter.Node, src []byte) string {
+func luaCallTarget(call ts.Node, src []byte) string {
 	if call == nil || call.ChildCount() == 0 {
 		return ""
 	}
@@ -686,7 +686,7 @@ func luaCallTarget(call *sitter.Node, src []byte) string {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -694,8 +694,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]

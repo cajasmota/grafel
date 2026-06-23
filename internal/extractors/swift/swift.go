@@ -36,7 +36,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -54,7 +54,7 @@ func (e *Extractor) Language() string { return "swift" }
 
 // Extract walks the tree-sitter CST and returns entity records.
 func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		return nil, nil
 	}
 
@@ -64,7 +64,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	walkNode(file.Tree.RootNode(), file, &entities)
+	walkNode(file.TSTree.RootNode(), file, &entities)
 	// Issue #4854 — in-file base-class EXTENDS for field-membership recursion.
 	entities = attachSwiftExtends(entities)
 	// Issue #90 — language tag for resolver dynamic-pattern dispatch.
@@ -79,7 +79,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 // function declared inside the body, and every function body is scanned for
 // call_expression nodes that yield CALLS edges. import_declaration emits
 // IMPORTS with the property contract.
-func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func walkNode(node ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -208,7 +208,7 @@ func walkNode(node *sitter.Node, file extractor.FileInput, out *[]types.EntityRe
 // walkBody recurses into a class/struct/enum body, emitting Operation
 // entities for each function and propagating field types so CALLS edges
 // inside method bodies can carry a receiver_type property.
-func walkBody(node *sitter.Node, file extractor.FileInput, fieldTypes map[string]string, _ string, out *[]types.EntityRecord) {
+func walkBody(node ts.Node, file extractor.FileInput, fieldTypes map[string]string, _ string, out *[]types.EntityRecord) {
 	if node == nil {
 		return
 	}
@@ -226,7 +226,7 @@ func walkBody(node *sitter.Node, file extractor.FileInput, fieldTypes map[string
 }
 
 // findClassBody returns the body child of a class/struct/enum declaration.
-func findClassBody(node *sitter.Node) *sitter.Node {
+func findClassBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		t := ch.Type()
@@ -238,7 +238,7 @@ func findClassBody(node *sitter.Node) *sitter.Node {
 }
 
 // findFunctionBody returns the function_body child of a function_declaration.
-func findFunctionBody(node *sitter.Node) *sitter.Node {
+func findFunctionBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch.Type() == "function_body" {
@@ -253,7 +253,7 @@ func findFunctionBody(node *sitter.Node) *sitter.Node {
 // properties with an explicit type_annotation participate. Used to attach
 // receiver_type to CALLS edges where the receiver is a known same-class
 // field.
-func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
+func collectFieldTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -289,7 +289,7 @@ func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
 
 // firstDescendantText returns the source text of the first descendant of
 // node whose type is `kind`, or "" when none exists.
-func firstDescendantText(node *sitter.Node, src []byte, kind string) string {
+func firstDescendantText(node ts.Node, src []byte, kind string) string {
 	if node == nil {
 		return ""
 	}
@@ -340,7 +340,7 @@ var swiftBareInitFiltered = map[string]bool{
 // When the receiver is a known same-class field, the edge carries
 // Properties["receiver_type"]=<DeclaredType>. Self-recursion is dropped to
 // match Python/Go extractor dedup semantics.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string, fieldTypes map[string]string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string, fieldTypes map[string]string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -411,7 +411,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string, 
 // rightmost `simple_identifier` of the trailing `navigation_suffix`, NOT
 // the leftmost descendant. The receiver root is the leftmost
 // simple_identifier of the chain — used to look up a declared field type.
-func swiftCallTarget(call *sitter.Node, src []byte) (target, receiverRoot string) {
+func swiftCallTarget(call ts.Node, src []byte) (target, receiverRoot string) {
 	if !hasCallSuffix(call) {
 		return "", ""
 	}
@@ -424,7 +424,7 @@ func swiftCallTarget(call *sitter.Node, src []byte) (target, receiverRoot string
 		return string(src[first.StartByte():first.EndByte()]), ""
 	case "navigation_expression":
 		// Trailing navigation_suffix gives the method name.
-		var lastSuffix *sitter.Node
+		var lastSuffix ts.Node
 		for i := 0; i < int(first.ChildCount()); i++ {
 			ch := first.Child(i)
 			if ch.Type() == "navigation_suffix" {
@@ -470,7 +470,7 @@ func swiftCallTarget(call *sitter.Node, src []byte) (target, receiverRoot string
 // hasCallSuffix reports whether a call_expression node has a `call_suffix`
 // child — its presence (parentheses or trailing closure) is what makes the
 // node a real invocation rather than a bare property reference.
-func hasCallSuffix(call *sitter.Node) bool {
+func hasCallSuffix(call ts.Node) bool {
 	for i := 0; i < int(call.ChildCount()); i++ {
 		if call.Child(i).Type() == "call_suffix" {
 			return true
@@ -480,7 +480,7 @@ func hasCallSuffix(call *sitter.Node) bool {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -488,8 +488,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -504,7 +504,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 }
 
 // buildComponent creates a SCOPE.Component entity.
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -525,7 +525,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype string)
 }
 
 // buildOperation creates a SCOPE.Operation entity.
-func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
+func buildOperation(node ts.Node, file extractor.FileInput, subtype string) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -546,7 +546,7 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype string)
 
 // methodSignature extracts a clean method signature matching Python's format:
 // "func name() -> ReturnType" — uses "()" placeholder and only includes return type.
-func methodSignature(src []byte, node *sitter.Node) string {
+func methodSignature(src []byte, node ts.Node) string {
 	name := extractName(node, src)
 	if name == "" {
 		return ""
@@ -588,7 +588,7 @@ func methodSignature(src []byte, node *sitter.Node) string {
 //  2. Name is namespaced as `<file>::import::<module>` so that even if
 //     a downstream consumer ignores Subtype the carrier name cannot
 //     match a bare Swift type/target identifier.
-func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	raw := extractImportPath(node, file.Content)
 	if raw == "" {
 		return types.EntityRecord{}, false
@@ -637,11 +637,11 @@ func buildImport(node *sitter.Node, file extractor.FileInput) (types.EntityRecor
 // (e.g. `_documentation.visibility.internal._exported.Foundation`).
 // Detection is by tree-sitter node type — not by hardcoded attribute name —
 // so any current or future Swift attribute spelling is skipped.
-func extractImportPath(node *sitter.Node, src []byte) string {
+func extractImportPath(node ts.Node, src []byte) string {
 	// Collect all identifier-like child segments and join with '.'.
 	var parts []string
-	var collect func(n *sitter.Node)
-	collect = func(n *sitter.Node) {
+	var collect func(n ts.Node)
+	collect = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -685,7 +685,7 @@ func extractImportPath(node *sitter.Node, src []byte) string {
 }
 
 // extractName finds the name of a declaration node.
-func extractName(node *sitter.Node, src []byte) string {
+func extractName(node ts.Node, src []byte) string {
 	if child := node.ChildByFieldName("name"); child != nil {
 		return string(src[child.StartByte():child.EndByte()])
 	}
@@ -711,7 +711,7 @@ func extractName(node *sitter.Node, src []byte) string {
 }
 
 // firstLine returns the first line of the node's source text.
-func firstLine(src []byte, node *sitter.Node) string {
+func firstLine(src []byte, node ts.Node) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "\n"); idx >= 0 {
 		return strings.TrimSpace(raw[:idx])

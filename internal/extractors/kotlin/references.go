@@ -77,7 +77,7 @@ package kotlin
 import (
 	"path/filepath"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -138,7 +138,7 @@ type kotlinFrame struct {
 // to the enclosing operation entity.
 //
 // Mutates entities in place. Safe to call with an empty slice — no-op.
-func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -221,8 +221,8 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 			})
 	}
 
-	var walk func(n *sitter.Node, parentClass string, fstack []kotlinFrame)
-	walk = func(n *sitter.Node, parentClass string, fstack []kotlinFrame) {
+	var walk func(n ts.Node, parentClass string, fstack []kotlinFrame)
+	walk = func(n ts.Node, parentClass string, fstack []kotlinFrame) {
 		if n == nil {
 			return
 		}
@@ -310,7 +310,7 @@ func findKotlinEntityIndex(entities []types.EntityRecord, emittedName, filePath 
 // declaration. Tree-sitter-kotlin uses `type_identifier` for
 // class/object names and `simple_identifier` for function names; both
 // shapes are accepted via the field name or first-child fallback.
-func kotlinDeclName(n *sitter.Node, src []byte) string {
+func kotlinDeclName(n ts.Node, src []byte) string {
 	if name := n.ChildByFieldName("name"); name != nil {
 		return string(src[name.StartByte():name.EndByte()])
 	}
@@ -327,7 +327,7 @@ func kotlinDeclName(n *sitter.Node, src []byte) string {
 // kotlinFindBody returns the body child of a class/object/companion
 // declaration. Tree-sitter-kotlin uses `class_body` / `object_body` /
 // `enum_class_body` depending on the declaration shape.
-func kotlinFindBody(node *sitter.Node) *sitter.Node {
+func kotlinFindBody(node ts.Node) ts.Node {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		t := ch.Type()
@@ -345,12 +345,12 @@ func kotlinFindBody(node *sitter.Node) *sitter.Node {
 // `this.<method>` and `ClassName.<method>` resolve via dottedSymbols
 // to the same emitted entity.
 func synthesiseKotlinDottedMembers(
-	root *sitter.Node,
+	root ts.Node,
 	file extractor.FileInput,
 	bareSymbols, dottedSymbols map[string]kotlinSymbol,
 ) {
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -408,7 +408,7 @@ func synthesiseKotlinDottedMembers(
 //     leaf name).
 //   - otherwise look up in bareSymbols and emit.
 func handleKotlinIdentifier(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []kotlinFrame,
 	bareSymbols map[string]kotlinSymbol,
@@ -447,7 +447,7 @@ func handleKotlinIdentifier(
 // `is` check, generic parameter, local variable type annotation, or
 // return-type position). These are strictly REFERENCES, never CALLS.
 func handleKotlinTypeIdentifier(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []kotlinFrame,
 	bareSymbols map[string]kotlinSymbol,
@@ -491,7 +491,7 @@ func handleKotlinTypeIdentifier(
 //     the recursion will descend into the receiver and handle each
 //     `simple_identifier` independently.
 func handleKotlinNavigationExpression(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []kotlinFrame,
 	bareSymbols, dottedSymbols map[string]kotlinSymbol,
@@ -509,7 +509,7 @@ func handleKotlinNavigationExpression(
 	}
 
 	// Find the trailing navigation_suffix and extract its simple_identifier.
-	var lastSuffix *sitter.Node
+	var lastSuffix ts.Node
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		if ch.Type() == "navigation_suffix" {
@@ -536,7 +536,7 @@ func handleKotlinNavigationExpression(
 
 	// The receiver is the first child (anything that's not a
 	// navigation_suffix and appears before the first suffix).
-	var receiver *sitter.Node
+	var receiver ts.Node
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		if ch.Type() == "navigation_suffix" {
@@ -616,7 +616,7 @@ func handleKotlinNavigationExpression(
 //	parent is `property_declaration` and the identifier appears before
 //	  any `=` in the original source (defensive — the variable_declaration
 //	  guard above handles the common case).
-func isKotlinDeclarationPosition(n *sitter.Node) bool {
+func isKotlinDeclarationPosition(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -659,7 +659,7 @@ func isKotlinDeclarationPosition(n *sitter.Node) bool {
 // the callee head of a `call_expression` node (the first child when
 // that child is `simple_identifier`). CALLS owns those edges —
 // REFERENCES would double-count.
-func isKotlinCallCallee(n *sitter.Node) bool {
+func isKotlinCallCallee(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -674,7 +674,7 @@ func isKotlinCallCallee(n *sitter.Node) bool {
 // node is the trailing identifier of a `navigation_suffix` node. The
 // navigation_expression handler owns the binding decision; the bare
 // identifier walk should skip it to avoid double-emission.
-func isKotlinNavigationSuffixField(n *sitter.Node) bool {
+func isKotlinNavigationSuffixField(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false

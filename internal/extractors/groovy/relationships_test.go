@@ -18,7 +18,7 @@ func runGroovy(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Test.groovy",
 		Content:  []byte(src),
 		Language: "groovy",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

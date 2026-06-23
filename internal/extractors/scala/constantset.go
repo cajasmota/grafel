@@ -41,7 +41,7 @@ package scala
 // for a parity-audit.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -52,7 +52,7 @@ import (
 // SCOPE.Enum value-set node per detected collection. It is independent of the
 // structural walkNode pass (which emits Components / Operations / Schemas), so
 // the two never interfere.
-func emitConstantSets(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitConstantSets(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if root == nil {
 		return
 	}
@@ -63,7 +63,7 @@ func emitConstantSets(root *sitter.Node, file extractor.FileInput, out *[]types.
 // collects sealed-trait case-object enumerations (which span sibling
 // declarations) once, then per-node handles enum / Map-val / object-const-group
 // shapes, recursing into container bodies.
-func emitConstantSetsIn(scope *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitConstantSetsIn(scope ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	// (4) sealed-trait / case-object enumerations are scoped: gather every
 	// `case object X extends Parent` declared directly in this scope and group
 	// them by Parent, so `sealed trait Status` + N `case object`s become one
@@ -125,7 +125,7 @@ func emitConstantSetsIn(scope *sitter.Node, file extractor.FileInput, out *[]typ
 // Vector / Array) carrying literal entries, returns the SCOPE.Enum value-set
 // node for it. kind_hint distinguishes a Map (key→value entries) from a
 // sequence (literal elements).
-func buildValMapValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildValMapValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -170,7 +170,7 @@ func buildValMapValueSet(node *sitter.Node, file extractor.FileInput) (types.Ent
 // vals.
 //
 // kind_hint is "scala_const_object".
-func buildObjectConstGroupValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildObjectConstGroupValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -221,7 +221,7 @@ func buildObjectConstGroupValueSet(node *sitter.Node, file extractor.FileInput) 
 // parity-audit can see the per-case payload.
 //
 // kind_hint is "scala_enum".
-func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildEnumValueSet(node ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	name := extractName(node, file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -272,7 +272,7 @@ func buildEnumValueSet(node *sitter.Node, file extractor.FileInput) (types.Entit
 // enumeration.
 //
 // kind_hint is "scala_sealed_enum".
-func emitCaseObjectEnumerations(scope *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func emitCaseObjectEnumerations(scope ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	type group struct {
 		members   []extractor.EnumMember
 		startLine int
@@ -333,7 +333,7 @@ func emitCaseObjectEnumerations(scope *sitter.Node, file extractor.FileInput, ou
 
 // templateBodyOf returns the template_body / enum_body / block child of a
 // container declaration, or nil when it has no body.
-func templateBodyOf(node *sitter.Node) *sitter.Node {
+func templateBodyOf(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -346,7 +346,7 @@ func templateBodyOf(node *sitter.Node) *sitter.Node {
 }
 
 // childByType returns the first direct child of node with the given type.
-func childByType(node *sitter.Node, typ string) *sitter.Node {
+func childByType(node ts.Node, typ string) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -363,7 +363,7 @@ func childByType(node *sitter.Node, typ string) *sitter.Node {
 // definition. A type ascription (`val x: T = expr`) means the value is the
 // child following the `=` token, not the type_identifier; this returns the
 // node after `=`.
-func valDefinitionRHS(node *sitter.Node) *sitter.Node {
+func valDefinitionRHS(node ts.Node) ts.Node {
 	if node == nil {
 		return nil
 	}
@@ -386,7 +386,7 @@ func valDefinitionRHS(node *sitter.Node) *sitter.Node {
 // callExpressionCalleeName returns the simple callee name of a call_expression
 // (`Map(...)` → "Map"). For a qualified callee (`immutable.Map(...)`) it returns
 // the trailing identifier.
-func callExpressionCalleeName(call *sitter.Node, src []byte) string {
+func callExpressionCalleeName(call ts.Node, src []byte) string {
 	if call == nil {
 		return ""
 	}
@@ -423,14 +423,14 @@ func isCollectionCtor(name string) bool {
 // mapArgMembers builds members from a Map(...) arguments node. Each entry is an
 // `infix_expression` of the form `key -> value`. Non-literal keys/values record
 // their source expression text.
-func mapArgMembers(args *sitter.Node, src []byte) []extractor.EnumMember {
+func mapArgMembers(args ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	for i := 0; i < int(args.ChildCount()); i++ {
 		entry := args.Child(i)
 		if entry == nil {
 			continue
 		}
-		var key, valNode *sitter.Node
+		var key, valNode ts.Node
 		switch entry.Type() {
 		case "infix_expression":
 			// key -> value  (operator_identifier "->" / "→")
@@ -468,7 +468,7 @@ func mapArgMembers(args *sitter.Node, src []byte) []extractor.EnumMember {
 // seqArgMembers builds members from a Seq/Set/List(...) arguments node. Each
 // literal element becomes BOTH the member key and value so the value-set carries
 // the literal element set.
-func seqArgMembers(args *sitter.Node, src []byte) []extractor.EnumMember {
+func seqArgMembers(args ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	for i := 0; i < int(args.ChildCount()); i++ {
 		el := args.Child(i)
@@ -491,7 +491,7 @@ func seqArgMembers(args *sitter.Node, src []byte) []extractor.EnumMember {
 // enumCaseValue returns the source text of an enum arm's constructor arguments
 // (`case Mercury extends Planet(1.0)` → "1.0"), or "" for a bare arm. This lets
 // a parity-audit compare per-case payloads.
-func enumCaseValue(arm *sitter.Node, src []byte) string {
+func enumCaseValue(arm ts.Node, src []byte) string {
 	ext := childByType(arm, "extends_clause")
 	if ext == nil {
 		return ""
@@ -510,7 +510,7 @@ func enumCaseValue(arm *sitter.Node, src []byte) string {
 // (string / number / boolean / identifier), or — for any other non-literal node
 // (a method call, an interpolation) — the trimmed source EXPRESSION TEXT
 // (#4432: non-literal values are recorded, not dropped).
-func scalaScalarValue(n *sitter.Node, src []byte) string {
+func scalaScalarValue(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -531,7 +531,7 @@ func scalaScalarValue(n *sitter.Node, src []byte) string {
 
 // isCaseObject reports whether an object_definition / class_definition node
 // carries the `case` modifier (`case object X` / `case class X`).
-func isCaseObject(node *sitter.Node) bool {
+func isCaseObject(node ts.Node) bool {
 	if node == nil {
 		return false
 	}
@@ -556,7 +556,7 @@ func isCaseObject(node *sitter.Node) bool {
 
 // extendsTypeName returns the supertype name from a declaration's
 // extends_clause (`case object Active extends Status` → "Status").
-func extendsTypeName(node *sitter.Node, src []byte) string {
+func extendsTypeName(node ts.Node, src []byte) string {
 	ext := childByType(node, "extends_clause")
 	if ext == nil {
 		return ""
@@ -578,7 +578,7 @@ func extendsTypeName(node *sitter.Node, src []byte) string {
 }
 
 // firstIdentifier returns the first identifier/type_identifier text under node.
-func firstIdentifier(node *sitter.Node, src []byte) string {
+func firstIdentifier(node ts.Node, src []byte) string {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch == nil {
@@ -593,7 +593,7 @@ func firstIdentifier(node *sitter.Node, src []byte) string {
 
 // lastIdentifier returns the trailing identifier of a dotted / field
 // expression (`immutable.Map` → "Map").
-func lastIdentifier(node *sitter.Node, src []byte) string {
+func lastIdentifier(node ts.Node, src []byte) string {
 	last := ""
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
@@ -611,8 +611,8 @@ func lastIdentifier(node *sitter.Node, src []byte) string {
 }
 
 // namedChildren returns the named children of a node in order.
-func namedChildren(node *sitter.Node) []*sitter.Node {
-	var out []*sitter.Node
+func namedChildren(node ts.Node) []ts.Node {
+	var out []ts.Node
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch != nil && ch.IsNamed() {
@@ -623,7 +623,7 @@ func namedChildren(node *sitter.Node) []*sitter.Node {
 }
 
 // nodeStr returns the trimmed source text of a node.
-func nodeStr(node *sitter.Node, src []byte) string {
+func nodeStr(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}

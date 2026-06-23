@@ -81,7 +81,7 @@ func extractScala(t *testing.T, path, src string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

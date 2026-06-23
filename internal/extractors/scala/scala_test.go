@@ -5,19 +5,23 @@ import (
 	"errors"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsscala "github.com/smacker/go-tree-sitter/scala"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/scala"
 	"github.com/cajasmota/grafel/internal/treesitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsscala.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsscala.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -57,7 +61,7 @@ trait Repository[T] {
 		Path:     "service.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -109,7 +113,7 @@ class Foo {
 		Path:     "foo.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -145,7 +149,7 @@ trait Serializable {
 		Path:     "serializable.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -175,7 +179,7 @@ object Config {
 		Path:     "config.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -205,7 +209,7 @@ class MathHelper {
 		Path:     "math.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -239,7 +243,7 @@ class Foo {}
 		Path:     "imports.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -267,7 +271,7 @@ func TestScalaExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.scala",
 		Content:  []byte(""),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -284,7 +288,7 @@ func TestScalaExtractor_NilTree(t *testing.T) {
 		Path:     "nil.scala",
 		Content:  []byte("class Foo {}"),
 		Language: "scala",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -316,7 +320,7 @@ case class Point(x: Double, y: Double)
 		Path:     "point.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -348,7 +352,7 @@ object App {}
 		Path:     "multi.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -398,7 +402,7 @@ class Views {}
 		Path:     "app/views/index.scala.html",
 		Content:  []byte(minimalScala),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -429,7 +433,7 @@ func TestScalaExtractor_RegularScalaFileNotTwirl(t *testing.T) {
 		Path:     "app/models/Foo.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -461,7 +465,7 @@ func TestScalaExtractor_TwirlVariantExtensions(t *testing.T) {
 			Path:     path,
 			Content:  []byte(src),
 			Language: "scala",
-			Tree:     tree,
+			TSTree:   tree,
 		})
 		if err != nil {
 			t.Fatalf("unexpected error for %s: %v", path, err)
@@ -501,7 +505,7 @@ object MyController {
 		Path:     "controllers/MyController.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -543,7 +547,7 @@ class TickService(val counter: Counter) {
 		Path:     "services/TickService.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -589,7 +593,7 @@ class OrderProcessor {
 		Path:     "OrderProcessor.scala",
 		Content:  []byte(src),
 		Language: "scala",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

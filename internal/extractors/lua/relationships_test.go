@@ -18,7 +18,7 @@ func runLua(t *testing.T, src string) []types.EntityRecord {
 		Path:     "test.lua",
 		Content:  []byte(src),
 		Language: "lua",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

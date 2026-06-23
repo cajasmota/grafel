@@ -26,7 +26,7 @@ func TestLiveFireEx(t *testing.T) {
 		t.Fatal("elixir extractor not registered")
 	}
 	recs, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "lib/accounts.ex", Content: src, Language: "elixir", Tree: res.Tree,
+		Path: "lib/accounts.ex", Content: src, Language: "elixir", TSTree: res.TSTree,
 	})
 	if err != nil {
 		t.Fatal(err)

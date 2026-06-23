@@ -23,7 +23,7 @@ func extractShell5158(t *testing.T, src string) []types.EntityRecord {
 		Path:     "dispatch.sh",
 		Content:  []byte(src),
 		Language: "shell",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

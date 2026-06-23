@@ -5,19 +5,23 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tskotlin "github.com/smacker/go-tree-sitter/kotlin"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/kotlin"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
 // parseForTest parses Kotlin source using the real grammar.
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tskotlin.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tskotlin.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -48,7 +52,7 @@ class UserService {
 		Path:     "UserService.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -85,7 +89,7 @@ class Foo {
 		Path:     "Foo.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -124,7 +128,7 @@ class Svc {
 		Path:     "svc.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -154,7 +158,7 @@ object MySingleton {
 		Path:     "singleton.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -202,7 +206,7 @@ class Foo {}
 		Path:     "imports.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -252,7 +256,7 @@ class Bar {
 		Path:     "Bar.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -290,7 +294,7 @@ class UserController {
 		Path:     "UserController.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -361,7 +365,7 @@ func TestKotlinExtractor_AllSpringStereotypesEmitService(t *testing.T) {
 				Path:     tc.className + ".kt",
 				Content:  []byte(src),
 				Language: "kotlin",
-				Tree:     tree,
+				TSTree:   tree,
 			})
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
@@ -396,7 +400,7 @@ class PlainOldKotlinClass {
 		Path:     "plain.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -416,7 +420,7 @@ func TestKotlinExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.kt",
 		Content:  []byte(""),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -433,7 +437,7 @@ func TestKotlinExtractor_NilTree(t *testing.T) {
 		Path:     "nil.kt",
 		Content:  []byte("class Foo {}"),
 		Language: "kotlin",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -459,7 +463,7 @@ class BadClass {
 		Path:     "malformed.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on malformed file: %v", err)
@@ -502,7 +506,7 @@ interface Greeter {
 		Path:     "Greeter.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -532,7 +536,7 @@ func TestKotlinExtractor_InterfaceNotClass(t *testing.T) {
 	tree := parseForTest(t, src)
 	ext, _ := extractor.Get("kotlin")
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "Repo.kt", Content: []byte(src), Language: "kotlin", Tree: tree,
+		Path: "Repo.kt", Content: []byte(src), Language: "kotlin", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -559,7 +563,7 @@ enum class Direction {
 		Path:     "Direction.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -583,7 +587,7 @@ func TestKotlinExtractor_EnumNotClass(t *testing.T) {
 	tree := parseForTest(t, src)
 	ext, _ := extractor.Get("kotlin")
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "Color.kt", Content: []byte(src), Language: "kotlin", Tree: tree,
+		Path: "Color.kt", Content: []byte(src), Language: "kotlin", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -609,7 +613,7 @@ typealias UserId = Int
 		Path:     "aliases.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -655,7 +659,7 @@ class Box(val width: Double, val height: Double) : Shape {
 	tree := parseForTest(t, src)
 	ext, _ := extractor.Get("kotlin")
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "shapes.kt", Content: []byte(src), Language: "kotlin", Tree: tree,
+		Path: "shapes.kt", Content: []byte(src), Language: "kotlin", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -698,7 +702,7 @@ func TestKotlinExtractor_LineNumbers(t *testing.T) {
 		Path:     "lines.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

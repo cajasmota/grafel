@@ -5,19 +5,23 @@ import (
 	"errors"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tselixir "github.com/smacker/go-tree-sitter/elixir"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/elixir"
 	"github.com/cajasmota/grafel/internal/treesitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tselixir.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tselixir.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -52,7 +56,7 @@ end
 		Path:     "user_controller.ex",
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -103,7 +107,7 @@ end
 		Path:     "foo.ex",
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -144,7 +148,7 @@ end
 		Path:     "mod.ex",
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -177,7 +181,7 @@ end
 		Path:     "mod.ex",
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -212,7 +216,7 @@ end
 		Path:     "foo.ex",
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -240,7 +244,7 @@ func TestElixirExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.ex",
 		Content:  []byte(""),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -257,7 +261,7 @@ func TestElixirExtractor_NilTree(t *testing.T) {
 		Path:     "nil.ex",
 		Content:  []byte("defmodule Foo do\nend"),
 		Language: "elixir",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -291,7 +295,7 @@ end
 		Path:     "printable.ex",
 		Content:  []byte(src),
 		Language: "elixir",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

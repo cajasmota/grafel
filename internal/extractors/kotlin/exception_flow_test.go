@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	tskotlin "github.com/smacker/go-tree-sitter/kotlin"
 
 	"github.com/cajasmota/grafel/internal/extractor"
@@ -26,7 +26,7 @@ func extractKotlinRaw(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Demo.kt",
 		Content:  []byte(src),
 		Language: "kotlin",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)
@@ -325,15 +325,18 @@ func TestKotlinExceptionFlow_LiveFixture(t *testing.T) {
 	if err != nil {
 		t.Skipf("fixture unavailable: %v", err)
 	}
-	parser := sitter.NewParser()
-	parser.SetLanguage(tskotlin.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, src)
+	parser, perr := tssmacker.New().NewParser(tssmacker.WrapLanguage(tskotlin.GetLanguage()))
+	if perr != nil {
+		t.Fatalf("parser init: %v", perr)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
 	ext, _ := extractor.Get("kotlin")
 	recs, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: path, Content: src, Language: "kotlin", Tree: tree,
+		Path: path, Content: src, Language: "kotlin", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

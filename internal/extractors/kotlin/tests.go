@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -41,7 +41,7 @@ var kotestSpecBaseTypes = map[string]bool{
 // classes whose lambda resolves no CALLS (shape-only specs → no owner, honest
 // exclusion).
 func emitKotestTestScopeOwner(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	className string,
 	ctx *kotlinCrossCtx,
@@ -113,7 +113,7 @@ var kotestDSLScaffolding = map[string]bool{
 //	  └ delegation_specifier → constructor_invocation
 //	       ├ user_type → type_identifier  (the base spec type)
 //	       └ value_arguments → value_argument → lambda_literal → <body>
-func kotestSpecLambdaBody(node *sitter.Node, src []byte) (*sitter.Node, string) {
+func kotestSpecLambdaBody(node ts.Node, src []byte) (ts.Node, string) {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ds := node.Child(i)
 		if ds.Type() != "delegation_specifier" {
@@ -149,7 +149,7 @@ func kotestSpecLambdaBody(node *sitter.Node, src []byte) (*sitter.Node, string) 
 
 // firstChildOfTypeNode returns the first direct child of n whose Type() == kind,
 // or nil.
-func firstChildOfTypeNode(n *sitter.Node, kind string) *sitter.Node {
+func firstChildOfTypeNode(n ts.Node, kind string) ts.Node {
 	if n == nil {
 		return nil
 	}

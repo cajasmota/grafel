@@ -35,7 +35,7 @@ package kotlin
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -51,7 +51,7 @@ import (
 // file scope (or in a function whose entity was not emitted) fall back to the
 // file entity inside EmitExceptionEdges. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -59,8 +59,8 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 
 	var edges []extractor.ExceptionEdge
 
-	var walk func(n *sitter.Node, enclosingFn string)
-	walk = func(n *sitter.Node, enclosingFn string) {
+	var walk func(n ts.Node, enclosingFn string)
+	walk = func(n ts.Node, enclosingFn string) {
 		if n == nil {
 			return
 		}
@@ -112,7 +112,7 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 // kotlinFunctionName returns the bare declared name of a function_declaration,
 // matching the Name buildOperation emits (Kotlin function entities are not
 // class-qualified), or "" so the edge falls back to the file entity.
-func kotlinFunctionName(fn *sitter.Node, src []byte) string {
+func kotlinFunctionName(fn ts.Node, src []byte) string {
 	if name := strings.TrimSpace(childFieldText(fn, "name", src)); name != "" {
 		return name
 	}
@@ -124,7 +124,7 @@ func kotlinFunctionName(fn *sitter.Node, src []byte) string {
 // (`return`/`break`/`continue`), a bare re-throw of a variable (`throw e`), or
 // a factory call (`throw makeError()` — lowercase callee). Only an explicit
 // `throw <Constructor>(...)` whose callee is a PascalCase type token is taken.
-func kotlinThrowType(jump *sitter.Node, src []byte) string {
+func kotlinThrowType(jump ts.Node, src []byte) string {
 	// jump_expression covers return/throw/break/continue. Require a leading
 	// `throw` keyword token among the (unnamed) children.
 	if !jumpIsThrow(jump) {
@@ -132,7 +132,7 @@ func kotlinThrowType(jump *sitter.Node, src []byte) string {
 	}
 	// The thrown expression is the first named child (a call_expression for
 	// `throw X(...)`).
-	var expr *sitter.Node
+	var expr ts.Node
 	for i := 0; i < int(jump.NamedChildCount()); i++ {
 		if c := jump.NamedChild(i); c != nil {
 			expr = c
@@ -169,7 +169,7 @@ func kotlinThrowType(jump *sitter.Node, src []byte) string {
 
 // jumpIsThrow reports whether a jump_expression is a `throw ...` (vs
 // return/break/continue) by inspecting its leading keyword token.
-func jumpIsThrow(jump *sitter.Node) bool {
+func jumpIsThrow(jump ts.Node) bool {
 	for i := 0; i < int(jump.ChildCount()); i++ {
 		c := jump.Child(i)
 		if c == nil {
@@ -191,7 +191,7 @@ func jumpIsThrow(jump *sitter.Node) bool {
 // (`catch (e: SqlException) { ... }`), taken from its user_type child, or "".
 // Kotlin catch clauses are single-type (no Java-style `A | B` multi-catch), so
 // at most one type is returned.
-func kotlinCatchType(catchBlock *sitter.Node, src []byte) string {
+func kotlinCatchType(catchBlock ts.Node, src []byte) string {
 	ut := firstNamedChildOfType(catchBlock, "user_type")
 	if ut == nil {
 		return ""
@@ -204,7 +204,7 @@ func kotlinCatchType(catchBlock *sitter.Node, src []byte) string {
 // (the @ControllerAdvice / @RestControllerAdvice handler idiom). An
 // @ExceptionHandler with no class argument (the type is then inferred from the
 // method's parameter) yields none here — precision-first, no fabricated node.
-func kotlinExceptionHandlerTypes(fn *sitter.Node, src []byte) []string {
+func kotlinExceptionHandlerTypes(fn ts.Node, src []byte) []string {
 	mods := firstNamedChildOfType(fn, "modifiers")
 	if mods == nil {
 		return nil
@@ -258,7 +258,7 @@ func kotlinExceptionHandlerTypes(fn *sitter.Node, src []byte) []string {
 // call. The shape is a call_expression whose callee simple_identifier is
 // `exception` and whose call_suffix carries exactly one type argument — the
 // handled exception class.
-func kotlinKtorStatusPagesType(call *sitter.Node, src []byte) string {
+func kotlinKtorStatusPagesType(call ts.Node, src []byte) string {
 	callee := call.NamedChild(0)
 	if callee == nil || callee.Type() != "simple_identifier" {
 		return ""
@@ -283,7 +283,7 @@ func kotlinKtorStatusPagesType(call *sitter.Node, src []byte) string {
 
 // firstNamedChildOfType returns the first (depth-first) descendant of n whose
 // node type equals typ, or nil.
-func firstNamedChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func firstNamedChildOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}
@@ -303,7 +303,7 @@ func firstNamedChildOfType(n *sitter.Node, typ string) *sitter.Node {
 }
 
 // nodeText returns the source text spanned by a node.
-func nodeText(n *sitter.Node, src []byte) string {
+func nodeText(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}

@@ -4,18 +4,22 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsbash "github.com/smacker/go-tree-sitter/bash"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/shell"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsbash.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsbash.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -54,7 +58,7 @@ build_image() {
 		Path:     "test.sh",
 		Content:  []byte(src),
 		Language: "shell",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -108,7 +112,7 @@ func TestShellExtractor_Signatures(t *testing.T) {
 		Path:     "test.sh",
 		Content:  []byte(src),
 		Language: "shell",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -148,7 +152,7 @@ cleanup() {
 		Path:     "test.sh",
 		Content:  []byte(src),
 		Language: "shell",
-		Tree:     nil, // force regex fallback
+		TSTree:   nil, // force regex fallback
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)

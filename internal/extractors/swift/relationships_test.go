@@ -18,7 +18,7 @@ func runSwift(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Test.swift",
 		Content:  []byte(src),
 		Language: "swift",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
