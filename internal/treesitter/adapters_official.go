@@ -11,14 +11,17 @@ import (
 	tscpp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/cpp"
 	tscsharp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/csharp"
 	tscss "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/css"
+	tsdockerfile "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/dockerfile"
 	tselixir "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/elixir"
 	tsgolang "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/golang"
 	tshtml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/html"
 	tsjava "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/java"
 	tsjavascript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/javascript"
+	tskotlin "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/kotlin"
 	tslua "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/lua"
 	tsocaml "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/ocaml"
 	tsphp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/php"
+	tsproto "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/proto"
 	tspython "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/python"
 	tsruby "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/ruby"
 	tsrust "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/rust"
@@ -65,11 +68,6 @@ var migratedLanguages = map[string]ts.Language{
 	"html": tshtml.Language(),
 	"ruby": tsruby.Language(),
 	// B2 cutover Part B batch 2 (#5418): official-binding providers — all ABI ≤14.
-	// kotlin and sql are deferred: their go bindings #include a generated
-	// src/parser.c that is unreachable from a module download (kotlin's lives
-	// outside the nested bindings/go module boundary; DerekStride/tree-sitter-sql
-	// .gitignores src/parser.c, so it is never committed). Both need the
-	// vendored-C track (cutover plan §3/§4), not this official-binding pattern.
 	"elixir": tselixir.Language(),
 	"ocaml":  tsocaml.Language(),
 	"php":    tsphp.Language(),
@@ -85,6 +83,16 @@ var migratedLanguages = map[string]ts.Language{
 	"lua":  tslua.Language(),
 	"toml": tstoml.Language(),
 	"yaml": tsyaml.Language(),
+	// B2 cutover batch 4a (#5418): directly-vendorable C grammars whose committed
+	// parser.c is ABI ≤14 — vendored C + a hand-written official-style binding,
+	// compiled against the official runtime (no go-get module). proto has no Go
+	// binding anywhere and is ABI 13; dockerfile and kotlin commit an ABI-14
+	// parser.c + an external scanner.c, but their module go.mod / module boundary
+	// blocks the go-get-a-binding pattern. See cutover plan §3/§4. (sql/hcl/groovy
+	// stay deferred to batch 4b — they need ABI-14 regeneration first.)
+	"proto":      tsproto.Language(),
+	"dockerfile": tsdockerfile.Language(),
+	"kotlin":     tskotlin.Language(),
 }
 
 // abiProbeSource is trivial, valid source per migrated language for the ABI guard.
@@ -111,6 +119,9 @@ var abiProbeSource = map[string][]byte{
 	"lua":        []byte("local function f() return 1 end\n"),
 	"toml":       []byte("[table]\nkey = \"value\"\n"),
 	"yaml":       []byte("key: value\n"),
+	"proto":      []byte("syntax = \"proto3\";\nmessage M { int32 id = 1; }\n"),
+	"dockerfile": []byte("FROM alpine:3\nRUN echo hi\n"),
+	"kotlin":     []byte("fun f(): Int { return 1 }\n"),
 }
 
 // tsLanguageFor resolves a language to the official adapter (if migrated) or the
