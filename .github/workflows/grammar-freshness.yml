@@ -1,0 +1,86 @@
+name: grammar-freshness
+# A2 freshness alarm (epic #5359, milestone 0.1.4). Monthly cron + manual.
+# Reads grammars.lock, checks each upstream tree-sitter grammar repo for newer
+# releases/commits, and opens/updates a SINGLE tracking issue listing the stale
+# grammars. Per-grammar (not per-dependency) because the smacker binding that
+# bundles every grammar is unmaintained — see docs/grammar-freshness-audit.md.
+#
+# Cron + manual only (NOT push/PR) to stay inside free-tier minutes per CI policy.
+on:
+  schedule:
+    # 06:00 UTC on the 1st of every month.
+    - cron: '0 6 1 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: grammar-freshness
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GITHUB_TOKEN: ${{ github.token }}
+      ISSUE_TITLE: 'Grammar freshness: upstream tree-sitter grammars stale'
+      ISSUE_LABEL: grammar-freshness
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+
+      - name: Run the freshness checker (human table to the log)
+        run: go run ./tools/grammar-freshness -format table
+
+      - name: Generate the tracking-issue body
+        run: go run ./tools/grammar-freshness -format markdown > issue-body.md
+
+      - name: Decide whether anything is stale
+        id: stale
+        run: |
+          if grep -q '0 of .* grammars stale' issue-body.md; then
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ensure the tracking label exists
+        if: steps.stale.outputs.any == 'true'
+        run: |
+          gh label create "$ISSUE_LABEL" \
+            --description "tree-sitter grammar upstream is ahead of the bundled snapshot (A2, #5359)" \
+            --color BFD4F2 2>/dev/null || true
+
+      - name: Create or update the single tracking issue (idempotent)
+        if: steps.stale.outputs.any == 'true'
+        run: |
+          set -euo pipefail
+          # Find an existing OPEN issue by the stable label; fall back to title.
+          existing=$(gh issue list --state open --label "$ISSUE_LABEL" \
+                       --json number --jq '.[0].number' 2>/dev/null || true)
+          if [ -z "$existing" ]; then
+            existing=$(gh issue list --state open --search "in:title \"$ISSUE_TITLE\"" \
+                         --json number --jq '.[0].number' 2>/dev/null || true)
+          fi
+
+          if [ -n "$existing" ]; then
+            echo "Updating existing tracking issue #$existing"
+            gh issue edit "$existing" --body-file issue-body.md
+            # Ensure the label is present even if matched by title.
+            gh issue edit "$existing" --add-label "$ISSUE_LABEL" || true
+          else
+            echo "Creating tracking issue"
+            gh issue create --title "$ISSUE_TITLE" \
+              --label "$ISSUE_LABEL" \
+              --body-file issue-body.md
+          fi
+
+      - name: No stale grammars — nothing to track
+        if: steps.stale.outputs.any == 'false'
+        run: echo "All grammars current against upstream; tracking issue left untouched."

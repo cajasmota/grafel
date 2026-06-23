@@ -9,6 +9,18 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Grammar-freshness monthly cron + tracking issue (#5411, #5359 A2):** a
+  scheduled GitHub Action (`.github/workflows/grammar-freshness.yml`, monthly
+  cron + `workflow_dispatch`, no push/PR) plus a standalone Go checker
+  (`tools/grammar-freshness`) that reads `grammars.lock`, queries each upstream
+  `tree-sitter/tree-sitter-<lang>` repo's latest release (falling back to the
+  default-branch commit date), and reports which grammars have moved ahead of
+  the bundled smacker snapshot. When any are stale it creates or updates a
+  single idempotent tracking issue (stable `grammar-freshness` label) listing
+  them. Tracks each grammar **independently of the dependency** because the
+  smacker binding is unmaintained, so Renovate-on-dep (A1) is blind; a dry run
+  flags 24 of 28 grammars stale. Minimal permissions (`issues: write`,
+  `contents: read`).
 - **Grammar setup audit + `grammars.lock` manifest (#5359 B3):** committed a
   source-of-truth manifest mapping all 28 grammar-backed languages to their
   grammar source, the bundled `smacker/go-tree-sitter` snapshot (pinned

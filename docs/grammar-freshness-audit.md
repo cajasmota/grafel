@@ -91,6 +91,51 @@ patterns, Python 3.12+ PEP 695 type params, TS const type params.
 alert on per-language spikes** — not to compute error nodes from scratch, and
 not to extend `fidelity` (different axis).
 
+## 4a. A2 — the monthly freshness alarm (built)
+
+The freshness alarm is live as a scheduled GitHub Action plus a small Go tool.
+
+- **Checker:** `tools/grammar-freshness` (standalone, zero `internal/` imports).
+  It reads `grammars.lock`, and for each grammar-backed language queries the
+  upstream `source` repo's latest **release/tag** via the GitHub API, falling
+  back to the **default-branch latest commit date** when a repo has no releases.
+  It compares the upstream commit date to the bundled smacker snapshot
+  (`2024-08-27`) and reports each grammar as `STALE`, `CURRENT`, or `UNKNOWN`
+  (unreachable). Run it locally:
+
+  ```sh
+  GITHUB_TOKEN=$(gh auth token) go run ./tools/grammar-freshness            # human table
+  GITHUB_TOKEN=$(gh auth token) go run ./tools/grammar-freshness -format markdown  # issue body
+  ```
+
+  It exits non-zero **only** on a hard error (unreadable manifest, or *every*
+  upstream lookup failing). Finding stale grammars is reported, not a failure.
+  It is rate-limit-aware (honours the reset header once) and resilient to
+  individual repos being unreachable.
+
+- **Workflow:** `.github/workflows/grammar-freshness.yml` runs on a **monthly
+  cron** (06:00 UTC on the 1st) plus manual `workflow_dispatch`. It is *not*
+  wired to push/PR to stay inside free-tier minutes (CI policy). With minimal
+  permissions (`issues: write`, `contents: read`) it runs the checker and, if
+  any grammar is stale, **creates or updates a single tracking issue** —
+  identified idempotently by the stable label **`grammar-freshness`** (title
+  fallback) — whose body is the checker's markdown table of stale grammars and
+  the last-checked date. Re-runs edit the same issue rather than spamming new
+  ones.
+
+- **How to read the tracking issue:** the table lists every grammar whose
+  upstream has moved ahead of the bundled snapshot, with the upstream latest
+  release/commit and an approximate months-behind figure. Because the smacker
+  binding is unmaintained, expect **most/all 28 grammars to show stale** — that
+  is the intended signal motivating the B1 catch-up bump and the B2 decoupling.
+  A dry run at audit time flagged **24 of 28** stale (the 4 current — lua,
+  proto, toml, yaml — have upstreams that genuinely predate the snapshot).
+
+- **`last_verified` refresh:** the manifest's `last_verified` / upstream-latest
+  columns are refreshed manually when a maintainer reconciles the tracking issue
+  (e.g. after a catch-up bump). The cron itself reports against the committed
+  manifest and does not auto-commit, keeping the Action read-only on the repo.
+
 ## 5. Sequencing (Part D)
 
 1. **B3 (this audit + `grammars.lock`)** ✓ + A1/A2 freshness alarm.
