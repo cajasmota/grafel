@@ -40,7 +40,7 @@ import (
 	"context"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
@@ -85,16 +85,19 @@ func (e *CppExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 		return nil, nil
 	}
 
-	tree := file.Tree
+	tree := file.TSTree
 	if tree == nil {
-		parser := sitter.NewParser()
+		grammar := cppGrammar()
 		if lang == "c" {
-			parser.SetLanguage(cGrammar())
-		} else {
-			parser.SetLanguage(cppGrammar())
+			grammar = cGrammar()
 		}
+		parser, perr := cppAdapter.NewParser(grammar)
+		if perr != nil {
+			return nil, perr
+		}
+		defer parser.Close()
 		var err error
-		tree, err = parser.ParseCtx(ctx, nil, file.Content)
+		tree, err = parser.Parse(file.Content)
 		if err != nil {
 			return nil, err
 		}
@@ -159,7 +162,7 @@ func (e *CppExtractor) Extract(ctx context.Context, file extractor.FileInput) ([
 // `container` is the name of the enclosing class/struct/union (NOT
 // namespace) when we're inside its body — used so methods attach CONTAINS
 // to that container and self-recursion is detected for CALLS dedup.
-func walkStructural(n *sitter.Node, src []byte, path, lang, container string, out *[]types.EntityRecord) {
+func walkStructural(n ts.Node, src []byte, path, lang, container string, out *[]types.EntityRecord) {
 	if n == nil {
 		return
 	}
@@ -370,7 +373,7 @@ func walkStructural(n *sitter.Node, src []byte, path, lang, container string, ou
 
 // findClassBody returns the field_declaration_list child of a class/struct/
 // union specifier, or nil when no body is present (forward declarations).
-func findClassBody(n *sitter.Node) *sitter.Node {
+func findClassBody(n ts.Node) ts.Node {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		if ch.Type() == "field_declaration_list" {
@@ -382,7 +385,7 @@ func findClassBody(n *sitter.Node) *sitter.Node {
 
 // findNamespaceBody returns the declaration_list child of a namespace
 // definition, or nil for namespace alias / anonymous declarations.
-func findNamespaceBody(n *sitter.Node) *sitter.Node {
+func findNamespaceBody(n ts.Node) ts.Node {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		if ch.Type() == "declaration_list" {
@@ -470,7 +473,7 @@ var cppKeywordStop = map[string]bool{
 // identifier — the trailing simple identifier when the call is on a
 // member access (`obj.method`, `ptr->method`) or qualified
 // (`Foo::method`). Self-recursion is dropped.
-func extractCallRelationships(body *sitter.Node, src []byte, callerName string) []types.RelationshipRecord {
+func extractCallRelationships(body ts.Node, src []byte, callerName string) []types.RelationshipRecord {
 	if body == nil || callerName == "" {
 		return nil
 	}
@@ -511,7 +514,7 @@ func extractCallRelationships(body *sitter.Node, src []byte, callerName string) 
 //   - qualified_identifier     → `Foo::method` — return the trailing name
 //   - template_function        → `foo<int>()` — return the inner name
 //   - parenthesized_expression → recurse into inner
-func cppCallTarget(call *sitter.Node, src []byte) string {
+func cppCallTarget(call ts.Node, src []byte) string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		// Fallback: first non-argument_list child.
@@ -528,7 +531,7 @@ func cppCallTarget(call *sitter.Node, src []byte) string {
 
 // resolveCallee unpacks a function-expression node to its trailing
 // identifier name. Returns "" when the shape is unrecognised.
-func resolveCallee(n *sitter.Node, src []byte) string {
+func resolveCallee(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -583,7 +586,7 @@ func resolveCallee(n *sitter.Node, src []byte) string {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -591,8 +594,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -611,7 +614,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 // ----------------------------------------------------------------
 
 // findFirst returns the first descendant node (depth-first) matching any of the given types.
-func findFirst(root *sitter.Node, types ...string) *sitter.Node {
+func findFirst(root ts.Node, types ...string) ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -619,7 +622,7 @@ func findFirst(root *sitter.Node, types ...string) *sitter.Node {
 	for _, t := range types {
 		typeSet[t] = true
 	}
-	stack := []*sitter.Node{root}
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -638,7 +641,7 @@ func findFirst(root *sitter.Node, types ...string) *sitter.Node {
 // Text helpers
 // ----------------------------------------------------------------
 
-func nodeText(n *sitter.Node, src []byte) string {
+func nodeText(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -650,7 +653,7 @@ func nodeText(n *sitter.Node, src []byte) string {
 	return string(src[s:e])
 }
 
-func nodeLines(n *sitter.Node) (int, int) {
+func nodeLines(n ts.Node) (int, int) {
 	return int(n.StartPoint().Row) + 1, int(n.EndPoint().Row) + 1
 }
 
@@ -663,7 +666,7 @@ func nodeLines(n *sitter.Node) (int, int) {
 // Out-of-line definitions like `void Foo::bar()` capture the qualifier
 // in Metadata["qualified_scope"] = "Foo" so attachOutOfLineContains can
 // later wire a CONTAINS edge from the Foo entity.
-func extractFunction(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractFunction(n ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	decl := n.ChildByFieldName("declarator")
 	if decl == nil {
 		return types.EntityRecord{}, false
@@ -693,7 +696,7 @@ func extractFunction(n *sitter.Node, src []byte, path, lang string) (types.Entit
 
 // resolveFunctionName drills through pointer/ref declarators to the
 // function_declarator and returns its identifier.
-func resolveFunctionName(decl *sitter.Node, src []byte) string {
+func resolveFunctionName(decl ts.Node, src []byte) string {
 	if decl == nil {
 		return ""
 	}
@@ -729,7 +732,7 @@ func resolveFunctionName(decl *sitter.Node, src []byte) string {
 // in-class or unqualified definitions returns "". Walks through pointer/
 // reference / function declarators to find a qualified_identifier whose
 // scope child names the qualifier.
-func resolveQualifiedScope(decl *sitter.Node, src []byte) string {
+func resolveQualifiedScope(decl ts.Node, src []byte) string {
 	if decl == nil {
 		return ""
 	}
@@ -753,7 +756,7 @@ func resolveQualifiedScope(decl *sitter.Node, src []byte) string {
 
 // rightmostIdentifier returns the rightmost identifier name in a chain of
 // qualified_identifier / namespace_identifier nodes.
-func rightmostIdentifier(n *sitter.Node, src []byte) string {
+func rightmostIdentifier(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -779,7 +782,7 @@ func rightmostIdentifier(n *sitter.Node, src []byte) string {
 
 // resolveIdentifier extracts the name text from identifier-like nodes,
 // including qualified names (scope_resolution).
-func resolveIdentifier(n *sitter.Node, src []byte) string {
+func resolveIdentifier(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -805,7 +808,7 @@ func resolveIdentifier(n *sitter.Node, src []byte) string {
 }
 
 // extractClassLike handles class_specifier, struct_specifier, union_specifier.
-func extractClassLike(n *sitter.Node, src []byte, path, lang, subtype string) (types.EntityRecord, bool) {
+func extractClassLike(n ts.Node, src []byte, path, lang, subtype string) (types.EntityRecord, bool) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil {
 		// Anonymous struct/class — skip.
@@ -858,8 +861,8 @@ func extractClassLike(n *sitter.Node, src []byte, path, lang, subtype string) (t
 // cppBaseClasses returns the inherited base classes of a class/struct
 // specifier as []map{"name","access"} where access is the explicit
 // access-specifier ("public"/"protected"/"private") when present.
-func cppBaseClasses(n *sitter.Node, src []byte) []map[string]interface{} {
-	var clause *sitter.Node
+func cppBaseClasses(n ts.Node, src []byte) []map[string]interface{} {
+	var clause ts.Node
 	for i := 0; i < int(n.ChildCount()); i++ {
 		if n.Child(i).Type() == "base_class_clause" {
 			clause = n.Child(i)
@@ -893,7 +896,7 @@ func cppBaseClasses(n *sitter.Node, src []byte) []map[string]interface{} {
 // cppClassMembers walks a field_declaration_list returning the data members
 // (name + type + current access section) and whether the class is abstract
 // (has at least one pure-virtual method, i.e. a `pure_virtual_clause`).
-func cppClassMembers(body *sitter.Node, src []byte) (fields []map[string]interface{}, abstract bool) {
+func cppClassMembers(body ts.Node, src []byte) (fields []map[string]interface{}, abstract bool) {
 	access := "private" // class default; struct/union default is public but
 	// access is tracked relative to the explicit specifiers we see.
 	for i := 0; i < int(body.ChildCount()); i++ {
@@ -937,7 +940,7 @@ func cppClassMembers(body *sitter.Node, src []byte) (fields []map[string]interfa
 
 // cppFirstChildOfType returns the first direct child of n with the given
 // node type, or nil.
-func cppFirstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func cppFirstChildOfType(n ts.Node, typ string) ts.Node {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		if n.Child(i).Type() == typ {
 			return n.Child(i)
@@ -947,7 +950,7 @@ func cppFirstChildOfType(n *sitter.Node, typ string) *sitter.Node {
 }
 
 // extractNamespace extracts a namespace_definition node.
-func extractNamespace(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractNamespace(n ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	nameNode := n.ChildByFieldName("name")
 	name := ""
 	if nameNode != nil {
@@ -973,7 +976,7 @@ func extractNamespace(n *sitter.Node, src []byte, path, lang string) (types.Enti
 
 // extractTemplate extracts a template_declaration node.
 // Tries to get the name from the inner declaration (class/function).
-func extractTemplate(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractTemplate(n ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	// The body is the last child (after template parameter list).
 	// It can be a function_definition, class_specifier, alias_declaration, etc.
 	name := ""
@@ -1024,7 +1027,7 @@ func extractTemplate(n *sitter.Node, src []byte, path, lang string) (types.Entit
 //   - enumerators:     ordered list of {name, value?} for each enumerator,
 //     where value is the explicit `= <expr>` text when given
 //   - enumerator_count: convenience count
-func extractEnum(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractEnum(n ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil {
 		return types.EntityRecord{}, false
@@ -1083,8 +1086,8 @@ func extractEnum(n *sitter.Node, src []byte, path, lang string) (types.EntityRec
 // cppEnumerators returns the ordered enumerators of an enum_specifier as
 // []map{"name","value"} where value is the explicit initialiser text (or
 // absent when the enumerator has no `= <expr>`).
-func cppEnumerators(n *sitter.Node, src []byte) []map[string]interface{} {
-	var list *sitter.Node
+func cppEnumerators(n ts.Node, src []byte) []map[string]interface{} {
+	var list ts.Node
 	for i := 0; i < int(n.ChildCount()); i++ {
 		if n.Child(i).Type() == "enumerator_list" {
 			list = n.Child(i)
@@ -1145,7 +1148,7 @@ func cppEnumerators(n *sitter.Node, src []byte) []map[string]interface{} {
 //
 //	tmpl is the enclosing template_declaration (for span/template params),
 //	cn   is the concept_definition node carrying the concept name.
-func extractConcept(tmpl, cn *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractConcept(tmpl, cn ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	name := ""
 	if nameNode := cn.ChildByFieldName("name"); nameNode != nil {
 		name = nodeText(nameNode, src)
@@ -1181,7 +1184,7 @@ func extractConcept(tmpl, cn *sitter.Node, src []byte, path, lang string) (types
 
 // cppTemplateParams returns the names of a template_declaration's parameters
 // (e.g. `template<class T, int N>` → ["T","N"]).
-func cppTemplateParams(tmpl *sitter.Node, src []byte) []string {
+func cppTemplateParams(tmpl ts.Node, src []byte) []string {
 	list := cppFirstChildOfType(tmpl, "template_parameter_list")
 	if list == nil {
 		return nil
@@ -1213,10 +1216,10 @@ func cppTemplateParams(tmpl *sitter.Node, src []byte) []string {
 //	                              local_name when the include has no
 //	                              prefix.
 //	Properties["imported_name"] — equal to local_name.
-func extractInclude(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractInclude(n ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	// preproc_include children: '#include' keyword + path node
 	// path node types: string_literal, system_lib_string
-	var pathNode *sitter.Node
+	var pathNode ts.Node
 	count := int(n.ChildCount())
 	for i := 0; i < count; i++ {
 		child := n.Child(i)
@@ -1271,7 +1274,7 @@ func extractInclude(n *sitter.Node, src []byte, path, lang string) (types.Entity
 // Plain `using namespace std;` is also captured. Returns a SCOPE.Component
 // entity whose Name is the imported leaf. The same Properties contract used
 // for #include is applied (`::` is normalised to `.` for source_module).
-func extractUsing(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractUsing(n ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	raw := strings.TrimSpace(nodeText(n, src))
 	// Strip the leading "using" keyword and trailing ";".
 	raw = strings.TrimPrefix(raw, "using")
@@ -1321,7 +1324,7 @@ func extractUsing(n *sitter.Node, src []byte, path, lang string) (types.EntityRe
 
 // extractMacro extracts a preproc_def node.
 // Name is the macro identifier.
-func extractMacro(n *sitter.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
+func extractMacro(n ts.Node, src []byte, path, lang string) (types.EntityRecord, bool) {
 	nameNode := n.ChildByFieldName("name")
 	if nameNode == nil {
 		return types.EntityRecord{}, false

@@ -45,7 +45,7 @@
 package cpp
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -57,7 +57,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, src []byte, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -68,8 +68,8 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 	// (matching extractFunction's resolveFunctionName leaf), or "" at file
 	// scope. Lambdas inside a function keep the outer function's name so the
 	// edge stays attributed to the host operation.
-	var walk func(n *sitter.Node, enclosingFn string)
-	walk = func(n *sitter.Node, enclosingFn string) {
+	var walk func(n ts.Node, enclosingFn string)
+	walk = func(n ts.Node, enclosingFn string) {
 		if n == nil {
 			return
 		}
@@ -116,7 +116,7 @@ func emitExceptionFlowEdges(root *sitter.Node, src []byte, entities *[]types.Ent
 //
 // An `identifier` child (`throw ex;`) or no expression child (`throw;`) returns
 // "" — a re-throw introduces no new type.
-func cppThrowType(throwNode *sitter.Node, src []byte) string {
+func cppThrowType(throwNode ts.Node, src []byte) string {
 	for i := 0; i < int(throwNode.NamedChildCount()); i++ {
 		c := throwNode.NamedChild(i)
 		if c == nil {
@@ -147,7 +147,7 @@ func cppThrowType(throwNode *sitter.Node, src []byte) string {
 // parameter_declaration's `type` field always names the bare type X regardless
 // of const-qualification or reference/pointer declarators (those are sibling
 // nodes), so reference, pointer, and by-value catches all yield X.
-func cppCatchType(catchNode *sitter.Node, src []byte) string {
+func cppCatchType(catchNode ts.Node, src []byte) string {
 	params := catchNode.ChildByFieldName("parameters")
 	if params == nil {
 		return ""

@@ -3,7 +3,7 @@ package cpp
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -38,7 +38,7 @@ import (
 // (`int* p;`, `char buf[8];`, `T& ref;`) still resolves to its inner
 // field_identifier.
 func emitClassFieldMembers(
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	ownerName, filePath, lang string,
 ) []types.EntityRecord {
@@ -107,7 +107,7 @@ func emitClassFieldMembers(
 // cppFieldNames returns every member name declared by a field_declaration,
 // descending through pointer/array/reference declarator decoration to the
 // inner field_identifier(s). Returns nil for a member function declaration.
-func cppFieldNames(fieldDecl *sitter.Node, src []byte) []string {
+func cppFieldNames(fieldDecl ts.Node, src []byte) []string {
 	var names []string
 	for i := 0; i < int(fieldDecl.ChildCount()); i++ {
 		ch := fieldDecl.Child(i)
@@ -126,7 +126,7 @@ func cppFieldNames(fieldDecl *sitter.Node, src []byte) []string {
 
 // cppDescendantFieldIdentifier returns the first field_identifier reachable
 // from n (used to unwrap pointer/array/reference/init declarator decoration).
-func cppDescendantFieldIdentifier(n *sitter.Node) *sitter.Node {
+func cppDescendantFieldIdentifier(n ts.Node) ts.Node {
 	if n == nil {
 		return nil
 	}

@@ -5,12 +5,13 @@ import (
 	"os"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsc "github.com/smacker/go-tree-sitter/c"
 	tscpp "github.com/smacker/go-tree-sitter/cpp"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/cpp" // trigger init()
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -18,20 +19,26 @@ import (
 // Helpers
 // ----------------------------------------------------------------
 
-func parseCPP(src []byte) *sitter.Tree {
-	p := sitter.NewParser()
-	p.SetLanguage(tscpp.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+func parseCPP(src []byte) ts.Tree {
+	p, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tscpp.GetLanguage()))
+	if err != nil {
+		panic("test helper: cpp parser init failed: " + err.Error())
+	}
+	defer p.Close()
+	tree, err := p.Parse(src)
 	if err != nil {
 		panic("test helper: cpp parse failed: " + err.Error())
 	}
 	return tree
 }
 
-func parseC(src []byte) *sitter.Tree {
-	p := sitter.NewParser()
-	p.SetLanguage(tsc.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+func parseC(src []byte) ts.Tree {
+	p, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsc.GetLanguage()))
+	if err != nil {
+		panic("test helper: c parser init failed: " + err.Error())
+	}
+	defer p.Close()
+	tree, err := p.Parse(src)
 	if err != nil {
 		panic("test helper: c parse failed: " + err.Error())
 	}
@@ -49,7 +56,7 @@ func extractCPP(src, path string) ([]types.EntityRecord, error) {
 		Path:     path,
 		Content:  content,
 		Language: "cpp",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 }
 
@@ -64,7 +71,7 @@ func extractC(src, path string) ([]types.EntityRecord, error) {
 		Path:     path,
 		Content:  content,
 		Language: "c",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 }
 
