@@ -9,6 +9,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **B2 tree-sitter cutover plan (#5418):** the one-runtime big-bang spec for
+  swapping the default build off `smacker/go-tree-sitter` onto the official
+  `tree-sitter/go-tree-sitter` v0.24.0 + per-language grammar modules. Pins the
+  runtime (ABI range **13–14**, verified from its `api.h`) and gives the full
+  **27-language version matrix** — each grammar's official-style Go module path +
+  the freshest ABI-≤14 tag (7 already-latest, 14 pinned back because their latest
+  is ABI 15 / the v0.25 generation that SIGSEGVs, 4 source-swaps to the
+  `tree-sitter-grammars` org, 3 vendored). Resolves **proto** (vendor C + a thin
+  official-runtime binding; grammar is ABI 13, no regen), the **dockerfile/groovy**
+  smacker-`require` caveats (vendor the already-official-style binding; groovy
+  regen to ABI 14), the **lua/toml/yaml/hcl** source-swaps, and **markdown**
+  (drop the unused grammar). Defines the cutover **validation gate** (ABI
+  smoke-parse every grammar, B1 fidelity re-bench all languages, #481 determinism
+  re-test, 3-OS CGO release matrix, license audit of ~26 modules) and the C3
+  (b)/(c) per-language coupling that blocks tagging. Includes a bounded co-link
+  proof that dropping smacker dissolves the 247-duplicate-symbol blocker and
+  multiple ABI-14 grammars co-build+parse on the official runtime.
+  (`docs/treesitter-cutover-plan.md`)
 - **C3 new-feature impact analysis (#5417):** per-language triage of language
   features released during the ~22-month grammar catch-up window (2024-08 →
   2026-06), classified (a) parse-only / (b) needs-new-extraction / (c)
