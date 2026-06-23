@@ -85,6 +85,18 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **Stabilized flaky daemon timing tests (`TestIndexProgress_LivePolling` +
+  SSE/poller siblings):** replaced fixed `time.Sleep` waits + tight deadlines
+  with deterministic bounded-await on the actual condition, so the pre-milestone
+  full 3-OS CI is reliable. `TestIndexProgress_LivePolling` now awaits the
+  rebuild session becoming visible mid-flight (instead of a 20ms sleep + a 200ms
+  rebuild window that scheduler jitter on a loaded `-race` runner could overrun);
+  `TestSSE_MultipleSubscribers` awaits both subscribers attaching via
+  `broker.Stats()` (instead of a 50ms sleep before publishing, which could race
+  ahead of a not-yet-registered subscriber); and `TestSSE_DisconnectRemovesSubscriber`
+  awaits the broker deregistering the subscriber (instead of asserting once after
+  a fixed 200ms). Test-only changes; no production behavior change.
+
 - **Daemon watcher re-index loop on build artifacts → memory thrash + MCP
   socket loss (Refs #5392):** the file-watcher now ignores build/output
   artifacts and gitignored paths and coalesces per-repo reindexes, so build

@@ -61,8 +61,13 @@ func TestIndexProgress_EmptyToken(t *testing.T) {
 // can be polled mid-flight and returns Done=true after the rebuild completes.
 func TestIndexProgress_LivePolling(t *testing.T) {
 	repos := []string{"/repo/alpha", "/repo/beta"}
-	// 200ms delay gives the test enough time to poll once mid-flight.
-	layout := runDaemonForTest(t, nil, slowRebuildFunc(repos, 200*time.Millisecond))
+	// 2s delay keeps the rebuild "in flight" for long enough that the mid-flight
+	// poll below — which bounded-awaits the session becoming visible rather than
+	// sleeping a fixed amount — always lands while the rebuild is still sleeping,
+	// even on a heavily loaded / -race CI runner. The previous 200ms window was
+	// tight enough that scheduler jitter could let the rebuild finish before the
+	// mid-flight assertion ran (timing flake).
+	layout := runDaemonForTest(t, nil, slowRebuildFunc(repos, 2*time.Second))
 
 	// Primary connection: fires off the blocking Rebuild.
 	primary, err := client.DialPath(layout.SocketPath)
@@ -94,21 +99,32 @@ func TestIndexProgress_LivePolling(t *testing.T) {
 		resultCh <- rebuildResult{reply, err}
 	}()
 
-	// Allow the rebuild goroutine to start and register the session.
-	time.Sleep(20 * time.Millisecond)
-
-	// Poll for progress — at this point the rebuild is sleeping.
-	prog, err := poll.IndexProgress(token)
-	if err != nil {
-		t.Fatalf("IndexProgress mid-flight: %v", err)
-	}
-	// The session is registered and active — Done must be false.
-	if prog.Done {
-		t.Error("expected Done=false mid-flight, got true")
-	}
-	// We should have at least one repo state visible (the started stub).
-	if len(prog.Repos) == 0 {
-		t.Error("expected at least one repo state mid-flight")
+	// Bounded-await the mid-flight progress snapshot rather than sleeping a fixed
+	// 20ms and hoping the background Rebuild goroutine has already issued its RPC
+	// and registered the session. On a loaded/-race CI runner the goroutine can
+	// take well over 20ms to send the RPC over the socket, so a single fixed-sleep
+	// snapshot was racy: it could observe the not-yet-registered token (Done=true,
+	// zero repos) and fail. We retry until the session is visible and active —
+	// Done=false with at least one repo state — which is the actual condition
+	// under test. The rebuild sleeps 2s, so this deadline comfortably resolves
+	// while it is still in flight.
+	var prog proto.IndexProgressReply
+	deadline := time.Now().Add(1500 * time.Millisecond)
+	for {
+		prog, err = poll.IndexProgress(token)
+		if err != nil {
+			t.Fatalf("IndexProgress mid-flight: %v", err)
+		}
+		// Session registered and active with at least one repo state visible
+		// (the started stub) — this is the mid-flight condition we assert.
+		if !prog.Done && len(prog.Repos) > 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("rebuild session never became visible mid-flight: Done=%v repos=%d",
+				prog.Done, len(prog.Repos))
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 
 	// Wait for rebuild to complete.

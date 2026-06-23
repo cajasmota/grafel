@@ -229,8 +229,19 @@ func TestSSE_MultipleSubscribers(t *testing.T) {
 	readSSELines(t, r1, 1, 2*time.Second)
 	readSSELines(t, r2, 1, 2*time.Second)
 
-	// Give the broker a moment to register both subscribers.
-	time.Sleep(50 * time.Millisecond)
+	// Bounded-await both subscribers being registered with the broker rather than
+	// sleeping a fixed 50ms and hoping both SSE handler goroutines have called
+	// Subscribe by then. On a loaded/-race CI runner handler registration can lag
+	// past 50ms, so the subsequent Publish would race ahead of a not-yet-attached
+	// subscriber and that subscriber would miss the event (timing flake). We poll
+	// Stats() until both are attached, which is the actual precondition.
+	subDeadline := time.Now().Add(5 * time.Second)
+	for broker.Stats()["shared-group"] < 2 {
+		if time.Now().After(subDeadline) {
+			t.Fatalf("both subscribers never registered: stats=%v", broker.Stats())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 
 	broker.Publish(progress.Event{
 		GroupSlug: "shared-group",
@@ -273,12 +284,21 @@ func TestSSE_DisconnectRemovesSubscriber(t *testing.T) {
 	// Cancel the client context to simulate disconnect.
 	cancel()
 
-	// Allow the server goroutine to detect the disconnect and call cancel().
-	time.Sleep(200 * time.Millisecond)
-
-	stats := broker.Stats()
-	if n := stats["temp-group"]; n != 0 {
-		t.Errorf("broker still has %d subscriber(s) for temp-group after disconnect", n)
+	// Bounded-await the server goroutine detecting the disconnect and
+	// deregistering the subscriber, rather than sleeping a fixed 200ms and
+	// asserting once. Under load the detect-and-unsubscribe path can take longer
+	// than 200ms, which made the single-shot assertion flaky.
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		if n := broker.Stats()["temp-group"]; n == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Errorf("broker still has %d subscriber(s) for temp-group after disconnect",
+				broker.Stats()["temp-group"])
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
 	}
 }
 
