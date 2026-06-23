@@ -9,6 +9,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Official tree-sitter grammar providers for the high-value languages
+  (#5418, B2 cutover Part A):** ABI-14-pinned official-runtime grammar packages
+  for **python, java, csharp, typescript (+tsx), javascript, rust** under
+  `internal/treesitter/ts/grammars/`, mirroring the Phase-0 Go provider and
+  wired into `migratedLanguages` behind the `ts_official` build tag (each with an
+  ABI smoke-parse guard test). Modules/versions:
+  tree-sitter-python `v0.23.6`, tree-sitter-java `v0.23.5`,
+  tree-sitter-c-sharp `v0.23.1`, tree-sitter-typescript `v0.23.2`
+  (ships both typescript + tsx), tree-sitter-javascript `v0.23.1`,
+  tree-sitter-rust `v0.23.2` — all `LANGUAGE_VERSION 14`, inside the v0.24.0
+  runtime's 13–14 window. The **default build is unchanged** (100% smacker); the
+  `ts_official` path is only populated so it can be validated before the eventual
+  default-flip. Python's inline grammar provider is split into the build-tagged
+  `language_smacker.go` / `language_official.go` pair like the Go extractor.
 - **B2 tree-sitter cutover plan (#5418):** the one-runtime big-bang spec for
   swapping the default build off `smacker/go-tree-sitter` onto the official
   `tree-sitter/go-tree-sitter` v0.24.0 + per-language grammar modules. Pins the

@@ -6,31 +6,55 @@ import (
 	"fmt"
 
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tscsharp "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/csharp"
 	tsgolang "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/golang"
+	tsjava "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/java"
+	tsjavascript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/javascript"
+	tspython "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/python"
+	tsrust "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/rust"
+	tstypescript "github.com/cajasmota/grafel/internal/treesitter/ts/grammars/typescript"
 	tsofficial "github.com/cajasmota/grafel/internal/treesitter/ts/official"
 	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 )
 
-// ts_official build: Go is migrated onto the official tree-sitter/go-tree-sitter
-// binding (B2 Phase 0, ADR 0023, #5418). Every other language stays on smacker.
+// ts_official build: Go (B2 Phase 0) plus the high-value batch — python, java,
+// csharp, typescript (+tsx), javascript, rust (B2 cutover Part A, #5418) — are
+// migrated onto the official tree-sitter/go-tree-sitter binding (ADR 0023).
+// Every other language stays on smacker for now.
 // NOTE: this build links BOTH runtimes and currently fails at link time on
 // macOS (the co-link blocker — see adapters_default.go). It exists to exercise
-// and CI-test the official adapter + Go grammar + ABI guard in isolation and on
-// platforms/toolchains where multiple-definition linking is permitted; resolving
-// the co-link is Phase 1.
+// and CI-test the official adapter + migrated grammars + ABI guard in isolation
+// and on platforms/toolchains where multiple-definition linking is permitted;
+// resolving the co-link is the eventual default-flip (cutover §7).
 
 // officialAdapter is the official binding adapter (only compiled under the tag).
 var officialAdapter = tsofficial.New()
 
 // migratedLanguages maps each migrated language to its official ts.Language.
-// Phase 0 migrates Go only.
+// Phase 0 migrated Go; B2 cutover A1 (#5418) adds the high-value batch. The
+// registry key "tsx" routes .tsx/.jsx files to the TSX grammar (the JSX-enabled
+// superset) from the same tree-sitter-typescript module.
 var migratedLanguages = map[string]ts.Language{
-	"go": tsgolang.Language(),
+	"go":         tsgolang.Language(),
+	"python":     tspython.Language(),
+	"java":       tsjava.Language(),
+	"csharp":     tscsharp.Language(),
+	"typescript": tstypescript.Language(),
+	"tsx":        tstypescript.LanguageTSX(),
+	"javascript": tsjavascript.Language(),
+	"rust":       tsrust.Language(),
 }
 
 // abiProbeSource is trivial, valid source per migrated language for the ABI guard.
 var abiProbeSource = map[string][]byte{
-	"go": []byte("package p\nfunc F() int { return 1 }\n"),
+	"go":         []byte("package p\nfunc F() int { return 1 }\n"),
+	"python":     []byte("def f():\n    return 1\n"),
+	"java":       []byte("class C { int f() { return 1; } }\n"),
+	"csharp":     []byte("class C { int F() { return 1; } }\n"),
+	"typescript": []byte("function f(x: number): number { return x; }\n"),
+	"tsx":        []byte("const e = <div className=\"x\">hi</div>;\n"),
+	"javascript": []byte("function f() { return 1; }\n"),
+	"rust":       []byte("fn f() -> i32 { 1 }\n"),
 }
 
 // tsLanguageFor resolves a language to the official adapter (if migrated) or the
