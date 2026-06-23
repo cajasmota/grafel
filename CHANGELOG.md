@@ -42,6 +42,27 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (0 keeps no grace-protected dead refs); a negative int disables the cap
   backstop; unparseable values fall back to the default. Mirrors the existing
   `GRAFEL_TIER_*`/`GRAFEL_EXTRACT_GOMAXPROCS` env pattern.
+- **Official tree-sitter grammar providers — batch B2
+  (#5418, B2 cutover Part B):** ABI-≤14-pinned official-runtime grammar packages
+  for **elixir, ocaml, php, scala, swift** under
+  `internal/treesitter/ts/grammars/`, mirroring the Phase-0 Go provider and wired
+  into `migratedLanguages` behind the `ts_official` build tag (each with an ABI
+  smoke-parse guard test asserting a non-nil, non-error root of the expected top
+  kind: elixir `source`, ocaml `compilation_unit`, php `program`, scala
+  `compilation_unit`, swift `source_file`). Modules/versions:
+  tree-sitter-elixir `v0.3.4` (via an `elixir-lang` → canonical-path replace),
+  tree-sitter-ocaml `v0.23.2` (`LanguageOCaml`), tree-sitter-php `v0.23.11`
+  (`LanguagePHP`), tree-sitter-scala `v0.23.4`, and alex-pinkus/tree-sitter-swift
+  at the `0.7.3-with-generated-files` tag (parser.c is checked in only on the
+  `-with-generated-files` tags) — all `LANGUAGE_VERSION ≤14`, inside the v0.24.0
+  runtime's 13–14 window. **kotlin and sql are intentionally deferred:** their go
+  bindings `#include` a generated `src/parser.c` that is unreachable from a module
+  download (kotlin's lives outside the nested `bindings/go` module boundary;
+  `DerekStride/tree-sitter-sql` `.gitignore`s `src/parser.c`, so it is never
+  committed), so both need the vendored-C track (cutover plan §3/§4), not this
+  official-binding pattern. The **default build is unchanged** (100% smacker); the
+  `ts_official` path is only populated so the eventual default-flip has these
+  providers ready and validated. Additive prep — not the big-bang flip.
 - **Official tree-sitter grammar providers — batch B
   (#5418, B2 cutover Part B):** ABI-14-pinned official-runtime grammar packages
   for **bash, c, cpp, css, html, ruby** under `internal/treesitter/ts/grammars/`,
