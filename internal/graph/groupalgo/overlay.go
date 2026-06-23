@@ -156,7 +156,11 @@ func WriteOverlayTo(path string, ov *Overlay) error {
 	if err := os.WriteFile(tmp, data, 0o644); err != nil {
 		return fmt.Errorf("write tmp: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
+	// atomicRename is a single os.Rename on Unix, and a bounded sharing-violation
+	// retry on Windows (atomicrename_windows.go) where renaming over a file a
+	// concurrent reader still has open transiently fails with ACCESS_DENIED /
+	// ERROR_SHARING_VIOLATION.
+	if err := atomicRename(tmp, path); err != nil {
 		_ = os.Remove(tmp)
 		return fmt.Errorf("rename: %w", err)
 	}

@@ -88,6 +88,13 @@ func setupApplyGroup(t *testing.T) (st *State, overlayPath string, curMtimes map
 		},
 	}
 	st = NewState(inMem)
+	// Release the per-repo graph.fb mmap handles BEFORE t.TempDir's cleanup
+	// deletes the directory. On Windows a memory-mapped file cannot be deleted
+	// while the mapping/view is open, so t.TempDir's RemoveAll fails with
+	// "Access is denied" on graph.fb unless State.Close() unmaps first. Because
+	// t.Cleanup runs LIFO and t.TempDir registered its cleanup first (above),
+	// registering Close here guarantees the unmap happens before the delete.
+	t.Cleanup(st.Close)
 
 	overlayPath, err = groupalgo.OverlayPath("acme")
 	if err != nil {

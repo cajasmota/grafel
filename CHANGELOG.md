@@ -10,6 +10,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **Windows CI green for the group-algo overlay (no production behavior change on
+  Unix):** the overlay's atomic temp+rename now **retries on the transient
+  Windows sharing/access violation** (`ERROR_SHARING_VIOLATION` /
+  `ERROR_ACCESS_DENIED` / `ERROR_LOCK_VIOLATION`) raised when `os.Rename`
+  replaces a destination a concurrent reader still has open — a bounded backoff
+  (~10 tries) that rides out the microsecond window the MCP reader holds the file
+  (`TestOverlay_NoTornRead` is the stress case). On Unix it is a single
+  `os.Rename` (open files are inode-referenced, so rename-over-open always
+  succeeds) — unchanged. Separately, the `ApplyOverlay` MCP tests now
+  `State.Close()` (unmap each repo's `graph.fb` mmap) before `t.TempDir`'s
+  cleanup, because Windows cannot delete a memory-mapped file while the view is
+  open — `t.Cleanup` is LIFO so registering the unmap after `t.TempDir` runs it
+  first.
 - **Group-algo overlay now keeps surfacing on `inspect`/`orient`/`stats`/`clusters`
   after a repo is reparsed — incl. `core-mobile` (Fixes #5400, #5401, #5397):**
   `applyGroupAlgoOverlay` memoized the per-entity stamp at the **group** level by
