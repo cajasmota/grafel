@@ -83,8 +83,26 @@ func aggregateGroupStats(groupName string, repos []registry.Repo) (entityCount i
 		sidecarPath := filepath.Join(stateDir, "graph-stats.json")
 		data, err := os.ReadFile(sidecarPath)
 		if err != nil {
-			// Sidecar not yet written — fall back to graph.fb/graph.json mtime.
-			if info, e2 := os.Stat(filepath.Join(stateDir, "graph.fb")); e2 == nil {
+			// Sidecar not yet written (e.g. a graph produced by the daemon's
+			// incremental reindex path, which writes graph.fb but no sidecar).
+			// Read the real entity count + index timestamp cheaply from the
+			// graph.fb header so a cold-but-indexed group reports its true size
+			// instead of "0 entities / never indexed" (#5442).
+			if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+				totalEntities += ps.Entities
+				switch {
+				case !ps.ComputedAt.IsZero():
+					if ps.ComputedAt.After(latest) {
+						latest = ps.ComputedAt
+					}
+				default:
+					// No header timestamp — fall back to graph.fb mtime.
+					if info, e2 := os.Stat(filepath.Join(stateDir, "graph.fb")); e2 == nil && info.ModTime().After(latest) {
+						latest = info.ModTime()
+					}
+				}
+			} else if info, e2 := os.Stat(filepath.Join(stateDir, "graph.fb")); e2 == nil {
+				// graph.fb unreadable but present — fall back to its mtime.
 				if info.ModTime().After(latest) {
 					latest = info.ModTime()
 				}

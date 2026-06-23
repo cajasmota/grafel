@@ -75,6 +75,48 @@ func LoadGraphFromDir(dir string) (*Document, error) {
 	}
 }
 
+// PersistedStats is a cheap, on-disk view of a repo's index size and
+// freshness, read from the graph.fb header WITHOUT materializing the
+// entity/relationship vectors. Used by the dashboard group overview and
+// `grafel status` as a fallback when the graph-stats.json sidecar is absent
+// (e.g. a graph written by the daemon's incremental reindex path, which does
+// not emit the sidecar) so a cold-but-indexed group reports its real counts
+// instead of "0 entities / never indexed".
+type PersistedStats struct {
+	Entities      int
+	Relationships int
+	// ComputedAt is the index timestamp stamped into the graph.fb header
+	// (the same value the sidecar's computed_at would carry). Zero when the
+	// header carries no/unparseable timestamp.
+	ComputedAt time.Time
+}
+
+// PersistedStatsFromDir reads cheap persisted stats from <dir>/graph.fb.
+//
+// It mmaps the file and reads the entity/relationship vector lengths and the
+// header timestamp — it does NOT decode any entity or relationship — then
+// closes the mapping immediately. This is the inexpensive way to learn a
+// cold group's true size without paying for a full LoadGraphFromDir.
+//
+// Returns ok=false when graph.fb is absent or cannot be opened (in which case
+// callers should treat the repo as genuinely never-indexed via graph.fb).
+func PersistedStatsFromDir(dir string) (PersistedStats, bool) {
+	fbPath := filepath.Join(dir, "graph.fb")
+	r, err := fbreader.Open(fbPath)
+	if err != nil {
+		return PersistedStats{}, false
+	}
+	defer r.Close()
+	ps := PersistedStats{
+		Entities:      r.EntityCount(),
+		Relationships: r.RelationshipCount(),
+	}
+	if t, perr := time.Parse(time.RFC3339, r.LoadGraphMeta().ComputedAt); perr == nil {
+		ps.ComputedAt = t
+	}
+	return ps, true
+}
+
 // loadFBDocument decodes a graph.fb file into a *Document. It opens the
 // file with fbreader (mmap + single bulk read), then converts the lazy
 // FlatBuffers view into an in-memory *Document by iterating the entity
