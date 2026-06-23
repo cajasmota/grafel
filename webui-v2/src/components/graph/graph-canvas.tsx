@@ -239,13 +239,14 @@ export interface GraphCanvasProps {
   /** changes to this nonce force a fresh re-layout (skip cache). */
   relayoutNonce: number;
   /**
-   * #5455 — true while the graph is actively STREAMING in (epic #5446). In this
-   * mode the canvas must NOT settle-and-pause after the first chunk: instead it
-   * keeps the simulation warm and GENTLY re-heats on each data push so the nodes
-   * that later chunks add get laid out and rendered live (the graph grows +
-   * jiggles from the first chunk), rather than sitting unplaced/invisible until
-   * `done`. New nodes are seeded near an already-placed neighbor so they don't
-   * fly in from the origin. When streaming ends the normal settle/fit (a
+   * #5455/#5460 — true while the graph is actively STREAMING in (epic #5446). In
+   * this mode the canvas must NOT settle-and-pause after the first chunk: instead
+   * it keeps the simulation warm and re-heats it with REAL energy on each data push
+   * so the whole accumulated structure visibly spreads/explodes as nodes arrive
+   * (#5460 — the graph grows AND spreads live from the first chunk), rather than
+   * sitting unplaced/clustered/invisible until `done`. New nodes are seeded near an
+   * already-placed neighbor so they don't fly in from the origin, while the strong
+   * sim spreads the whole structure. When streaming ends the normal settle/fit (a
    * relayoutNonce bump on `done`) finalizes the layout. Defaults to false, so the
    * non-streaming (full-payload / focus / reset) paths are unchanged.
    */
@@ -1531,11 +1532,20 @@ function GraphCanvasInner(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // #5455 — STREAMING re-heat alpha. A gentle pulse (not a full 1.0 reset) so the
-  // existing, already-placed mass barely shifts while the freshly-seeded new
-  // nodes are pulled into place by the link-spring/center. Low enough that the
-  // graph "jiggles as it grows" rather than fully reshuffling every chunk.
-  const STREAM_REHEAT_ALPHA = 0.35;
+  // #5460 — STREAMING re-heat alpha. The earlier #5455 value (0.35) was too gentle:
+  // the accumulated graph barely moved between chunks so it stayed a tight, near-
+  // invisible blob for the whole stream and only "snapped" into a spread at the
+  // very end — the dramatic explode users loved was gone. We now inject energy
+  // COMPARABLE to the fresh-settle path (kickFreshSettle uses start(1)) on every
+  // chunk so the whole accumulated structure visibly spreads/explodes incrementally
+  // as it grows. New trailing nodes are still seeded near a placed neighbor (so
+  // they don't fly from origin), but the strong sim spreads the entire structure
+  // live, and the #5459 isSimulationRunning camera tracker follows the spread →
+  // a visible live explode. The on-`done` step is just the final settle/fit polish.
+  const STREAM_REHEAT_ALPHA = 1;
+  // Gentler value for the post-stream final cool-down (the spread already happened
+  // live; the `done` step only needs to let the last chunk's nodes finish + fit).
+  const STREAM_FINAL_COOLDOWN_ALPHA = 0.35;
 
   // #5455 — build the position buffer for a STREAMING data push. The first
   // `placed` nodes keep their CURRENT live positions (so the laid-out mass stays
@@ -1590,8 +1600,11 @@ function GraphCanvasInner(
           sx = (packed.positions[i * 2] + cx) / 2;
           sy = (packed.positions[i * 2 + 1] + cy) / 2;
         }
+        // #5460 — seed new nodes with a visible offset around their placed neighbor
+        // (not a 40px dot on top of it) so each chunk's arrival reads as growth, and
+        // the now-energetic sim has room to fling them into their spread positions.
         const a = Math.random() * 2 * Math.PI;
-        const r = Math.random() * 40;
+        const r = 30 + Math.random() * 90;
         out[i * 2] = sx + r * Math.cos(a);
         out[i * 2 + 1] = sy + r * Math.sin(a);
       }
@@ -1630,8 +1643,12 @@ function GraphCanvasInner(
       g.setLinkWidths(packLinkWidths());
       g.render();
       g.create();
-      // Keep the sim warm: a gentle re-heat so the new nodes settle into place
-      // without fully reshuffling the placed graph. Never pause during a stream.
+      // #5460 — re-heat with REAL energy (== the fresh-settle path) so the whole
+      // accumulated structure visibly spreads/explodes as it grows, instead of
+      // staying a tight invisible blob until the stream ends. New trailing nodes
+      // are seeded near a placed neighbor (above) so they don't fly from origin,
+      // but the strong sim now spreads the entire graph live. Never pause during a
+      // stream. The #5459 isSimulationRunning camera tracker follows the spread.
       hasSettledRef.current = false;
       didAutoStartRef.current = true;
       g.unpause();
@@ -1754,7 +1771,9 @@ function GraphCanvasInner(
     if (reheatTimerRef.current) clearTimeout(reheatTimerRef.current);
     reheatedRef.current = true; // skip the early-cool-down guard — this IS the final settle
     g.unpause();
-    g.start(STREAM_REHEAT_ALPHA);
+    // #5460 — the live stream already spread the graph energetically; the `done`
+    // step is just polish, so use the gentle cool-down alpha (not the full live one).
+    g.start(STREAM_FINAL_COOLDOWN_ALPHA);
     // #5458 — keep the camera framed during the final stream cool-down too.
     startSettleFitTrackingRef.current();
     capTimerRef.current = setTimeout(() => {

@@ -84,6 +84,22 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (`docs/c3-feature-impact-analysis.md`)
 
 ### Fixed
+- **Streaming graph now visibly spreads/explodes live instead of staying a
+  clustered blob until done (#5446, #5460):** when the Graph screen loaded a
+  large group progressively (chunked stream), the layout stayed a tight,
+  near-invisible cluster for the whole stream and only "snapped" into a spread at
+  the very end — the dramatic, energetic spread that the full-payload load/reset
+  path produces was missing. The streaming data-push was re-heating the running
+  force simulation with too gentle a pulse (a low alpha) and seeding new nodes in
+  a tiny radius, so the accumulated structure barely moved between chunks. The
+  streaming re-heat now injects energy **comparable to the fresh-settle (Reset)
+  path** on every chunk, so the whole accumulated graph **visibly spreads as it
+  grows**, and new trailing nodes are seeded with a visible offset around an
+  already-placed neighbor (so they read as growth without flying in from the
+  origin). The settle-time camera tracker (#5459) keeps the spreading graph
+  framed throughout, so the load now reads as a live explode that grows with the
+  stream; the on-`done` step is just a final settle/fit polish. The non-streaming
+  load/reset explode is unchanged.
 - **Graph MCP-activity replay now glows EVERY event, not just the last (#5457):**
   in the graph view's MCP-activity panel, "Replay all" and clicking an individual
   event entry are meant to make each step's nodes **glow** in sequence. Only the
