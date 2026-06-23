@@ -9,6 +9,29 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **New-language-feature triage process (#5415, #5359 C1):**
+  `docs/new-language-feature-triage.md` — the decision procedure that turns a new
+  language version into scoped work. Each notable feature is classified
+  **(a) parse-only** / **(b) needs-new-extraction** / **(c) changes-existing-extraction**,
+  with explicit (a)-vs-(b) and (b)-vs-(c) tests and a "triage is spec-driven, not
+  grammar-driven" rule (don't block triage on the stale grammar). Ships a fillable
+  per-version **feature-impact-report template** (the A3 calendar cron, #5413,
+  points at it when version N lands) and a **worked example classifying 8 real
+  C# 13 features** (5×a · 1×b `field` keyword field-membership · 2×c `allows ref
+  struct` + partial properties), each carrying the grammar-bump prerequisite.
+  Wired into the cadence: A3 nudge → A2/A4 alarms fill the grammar-status row →
+  (b)/(c) action items feed the C2 recipe / C3 backfill.
+- **Extractor recipe for new constructs (#5416, #5359 C2):**
+  `docs/extractor-recipe.md` — the repeatable, grounded build path for each
+  (b)/(c) item from triage. Grounded in grafel's real architecture (pure manual
+  tree-sitter `node.Type()` traversal, no native queries) citing the C# extractor
+  (`internal/extractors/csharp/csharp.go`): locate the grammar node kind → add the
+  `case`/`build…` emit in the right extractor → register any new Kind in
+  `internal/types/kinds.go` + `All…Kinds()` and run the producer-kind guard
+  (`go test ./internal/types/`) → **update `registry.json` + coverage docs in the
+  SAME PR** (`go run ./tools/coverage update/gen/validate`, surgical 2-space edits)
+  → `coverage fmt --check` passes → add a value-asserting fixture test with
+  fixture-then-live validation. Includes a copy-into-PR pre-merge checklist.
 - **B2 assessment — migrate to the official tree-sitter binding + per-language
   modules (ADR-0023, #5418, #5359 B2):** a written go/no-go assessment of moving
   off the unmaintained single `smacker/go-tree-sitter` dependency to the live

@@ -259,5 +259,9 @@ an alarm to catch up.
 1. **B3 (this audit + `grammars.lock`)** ✓ + **A1** Renovate ✓ + **A2** cron ✓.
 2. **B1** catch-up bump behind the fidelity/coverage benchmark.
 3. **A3** calendar ✓ + **A4** parse-error canary ✓.
-4. **C1/C2** process; **C3** backfill for the catch-up window.
-5. **B2** decoupling — assessment, may slip past 0.1.4.
+4. **C1** triage process ✓ (`docs/new-language-feature-triage.md`) + **C2**
+   extractor recipe ✓ (`docs/extractor-recipe.md`); **C3** backfill for the
+   catch-up window — **blocked on B1** (the grammar must parse the new syntax
+   before the (b)/(c) constructs can be modeled).
+5. **B2** decoupling — assessment ✓ (ADR-0023), phased migration may slip past
+   0.1.4.
