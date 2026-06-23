@@ -8,6 +8,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Added
+- **Grammar setup audit + `grammars.lock` manifest (#5359 B3):** committed a
+  source-of-truth manifest mapping all 28 grammar-backed languages to their
+  grammar source, the bundled `smacker/go-tree-sitter` snapshot (pinned
+  `dd81d9e9be82`, 2024-08-27), and current upstream-latest, plus a
+  `docs/grammar-freshness-audit.md` write-up. Key findings: no `replace`/fork is
+  freshening grammars; the pinned smacker binding is at its own upstream HEAD and
+  unmaintained since 2024-08-27 (so Renovate on the dep finds nothing — per-grammar
+  tracking is the real alarm); `fidelity` is an IMPORTS-resolution metric, but a
+  per-parse `ErrorRatio` already exists and just needs per-language aggregation for
+  the A4 canary. Feeds the 0.1.4 freshness infrastructure (A2 cron) and the B2
+  decoupling assessment.
+
 ## [0.1.3] — 2026-06-23
 
 ### Fixed
