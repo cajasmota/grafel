@@ -239,3 +239,36 @@ func IsOverlayStale(ov *Overlay, currentMtimes map[string]int64) bool {
 	}
 	return false
 }
+
+// OverlayNeedsRecompute reports whether a group has an overlay on disk that has
+// gone STALE relative to the current per-repo graph.fb mtimes (#5403). It is the
+// settled-group freshness predicate the daemon's overlay sweep uses to decide
+// whether to proactively re-arm a group-algo pass.
+//
+// Crucially it returns false for an ABSENT overlay: a group that has never had a
+// group-algo pass should be left to the normal first-compute path (the link-pass
+// chain after its first reindex), NOT force-recomputed by the sweep. Only an
+// overlay that EXISTS and no longer matches the live graphs is "needs recompute".
+// A malformed/unreadable overlay also returns false (don't thrash on garbage;
+// the next reindex's pass rewrites it). Any error resolving the group or its
+// mtimes returns false — the sweep is best-effort and must never wedge.
+func OverlayNeedsRecompute(group string) bool {
+	path, err := OverlayPath(group)
+	if err != nil || path == "" {
+		return false
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		// Absent (or unreadable) → not "stale"; let the first-compute path run.
+		return false
+	}
+	var ov Overlay
+	if err := json.Unmarshal(data, &ov); err != nil {
+		return false // corrupt — a fresh pass will overwrite it; don't thrash.
+	}
+	cur, err := CurrentSourceMtimes(group)
+	if err != nil {
+		return false
+	}
+	return IsOverlayStale(&ov, cur)
+}

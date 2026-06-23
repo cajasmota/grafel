@@ -87,6 +87,18 @@ type GroupAlgoFn func(ctx context.Context, group string) error
 // Provided by the caller so the scheduler does not import the registry.
 type GroupsForRepoFn func(repoPath string) []string
 
+// StaleGroupsFn returns the names of groups whose group-algo overlay EXISTS on
+// disk but has gone STALE relative to the current per-repo graph.fb mtimes
+// (#5403). It is consulted by the periodic overlay-freshness sweep so a SETTLED
+// group (no recent reindex → no link pass → no scheduleGroupAlgo) still gets its
+// stale overlay recomputed. Provided by the caller so the scheduler keeps no
+// dependency on the registry / groupalgo packages.
+//
+// It MUST exclude groups with no overlay yet (those go through the normal
+// first-compute link-pass chain — the sweep must not force-fire them). nil
+// disables the sweep entirely.
+type StaleGroupsFn func() []string
+
 // PredictFn returns a predicted peak RSS contribution (MB) for indexing
 // repoPath. Used by admission control. nil disables prediction (every
 // job is admitted regardless of budget).
@@ -135,6 +147,23 @@ type Config struct {
 	GroupAlgo         GroupAlgoFn
 	GroupsForRepo     GroupsForRepoFn
 	Logger            *slog.Logger
+
+	// StaleGroups, when non-nil together with a positive OverlaySweepInterval,
+	// enables the periodic overlay-freshness sweep (#5403). It returns the
+	// groups whose on-disk overlay has gone stale; the sweep re-arms a
+	// (debounced + CPU-capped) group-algo pass for each, so a settled group's
+	// overlay no longer waits for the next reindex to be recomputed. nil
+	// disables the sweep.
+	StaleGroups StaleGroupsFn
+
+	// OverlaySweepInterval is the cadence of the overlay-freshness sweep
+	// (#5403). <=0 disables it (so does a nil StaleGroups). The actual recompute
+	// it triggers is the existing debounced + CPU-capped scheduleGroupAlgo path,
+	// so the sweep itself only does cheap per-group stat-compares; the interval
+	// is therefore deliberately coarse (default overlaySweepIntervalDefault) and
+	// must stay >= the group-algo debounce so a sweep never re-arms faster than a
+	// pass can settle. Override with GRAFEL_OVERLAY_SWEEP_INTERVAL.
+	OverlaySweepInterval time.Duration
 
 	// BudgetMB caps the total predicted RSS of concurrently running
 	// index jobs (megabytes). 0 disables admission control entirely
@@ -382,6 +411,12 @@ func New(cfg Config) *Scheduler {
 	if cfg.GroupAlgoDebounce <= 0 {
 		cfg.GroupAlgoDebounce = groupAlgoDebounceFromEnv()
 	}
+	// Overlay-freshness sweep cadence (#5403). A caller leaving this at the
+	// zero value picks up GRAFEL_OVERLAY_SWEEP_INTERVAL (default 10m; "0"
+	// disables). A caller that explicitly set a positive interval keeps it.
+	if cfg.OverlaySweepInterval == 0 {
+		cfg.OverlaySweepInterval = overlaySweepIntervalFromEnv()
+	}
 	if cfg.Logger == nil {
 		cfg.Logger = slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "sched")
 	}
@@ -428,6 +463,12 @@ func (s *Scheduler) Start() {
 	if !s.cfg.MemReleaseDisabled {
 		s.wg.Add(1)
 		go s.memReleaseLoop()
+	}
+	// #5403: periodic overlay-freshness sweep for settled groups. Only started
+	// when a StaleGroups callback is wired AND the interval is positive.
+	if s.cfg.StaleGroups != nil && s.cfg.OverlaySweepInterval > 0 {
+		s.wg.Add(1)
+		go s.overlaySweepLoop()
 	}
 	for i := 0; i < s.cfg.Workers; i++ {
 		s.wg.Add(1)
@@ -767,6 +808,72 @@ func (s *Scheduler) maybeReleaseMemory(now time.Time) {
 	}
 }
 
+// overlaySweepLoop periodically asks the caller-supplied StaleGroups callback
+// which groups have a STALE on-disk overlay and re-arms a (debounced + CPU-
+// capped) group-algo pass for each (#5403). This is the settled-group half of
+// the overlay-staleness fix: scheduleGroupAlgo otherwise only fires off a link
+// pass, i.e. only for ACTIVELY-reindexed groups, so a settled group whose
+// overlay drifted stale would never be recomputed until its next reindex.
+//
+// The sweep itself is cheap — StaleGroups does only per-group stat-compares —
+// and the actual recompute it triggers reuses the existing debounce + AlgoCap
+// path, so it cannot uncork an uncapped pass. The interval is enforced >= the
+// group-algo debounce by config, and re-arming a group that already has a
+// pending/in-flight pass is suppressed, so the sweep can never thrash.
+func (s *Scheduler) overlaySweepLoop() {
+	defer s.wg.Done()
+	tick := time.NewTicker(s.cfg.OverlaySweepInterval)
+	defer tick.Stop()
+	for {
+		select {
+		case <-s.stop:
+			return
+		case <-tick.C:
+			s.sweepStaleOverlays()
+		}
+	}
+}
+
+// sweepStaleOverlays is the testable core of the overlay-freshness sweep. It
+// queries StaleGroups and, for each returned group that does NOT already have a
+// pending or in-flight group-algo pass, calls scheduleGroupAlgo (which debounces
+// and runs the CPU-capped pass). Skipping already-armed/running groups is what
+// keeps the sweep from re-arming faster than a pass can settle. Exposed as a
+// method so tests can drive it directly with a fake StaleGroups set.
+func (s *Scheduler) sweepStaleOverlays() {
+	if s.cfg.StaleGroups == nil {
+		return
+	}
+	stale := s.cfg.StaleGroups()
+	for _, g := range stale {
+		s.mu.Lock()
+		busy := s.groupAlgoBusyLocked(g)
+		s.mu.Unlock()
+		if busy {
+			// A pass is already pending or running for this group — its
+			// completion will write a fresh overlay; do not re-arm (and reset the
+			// debounce) underneath it.
+			continue
+		}
+		s.logEvent("overlay_sweep_stale", "", g+": stale overlay — re-arming group-algo (#5403)")
+		s.scheduleGroupAlgo(g)
+	}
+}
+
+// groupAlgoBusyLocked reports whether a group already has a debounced group-algo
+// pass armed OR an in-flight one running. Used by the overlay sweep to avoid
+// re-arming (and resetting the debounce of) a pass that is already on its way.
+// MUST be called with s.mu held.
+func (s *Scheduler) groupAlgoBusyLocked(group string) bool {
+	if s.groupAlgoPending[group] {
+		return true
+	}
+	if _, running := s.groupAlgoCancel[group]; running {
+		return true
+	}
+	return false
+}
+
 // tryAdmit walks the pending queue head-first and dispatches every job
 // whose predicted MB fits the remaining budget. Jobs that don't fit
 // stay in place; head-of-line blocking is intentional so the very
@@ -1095,6 +1202,36 @@ func groupAlgoDebounceFromEnv() time.Duration {
 		}
 	}
 	return groupAlgoDebounceDefault
+}
+
+// overlaySweepIntervalDefault is the cadence of the settled-group overlay
+// freshness sweep (#5403). A long-running daemon serving a SETTLED group (one
+// that is not being actively reindexed, so no link pass → no scheduleGroupAlgo
+// fires) can drift into serving a STALE overlay: the group's per-repo graph.fb
+// advanced past the overlay's recorded source_mtimes (e.g. via a manual
+// `grafel group-algo --write` on a sibling, or a reindex that didn't chain a
+// pass) yet nothing re-arms the recompute until the next reindex. The sweep
+// closes that gap by periodically checking each known group's overlay staleness
+// and re-arming the (debounced + CPU-capped) group-algo pass for the stale ones.
+//
+// 10 min is comfortably above the 180s group-algo debounce, so the sweep can
+// never re-arm a pass faster than one can settle, and the per-sweep cost is just
+// a handful of os.Stats per group. Set GRAFEL_OVERLAY_SWEEP_INTERVAL=0 to
+// disable.
+const overlaySweepIntervalDefault = 10 * time.Minute
+
+// overlaySweepIntervalFromEnv resolves the overlay-freshness sweep interval,
+// honoring GRAFEL_OVERLAY_SWEEP_INTERVAL (a Go duration string, e.g. "15m", or
+// "0" to disable). An unset/unparseable value falls back to
+// overlaySweepIntervalDefault. A value of exactly 0 disables the sweep
+// (returned as 0); the loop is then never started.
+func overlaySweepIntervalFromEnv() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("GRAFEL_OVERLAY_SWEEP_INTERVAL")); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d >= 0 {
+			return d // includes 0 = explicitly disabled
+		}
+	}
+	return overlaySweepIntervalDefault
 }
 
 // scheduleGroupAlgo (re)arms the per-GROUP algorithm pass timer. Any pending

@@ -67,6 +67,15 @@ type Config struct {
 	// per-repo SchedulerAlgo.
 	SchedulerGroupAlgo func(ctx context.Context, group string) error
 
+	// SchedulerStaleGroups, when non-nil, powers the periodic overlay-freshness
+	// sweep (#5403): it returns the groups whose on-disk group-algo overlay has
+	// gone STALE relative to the current per-repo graph.fb mtimes, so the
+	// scheduler can proactively re-arm a (debounced + CPU-capped) group-algo pass
+	// for a SETTLED group that would otherwise keep serving a stale overlay until
+	// its next reindex. It MUST exclude groups with no overlay yet (those take
+	// the normal first-compute link-pass chain). nil disables the sweep.
+	SchedulerStaleGroups func() []string
+
 	// SchedulerIncremental, when non-nil, is wired as the S3 incremental
 	// file-level reindex hook (issue #2153). It is attempted before
 	// SchedulerIndex when the incremental toggle is active. When nil
@@ -358,10 +367,14 @@ func Run(ctx context.Context, cfg Config) error {
 			Links:         cfg.SchedulerLinks,
 			GroupAlgo:     cfg.SchedulerGroupAlgo,
 			GroupsForRepo: cfg.GroupsForRepo,
-			Logger:        logger,
-			BudgetMB:      cfg.MaxRSSBudgetMB,
-			Predict:       sched.PredictRSS,
-			History:       history,
+			// #5403: settled-group overlay-freshness sweep. Enabled when the
+			// caller wires SchedulerStaleGroups; the interval defaults from
+			// GRAFEL_OVERLAY_SWEEP_INTERVAL (10m; "0" disables).
+			StaleGroups: cfg.SchedulerStaleGroups,
+			Logger:      logger,
+			BudgetMB:    cfg.MaxRSSBudgetMB,
+			Predict:     sched.PredictRSS,
+			History:     history,
 			// PH1b: capture the HEAD ref at enqueue time so debounced
 			// batches index against the branch that was active when the
 			// file-change event fired, not the branch at dispatch time.

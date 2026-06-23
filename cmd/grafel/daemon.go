@@ -581,6 +581,10 @@ func runDaemon(argv []string) error {
 		SchedulerIndex:     daemonSchedulerIndex,
 		SchedulerLinks:     daemonSchedulerLinks,
 		SchedulerGroupAlgo: daemonSchedulerGroupAlgo,
+		// #5403: settled-group overlay-freshness sweep. The scheduler polls this
+		// on GRAFEL_OVERLAY_SWEEP_INTERVAL (default 10m; "0" disables) and re-arms
+		// a debounced + CPU-capped group-algo pass for each stale group.
+		SchedulerStaleGroups: daemonSchedulerStaleGroups,
 		// Issue #2406: capture extractorCfg at construction time so the closure
 		// owns an immutable pointer — no package-level singleton needed.
 		SchedulerIncremental: func(ctx context.Context, repoPath string, ref string) sched.IncrementalResult {
@@ -775,6 +779,31 @@ func daemonGroupsForRepo(repoPath string) []string {
 				out = append(out, g.Name)
 				break
 			}
+		}
+	}
+	return out
+}
+
+// daemonSchedulerStaleGroups returns the names of registered groups whose
+// group-algo overlay EXISTS on disk but has gone STALE relative to the current
+// per-repo graph.fb mtimes (#5403). It powers the scheduler's periodic
+// overlay-freshness sweep so a SETTLED group (no recent reindex → no link pass →
+// no scheduleGroupAlgo) still gets its stale overlay recomputed.
+//
+// Groups with NO overlay yet are deliberately excluded (OverlayNeedsRecompute
+// returns false for an absent overlay): those take the normal first-compute
+// link-pass chain after their first reindex, and the sweep must not force-fire
+// them. Best-effort: any registry error yields an empty list (sweep skips this
+// tick) rather than wedging.
+func daemonSchedulerStaleGroups() []string {
+	groups, err := registry.Groups()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, g := range groups {
+		if groupalgo.OverlayNeedsRecompute(g.Name) {
+			out = append(out, g.Name)
 		}
 	}
 	return out
