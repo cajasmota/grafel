@@ -10,6 +10,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ### Fixed
 
+- **`TestOverlay_NoTornRead` now passes on Windows CI (no production behavior
+  change on Unix):** the four concurrent reader goroutines now `runtime.Gosched()`
+  between reads instead of spinning a gapless `os.ReadFile` loop. A truly gapless
+  reader keeps the destination file handle open continuously, so the writer's
+  Windows rename-over-existing (`ERROR_SHARING_VIOLATION`) can never find a window
+  and the bounded `atomicRename` retry eventually exhausts and errors — even though
+  a *failed* rename never produces a torn read (readers always see a complete old
+  or new file). The constant-reader load was unrealistic: the real MCP overlay
+  apply path opens, reads, and closes the file briefly with gaps between reads. The
+  yield mirrors that and restores the writer's window while keeping the concurrent
+  read-vs-atomic-swap assertion intact. The Windows `atomicRename` retry budget was
+  also modestly widened (~10×3ms → ~40×5ms ≈ 200ms) so it comfortably lands in the
+  between-read gap, while staying bounded so a genuinely held lock still surfaces
+  the real error rather than hanging.
 - **Windows CI green for the group-algo overlay (no production behavior change on
   Unix):** the overlay's atomic temp+rename now **retries on the transient
   Windows sharing/access violation** (`ERROR_SHARING_VIOLATION` /
