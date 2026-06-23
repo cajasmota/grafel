@@ -9,6 +9,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -224,6 +225,86 @@ func TestRepoStatusWithoutGraphStats(t *testing.T) {
 	}
 	if rs.LastIndexedAge != "(never)" {
 		t.Errorf("expected '(never)', got %q", rs.LastIndexedAge)
+	}
+}
+
+// TestComputeStatusSummary_ColdIndexNoSidecar reproduces #5442: a repo that
+// was indexed by the daemon's incremental path has a graph.fb on disk but no
+// graph-stats.json sidecar. Status must report the persisted entity count and
+// a real last-indexed time (read cheaply from the graph.fb header), not
+// "0 entities / (never)".
+func TestComputeStatusSummary_ColdIndexNoSidecar(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmpDir)
+
+	repoPath := filepath.Join(tmpDir, "coldrepo")
+	os.MkdirAll(repoPath, 0o755)
+	stateDir := daemon.StateDirForRepo(repoPath)
+	os.MkdirAll(stateDir, 0o755)
+
+	// Write a real graph.fb (3 entities) but deliberately NO graph-stats.json.
+	indexedAt := time.Now().Add(-7 * time.Minute).UTC().Truncate(time.Second)
+	doc := &graph.Document{
+		Version:     1,
+		GeneratedAt: indexedAt,
+		Repo:        repoPath,
+		Stats:       graph.Stats{Entities: 3, Relationships: 1, Files: 2},
+		Entities: []graph.Entity{
+			{ID: "a1", Name: "A", Kind: "function", SourceFile: "a.go", Language: "go"},
+			{ID: "b2", Name: "B", Kind: "function", SourceFile: "b.go", Language: "go"},
+			{ID: "c3", Name: "C", Kind: "function", SourceFile: "c.go", Language: "go"},
+		},
+		Relationships: []graph.Relationship{
+			{FromID: "a1", ToID: "b2", Kind: "CALLS"},
+		},
+	}
+	if err := fbwriter.WriteAtomic(filepath.Join(stateDir, "graph.fb"), doc); err != nil {
+		t.Fatalf("write graph.fb: %v", err)
+	}
+	// Sanity: sidecar absent.
+	if _, err := os.Stat(filepath.Join(stateDir, "graph-stats.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no sidecar, stat err = %v", err)
+	}
+
+	repos := []registry.Repo{{Slug: "coldrepo", Path: repoPath}}
+	summary := ComputeStatusSummary("grp", repos)
+
+	rs, ok := summary.RepoStats["coldrepo"]
+	if !ok {
+		t.Fatal("coldrepo not found in RepoStats")
+	}
+	if rs.Entities != 3 {
+		t.Errorf("Entities = %d, want 3 (persisted count from graph.fb header)", rs.Entities)
+	}
+	if rs.Relationships != 1 {
+		t.Errorf("Relationships = %d, want 1", rs.Relationships)
+	}
+	if summary.TotalEntities != 3 {
+		t.Errorf("TotalEntities = %d, want 3", summary.TotalEntities)
+	}
+	if rs.LastIndexed.IsZero() || rs.LastIndexedAge == "(never)" {
+		t.Errorf("expected a real last-indexed time, got zero/never (age=%q)", rs.LastIndexedAge)
+	}
+	if !rs.LastIndexed.Equal(indexedAt) {
+		t.Errorf("LastIndexed = %v, want %v (graph.fb header ComputedAt)", rs.LastIndexed, indexedAt)
+	}
+}
+
+// TestComputeStatusSummary_TrulyNeverIndexed asserts the negative case still
+// reports 0/never when there is no graph.fb at all.
+func TestComputeStatusSummary_TrulyNeverIndexed(t *testing.T) {
+	tmpDir := t.TempDir()
+	t.Setenv(daemon.EnvRoot, tmpDir)
+	repoPath := filepath.Join(tmpDir, "fresh")
+	os.MkdirAll(repoPath, 0o755)
+
+	summary := ComputeStatusSummary("grp", []registry.Repo{{Slug: "fresh", Path: repoPath}})
+	rs := summary.RepoStats["fresh"]
+	if rs == nil {
+		t.Fatal("fresh repo missing")
+	}
+	if rs.Entities != 0 || rs.LastIndexedAge != "(never)" {
+		t.Errorf("want 0/never, got entities=%d age=%q", rs.Entities, rs.LastIndexedAge)
 	}
 }
 

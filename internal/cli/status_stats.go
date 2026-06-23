@@ -92,8 +92,26 @@ func ComputeStatusSummary(group string, repos []registry.Repo) *StatusSummary {
 				s.TotalEntities += side.TotalEntities
 				s.TotalRelationships += side.TotalRelationships
 			}
+		} else if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+			// Sidecar not yet written (e.g. a graph produced by the daemon's
+			// incremental reindex path, which writes graph.fb but no sidecar).
+			// Read the real counts + index timestamp cheaply from the graph.fb
+			// header so a cold-but-indexed repo reports its true size instead of
+			// "0 entities / (never)" (#5442).
+			rs.Entities = ps.Entities
+			rs.Relationships = ps.Relationships
+			s.TotalEntities += ps.Entities
+			s.TotalRelationships += ps.Relationships
+			if !ps.ComputedAt.IsZero() {
+				rs.LastIndexed = ps.ComputedAt
+				rs.LastIndexedAge = formatTimeSince(ps.ComputedAt)
+			} else if graphPath, modtimeNano := daemon.FindGraphFile(r.Path); graphPath != "" {
+				mtime := time.Unix(0, modtimeNano)
+				rs.LastIndexed = mtime
+				rs.LastIndexedAge = formatTimeSince(mtime)
+			}
 		} else {
-			// Fallback to graph.fb mtime if sidecar doesn't exist.
+			// graph.fb absent/unreadable — fall back to newest graph file mtime.
 			graphPath, modtimeNano := daemon.FindGraphFile(r.Path)
 			if graphPath != "" {
 				mtime := time.Unix(0, modtimeNano)

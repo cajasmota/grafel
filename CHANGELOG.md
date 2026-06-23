@@ -51,6 +51,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (`docs/c3-feature-impact-analysis.md`)
 
 ### Fixed
+- **Dashboard/`grafel status` no longer show "0 entities / never indexed" for a
+  cold-but-indexed group (#5442):** the WebUI group overview and `grafel status`
+  derived per-repo entity counts + last-indexed time only from the
+  `graph-stats.json` sidecar, which the daemon's incremental reindex path never
+  wrote (it writes `graph.fb` only). A group maintained by the daemon — or any
+  cold group whose sidecar was absent — therefore reported `0 / never` even
+  though the MCP lazy-loaded `graph.fb` and served real results. On a sidecar
+  miss both surfaces now read the persisted entity/relationship counts and index
+  timestamp **cheaply from the `graph.fb` header** (mmap + vector lengths via
+  `internal/graph/fbreader`, no full graph materialization), and the incremental
+  reindex path now writes the sidecar so future cold reads are correct without
+  the fallback. A truly-never-indexed group (no `graph.fb`) still reports
+  `0 / never`.
 - **Dead-ref GC now bounds grace-protected transient refs (retention cap,
   #5440):** the dead-ref sweeper (#5236) reaps refs git no longer knows about,
   but its 24h grace window had no backstop. A high-churn workload — the rewrite

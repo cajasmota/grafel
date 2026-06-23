@@ -463,6 +463,25 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		return fallback(t0, "write-graph-fb: "+writeErr.Error())
 	}
 
+	// #5442 — refresh the graph-stats.json sidecar so the dashboard group
+	// overview and `grafel status` report this repo's real entity count and a
+	// real last-indexed time when the group is cold (not loaded in memory).
+	// The incremental path does not run Pass-4 graph-algo, so community /
+	// modularity / god-node fields are omitted; the counts + timestamp are
+	// what those surfaces read. Best-effort: a sidecar write failure never
+	// fails the reindex (graph.fb is already written, and the fbreader-header
+	// fallback still recovers the counts on a sidecar miss).
+	side := &graph.GraphStatsSidecar{
+		Version:            1,
+		ComputedAt:         doc.GeneratedAt,
+		TotalFiles:         doc.Stats.Files,
+		TotalEntities:      doc.Stats.Entities,
+		TotalRelationships: doc.Stats.Relationships,
+	}
+	if serr := graph.WriteSidecar(fbPath, side, false); serr != nil {
+		logger.Printf("incremental: sidecar write failed: %v (non-fatal)", serr)
+	}
+
 	// --- Step 9: update manifest ---
 	diff.UpdateManifest(absRepo, allFiles, manifest)
 	if saveErr := diff.SaveManifest(stateDir, absRepo, manifest); saveErr != nil {
