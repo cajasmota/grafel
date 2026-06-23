@@ -36,7 +36,7 @@ package python
 import (
 	"strconv"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -49,7 +49,7 @@ import (
 // (target,alias) dedup set bridged from the primary call pass so we never
 // double-emit an edge the direct path already produced.
 func extractGetattrDispatchCalls(
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	parentClass, callerName string,
 	seen map[seenKeyDD]bool,
@@ -66,8 +66,8 @@ func extractGetattrDispatchCalls(
 	binder := extractor.NewLiteralBindingResolver(nil)
 	var rels []types.RelationshipRecord
 
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -114,7 +114,7 @@ func extractGetattrDispatchCalls(
 // binder: a bare string-literal RHS Binds; any other RHS Taints. Multi-target /
 // augmented / annotated assignments and non-identifier targets are ignored
 // (they neither establish nor reliably clear a simple-name binding).
-func recordPyAssignment(n *sitter.Node, src []byte, binder *extractor.LiteralBindingResolver) {
+func recordPyAssignment(n ts.Node, src []byte, binder *extractor.LiteralBindingResolver) {
 	// assignment children: identifier, "=", <rhs>  (simple form).
 	if n.ChildCount() < 3 {
 		return
@@ -144,7 +144,7 @@ func recordPyAssignment(n *sitter.Node, src []byte, binder *extractor.LiteralBin
 // string literal, returns (method, dynVar, true). dynVar is the source variable
 // name for the binder-resolved form, or "" for the inline-string form. Returns
 // ("","",false) for any other call.
-func getattrDispatchTarget(outer *sitter.Node, src []byte, binder *extractor.LiteralBindingResolver) (string, string, bool) {
+func getattrDispatchTarget(outer ts.Node, src []byte, binder *extractor.LiteralBindingResolver) (string, string, bool) {
 	// Outer call's function child must itself be the `getattr(self, X)` call.
 	fn := outer.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "call" {
@@ -159,7 +159,7 @@ func getattrDispatchTarget(outer *sitter.Node, src []byte, binder *extractor.Lit
 		return "", "", false
 	}
 	// Collect the two positional argument nodes (named children, comma-separated).
-	var pos []*sitter.Node
+	var pos []ts.Node
 	for i := 0; i < int(args.NamedChildCount()); i++ {
 		ch := args.NamedChild(i)
 		if ch != nil {

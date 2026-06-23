@@ -52,7 +52,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -99,7 +99,7 @@ var javaMetricAnnotations = map[string]bool{
 // instrumentation sites (Micrometer/Dropwizard metrics, Brave/Sleuth spans,
 // SLF4J structured logs) and returns the corresponding INSTRUMENTS edges.
 // methodName keys dynamic-name stubs.
-func javaObsEdges(methodNode *sitter.Node, methodName string, src []byte) []types.RelationshipRecord {
+func javaObsEdges(methodNode ts.Node, methodName string, src []byte) []types.RelationshipRecord {
 	if methodNode == nil {
 		return nil
 	}
@@ -165,7 +165,7 @@ func javaObsEdges(methodNode *sitter.Node, methodName string, src []byte) []type
 // the method. The metric name is the annotation's first string-literal value
 // when present; a bare @Timed (no name) is emitted dynamic (Micrometer derives
 // the name from the method/registry config — not statically resolvable here).
-func javaMetricAnnotationHits(methodNode *sitter.Node, src []byte) []javaObsHit {
+func javaMetricAnnotationHits(methodNode ts.Node, src []byte) []javaObsHit {
 	var hits []javaObsHit
 	for i := 0; i < int(methodNode.ChildCount()); i++ {
 		child := methodNode.Child(i)
@@ -205,7 +205,7 @@ func javaMetricAnnotationHits(methodNode *sitter.Node, src []byte) []javaObsHit 
 // javaBodyObsHits scans a method body for call-form instrumentation: Micrometer
 // / Dropwizard registry metric calls, Micrometer Counter.builder("name"),
 // Brave/Sleuth tracer.nextSpan().name("op"), and SLF4J fluent keyed logging.
-func javaBodyObsHits(body *sitter.Node, src []byte) []javaObsHit {
+func javaBodyObsHits(body ts.Node, src []byte) []javaObsHit {
 	if body == nil {
 		return nil
 	}
@@ -236,7 +236,7 @@ func javaBodyObsHits(body *sitter.Node, src []byte) []javaObsHit {
 // Registry-method calls are gated on a receiver that looks like a meter/metric
 // registry so unrelated `.counter(...)` calls don't match. Returns false when
 // the call is not a metric-creation call.
-func javaMetricCallHit(call *sitter.Node, src []byte) (javaObsHit, bool) {
+func javaMetricCallHit(call ts.Node, src []byte) (javaObsHit, bool) {
 	name := javaInvocationName(call, src)
 	args := call.ChildByFieldName("arguments")
 	obj := call.ChildByFieldName("object")
@@ -291,7 +291,7 @@ func javaMetricCallHit(call *sitter.Node, src []byte) (javaObsHit, bool) {
 // identifier containing "registry" or being a conventional short name, so
 // arbitrary `x.counter(...)` calls on unrelated objects are not misread as
 // metric instrumentation.
-func javaMetricReceiverName(obj *sitter.Node, src []byte) string {
+func javaMetricReceiverName(obj ts.Node, src []byte) string {
 	if obj == nil || obj.Type() != "identifier" {
 		return ""
 	}
@@ -306,7 +306,7 @@ func javaMetricReceiverName(obj *sitter.Node, src []byte) string {
 // javaBraveSpanHit matches the Spring Sleuth / Brave fluent span form
 // `tracer.nextSpan().name("op")` — anchored on the `.name("op")` call whose
 // receiver chain includes a `nextSpan()` call. Returns false otherwise.
-func javaBraveSpanHit(call *sitter.Node, src []byte) (javaObsHit, bool) {
+func javaBraveSpanHit(call ts.Node, src []byte) (javaObsHit, bool) {
 	if javaInvocationName(call, src) != "name" {
 		return javaObsHit{}, false
 	}
@@ -325,7 +325,7 @@ func javaBraveSpanHit(call *sitter.Node, src []byte) (javaObsHit, bool) {
 
 // javaChainHasInvocation reports whether the receiver (`object`) chain rooted at
 // n contains a method_invocation named want.
-func javaChainHasInvocation(n *sitter.Node, want string, src []byte) bool {
+func javaChainHasInvocation(n ts.Node, want string, src []byte) bool {
 	for n != nil && n.Type() == "method_invocation" {
 		if javaInvocationName(n, src) == want {
 			return true
@@ -343,7 +343,7 @@ func javaChainHasInvocation(n *sitter.Node, want string, src []byte) bool {
 // non-literal but the call is a recognised structured-logging chain, the hit is
 // emitted dynamic (keyed event with an unresolved message). Plain free-text
 // `logger.info("text")` is intentionally NOT matched (no structured key).
-func javaSlf4jLogHit(call *sitter.Node, src []byte) (javaObsHit, bool) {
+func javaSlf4jLogHit(call ts.Node, src []byte) (javaObsHit, bool) {
 	if javaInvocationName(call, src) != "log" {
 		return javaObsHit{}, false
 	}
@@ -379,7 +379,7 @@ var javaSlf4jFluentLevels = map[string]bool{
 
 // javaChainHasFluentLevel reports whether the receiver chain contains an SLF4J
 // fluent level entry (atInfo()/atError()/...).
-func javaChainHasFluentLevel(n *sitter.Node, src []byte) bool {
+func javaChainHasFluentLevel(n ts.Node, src []byte) bool {
 	for n != nil && n.Type() == "method_invocation" {
 		if javaSlf4jFluentLevels[javaInvocationName(n, src)] {
 			return true
@@ -391,7 +391,7 @@ func javaChainHasFluentLevel(n *sitter.Node, src []byte) bool {
 
 // javaChainHasAnyInvocation reports whether the receiver chain contains a
 // method_invocation whose name is one of wants.
-func javaChainHasAnyInvocation(n *sitter.Node, src []byte, wants ...string) bool {
+func javaChainHasAnyInvocation(n ts.Node, src []byte, wants ...string) bool {
 	want := make(map[string]bool, len(wants))
 	for _, w := range wants {
 		want[w] = true

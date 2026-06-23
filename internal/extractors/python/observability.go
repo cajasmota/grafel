@@ -48,7 +48,7 @@ package python
 import (
 	"strconv"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -101,7 +101,7 @@ var pyPrometheusInstrumentMethods = map[string]bool{
 // assignments are considered; the registry is used to resolve `@METRIC.time()`
 // decorators and `METRIC.inc()` body calls to a metric name. Returns nil when no
 // metric is declared (zero cost for files that don't use Prometheus).
-func buildPyMetricRegistry(root *sitter.Node, src []byte) pyMetricRegistry {
+func buildPyMetricRegistry(root ts.Node, src []byte) pyMetricRegistry {
 	if root == nil {
 		return nil
 	}
@@ -152,7 +152,7 @@ func buildPyMetricRegistry(root *sitter.Node, src []byte) pyMetricRegistry {
 // pyCallFunctionName returns the bare callee name of a `call` node, handling both
 // a plain identifier callee (`Summary(...)`) and an attribute callee
 // (`prom.Summary(...)` → "Summary"). Returns "" when the callee is neither.
-func pyCallFunctionName(call *sitter.Node, src []byte) string {
+func pyCallFunctionName(call ts.Node, src []byte) string {
 	if call == nil || call.Type() != "call" {
 		return ""
 	}
@@ -174,7 +174,7 @@ func pyCallFunctionName(call *sitter.Node, src []byte) string {
 // extractPyInstrHits collects every non-OTel instrumentation site for a function
 // from its decorators (decoratorParent, when non-nil) and its body. metricReg
 // resolves Prometheus metric variables to metric names.
-func extractPyInstrHits(funcNode, decoratorParent *sitter.Node, enclosingName string, metricReg pyMetricRegistry, src []byte) []pyInstrHit {
+func extractPyInstrHits(funcNode, decoratorParent ts.Node, enclosingName string, metricReg pyMetricRegistry, src []byte) []pyInstrHit {
 	if funcNode == nil {
 		return nil
 	}
@@ -208,12 +208,12 @@ func extractPyInstrHits(funcNode, decoratorParent *sitter.Node, enclosingName st
 // (@... attached to a function). Handles ddtrace `@tracer.wrap`, Sentry
 // `@sentry_sdk.trace`, New Relic `@function_trace`/`@background_task`/
 // `@newrelic.agent.function_trace`, and Prometheus `@METRIC.time()`.
-func pyDecoratorInstrHits(dec *sitter.Node, enclosingName string, metricReg pyMetricRegistry, src []byte) []pyInstrHit {
+func pyDecoratorInstrHits(dec ts.Node, enclosingName string, metricReg pyMetricRegistry, src []byte) []pyInstrHit {
 	// A decorator child is either an `attribute`/`identifier` (bare @x.y / @x)
 	// or a `call` (@x(...)). Resolve the dotted path of the decorator callee and
 	// its argument list (when present).
-	var calleeNode *sitter.Node // identifier/attribute being applied
-	var argsNode *sitter.Node   // argument_list when the decorator is a call
+	var calleeNode ts.Node // identifier/attribute being applied
+	var argsNode ts.Node   // argument_list when the decorator is a call
 
 	for i := 0; i < int(dec.ChildCount()); i++ {
 		ch := dec.Child(i)
@@ -292,7 +292,7 @@ func pyDecoratorInstrHits(dec *sitter.Node, enclosingName string, metricReg pyMe
 // (ddtrace `tracer.trace(...)`, Sentry `start_transaction`/`start_span`) or a
 // Prometheus metric mutation (`METRIC.inc()` / `.observe()` / `.set()` on a known
 // metric var). Returns false when the call is not an instrumentation call.
-func pyBodyInstrHit(call *sitter.Node, metricReg pyMetricRegistry, src []byte) (pyInstrHit, bool) {
+func pyBodyInstrHit(call ts.Node, metricReg pyMetricRegistry, src []byte) (pyInstrHit, bool) {
 	if call == nil || call.Type() != "call" {
 		return pyInstrHit{}, false
 	}
@@ -360,7 +360,7 @@ func pyBodyInstrHit(call *sitter.Node, metricReg pyMetricRegistry, src []byte) (
 // pyAttrLeaf returns the last dotted segment of an identifier/attribute node:
 // `tracer.wrap` → "wrap", `newrelic.agent.function_trace` → "function_trace",
 // a bare `foo` → "foo".
-func pyAttrLeaf(n *sitter.Node, src []byte) string {
+func pyAttrLeaf(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -378,7 +378,7 @@ func pyAttrLeaf(n *sitter.Node, src []byte) string {
 // pyAttrReceiverName returns the identifier name of the immediate receiver of an
 // attribute node: `REQUEST_TIME.time` → "REQUEST_TIME". Returns "" when the
 // receiver is not a bare identifier (e.g. a nested attribute or a call).
-func pyAttrReceiverName(n *sitter.Node, src []byte) string {
+func pyAttrReceiverName(n ts.Node, src []byte) string {
 	if n == nil || n.Type() != "attribute" {
 		return ""
 	}
@@ -392,7 +392,7 @@ func pyAttrReceiverName(n *sitter.Node, src []byte) string {
 // pyDottedPath renders the full dotted path of an identifier/attribute node:
 // `sentry_sdk.trace` → "sentry_sdk.trace". Non-identifier receivers terminate
 // the path. Returns the leaf alone when the path cannot be fully rendered.
-func pyDottedPath(n *sitter.Node, src []byte) string {
+func pyDottedPath(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -416,7 +416,7 @@ func pyDottedPath(n *sitter.Node, src []byte) string {
 
 // pyFirstPositionalString returns the value of the first positional argument when
 // it is a string literal, else "".
-func pyFirstPositionalString(args *sitter.Node, src []byte) string {
+func pyFirstPositionalString(args ts.Node, src []byte) string {
 	nameNode := firstPositionalArg(args)
 	if nameNode != nil && nameNode.Type() == "string" {
 		return pythonLiteralValue(nameNode, src)
@@ -427,7 +427,7 @@ func pyFirstPositionalString(args *sitter.Node, src []byte) string {
 // pyKeywordStringArg returns the string-literal value of the keyword argument
 // named key in args (`name="checkout"` → "checkout"), or "" when absent / not a
 // string literal.
-func pyKeywordStringArg(args *sitter.Node, key string, src []byte) string {
+func pyKeywordStringArg(args ts.Node, key string, src []byte) string {
 	if args == nil {
 		return ""
 	}
@@ -457,7 +457,7 @@ func pyKeywordStringArg(args *sitter.Node, key string, src []byte) string {
 // found in funcNode's decorators and body. metricReg resolves Prometheus metric
 // variables to metric names. enclosingName keys dynamic stubs and supplies the
 // default span name for name-defaulting decorators (ddtrace/New Relic/Sentry).
-func stampPythonObservability(funcNode, decoratorParent *sitter.Node, enclosingName string, metricReg pyMetricRegistry, src []byte, out *[]types.EntityRecord, idx int) {
+func stampPythonObservability(funcNode, decoratorParent ts.Node, enclosingName string, metricReg pyMetricRegistry, src []byte, out *[]types.EntityRecord, idx int) {
 	if funcNode == nil || out == nil || idx < 0 || idx >= len(*out) {
 		return
 	}

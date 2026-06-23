@@ -68,7 +68,7 @@ func extractDjango(t *testing.T, src string) []types.EntityRecord {
 		Path:     "client_fixture_a/models.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {

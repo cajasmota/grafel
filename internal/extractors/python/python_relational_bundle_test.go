@@ -30,7 +30,7 @@ func runPy(t *testing.T, path, src string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {

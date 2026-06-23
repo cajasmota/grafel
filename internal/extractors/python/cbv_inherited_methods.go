@@ -28,7 +28,7 @@ import (
 	"sort"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/frameworks/baseknowledge"
@@ -67,7 +67,7 @@ func cbvInheritedMembers(baseLeaf string) (methods []string, known bool) {
 // `django.views.generic.View` — extractBaseClasses normalises the leaf.
 //
 // Mutates *entities in place. Safe with nil/empty inputs.
-func emitCBVInheritedMethodAnnotations(_ *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitCBVInheritedMethodAnnotations(_ ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if entities == nil || len(*entities) == 0 {
 		return
 	}

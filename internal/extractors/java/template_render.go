@@ -29,7 +29,7 @@ package java
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -51,7 +51,7 @@ var springMappingAnnotations = map[string]bool{
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitTemplateRenderEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -59,8 +59,8 @@ func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entiti
 
 	var edges []extractor.TemplateEdge
 
-	var walk func(n *sitter.Node, enclosingClass string)
-	walk = func(n *sitter.Node, enclosingClass string) {
+	var walk func(n ts.Node, enclosingClass string)
+	walk = func(n ts.Node, enclosingClass string) {
 		if n == nil {
 			return
 		}
@@ -110,7 +110,7 @@ func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entiti
 //   - the method MUST NOT carry @ResponseBody (else String is a REST body)
 //   - the returned value MUST be a String literal, or `new ModelAndView("...")`
 //     with a literal first argument; anything else (variable, computed) → drop.
-func javaSpringViewName(method *sitter.Node, enclosingClass string, src []byte) (string, string) {
+func javaSpringViewName(method ts.Node, enclosingClass string, src []byte) (string, string) {
 	anns := annotationNames(method, src)
 	if anns["ResponseBody"] {
 		return "", "" // REST response body, not a view name
@@ -132,8 +132,8 @@ func javaSpringViewName(method *sitter.Node, enclosingClass string, src []byte) 
 	}
 	// Find a `return <expr>;` whose expr is a String literal or ModelAndView(...).
 	var found, pat string
-	var scan func(n *sitter.Node)
-	scan = func(n *sitter.Node) {
+	var scan func(n ts.Node)
+	scan = func(n ts.Node) {
 		if n == nil || found != "" {
 			return
 		}
@@ -167,8 +167,8 @@ func javaSpringViewName(method *sitter.Node, enclosingClass string, src []byte) 
 //
 // Returns "", "" for a non-literal return (variable / concatenation / computed),
 // so dynamic view names never fabricate a node.
-func javaReturnViewName(ret *sitter.Node, src []byte) (string, string) {
-	var expr *sitter.Node
+func javaReturnViewName(ret ts.Node, src []byte) (string, string) {
+	var expr ts.Node
 	for i := 0; i < int(ret.NamedChildCount()); i++ {
 		c := ret.NamedChild(i)
 		if c != nil {
@@ -207,7 +207,7 @@ func javaReturnViewName(ret *sitter.Node, src []byte) (string, string) {
 
 // annotationNames returns the set of simple annotation names on a declaration's
 // immediate modifiers (e.g. {"Controller": true, "GetMapping": true}).
-func annotationNames(decl *sitter.Node, src []byte) map[string]bool {
+func annotationNames(decl ts.Node, src []byte) map[string]bool {
 	out := map[string]bool{}
 	for _, a := range findAnnotations(decl, src) {
 		if a.name != "" {

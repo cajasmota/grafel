@@ -45,7 +45,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -56,7 +56,7 @@ import (
 //
 // Safe to call on any class body — non-DRF classes simply have neither shape
 // and the function is a no-op.
-func applyDRFPermissionProperties(parent *types.EntityRecord, classBody *sitter.Node, src []byte) {
+func applyDRFPermissionProperties(parent *types.EntityRecord, classBody ts.Node, src []byte) {
 	if parent == nil || classBody == nil {
 		return
 	}
@@ -164,7 +164,7 @@ func stampDRFActionAuth(props map[string]string) {
 }
 
 // isGetPermissionsDef reports whether fnDef is `def get_permissions(self):`.
-func isGetPermissionsDef(fnDef *sitter.Node, src []byte) bool {
+func isGetPermissionsDef(fnDef ts.Node, src []byte) bool {
 	if fnDef == nil {
 		return false
 	}
@@ -180,7 +180,7 @@ func isGetPermissionsDef(fnDef *sitter.Node, src []byte) bool {
 // The result is a best-effort, deduplicated list of the bare identifier names
 // (e.g. "IsAuthenticated", "AllowAny", "CustomActionPermissionCheck"). The
 // auth_coverage detector decides which of those constitute real protection.
-func getPermissionsReferencedClasses(fnDef *sitter.Node, src []byte) []string {
+func getPermissionsReferencedClasses(fnDef ts.Node, src []byte) []string {
 	body := fnDef.ChildByFieldName("body")
 	if body == nil {
 		return nil
@@ -203,7 +203,7 @@ func getPermissionsReferencedClasses(fnDef *sitter.Node, src []byte) []string {
 // every `permission_classes = [...]` assignment (regardless of nesting depth —
 // these typically live inside if/elif branches), feeds the list-literal
 // identifiers to add. Falls through to `return [...]` expressions too.
-func collectPermissionAssignments(n *sitter.Node, src []byte, add func(string)) {
+func collectPermissionAssignments(n ts.Node, src []byte, add func(string)) {
 	if n == nil {
 		return
 	}

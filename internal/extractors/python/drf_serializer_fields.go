@@ -55,7 +55,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -119,7 +119,7 @@ var drfScalarSerializerFieldTypes = map[string]struct{}{
 //	before/after — entity-slice window emitted by the body walk
 //	out          — entity slice pointer (in/out)
 func emitDRFSerializerFieldRefs(
-	body *sitter.Node,
+	body ts.Node,
 	file extractor.FileInput,
 	parentClass string,
 	classIdx int,
@@ -366,7 +366,7 @@ func metaModelLeaf(cls *types.EntityRecord) string {
 //	PrimaryKeyRelatedField(queryset=models.Foo.objects)    → "Foo"
 //	SlugRelatedField(queryset=Foo.objects.all(), slug_field="…") → "Foo"
 //	HyperlinkedRelatedField(queryset=Foo.objects.all(), view_name="…") → "Foo"
-func extractRelatedFieldTarget(callNode *sitter.Node, src []byte) string {
+func extractRelatedFieldTarget(callNode ts.Node, src []byte) string {
 	argsNode := callNode.ChildByFieldName("arguments")
 	if argsNode == nil {
 		return ""
@@ -397,7 +397,7 @@ func extractRelatedFieldTarget(callNode *sitter.Node, src []byte) string {
 // call chain (e.g. `Foo.objects.all()` → "Foo"; `models.Foo.objects` → "Foo"
 // — the latter takes the bare-model leaf when the leftmost is a module-style
 // lowercase identifier).
-func leftmostIdentifier(node *sitter.Node, src []byte) string {
+func leftmostIdentifier(node ts.Node, src []byte) string {
 	for node != nil {
 		switch node.Type() {
 		case "identifier":
@@ -439,7 +439,7 @@ func leftmostIdentifier(node *sitter.Node, src []byte) string {
 
 // lookupStringKwarg returns the unquoted value of a string-literal kwarg on
 // the given call, or "" when the kwarg is absent or not a string literal.
-func lookupStringKwarg(callNode *sitter.Node, src []byte, name string) string {
+func lookupStringKwarg(callNode ts.Node, src []byte, name string) string {
 	argsNode := callNode.ChildByFieldName("arguments")
 	if argsNode == nil {
 		return ""

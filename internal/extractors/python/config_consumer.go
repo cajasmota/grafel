@@ -51,7 +51,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -61,7 +61,7 @@ import (
 // patterns and appends DEPENDS_ON_CONFIG edges to the enclosing entity.
 //
 // Mutates *entities in place. Safe to call with nil or empty input.
-func emitConfigConsumerEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitConfigConsumerEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -160,8 +160,8 @@ func emitConfigConsumerEdges(root *sitter.Node, file extractor.FileInput, entiti
 		return stack[len(stack)-1]
 	}
 
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -342,7 +342,7 @@ func buildConfigTargetID(configName string) string {
 //	os.getenv("X" [, default])
 //	environ.get("X" [, default])          (when `environ` was imported from os)
 //	getenv("X" [, default])               (when `getenv` was imported from os)
-func envKeyFromCall(fn, args *sitter.Node, src []byte, osImported bool, environLocal, getenvLocal string) string {
+func envKeyFromCall(fn, args ts.Node, src []byte, osImported bool, environLocal, getenvLocal string) string {
 	calleeText := strings.TrimSpace(nodeText(fn, src))
 	matched := false
 	switch {

@@ -54,7 +54,7 @@ public class AuthController {
 		Path:     "client_fixture_x/api/AuthController.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract returned error: %v", err)
@@ -125,7 +125,7 @@ public class Order {
 		Path:     "client_fixture_x/model/Order.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract returned error: %v", err)

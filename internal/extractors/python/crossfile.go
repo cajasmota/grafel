@@ -36,7 +36,7 @@ import (
 	"strings"
 	"sync"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -168,7 +168,7 @@ func resolveBaseFile(baseName, consumerFile string) string {
 //
 // Returns nil when the class has no base-class list or the list is empty.
 func extractBaseClasses(
-	classNode *sitter.Node,
+	classNode ts.Node,
 	filePath string,
 	className string,
 	src []byte,
@@ -249,7 +249,7 @@ func extractBaseClasses(
 //	attribute            → "module.Foo"  (e.g. models.Model)
 //	subscript            → "List[str]" → "List"  (generic base, return inner name)
 //	keyword_argument     → skip (e.g. metaclass=ABCMeta)
-func extractBaseNameFromNode(n *sitter.Node, src []byte) string {
+func extractBaseNameFromNode(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}

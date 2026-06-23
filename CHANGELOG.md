@@ -164,6 +164,18 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   the A4 canary. Feeds the 0.1.4 freshness infrastructure (A2 cron) and the B2
   decoupling assessment.
 
+### Changed
+- **Migrated the `python` and `java` extractors onto the `ts.Node` abstraction
+  (smacker-backed, no behavior change)** — B2 Phase 1 plumbing toward the
+  one-runtime cutover (#5418, ADR 0023). Both extractors now traverse the
+  binding-agnostic `internal/treesitter/ts` façade (`ts.Node`/`ts.Tree`) instead
+  of the concrete `smacker/go-tree-sitter` `*sitter.Node`, and read the shared
+  `FileInput.TSTree` (falling back to an inline smacker parse via the grammar
+  adapter when no tree is supplied, as the Go extractor does). Default builds stay
+  100% smacker-backed and link-safe; this is mechanical, behavior-preserving
+  plumbing — the full python+java extractor suites pass unchanged (zero fidelity
+  delta). Mirrors the Phase-0 Go-extractor migration.
+
 ## [0.1.3] — 2026-06-23
 
 ### Fixed

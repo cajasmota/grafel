@@ -38,7 +38,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -51,12 +51,12 @@ import (
 // matching method's structural-ref.
 //
 // Mutates *entities in place; safe with nil/empty inputs.
-func emitSerializerMethodFieldLinks(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitSerializerMethodFieldLinks(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -98,7 +98,7 @@ func emitSerializerMethodFieldLinks(root *sitter.Node, file extractor.FileInput,
 // name (`method_name=` kwarg or default `get_<field>`), confirms the
 // sibling method exists as a SCOPE.Operation entity, and stamps the
 // RESOLVED_BY edge.
-func scanSerializerBody(body *sitter.Node, file extractor.FileInput, parentClass string, entities *[]types.EntityRecord) {
+func scanSerializerBody(body ts.Node, file extractor.FileInput, parentClass string, entities *[]types.EntityRecord) {
 	if body == nil || parentClass == "" {
 		return
 	}
@@ -212,7 +212,7 @@ func scanSerializerBody(body *sitter.Node, file extractor.FileInput, parentClass
 // kwarg of a SerializerMethodField call, with surrounding quotes
 // stripped. Returns "" when the kwarg is absent or its value isn't a
 // string literal.
-func lookupSerializerMethodName(callNode *sitter.Node, src []byte) string {
+func lookupSerializerMethodName(callNode ts.Node, src []byte) string {
 	argsNode := callNode.ChildByFieldName("arguments")
 	if argsNode == nil {
 		return ""

@@ -244,7 +244,7 @@ public class ManyController {
 				Path:     "client_fixture_x/api/" + tc.name + ".java",
 				Content:  []byte(tc.src),
 				Language: "java",
-				Tree:     parseForTest(t, tc.src),
+				TSTree:   parseForTest(t, tc.src),
 			})
 			if err != nil {
 				t.Fatalf("Extract: %v", err)
@@ -313,7 +313,7 @@ public class TransfersController {
 		Path:     "client_fixture_x/api/TransfersController.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

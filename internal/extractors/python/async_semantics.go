@@ -36,7 +36,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -78,7 +78,7 @@ var channelLayerCallRe = regexp.MustCompile(
 //   - Appends CALLS edges from each enclosing function to a synthetic
 //     `ext:channel_layer:<method>` stub for each channel-layer dispatch
 //     call site found in the file.
-func applyAsyncSemantics(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func applyAsyncSemantics(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}

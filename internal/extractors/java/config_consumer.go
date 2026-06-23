@@ -26,7 +26,7 @@ import (
 	"regexp"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -45,15 +45,15 @@ var (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitConfigConsumerEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitConfigConsumerEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
 
 	var reads []extractor.ConfigRead
 
-	var walk func(n *sitter.Node, enclosingClass, enclosingMethod string)
-	walk = func(n *sitter.Node, enclosingClass, enclosingMethod string) {
+	var walk func(n ts.Node, enclosingClass, enclosingMethod string)
+	walk = func(n ts.Node, enclosingClass, enclosingMethod string) {
 		if n == nil {
 			return
 		}
@@ -103,7 +103,7 @@ func emitConfigConsumerEdges(root *sitter.Node, file extractor.FileInput, entiti
 
 // walkMethodBody scans a method body for env.getProperty("key") calls and
 // appends the resolved reads to *reads under the method's Name.
-func walkMethodBody(n *sitter.Node, src []byte, method string, reads *[]extractor.ConfigRead) {
+func walkMethodBody(n ts.Node, src []byte, method string, reads *[]extractor.ConfigRead) {
 	if n == nil {
 		return
 	}
@@ -120,7 +120,7 @@ func walkMethodBody(n *sitter.Node, src []byte, method string, reads *[]extracto
 // valueAndConfigPropertyKeys returns every config key declared by @Value or
 // @ConfigProperty annotations attached anywhere under node (a field or method
 // declaration). We scan the node's modifier text for annotations.
-func valueAndConfigPropertyKeys(node *sitter.Node, src []byte) []string {
+func valueAndConfigPropertyKeys(node ts.Node, src []byte) []string {
 	var keys []string
 	for _, ann := range findAnnotations(node, src) {
 		name, argText := ann.name, ann.args
@@ -140,7 +140,7 @@ func valueAndConfigPropertyKeys(node *sitter.Node, src []byte) []string {
 
 // configurationPropertiesKeys returns the prefix declared by a class-level
 // @ConfigurationProperties(prefix="app") / @ConfigurationProperties("app").
-func configurationPropertiesKeys(classNode *sitter.Node, src []byte) []string {
+func configurationPropertiesKeys(classNode ts.Node, src []byte) []string {
 	var keys []string
 	for _, ann := range findAnnotations(classNode, src) {
 		if ann.name != "ConfigurationProperties" {
@@ -166,7 +166,7 @@ type javaAnnotation struct {
 // findAnnotations walks the modifiers of node (only the immediate modifiers
 // child, not nested declarations) and returns each annotation's simple name
 // plus its raw argument text.
-func findAnnotations(node *sitter.Node, src []byte) []javaAnnotation {
+func findAnnotations(node ts.Node, src []byte) []javaAnnotation {
 	var out []javaAnnotation
 	for i := 0; i < int(node.ChildCount()); i++ {
 		child := node.Child(i)
@@ -205,7 +205,7 @@ func lastIdent(s string) string {
 
 // getPropertyKey returns the literal key of an environment.getProperty("key")
 // call, or "" when the call doesn't match or the key is non-literal.
-func getPropertyKey(call *sitter.Node, src []byte) string {
+func getPropertyKey(call ts.Node, src []byte) string {
 	nameNode := call.ChildByFieldName("name")
 	objNode := call.ChildByFieldName("object")
 	argsNode := call.ChildByFieldName("arguments")

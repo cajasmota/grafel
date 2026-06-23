@@ -5,8 +5,8 @@ import (
 	"strings"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
-	sitter "github.com/smacker/go-tree-sitter"
 )
 
 // nosql_model.go — Spring Data NoSQL schema/model extraction (#4283, follow-up
@@ -144,7 +144,7 @@ func annotationName(args string, namedKeys ...string) string {
 // emitted children (operations + SCOPE.Schema/field entities); only the
 // SCOPE.Schema/field entries whose Name is "<Class>.<field>" are wired.
 func emitNoSQLModel(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	className, classDeclSrc, classBodySrc, pkgName string,
 	fieldStart, fieldEnd int,

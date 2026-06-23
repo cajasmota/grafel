@@ -29,7 +29,7 @@ package java
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -45,7 +45,7 @@ import (
 // typeName is the enclosing class/interface/enum simple name (already package-
 // unqualified, matching buildField's parentType). bodyNode is the
 // class_body / interface_body / enum_body node.
-func buildJavaConstCollections(typeName string, bodyNode *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+func buildJavaConstCollections(typeName string, bodyNode ts.Node, file extractor.FileInput) []types.EntityRecord {
 	if bodyNode == nil || typeName == "" {
 		return nil
 	}
@@ -132,7 +132,7 @@ func buildJavaConstCollections(typeName string, bodyNode *sitter.Node, file extr
 
 // javaFieldIsStaticFinal reports whether a field_declaration carries BOTH the
 // `static` and `final` modifiers (the Java constant idiom).
-func javaFieldIsStaticFinal(field *sitter.Node) bool {
+func javaFieldIsStaticFinal(field ts.Node) bool {
 	mods := firstChildOfType(field, "modifiers")
 	if mods == nil {
 		return false
@@ -152,7 +152,7 @@ func javaFieldIsStaticFinal(field *sitter.Node) bool {
 // javaFieldDeclaratorInit returns the variable_declarator and its initializer
 // (the named node after `=`) for a field_declaration / constant_declaration.
 // Returns nil,nil when there is no single-variable initializer.
-func javaFieldDeclaratorInit(field *sitter.Node) (decl *sitter.Node, init *sitter.Node) {
+func javaFieldDeclaratorInit(field ts.Node) (decl ts.Node, init ts.Node) {
 	decl = firstChildOfType(field, "variable_declarator")
 	if decl == nil {
 		return nil, nil
@@ -184,7 +184,7 @@ func javaFieldDeclaratorInit(field *sitter.Node) (decl *sitter.Node, init *sitte
 //   - array_initializer { lit, lit, ... }                    → java_const_array
 //
 // ok=false for any other initializer shape.
-func javaCollectionMembers(init *sitter.Node, src []byte) ([]extractor.EnumMember, string, bool) {
+func javaCollectionMembers(init ts.Node, src []byte) ([]extractor.EnumMember, string, bool) {
 	switch init.Type() {
 	case "array_initializer":
 		members := javaArrayMembers(init, src)
@@ -204,7 +204,7 @@ func javaCollectionMembers(init *sitter.Node, src []byte) ([]extractor.EnumMembe
 // array_initializer as a self-keyed member (Name==Value==literal), so a
 // constant string array is enumerable as a value-set. The 0-based element
 // index seeds nothing; the literal text is the identity.
-func javaArrayMembers(arr *sitter.Node, src []byte) []extractor.EnumMember {
+func javaArrayMembers(arr ts.Node, src []byte) []extractor.EnumMember {
 	var out []extractor.EnumMember
 	for i := 0; i < int(arr.NamedChildCount()); i++ {
 		el := arr.NamedChild(i)
@@ -230,7 +230,7 @@ func javaArrayMembers(arr *sitter.Node, src []byte) []extractor.EnumMember {
 // javaMapInvocationMembers handles the three map-factory shapes by inspecting
 // the receiver/leaf of a method_invocation chain. Returns the {key,value}
 // members and ok=true only when at least one key was resolved.
-func javaMapInvocationMembers(call *sitter.Node, src []byte) ([]extractor.EnumMember, bool) {
+func javaMapInvocationMembers(call ts.Node, src []byte) ([]extractor.EnumMember, bool) {
 	leaf := javaInvocationLeaf(call, src)
 	switch leaf {
 	case "of":
@@ -271,8 +271,8 @@ func javaMapInvocationMembers(call *sitter.Node, src []byte) ([]extractor.EnumMe
 
 // javaFlatPairMembers reads an argument_list of alternating key,value literals
 // and returns one member per pair. A trailing odd argument is ignored.
-func javaFlatPairMembers(args *sitter.Node, src []byte) []extractor.EnumMember {
-	var lits []*sitter.Node
+func javaFlatPairMembers(args ts.Node, src []byte) []extractor.EnumMember {
+	var lits []ts.Node
 	for i := 0; i < int(args.NamedChildCount()); i++ {
 		a := args.NamedChild(i)
 		if a == nil {
@@ -304,7 +304,7 @@ func javaFlatPairMembers(args *sitter.Node, src []byte) []extractor.EnumMember {
 // chain bottom-up, collecting each `.put(key, value)` pair. The chain is a
 // left-nested method_invocation; we descend the receiver (object) field until
 // we exhaust the chain.
-func javaBuilderPutMembers(buildCall *sitter.Node, src []byte) []extractor.EnumMember {
+func javaBuilderPutMembers(buildCall ts.Node, src []byte) []extractor.EnumMember {
 	var members []extractor.EnumMember
 	// Start from the receiver of `.build()` and walk down `.put(...)` links.
 	cur := buildCall.ChildByFieldName("object")
@@ -325,7 +325,7 @@ func javaBuilderPutMembers(buildCall *sitter.Node, src []byte) []extractor.EnumM
 
 // javaInvocationLeaf returns the method name (the `name` field) of a
 // method_invocation, e.g. "of" for `Map.of(...)`, "build" for `...build()`.
-func javaInvocationLeaf(call *sitter.Node, src []byte) string {
+func javaInvocationLeaf(call ts.Node, src []byte) string {
 	if call == nil || call.Type() != "method_invocation" {
 		return ""
 	}
@@ -338,13 +338,13 @@ func javaInvocationLeaf(call *sitter.Node, src []byte) string {
 // javaScalarLiteral returns the literal value of a scalar constant initializer
 // (string/number/bool/char), or ok=false when the initializer is not a single
 // literal. Used to collect constant-group members.
-func javaScalarLiteral(init *sitter.Node, src []byte) (string, bool) {
+func javaScalarLiteral(init ts.Node, src []byte) (string, bool) {
 	return javaLiteralText(init, src)
 }
 
 // javaLiteralText returns the normalised literal text of a literal node
 // (quotes stripped for strings), and ok=true only for recognised literal kinds.
-func javaLiteralText(node *sitter.Node, src []byte) (string, bool) {
+func javaLiteralText(node ts.Node, src []byte) (string, bool) {
 	if node == nil {
 		return "", false
 	}

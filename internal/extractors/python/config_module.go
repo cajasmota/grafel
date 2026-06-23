@@ -47,7 +47,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -89,7 +89,7 @@ const configAssignmentRatio = 0.80
 //
 // Returns true when a config_module entity was appended, false otherwise.
 // Callers may use the boolean to increment an OTel attribute counter.
-func emitConfigModuleEntity(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) bool {
+func emitConfigModuleEntity(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) bool {
 	base := filepath.Base(filepath.FromSlash(file.Path))
 
 	// --- criterion 1: filename match ---
@@ -191,7 +191,7 @@ func emitConfigModuleEntity(root *sitter.Node, file extractor.FileInput, out *[]
 // Only the direct children of the module root are examined (file-level
 // scope). Nested statements inside functions, classes, or if-blocks are
 // intentionally NOT counted — we want the file-level heuristic only.
-func countTopLevelStatements(root *sitter.Node, src []byte) (assignCount, totalCount int) {
+func countTopLevelStatements(root ts.Node, src []byte) (assignCount, totalCount int) {
 	if root == nil {
 		return 0, 0
 	}
@@ -226,7 +226,7 @@ func countTopLevelStatements(root *sitter.Node, src []byte) (assignCount, totalC
 // of every simple module-level assignment (identifier = expr). At most 50
 // names are returned to keep the Property value bounded. Dunder names are
 // excluded.
-func collectTopLevelAssignmentNames(root *sitter.Node, src []byte) []string {
+func collectTopLevelAssignmentNames(root ts.Node, src []byte) []string {
 	if root == nil {
 		return nil
 	}
@@ -246,7 +246,7 @@ func collectTopLevelAssignmentNames(root *sitter.Node, src []byte) []string {
 			if expr == nil {
 				continue
 			}
-			var lhs *sitter.Node
+			var lhs ts.Node
 			switch expr.Type() {
 			case "assignment":
 				lhs = expr.ChildByFieldName("left")
@@ -292,7 +292,7 @@ func collectTopLevelAssignmentNames(root *sitter.Node, src []byte) []string {
 // or bare identifiers (IsAuthenticated); both are reduced to their leaf class
 // name (IsAuthenticated). Only the top-level REST_FRAMEWORK assignment is
 // examined.
-func extractDRFDefaultPermissionClasses(root *sitter.Node, src []byte) ([]string, bool) {
+func extractDRFDefaultPermissionClasses(root ts.Node, src []byte) ([]string, bool) {
 	if root == nil {
 		return nil, false
 	}
@@ -323,7 +323,7 @@ func extractDRFDefaultPermissionClasses(root *sitter.Node, src []byte) ([]string
 // dictDefaultPermissionClasses reads a `dictionary` node and, if it has a
 // "DEFAULT_PERMISSION_CLASSES" key, returns the leaf names of its value list
 // plus present=true.
-func dictDefaultPermissionClasses(dict *sitter.Node, src []byte) ([]string, bool) {
+func dictDefaultPermissionClasses(dict ts.Node, src []byte) ([]string, bool) {
 	for i := 0; i < int(dict.NamedChildCount()); i++ {
 		pair := dict.NamedChild(i)
 		if pair == nil || pair.Type() != "pair" {
@@ -352,7 +352,7 @@ func dictDefaultPermissionClasses(dict *sitter.Node, src []byte) ([]string, bool
 // parseListLiteralStringsOrIdents reads a list/tuple/set literal and returns
 // the raw source text of each element (string literal or identifier/attribute),
 // tolerating the mixed string-or-symbol forms common in DRF settings.
-func parseListLiteralStringsOrIdents(n *sitter.Node, src []byte) []string {
+func parseListLiteralStringsOrIdents(n ts.Node, src []byte) []string {
 	if n == nil {
 		return nil
 	}

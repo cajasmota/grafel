@@ -31,7 +31,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -43,7 +43,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input. SDK calls at module scope attach to the file entity.
-func emitServiceDependencyEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitServiceDependencyEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -63,8 +63,8 @@ func emitServiceDependencyEdges(root *sitter.Node, file extractor.FileInput, ent
 		return stack[len(stack)-1]
 	}
 
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -139,7 +139,7 @@ func emitServiceDependencyEdges(root *sitter.Node, file extractor.FileInput, ent
 //
 // Returns ok=false when no recognised SDK root is found (so non-SDK
 // `.create()` / `.send()` calls never fabricate an edge).
-func pyServiceCall(call *sitter.Node, src []byte, imports pythonImportMap, from string) (extractor.ServiceCall, bool) {
+func pyServiceCall(call ts.Node, src []byte, imports pythonImportMap, from string) (extractor.ServiceCall, bool) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return extractor.ServiceCall{}, false
@@ -194,7 +194,7 @@ func pyServiceCall(call *sitter.Node, src []byte, imports pythonImportMap, from 
 // ("stripe", "Charge.create"); for `boto3.client` it returns ("boto3",
 // "client"). Returns ("", "") when the chain does not root at a plain
 // identifier (e.g. a subscript or call in the middle).
-func pyAttributeRootAndTail(attr *sitter.Node, src []byte) (string, string) {
+func pyAttributeRootAndTail(attr ts.Node, src []byte) (string, string) {
 	var parts []string
 	node := attr
 	for node != nil && node.Type() == "attribute" {
@@ -216,7 +216,7 @@ func pyAttributeRootAndTail(attr *sitter.Node, src []byte) (string, string) {
 // boto3.resource(...) call: the first positional argument, when a string
 // literal, is mapped via AWSServiceFromArg. A non-literal (dynamic variable)
 // argument yields aws-generic; an unrecognised literal yields "" (drop).
-func pyAWSServiceFromCall(call *sitter.Node, src []byte) string {
+func pyAWSServiceFromCall(call ts.Node, src []byte) string {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return extractor.ServiceAWSGeneric

@@ -65,7 +65,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -119,7 +119,7 @@ type javaFrame struct {
 // enclosing operation entity.
 //
 // Mutates entities in place. Safe to call with an empty slice — no-op.
-func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -282,8 +282,8 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 			})
 	}
 
-	var walk func(n *sitter.Node, parentClass string, fstack []javaFrame)
-	walk = func(n *sitter.Node, parentClass string, fstack []javaFrame) {
+	var walk func(n ts.Node, parentClass string, fstack []javaFrame)
+	walk = func(n ts.Node, parentClass string, fstack []javaFrame) {
 		if n == nil {
 			return
 		}
@@ -384,7 +384,7 @@ func findEntityIndex(entities []types.EntityRecord, emittedName, filePath string
 //   - skip self-name (an identifier matching the enclosing operation's leaf)
 //   - otherwise look up in bareSymbols and emit
 func handleIdentifier(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []javaFrame,
 	bareSymbols map[string]javaSymbol,
@@ -424,7 +424,7 @@ func handleIdentifier(
 // declaration (`Foo x = ...`), or return-type position. These are
 // strictly REFERENCES, never CALLS.
 func handleTypeIdentifier(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []javaFrame,
 	bareSymbols map[string]javaSymbol,
@@ -464,7 +464,7 @@ func handleTypeIdentifier(
 //   - otherwise leave the receiver to the generic identifier walk
 //     (recursion handles it).
 func handleFieldAccess(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []javaFrame,
 	bareSymbols map[string]javaSymbol,
@@ -560,7 +560,7 @@ func handleFieldAccess(
 //	parent is `catch_formal_parameter`
 //	parent is `import_declaration` / `package_declaration`
 //	parent is `inferred_parameters` (lambda parameter list)
-func isJavaDeclarationPosition(n *sitter.Node) bool {
+func isJavaDeclarationPosition(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -584,7 +584,7 @@ func isJavaDeclarationPosition(n *sitter.Node) bool {
 // child of a `method_invocation` node, or the type child of an
 // `object_creation_expression`. CALLS owns those edges — REFERENCES
 // would double-count.
-func isJavaCallCallee(n *sitter.Node) bool {
+func isJavaCallCallee(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -600,7 +600,7 @@ func isJavaCallCallee(n *sitter.Node) bool {
 // `field` child of a `field_access` node. The field_access handler
 // owns the binding decision; the bare identifier walk should skip it
 // to avoid double-emission.
-func isJavaFieldAccessField(n *sitter.Node) bool {
+func isJavaFieldAccessField(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false

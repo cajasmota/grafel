@@ -85,7 +85,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -115,7 +115,7 @@ type moduleConstRegistry map[string][]moduleConstEntry
 //
 // Mutation guard: names that appear as an assignment LHS ANYWHERE in the
 // file body other than their own definition are excluded from the registry.
-func scanModuleConstCallables(root *sitter.Node, src []byte, imports pythonImportMap) moduleConstRegistry {
+func scanModuleConstCallables(root ts.Node, src []byte, imports pythonImportMap) moduleConstRegistry {
 	if root == nil {
 		return nil
 	}
@@ -200,7 +200,7 @@ func scanModuleConstCallables(root *sitter.Node, src []byte, imports pythonImpor
 // that is (or contains at position 0) an attribute-shaped callable reference
 // whose receiver is a known import alias or PascalCase class name.
 func extractCallableEntriesFromLiteral(
-	node *sitter.Node,
+	node ts.Node,
 	src []byte,
 	imports pythonImportMap,
 ) []moduleConstEntry {
@@ -230,7 +230,7 @@ func extractCallableEntriesFromLiteral(
 //
 // Returns (entry, true) when a valid callable reference is found.
 func extractCallableFromElem(
-	elem *sitter.Node,
+	elem ts.Node,
 	src []byte,
 	imports pythonImportMap,
 ) (moduleConstEntry, bool) {
@@ -262,7 +262,7 @@ func extractCallableFromElem(
 //
 // The attribute (right side) is the leaf function name.
 func attrNodeToEntry(
-	attr *sitter.Node,
+	attr ts.Node,
 	src []byte,
 	imports pythonImportMap,
 ) (moduleConstEntry, bool) {
@@ -300,11 +300,11 @@ func attrNodeToEntry(
 // assignment or augmented_assignment. Only names already present in the map
 // are counted. The count for the single defining top-level assignment is 1;
 // any additional assignment raises it to >1, triggering the mutation guard.
-func collectAssignmentLHSNames(root *sitter.Node, src []byte, counts map[string]int) {
+func collectAssignmentLHSNames(root ts.Node, src []byte, counts map[string]int) {
 	if root == nil || len(counts) == 0 {
 		return
 	}
-	stack := []*sitter.Node{root}
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -345,7 +345,7 @@ func collectAssignmentLHSNames(root *sitter.Node, src []byte, counts map[string]
 // shape as the direct cross-module alias path (#1706). De-duplication against
 // the already-emitted `seen` map is done by the caller.
 func extractDataDispatchCalls(
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	reg moduleConstRegistry,
 	callerName string,
@@ -377,7 +377,7 @@ type seenKeyDD struct{ target, alias string }
 //	for f in STEPS:           — single identifier
 //	for f, _ in STEPS:        — pattern_list / tuple_pattern, first element taken
 func inspectForStmt(
-	forStmt *sitter.Node,
+	forStmt ts.Node,
 	src []byte,
 	reg moduleConstRegistry,
 	seen map[seenKeyDD]bool,
@@ -449,7 +449,7 @@ func inspectForStmt(
 //	for (f, _) in ...:        → "f"   (parenthesised pattern)
 //
 // Returns "" for any unrecognised or non-identifier shape.
-func extractForLoopVar(forStmt *sitter.Node, src []byte) string {
+func extractForLoopVar(forStmt ts.Node, src []byte) string {
 	target := forStmt.ChildByFieldName("left")
 	if target == nil {
 		return ""
@@ -475,7 +475,7 @@ func extractForLoopVar(forStmt *sitter.Node, src []byte) string {
 // node where the `function` child is an `identifier` node whose text equals
 // loopVar. Only direct calls `loopVar(...)` qualify; chained calls like
 // `loopVar.method(...)` or `loopVar[0](...)` do not.
-func bodyCallsLoopVar(body *sitter.Node, src []byte, loopVar string) bool {
+func bodyCallsLoopVar(body ts.Node, src []byte, loopVar string) bool {
 	calls := findAll(body, "call")
 	for _, call := range calls {
 		fn := call.ChildByFieldName("function")
@@ -494,11 +494,11 @@ func bodyCallsLoopVar(body *sitter.Node, src []byte, loopVar string) bool {
 
 // bodyReassigns reports whether body contains an assignment or
 // augmented_assignment whose LHS is the bare identifier `name`.
-func bodyReassigns(body *sitter.Node, src []byte, name string) bool {
+func bodyReassigns(body ts.Node, src []byte, name string) bool {
 	if body == nil || name == "" {
 		return false
 	}
-	stack := []*sitter.Node{body}
+	stack := []ts.Node{body}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -547,7 +547,7 @@ func isUpperCaseConst(name string) bool {
 //
 // This is a lightweight wrapper used by the scanner to pre-filter candidates
 // before the full mutation-guard pass.
-func resolveModuleConstName(lhs *sitter.Node, src []byte) string {
+func resolveModuleConstName(lhs ts.Node, src []byte) string {
 	if lhs == nil || lhs.Type() != "identifier" {
 		return ""
 	}
@@ -578,7 +578,7 @@ func isKnownImportReceiver(receiver string, imports pythonImportMap) bool {
 // least one valid callable reference (attribute node or nested tuple/list
 // with an attribute as first element). Used as a fast pre-filter to avoid
 // full entry extraction on non-callable lists.
-func hasSingleCallableRef(node *sitter.Node, src []byte, imports pythonImportMap) bool {
+func hasSingleCallableRef(node ts.Node, src []byte, imports pythonImportMap) bool {
 	if node == nil {
 		return false
 	}
@@ -587,7 +587,7 @@ func hasSingleCallableRef(node *sitter.Node, src []byte, imports pythonImportMap
 		if elem == nil {
 			continue
 		}
-		var attr *sitter.Node
+		var attr ts.Node
 		switch elem.Type() {
 		case "attribute":
 			attr = elem
@@ -617,14 +617,14 @@ func hasSingleCallableRef(node *sitter.Node, src []byte, imports pythonImportMap
 // scanModuleConstCallables and is threaded through from Extract. It is a
 // thin alias kept separate so the scanning logic can be unit-tested in
 // isolation without going through the full Extract pipeline.
-func buildModuleConstRegistry(root *sitter.Node, src []byte, imports pythonImportMap) moduleConstRegistry {
+func buildModuleConstRegistry(root ts.Node, src []byte, imports pythonImportMap) moduleConstRegistry {
 	return scanModuleConstCallables(root, src, imports)
 }
 
 // suffixStrings extracts the string values of all string literal children
 // inside an element node. Used for debug/tracing only (not called in the
 // hot path). Kept for completeness / future enrichment.
-func suffixStrings(node *sitter.Node, src []byte) []string {
+func suffixStrings(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
 	}

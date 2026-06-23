@@ -19,7 +19,7 @@ func extractJavaForEnum(t *testing.T, path, src string) []types.EntityRecord {
 		t.Fatal("java extractor not registered")
 	}
 	got, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: path, Content: []byte(src), Language: "java", Tree: tree,
+		Path: path, Content: []byte(src), Language: "java", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("extract: %v", err)

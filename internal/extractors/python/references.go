@@ -60,7 +60,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -133,7 +133,7 @@ type pySymbol struct {
 // edges to the enclosing function entity.
 //
 // Mutates entities in place. Safe to call with an empty slice — no-op.
-func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitReferences(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -257,8 +257,8 @@ func emitReferences(root *sitter.Node, file extractor.FileInput, entities *[]typ
 	// Walk recursively. parentClass propagates down class_definition
 	// bodies; the function frame stack grows on function_definition /
 	// lambda nodes.
-	var walk func(n *sitter.Node, parentClass string, fstack []frame)
-	walk = func(n *sitter.Node, parentClass string, fstack []frame) {
+	var walk func(n ts.Node, parentClass string, fstack []frame)
+	walk = func(n ts.Node, parentClass string, fstack []frame) {
 		if n == nil {
 			return
 		}
@@ -369,7 +369,7 @@ func findEntityIndex(entities []types.EntityRecord, emittedName, filePath string
 //   - skip self-name (an identifier matching the enclosing function's leaf)
 //   - otherwise look up in bareSymbols and emit
 func handleIdentifier(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	parentClass string,
 	fstack []frame,
@@ -412,7 +412,7 @@ func handleIdentifier(
 //   - if obj is `cls`, same (class-method receiver).
 //   - otherwise leave the receiver to the generic identifier walk.
 func handleAttribute(
-	n *sitter.Node,
+	n ts.Node,
 	file extractor.FileInput,
 	fstack []frame,
 	dottedSymbols map[string]pySymbol,
@@ -482,7 +482,7 @@ type frame struct {
 //	parent is `global_statement` / `nonlocal_statement`
 //	parent is `assignment` and this is the `left` field
 //	parent is `for_in_clause` / `for_statement` and this is the `left` field
-func isPyDeclarationPosition(n *sitter.Node) bool {
+func isPyDeclarationPosition(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false
@@ -520,7 +520,7 @@ func isPyDeclarationPosition(n *sitter.Node) bool {
 // isPyCallCallee reports whether the identifier node is the `function`
 // child of a `call` node. CALLS owns that edge — REFERENCES would
 // double-count.
-func isPyCallCallee(n *sitter.Node) bool {
+func isPyCallCallee(n ts.Node) bool {
 	parent := n.Parent()
 	if parent == nil {
 		return false

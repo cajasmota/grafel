@@ -58,7 +58,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -148,7 +148,7 @@ var djangoRelationalFieldTypes = map[string]struct{}{
 //	after        — len(*out) immediately before this function is invoked
 //	out          — entity slice pointer (in/out)
 func enrichDjangoModelFieldsAndManagers(
-	body *sitter.Node,
+	body ts.Node,
 	file extractor.FileInput,
 	parentClass string,
 	classIdx int,
@@ -319,7 +319,7 @@ func enrichDjangoModelFieldsAndManagers(
 func stampDjangoFieldProperties(
 	field *types.EntityRecord,
 	fieldType string,
-	callNode *sitter.Node,
+	callNode ts.Node,
 	src []byte,
 ) {
 	if field == nil || callNode == nil {
@@ -387,7 +387,7 @@ func stampDjangoFieldProperties(
 // class so `expand(<Model>)` lists itself as a neighbour where appropriate.
 //
 // Returns ("", "", false) when no resolvable positional/keyword target is found.
-func extractRelationalTargetName(callNode *sitter.Node, src []byte, parentClass string) (className, rawString string, isSelf bool) {
+func extractRelationalTargetName(callNode ts.Node, src []byte, parentClass string) (className, rawString string, isSelf bool) {
 	argsNode := callNode.ChildByFieldName("arguments")
 	if argsNode == nil {
 		return "", "", false
@@ -440,7 +440,7 @@ func extractRelationalTargetName(callNode *sitter.Node, src []byte, parentClass 
 // Returns ("", "", false) for shapes we don't recognise (callables,
 // conditional expressions, etc.) rather than emitting a malformed REFERENCES
 // edge.
-func parseTargetExpr(node *sitter.Node, src []byte, parentClass string) (className, rawString string, isSelf bool) {
+func parseTargetExpr(node ts.Node, src []byte, parentClass string) (className, rawString string, isSelf bool) {
 	if node == nil {
 		return "", "", false
 	}

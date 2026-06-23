@@ -62,7 +62,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 )
@@ -96,7 +96,7 @@ type pythonImportMap map[string]pythonImportBinding
 //
 // The map is intentionally small and per-file — it is rebuilt for every
 // extracted file and never escapes the Extract call frame.
-func buildPythonImportMap(root *sitter.Node, file extractor.FileInput) pythonImportMap {
+func buildPythonImportMap(root ts.Node, file extractor.FileInput) pythonImportMap {
 	if root == nil {
 		return nil
 	}
@@ -180,7 +180,7 @@ func buildPythonImportMap(root *sitter.Node, file extractor.FileInput) pythonImp
 // or when the relative climb would escape the file's package (more dots
 // than parent segments) — in which case the caller leaves the binding
 // out of the map rather than emit a malformed key.
-func resolvePythonImportModule(modNode *sitter.Node, file extractor.FileInput) string {
+func resolvePythonImportModule(modNode ts.Node, file extractor.FileInput) string {
 	if modNode == nil {
 		return ""
 	}
@@ -274,7 +274,7 @@ func resolvePythonImportModule(modNode *sitter.Node, file extractor.FileInput) s
 // or a deeper attribute chain; emitting a guess risks binding edges to the
 // wrong entity).
 func extractCallTargetImportAlias(
-	call *sitter.Node,
+	call ts.Node,
 	src []byte,
 	imports pythonImportMap,
 ) (alias, leaf string) {

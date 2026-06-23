@@ -26,7 +26,7 @@ func ddExtract(t *testing.T, filePath, src string) []ddRel {
 		Path:     filePath,
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -346,7 +346,7 @@ def run(ctx):
 		Path:     "sagas/dispatch_source.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -621,7 +621,7 @@ def run_beta(ctx):
 		Path:     "wf/sources.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

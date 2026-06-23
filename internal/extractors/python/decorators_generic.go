@@ -36,7 +36,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -47,14 +47,14 @@ import (
 // `decorator_<name>` properties on it for each decorator on the definition.
 //
 // Mutates *entities in place. Safe to call with nil/empty input.
-func emitGenericDecoratorProperties(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitGenericDecoratorProperties(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
 	walkDecoratedDefs(root, "", file, entities)
 }
 
-func walkDecoratedDefs(n *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func walkDecoratedDefs(n ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if n == nil {
 		return
 	}
@@ -95,7 +95,7 @@ func walkDecoratedDefs(n *sitter.Node, parentClass string, file extractor.FileIn
 // stampDecoratorsOnOperation scans every decorator child of decoratedNode and
 // stamps a `decorator_<leaf>` property on the matching SCOPE.Operation entity
 // found by SourceFile + qualified Name.
-func stampDecoratorsOnOperation(decoratedNode, fnNode *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func stampDecoratorsOnOperation(decoratedNode, fnNode ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	methodNameNode := fnNode.ChildByFieldName("name")
 	if methodNameNode == nil {
 		return

@@ -41,7 +41,7 @@ func jcovExtract(t *testing.T, path, src string) []types.EntityRecord {
 	}
 	out, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path: path, Content: []byte(src), Language: "java",
-		Tree: parseForTest(t, src),
+		TSTree: parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

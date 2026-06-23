@@ -8,21 +8,28 @@ import (
 	"testing"
 	"time"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tspython "github.com/smacker/go-tree-sitter/python"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 	// Blank import to trigger init() registration.
 	_ "github.com/cajasmota/grafel/internal/extractors/python"
 )
 
-// parse is a test helper that parses Python source with tree-sitter.
-func parse(t *testing.T, src []byte) *sitter.Tree {
+// parse parses Python source into a binding-agnostic ts.Tree via the smacker
+// adapter. Tests stamp the result on FileInput.TSTree (which the migrated Python
+// extractor consumes). Using the smacker adapter keeps these tests linkable in
+// the default build while exercising the ts façade (B2 #5418).
+func parse(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	p := sitter.NewParser()
-	p.SetLanguage(tspython.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tspython.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -41,7 +48,7 @@ func extractPy(t *testing.T, src, path string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -50,12 +57,12 @@ func extractPy(t *testing.T, src, path string) []types.EntityRecord {
 }
 
 // makeFile builds a FileInput for tests.
-func makeFile(src string, tree *sitter.Tree) extractor.FileInput {
+func makeFile(src string, tree ts.Tree) extractor.FileInput {
 	return extractor.FileInput{
 		Path:     "test.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 }
 
@@ -152,7 +159,7 @@ class Bar:
 		Path:     "app/orders/handlers.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {
@@ -321,7 +328,7 @@ func TestExtract_EmptyFile(t *testing.T) {
 		Path:     "empty.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     nil, // nil tree: extractor must handle gracefully
+		TSTree:   nil, // nil tree: extractor must handle gracefully
 	})
 	if err != nil {
 		t.Fatalf("Extract on empty file: unexpected error: %v", err)
@@ -378,7 +385,7 @@ func TestExtract_NilTree(t *testing.T) {
 		Path:     "standalone.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     nil, // extractor must parse internally
+		TSTree:   nil, // extractor must parse internally
 	})
 	if err != nil {
 		t.Fatalf("Extract with nil tree: %v", err)
@@ -548,7 +555,7 @@ func TestExtract_BinaryContent(t *testing.T) {
 			Path:     "binary.py",
 			Content:  binary,
 			Language: "python",
-			Tree:     nil,
+			TSTree:   nil,
 		})
 		if err != nil {
 			t.Logf("binary input returned error (acceptable): %v", err)
@@ -673,7 +680,7 @@ func TestExtract_DuplicateMethodsFromFixture(t *testing.T) {
 		Path:     path,
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -730,7 +737,7 @@ func TestExtract_ControlFlowMethodsInheritClassQualifier(t *testing.T) {
 		Path:     path,
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -817,7 +824,7 @@ func TestExtract_ClassSubtypeLabels(t *testing.T) {
 		Path:     path,
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -888,7 +895,7 @@ func TestExtract_NestedClassesFromFixture(t *testing.T) {
 		Path:     path,
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -1797,7 +1804,7 @@ class Migration(migrations.Migration):
 	tree := parse(t, []byte(src))
 	migEnts, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path: "core/migrations/0042_device_serial.py", Content: []byte(src),
-		Language: "python", Tree: tree,
+		Language: "python", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("extract migration: %v", err)
@@ -1827,7 +1834,7 @@ class Migration(migrations.Migration):
 	tree2 := parse(t, []byte(src))
 	normEnts, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path: "core/models/device.py", Content: []byte(src),
-		Language: "python", Tree: tree2,
+		Language: "python", TSTree: tree2,
 	})
 	if err != nil {
 		t.Fatalf("extract normal: %v", err)
@@ -1864,7 +1871,7 @@ func TestExtract_DjangoMigrationFixtures(t *testing.T) {
 		Path:     "core/migrations/0042_device_serial_number.py",
 		Content:  migSrc,
 		Language: "python",
-		Tree:     parse(t, migSrc),
+		TSTree:   parse(t, migSrc),
 	})
 	if err != nil {
 		t.Fatalf("extract django_migration fixture: %v", err)
@@ -1911,7 +1918,7 @@ func TestExtract_DjangoMigrationFixtures(t *testing.T) {
 		Path:     "core/models.py",
 		Content:  modSrc,
 		Language: "python",
-		Tree:     parse(t, modSrc),
+		TSTree:   parse(t, modSrc),
 	})
 	if err != nil {
 		t.Fatalf("extract django_models fixture: %v", err)
@@ -1997,7 +2004,7 @@ class Migration(migrations.Migration):
 	path := "accounts/migrations/0044_user_cognito_id.py"
 	tree := parse(t, []byte(src))
 	ents, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: path, Content: []byte(src), Language: "python", Tree: tree,
+		Path: path, Content: []byte(src), Language: "python", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -2097,7 +2104,7 @@ class b:
 		Path:     filePath,
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

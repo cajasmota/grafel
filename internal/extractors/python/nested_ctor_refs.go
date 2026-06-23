@@ -58,7 +58,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -86,7 +86,7 @@ type nestedEdgeKey struct{ from, to string }
 // call-callee + attribute-receiver shapes that REFERENCES skipped).
 //
 // Safe to call with nil/empty inputs.
-func emitNestedConstructorRefs(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitNestedConstructorRefs(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -198,8 +198,8 @@ func emitNestedConstructorRefs(root *sitter.Node, file extractor.FileInput, enti
 	//      body); the enclosing entity is the method.
 	//
 	// Nested classes recurse with the dotted parent name.
-	var walkClass func(classNode *sitter.Node, parentClass string)
-	walkClass = func(classNode *sitter.Node, parentClass string) {
+	var walkClass func(classNode ts.Node, parentClass string)
+	walkClass = func(classNode ts.Node, parentClass string) {
 		if classNode == nil {
 			return
 		}
@@ -265,8 +265,8 @@ func emitNestedConstructorRefs(root *sitter.Node, file extractor.FileInput, enti
 
 	// Top-level walk: find every class_definition (including those
 	// wrapped in a decorated_definition) and process it.
-	var walkTop func(n *sitter.Node)
-	walkTop = func(n *sitter.Node) {
+	var walkTop func(n ts.Node)
+	walkTop = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -294,7 +294,7 @@ func emitNestedConstructorRefs(root *sitter.Node, file extractor.FileInput, enti
 // inside method bodies). The enclosing entity is the method itself,
 // looked up by emitted Name "<parentClass>.<methodLeaf>".
 func scanMethodForClassRefs(
-	fnNode *sitter.Node,
+	fnNode ts.Node,
 	file extractor.FileInput,
 	parentClass string,
 	classTargets map[string]classRefTarget,
@@ -347,7 +347,7 @@ func scanMethodForClassRefs(
 // lower-case-callable case (function calls) that the CALLS pass owns
 // and avoids spurious REFERENCES to local variables.
 func scanNodeForClassRefs(
-	node *sitter.Node,
+	node ts.Node,
 	src []byte,
 	classTargets map[string]classRefTarget,
 	onMatch func(leaf string, t classRefTarget),
@@ -377,7 +377,7 @@ func scanNodeForClassRefs(
 // or an `attribute` node whose final leaf is the class name. Anything
 // else (subscripts, lambdas, conditional_expression, etc.) is ignored.
 func tryEmitClassRef(
-	fnOrObj *sitter.Node,
+	fnOrObj ts.Node,
 	src []byte,
 	classTargets map[string]classRefTarget,
 	onMatch func(leaf string, t classRefTarget),

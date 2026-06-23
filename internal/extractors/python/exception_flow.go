@@ -28,7 +28,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -39,7 +39,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input. raise/except at module scope attach to the file entity.
-func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -55,8 +55,8 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 		return stack[len(stack)-1]
 	}
 
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -142,10 +142,10 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 // bare-identifier raise to start with an uppercase letter before treating it
 // as a type. A call (`raise Foo()`) or qualified attribute (`raise mod.Foo`)
 // is an explicit construction/reference, so no case guard is applied there.
-func pyRaiseType(raiseNode *sitter.Node, src []byte) string {
+func pyRaiseType(raiseNode ts.Node, src []byte) string {
 	// The exception expression is the first named child; subsequent named
 	// children (e.g. the `from <cause>`) are ignored.
-	var expr *sitter.Node
+	var expr ts.Node
 	for i := 0; i < int(raiseNode.NamedChildCount()); i++ {
 		c := raiseNode.NamedChild(i)
 		if c == nil {
@@ -188,11 +188,11 @@ func startsUpper(s string) bool {
 // `except:` (bare) yields none; `except E:` yields {E}; `except (A, B):` yields
 // {A, B}. Each token is the bare class name (last dotted segment); dynamic
 // entries are dropped by NormalizeExceptionType downstream.
-func pyExceptTypes(exceptNode *sitter.Node, src []byte) []string {
+func pyExceptTypes(exceptNode ts.Node, src []byte) []string {
 	// The type expression is the first named child of the except_clause that
 	// is NOT the `as <name>` binding and NOT the body block. In the tree-sitter
 	// Python grammar the clause children are: [type_expr] [as identifier] block.
-	var typeExpr *sitter.Node
+	var typeExpr ts.Node
 	for i := 0; i < int(exceptNode.NamedChildCount()); i++ {
 		c := exceptNode.NamedChild(i)
 		if c == nil {
@@ -236,7 +236,7 @@ func pyExceptTypes(exceptNode *sitter.Node, src []byte) []string {
 // other shape (so dynamic raises drop). The bare name is returned verbatim;
 // NormalizeExceptionType (called inside EmitExceptionEdges) strips qualification
 // and rejects non-identifier tokens.
-func pyTypeFromExpr(n *sitter.Node, src []byte) string {
+func pyTypeFromExpr(n ts.Node, src []byte) string {
 	switch n.Type() {
 	case "identifier":
 		return strings.TrimSpace(nodeText(n, src))

@@ -8,10 +8,10 @@ import (
 	"strings"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsjava "github.com/smacker/go-tree-sitter/java"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -20,9 +20,12 @@ import (
 // bubble up via t.Fatal so callers can assume non-nil non-empty output.
 func runJavaExtract(t *testing.T, src string) []types.EntityRecord {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsjava.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsjava.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -31,7 +34,7 @@ func runJavaExtract(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Demo.java",
 		Language: "java",
 		Content:  []byte(src),
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

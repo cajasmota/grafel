@@ -35,7 +35,7 @@
 package python
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -48,7 +48,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input. Renders at module scope attach to the file entity.
-func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitTemplateRenderEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -64,8 +64,8 @@ func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entiti
 		return stack[len(stack)-1]
 	}
 
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -145,7 +145,7 @@ func emitTemplateRenderEdges(root *sitter.Node, file extractor.FileInput, entiti
 // argument is a plain string literal, returns the (raw) template name and the
 // detector pattern label. Returns "", "" otherwise (including dynamic names —
 // a non-string template argument yields nothing, so EmitTemplateEdges drops it).
-func pyRenderCallTemplate(call *sitter.Node, src []byte) (string, string) {
+func pyRenderCallTemplate(call ts.Node, src []byte) (string, string) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return "", ""
@@ -186,7 +186,7 @@ func pyRenderCallTemplate(call *sitter.Node, src []byte) (string, string) {
 // pyFirstStringArg returns the unquoted value of the first positional string
 // literal argument in an argument_list, or "" if the first positional argument
 // is not a plain string literal (dynamic name → drop).
-func pyFirstStringArg(args *sitter.Node, src []byte) string {
+func pyFirstStringArg(args ts.Node, src []byte) string {
 	return pyNthStringArg(args, src, 0)
 }
 
@@ -194,7 +194,7 @@ func pyFirstStringArg(args *sitter.Node, src []byte) string {
 // it is a plain string literal; "" otherwise. Keyword arguments are skipped
 // when counting positionals. A non-string positional at index n yields "" so
 // dynamic template names never fabricate an edge.
-func pyNthStringArg(args *sitter.Node, src []byte, n int) string {
+func pyNthStringArg(args ts.Node, src []byte, n int) string {
 	pos := -1
 	for i := 0; i < int(args.NamedChildCount()); i++ {
 		c := args.NamedChild(i)
@@ -219,14 +219,14 @@ func pyNthStringArg(args *sitter.Node, src []byte, n int) string {
 // pyTemplateNameAttr scans a class body for a `template_name = '...'`
 // assignment (Django class-based views) and returns the unquoted literal, or ""
 // if absent / dynamic.
-func pyTemplateNameAttr(body *sitter.Node, src []byte) string {
+func pyTemplateNameAttr(body ts.Node, src []byte) string {
 	for i := 0; i < int(body.NamedChildCount()); i++ {
 		stmt := body.NamedChild(i)
 		if stmt == nil {
 			continue
 		}
 		// expression_statement → assignment
-		var assign *sitter.Node
+		var assign ts.Node
 		if stmt.Type() == "expression_statement" && stmt.NamedChildCount() > 0 {
 			assign = stmt.NamedChild(0)
 		} else if stmt.Type() == "assignment" {
@@ -272,7 +272,7 @@ var drfHTMLRenderers = map[string]bool{
 //     `renderers.BrowsableAPIRenderer`) whose TRAILING name is a known DRF HTML
 //     renderer count. JSON / data-only renderers and unknown names are skipped,
 //     so a JSON-only view emits no HTML render path.
-func pyDRFHTMLRenderers(body *sitter.Node, src []byte) []string {
+func pyDRFHTMLRenderers(body ts.Node, src []byte) []string {
 	var out []string
 	seen := map[string]bool{}
 	for i := 0; i < int(body.NamedChildCount()); i++ {
@@ -280,7 +280,7 @@ func pyDRFHTMLRenderers(body *sitter.Node, src []byte) []string {
 		if stmt == nil {
 			continue
 		}
-		var assign *sitter.Node
+		var assign ts.Node
 		if stmt.Type() == "expression_statement" && stmt.NamedChildCount() > 0 {
 			assign = stmt.NamedChild(0)
 		} else if stmt.Type() == "assignment" {

@@ -449,7 +449,7 @@ func cfExtract(t *testing.T, filePath, src string) []types.EntityRecord {
 		Path:     filePath,
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

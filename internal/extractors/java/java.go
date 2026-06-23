@@ -35,11 +35,11 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/txscope"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -54,7 +54,7 @@ func init() {
 // method body — avoids false positives from an @Transactional token appearing
 // inside a string literal or comment in the body. Returns a zero stamp when no
 // @Transactional annotation is present.
-func javaMethodTxStamp(methodNode *sitter.Node, src []byte) txscope.Stamp {
+func javaMethodTxStamp(methodNode ts.Node, src []byte) txscope.Stamp {
 	mods := methodModifiersText(methodNode, src)
 	if mods == "" {
 		return txscope.Stamp{}
@@ -64,7 +64,7 @@ func javaMethodTxStamp(methodNode *sitter.Node, src []byte) txscope.Stamp {
 
 // methodModifiersText returns the source text of a declaration's `modifiers`
 // child (annotations + visibility keywords), or "" when absent.
-func methodModifiersText(node *sitter.Node, src []byte) string {
+func methodModifiersText(node ts.Node, src []byte) string {
 	for i := 0; i < int(node.ChildCount()); i++ {
 		ch := node.Child(i)
 		if ch != nil && ch.Type() == "modifiers" {
@@ -80,14 +80,14 @@ func methodModifiersText(node *sitter.Node, src []byte) string {
 // stamp. This realises Spring's class-level @Transactional → all-methods
 // semantics. A method with its own @Transactional (already stamped during the
 // primary walk) keeps its own — more specific — propagation/isolation.
-func stampClassLevelTransactional(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func stampClassLevelTransactional(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil {
 		return
 	}
 	walkClassTx(root, "", file, entities)
 }
 
-func walkClassTx(n *sitter.Node, pkgQualifier string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func walkClassTx(n ts.Node, pkgQualifier string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if n == nil {
 		return
 	}
@@ -150,7 +150,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	defer span.End()
 	span.SetAttributes(attribute.String("file", file.Path))
 
-	if file.Tree == nil || len(file.Content) == 0 {
+	if file.TSTree == nil || len(file.Content) == 0 {
 		span.SetAttributes(
 			attribute.Int("entity_count", 0),
 			attribute.Int("error_pattern_count", 0),
@@ -164,7 +164,7 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	// originating repo via the resolver's byName index. Generalises the
 	// JS/TS fix from #570/#575.
 	entities = append(entities, extractor.FileEntity(file))
-	root := file.Tree.RootNode()
+	root := file.TSTree.RootNode()
 	imports := collectImportNames(root, file.Content)
 	// Issue #1917 — extract the file's package declaration so QualifiedName
 	// can be set to "<package>.<ClassName>" and "<package>.<Class>.<method>".
@@ -309,7 +309,7 @@ type classCtx struct {
 }
 
 func walk(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	parentType string,
 	cc *classCtx,
@@ -408,7 +408,7 @@ func walk(
 		// Bean Validation pass can stamp Properties["validations"] without
 		// re-traversing the tree.
 		recBefore := len(*out)
-		fieldNodes := map[string]*sitter.Node{}
+		fieldNodes := map[string]ts.Node{}
 		if node.Type() == "record_declaration" {
 			if params := node.ChildByFieldName("parameters"); params != nil {
 				for i := range params.ChildCount() {
@@ -783,7 +783,7 @@ func walk(
 // ID at emit time. Self-recursion is skipped (compared against the
 // caller's bare name regardless of the callee's dotted form).
 func extractCallRelationships(
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	callerName string,
 	cc *classCtx,
@@ -861,7 +861,7 @@ func extractCallRelationships(
 // shape. Falls back to the bare leaf name when no receiver type is
 // known.
 func javaCallTarget(
-	call *sitter.Node,
+	call ts.Node,
 	src []byte,
 	cc *classCtx,
 	paramTypes map[string]string,
@@ -970,7 +970,7 @@ var panacheQueryDSLChainMethods = map[string]bool{
 //  6. Anything else — return "" so the caller falls back to the bare
 //     method name.
 func receiverTypeName(
-	obj *sitter.Node,
+	obj ts.Node,
 	src []byte,
 	cc *classCtx,
 	paramTypes map[string]string,
@@ -1065,7 +1065,7 @@ func isPascalCase(s string) bool {
 //
 // Multi-declarator fields (`int x, y, z;`) bind every variable to the
 // same declared type. Fields without a parseable type are dropped.
-func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
+func collectFieldTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -1103,7 +1103,7 @@ func collectFieldTypes(body *sitter.Node, src []byte) map[string]string {
 // every formal_parameter on a method_declaration / constructor_
 // declaration node. Variadic parameters ("Type... args") strip the
 // "..." and bind args to the leaf type.
-func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
+func collectParamTypes(node ts.Node, src []byte) map[string]string {
 	if node == nil {
 		return nil
 	}
@@ -1159,7 +1159,7 @@ func collectParamTypes(node *sitter.Node, src []byte) map[string]string {
 // are loop-local rebinds in different sibling blocks — both bind to
 // the same type in idiomatic code, and the conservative pick still
 // matches.
-func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
+func collectLocalVarTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -1223,7 +1223,7 @@ func collectLocalVarTypes(body *sitter.Node, src []byte) map[string]string {
 // receiver never types to a non-constructed class. The rightmost
 // type_identifier is taken (so `new com.x.XController(...)` → "XController",
 // matching javaCallTarget's object-creation handling).
-func newExprClassName(value *sitter.Node, src []byte) string {
+func newExprClassName(value ts.Node, src []byte) string {
 	if value == nil || value.Type() != "object_creation_expression" {
 		return ""
 	}
@@ -1243,7 +1243,7 @@ func newExprClassName(value *sitter.Node, src []byte) string {
 // yields "List"; `Map<String, Owner>` yields "Map"; `Owner[]` yields
 // "Owner"; `int` yields "int". Returns "" for type nodes the function
 // can't characterise.
-func leafTypeName(typ *sitter.Node, src []byte) string {
+func leafTypeName(typ ts.Node, src []byte) string {
 	if typ == nil {
 		return ""
 	}
@@ -1282,7 +1282,7 @@ func leafTypeName(typ *sitter.Node, src []byte) string {
 // fields/methods are not included; the receiver-binder uses this set
 // only to confirm a PascalCase identifier was imported (a future
 // tightening — for now the case heuristic alone gates emission).
-func collectImportNames(root *sitter.Node, src []byte) map[string]bool {
+func collectImportNames(root ts.Node, src []byte) map[string]bool {
 	if root == nil {
 		return nil
 	}
@@ -1318,7 +1318,7 @@ func collectImportNames(root *sitter.Node, src []byte) map[string]bool {
 // declaration is present (default package).
 //
 // Example: `package com.example.users.controllers;` → "com.example.users.controllers"
-func collectPackageName(root *sitter.Node, src []byte) string {
+func collectPackageName(root ts.Node, src []byte) string {
 	if root == nil {
 		return ""
 	}
@@ -1344,7 +1344,7 @@ func collectPackageName(root *sitter.Node, src []byte) string {
 }
 
 // findAllNodes returns every descendant of root whose Type() is in kinds.
-func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
+func findAllNodes(root ts.Node, kinds ...string) []ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -1352,8 +1352,8 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 	for _, k := range kinds {
 		set[k] = true
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -1371,7 +1371,7 @@ func findAllNodes(root *sitter.Node, kinds ...string) []*sitter.Node {
 //
 // Issue #1917 — QualifiedName is set to "<package>.<ClassName>" when pkgName
 // is non-empty, giving inspect consumers a fully-qualified type reference.
-func buildComponent(node *sitter.Node, file extractor.FileInput, subtype, pkgName string) (types.EntityRecord, bool) {
+func buildComponent(node ts.Node, file extractor.FileInput, subtype, pkgName string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -1406,7 +1406,7 @@ func buildComponent(node *sitter.Node, file extractor.FileInput, subtype, pkgNam
 //
 // Issue #1917 — QualifiedName is set to "<package>.<emittedName>" when pkgName
 // is non-empty, giving inspect consumers a fully-qualified method reference.
-func buildOperation(node *sitter.Node, file extractor.FileInput, subtype, parentType, pkgName string) (types.EntityRecord, bool) {
+func buildOperation(node ts.Node, file extractor.FileInput, subtype, parentType, pkgName string) (types.EntityRecord, bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -1442,7 +1442,7 @@ func buildOperation(node *sitter.Node, file extractor.FileInput, subtype, parent
 // when non-empty, matching the pattern used for methods (issue #65) so
 // the resolver's byLocation index can bind CONTAINS stubs to field entities
 // the same way it binds class→method CONTAINS edges.
-func buildField(node *sitter.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
+func buildField(node ts.Node, file extractor.FileInput, parentType string) (types.EntityRecord, bool) {
 	// Field declarations have a "declarator" child containing the variable name.
 	name := ""
 	for i := range node.ChildCount() {
@@ -1477,7 +1477,7 @@ func buildField(node *sitter.Node, file extractor.FileInput, parentType string) 
 }
 
 // buildFieldSignature produces "Type name" for a Java field, stripping visibility.
-func buildFieldSignature(node *sitter.Node, src []byte, name string) string {
+func buildFieldSignature(node ts.Node, src []byte, name string) string {
 	raw := strings.TrimSpace(string(src[node.StartByte():node.EndByte()]))
 	// Remove everything after '=' (initializer).
 	if idx := strings.Index(raw, "="); idx >= 0 {
@@ -1494,7 +1494,7 @@ func buildFieldSignature(node *sitter.Node, src []byte, name string) string {
 }
 
 // nodeText returns the source text covered by node.
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -1502,7 +1502,7 @@ func nodeText(node *sitter.Node, src []byte) string {
 }
 
 // childFieldText extracts the text of a named child field (e.g. "name").
-func childFieldText(node *sitter.Node, field string, src []byte) string {
+func childFieldText(node ts.Node, field string, src []byte) string {
 	child := node.ChildByFieldName(field)
 	if child == nil {
 		return ""
@@ -1514,7 +1514,7 @@ func childFieldText(node *sitter.Node, field string, src []byte) string {
 // Captures annotations + return type + name + parameters, collapsing
 // multi-line declarations into a single line (up to the opening brace).
 // Strips visibility modifiers and annotation arguments.
-func buildMethodSignature(node *sitter.Node, src []byte) string {
+func buildMethodSignature(node ts.Node, src []byte) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	// Strip annotation arguments FIRST to remove braces inside annotation args
 	// like @DeleteMapping("/{id}") → @DeleteMapping, so the body-brace search
@@ -1535,7 +1535,7 @@ func buildMethodSignature(node *sitter.Node, src []byte) string {
 
 // buildClassSignature constructs a readable signature up to the opening brace.
 // Strips visibility modifiers and annotation arguments to match Python convention.
-func buildClassSignature(node *sitter.Node, src []byte, name string) string {
+func buildClassSignature(node ts.Node, src []byte, name string) string {
 	raw := string(src[node.StartByte():node.EndByte()])
 	if idx := strings.Index(raw, "{"); idx >= 0 {
 		raw = raw[:idx]
@@ -1557,7 +1557,7 @@ func buildClassSignature(node *sitter.Node, src []byte, name string) string {
 // stripped — `extends List<Owner>` yields "List".
 //
 // Issue #1996 — required input for the docgen ClassManifest `bases` field.
-func javaSuperclassNames(node *sitter.Node, src []byte) []string {
+func javaSuperclassNames(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
 	}
@@ -1587,7 +1587,7 @@ func javaSuperclassNames(node *sitter.Node, src []byte) []string {
 //
 // Issue #1996 — required input for the docgen ClassManifest `interfaces`
 // field.
-func javaSuperInterfaceNames(node *sitter.Node, src []byte) []string {
+func javaSuperInterfaceNames(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
 	}
@@ -1608,7 +1608,7 @@ func javaSuperInterfaceNames(node *sitter.Node, src []byte) []string {
 	}
 	var out []string
 	// si may directly be a type_list, or wrap one.
-	var list *sitter.Node
+	var list ts.Node
 	if si.Type() == "type_list" {
 		list = si
 	} else {
@@ -1648,7 +1648,7 @@ func javaSuperInterfaceNames(node *sitter.Node, src []byte) []string {
 // The Schema/CONTAINS edge for the field itself is still emitted by the
 // regular field_declaration case in walk(); this function does not
 // suppress it.
-func javaInjectFieldTypes(body *sitter.Node, src []byte) []string {
+func javaInjectFieldTypes(body ts.Node, src []byte) []string {
 	if body == nil {
 		return nil
 	}
@@ -1674,7 +1674,7 @@ func javaInjectFieldTypes(body *sitter.Node, src []byte) []string {
 
 // javaFieldHasInjectAnnotation reports whether a field_declaration node
 // carries an @Inject or @Autowired annotation in its `modifiers` child.
-func javaFieldHasInjectAnnotation(field *sitter.Node, src []byte) bool {
+func javaFieldHasInjectAnnotation(field ts.Node, src []byte) bool {
 	if field == nil {
 		return false
 	}

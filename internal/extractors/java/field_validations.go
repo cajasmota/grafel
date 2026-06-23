@@ -56,7 +56,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -111,7 +111,7 @@ var javaBeanValidationScalar = map[string]string{
 func emitJavaFieldValidations(
 	parentType string,
 	before, after int,
-	fieldNodes map[string]*sitter.Node,
+	fieldNodes map[string]ts.Node,
 	src []byte,
 	out *[]types.EntityRecord,
 ) {
@@ -151,7 +151,7 @@ func emitJavaFieldValidations(
 // field_declaration, a formal_parameter (record component) or any node whose
 // direct/`modifiers` children include annotation nodes — the helper finds the
 // annotation nodes either way.
-func javaFieldValidationChips(node *sitter.Node, src []byte) []string {
+func javaFieldValidationChips(node ts.Node, src []byte) []string {
 	if node == nil {
 		return nil
 	}
@@ -191,9 +191,9 @@ func javaFieldValidationChips(node *sitter.Node, src []byte) []string {
 // to a declaration. For a field_declaration / formal_parameter the annotations
 // live under a `modifiers` child; for nodes that themselves are `modifiers`
 // they are direct children. Both shapes are handled.
-func javaAnnotationNodes(node *sitter.Node) []*sitter.Node {
-	var out []*sitter.Node
-	collect := func(parent *sitter.Node) {
+func javaAnnotationNodes(node ts.Node) []ts.Node {
+	var out []ts.Node
+	collect := func(parent ts.Node) {
 		for i := 0; i < int(parent.NamedChildCount()); i++ {
 			ch := parent.NamedChild(i)
 			if ch == nil {
@@ -236,7 +236,7 @@ func simpleAnnotationName(name string) string {
 // javaSizeChip folds a @Size annotation into a chip. With both bounds it yields
 // `Size:0..120`; with only max it yields `MaxLength:120`; with only min it
 // yields `MinLength:1`. Returns "" when neither bound is a scalar.
-func javaSizeChip(ann *sitter.Node, src []byte) string {
+func javaSizeChip(ann ts.Node, src []byte) string {
 	pairs := javaAnnotationArgPairs(ann, src)
 	minV, hasMin := pairs["min"]
 	maxV, hasMax := pairs["max"]
@@ -255,7 +255,7 @@ func javaSizeChip(ann *sitter.Node, src []byte) string {
 // like @Min(0) / @Max(120) / @DecimalMin("0.0"). It accepts both the implicit
 // `value` form (`@Min(0)`) and the named form (`@Min(value = 0)`). String
 // literals (DecimalMin/DecimalMax) are unquoted. Returns "" for non-scalar args.
-func javaAnnotationScalarArg(ann *sitter.Node, src []byte) string {
+func javaAnnotationScalarArg(ann ts.Node, src []byte) string {
 	args := ann.ChildByFieldName("arguments")
 	if args == nil {
 		return ""
@@ -283,7 +283,7 @@ func javaAnnotationScalarArg(ann *sitter.Node, src []byte) string {
 // javaAnnotationArgPairs returns the named element_value_pair arguments of an
 // annotation as a key→scalar map (`@Size(min = 1, max = 120)` →
 // {"min":"1","max":"120"}). Non-scalar values are dropped.
-func javaAnnotationArgPairs(ann *sitter.Node, src []byte) map[string]string {
+func javaAnnotationArgPairs(ann ts.Node, src []byte) map[string]string {
 	args := ann.ChildByFieldName("arguments")
 	if args == nil {
 		return nil
@@ -316,7 +316,7 @@ func javaAnnotationArgPairs(ann *sitter.Node, src []byte) map[string]string {
 // comma-joined property). String literals are kept only when numeric
 // (@DecimalMin("0.0")). Compound expressions yield "". Reuses javaLiteralText
 // for the literal kinds it recognises.
-func javaValidationScalar(n *sitter.Node, src []byte) string {
+func javaValidationScalar(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}

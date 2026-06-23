@@ -31,7 +31,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -62,7 +62,7 @@ func isI18nPythonSource(module string) bool {
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input. Keys at module scope attach to the file entity.
-func emitTranslationKeyEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitTranslationKeyEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -105,8 +105,8 @@ func emitTranslationKeyEdges(root *sitter.Node, file extractor.FileInput, entiti
 		return stack[len(stack)-1]
 	}
 
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -173,7 +173,7 @@ func emitTranslationKeyEdges(root *sitter.Node, file extractor.FileInput, entiti
 //     and the tail is a gettext-family function.
 //
 // Returns ok=false for an unrecognised callee or a dynamic first argument.
-func pyTranslationCall(call *sitter.Node, src []byte, i18nLocal, gettextModuleAliases map[string]bool) (string, bool) {
+func pyTranslationCall(call ts.Node, src []byte, i18nLocal, gettextModuleAliases map[string]bool) (string, bool) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return "", false
@@ -199,7 +199,7 @@ func pyTranslationCall(call *sitter.Node, src []byte, i18nLocal, gettextModuleAl
 // is a static string literal. Returns ok=false for a dynamic first argument
 // (variable, f-string, concatenation) — the honest-partial boundary. Uses
 // pyStringLiteralValue so an f-string with an interpolation yields "" (drop).
-func pyTransFirstStringArg(call *sitter.Node, src []byte) (string, bool) {
+func pyTransFirstStringArg(call ts.Node, src []byte) (string, bool) {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return "", false

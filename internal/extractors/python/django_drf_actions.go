@@ -46,7 +46,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -58,7 +58,7 @@ import (
 // matching Operation entity by Name ("<Class>.<method>").
 //
 // Mutates *entities in place. Safe to call with nil/empty input.
-func emitDRFActionProperties(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitDRFActionProperties(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -68,7 +68,7 @@ func emitDRFActionProperties(root *sitter.Node, file extractor.FileInput, entiti
 	walkDRFAction(root, "", file, entities)
 }
 
-func walkDRFAction(n *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func walkDRFAction(n ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if n == nil {
 		return
 	}
@@ -108,7 +108,7 @@ func walkDRFAction(n *sitter.Node, parentClass string, file extractor.FileInput,
 // decorated_definition wrapping a function_definition, scans the decorator
 // list for an `@action(...)` call. When found, the kwargs are parsed and
 // stamped on the matching SCOPE.Operation entity.
-func scanClassBodyForActions(body *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func scanClassBodyForActions(body ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	for i := 0; i < int(body.ChildCount()); i++ {
 		ch := body.Child(i)
 		if ch == nil || ch.Type() != "decorated_definition" {
@@ -178,7 +178,7 @@ func scanClassBodyForActions(body *sitter.Node, parentClass string, file extract
 // `@rest_framework.decorators.action(...)`, `@decorators.action(...)`).
 // Returns nil when no action decorator is present or the decorator is bare
 // (`@action` without parens).
-func findActionDecoratorCall(decoratedNode *sitter.Node, src []byte) *sitter.Node {
+func findActionDecoratorCall(decoratedNode ts.Node, src []byte) ts.Node {
 	for i := 0; i < int(decoratedNode.ChildCount()); i++ {
 		ch := decoratedNode.Child(i)
 		if ch == nil || ch.Type() != "decorator" {
@@ -210,7 +210,7 @@ func findActionDecoratorCall(decoratedNode *sitter.Node, src []byte) *sitter.Nod
 //	identifier            → "action"
 //	attribute (a.b.c)     → "c"
 //	dotted_name (a.b.c)   → "c"
-func decoratorLeaf(n *sitter.Node, src []byte) string {
+func decoratorLeaf(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -231,7 +231,7 @@ func decoratorLeaf(n *sitter.Node, src []byte) string {
 
 // parseActionKwargs reads the keyword arguments of an `@action(...)` call
 // node and returns the canonical property map.
-func parseActionKwargs(call *sitter.Node, src []byte) map[string]string {
+func parseActionKwargs(call ts.Node, src []byte) map[string]string {
 	out := map[string]string{}
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
@@ -294,7 +294,7 @@ func parseActionKwargs(call *sitter.Node, src []byte) map[string]string {
 // parseListLiteralStrings reads a Python `[ "a", "b" ]` or `( "a", "b" )`
 // node and returns the unquoted string literals it contains. Non-string
 // elements are skipped silently.
-func parseListLiteralStrings(n *sitter.Node, src []byte) []string {
+func parseListLiteralStrings(n ts.Node, src []byte) []string {
 	if n == nil {
 		return nil
 	}
@@ -325,7 +325,7 @@ func parseListLiteralStrings(n *sitter.Node, src []byte) []string {
 // parseListLiteralIdentifiers reads a Python `[ A, B.C ]` node and returns
 // the identifier-shaped elements as their full source text (so a dotted
 // attribute like `permissions.IsAdmin` survives intact).
-func parseListLiteralIdentifiers(n *sitter.Node, src []byte) []string {
+func parseListLiteralIdentifiers(n ts.Node, src []byte) []string {
 	if n == nil {
 		return nil
 	}

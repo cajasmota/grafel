@@ -32,7 +32,7 @@ package python
 import (
 	"strconv"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -59,7 +59,7 @@ var pyTracingSpanMethods = map[string]bool{
 // per OpenTelemetry span-creation site found in its body OR in its decorators.
 // The decoratorParent node, when non-nil, is the decorated_definition wrapping
 // funcNode; its decorator children are scanned for the decorator form.
-func extractPythonSpanHits(funcNode, decoratorParent *sitter.Node, src []byte) []pySpanHit {
+func extractPythonSpanHits(funcNode, decoratorParent ts.Node, src []byte) []pySpanHit {
 	if funcNode == nil {
 		return nil
 	}
@@ -121,7 +121,7 @@ func extractPythonSpanHits(funcNode, decoratorParent *sitter.Node, src []byte) [
 // pySpanFromCall inspects a `call` node and returns a pySpanHit when it is an
 // OpenTelemetry span-creation call (`<recv>.start_as_current_span(...)` or
 // `<recv>.start_span(...)`).
-func pySpanFromCall(call *sitter.Node, src []byte) (pySpanHit, bool) {
+func pySpanFromCall(call ts.Node, src []byte) (pySpanHit, bool) {
 	if call == nil || call.Type() != "call" {
 		return pySpanHit{}, false
 	}
@@ -160,7 +160,7 @@ func pySpanFromCall(call *sitter.Node, src []byte) (pySpanHit, bool) {
 // firstPositionalArg returns the first positional argument node inside an
 // argument_list, skipping the structural "(" "," ")" tokens and keyword
 // arguments. Returns nil when there is no positional argument.
-func firstPositionalArg(args *sitter.Node) *sitter.Node {
+func firstPositionalArg(args ts.Node) ts.Node {
 	if args == nil {
 		return nil
 	}
@@ -186,7 +186,7 @@ func firstPositionalArg(args *sitter.Node) *sitter.Node {
 
 // findFirstChildOfType returns the first descendant of root whose Type() equals
 // kind (depth-first), or nil. Used to locate the `call` inside a `decorator`.
-func findFirstChildOfType(root *sitter.Node, kind string) *sitter.Node {
+func findFirstChildOfType(root ts.Node, kind string) ts.Node {
 	if root == nil {
 		return nil
 	}
@@ -203,7 +203,7 @@ func findFirstChildOfType(root *sitter.Node, kind string) *sitter.Node {
 //
 // enclosingName is the bare function/method name, used to key the synthetic
 // stub for dynamic span names ("span:<fn>").
-func stampPythonTracingSpans(funcNode, decoratorParent *sitter.Node, enclosingName string, src []byte, out *[]types.EntityRecord, idx int) {
+func stampPythonTracingSpans(funcNode, decoratorParent ts.Node, enclosingName string, src []byte, out *[]types.EntityRecord, idx int) {
 	if funcNode == nil || out == nil || idx < 0 || idx >= len(*out) {
 		return
 	}

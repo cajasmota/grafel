@@ -51,7 +51,7 @@ package java
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -65,7 +65,7 @@ import (
 // fileEntity must be non-nil. On return, fileEntity.Relationships will
 // contain one IMPORTS record per import_declaration node found in root.
 // Malformed import nodes (empty text after stripping) are silently dropped.
-func attachImportRelationships(root *sitter.Node, file extractor.FileInput, fileEntity *types.EntityRecord) {
+func attachImportRelationships(root ts.Node, file extractor.FileInput, fileEntity *types.EntityRecord) {
 	if root == nil || fileEntity == nil {
 		return
 	}
@@ -91,7 +91,7 @@ func attachImportRelationships(root *sitter.Node, file extractor.FileInput, file
 // absent) and wildcard="1" is set, matching the Python extractor contract.
 //
 // Returns (zero, false) for empty or unparseable import text.
-func buildImportRel(node *sitter.Node, file extractor.FileInput) (types.RelationshipRecord, bool) {
+func buildImportRel(node ts.Node, file extractor.FileInput) (types.RelationshipRecord, bool) {
 	raw := strings.TrimSpace(string(file.Content[node.StartByte():node.EndByte()]))
 	raw = strings.TrimPrefix(raw, "import ")
 	_ = strings.HasPrefix(raw, "static ") // isStatic recorded below via leaf

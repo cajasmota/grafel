@@ -7,11 +7,11 @@ import (
 	"context"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tspython "github.com/smacker/go-tree-sitter/python"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/python"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -22,9 +22,12 @@ class DeficiencyCreateSerializer:
     fields = ['title', 'body']
     permission_classes = [IsAuthenticated]
 `)
-	p := sitter.NewParser()
-	p.SetLanguage(tspython.GetLanguage())
-	tree, err := p.ParseCtx(context.Background(), nil, src)
+	p, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tspython.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer p.Close()
+	tree, err := p.Parse(src)
 	if err != nil {
 		t.Fatalf("parse: %v", err)
 	}
@@ -33,7 +36,7 @@ class DeficiencyCreateSerializer:
 		Path:     "core/serializers/deficiency_serializer.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	ext, ok := extractor.Get("python")
 	if !ok {

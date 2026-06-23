@@ -17,7 +17,7 @@ func runJava(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Test.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

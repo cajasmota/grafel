@@ -26,7 +26,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -43,7 +43,7 @@ type pyDiscriminatorHit struct {
 // extractPythonDiscriminators walks the body node (a function/method body block)
 // and returns a comma-separated "var=value" string for every discriminator
 // comparison found. Returns "" when no discriminators are found or body is nil.
-func extractPythonDiscriminators(body *sitter.Node, src []byte) string {
+func extractPythonDiscriminators(body ts.Node, src []byte) string {
 	hits := extractPythonDiscriminatorHits(body, src)
 	if len(hits) == 0 {
 		return ""
@@ -59,7 +59,7 @@ func extractPythonDiscriminators(body *sitter.Node, src []byte) string {
 // pyDiscriminatorHit per unique (var, literal) pair found. Used by
 // stampPythonDiscriminators (#2666) to emit DISCRIMINATES_ON edges with
 // line + literal properties.
-func extractPythonDiscriminatorHits(body *sitter.Node, src []byte) []pyDiscriminatorHit {
+func extractPythonDiscriminatorHits(body ts.Node, src []byte) []pyDiscriminatorHit {
 	if body == nil {
 		return nil
 	}
@@ -97,7 +97,7 @@ func extractPythonDiscriminatorHits(body *sitter.Node, src []byte) []pyDiscrimin
 //	(child[3] = another operator, child[4] = another operand for chained comparisons)
 //
 // We only inspect the first comparison pair (child[0..2]).
-func discriminatorFromPythonComparison(n *sitter.Node, src []byte) (varName, litVal string, ok bool) {
+func discriminatorFromPythonComparison(n ts.Node, src []byte) (varName, litVal string, ok bool) {
 	if n == nil || n.Type() != "comparison_operator" {
 		return "", "", false
 	}
@@ -149,7 +149,7 @@ func discriminatorFromPythonComparison(n *sitter.Node, src []byte) (varName, lit
 //   - "true"      — Python True keyword
 //   - "false"     — Python False keyword
 //   - "none"      — Python None keyword
-func isPythonDiscriminatorLiteral(n *sitter.Node) bool {
+func isPythonDiscriminatorLiteral(n ts.Node) bool {
 	if n == nil {
 		return false
 	}
@@ -166,7 +166,7 @@ func isPythonDiscriminatorLiteral(n *sitter.Node) bool {
 // pythonLiteralValue extracts the display value from a Python literal node.
 // String literals have their surrounding quotes stripped. Other literals
 // return their raw text.
-func pythonLiteralValue(n *sitter.Node, src []byte) string {
+func pythonLiteralValue(n ts.Node, src []byte) string {
 	if n == nil {
 		return ""
 	}
@@ -207,7 +207,7 @@ func pythonLiteralValue(n *sitter.Node, src []byte) string {
 // stampPythonDiscriminators stamps Properties["discriminators"] on the entity
 // at index idx in the out slice when discriminators are found in body.
 // Called immediately after appending a function/method entity.
-func stampPythonDiscriminators(body *sitter.Node, src []byte, out *[]types.EntityRecord, idx int) {
+func stampPythonDiscriminators(body ts.Node, src []byte, out *[]types.EntityRecord, idx int) {
 	if body == nil || out == nil || idx < 0 || idx >= len(*out) {
 		return
 	}

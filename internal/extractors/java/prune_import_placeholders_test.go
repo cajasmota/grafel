@@ -47,7 +47,7 @@ func extractJavaForTest(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Test.java",
 		Language: "java",
 		Content:  []byte(src),
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

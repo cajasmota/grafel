@@ -75,7 +75,7 @@ func TestPackageModule_InitPyWithClassAndFunction(t *testing.T) {
 		Path:     "core/__init__.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {
@@ -136,7 +136,7 @@ func TestPackageModule_SubPackageInitPy(t *testing.T) {
 		Path:     "core/views/__init__.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {
@@ -177,7 +177,7 @@ func TestPackageModule_PlainPyFile(t *testing.T) {
 		Path:     "core/tasks.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {
@@ -216,7 +216,7 @@ func TestPackageModule_EmptyInitPy(t *testing.T) {
 		Path:     "mypkg/__init__.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {

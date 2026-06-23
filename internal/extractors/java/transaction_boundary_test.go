@@ -18,7 +18,7 @@ func extractJavaTx(t *testing.T, src string) []types.EntityRecord {
 		t.Fatal("java extractor not registered")
 	}
 	recs, err := ext.Extract(context.Background(), extractor.FileInput{
-		Path: "Service.java", Content: []byte(src), Language: "java", Tree: tree,
+		Path: "Service.java", Content: []byte(src), Language: "java", TSTree: tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

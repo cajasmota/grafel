@@ -36,7 +36,7 @@ func extractBundleC(t *testing.T, path, src string) []types.EntityRecord {
 		Path:     path,
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	ents, err := ext.Extract(context.Background(), file)
 	if err != nil {

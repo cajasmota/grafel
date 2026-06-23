@@ -42,7 +42,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -52,7 +52,7 @@ import (
 // ...)` call sites and appends REFERENCES edges from the file entity to
 // each ViewSet's structural-ref. Safe with nil/empty inputs and non-urls
 // files (no-op).
-func emitRouterRegisterEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitRouterRegisterEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -79,8 +79,8 @@ func emitRouterRegisterEdges(root *sitter.Node, file extractor.FileInput, entiti
 	// property captures the first prefix seen.
 	emitted := make(map[string]bool)
 
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -124,7 +124,7 @@ func isRouterRegisterCandidateFile(path string) bool {
 // edge from the file entity to a structural-ref of the second argument
 // (treated as the ViewSet class). Non-matching calls return silently.
 func tryEmitRegisterEdge(
-	callNode *sitter.Node,
+	callNode ts.Node,
 	file extractor.FileInput,
 	fileIdx int,
 	entities *[]types.EntityRecord,
@@ -150,7 +150,7 @@ func tryEmitRegisterEdge(
 
 	// Collect positional args (skipping punctuation) and capture the
 	// `basename=` kwarg when present.
-	var positional []*sitter.Node
+	var positional []ts.Node
 	basename := ""
 	for i := 0; i < int(argsNode.ChildCount()); i++ {
 		arg := argsNode.Child(i)

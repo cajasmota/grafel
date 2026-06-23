@@ -47,7 +47,7 @@ package python
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -121,7 +121,7 @@ var pydanticConstrainedTypes = map[string]struct{}{
 // Parameters mirror emitDRFSerializerFieldRefs: the [before, after) window
 // bounds the slice region holding this class's field entities.
 func emitPythonFieldValidations(
-	body *sitter.Node,
+	body ts.Node,
 	file extractor.FileInput,
 	parentClass string,
 	classIdx int,
@@ -220,8 +220,8 @@ func emitPythonFieldValidations(
 // single field declaration: the RHS value when it is a recognised constraint
 // call, plus any Field()/constrained-type call embedded in the annotation
 // (Annotated[T, Field(...)] or a bare conint(...)/constr(...) annotation).
-func constraintCalls(annot, rhs *sitter.Node, src []byte) []*sitter.Node {
-	var calls []*sitter.Node
+func constraintCalls(annot, rhs ts.Node, src []byte) []ts.Node {
+	var calls []ts.Node
 	if rhs != nil && rhs.Type() == "call" {
 		calls = append(calls, rhs)
 	}
@@ -241,7 +241,7 @@ func constraintCalls(annot, rhs *sitter.Node, src []byte) []*sitter.Node {
 // that look like Field(...) or a Pydantic constrained-type constructor. It
 // recurses through generic_type / type_parameter so Annotated[str, Field(...)]
 // and Optional[conint(gt=0)] are reached.
-func collectAnnotationCalls(n *sitter.Node, src []byte, out *[]*sitter.Node) {
+func collectAnnotationCalls(n ts.Node, src []byte, out *[]ts.Node) {
 	if n == nil {
 		return
 	}
@@ -258,7 +258,7 @@ func collectAnnotationCalls(n *sitter.Node, src []byte, out *[]*sitter.Node) {
 
 // isConstraintCall reports whether a call node is a Pydantic Field(...) or a
 // recognised constrained-type constructor.
-func isConstraintCall(call *sitter.Node, src []byte) bool {
+func isConstraintCall(call ts.Node, src []byte) bool {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return false
@@ -273,7 +273,7 @@ func isConstraintCall(call *sitter.Node, src []byte) bool {
 
 // callConstraintChips derives the constraint chips for a single recognised
 // constraint call (Pydantic Field()/con*() or a DRF serializers.X()).
-func callConstraintChips(call *sitter.Node, src []byte) []string {
+func callConstraintChips(call ts.Node, src []byte) []string {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return nil
@@ -340,7 +340,7 @@ func callConstraintChips(call *sitter.Node, src []byte) []string {
 }
 
 // drfBoolChip2chip maps a DRF boolean kwarg's value to its chip (or "").
-func drfBoolChip2chip(bc drfBoolChip, val *sitter.Node, src []byte) string {
+func drfBoolChip2chip(bc drfBoolChip, val ts.Node, src []byte) string {
 	if val == nil {
 		return ""
 	}
@@ -355,7 +355,7 @@ func drfBoolChip2chip(bc drfBoolChip, val *sitter.Node, src []byte) string {
 
 // callHasEllipsisArg reports whether the call has a leading `...` positional
 // argument (Pydantic Field(..., …) → required).
-func callHasEllipsisArg(call *sitter.Node) bool {
+func callHasEllipsisArg(call ts.Node) bool {
 	args := call.ChildByFieldName("arguments")
 	if args == nil {
 		return false
@@ -380,7 +380,7 @@ func callHasEllipsisArg(call *sitter.Node) bool {
 
 // callLeafName returns the trailing identifier of a call's function node
 // (`serializers.CharField` → "CharField", `Field` → "Field").
-func callLeafName(fn *sitter.Node, src []byte) string {
+func callLeafName(fn ts.Node, src []byte) string {
 	if fn == nil {
 		return ""
 	}
@@ -398,7 +398,7 @@ func callLeafName(fn *sitter.Node, src []byte) string {
 // annotationIsOptional reports whether an annotation expression denotes an
 // Optional value: `Optional[...]`, `Optional`, or a `X | None` / `None | X`
 // union.
-func annotationIsOptional(annot *sitter.Node, src []byte) bool {
+func annotationIsOptional(annot ts.Node, src []byte) bool {
 	text := nodeText(annot, src)
 	if strings.Contains(text, "Optional[") || text == "Optional" {
 		return true
@@ -415,7 +415,7 @@ func annotationIsOptional(annot *sitter.Node, src []byte) bool {
 // name as string positional arguments. `@field_validator("name", "email")` →
 // {"name","email"}. `@validator("*")` is ignored (too broad for a per-field
 // marker).
-func collectValidatorFieldTargets(body *sitter.Node, src []byte) map[string]bool {
+func collectValidatorFieldTargets(body ts.Node, src []byte) map[string]bool {
 	out := map[string]bool{}
 	for i := 0; i < int(body.ChildCount()); i++ {
 		stmt := body.Child(i)
@@ -460,7 +460,7 @@ func collectValidatorFieldTargets(body *sitter.Node, src []byte) map[string]bool
 }
 
 // firstNamedChild returns the first named child of a node, or nil.
-func firstNamedChild(n *sitter.Node) *sitter.Node {
+func firstNamedChild(n ts.Node) ts.Node {
 	if n == nil || n.NamedChildCount() == 0 {
 		return nil
 	}
@@ -469,7 +469,7 @@ func firstNamedChild(n *sitter.Node) *sitter.Node {
 
 // leafIdentText returns the trailing identifier of an identifier/attribute
 // node (`pydantic.field_validator` → "field_validator").
-func leafIdentText(n *sitter.Node, src []byte) string {
+func leafIdentText(n ts.Node, src []byte) string {
 	t := nodeText(n, src)
 	if dot := strings.LastIndexByte(t, '.'); dot >= 0 {
 		return t[dot+1:]
@@ -482,7 +482,7 @@ func leafIdentText(n *sitter.Node, src []byte) string {
 // (strings with commas, regexes, expressions) yield "" so the caller folds a
 // bare marker instead. Strings are dropped (they may contain commas which
 // would corrupt the comma-joined property).
-func scalarText(val *sitter.Node, src []byte) string {
+func scalarText(val ts.Node, src []byte) string {
 	if val == nil {
 		return ""
 	}

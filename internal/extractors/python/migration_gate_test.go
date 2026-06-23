@@ -14,18 +14,21 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
-	sitter "github.com/smacker/go-tree-sitter"
 	tspython "github.com/smacker/go-tree-sitter/python"
 )
 
-// parsePython parses Python source using tree-sitter and returns the parse tree.
-func parsePython(t *testing.T, src []byte) *sitter.Tree {
+// parsePython parses Python source into a ts.Tree via the smacker adapter (B2 #5418).
+func parsePython(t *testing.T, src []byte) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tspython.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
 	defer parser.Close()
-	parser.SetLanguage(tspython.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, src)
+	tree, err := parser.Parse(src)
 	if err != nil {
 		t.Fatalf("parse error: %v", err)
 	}
@@ -36,14 +39,14 @@ func parsePython(t *testing.T, src []byte) *sitter.Tree {
 }
 
 // extractPythonWithPath extracts entities from Python source with the given file path.
-func extractPythonWithPath(t *testing.T, src []byte, path string, tree *sitter.Tree) []types.EntityRecord {
+func extractPythonWithPath(t *testing.T, src []byte, path string, tree ts.Tree) []types.EntityRecord {
 	t.Helper()
 	ext := &Extractor{}
 	file := extractor.FileInput{
 		Path:     path,
 		Language: "python",
 		Content:  src,
-		Tree:     tree,
+		TSTree:   tree,
 		RepoRoot: "/test",
 	}
 	entities, err := ext.Extract(context.Background(), file)

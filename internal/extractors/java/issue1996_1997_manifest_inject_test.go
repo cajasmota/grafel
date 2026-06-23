@@ -48,7 +48,7 @@ public class TransfersController extends BaseController implements ApiService, A
 		Path:     "client_fixture_x/api/TransfersController.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract returned error: %v", err)

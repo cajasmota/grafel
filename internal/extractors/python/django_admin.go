@@ -34,7 +34,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -59,7 +59,7 @@ var adminModelAdminProps = []string{
 
 // emitDjangoAdminEdges is the entry point invoked from Extract. No-op for
 // non-admin files.
-func emitDjangoAdminEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitDjangoAdminEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -123,10 +123,10 @@ type adminSiteRegisterPair struct {
 // Both positional and dotted-identifier args survive intact. The first arg
 // may itself be a list `[M1, M2]` (Django supports registering multiple
 // models in one call); we expand into one pair per model.
-func collectAdminSiteRegisterCalls(root *sitter.Node, src []byte) []adminSiteRegisterPair {
+func collectAdminSiteRegisterCalls(root ts.Node, src []byte) []adminSiteRegisterPair {
 	var out []adminSiteRegisterPair
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -183,10 +183,10 @@ type adminDecoratorRegister struct {
 // collectAdminDecoratorRegisterCalls scans the module for class definitions
 // whose decorator list includes `@admin.register(M [, M2, …])` and returns
 // the captured model list + admin class name.
-func collectAdminDecoratorRegisterCalls(root *sitter.Node, src []byte) []adminDecoratorRegister {
+func collectAdminDecoratorRegisterCalls(root ts.Node, src []byte) []adminDecoratorRegister {
 	var out []adminDecoratorRegister
-	var walk func(n *sitter.Node)
-	walk = func(n *sitter.Node) {
+	var walk func(n ts.Node)
+	walk = func(n ts.Node) {
 		if n == nil {
 			return
 		}
@@ -249,9 +249,9 @@ func collectAdminDecoratorRegisterCalls(root *sitter.Node, src []byte) []adminDe
 // that extends ModelAdmin / admin.ModelAdmin / TabularInline / StackedInline,
 // captures the canonical ModelAdmin attribute keys (list_display, etc.) as
 // flat properties on the class entity. Also tags @admin.action methods.
-func captureModelAdminProperties(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
-	var walk func(n *sitter.Node, parentClass string)
-	walk = func(n *sitter.Node, parentClass string) {
+func captureModelAdminProperties(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+	var walk func(n ts.Node, parentClass string)
+	walk = func(n ts.Node, parentClass string) {
 		if n == nil {
 			return
 		}
@@ -312,7 +312,7 @@ func captureModelAdminProperties(root *sitter.Node, file extractor.FileInput, en
 }
 
 // handleAdminClass captures ModelAdmin properties on the matching class entity.
-func handleAdminClass(cd *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func handleAdminClass(cd ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	nameNode := cd.ChildByFieldName("name")
 	if nameNode == nil {
 		return
@@ -353,7 +353,7 @@ func handleAdminClass(cd *sitter.Node, parentClass string, file extractor.FileIn
 // classExtendsAdmin reports whether the class extends one of the Django
 // admin base classes: ModelAdmin, admin.ModelAdmin, TabularInline,
 // StackedInline, admin.TabularInline, admin.StackedInline.
-func classExtendsAdmin(cd *sitter.Node, src []byte) bool {
+func classExtendsAdmin(cd ts.Node, src []byte) bool {
 	supers := cd.ChildByFieldName("superclasses")
 	if supers == nil {
 		return false
@@ -375,7 +375,7 @@ func classExtendsAdmin(cd *sitter.Node, src []byte) bool {
 // method and, when found, stamps Properties["admin_action"]="true" plus the
 // captured description / permissions kwargs on the matching Operation
 // entity.
-func stampAdminActionOnMethod(decorated, inner *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func stampAdminActionOnMethod(decorated, inner ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	methodNameNode := inner.ChildByFieldName("name")
 	if methodNameNode == nil {
 		return

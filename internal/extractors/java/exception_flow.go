@@ -22,7 +22,7 @@ package java
 import (
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -33,7 +33,7 @@ import (
 //
 // entities[0] MUST be the file entity. Mutates *entities in place. Safe with
 // nil / empty input.
-func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitExceptionFlowEdges(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
@@ -41,8 +41,8 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 
 	var edges []extractor.ExceptionEdge
 
-	var walk func(n *sitter.Node, enclosingClass, enclosingMethod string)
-	walk = func(n *sitter.Node, enclosingClass, enclosingMethod string) {
+	var walk func(n ts.Node, enclosingClass, enclosingMethod string)
+	walk = func(n ts.Node, enclosingClass, enclosingMethod string) {
 		if n == nil {
 			return
 		}
@@ -100,8 +100,8 @@ func emitExceptionFlowEdges(root *sitter.Node, file extractor.FileInput, entitie
 // javaThrowType returns the constructed exception class for `throw new X(...)`
 // (including `throw new pkg.X(...)` → bare X), or "" for a re-throw of a
 // variable / computed expression (`throw e;`) which carries no NEW type.
-func javaThrowType(throwNode *sitter.Node, src []byte) string {
-	var expr *sitter.Node
+func javaThrowType(throwNode ts.Node, src []byte) string {
+	var expr ts.Node
 	for i := 0; i < int(throwNode.NamedChildCount()); i++ {
 		c := throwNode.NamedChild(i)
 		if c != nil {
@@ -122,8 +122,8 @@ func javaThrowType(throwNode *sitter.Node, src []byte) string {
 // javaThrowsClauseTypes returns each type named in a method/constructor
 // `throws A, B, C` clause. The grammar exposes this as a `throws` child node
 // whose named children are the thrown types.
-func javaThrowsClauseTypes(declNode *sitter.Node, src []byte) []string {
-	var throwsNode *sitter.Node
+func javaThrowsClauseTypes(declNode ts.Node, src []byte) []string {
+	var throwsNode ts.Node
 	for i := 0; i < int(declNode.ChildCount()); i++ {
 		c := declNode.Child(i)
 		if c != nil && c.Type() == "throws" {
@@ -150,7 +150,7 @@ func javaThrowsClauseTypes(declNode *sitter.Node, src []byte) []string {
 // javaCatchTypes returns each caught type from a catch clause, expanding a
 // multi-catch `catch (A | B e)` into {A, B}. The grammar nests a
 // catch_formal_parameter → catch_type whose named children are the union types.
-func javaCatchTypes(catchNode *sitter.Node, src []byte) []string {
+func javaCatchTypes(catchNode ts.Node, src []byte) []string {
 	param := findFirstChildOfType(catchNode, "catch_formal_parameter")
 	if param == nil {
 		return nil
@@ -178,7 +178,7 @@ func javaCatchTypes(catchNode *sitter.Node, src []byte) []string {
 // findFirstChildOfType returns the first (depth-first) descendant of n whose
 // node type equals typ, or nil. Used to reach catch_formal_parameter /
 // catch_type without hard-coding child indices across grammar versions.
-func findFirstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func findFirstChildOfType(n ts.Node, typ string) ts.Node {
 	if n == nil {
 		return nil
 	}

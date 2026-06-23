@@ -33,7 +33,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
@@ -68,7 +68,7 @@ var dataclassDecoratorNames = map[string]struct{}{
 //
 // Runs after the primary walk so the class entities it annotates already
 // exist in *out. Append-only for type aliases; in-place stamp for classes.
-func applyTypeSystemAnnotations(root *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func applyTypeSystemAnnotations(root ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	if root == nil {
 		return
 	}
@@ -109,7 +109,7 @@ func applyTypeSystemAnnotations(root *sitter.Node, file extractor.FileInput, out
 // partial: the dict form requires an UPPER_SNAKE / PascalCase name AND at least
 // one statically-literal value; a dict whose values are all non-literal
 // expressions (callables, calls) yields no node.
-func buildConstantSetFromAssignment(asn *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildConstantSetFromAssignment(asn ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	left := asn.ChildByFieldName("left")
 	if left == nil || left.Type() != "identifier" {
 		return types.EntityRecord{}, false
@@ -151,7 +151,7 @@ func buildConstantSetFromAssignment(asn *sitter.Node, file extractor.FileInput) 
 // statically-known literal (number/string/bool/None) or "" for non-literal
 // value expressions (recorded so the key is still enumerable). Each member
 // carries the pair's source line.
-func pythonDictMembers(dict *sitter.Node, src []byte) []extractor.EnumMember {
+func pythonDictMembers(dict ts.Node, src []byte) []extractor.EnumMember {
 	var out []extractor.EnumMember
 	for i := 0; i < int(dict.NamedChildCount()); i++ {
 		pair := dict.NamedChild(i)
@@ -184,13 +184,13 @@ func pythonDictMembers(dict *sitter.Node, src []byte) []extractor.EnumMember {
 // pythonLiteralAliasMembers returns the literal arms of a `Literal[...]`
 // subscript as value-set members (each arm name==value), or ok=false when the
 // subscripted head is not `Literal` or any arm is non-literal.
-func pythonLiteralAliasMembers(sub *sitter.Node, src []byte) ([]extractor.EnumMember, bool) {
+func pythonLiteralAliasMembers(sub ts.Node, src []byte) ([]extractor.EnumMember, bool) {
 	v := sub.ChildByFieldName("value")
 	if v == nil || baseLeafName(v, src) != "Literal" {
 		return nil, false
 	}
 	sl := sub.ChildByFieldName("subscript")
-	var args []*sitter.Node
+	var args []ts.Node
 	if sl != nil {
 		args = append(args, sl)
 	} else {
@@ -218,7 +218,7 @@ func pythonLiteralAliasMembers(sub *sitter.Node, src []byte) ([]extractor.EnumMe
 // collectLiteralArms appends one value-set member per string/number literal arm
 // found under n. Any non-literal arm makes the whole alias not a closed value-
 // set, so it is skipped (the caller drops it if nothing literal remains).
-func collectLiteralArms(n *sitter.Node, src []byte, line int, out *[]extractor.EnumMember) {
+func collectLiteralArms(n ts.Node, src []byte, line int, out *[]extractor.EnumMember) {
 	if n == nil {
 		return
 	}
@@ -249,7 +249,7 @@ func hasLiteralValue(members []extractor.EnumMember) bool {
 // annotateTypeClass inspects one class_definition node, classifies it against
 // the Type System taxonomy from its base list (+ decorators), and stamps the
 // matching SCOPE.Component/class entity in *out. No-op for ordinary classes.
-func annotateTypeClass(cls *sitter.Node, file extractor.FileInput, out *[]types.EntityRecord) {
+func annotateTypeClass(cls ts.Node, file extractor.FileInput, out *[]types.EntityRecord) {
 	nameNode := cls.ChildByFieldName("name")
 	if nameNode == nil {
 		return
@@ -359,7 +359,7 @@ func stampClassTypeProps(out *[]types.EntityRecord, filePath, bareName string, p
 // `typing.Protocol` → "Protocol", `TypedDict` → "TypedDict". Keyword arguments
 // (metaclass=, total=) are skipped. Generic subscripts (`Protocol[T]`) reduce
 // to the leaf of the value being subscripted.
-func classBaseLeafNames(cls *sitter.Node, src []byte) []string {
+func classBaseLeafNames(cls ts.Node, src []byte) []string {
 	args := cls.ChildByFieldName("superclasses")
 	if args == nil {
 		// Grammar exposes the base list as an unnamed argument_list child.
@@ -388,7 +388,7 @@ func classBaseLeafNames(cls *sitter.Node, src []byte) []string {
 
 // baseLeafName reduces a single base-class expression node to its leaf
 // identifier. Returns "" for keyword arguments (metaclass=, total=).
-func baseLeafName(arg *sitter.Node, src []byte) string {
+func baseLeafName(arg ts.Node, src []byte) string {
 	switch arg.Type() {
 	case "identifier":
 		return nodeText(arg, src)
@@ -410,7 +410,7 @@ func baseLeafName(arg *sitter.Node, src []byte) string {
 // classHasDataclassDecorator reports whether the class_definition is wrapped in
 // a decorated_definition whose decorator list includes @dataclass (bare or
 // `@dataclasses.dataclass`, with or without a call: `@dataclass(frozen=True)`).
-func classHasDataclassDecorator(cls *sitter.Node, src []byte) bool {
+func classHasDataclassDecorator(cls ts.Node, src []byte) bool {
 	parent := cls.Parent()
 	if parent == nil || parent.Type() != "decorated_definition" {
 		return false
@@ -431,7 +431,7 @@ func classHasDataclassDecorator(cls *sitter.Node, src []byte) bool {
 
 // decoratorLeafName extracts the leaf identifier of a decorator node, handling
 // `@name`, `@mod.name`, and the call forms `@name(...)` / `@mod.name(...)`.
-func decoratorLeafName(dec *sitter.Node, src []byte) string {
+func decoratorLeafName(dec ts.Node, src []byte) string {
 	// A decorator's named child is the expression after '@'.
 	for i := 0; i < int(dec.NamedChildCount()); i++ {
 		expr := dec.NamedChild(i)
@@ -456,7 +456,7 @@ func decoratorLeafName(dec *sitter.Node, src []byte) string {
 
 // decoratorLeafFromExpr reduces a decorator-call function expression to its
 // leaf identifier (`dataclass` from `dataclasses.dataclass(...)`).
-func decoratorLeafFromExpr(fn *sitter.Node, src []byte) string {
+func decoratorLeafFromExpr(fn ts.Node, src []byte) string {
 	switch fn.Type() {
 	case "identifier":
 		return nodeText(fn, src)
@@ -470,7 +470,7 @@ func decoratorLeafFromExpr(fn *sitter.Node, src []byte) string {
 
 // classMethodNames returns the names of methods (function_definition nodes)
 // declared directly in the class body — used for protocol_methods.
-func classMethodNames(cls *sitter.Node, src []byte) []string {
+func classMethodNames(cls ts.Node, src []byte) []string {
 	body := cls.ChildByFieldName("body")
 	if body == nil {
 		return nil
@@ -501,7 +501,7 @@ func classMethodNames(cls *sitter.Node, src []byte) []string {
 // number, string, or `True/False/None`; computed RHS (call, attribute,
 // arithmetic) yields a value-less member so the name is recorded honestly
 // without fabricating a value.
-func classEnumMembers(cls *sitter.Node, src []byte) []extractor.EnumMember {
+func classEnumMembers(cls ts.Node, src []byte) []extractor.EnumMember {
 	body := cls.ChildByFieldName("body")
 	if body == nil {
 		return nil
@@ -540,7 +540,7 @@ func classEnumMembers(cls *sitter.Node, src []byte) []extractor.EnumMember {
 // attribute access) so the member is recorded without a fabricated value.
 // Django TextChoices/IntegerChoices `("db", "Label")` tuples resolve to the
 // first element (the stored DB value), which is the parity-relevant literal.
-func pythonEnumLiteralValue(rhs *sitter.Node, src []byte) string {
+func pythonEnumLiteralValue(rhs ts.Node, src []byte) string {
 	if rhs == nil {
 		return ""
 	}
@@ -566,7 +566,7 @@ func pythonEnumLiteralValue(rhs *sitter.Node, src []byte) string {
 // (`x: int`, `name: str = ""`) used for TypedDict / NamedTuple / dataclass
 // shapes. Only annotated assignments count — a bare `x = 1` is not a field of
 // a TypedDict and is skipped.
-func classAnnotatedFields(cls *sitter.Node, src []byte) []string {
+func classAnnotatedFields(cls ts.Node, src []byte) []string {
 	body := cls.ChildByFieldName("body")
 	if body == nil {
 		return nil
@@ -603,8 +603,8 @@ func classAnnotatedFields(cls *sitter.Node, src []byte) []string {
 // moduleLevelAssignments returns the assignment nodes that live directly at
 // module scope (children of the root module's top-level expression_statements),
 // excluding any assignment nested inside a class or function body.
-func moduleLevelAssignments(root *sitter.Node) []*sitter.Node {
-	var out []*sitter.Node
+func moduleLevelAssignments(root ts.Node) []ts.Node {
+	var out []ts.Node
 	for i := 0; i < int(root.NamedChildCount()); i++ {
 		stmt := root.NamedChild(i)
 		if stmt == nil || stmt.Type() != "expression_statement" {
@@ -627,7 +627,7 @@ func moduleLevelAssignments(root *sitter.Node) []*sitter.Node {
 //	X = A | B                   — PEP 604 union of bare type names (PascalCase)
 //
 // A plain `X = SomeValue()` or `X = 3` is NOT a type alias and returns false.
-func buildAssignmentTypeAlias(asn *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildAssignmentTypeAlias(asn ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	left := asn.ChildByFieldName("left")
 	if left == nil || left.Type() != "identifier" {
 		return types.EntityRecord{}, false
@@ -658,7 +658,7 @@ func buildAssignmentTypeAlias(asn *sitter.Node, file extractor.FileInput) (types
 
 // typeAnnotationLeaf reduces an annotation node (the `type` field of an
 // annotated assignment) to its leaf identifier.
-func typeAnnotationLeaf(ann *sitter.Node, src []byte) string {
+func typeAnnotationLeaf(ann ts.Node, src []byte) string {
 	target := ann
 	if ann.Type() == "type" && ann.NamedChildCount() > 0 {
 		target = ann.NamedChild(0)
@@ -689,7 +689,7 @@ var typingAliasHeads = map[string]struct{}{
 // by design: only the typing-module subscript heads and PEP 604 unions of
 // PascalCase type names qualify, so runtime-value assignments are never
 // misclassified.
-func rhsLooksLikeTypeExpression(rhs *sitter.Node, src []byte) bool {
+func rhsLooksLikeTypeExpression(rhs ts.Node, src []byte) bool {
 	switch rhs.Type() {
 	case "subscript":
 		// Union[...], Dict[str, int], etc. — match the subscripted head leaf.
@@ -714,7 +714,7 @@ func rhsLooksLikeTypeExpression(rhs *sitter.Node, src []byte) bool {
 // isTypeOperand reports whether a PEP 604 union operand is a type reference:
 // a PascalCase identifier, a None literal, a dotted attribute whose leaf is
 // PascalCase, or a subscript over one of those.
-func isTypeOperand(n *sitter.Node, src []byte) bool {
+func isTypeOperand(n ts.Node, src []byte) bool {
 	if n == nil {
 		return false
 	}
@@ -752,7 +752,7 @@ func isPascalCase(s string) bool {
 // buildPEP695TypeAlias builds a SCOPE.Schema/type_alias entity for a PEP 695
 // `type X = ...` statement (Python 3.12+). These are unambiguous type aliases
 // by grammar, so no RHS heuristic is needed.
-func buildPEP695TypeAlias(ts *sitter.Node, file extractor.FileInput) (types.EntityRecord, bool) {
+func buildPEP695TypeAlias(ts ts.Node, file extractor.FileInput) (types.EntityRecord, bool) {
 	// type_alias_statement children: type (lhs name) '=' type (rhs).
 	left := ts.ChildByFieldName("left")
 	right := ts.ChildByFieldName("right")
@@ -776,7 +776,7 @@ func buildPEP695TypeAlias(ts *sitter.Node, file extractor.FileInput) (types.Enti
 // by the PEP 695 and assignment code paths. rhs may be nil (then no type_body
 // property is set). The pep613 flag records whether the alias was explicitly
 // annotated / PEP 695 (vs inferred from a typing subscript heuristic).
-func newTypeAliasEntity(name string, rhs, span *sitter.Node, file extractor.FileInput, explicit bool) types.EntityRecord {
+func newTypeAliasEntity(name string, rhs, span ts.Node, file extractor.FileInput, explicit bool) types.EntityRecord {
 	mod := filePathToModule(file.Path)
 	qn := name
 	if mod != "" {

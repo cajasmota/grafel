@@ -58,7 +58,7 @@ class Article(models.Model):
 		Path:     "blog/models.py",
 		Content:  []byte(src),
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)

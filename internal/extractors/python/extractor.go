@@ -30,12 +30,11 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
-	tspython "github.com/smacker/go-tree-sitter/python"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -102,16 +101,24 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 		return nil, nil
 	}
 
-	// Parse with a fresh parser when tree is nil (e.g. in tests or malformed input).
-	tree := file.Tree
+	// If a pre-parsed tree was supplied by the pipeline, reuse it. Otherwise
+	// parse inline via the language's grammar adapter — this path is for direct
+	// test callers that hand the extractor raw content with no tree (B2 #5418).
+	tree := file.TSTree
 	if tree == nil {
-		parser := sitter.NewParser()
-		parser.SetLanguage(tspython.GetLanguage())
-		var parseErr error
-		tree, parseErr = parser.ParseCtx(ctx, nil, file.Content)
+		parser, parseErr := pythonAdapter.NewParser(pythonGrammar())
+		if parseErr != nil {
+			return nil, fmt.Errorf("python extractor: parser init failed: %w", parseErr)
+		}
+		defer parser.Close()
+		tree, parseErr = parser.Parse(file.Content)
 		if parseErr != nil {
 			return nil, fmt.Errorf("python extractor: parse failed: %w", parseErr)
 		}
+		if tree == nil {
+			return nil, fmt.Errorf("python extractor: parse produced nil tree")
+		}
+		defer tree.Close()
 	}
 
 	root := tree.RootNode()
@@ -600,7 +607,7 @@ func isDjangoMigrationFile(path string) bool {
 // Issue #68 — multi-level nesting is preserved by appending each enclosing
 // class name with a "." separator as the walker descends.
 func walkNode(
-	node *sitter.Node,
+	node ts.Node,
 	file extractor.FileInput,
 	parentClass string,
 	out *[]types.EntityRecord,
@@ -930,7 +937,7 @@ func walkNode(
 // When a human-friendly label is available from the filename stem and differs
 // from the AST name, it is stored in Properties["display_name"] so MCP
 // consumers can surface both, but the Name field is never overwritten.
-func buildClass(node *sitter.Node, file extractor.FileInput) types.EntityRecord {
+func buildClass(node ts.Node, file extractor.FileInput) types.EntityRecord {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
 		return types.EntityRecord{}
@@ -1017,7 +1024,7 @@ func toPascalCase(s string) string {
 // form is the same encoding used by Format B structural references and is
 // indexed natively by resolve.Index.byMember, which splits Name on the LAST
 // '.' to preserve multi-level scopes.
-func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass string) types.EntityRecord {
+func buildFunction(node ts.Node, file extractor.FileInput, parentClass string) types.EntityRecord {
 	nameNode := node.ChildByFieldName("name")
 	if nameNode == nil {
 		return types.EntityRecord{}
@@ -1092,7 +1099,7 @@ func buildFunction(node *sitter.Node, file extractor.FileInput, parentClass stri
 // module-level functions). It is used to qualify `self.X` calls and to
 // detect when an inferred class-qualified target is in fact self-recursion.
 func extractCallRelationships(
-	body *sitter.Node,
+	body ts.Node,
 	src []byte,
 	callerName, parentClass string,
 	imports pythonImportMap,
@@ -1284,7 +1291,7 @@ var osExecLeaves = map[string]struct{}{
 //
 // Bare `system(...)` / `run(...)` without a module receiver are NOT matched —
 // those could be user functions and the normal resolver should handle them.
-func isSubprocessExecCall(call *sitter.Node, src []byte, imports pythonImportMap) bool {
+func isSubprocessExecCall(call ts.Node, src []byte, imports pythonImportMap) bool {
 	fn := call.ChildByFieldName("function")
 	if fn == nil || fn.Type() != "attribute" {
 		return false
@@ -1341,7 +1348,7 @@ func isSubprocessExecCall(call *sitter.Node, src []byte, imports pythonImportMap
 //
 // `os.spawn*` takes a mode argument first; we scan for the first string/list
 // literal among the positional arguments rather than assuming arg index 0.
-func subprocessBinaryName(call *sitter.Node, src []byte) string {
+func subprocessBinaryName(call ts.Node, src []byte) string {
 	argsNode := call.ChildByFieldName("arguments")
 	if argsNode == nil {
 		return ""
@@ -1410,7 +1417,7 @@ func binaryFromProgramPath(p string) string {
 // `string` node with its surrounding quotes (and any prefix like r/f/b)
 // stripped. f-strings with interpolations are returned with the raw body so
 // callers can decide whether the result is statically usable.
-func pyStringLiteralValue(n *sitter.Node, src []byte) string {
+func pyStringLiteralValue(n ts.Node, src []byte) string {
 	// Prefer the string_content child when present (grammar ≥ 0.20 splits the
 	// literal into string_start / string_content / string_end).
 	for i := 0; i < int(n.NamedChildCount()); i++ {
@@ -1479,7 +1486,7 @@ func pyStringLiteralValue(n *sitter.Node, src []byte) string {
 // different type), and a non-PascalCase RHS constructor (factory function,
 // lowercased helper) yields no entry. Returns nil for bodies with no
 // qualifying binding so the hot path allocates nothing.
-func localReceiverTypes(body *sitter.Node, src []byte) map[string]string {
+func localReceiverTypes(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -1522,7 +1529,7 @@ func localReceiverTypes(body *sitter.Node, src []byte) map[string]string {
 	return locals
 }
 
-func callTarget(call *sitter.Node, src []byte, parentClass string, localRecv map[string]string) (string, bool) {
+func callTarget(call ts.Node, src []byte, parentClass string, localRecv map[string]string) (string, bool) {
 	fn := call.ChildByFieldName("function")
 	if fn == nil {
 		return "", false
@@ -1579,7 +1586,7 @@ func callTarget(call *sitter.Node, src []byte, parentClass string, localRecv map
 // deliberately left unresolved here: making a guess would risk binding edges
 // to the wrong class. The resolver's name-collision logic is a safer place
 // to disambiguate those cases.
-func receiverClass(recv *sitter.Node, src []byte, parentClass string, localRecv map[string]string) string {
+func receiverClass(recv ts.Node, src []byte, parentClass string, localRecv map[string]string) string {
 	if recv == nil {
 		return ""
 	}
@@ -1687,7 +1694,7 @@ func isPascalCaseClassName(name string) bool {
 //	                              inside the source module. Equal to
 //	                              local_name when no alias is present.
 //	Properties["wildcard"]      — "1" when the import is `from x import *`.
-func extractImports(root *sitter.Node, file extractor.FileInput) []types.EntityRecord {
+func extractImports(root ts.Node, file extractor.FileInput) []types.EntityRecord {
 	if root == nil {
 		return nil
 	}
@@ -1774,7 +1781,7 @@ func extractImports(root *sitter.Node, file extractor.FileInput) []types.EntityR
 // path is the dotted import path stripped of any "as <alias>" suffix; alias
 // is the binding identifier introduced by `as` (or "" when not present).
 // Wildcards return ("*", ""). Unrecognised shapes return ("", "").
-func dottedNameAndAlias(node *sitter.Node, src []byte) (string, string) {
+func dottedNameAndAlias(node ts.Node, src []byte) (string, string) {
 	if node == nil {
 		return "", ""
 	}
@@ -1797,7 +1804,7 @@ func dottedNameAndAlias(node *sitter.Node, src []byte) (string, string) {
 // dottedNamePath flattens a dotted_name / identifier / aliased_import node into
 // its source-text path. Aliases are stripped (only the underlying name is used).
 // Returns "" for unrecognised node shapes.
-func dottedNamePath(node *sitter.Node, src []byte) string {
+func dottedNamePath(node ts.Node, src []byte) string {
 	if node == nil {
 		return ""
 	}
@@ -1891,7 +1898,7 @@ func pyFieldSignature(name, typeAnn string) string {
 }
 
 func extractClassFields(
-	body *sitter.Node,
+	body ts.Node,
 	file extractor.FileInput,
 	parentClass string,
 	out *[]types.EntityRecord,
@@ -1914,7 +1921,7 @@ func extractClassFields(
 			if expr == nil {
 				continue
 			}
-			var lhs *sitter.Node
+			var lhs ts.Node
 			var typeAnn string
 			switch expr.Type() {
 			case "assignment":
@@ -1987,7 +1994,7 @@ func extractClassFields(
 //	self.x         → []                             (attribute LHS — not a
 //	                                                 class attribute)
 //	x[0]           → []                             (subscript LHS)
-func classAttrLHSNames(lhs *sitter.Node, src []byte) []string {
+func classAttrLHSNames(lhs ts.Node, src []byte) []string {
 	if lhs == nil {
 		return nil
 	}
@@ -2054,7 +2061,7 @@ func skipClassAttrName(name string) bool {
 func applyFrameworkInnerClassProperties(
 	parent *types.EntityRecord,
 	innerClass *types.EntityRecord,
-	classBody *sitter.Node,
+	classBody ts.Node,
 	src []byte,
 	childParent string,
 ) {
@@ -2076,7 +2083,7 @@ func applyFrameworkInnerClassProperties(
 
 	// Find the class_definition node inside classBody that matches innerClass
 	// by start line so we can walk its body for key-value assignments.
-	var innerBody *sitter.Node
+	var innerBody ts.Node
 	for i := range int(classBody.ChildCount()) {
 		ch := classBody.Child(i)
 		if ch == nil {
@@ -2085,7 +2092,7 @@ func applyFrameworkInnerClassProperties(
 		// The inner class may be a bare class_definition or wrapped in a
 		// decorated_definition. In practice Meta/Config are never decorated,
 		// but handle both for robustness.
-		var candidate *sitter.Node
+		var candidate ts.Node
 		switch ch.Type() {
 		case "class_definition":
 			candidate = ch
@@ -2170,7 +2177,7 @@ func applyFrameworkInnerClassProperties(
 // map[identifier]rawValue for every simple `identifier = expr` assignment. The
 // value is the raw source text of the right-hand side, trimmed of whitespace.
 // Only the top-level body scope is examined; nested blocks are skipped.
-func parseSimpleAssignments(body *sitter.Node, src []byte) map[string]string {
+func parseSimpleAssignments(body ts.Node, src []byte) map[string]string {
 	if body == nil {
 		return nil
 	}
@@ -2220,12 +2227,12 @@ func stripQuotes(v string) string {
 
 // findAll returns every descendant of root whose Type() matches kind.
 // Recursion is iterative to stay safe on deeply-nested trees.
-func findAll(root *sitter.Node, kind string) []*sitter.Node {
+func findAll(root ts.Node, kind string) []ts.Node {
 	if root == nil {
 		return nil
 	}
-	var out []*sitter.Node
-	stack := []*sitter.Node{root}
+	var out []ts.Node
+	stack := []ts.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -2267,7 +2274,7 @@ func findAll(root *sitter.Node, kind string) []*sitter.Node {
 // The function is a no-op when innerClassName does not end in ".Meta" or when
 // no `constraints = [...]` assignment is present in the Meta body.
 func extractMetaConstraintEntities(
-	metaClassBody *sitter.Node,
+	metaClassBody ts.Node,
 	file extractor.FileInput,
 	innerClassName string,
 	parentClass string,
@@ -2285,13 +2292,13 @@ func extractMetaConstraintEntities(
 
 	// Locate the Meta class_definition node inside metaClassBody so we can
 	// walk its body for the `constraints = [...]` assignment.
-	var metaBody *sitter.Node
+	var metaBody ts.Node
 	for i := range int(metaClassBody.ChildCount()) {
 		ch := metaClassBody.Child(i)
 		if ch == nil {
 			continue
 		}
-		var candidate *sitter.Node
+		var candidate ts.Node
 		switch ch.Type() {
 		case "class_definition":
 			candidate = ch
@@ -2427,6 +2434,6 @@ func extractMetaConstraintEntities(
 }
 
 // nodeText returns the raw source bytes for a tree-sitter node as a string.
-func nodeText(node *sitter.Node, src []byte) string {
+func nodeText(node ts.Node, src []byte) string {
 	return string(src[node.StartByte():node.EndByte()])
 }

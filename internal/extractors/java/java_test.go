@@ -6,20 +6,27 @@ import (
 	"path/filepath"
 	"testing"
 
-	sitter "github.com/smacker/go-tree-sitter"
 	tsjava "github.com/smacker/go-tree-sitter/java"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	_ "github.com/cajasmota/grafel/internal/extractors/java"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
+	tssmacker "github.com/cajasmota/grafel/internal/treesitter/ts/smacker"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
-// parseForTest parses Java source using the real grammar.
-func parseForTest(t *testing.T, src string) *sitter.Tree {
+// parseForTest parses Java source into a ts.Tree via the smacker adapter. Tests
+// stamp the result on FileInput.TSTree (which the migrated Java extractor
+// consumes); the smacker adapter keeps these tests linkable in the default build
+// while exercising the ts façade (B2 #5418).
+func parseForTest(t *testing.T, src string) ts.Tree {
 	t.Helper()
-	parser := sitter.NewParser()
-	parser.SetLanguage(tsjava.GetLanguage())
-	tree, err := parser.ParseCtx(context.Background(), nil, []byte(src))
+	parser, err := tssmacker.New().NewParser(tssmacker.WrapLanguage(tsjava.GetLanguage()))
+	if err != nil {
+		t.Fatalf("parser init: %v", err)
+	}
+	defer parser.Close()
+	tree, err := parser.Parse([]byte(src))
 	if err != nil {
 		t.Fatalf("parse failed: %v", err)
 	}
@@ -62,7 +69,7 @@ public class UserService implements UserRepository {
 		Path:     "UserService.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -109,7 +116,7 @@ public class Foo {
 		Path:     "Foo.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -148,7 +155,7 @@ public interface IRepository {
 		Path:     "repo.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -178,7 +185,7 @@ public class Svc {
 		Path:     "svc.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -208,7 +215,7 @@ public class Bar {
 		Path:     "bar.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -240,7 +247,7 @@ public class Foo {}
 		Path:     "imports.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -275,7 +282,7 @@ func TestJavaExtractor_EmptyFile(t *testing.T) {
 		Path:     "empty.java",
 		Content:  []byte(""),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -292,7 +299,7 @@ func TestJavaExtractor_NilTree(t *testing.T) {
 		Path:     "nil.java",
 		Content:  []byte("public class Foo {}"),
 		Language: "java",
-		Tree:     nil,
+		TSTree:   nil,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error on nil tree: %v", err)
@@ -318,7 +325,7 @@ public class BadClass {
 		Path:     "malformed.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	// Must not panic; may return partial results.
 	if err != nil {
@@ -356,7 +363,7 @@ func TestJavaExtractor_LineNumbers(t *testing.T) {
 		Path:     "lines.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -390,7 +397,7 @@ public class Outer {
 		Path:     "nested.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
@@ -440,7 +447,7 @@ public class OrderSerializer {
 		Path:     "Serializers.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -521,7 +528,7 @@ func TestJavaExtractor_DuplicateMethodsFromFixture(t *testing.T) {
 		Path:     path,
 		Content:  src,
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -625,7 +632,7 @@ public class OrderController {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "src/controllers/OrderController.java",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)
@@ -678,7 +685,7 @@ public class ListRequest {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "src/main/java/com/example/dto/ListRequest.java",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)
@@ -730,7 +737,7 @@ func TestJavaExtractor_QualifiedName_NoPackage(t *testing.T) {
 	entities, err := ext.Extract(context.Background(), extractor.FileInput{
 		Path:    "Foo.java",
 		Content: []byte(src),
-		Tree:    tree,
+		TSTree:  tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

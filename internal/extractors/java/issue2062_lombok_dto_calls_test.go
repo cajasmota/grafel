@@ -47,7 +47,7 @@ class Caller {
 		Path:     "com/example/dto/ProductDTO.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract: %v", err)
@@ -136,7 +136,7 @@ public class ProductController {
 		Path:     "com/example/dto/ProductDTO.java",
 		Content:  []byte(dtoSrc),
 		Language: "java",
-		Tree:     parseForTest(t, dtoSrc),
+		TSTree:   parseForTest(t, dtoSrc),
 	})
 	if err != nil {
 		t.Fatalf("Extract(dto): %v", err)
@@ -145,7 +145,7 @@ public class ProductController {
 		Path:     "com/example/api/ProductController.java",
 		Content:  []byte(controllerSrc),
 		Language: "java",
-		Tree:     parseForTest(t, controllerSrc),
+		TSTree:   parseForTest(t, controllerSrc),
 	})
 	if err != nil {
 		t.Fatalf("Extract(controller): %v", err)

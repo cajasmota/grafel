@@ -22,7 +22,7 @@ func extractJavaRaw(t *testing.T, src string) []types.EntityRecord {
 		Path:     "Cfg.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     tree,
+		TSTree:   tree,
 	})
 	if err != nil {
 		t.Fatalf("extract failed: %v", err)

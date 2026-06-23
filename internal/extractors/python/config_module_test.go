@@ -71,7 +71,7 @@ func TestConfigModule_SettingsPy(t *testing.T) {
 		Path:     "upvate_core/settings.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {
@@ -170,7 +170,7 @@ func TestConfigModule_ManageWithMain(t *testing.T) {
 		Path:     "manage.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {
@@ -231,7 +231,7 @@ func TestConfigModule_UtilsNormal(t *testing.T) {
 		Path:     "app/utils/utils.py",
 		Content:  src,
 		Language: "python",
-		Tree:     tree,
+		TSTree:   tree,
 	}
 	entities, err := ext.Extract(context.Background(), fi)
 	if err != nil {

@@ -22,7 +22,7 @@
 package python
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/txscope"
@@ -32,14 +32,14 @@ import (
 // emitTransactionBoundaryProperties walks every function/method definition and
 // stamps transaction properties on the matching SCOPE.Operation entity.
 // Mutates *entities in place. Safe to call with nil/empty input.
-func emitTransactionBoundaryProperties(root *sitter.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
+func emitTransactionBoundaryProperties(root ts.Node, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if root == nil || entities == nil || len(*entities) == 0 {
 		return
 	}
 	walkTxDefs(root, "", file, entities)
 }
 
-func walkTxDefs(n *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func walkTxDefs(n ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	if n == nil {
 		return
 	}
@@ -88,7 +88,7 @@ func walkTxDefs(n *sitter.Node, parentClass string, file extractor.FileInput, en
 // stampTxOnOperation runs the txscope detector over spanNode's source (which
 // may be the decorator-inclusive decorated_definition) and stamps the matching
 // operation entity when a transaction boundary is found.
-func stampTxOnOperation(spanNode, fnNode *sitter.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
+func stampTxOnOperation(spanNode, fnNode ts.Node, parentClass string, file extractor.FileInput, entities *[]types.EntityRecord) {
 	nameNode := fnNode.ChildByFieldName("name")
 	if nameNode == nil {
 		return

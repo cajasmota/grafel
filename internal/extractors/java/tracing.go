@@ -34,7 +34,7 @@ import (
 	"strconv"
 	"strings"
 
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -52,7 +52,7 @@ type javaSpanHit struct {
 // `spanBuilder(...).startSpan()` calls in its body — and returns the
 // corresponding INSTRUMENTS edges. methodName is the bare method name used as
 // the @WithSpan default span name and to key dynamic-name stubs.
-func javaTracingSpanEdges(methodNode *sitter.Node, methodName string, src []byte) []types.RelationshipRecord {
+func javaTracingSpanEdges(methodNode ts.Node, methodName string, src []byte) []types.RelationshipRecord {
 	if methodNode == nil {
 		return nil
 	}
@@ -101,7 +101,7 @@ func javaTracingSpanEdges(methodNode *sitter.Node, methodName string, src []byte
 // javaWithSpanHits returns a single hit when the method carries a @WithSpan
 // annotation. The span name is the annotation's first string-literal argument
 // when present, otherwise the bare method name.
-func javaWithSpanHits(methodNode *sitter.Node, methodName string, src []byte) []javaSpanHit {
+func javaWithSpanHits(methodNode ts.Node, methodName string, src []byte) []javaSpanHit {
 	var hits []javaSpanHit
 	// The modifiers child carries the annotations preceding the method.
 	for i := 0; i < int(methodNode.ChildCount()); i++ {
@@ -139,7 +139,7 @@ func javaWithSpanHits(methodNode *sitter.Node, methodName string, src []byte) []
 // javaAnnotationStringValue returns the first string-literal value found in an
 // annotation_argument_list — handling both @X("v") and @X(value="v") — or ""
 // when none is present.
-func javaAnnotationStringValue(args *sitter.Node, src []byte) string {
+func javaAnnotationStringValue(args ts.Node, src []byte) string {
 	if args == nil {
 		return ""
 	}
@@ -158,7 +158,7 @@ func javaAnnotationStringValue(args *sitter.Node, src []byte) string {
 // receiver chain to find the `spanBuilder(...)` call that carries the span name.
 // Anchoring on startSpan (the OTel call that actually creates the span) avoids
 // matching a bare `spanBuilder(...)` whose span is never started.
-func javaSpanBuilderHits(body *sitter.Node, src []byte) []javaSpanHit {
+func javaSpanBuilderHits(body ts.Node, src []byte) []javaSpanHit {
 	if body == nil {
 		return nil
 	}
@@ -185,7 +185,7 @@ func javaSpanBuilderHits(body *sitter.Node, src []byte) []javaSpanHit {
 // javaFindSpanBuilderInChain walks the receiver (`object`) chain of a startSpan
 // invocation looking for the `spanBuilder(...)` call. Returns the spanBuilder
 // method_invocation node, or nil when the chain does not contain one.
-func javaFindSpanBuilderInChain(startSpanCall *sitter.Node, src []byte) *sitter.Node {
+func javaFindSpanBuilderInChain(startSpanCall ts.Node, src []byte) ts.Node {
 	obj := startSpanCall.ChildByFieldName("object")
 	for obj != nil && obj.Type() == "method_invocation" {
 		if javaInvocationName(obj, src) == "spanBuilder" {
@@ -198,7 +198,7 @@ func javaFindSpanBuilderInChain(startSpanCall *sitter.Node, src []byte) *sitter.
 
 // javaFirstStringArg returns the first string-literal argument value in an
 // argument_list, or "" when the first argument is non-literal / absent.
-func javaFirstStringArg(args *sitter.Node, src []byte) string {
+func javaFirstStringArg(args ts.Node, src []byte) string {
 	if args == nil {
 		return ""
 	}
@@ -217,7 +217,7 @@ func javaFirstStringArg(args *sitter.Node, src []byte) string {
 }
 
 // javaInvocationName returns the bare name of a method_invocation node.
-func javaInvocationName(call *sitter.Node, src []byte) string {
+func javaInvocationName(call ts.Node, src []byte) string {
 	name := call.ChildByFieldName("name")
 	if name == nil {
 		return ""

@@ -63,7 +63,7 @@ public class UsersController {
 		Path:     "client_fixture_x/api/UsersController.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract error: %v", err)
@@ -123,7 +123,7 @@ public class OrdersController {
 		Path:     "client_fixture_x/api/OrdersController.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract error: %v", err)
@@ -178,7 +178,7 @@ public class Helper {
 		Path:     "client_fixture_x/api/Helper.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract error: %v", err)
@@ -237,7 +237,7 @@ public class OrdersController {
 		Path:     "client_fixture_x/api/OrdersController.java",
 		Content:  []byte(src),
 		Language: "java",
-		Tree:     parseForTest(t, src),
+		TSTree:   parseForTest(t, src),
 	})
 	if err != nil {
 		t.Fatalf("Extract error: %v", err)

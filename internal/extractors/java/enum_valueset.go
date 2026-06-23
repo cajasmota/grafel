@@ -15,14 +15,14 @@ package java
 // recorded value-less — the member name is kept, no fabricated value.
 
 import (
-	sitter "github.com/smacker/go-tree-sitter"
+	"github.com/cajasmota/grafel/internal/treesitter/ts"
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
 // buildJavaEnumValueSet builds the SCOPE.Enum node for a Java `enum_declaration`.
-func buildJavaEnumValueSet(node *sitter.Node, file extractor.FileInput) (recOut types.EntityRecord, ok bool) {
+func buildJavaEnumValueSet(node ts.Node, file extractor.FileInput) (recOut types.EntityRecord, ok bool) {
 	name := childFieldText(node, "name", file.Content)
 	if name == "" {
 		return types.EntityRecord{}, false
@@ -59,7 +59,7 @@ func buildJavaEnumValueSet(node *sitter.Node, file extractor.FileInput) (recOut 
 // javaEnumConstantValue returns the statically-known literal value of an
 // enum_constant's first constructor argument, or "" when the constant has no
 // argument list or the first argument is not a literal.
-func javaEnumConstantValue(constNode *sitter.Node, src []byte) string {
+func javaEnumConstantValue(constNode ts.Node, src []byte) string {
 	args := childByType(constNode, "argument_list")
 	if args == nil {
 		return ""
@@ -83,7 +83,7 @@ func javaEnumConstantValue(constNode *sitter.Node, src []byte) string {
 }
 
 // firstChildOfType returns the first direct child of n with the given type.
-func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
+func firstChildOfType(n ts.Node, typ string) ts.Node {
 	for i := 0; i < int(n.ChildCount()); i++ {
 		ch := n.Child(i)
 		if ch != nil && ch.Type() == typ {
@@ -95,6 +95,6 @@ func firstChildOfType(n *sitter.Node, typ string) *sitter.Node {
 
 // childByType is an alias kept local to this file to avoid coupling to other
 // helpers' naming; identical semantics to firstChildOfType.
-func childByType(n *sitter.Node, typ string) *sitter.Node {
+func childByType(n ts.Node, typ string) ts.Node {
 	return firstChildOfType(n, typ)
 }
