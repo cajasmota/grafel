@@ -54,11 +54,32 @@ if /I "%PROC%"=="AMD64" (
 )
 
 REM --- resolve version (mirror install.ps1 Resolve-Version) ---
+REM Explicit override is the fast path and skips all network resolution.
 if defined GRAFEL_VERSION (
     if /I not "%GRAFEL_VERSION%"=="latest" (
         set "VERSION=%GRAFEL_VERSION%"
     )
 )
+
+REM Prefer the GitHub releases API: it returns the tag in a single JSON field
+REM ("tag_name": "vX.Y.Z"), which is far less error-prone to parse than a
+REM redirect "location:" header (a partial-URL parse there could otherwise leave
+REM a fragment in VERSION and produce a confusing 404). The redirect-header path
+REM is kept ONLY as a fallback for when the API is unreachable/rate-limited.
+if not defined VERSION (
+    for /f "tokens=2 delims=:, " %%T in ('curl -fsSL "https://api.github.com/repos/%REPO%/releases/latest" 2^>nul ^| findstr /I /C:"tag_name"') do (
+        if not defined VERSION (
+            set "RAW=%%T"
+            REM strip surrounding double quotes from the JSON string value, plus
+            REM any stray CR the header/body might carry.
+            set "RAW=!RAW:"=!"
+            if defined CR set "RAW=!RAW:%CR%=!"
+            set "VERSION=!RAW!"
+        )
+    )
+)
+
+REM --- fallback: parse the /releases/latest redirect if the API gave nothing ---
 if not defined VERSION (
     REM /releases/latest 302-redirects to /releases/tag/<version>. curl -sI
     REM prints the redirect target in the "location:" header; parse the tag.
@@ -77,27 +98,10 @@ if not defined VERSION (
         REM scrub the trailing CR that HTTP headers carry FIRST, so the tag has
         REM no stray CR, THEN slice off the URL prefix up to and incl. "/tag/".
         if defined CR set "LOC=!LOC:%CR%=!"
-        REM only slice if the marker is actually present (substring replace is a
-        REM no-op when "/tag/" is absent, which would leave the full URL — we
-        REM guard against that below by validating the resulting VERSION).
+        REM The substring replace below is a no-op when "/tag/" is absent, which
+        REM would leave the full URL in VERSION — the strict validation block
+        REM further down rejects any value still containing a '/'.
         set "VERSION=!LOC:*/tag/=!"
-    )
-)
-
-REM --- fallback: GitHub releases API if the redirect parse failed or produced
-REM     something that still contains a URL separator (no real tag has '/'). ---
-set "BADVER="
-if defined VERSION if not "!VERSION:/=!"=="!VERSION!" set "BADVER=1"
-if not defined VERSION set "BADVER=1"
-if defined BADVER (
-    set "VERSION="
-    for /f "tokens=2 delims=:, " %%T in ('curl -fsSL "https://api.github.com/repos/%REPO%/releases/latest" 2^>nul ^| findstr /I /C:"tag_name"') do (
-        if not defined VERSION (
-            set "RAW=%%T"
-            REM strip surrounding double quotes from the JSON string value.
-            set "RAW=!RAW:"=!"
-            set "VERSION=!RAW!"
-        )
     )
 )
 
@@ -213,6 +217,18 @@ if not defined BINSRC (
     goto :fail
 )
 
+REM --- stop a running daemon BEFORE overwriting the binary ---
+REM Windows cannot overwrite an .exe that is open in a running process, so on an
+REM upgrade the copy below fails ("being used by another process") while the
+REM registered daemon holds grafel.exe. Stop it first (best-effort: a missing
+REM task or no running process is fine). `grafel install` re-registers/restarts
+REM the daemon further down, so this is the Windows analog of the macOS/Linux
+REM update-aware restart — except the STOP must precede the copy.
+if exist "%BINDIR%\grafel.exe" (
+    schtasks /end /tn com.grafel.daemon >nul 2>&1
+    taskkill /im grafel.exe /f >nul 2>&1
+)
+
 copy /Y "%BINSRC%" "%BINDIR%\grafel.exe" >nul
 if errorlevel 1 (
     echo error: failed to copy grafel.exe into %BINDIR%
@@ -237,18 +253,31 @@ if defined USERPATH (
 if defined ALREADY (
     echo   PATH already contains %BINDIR%
 ) else (
+    REM Write the USER PATH via the registry rather than `setx`: setx silently
+    REM TRUNCATES any value longer than 1024 chars, so on a machine with a long
+    REM existing PATH our %BINDIR% append is dropped and grafel never resolves.
+    REM `reg add HKCU\Environment` has no such limit. We use REG_EXPAND_SZ so
+    REM any %VARS% already embedded in the user's PATH keep expanding.
     if defined USERPATH (
         REM trim a single trailing ; then append.
         if "!USERPATH:~-1!"==";" set "USERPATH=!USERPATH:~0,-1!"
-        setx Path "!USERPATH!;%BINDIR%" >nul
+        set "NEWPATH=!USERPATH!;%BINDIR%"
     ) else (
-        setx Path "%BINDIR%" >nul
+        set "NEWPATH=%BINDIR%"
     )
+    reg add "HKCU\Environment" /v Path /t REG_EXPAND_SZ /d "!NEWPATH!" /f >nul 2>&1
     if errorlevel 1 (
         echo   warning: could not update USER PATH automatically.
         echo   add this folder to PATH manually: %BINDIR%
     ) else (
         echo   added %BINDIR% to your USER PATH
+        REM `reg add` writes the registry but does NOT broadcast
+        REM WM_SETTINGCHANGE, so already-open shells (and Explorer) won't see the
+        REM new PATH until a broadcast. setx on a throwaway variable triggers
+        REM that broadcast as a side effect (its own 1024-char truncation is
+        REM irrelevant here — we are only using it to notify, not to store PATH).
+        setx GRAFEL_PATH_SYNC 1 >nul 2>&1
+        reg delete "HKCU\Environment" /v GRAFEL_PATH_SYNC /f >nul 2>&1
     )
 )
 REM make grafel.exe resolvable in THIS session for the install step below.

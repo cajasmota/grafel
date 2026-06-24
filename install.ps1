@@ -43,28 +43,61 @@ function Get-Arch {
     }
 }
 
+# Test-Version validates a resolved tag strictly: it must start with 'v',
+# contain at least one digit, and contain no '/' (which would mean a URL
+# fragment leaked in). This guarantees we can never build a download URL from
+# garbage and instead fail with the clear GRAFEL_VERSION hint.
+function Test-Version($v) {
+    if (-not $v) { return $false }
+    return ($v -match '^v[0-9][A-Za-z0-9.+_-]*$')
+}
+
 function Resolve-Version {
+    # Explicit override is the fast path and skips all network resolution.
     if ($env:GRAFEL_VERSION -and $env:GRAFEL_VERSION -ne 'latest') {
         return $env:GRAFEL_VERSION
     }
-    $url = "https://github.com/$Repo/releases/latest"
+
+    $ver = $null
+
+    # Prefer the GitHub releases API: it returns the tag in a single JSON field
+    # (tag_name), which is far more reliable than scraping a redirect header.
     try {
-        $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -MaximumRedirection 0 -ErrorAction SilentlyContinue
+        $api = Invoke-RestMethod -Uri "https://api.github.com/repos/$Repo/releases/latest" -UseBasicParsing -ErrorAction Stop
+        if ($api -and $api.tag_name) { $ver = $api.tag_name.Trim() }
     } catch {
-        $resp = $_.Exception.Response
+        $ver = $null
     }
-    $loc = $null
-    if ($resp -and $resp.Headers) {
-        if ($resp.Headers['Location']) { $loc = $resp.Headers['Location'] }
-        elseif ($resp.Headers.Location) { $loc = $resp.Headers.Location }
+
+    # Fallback: parse the /releases/latest redirect target when the API is
+    # unreachable or rate-limited.
+    if (-not (Test-Version $ver)) {
+        $url = "https://github.com/$Repo/releases/latest"
+        try {
+            $resp = Invoke-WebRequest -Uri $url -UseBasicParsing -MaximumRedirection 0 -ErrorAction SilentlyContinue
+        } catch {
+            $resp = $_.Exception.Response
+        }
+        $loc = $null
+        if ($resp -and $resp.Headers) {
+            if ($resp.Headers['Location']) { $loc = $resp.Headers['Location'] }
+            elseif ($resp.Headers.Location) { $loc = $resp.Headers.Location }
+        }
+        if (-not $loc) {
+            # Last resort: follow redirects and read the final URI.
+            try {
+                $resp2 = Invoke-WebRequest -Uri $url -UseBasicParsing
+                $loc = $resp2.BaseResponse.ResponseUri.AbsoluteUri
+            } catch { $loc = $null }
+        }
+        if ($loc -and ($loc -match '/tag/([^/]+)/?$')) { $ver = $Matches[1] }
     }
-    if (-not $loc) {
-        # Fallback: follow redirects and read the final URI
-        $resp2 = Invoke-WebRequest -Uri $url -UseBasicParsing
-        $loc = $resp2.BaseResponse.ResponseUri.AbsoluteUri
+
+    # Strict validation: never proceed with a URL fragment or other junk.
+    if (-not (Test-Version $ver)) {
+        Fail "failed to resolve a valid latest release tag (got '$ver'). Set GRAFEL_VERSION explicitly (e.g. v0.1.0)."
     }
-    if ($loc -match '/tag/([^/]+)/?$') { return $Matches[1] }
-    Fail "failed to resolve latest release tag from $loc"
+    return $ver
 }
 
 function Get-FileWithRetry($Uri, $OutFile) {
@@ -98,6 +131,22 @@ function Add-ToUserPath($Dir) {
     [Environment]::SetEnvironmentVariable('Path', $new, 'User')
     # Update current session too.
     $env:Path = $env:Path.TrimEnd(';') + ';' + $Dir
+}
+
+# Stop-Daemon stops a running grafel daemon BEFORE the new binary is copied.
+# Windows cannot overwrite an .exe that is open in a running process, so on an
+# upgrade the Copy-Item would otherwise fail ("being used by another process")
+# while the registered daemon holds grafel.exe. Best-effort: a missing task or
+# no running process is fine and never aborts the installer.
+function Stop-Daemon {
+    $taskName = 'com.grafel.daemon'
+    if (Get-Command schtasks.exe -ErrorAction SilentlyContinue) {
+        & schtasks.exe /end /tn $taskName 2>$null | Out-Null
+    }
+    # Kill any lingering process holding the exe (ignore "not found").
+    try {
+        Get-Process -Name 'grafel' -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+    } catch { }
 }
 
 # Restart-Daemon restarts an already-registered grafel daemon so it runs the
@@ -171,6 +220,11 @@ try {
 
     $binSrc = Get-ChildItem -Path $extractDir -Recurse -Filter 'grafel.exe' | Select-Object -First 1
     if (-not $binSrc) { Fail "archive did not contain grafel.exe" }
+
+    # On an upgrade, stop the running daemon BEFORE overwriting the binary —
+    # Windows cannot replace an .exe that is open in a running process. The
+    # daemon is re-registered/restarted by Restart-Daemon further down.
+    if (Test-Path $existing) { Stop-Daemon }
 
     Copy-Item -Path $binSrc.FullName -Destination $existing -Force
 
