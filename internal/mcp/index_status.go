@@ -38,6 +38,20 @@ type indexStatusReply struct {
 	// should NOT use this — it should check its repo's state==current — but it
 	// is a convenient summary when no filter is set.
 	AnyIndexing bool `json:"any_indexing"`
+	// Concurrency mirrors the daemon-wide index-concurrency gate (#5493) so a
+	// caller can see how a many-module group is draining: "indexing N, queued M"
+	// with a cap of GRAFEL_INDEX_CONCURRENCY. Reported regardless of any filter.
+	Concurrency indexConcurrency `json:"concurrency"`
+}
+
+// indexConcurrency is the wire shape for the gate counts (#5493).
+type indexConcurrency struct {
+	// Active is the number of module/repo indexes running concurrently right now.
+	Active int `json:"indexing"`
+	// Queued is the number of indexes waiting for a free slot.
+	Queued int `json:"queued"`
+	// Cap is the configured concurrency limit (GRAFEL_INDEX_CONCURRENCY).
+	Cap int `json:"cap"`
 }
 
 // handleIndexStatus answers grafel_index_status. Optional args:
@@ -83,6 +97,10 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 			out.AnyIndexing = true
 		}
 	}
+	// #5493: surface the daemon-wide gate counts so "indexing 2, queued 28" is
+	// visible (a 30-module group draining 2-at-a-time, not stalled).
+	ic := indexstate.GetIndexConcurrency()
+	out.Concurrency = indexConcurrency{Active: ic.Active, Queued: ic.Queued, Cap: ic.Cap}
 	return jsonResult(out), nil
 }
 
