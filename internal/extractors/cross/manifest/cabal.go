@@ -193,8 +193,8 @@ func indentWidth(s string) int {
 
 // hpackDepListItemRE matches one YAML list item in a `dependencies:` block:
 //
-//	  - base >= 4.14 && < 5   → name=base
-//	  - text                  → name=text
+//   - base >= 4.14 && < 5   → name=base
+//   - text                  → name=text
 //
 // Group 1 is the package name; group 2 is the trailing version constraint.
 var hpackDepListItemRE = regexp.MustCompile(
@@ -292,8 +292,8 @@ var stackExtraDepsKeyRE = regexp.MustCompile(`(?m)^([ \t]*)extra-deps\s*:`)
 // stackVersionedDepRE matches an `extra-deps` list item of the `<name>-<version>`
 // form, splitting the trailing semver suffix off as the pinned version:
 //
-//	- acme-missiles-0.3   → name=acme-missiles, version=0.3
-//	- text-2.0.1          → name=text,          version=2.0.1
+//   - acme-missiles-0.3   → name=acme-missiles, version=0.3
+//   - text-2.0.1          → name=text,          version=2.0.1
 //
 // The name is the longest leading run of `-`-separated identifier segments
 // before the final `-<numeric-version>` segment.
@@ -307,8 +307,8 @@ var stackBareDepRE = regexp.MustCompile(
 
 // stackGitRepoRE matches a source-pinned git extra-dep map entry's repo:
 //
-//	- github: foo/bar   → name=bar
-//	- git: https://example.com/foo/baz.git → name=baz
+//   - github: foo/bar   → name=bar
+//   - git: https://example.com/foo/baz.git → name=baz
 var stackGitRepoRE = regexp.MustCompile(
 	`^[ \t]*-?\s*(?:github|git)\s*:\s*(?:\S*/)?([A-Za-z0-9._-]+?)(?:\.git)?/?\s*$`)
 

@@ -45,7 +45,7 @@ var ponyMsgSendRE = regexp.MustCompile(
 // `entities` is mutated in place.
 func enrichActorTopology(src string, entities []types.EntityRecord) {
 	// 1. Identify actors and their behaviours from the entity set.
-	actorNames := map[string]bool{}      // actor component name -> true
+	actorNames := map[string]bool{}       // actor component name -> true
 	behaviourOwner := map[string]string{} // behaviour name -> owning actor name
 	for i := range entities {
 		e := &entities[i]

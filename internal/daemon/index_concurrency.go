@@ -64,10 +64,10 @@ func resolveIndexConcurrency() int {
 type IndexGate struct {
 	cap int
 
-	mu        sync.Mutex
-	active    int      // slots currently held
-	fg        []chan struct{} // FIFO of waiting foreground tickets
-	bg        []chan struct{} // FIFO of waiting background tickets
+	mu     sync.Mutex
+	active int             // slots currently held
+	fg     []chan struct{} // FIFO of waiting foreground tickets
+	bg     []chan struct{} // FIFO of waiting background tickets
 }
 
 // NewIndexGate constructs a gate with the given cap. A cap <= 0 is coerced to 1

@@ -179,9 +179,9 @@ func (e *persistenceExtractor) Extract(
 
 // codegenInfo records the codegen markers found in a file.
 type codegenInfo struct {
-	freezed       bool
-	jsonSerial    bool
-	hasPartG      bool
+	freezed    bool
+	jsonSerial bool
+	hasPartG   bool
 }
 
 func detectCodegen(src string) codegenInfo {

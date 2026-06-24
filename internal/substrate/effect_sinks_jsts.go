@@ -210,7 +210,7 @@ var jstsPrismaRawWriteRe = regexp.MustCompile(
 //
 // Verb → effect mapping (mirrors the documented Prisma delegate classification):
 //   - db_read : findUnique/findUniqueOrThrow/findFirst/findFirstOrThrow/
-//               findMany/count/aggregate/groupBy
+//     findMany/count/aggregate/groupBy
 //   - db_write: create/createMany/update/updateMany/upsert/delete/deleteMany
 const jstsPrismaReadVerbs = `findUnique(?:OrThrow)?|findFirst(?:OrThrow)?|findMany|count|aggregate|groupBy`
 const jstsPrismaWriteVerbs = `create(?:Many)?|update(?:Many)?|upsert|delete(?:Many)?`
@@ -307,7 +307,7 @@ var jstsKyselyWriteRootRe = regexp.MustCompile(
 	`(?:this\s*\.\s*)?(?:db|kysely|trx)\s*\.\s*(?:insertInto|updateTable|deleteFrom|replaceInto)\s*\(\s*["'` + "`" + `]([^"'` + "`" + `]+)["'` + "`" + `]`,
 )
 
-// jstsKyselyRawRe matches a raw `sql`…`` tagged template terminated by
+// jstsKyselyRawRe matches a raw `sql`…“ tagged template terminated by
 // `.execute(...)` (the Kysely raw escape hatch), capturing the SQL body
 // (group 1) so the leading keyword can classify read vs write.
 var jstsKyselyRawRe = regexp.MustCompile(

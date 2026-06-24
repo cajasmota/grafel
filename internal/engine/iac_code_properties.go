@@ -64,9 +64,9 @@ var iacCodeCuratedScalarKeys = map[string]struct{}{
 	// serverless function entrypoint
 	"handler": {},
 	// AWS resource identity / mode flags (#5501: Pulumi-AWS uplift)
-	"bucket":      {}, // S3 bucket name (literal)
-	"billingmode": {}, // DynamoDB PAY_PER_REQUEST / PROVISIONED
-	"fifoqueue":   {}, // SQS FIFO flag (bool)
+	"bucket":                   {}, // S3 bucket name (literal)
+	"billingmode":              {}, // DynamoDB PAY_PER_REQUEST / PROVISIONED
+	"fifoqueue":                {}, // SQS FIFO flag (bool)
 	"streamviewtype":           {}, // DynamoDB stream view (NEW_AND_OLD_IMAGES …)
 	"visibilitytimeoutseconds": {}, // SQS visibility timeout
 	"readcapacity":             {}, // DynamoDB throughput

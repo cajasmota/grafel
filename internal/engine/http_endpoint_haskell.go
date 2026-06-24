@@ -22,12 +22,13 @@
 //
 // Haskell web route syntax
 // ------------------------
+//
 //   - Scotty (cheapest first; Sinatra-like): a top-level verb function takes a
 //     string-literal path pattern and a handler `do` block:
 //
-//	get  "/users/:id" $ do ...        → GET  /users/{id}
-//	post "/users"     $ do ...        → POST /users
-//	delete "/users/:id" handler       → DELETE /users/{id}
+//     get  "/users/:id" $ do ...        → GET  /users/{id}
+//     post "/users"     $ do ...        → POST /users
+//     delete "/users/:id" handler       → DELETE /users/{id}
 //
 //     Scotty uses the Express-style `:name` colon path-parameter convention.
 //
@@ -35,9 +36,9 @@
 //     `mkYesod "App" [parseRoutes| ... |]`). Each line is
 //     `/path/segments  ResourceR  GET POST ...`:
 //
-//	/users          UsersR    GET POST     → GET /users, POST /users
-//	/user/#UserId   UserR     GET          → GET /user/{userid}
-//	/static/*Texts  StaticR   GET          → GET /static/{texts}
+//     /users          UsersR    GET POST     → GET /users, POST /users
+//     /user/#UserId   UserR     GET          → GET /user/{userid}
+//     /static/*Texts  StaticR   GET          → GET /static/{texts}
 //
 //     A `#Type` segment is a typed single-segment capture; a `*Type` segment is
 //     a typed multi-segment capture. Both are normalised to the Express-style
@@ -48,9 +49,9 @@
 //     `Capture "name" Type` segments are path params; `:<|>` alternates
 //     sub-APIs:
 //
-//	type API = "users" :> Capture "id" Int :> Get '[JSON] User
-//	      :<|> "users" :> ReqBody '[JSON] User :> Post '[JSON] User
-//	  → GET /users/{id} , POST /users
+//     type API = "users" :> Capture "id" Int :> Get '[JSON] User
+//     :<|> "users" :> ReqBody '[JSON] User :> Post '[JSON] User
+//     → GET /users/{id} , POST /users
 //
 // Honest exclusions (no fabricated routes)
 // -----------------------------------------

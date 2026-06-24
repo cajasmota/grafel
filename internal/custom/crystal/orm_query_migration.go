@@ -4,14 +4,14 @@
 // the four remaining ORMs reach feature parity on:
 //
 //   - query_attribution            — a QUERIES edge model → table per attributed
-//                                     canonical SQL op (select/insert/update/
-//                                     delete) at a query-DSL call site.
+//     canonical SQL op (select/insert/update/
+//     delete) at a query-DSL call site.
 //   - migration_parsing /
 //     migration_schema_ops         — a shared SCOPE.Evolution migration-op entity
-//                                     (create_table/drop_table/alter_table) per
-//                                     migration DSL call or raw schema-op SQL.
+//     (create_table/drop_table/alter_table) per
+//     migration DSL call or raw schema-op SQL.
 //   - transaction_function_stamping — a SCOPE.Pattern/transaction_boundary entity
-//                                     per DB transaction block.
+//     per DB transaction block.
 //
 // Each ORM passes its own framework name + the set of query verbs and migration
 // idioms it uses; the entity/edge SHAPE is identical across all five Crystal

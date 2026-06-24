@@ -23,7 +23,7 @@
 //     from the owning entity (#5381 buildVHDLPortEntities).
 //   - Sim/synth toolchain signals (GHDL / ModelSim/QuestaSim / Vivado / Quartus /
 //     Yosys synth pragmas + synthesis attributes) → SCOPE.Component(subtype=tool)
-//     + file→tool USES edge (#5381 buildVHDLToolEntities).
+//   - file→tool USES edge (#5381 buildVHDLToolEntities).
 //
 // Signal declarations (`signal name : type;`) are skipped — they are leaf
 // data items that contribute noise rather than structural signal.
