@@ -235,6 +235,11 @@ func extractReScript(src, filePath string) []types.EntityRecord {
 		})
 	}
 
+	// ReScript-React decoration pass (#5378): re-kind @react.component-annotated
+	// `let` operations to SCOPE.UIComponent and record their prop set. No-op when
+	// the file declares no @react.component component.
+	applyReScriptReact(src, entities)
+
 	return entities
 }
 

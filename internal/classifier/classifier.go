@@ -645,6 +645,13 @@ var exactBasenameLanguageMap = map[string]string{
 	// generic .json routing) so it reaches the _cross_manifest extractor, which
 	// exact-name-matches it and parses its application/package dependency blocks.
 	"elm.json": "elm",
+	// ReScript manifest (#5378) — rescript.json (v11+) / bsconfig.json (legacy)
+	// are JSON but have no meaning other than the ReScript project manifest.
+	// Classified as "rescript" (rather than dropped by the generic .json routing)
+	// so they reach the _cross_manifest extractor, which exact-name-matches them
+	// and parses the bs-dependencies / bs-dev-dependencies / pinned-dependencies.
+	"rescript.json": "rescript",
+	"bsconfig.json": "rescript",
 }
 
 // apiGwOcelotJSONRe matches Ocelot config files with the conventional
