@@ -10,6 +10,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.5.2] — 2026-06-24
+
+**Patch — `grafel update` end-to-end fix.** v0.1.5.1 fixed which release asset the
+updater looks for; this fixes pulling the download URL out of the GitHub API
+response, so the in-place `grafel update` command now completes.
+
+### Fixed
+- **`grafel update` resolves the asset download URL (#5587):** the updater scanned
+  the Releases API JSON with a fixed-window proximity search that missed
+  `browser_download_url` (the per-asset `uploader` object pushed it out of range).
+  Replaced with structured JSON unmarshaling; `grafel update` now works end-to-end.
+
+### Changed
+- Normalized example/fixture project names to neutral `acme-*` placeholders across
+  docs, test fixtures, and source.
+
+---
+
 ## [0.1.5.1] — 2026-06-24
 
 **Patch — working `grafel update` + update-aware installer.** The published
