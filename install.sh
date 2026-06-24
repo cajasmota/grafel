@@ -131,6 +131,50 @@ update_path_fish() {
   } >> "$rc_file"
 }
 
+# restart_daemon restarts an already-registered grafel daemon so it runs the
+# freshly-installed binary. It is best-effort: a missing tool or a failed
+# restart prints a hint and returns non-zero, but never aborts the installer.
+# Echoes "restarted" on stdout when a registered daemon was restarted.
+restart_daemon() {
+  os=$1
+  hint="re-run 'grafel install' or restart the daemon to finish the update"
+
+  case "$os" in
+    macos)
+      command -v launchctl >/dev/null 2>&1 || return 1
+      uid=$(id -u)
+      target="gui/${uid}/com.grafel.daemon"
+      # Detect a registered launchd agent (print, falling back to list).
+      if launchctl print "$target" >/dev/null 2>&1 ||
+         launchctl list 2>/dev/null | grep -q "com.grafel.daemon"; then
+        if launchctl kickstart -k "$target" >/dev/null 2>&1; then
+          echo "restarted"
+          return 0
+        fi
+        info "warning: failed to restart the grafel daemon; $hint" >&2
+        return 1
+      fi
+      return 1
+      ;;
+    linux)
+      command -v systemctl >/dev/null 2>&1 || return 1
+      # Match the user unit grafel install registers (grafel-daemon.service).
+      unit=$(systemctl --user list-unit-files 2>/dev/null \
+        | awk '/grafel/ {print $1; exit}')
+      [ -n "$unit" ] || return 1
+      if systemctl --user restart "$unit" >/dev/null 2>&1; then
+        echo "restarted"
+        return 0
+      fi
+      info "warning: failed to restart the grafel daemon; $hint" >&2
+      return 1
+      ;;
+    *)
+      return 1
+      ;;
+  esac
+}
+
 configure_path() {
   shell_name=""
   if [ -n "${SHELL:-}" ]; then
@@ -207,8 +251,16 @@ main() {
     "$BIN_DIR/grafel" --version 2>/dev/null || true
   fi
 
+  # If a daemon is already registered, restart it so it picks up the new
+  # binary. Best-effort: restart_daemon never aborts the installer.
+  daemon_restarted=$(restart_daemon "$os" || true)
+
   info ""
-  info "grafel installed. Run \"grafel wizard\" to set up your first group."
+  if [ "$daemon_restarted" = "restarted" ]; then
+    info "grafel updated and daemon restarted."
+  else
+    info "grafel installed. Run \"grafel wizard\" to set up your first group."
+  fi
   info "(restart your shell or 'source' your rc file so PATH picks up $BIN_DIR)"
 }
 

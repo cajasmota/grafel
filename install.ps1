@@ -100,6 +100,34 @@ function Add-ToUserPath($Dir) {
     $env:Path = $env:Path.TrimEnd(';') + ';' + $Dir
 }
 
+# Restart-Daemon restarts an already-registered grafel daemon so it runs the
+# freshly-installed binary. Best-effort: a missing tool or a failed restart
+# prints a hint and returns $false, but never aborts the installer.
+# grafel install registers a Task Scheduler task named 'com.grafel.daemon'.
+function Restart-Daemon {
+    $taskName = 'com.grafel.daemon'
+    $hint = "re-run 'grafel install' or restart the daemon to finish the update"
+
+    if (-not (Get-Command schtasks.exe -ErrorAction SilentlyContinue)) {
+        return $false
+    }
+
+    # Detect a registered task (schtasks /query exits non-zero when absent).
+    & schtasks.exe /query /tn $taskName 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        return $false
+    }
+
+    # Stop then start the task so it re-launches the new binary.
+    & schtasks.exe /end /tn $taskName 2>$null | Out-Null
+    & schtasks.exe /run /tn $taskName 2>$null | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Write-Info "warning: failed to restart the grafel daemon; $hint"
+        return $false
+    }
+    return $true
+}
+
 # --- main ---
 
 $arch    = Get-Arch
@@ -155,8 +183,16 @@ try {
         try { & $existing --version } catch { }
     }
 
+    # If a daemon is already registered, restart it so it picks up the new
+    # binary. Best-effort: Restart-Daemon never aborts the installer.
+    $daemonRestarted = Restart-Daemon
+
     Write-Info ""
-    Write-Info "grafel installed. Run `"grafel wizard`" to set up your first group."
+    if ($daemonRestarted) {
+        Write-Info "grafel updated and daemon restarted."
+    } else {
+        Write-Info "grafel installed. Run `"grafel wizard`" to set up your first group."
+    }
     Write-Info "(open a new terminal so PATH picks up $BinDir)"
 }
 finally {
