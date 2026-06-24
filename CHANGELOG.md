@@ -9,6 +9,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Inngest durable functions extracted as Function entities (#5480):** the new
+  `custom_js_inngest` JS/TS extractor recognises `inngest.createFunction({ id |
+  name }, { event | cron }, handler)` call sites (both the modern object-config
+  signature and the older positional trigger form) and emits one
+  `SCOPE.Function` entity (subtype `inngest_function`) per definition, named
+  after the config `id`/`name` — the consumer side of an Inngest event, modelled
+  like a BullMQ Worker / serverless function. The trigger is captured as an
+  attribute (`trigger_event` + `trigger_type=event`, or `trigger_cron` +
+  `trigger_type=cron`); `function_id`, `receiver`, and `framework=inngest` are
+  recorded too. Detection is attribution-gated on an `inngest` import or a
+  receiver named `inngest`. This is Phase 1 (entities) of the Inngest coverage
+  epic (#5479); the EMITS/TRIGGERS edges that wire the trigger event to
+  producers and topics are follow-up tickets (#5482/#5483/#5484). New registry
+  record `msg.inngest` (`message_broker` / `task_queues`).
 - **Index-progress list sorts by status — active rows on top, done sinks (#5495):**
   on the dashboard index/group view the per-repo/module progress rows used to
   render in a static repo/module order, so with a large (e.g. 30-module) group

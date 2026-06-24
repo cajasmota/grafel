@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # message_broker
 
-**Total**: 61 records · **C/C++**: 3 · **C#**: 9 · **elixir**: 2 · **go**: 5 · **JS/TS**: 3 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 3
+**Total**: 62 records · **C/C++**: 3 · **C#**: 9 · **elixir**: 2 · **go**: 5 · **JS/TS**: 4 · **multi**: 22 · **php**: 1 · **python**: 6 · **ruby**: 7 · **rust**: 3
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -26,6 +26,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 |---|---|---|---|---|---|---|
 | [go](../by-language/go.md) | [asynq (Go task queue)](../detail/msg.asynq.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [JS/TS](../by-language/jsts.md) | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [Inngest (durable functions / event-driven jobs)](../detail/msg.inngest.md) | 🟢 | — | — | 🟢 | |
 | [php](../by-language/php.md) | [Laravel Queue (queued Jobs / dispatch)](../detail/msg.broker.laravel-queue.md) | 🟢 | 🟢 | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [Celery (Python task queue)](../detail/msg.celery.md) | ✅ | ✅ | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Dramatiq (Python task queue)](../detail/msg.dramatiq.md) | ✅ | ✅ | — | ✅ | |

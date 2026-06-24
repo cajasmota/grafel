@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # JS/TS
 
-**Frameworks**: 33 · **Tools**: 21 · **ORMs**: 19 · **Other**: 8
+**Frameworks**: 33 · **Tools**: 21 · **ORMs**: 19 · **Other**: 9
 
 Back to [summary](../summary.md).
 
@@ -166,6 +166,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
 |---|---|---|---|---|
 | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | |
+| [Inngest (durable functions / event-driven jobs)](../detail/msg.inngest.md) | 🟢 | — | — | |
 
 
 ### Brokers

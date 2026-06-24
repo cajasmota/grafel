@@ -1,13 +1,13 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # grafel capabilities
 
-**Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 255 · **ORMs**: 176 · **Tools**: 129 · **Other**: 205
+**Languages**: 39 (25 active · 14 placeholder) · **Frameworks**: 255 · **ORMs**: 176 · **Tools**: 129 · **Other**: 206
 
 ## Coverage by language
 
 | Language | Frameworks | Tools | ORMs | Other |
 |---|---:|---:|---:|---:|
-| [JS/TS](by-language/jsts.md) | 33 | 21 | 19 | 8 |
+| [JS/TS](by-language/jsts.md) | 33 | 21 | 19 | 9 |
 | [C/C++](by-language/c-cpp.md) | 25 | 16 | 10 | 4 |
 | [python](by-language/python.md) | 25 | 15 | 18 | 10 |
 | [java](by-language/java.md) | 23 | 10 | 15 | 4 |
@@ -83,4 +83,4 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 255 frameworks · 129 tools · 176 ORMs · 205 other
+Total: 255 frameworks · 129 tools · 176 ORMs · 206 other
