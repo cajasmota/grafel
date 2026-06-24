@@ -261,6 +261,12 @@ func IsManifest(filePath string) bool {
 	if strings.HasSuffix(basename, ".ipkg") {
 		return true
 	}
+	// *.cm — SML/NJ Compilation Manager group/library build file; *.mlb — MLton
+	// ML Basis build file. Both are SML build manifests listing sources + library
+	// deps, matched by extension (the unit name is the file's base name; #5383).
+	if strings.HasSuffix(basename, ".cm") || strings.HasSuffix(basename, ".mlb") {
+		return true
+	}
 	return false
 }
 
@@ -357,6 +363,14 @@ func detectPackageManager(filePath string) string {
 	// *.ipkg → idris2 (Idris package manifest)
 	if strings.HasSuffix(basename, ".ipkg") {
 		return "idris2"
+	}
+	// *.cm → smlnj_cm (SML/NJ Compilation Manager); *.mlb → mlton_mlb (MLton ML
+	// Basis). Two SML build toolchains, distinct package-manager labels (#5383).
+	if strings.HasSuffix(basename, ".cm") {
+		return "smlnj_cm"
+	}
+	if strings.HasSuffix(basename, ".mlb") {
+		return "mlton_mlb"
 	}
 	return "unknown"
 }
@@ -2032,6 +2046,14 @@ func dispatchParser(filePath, source string) (string, []dep) {
 	if strings.HasSuffix(basename, ".ipkg") {
 		return "idris2", parseIpkg(source)
 	}
+	// *.cm — SML/NJ Compilation Manager group/library build file.
+	if strings.HasSuffix(basename, ".cm") {
+		return "smlnj_cm", parseCM(source)
+	}
+	// *.mlb — MLton ML Basis build file.
+	if strings.HasSuffix(basename, ".mlb") {
+		return "mlton_mlb", parseMLB(source)
+	}
 	// Makefile — only an erlang.mk build when it includes erlang.mk / declares
 	// PROJECT (requireSignal=true); a plain Makefile is a no-op.
 	if basename == "Makefile" {
@@ -2290,6 +2312,29 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 				anchorProps = map[string]string{}
 			}
 			anchorProps["ipkg_config"] = cfg
+		}
+	}
+
+	// SML *.cm — surface the CM group/library export kind + source-file member
+	// list on the project anchor as a "cm_config" property (no new entity kind;
+	// same model as ipkg_config). #5383.
+	if strings.HasSuffix(filepath.Base(file.Path), ".cm") {
+		if cfg := cmConfigProperty(string(file.Content)); cfg != "" {
+			if anchorProps == nil {
+				anchorProps = map[string]string{}
+			}
+			anchorProps["cm_config"] = cfg
+		}
+	}
+
+	// SML *.mlb — surface the MLB source-file member list on the project anchor
+	// as a "mlb_config" property (no new entity kind). #5383.
+	if strings.HasSuffix(filepath.Base(file.Path), ".mlb") {
+		if cfg := mlbConfigProperty(string(file.Content)); cfg != "" {
+			if anchorProps == nil {
+				anchorProps = map[string]string{}
+			}
+			anchorProps["mlb_config"] = cfg
 		}
 	}
 

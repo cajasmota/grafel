@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 33 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **elm**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **idris**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **OCaml**: 1 · **php**: 1 · **python**: 3 · **ReasonML**: 1 · **ReScript**: 1 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1 · **zig**: 1
+**Total**: 35 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **elm**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **idris**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **OCaml**: 1 · **php**: 1 · **python**: 3 · **ReasonML**: 1 · **ReScript**: 1 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **Standard ML**: 2 · **swift**: 1 · **zig**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -39,5 +39,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [ruby](../by-language/ruby.md) | [Gemfile](../detail/pkg.gemfile.md) | — | 🔴 | ✅ | |
 | [rust](../by-language/rust.md) | [Cargo.toml](../detail/pkg.cargo.md) | — | 🔴 | ✅ | |
 | [scala](../by-language/scala.md) | [build.sbt](../detail/pkg.sbt.md) | — | — | 🔴 | |
+| [Standard ML](../by-language/sml.md) | [CM (SML/NJ Compilation Manager build file)](../detail/lang.sml.tool.cm.md) | — | — | ✅ | |
+| [Standard ML](../by-language/sml.md) | [MLB (MLton ML Basis build file)](../detail/lang.sml.tool.mlb.md) | — | — | ✅ | |
 | [swift](../by-language/swift.md) | [Package.swift / Podfile](../detail/pkg.swift-package.md) | — | — | 🟢 | |
 | [zig](../by-language/zig.md) | [build.zig.zon (Zig package manifest)](../detail/pkg.zig-zon.md) | — | — | ✅ | |
