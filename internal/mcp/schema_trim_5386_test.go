@@ -153,7 +153,7 @@ var wantToolParams = map[string]string{
 	"grafel_neighbors":                   "cwd,depth,direction,entity_id,fields,group,ref,token_budget|req:entity_id",
 	"grafel_orient":                      "cwd,group,max_questions,ref,repo_filter,top_edges,top_entities,topic_id,view|req:",
 	"grafel_related":                     "cwd,depth,direction,entity_id,fields,group,ref,repo_filter,token_budget|req:entity_id",
-	"grafel_patterns":                    "action,category,cwd,exemplars,group,limit,steps,text|req:action",
+	"grafel_patterns":                    "action,category,cwd,exemplars,group,kind,limit,repo_filter,steps,text|req:",
 	"grafel_payload_drift":               "cwd,drift_class,group|req:",
 	"grafel_persona_event":               "chain,depth,event_type,metadata,persona,target_persona|req:event_type,persona",
 	"grafel_pr_impact":                   "base,cwd,group,head,hops,refs,repo|req:repo",
@@ -176,4 +176,10 @@ var wantToolParams = map[string]string{
 	"grafel_trace":                       "action,cwd,detail,entity_id,group,include,kind,limit,ref,repo_filter,sink_kind,source,target|req:",
 	"grafel_traces":                      "action,cwd,entry_point_id,group,limit,max_depth,process_id,ref,repo_filter,token_budget|req:",
 	"grafel_whoami":                      "cwd,group,ref|req:",
+	// #5546/#5550 ANALYSIS-cluster canonical tools.
+	"grafel_debt":          "cwd,group,group_oracle,group_v3,kind,kind_filter,limit,ref,repo_filter|req:",
+	"grafel_security":      "category,cwd,format,group,kind,limit,min_confidence,ref,repo_filter,severity,source_repo|req:",
+	"grafel_test_analysis": "cwd,entity_id,group,kind,limit,ref,repo_filter,severity|req:",
+	"grafel_findings":      "action,answer,cwd,group,question|req:",
+	"grafel_diff":          "aspect,cwd,drift_class,group,group_oracle,group_v3,ref_a,ref_b,repo,set|req:",
 }

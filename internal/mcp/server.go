@@ -915,17 +915,104 @@ func (s *Server) registerTools() {
 	// grafel_get_telemetry dropped (dashboard-only; use HTTP /api/telemetry instead).
 
 	// grafel_patterns — ADR-0018. action=query|record.
+	// grafel_patterns — ANALYSIS canonical patterns tool (#5546/#5550). kind=
+	// routes over the three pattern surfaces; default code = the agent pattern
+	// store (which still reads its own action=query|record), preserving the
+	// pre-merge behaviour byte-for-byte for callers that pass only action=.
 	s.addTool(mcpapi.NewTool("grafel_patterns",
-		mcpapi.WithDescription("Agent pattern store: query=find by task, record=store with exemplars."),
-		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithDescription("Patterns. kind=code(def,agent store)|graph(extracted)|template(literals)."),
+		mcpapi.WithString("kind", mcpapi.DefaultString("code"),
+			mcpapi.Description("code=agent store (needs action=query|record); graph=indexer-extracted; template=i18n/log/sql literals.")),
+		mcpapi.WithString("action"), // kind=code (query|record), kind=graph (list|get)
 		mcpapi.WithAny("text"),
 		mcpapi.WithAny("category"),
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(10)),
 		mcpapi.WithArray("steps"),
 		mcpapi.WithArray("exemplars"),
+		mcpapi.WithArray("repo_filter"), // kind=graph|template
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-	), s.wrap("grafel_patterns", s.handlePatterns))
+	), s.wrap("grafel_patterns", s.handleAnalysisPatterns))
+
+	// grafel_debt — ANALYSIS canonical tech-debt / code-health tool (#5546/#5550).
+	// kind= routes over dead-code, cycle, stub, purity, and license analyses.
+	s.addTool(mcpapi.NewTool("grafel_debt",
+		mcpapi.WithDescription("Code smells/dead code/cycles. kind=dead_code(def)|cycles|stubs|impure|license."),
+		mcpapi.WithString("kind", mcpapi.DefaultString("dead_code"),
+			mcpapi.Description("dead_code=unreached entities; cycles=import cycles; stubs=v3 fakes; impure=fns w/ effects-free; license=dep-license conflicts.")),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("kind_filter"), // kind=dead_code
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(200)),
+		mcpapi.WithString("group_oracle"), // kind=stubs
+		mcpapi.WithString("group_v3"),     // kind=stubs
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"),
+	), s.wrap("grafel_debt", s.handleAnalysisDebt))
+
+	// grafel_security — ANALYSIS canonical security-posture tool (#5546/#5550).
+	s.addTool(mcpapi.NewTool("grafel_security",
+		mcpapi.WithDescription("Security posture. kind=findings(def,taint)|secrets|auth_coverage."),
+		mcpapi.WithString("kind", mcpapi.DefaultString("findings"),
+			mcpapi.Description("findings=taint source→sink paths; secrets=hardcoded-credential scan; auth_coverage=endpoints missing auth.")),
+		mcpapi.WithString("category"),       // kind=findings
+		mcpapi.WithNumber("min_confidence"), // kind=findings
+		mcpapi.WithString("source_repo"),    // kind=findings
+		mcpapi.WithAny("severity"),          // kind=secrets
+		mcpapi.WithArray("repo_filter"),     // kind=auth_coverage
+		mcpapi.WithString("format"),         // kind=auth_coverage
+		mcpapi.WithNumber("limit"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"),
+	), s.wrap("grafel_security", s.handleAnalysisSecurity))
+
+	// grafel_test_analysis — ANALYSIS canonical test coverage/reach/effectiveness
+	// tool (#5546/#5550).
+	s.addTool(mcpapi.NewTool("grafel_test_analysis",
+		mcpapi.WithDescription("Tests. kind=coverage(def)|reachability|contract_eff|coverage_eff."),
+		mcpapi.WithString("kind", mcpapi.DefaultString("coverage"),
+			mcpapi.Description("coverage=no TESTS edge; reachability=no test path/orphans; contract_effectiveness=tautological specs; coverage_effectiveness=reachable-but-0%-lines.")),
+		mcpapi.WithString("entity_id"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("severity"),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"),
+	), s.wrap("grafel_test_analysis", s.handleAnalysisTest))
+
+	// grafel_findings — ANALYSIS canonical findings-store tool (#5546/#5550).
+	// action= picks list (read) vs save (persist a Q&A finding).
+	s.addTool(mcpapi.NewTool("grafel_findings",
+		mcpapi.WithDescription("Findings store. action=list(def,enumerate)|save(persist a Q&A finding)."),
+		mcpapi.WithString("action", mcpapi.DefaultString("list"),
+			mcpapi.Description("list=enumerate stored findings; save=persist (requires question + answer).")),
+		mcpapi.WithString("question"), // action=save
+		mcpapi.WithString("answer"),   // action=save
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("grafel_findings", s.handleAnalysisFindings))
+
+	// grafel_diff — ANALYSIS canonical compare tool (#5546/#5550). aspect= picks
+	// WHAT to compare. The return is a DISCRIMINATED UNION keyed by `aspect`:
+	// each aspect returns its handler's native shape (refs=entity/rel deltas;
+	// response_shape/auth/literals=per-endpoint parity verdicts; payload=drift
+	// findings) and the result is stamped with `aspect` so the caller knows which.
+	s.addTool(mcpapi.NewTool("grafel_diff",
+		mcpapi.WithDescription("Compare two refs/versions; aspect picks what to compare (shape varies)."),
+		mcpapi.WithString("aspect", mcpapi.DefaultString("response_shape"),
+			mcpapi.Description("response_shape=per-status field drift; payload=schema/envelope drift; auth=auth-posture parity; literals=enum/ConstantSet parity; refs=entity/rel deltas between two git refs.")),
+		mcpapi.WithString("group_oracle"), // response_shape|auth|literals
+		mcpapi.WithString("group_v3"),     // response_shape|auth|literals
+		mcpapi.WithString("set"),          // aspect=literals
+		mcpapi.WithString("drift_class"),  // aspect=payload
+		mcpapi.WithString("repo"),         // aspect=refs
+		mcpapi.WithString("ref_a"),        // aspect=refs
+		mcpapi.WithString("ref_b"),        // aspect=refs
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("grafel_diff", s.handleAnalysisDiff))
 
 	// grafel_topology — message-channel topology (#1281). action=orphan_publishers|orphan_subscribers|topic_detail.
 	// verbose=true (default false) read from request map to stay under token ceiling.

@@ -624,6 +624,10 @@ func TestToolNameSurface(t *testing.T) {
 		"grafel_control_flow",
 		// #4893 tautological/oracle-blind spec detector (contract_test_effectiveness).
 		"grafel_contract_test_effectiveness",
+		// #5546/#5550 ANALYSIS-cluster canonical tools. grafel_patterns reuses an
+		// existing name (re-pointed to the kind= dispatcher); these five are new.
+		"grafel_debt", "grafel_security", "grafel_test_analysis",
+		"grafel_findings", "grafel_diff",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -730,8 +734,10 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 grafel_related (#5546/#5549 CORE-cluster canonical: callers/callees/
 	//    neighbors/uses/used_by discriminator; the other 7 CORE canonicals reuse
 	//    existing tool names so add no new registrations).
-	if got := len(allRegisteredTools); got != 70 {
-		t.Errorf("expected 70 registered tools, got %d — update this count if tools are added/removed (added grafel_related #5549)", got)
+	// +5 grafel_debt/security/test_analysis/findings/diff (#5546/#5550 ANALYSIS-
+	//    cluster canonicals; grafel_patterns reuses an existing name).
+	if got := len(allRegisteredTools); got != 75 {
+		t.Errorf("expected 75 registered tools, got %d — update this count if tools are added/removed (added analysis cluster #5550)", got)
 	}
 }
 
@@ -3275,6 +3281,14 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"grafel_stub_detector":               {"group_v3": "g", "group_oracle": "g"},
 		"grafel_response_shape_diff":         {"group_oracle": "g", "group_v3": "g"},
 		"grafel_contract_test_effectiveness": {"group": "g"},
+		// #5546/#5550 ANALYSIS-cluster canonical tools. Each routes to an absorbed
+		// handler via its discriminator default; the args mirror that handler's
+		// minimal args so the wrapper + elapsed_ms trailer is exercised.
+		"grafel_debt":          {"group": "g"},                         // kind=dead_code default
+		"grafel_security":      {"group": "g"},                         // kind=findings default
+		"grafel_test_analysis": {"group": "g"},                         // kind=coverage default
+		"grafel_findings":      {"group": "g"},                         // action=list default
+		"grafel_diff":          {"group_oracle": "g", "group_v3": "g"}, // aspect=response_shape default
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3319,8 +3333,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 70 {
-		t.Errorf("expected 70 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_related #5549)", len(tools))
+	if len(tools) != 75 {
+		t.Errorf("expected 75 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_debt/security/test_analysis/findings/diff #5550)", len(tools))
 	}
 
 	for _, st := range tools {
