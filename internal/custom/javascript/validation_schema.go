@@ -114,7 +114,10 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 	schemaNames := make(map[string]bool)
 
 	addSchema := func(ent types.EntityRecord) {
-		key := ent.Kind + ":" + ent.Name
+		// Subtype is part of the key so a nested sub-schema (subtype=nested_schema)
+		// and a same-named flat object-typed field member (subtype=field) — e.g.
+		// `Profile.address` exists as both — don't collide (issue #5496).
+		key := ent.Kind + ":" + ent.Subtype + ":" + ent.Name
 		if seen[key] {
 			return
 		}
@@ -150,9 +153,20 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 			// Field-membership sub-entities (issue #4606): emit before addSchema
 			// so the CONTAINS edges are recorded on the owner.
 			children := emitSchemaFieldMembers(&ent, fields, sd.lib, file.Path, file.Language)
+			// Nested z.object() sub-schemas (issue #5496, zod only): a field whose
+			// value is itself a z.object({...}) — including inside z.array(...),
+			// z.record(...), .optional()/.nullable() wrappers and z.union([...])
+			// branches — is expanded into a child SCOPE.Schema linked to its parent.
+			var nested []types.EntityRecord
+			if sd.lib == "zod" {
+				nested = expandNestedZodObjects(&ent, name, body, file.Path, file.Language, lineOf(src, m[0]))
+			}
 			addSchema(ent)
 			for _, c := range children {
 				addSchema(c)
+			}
+			for _, n := range nested {
+				addSchema(n)
 			}
 		}
 	}
@@ -385,6 +399,135 @@ func extractSchemaFields(re *regexp.Regexp, body string, lib string) []schemaFie
 		})
 	}
 	return fields
+}
+
+// maxNestedSchemaDepth caps the nested-z.object() recursion so a pathologically
+// deep (or accidentally self-referential) schema literal can't blow up the
+// extractor. 8 levels is far deeper than any realistic request/response DTO.
+const maxNestedSchemaDepth = 8
+
+// nestedObjectFieldRe matches a single `field: <value>` member of a zod object
+// body whose value *contains* a `z.object(` somewhere in its wrapper chain —
+// directly (`field: z.object({...})`), or wrapped in z.array / z.record /
+// z.union / .optional() / .nullable() etc. Group 1 = field name. The value's
+// extent is recovered separately via fieldChain so the match only needs to
+// anchor the field name and confirm an object lives in its value.
+var nestedObjectFieldRe = regexp.MustCompile(`(?m)([A-Za-z_]\w*)\s*:\s*(?:z|zod)\s*\.`)
+
+// zObjectCallRe locates a `z.object(` / `zod.object(` factory call so the
+// recursion can find the object literal regardless of the wrappers around it.
+var zObjectCallRe = regexp.MustCompile(`(?:z|zod)\s*\.\s*object\s*\(`)
+
+// expandNestedZodObjects walks the fields of a zod object body and, for every
+// field whose value contains a nested `z.object({...})` (reachable through
+// z.array(...), z.record(...), z.union([...]) branches, and .optional() /
+// .nullable() / .default(...) / .describe(...) chain wrappers), emits a child
+// SCOPE.Schema entity named `<parentPath>.<field>` carrying that nested
+// object's own scalar fields, plus a CONTAINS edge from the parent schema to
+// the child (the same field→schema membership model used for flat fields,
+// #4606). The recursion descends so `a.b.c` nesting yields one child schema per
+// level with a dotted name path. It is capped at maxNestedSchemaDepth.
+//
+// Honest-partial: a field whose value has no statically-locatable z.object()
+// (dynamic, computed, or a $ref to another named schema) yields no nested child
+// — no false nesting.
+func expandNestedZodObjects(parent *types.EntityRecord, parentPath, body, filePath, language string, line int) []types.EntityRecord {
+	return expandNestedZodObjectsDepth(parent, parentPath, body, filePath, language, line, 1)
+}
+
+func expandNestedZodObjectsDepth(parent *types.EntityRecord, parentPath, body, filePath, language string, line, depth int) []types.EntityRecord {
+	if depth > maxNestedSchemaDepth || parent == nil {
+		return nil
+	}
+	var out []types.EntityRecord
+	seen := make(map[string]bool)
+	for _, m := range nestedObjectFieldRe.FindAllStringSubmatchIndex(body, -1) {
+		fieldName := body[m[2]:m[3]]
+		if seen[fieldName] {
+			continue
+		}
+		// Recover this field's full value text (its method/wrapper chain) so we
+		// only look at this field's value, not its siblings'. m[1] points just
+		// past the `.` of `z.`; fieldChain wants the position of the value start.
+		valueChain := fieldChain(body, m[3])
+		objBody, ok := firstNestedObjectBody(valueChain)
+		if !ok {
+			continue
+		}
+		seen[fieldName] = true
+		childPath := parentPath + "." + fieldName
+
+		// Build the child schema entity. Its scalar fields come from the same
+		// flat field extractor used for top-level schemas.
+		childFields := extractSchemaFields(zodFieldRe, objBody, "zod")
+		child := makeEntity(childPath, "SCOPE.Schema", "nested_schema", filePath, language, line)
+		setProps(&child, "library", "zod", "pattern_type", "nested_schema",
+			"parent_schema", parentPath, "field_path", childPath, "nesting_depth",
+			fmt.Sprintf("%d", depth),
+			"provenance", "INFERRED_FROM_ZOD_NESTED_OBJECT")
+		applyFieldProps(&child, childFields)
+		// Link parent → child via the field-membership CONTAINS edge (same model
+		// as flat field members, #4606), so the nested object is owned by its
+		// parent and carries the field-name path.
+		parent.Relationships = append(parent.Relationships,
+			nestedSchemaEdge(parentPath, child.ID, fieldName, childPath))
+
+		// The child's own scalar field members (parity with flat schemas).
+		grandFields := emitSchemaFieldMembers(&child, childFields, "zod", filePath, language)
+
+		// Recurse: a nested object may itself contain further nested objects.
+		deeper := expandNestedZodObjectsDepth(&child, childPath, objBody, filePath, language, line, depth+1)
+
+		out = append(out, child)
+		out = append(out, grandFields...)
+		out = append(out, deeper...)
+	}
+	return out
+}
+
+// firstNestedObjectBody returns the body of the first `z.object({...})` found
+// inside a field's value chain, descending through any wrapper text that
+// precedes it (z.array(/z.record(/z.union([/.optional()/.nullable()/...). It
+// returns the balanced contents of the object literal and true, or ("", false)
+// when the value contains no locatable z.object() (scalar field, $ref to a
+// named schema, or a dynamic/computed value — honest-partial).
+func firstNestedObjectBody(valueChain string) (string, bool) {
+	loc := zObjectCallRe.FindStringIndex(valueChain)
+	if loc == nil {
+		return "", false
+	}
+	// loc[1]-1 is the index of the `(` opening the object() call.
+	objArg := balancedObjectBody(valueChain, loc[1]-1)
+	// The object literal is the `{...}` inside object(...). Trim to its braces so
+	// the field extractor only sees the object's own members. z.object takes the
+	// shape literal as its first arg; find the first top-level `{`.
+	braceStart := strings.IndexByte(objArg, '{')
+	if braceStart < 0 {
+		// z.object() with no literal shape (dynamic) — honest-partial.
+		return "", false
+	}
+	objBody := balancedBraceBody(objArg, braceStart)
+	return objBody, true
+}
+
+// nestedSchemaEdge builds the parent→child membership edge for a nested
+// z.object() sub-schema. It reuses the CONTAINS field-membership kind (the same
+// relationship flat field members use, #4606) so the nested object is owned by
+// its parent schema and carries the dotted field-name path. ToID is the
+// concrete child schema entity ID.
+func nestedSchemaEdge(parentSchema, childID, fieldName, fieldPath string) types.RelationshipRecord {
+	return types.RelationshipRecord{
+		FromID: "Schema:" + parentSchema,
+		ToID:   childID,
+		Kind:   string(types.RelationshipKindContains),
+		Properties: map[string]string{
+			"framework":  "zod",
+			"member":     "nested_schema",
+			"field_name": fieldName,
+			"field_path": fieldPath,
+			"provenance": "INFERRED_FROM_ZOD_NESTED_OBJECT",
+		},
+	}
 }
 
 // fieldChain returns the schema-field value text starting at the factory call's
