@@ -1628,9 +1628,56 @@ func gradleConfigIsDev(cfg string) bool {
 	return strings.HasPrefix(cfg, "test") || strings.HasPrefix(cfg, "androidTest")
 }
 
+// gradlePluginsBlockRE captures the body of a top-level `plugins { … }` block.
+// Group 1 is the brace body, scanned by gradlePluginIDRE for plugin entries.
+var gradlePluginsBlockRE = regexp.MustCompile(`(?s)\bplugins\s*\{(.*?)\}`)
+
+// gradlePluginIDRE matches a modern plugin declaration inside a `plugins { … }`
+// block — `id 'org.springframework.boot'` / `id("io.spring.dependency-management")`
+// with an optional ` version '3.1.0'` / ` version("3.1.0")` suffix. Group 1 is
+// the plugin id, group 2 the (optional) version. The Kotlin-DSL accessor form
+// (`kotlin("jvm") version "1.9"`) and `apply false` modifiers are out of scope —
+// honest-partial.
+var gradlePluginIDRE = regexp.MustCompile(
+	`\bid\s*[ (]\s*['"]([A-Za-z0-9_.\-]+)['"]\s*\)?(?:\s*version\s*[ (]\s*['"]([^'"\s]+)['"])?`)
+
+// parseGradlePlugins extracts `plugins { id '…' version '…' }` declarations as
+// plugin dependencies (kind="plugin"). Modern Gradle declares plugins in this
+// block rather than the legacy `apply plugin:` form (handled by the base groovy
+// extractor as a SCOPE.Component/plugin_id). Surfacing them here gives the
+// plugin graph a version-carrying external-dependency node, completing the
+// Gradle dep/plugin/task triad (#5364).
+func parseGradlePlugins(source string) []dep {
+	var out []dep
+	seen := map[string]bool{}
+	for _, blk := range gradlePluginsBlockRE.FindAllStringSubmatch(source, -1) {
+		for _, m := range gradlePluginIDRE.FindAllStringSubmatch(blk[1], -1) {
+			id := m[1]
+			if id == "" || seen[id] {
+				continue
+			}
+			seen[id] = true
+			out = append(out, dep{
+				name:    id,
+				version: m[2],
+				kind:    "plugin",
+			})
+		}
+	}
+	return out
+}
+
 func parseBuildGradle(source string) []dep {
 	var out []dep
 	seen := map[string]bool{}
+	// Modern `plugins { id '…' }` block declarations (kind="plugin").
+	for _, p := range parseGradlePlugins(source) {
+		if seen[p.name] {
+			continue
+		}
+		seen[p.name] = true
+		out = append(out, p)
+	}
 	for _, m := range gradleDepLineRE.FindAllStringSubmatch(source, -1) {
 		cfg := m[1]
 		if !gradleConfigs[cfg] {

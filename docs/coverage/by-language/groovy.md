@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # groovy
 
-**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 0 · **Other**: 1
+**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 1 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -34,6 +34,16 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|---|
 | [Spock](../detail/test.spock.md) | 🔴 | — | — | — | 🔴 | |
+
+## ORMs
+
+
+### ORM / Data Mapper
+
+| Name | Other capabilities | Notes |
+|---|---|---|
+| [GORM (Grails ORM)](../detail/lang.groovy.orm.gorm.md) | 🟡 8/10 | |
+
 
 ## Other
 

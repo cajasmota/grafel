@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 183 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 5 · **C#**: 16 · **dart**: 6 · **elixir**: 10 · **go**: 17 · **java**: 15 · **JS/TS**: 20 · **kotlin**: 7 · **nim**: 4 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
+**Total**: 184 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 5 · **C#**: 16 · **dart**: 6 · **elixir**: 10 · **go**: 17 · **groovy**: 1 · **java**: 15 · **JS/TS**: 20 · **kotlin**: 7 · **nim**: 4 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -80,6 +80,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [go](../by-language/go.md) | [sqlc (codegen)](../detail/lang.go.orm.sqlc.md) | 🟡 4/7 | |
 | [go](../by-language/go.md) | [sqlx](../detail/lang.go.orm.sqlx.md) | 🟡 6/8 | |
 | [go](../by-language/go.md) | [xo (codegen)](../detail/lang.go.orm.xo.md) | 🟡 6/9 | |
+| [groovy](../by-language/groovy.md) | [GORM (Grails ORM)](../detail/lang.groovy.orm.gorm.md) | 🟡 8/10 | |
 | [java](../by-language/java.md) | [AWS SDK DynamoDB (Java)](../detail/lang.java.orm.dynamodb.md) | 🟡 2/6 | |
 | [java](../by-language/java.md) | [Ebean ORM](../detail/lang.java.orm.ebean.md) | 🟡 7/10 | |
 | [java](../by-language/java.md) | [EclipseLink](../detail/lang.java.orm.eclipselink.md) | 🟡 7/10 | |
