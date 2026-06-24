@@ -17,6 +17,7 @@ import (
 	"archive/tar"
 	"archive/zip"
 	"compress/gzip"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -518,48 +519,36 @@ func writeBinaryMember(src io.Reader, destPath string) error {
 	return nil
 }
 
+// ghRelease is a minimal projection of the GitHub Releases API response,
+// covering only the asset name and download URL fields we need.
+type ghRelease struct {
+	Assets []struct {
+		Name               string `json:"name"`
+		BrowserDownloadURL string `json:"browser_download_url"`
+	} `json:"assets"`
+}
+
 // findAssetDownloadURL parses a GitHub releases API JSON response and returns
 // the browser_download_url for the asset whose name matches assetName.
-func findAssetDownloadURL(json, assetName string) (string, error) {
-	// Look for the asset name in the JSON.  The structure is:
-	//   "assets": [ { "name": "...", "browser_download_url": "..." }, ... ]
-	// We scan for the name match, then find the download URL nearby.
-	nameKey := `"name":"` + assetName + `"`
-	// Also accept with spaces: "name": "grafel-..."
-	if !strings.Contains(json, `"name":"`+assetName+`"`) &&
-		!strings.Contains(json, `"name": "`+assetName+`"`) {
-		return "", fmt.Errorf("asset %q not found in release", assetName)
+//
+// It unmarshals the response into a minimal struct rather than scanning the
+// raw bytes: the real API places a large nested "uploader" object between an
+// asset's "name" and "browser_download_url" fields, so a naive proximity scan
+// misses the URL (and is brittle to field ordering and dotted asset names).
+func findAssetDownloadURL(body, assetName string) (string, error) {
+	var rel ghRelease
+	if err := json.Unmarshal([]byte(body), &rel); err != nil {
+		return "", fmt.Errorf("parse release JSON: %w", err)
 	}
 
-	// Find the position of the name.
-	idx := strings.Index(json, nameKey)
-	if idx < 0 {
-		// Try with space.
-		nameKey = `"name": "` + assetName + `"`
-		idx = strings.Index(json, nameKey)
-	}
-	if idx < 0 {
-		return "", fmt.Errorf("asset %q not found in release assets", assetName)
+	for _, asset := range rel.Assets {
+		if asset.Name == assetName {
+			if asset.BrowserDownloadURL == "" {
+				return "", fmt.Errorf("asset %q has no browser_download_url", assetName)
+			}
+			return asset.BrowserDownloadURL, nil
+		}
 	}
 
-	// Look for browser_download_url within the next 512 bytes.
-	window := json[idx:]
-	if len(window) > 512 {
-		window = window[:512]
-	}
-	urlKey := `"browser_download_url":"`
-	urlIdx := strings.Index(window, urlKey)
-	if urlIdx < 0 {
-		urlKey = `"browser_download_url": "`
-		urlIdx = strings.Index(window, urlKey)
-	}
-	if urlIdx < 0 {
-		return "", fmt.Errorf("browser_download_url not found near asset %q", assetName)
-	}
-	rest := window[urlIdx+len(urlKey):]
-	end := strings.Index(rest, `"`)
-	if end < 0 {
-		return "", fmt.Errorf("malformed browser_download_url for asset %q", assetName)
-	}
-	return rest[:end], nil
+	return "", fmt.Errorf("asset %q not found in release", assetName)
 }
