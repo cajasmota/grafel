@@ -55,6 +55,17 @@ import (
 // created once in runDaemon before the RPC + dashboard servers start.
 var daemonProgressBroker = progress.NewBroker()
 
+// daemonIndexGate is the process-wide index-concurrency gate (#5493). Every
+// per-module/per-repo index dispatched by the rebuild fan-out drains through it,
+// so a group/monorepo with many modules indexes at most GRAFEL_INDEX_CONCURRENCY
+// (default 2) at a time instead of all-at-once — the fix for the 30-module
+// monorepo storm. The rebuild worker pool may still SIZE itself to the larger
+// memory-auto-tuned cap, but this gate is the real throttle on simultaneous
+// indexes; the per-index core cap (GRAFEL_EXTRACT_GOMAXPROCS) only bounds cores
+// WITHIN one index. One slot is reserved for foreground/interactive index so a
+// background storm cannot lock it out (#5328).
+var daemonIndexGate = daemon.NewIndexGateFromEnv()
+
 // daemonActivityBroker is the process-wide MCP activity broker, captured at
 // dashboard wiring time so the graceful-stop path (ShutdownCleanup) can flush
 // and close its disk log handle (~/.grafel/mcp-activity.jsonl) before anything
@@ -1028,7 +1039,12 @@ type repoWork struct {
 // it fires even if the goroutine panics after launch but before acquiring the
 // slot — in that rare edge the slot is simply never acquired and the result
 // slot stays at its zero value.
-func rebuildWorkerPool(conc int, work []repoWork, workFn func(idx int, rw repoWork) repoResult) []repoResult {
+// gate, when non-nil, is the daemon-wide index-concurrency gate (#5493). Every
+// work item additionally acquires a gate slot before running, so concurrent
+// indexes are bounded by min(conc, gate.Cap()) — in practice the gate (default
+// 2) is the tighter throttle. foreground requests priority + the reserved slot.
+// nil disables the gate (tests / legacy paths).
+func rebuildWorkerPool(conc int, work []repoWork, workFn func(idx int, rw repoWork) repoResult, gate *daemon.IndexGate, foreground bool) []repoResult {
 	results := make([]repoResult, len(work))
 	sem := make(chan struct{}, conc)
 	var wg sync.WaitGroup
@@ -1037,10 +1053,22 @@ func rebuildWorkerPool(conc int, work []repoWork, workFn func(idx int, rw repoWo
 		go func(idx int, rw repoWork) {
 			defer wg.Done()
 
-			// Acquire semaphore slot. This MUST come before any panic-recovery
+			// Acquire the local pool slot. This MUST come before any panic-recovery
 			// defer so the defer's <-sem only fires once the slot is actually held.
 			sem <- struct{}{}
 			defer func() { <-sem }()
+
+			// #5493: also drain through the daemon-wide index-concurrency gate so
+			// a many-module group cannot run more than GRAFEL_INDEX_CONCURRENCY
+			// indexes at once, regardless of the (larger) local pool size. Excess
+			// items block here and run as slots free.
+			if gate != nil {
+				if err := gate.Acquire(context.Background(), foreground); err != nil {
+					results[idx] = repoResult{path: rw.r.Path, slug: rw.r.Slug, err: err}
+					return
+				}
+				defer gate.Release()
+			}
 
 			results[idx] = workFn(idx, rw)
 		}(i, w)
@@ -1190,16 +1218,21 @@ func daemonRebuildFuncCore(
 		}
 	}
 
+	// #5493: a single-slug rebuild is an interactive/foreground request (e.g.
+	// `grafel rebuild <slug>`); a whole-group rebuild is background cold-start /
+	// forced-rebuild fan-out. Foreground acquisitions get priority + the reserved
+	// gate slot so they aren't starved behind a many-module background storm.
+	foreground := args.Slug != ""
+
 	var results []repoResult
 	if conc == 1 || len(work) <= 1 {
-		// --- Serial path ---
-		results = make([]repoResult, len(work))
-		for i, w := range work {
-			results[i] = indexOne(i, w)
-		}
+		// --- Serial path ---. Each repo still drains through the daemon-wide
+		// gate so that even serial group rebuilds running concurrently (up to
+		// MaxConcurrentGroups) cannot collectively exceed GRAFEL_INDEX_CONCURRENCY.
+		results = rebuildWorkerPool(1, work, indexOne, daemonIndexGate, foreground)
 	} else {
 		// --- Parallel path: delegate to rebuildWorkerPool ---
-		results = rebuildWorkerPool(conc, work, indexOne)
+		results = rebuildWorkerPool(conc, work, indexOne, daemonIndexGate, foreground)
 	}
 
 	// Collect successful paths; log per-repo wall time; gather errors.

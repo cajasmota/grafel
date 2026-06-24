@@ -32,7 +32,56 @@ var (
 	// Tracked separately from index jobs so is_indexing reflects a background
 	// group-algo pass without conflating it with a reactive reindex count.
 	groupAlgoInFlight atomic.Int64
+
+	// indexConcActive / indexConcQueued mirror the daemon-wide index-concurrency
+	// gate (#5493): how many module/repo index operations are running right now
+	// vs. waiting for a free slot. They let `grafel status` / grafel_index_status
+	// surface "indexing N, queued M" so a 30-module group draining 2-at-a-time is
+	// visible rather than looking stalled. Written by the gate, read lock-free.
+	indexConcActive atomic.Int64
+	indexConcQueued atomic.Int64
+	indexConcCap    atomic.Int64
 )
+
+// SetIndexConcurrency publishes the daemon-wide index-concurrency gate's current
+// active/queued counts and its configured cap (#5493). Called by the gate on
+// every acquire/release. Negative values are clamped to 0. Safe to call from any
+// goroutine.
+func SetIndexConcurrency(active, queued, cap int) {
+	if active < 0 {
+		active = 0
+	}
+	if queued < 0 {
+		queued = 0
+	}
+	if cap < 0 {
+		cap = 0
+	}
+	indexConcActive.Store(int64(active))
+	indexConcQueued.Store(int64(queued))
+	indexConcCap.Store(int64(cap))
+}
+
+// IndexConcurrency is a point-in-time view of the daemon-wide index-concurrency
+// gate (#5493).
+type IndexConcurrency struct {
+	// Active is the number of index operations currently holding a gate slot.
+	Active int
+	// Queued is the number of index operations waiting for a slot to free.
+	Queued int
+	// Cap is the configured concurrency limit (GRAFEL_INDEX_CONCURRENCY).
+	Cap int
+}
+
+// GetIndexConcurrency returns the current gate counts. Lock-free; safe from an
+// MCP request handler.
+func GetIndexConcurrency() IndexConcurrency {
+	return IndexConcurrency{
+		Active: int(indexConcActive.Load()),
+		Queued: int(indexConcQueued.Load()),
+		Cap:    int(indexConcCap.Load()),
+	}
+}
 
 // Per-repo index freshness (#5433). The scheduler is the single writer; it
 // publishes a defensive copy of its per-repo state under its own lock via

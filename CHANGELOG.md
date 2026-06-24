@@ -8,6 +8,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
+### Fixed
+- **Index-concurrency cap — no more all-at-once monorepo storms (#5493):** when a
+  group/monorepo with many modules was registered or rebuilt, the daemon indexed
+  every module up to the memory-auto-tuned rebuild cap (8 on a 16 GB host, 16 on
+  32 GB) simultaneously. The per-index core cap (`GRAFEL_EXTRACT_GOMAXPROCS`)
+  bounds cores *within* one index but not the *number* of concurrent indexes, so
+  a 30-module group spun up ~8–16 indexers at once and pinned the machine. A new
+  daemon-wide **index-concurrency gate** now bounds concurrent module/repo index
+  operations to `GRAFEL_INDEX_CONCURRENCY` (**default 2**); excess indexes queue
+  FIFO and run as slots free, so a 30-module group drains 2-at-a-time. One slot is
+  reserved for foreground/interactive index so a background storm can't starve it
+  (#5328). `grafel_index_status` now reports the gate's `concurrency` block
+  (`indexing` / `queued` / `cap`) so a draining group reads "indexing 2, queued 28"
+  instead of looking stalled.
+
 ---
 
 ## [0.1.4] — 2026-06-24
