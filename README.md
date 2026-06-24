@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Status: v0.x](https://img.shields.io/badge/status-v0.x-blue.svg)](CHANGELOG.md)
 
-**grafel** is a local code-knowledge-graph daemon that gives AI agents structural navigation across one or many repos — call graphs, cross-repo traces, HTTP surface maps, process flows — via 65 MCP tools.
+**grafel** is a local code-knowledge-graph daemon that gives AI agents structural navigation across one or many repos — call graphs, cross-repo traces, HTTP surface maps, process flows — via 22 MCP tools.
 
 **A companion to `grep`, not a replacement:** `grep` finds text, grafel maps structure. Its value is **navigation** — where `X` is defined, who calls `Y`, how a request flows end-to-end, the blast radius of a change — the questions grep can't answer. (Fewer file reads also means fewer tokens — a side effect, not the point.)
 
@@ -199,13 +199,13 @@ Each extractor emits language-specific edges (HTTP endpoints, ORM queries, dynam
 
 ### Coverage
 
-grafel tracks **39 languages (25 active), 255 frameworks, 176 ORMs, 129 tools, and 205 other** capabilities, plus cross-cutting infrastructure: databases, platform/k8s, message brokers, CI/CD, security, observability, protocols, and build systems.
+grafel tracks **39 languages (38 active), 263 frameworks, 186 ORMs, 161 tools, and 211 other** capabilities, plus cross-cutting infrastructure: databases, platform/k8s, message brokers, CI/CD, security, observability, protocols, and build systems.
 
 Top languages by framework support:
 
 | Language | Frameworks | ORMs | Tools |
 |----------|-----------:|-----:|------:|
-| JS/TS | 33 | 19 | 21 |
+| JS/TS | 33 | 20 | 22 |
 | C/C++ | 25 | 10 | 16 |
 | python | 25 | 18 | 15 |
 | java | 23 | 15 | 10 |

@@ -8,7 +8,41 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ## [Unreleased]
 
-### Added
+---
+
+## [0.1.5] — 2026-06-24
+
+**MCP-surface consolidation + TypeScript-stack & broad-language coverage
+release.** The MCP tool surface is consolidated from 68 tools down to 22
+intent-named canonical tools — cutting the handshake token cost roughly in half
+— with all former names kept as hidden back-compat aliases. Coverage lands for a
+modern Next.js App Router + Prisma + Inngest TypeScript stack (Inngest
+event→function topology, App-Router route handlers / Server Actions / RSC
+data-fetch, modular Prisma schema + data-access effects, Kysely, TanStack Query,
+deeper Zod, home-rolled auth, OTEL JS/TS, Pulumi-AWS, common SaaS SDKs, and a
+package.json/lockfile dependency manifest with dead-dependency detection). 24
+lower-ranked languages are newly bootstrapped or uplifted across three waves.
+Plus an index-concurrency cap to stop monorepo index storms and a batch of
+cross-repo / install / dashboard fixes.
+
+### MCP tool consolidation
+- **68 → 22 intent-named canonical tools (#5546):** the MCP surface is
+  consolidated from 68 narrow tools to 22 task-oriented, intent-named tools,
+  cutting the handshake token overhead from ~7.6k to ~3.5k tokens (−53%). Related
+  tools are merged behind discriminated parameters across three clusters —
+  **core** (`orient`/`find`/`related`/`trace`/`endpoints`/`impact`/`subgraph`,
+  #5549), **analysis** (`debt`/`security`/`test_analysis`/`patterns`/`findings`/
+  `diff`, #5550), and **workflow + meta** (`docgen`/`docgen_apply`/`event`,
+  #5551) — with the canonical high-traffic tools kept as-is. Every removed tool
+  name remains callable as a **hidden back-compat alias** (#5552) so existing
+  agents and scripts keep working; aliases are omitted from the handshake to keep
+  the advertised surface lean. The in-context routing guidance (mcpInstructions +
+  the install-generated agent files, #5555), the tool reference docs (#5553), and
+  the `/grafel-*` skills (#5554) were all rewritten to the 22-tool, task-oriented
+  surface with disambiguators and no deprecated names; the token-overhead
+  reduction was validated and recorded against the 7592-token baseline (#5556).
+
+### TypeScript-stack coverage (#5479)
 - **Common TS SaaS SDKs → external-service dependencies via one shared
   allow-list (#5502):** the shared third-party-integration dictionary
   (`extractor.ServiceForImportSource`) now recognises the common TypeScript
@@ -384,6 +418,35 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   unrelated repos advance, and a single-repo / all-same-status list renders
   exactly as before.
 
+### New & uplifted language coverage (#5360)
+- **Wave 1 — coverage uplift for 8 established languages:** existing language
+  support was deepened with framework routing, ORM/persistence drivers,
+  dependency manifests, and test runners. **Dart** (#5361) — persistence ORMs,
+  `pubspec.lock`, widget-tree/prop depth; **Clojure** (#5362) — Ring/Pedestal
+  routing, next.jdbc/HoneySQL/datalog drivers; **Erlang** (#5363) — OTP
+  supervision trees, `gen_server` edges, Cowboy depth; **Groovy** (#5364) —
+  Gradle DSL, GORM, Grails routing, Spock; **Lua** (#5365) — luarocks,
+  OpenResty/Kong routing depth, busted; **Crystal** (#5366) — shards, ORMs,
+  Lucky, spec; **Nim** (#5367) — nimble, Jester/Prologue routing, ORMs, unittest;
+  **F#** (#5368) — Giraffe/Saturn computation-expression routing, Paket
+  dep-graph, EF Core reuse.
+- **Wave 2 — bootstrap records for 6 high-value languages:** newly recognised
+  with framework/tool/IaC records. **Solidity** (#5371) — Hardhat/Foundry/Truffle,
+  OpenZeppelin, ethers; **Bicep** (#5372) — Azure resource-provider catalog,
+  `bicepconfig`/module-registry; **Haskell** (#5373) — Servant/Yesod/Scotty,
+  Stack/Cabal, persistent, hspec; **OCaml** (#5374) — Dune/opam, Dream, Caqti,
+  alcotest; **Elm** (#5375) — The Elm Architecture, `elm.json`, elm-test;
+  **Zig** (#5377) — `build.zig` build system, `zig test`.
+- **Wave 3 — bootstrap records for 9 niche languages + mainframe spike:**
+  **ReScript** (#5378) — `rescript.json`/bsconfig, ReScript-React, JS-ecosystem
+  reuse; **ReasonML** (#5379) — bsconfig, Reason-React, JS-ecosystem reuse;
+  **Verilog** (#5380) and **VHDL** (#5381) — module/entity/port/instance
+  topology plus sim/synth tools; **Idris** (#5382) — `ipkg` manifest;
+  **Standard ML** (#5383) — CM/`.mlb` build files, compiler toolchain;
+  **Pony** (#5384) — corral/ponyc manifest, actor topology; **Lisp** (#5385) —
+  ASDF/Quicklisp system definitions; and an **opt-in COBOL/JCL mainframe lineage
+  spike** (#5369) — PERFORM/CALL, copybook fields, JCL job→pgm→dataset wiring.
+
 ### Fixed
 - **Windows: cross-repo string pass no longer aborts on the synthetic
   `<config>` SourceFile (#5523):** the cross-repo string pass scanned each
@@ -431,6 +494,12 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   (#5328). `grafel_index_status` now reports the gate's `concurrency` block
   (`indexing` / `queued` / `cap`) so a draining group reads "indexing 2, queued 28"
   instead of looking stalled.
+- **Tighter cross-repo HTTP resolution + endpoint-detection confidence
+  (#5527):** the cross-repo HTTP linker now normalizes paths and parameters
+  (trailing slashes, `:id`/`{id}`/`[id]` segment forms) before matching a
+  client call to a server endpoint, and the endpoint-detection confidence
+  scoring was tightened so genuine `fetch`/`axios` call sites bind across repos
+  while ambiguous ones no longer over-match — reducing residual `orphan_calls`.
 
 ---
 
