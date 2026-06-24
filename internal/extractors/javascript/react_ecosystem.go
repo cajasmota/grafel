@@ -48,6 +48,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/cajasmota/grafel/internal/engine/httproutes"
 	"github.com/cajasmota/grafel/internal/treesitter/ts"
 	"github.com/cajasmota/grafel/internal/types"
 )
@@ -1307,6 +1308,204 @@ func (x *extractor) calleeRefName(v ts.Node) string {
 	return ""
 }
 
+// httpVerbFromMember maps the leaf of an HTTP-client member call to its verb.
+// `axios.get(...)` / `api.post(...)` / `client.delete(...)` → GET/POST/DELETE.
+// Returns "" when the leaf is not a recognised HTTP verb method.
+func httpVerbFromMember(leaf string) string {
+	switch strings.ToLower(leaf) {
+	case "get", "post", "put", "patch", "delete", "head", "options":
+		return strings.ToUpper(leaf)
+	}
+	return ""
+}
+
+// fetchOptionsVerb extracts an explicit `method: "POST"` from a fetch options
+// object literal (the 2nd arg of `fetch(url, { method: "POST" })`). Returns
+// "GET" when no method is present (fetch's default).
+func (x *extractor) fetchOptionsVerb(call ts.Node) string {
+	if obj := configObjectArg(call); obj != nil {
+		if m := objectPairValue(x, obj, "method"); m != nil && m.Type() == "string" {
+			return strings.ToUpper(trimStringQuotes(x.nodeText(m)))
+		}
+	}
+	return "GET"
+}
+
+// inlineHTTPCallStub inspects a single call_expression for an inline HTTP-client
+// call to a STATIC URL string and returns the canonical endpoint stub
+// `http:<VERB>:<canonical-path>` it targets (the same synthetic-entity Name the
+// consumer-side HTTP synthesiser emits — http_endpoint_client_synthesis.go), so
+// a CALLS/USES edge to it binds query→server-route via the existing cross-repo
+// HTTP linker. Recognised shapes (#5494):
+//
+//	fetch("/api/users")                       → http:GET:/api/users
+//	fetch("/api/users", { method: "POST" })   → http:POST:/api/users
+//	axios.get("/api/users") / api.post("/x")  → http:GET:/api/users / http:POST:/x
+//
+// Only string-literal URLs are handled here (template-literal / dynamic URLs are
+// left to the engine synthesiser + cross-repo linker). Returns ("", false) when
+// the call is not an inline HTTP-client call to a static path.
+func (x *extractor) inlineHTTPCallStub(call ts.Node) (string, bool) {
+	if call == nil || call.Type() != "call_expression" {
+		return "", false
+	}
+	fn := call.ChildByFieldName("function")
+	if fn == nil {
+		return "", false
+	}
+	var verb string
+	switch fn.Type() {
+	case "identifier":
+		if x.nodeText(fn) != "fetch" {
+			return "", false
+		}
+		verb = x.fetchOptionsVerb(call)
+	case "member_expression":
+		prop := fn.ChildByFieldName("property")
+		if prop == nil {
+			return "", false
+		}
+		verb = httpVerbFromMember(x.nodeText(prop))
+		if verb == "" {
+			return "", false
+		}
+	default:
+		return "", false
+	}
+	raw := firstStringArg(x, call)
+	if raw == "" || !strings.HasPrefix(raw, "/") {
+		return "", false
+	}
+	// Strip a query string; the cross-repo index keys on the path only.
+	if i := strings.IndexByte(raw, '?'); i >= 0 {
+		raw = raw[:i]
+	}
+	canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
+	if canonical == "" || canonical == "/" {
+		return "", false
+	}
+	return httproutes.SyntheticID(verb, canonical), true
+}
+
+// tanstackFetcherEndpointStub resolves an inline queryFn/mutationFn value node to
+// the endpoint stub it calls, when the fetcher is an inline arrow/function whose
+// body is (or contains) a single static HTTP-client call. Returns ("", false)
+// for named refs (`queryFn: getUsers`) — those are linked via a CALLS edge to
+// the named fn instead (the call-graph + http-client edges then carry the
+// transitive query→…→endpoint path). #5494.
+func (x *extractor) tanstackFetcherEndpointStub(v ts.Node) (string, bool) {
+	if v == nil {
+		return "", false
+	}
+	switch v.Type() {
+	case "call_expression":
+		// `queryFn: fetch('/api/users')` (rare — usually wrapped in an arrow).
+		return x.inlineHTTPCallStub(v)
+	case "arrow_function", "function_expression":
+		body := v.ChildByFieldName("body")
+		if body == nil {
+			return "", false
+		}
+		// Concise arrow `() => fetch('/api/users')` / `() => axios.get('/x')`.
+		if call := unwrapCall(body); call != nil {
+			if stub, ok := x.inlineHTTPCallStub(call); ok {
+				return stub, true
+			}
+		}
+		// Block body — first inline HTTP-client call wins.
+		for _, c := range findAllNodes(body, "call_expression") {
+			if stub, ok := x.inlineHTTPCallStub(c); ok {
+				return stub, true
+			}
+		}
+	}
+	return "", false
+}
+
+// tanstackFetcherEdges resolves the queryFn/mutationFn of a TanStack use* call to
+// the outbound edge(s) the operation should carry (#5494):
+//
+//   - Inline fetcher to a static URL (`queryFn: () => fetch('/api/users')`,
+//     `axios.get('/api/users')`) → a USES edge to the endpoint stub
+//     `http:<VERB>:<path>` — the SAME synthetic Name the consumer-side HTTP
+//     synthesiser emits, so the cross-repo linker binds query→server-route.
+//   - Named ref (`queryFn: getUsers`, `mutationFn: createUser`) → a CALLS edge to
+//     the named fn. The existing call-graph + http-client edges then carry the
+//     transitive query→…→endpoint path (one hop is enough here).
+//
+// Handles both the object-arg form (`useQuery({ queryFn })`) and the older
+// positional form (`useQuery(key, fn)` / `useMutation(fn)`).
+func (x *extractor) tanstackFetcherEdges(call ts.Node, subtype string) []types.RelationshipRecord {
+	fn := x.tanstackFetcherNode(call, subtype)
+	if fn == nil {
+		return nil
+	}
+	// Inline fetcher to a static URL → USES edge to the endpoint stub.
+	if stub, ok := x.tanstackFetcherEndpointStub(fn); ok {
+		return []types.RelationshipRecord{{
+			ToID: stub,
+			Kind: string(types.RelationshipKindUses),
+			Properties: map[string]string{
+				"via":      propViaTanstackQuery,
+				"relation": "fetches",
+				"channel":  "http",
+			},
+		}}
+	}
+	// Named ref → CALLS edge to the data fn (transitive resolution downstream).
+	if ref := x.calleeRefName(fn); ref != "" && ref != "fetch" {
+		return []types.RelationshipRecord{{
+			ToID: ref,
+			Kind: string(types.RelationshipKindCalls),
+			Properties: map[string]string{
+				"via":      propViaTanstackQuery,
+				"relation": "fetcher_ref",
+			},
+		}}
+	}
+	return nil
+}
+
+// tanstackFetcherNode returns the queryFn (query family) or mutationFn (mutation
+// family) value node from a TanStack use* call, handling both the object-arg and
+// positional forms. Returns nil when no fetcher is present.
+func (x *extractor) tanstackFetcherNode(call ts.Node, subtype string) ts.Node {
+	key := "queryFn"
+	if subtype == "tanstack_mutation" {
+		key = "mutationFn"
+	}
+	if obj := configObjectArg(call); obj != nil {
+		return objectPairValue(x, obj, key)
+	}
+	// Positional: useQuery(key, fn) / useMutation(fn).
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return nil
+	}
+	var pos []ts.Node
+	for i := 0; i < int(args.ChildCount()); i++ {
+		ch := args.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "(", ")", ",", "comment":
+			continue
+		}
+		pos = append(pos, ch)
+	}
+	if subtype == "tanstack_mutation" {
+		if len(pos) >= 1 {
+			return pos[0]
+		}
+		return nil
+	}
+	if len(pos) >= 2 {
+		return pos[1]
+	}
+	return nil
+}
+
 // tanstackCallProps extracts the queryKey/queryFn/mutationFn attributes from a
 // TanStack `use*` call. Handles both the object-arg form
 // (`useQuery({ queryKey: [...], queryFn })`) and the older positional form
@@ -1425,7 +1624,14 @@ func (x *extractor) reactTanstackQuery(root ts.Node) {
 			for k, v := range x.tanstackCallProps(call, subtype) {
 				props[k] = v
 			}
-			x.emitWithProps(name, "SCOPE.Operation", call, subtype, leaf+"(…)", props, nil)
+			// #5494 — resolve the queryFn/mutationFn fetcher to a USES edge to the
+			// endpoint stub it calls (inline fetch/axios) or a CALLS edge to the
+			// named data fn (transitive resolution carries it to the endpoint).
+			rels := x.tanstackFetcherEdges(call, subtype)
+			if len(rels) > 0 {
+				props["fetcher_linked"] = "true"
+			}
+			x.emitWithProps(name, "SCOPE.Operation", call, subtype, leaf+"(…)", props, rels)
 			// Attach the CONTAINS edge to the enclosing component/hook entity.
 			x.attachTanstackContains(owner, name, subtype)
 		}
