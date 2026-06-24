@@ -271,6 +271,11 @@ func extractElm(src, filePath string) []types.EntityRecord {
 		}
 	}
 
+	// #5375: The Elm Architecture decoration. Import-gated — a no-op for any
+	// file that does not import Browser/Html. Mutates entities in place (re-kinds
+	// Model/Msg, tags the init/update/view triad, flags the Browser program).
+	applyTEA(src, imports, entities)
+
 	return entities
 }
 

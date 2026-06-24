@@ -75,6 +75,35 @@ var fsharpKeywordHeads = map[string]bool{
 	"sizeof": true, "nameof": true, "mutable": true, "rec": true,
 }
 
+// elmSpaceAppRE captures an Elm SPACE-APPLIED call head (`add 2 2`), the
+// dominant curried-application idiom that produces no paren match and is
+// therefore invisible to directCallRE. Mirrors the F# space-app port (#5375):
+// Elm, like F#, is whitespace-sensitive and curried, so the head must sit at a
+// CLAUSE-STARTER position and be followed by at least one whitespace-separated
+// ARGUMENT-STARTER. Recognised clause starters: line start (after indentation),
+// `=`, `(`, `[`, `,`, the pipe operators `|>` / `<|`, the lambda/case arrow
+// `->`, and the keywords `of`/`then`/`else`/`in`. The argument starter is a
+// string/char/number literal, an opening paren/bracket, or a lower-case
+// identifier (an upper-case follower is a type/constructor, excluded).
+//
+// Gated to tf.lang == "elm" so other languages' false-positive rates are
+// untouched. Heads pass the Elm keyword gate AND the shared isStopword denylist
+// (Expect/Fuzz/describe/test combinators are stop-worded in #5375).
+var elmSpaceAppRE = regexp.MustCompile(
+	`(?m)(?:^[ \t]*|[=([,]\s*|\|>\s*|<\|\s*|->\s*|\bof\s+|\bthen\s+|\belse\s+|\bin\s+)` +
+		`([a-z_][A-Za-z0-9_]*(?:\.[A-Za-z_][A-Za-z0-9_]*)*)` +
+		`[ \t]+(?:"|'|[0-9]|\(|\[|[a-z_])`,
+)
+
+// elmKeywordHeads are Elm keywords that elmSpaceAppRE can match in a head
+// position but are never production-call targets.
+var elmKeywordHeads = map[string]bool{
+	"if": true, "then": true, "else": true,
+	"case": true, "of": true, "let": true, "in": true,
+	"type": true, "alias": true, "module": true, "import": true,
+	"exposing": true, "as": true, "port": true, "where": true,
+}
+
 // mockSetupRE captures common mock-library setup lines. The first capture
 // group is the qualified production identifier being stubbed.
 //
@@ -520,6 +549,22 @@ var stopwords = map[string]bool{
 	// xUnit / NUnit (F# usage) — FsUnit `should` combinator (the Assert.* family
 	// is already covered by the C# xUnit denylist block above).
 	"should": true,
+	// Elm — elm-test (#5375). The describe/test/fuzz case combinators and the
+	// Expect.* / Fuzz.* assertion+fuzzer families are test-harness identifiers and
+	// must never surface as the Elm production subject under test. (`test` and
+	// `expect.equal` are already denied above; these add the Elm-specific
+	// combinators and the Expect/Fuzz surfaces not shared with the F# block.)
+	"fuzz": true, "fuzz2": true, "fuzz3": true, "fuzzwith": true,
+	"skip": true, "only": true, "concat": true,
+	"expect.atleast": true, "expect.atmost": true, "expect.greaterthan": true,
+	"expect.lessthan": true, "expect.within": true, "expect.notwithin": true,
+	"expect.pass": true, "expect.fail": true, "expect.ontag": true,
+	"expect.true": true, "expect.false": true, "expect.err": true,
+	"expect.ok": true, "expect.equallists": true, "expect.equaldicts": true,
+	"expect.equalsets": true,
+	"fuzz.int": true, "fuzz.string": true, "fuzz.bool": true, "fuzz.float": true,
+	"fuzz.list": true, "fuzz.constant": true, "fuzz.map": true, "fuzz.andmap": true,
+	"fuzz.intrange": true, "fuzz.oneof": true, "fuzz.frequency": true,
 	// Common language keywords that end up in call-like positions
 	"if": true, "for": true, "while": true, "switch": true, "return": true,
 	"func": true, "def": true, "class": true, "struct": true, "new": true,
@@ -765,6 +810,39 @@ func resolveCalls(tf testFunction, prodFile, convSymbol string, importedSyms map
 			}
 			qname := m[1]
 			if fsharpKeywordHeads[headIdent(qname)] {
+				continue
+			}
+			if isStopword(qname) || isStopword(tailIdent(qname)) {
+				continue
+			}
+			tail := tailIdent(qname)
+			if len(tail) < 3 {
+				continue
+			}
+			conf := "high"
+			if gateImports {
+				head := headIdent(qname)
+				if !importedSyms[head] && !importedSyms[qname] {
+					conf = "medium"
+				}
+			}
+			upgrade(qname, conf)
+		}
+	}
+
+	// Pass 1c (Elm only): space-applied calls (`add 2 2`). Elm's curried-
+	// application idiom is not paren-captured by directCallRE, so an elm-test case
+	// that exercises the SUT via space application yields no direct-call signal
+	// without this gated head-symbol scan (#5375). Gated to tf.lang == "elm" so
+	// other languages are untouched; heads pass the Elm keyword gate AND the
+	// shared isStopword denylist (Expect/Fuzz/describe/test combinators).
+	if tf.lang == "elm" {
+		for _, m := range elmSpaceAppRE.FindAllStringSubmatch(tf.body, -1) {
+			if len(m) < 2 {
+				continue
+			}
+			qname := m[1]
+			if elmKeywordHeads[headIdent(qname)] {
 				continue
 			}
 			if isStopword(qname) || isStopword(tailIdent(qname)) {

@@ -2365,6 +2365,25 @@ var frameworkOrder = []frameworkEntry{
 		},
 		detect: detectFSharpExpecto,
 	},
+	// Elm — elm-test (#5375). describe "..." [ test "..." <| \_ -> … ] leaves +
+	// fuzz/fuzzN/fuzzWith property cases. FILENAME/PATH gated (the standard
+	// elm-test conventions `*Test.elm` / `*Tests.elm` / files under `tests/`) and
+	// NOT import gated: Elm's `import Test`/`import Expect` would yield the bare
+	// tokens `test`/`expect`, which the substring import matcher would over-match
+	// against unrelated tokens (e.g. C++ `gtest/gtest.h` contains "test"). The
+	// detector self-confirms — a non-test .elm yields zero cases and is dropped
+	// downstream, exactly like the rust_test / fsharp-expecto entries.
+	{
+		name: "elm-test",
+		filenameHints: []*regexp.Regexp{
+			regexp.MustCompile(`Test\.elm$`),
+			regexp.MustCompile(`Tests\.elm$`),
+		},
+		pathHints: []*regexp.Regexp{
+			regexp.MustCompile(`/tests?/.*\.elm$`),
+		},
+		detect: detectElmTest,
+	},
 	// ---------------------------------------------------------------------
 	// C/C++ — gtest, catch2, doctest, boost.test, cppunit, cpputest (#3495).
 	//

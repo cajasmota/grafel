@@ -199,6 +199,10 @@ var exactManifestNames = map[string]bool{
 	// OCaml — Dune project file (inline (package (depends ...)) stanzas). The
 	// *.opam package manifest is suffix-dispatched below (#5374).
 	"dune-project": true,
+	// Elm — elm.json manifest (#5375). Application (direct/indirect + test-deps)
+	// and package (flat version-range) shapes. elm.json IS the lockfile (deps are
+	// exactly pinned), so there is no separate lockfile format.
+	"elm.json": true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -293,6 +297,8 @@ func detectPackageManager(filePath string) string {
 		"package.yaml": "hpack",
 		// OCaml — Dune project file
 		"dune-project": "dune",
+		// Elm — elm.json manifest
+		"elm.json": "elm",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -1947,6 +1953,8 @@ var parsers = map[string]parserFn{
 	"package.yaml": parsePackageYaml,
 	// OCaml — Dune project file (*.opam is suffix-dispatched below).
 	"dune-project": parseDuneProject,
+	// Elm — elm.json manifest (application + package shapes).
+	"elm.json": parseElmJSON,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {

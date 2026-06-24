@@ -640,6 +640,11 @@ var extensionLanguageMap = map[string]string{
 // the tree-sitter-based generic Swift extractor ("swift").
 var exactBasenameLanguageMap = map[string]string{
 	"Package.swift": "swift_package",
+	// Elm manifest (#5375) — elm.json is JSON but has no other meaning than the
+	// Elm project manifest. Classified as "elm" (rather than dropped by the
+	// generic .json routing) so it reaches the _cross_manifest extractor, which
+	// exact-name-matches it and parses its application/package dependency blocks.
+	"elm.json": "elm",
 }
 
 // apiGwOcelotJSONRe matches Ocelot config files with the conventional
