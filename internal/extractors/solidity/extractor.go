@@ -129,18 +129,33 @@ func extractSolidity(src, filePath string) []types.EntityRecord {
 	importEntities := buildImportEntities(filePath, src)
 	entities = append(entities, importEntities...)
 
+	// Framework/tool signals from import paths (OpenZeppelin/Foundry/Hardhat).
+	signals := scanImportFrameworks(collectImportPaths(src))
+
 	// ── 2. Contracts / libraries / interfaces ────────────────────────────
 	scrubbed := stripCommentsAndStrings(src)
-	contracts := findContracts(scrubbed, filePath)
+	contracts := findContracts(scrubbed, filePath, signals)
 	entities = append(entities, contracts...)
 
 	return entities
 }
 
+// collectImportPaths returns the raw import target paths in source order.
+func collectImportPaths(src string) []string {
+	var out []string
+	for _, m := range importRE.FindAllStringSubmatch(src, -1) {
+		if len(m) >= 2 {
+			out = append(out, strings.TrimSpace(m[1]))
+		}
+	}
+	return out
+}
+
 // findContracts locates all contract/library/interface declarations, emits
 // SCOPE.Component entities with EXTENDS and CONTAINS edges, and also emits
-// SCOPE.Operation children (functions/events/modifiers).
-func findContracts(src, filePath string) []types.EntityRecord {
+// SCOPE.Operation children (functions/events/modifiers). The framework signals
+// (from import paths) let it stamp OpenZeppelin/Foundry/Hardhat attributes.
+func findContracts(src, filePath string, signals frameworkSignals) []types.EntityRecord {
 	var out []types.EntityRecord
 
 	matches := contractRE.FindAllStringSubmatchIndex(src, -1)
@@ -204,13 +219,49 @@ func findContracts(src, filePath string) []types.EntityRecord {
 			Signature:  rawSig,
 		}
 
-		// EXTENDS edges.
+		// ── Framework / tool stamping (issue #5371) ──────────────────────
+		// OpenZeppelin: an import of @openzeppelin/contracts OR an EXTENDS
+		// parent that names a canonical OZ base contract.
+		usesOZ := signals.openzeppelin
+		// Foundry: forge-std import OR a forge test/script contract.
+		ftKind := foundryTestKind(extends)
+		usesFoundry := signals.foundry || ftKind != ""
+
+		if usesOZ {
+			setProp(&rec.Properties, "framework", "openzeppelin")
+		} else if usesFoundry {
+			setProp(&rec.Properties, "framework", "foundry")
+		} else if signals.hardhat {
+			setProp(&rec.Properties, "framework", "hardhat")
+		}
+		if usesFoundry {
+			setProp(&rec.Properties, "foundry", "true")
+			if ftKind != "" {
+				setProp(&rec.Properties, "foundry_kind", ftKind)
+			}
+		}
+		if signals.hardhat {
+			setProp(&rec.Properties, "hardhat", "true")
+		}
+
+		// EXTENDS edges. OZ-base parents carry framework="openzeppelin" so the
+		// inheritance edge itself records the library binding.
 		for _, parent := range extends {
-			rec.Relationships = append(rec.Relationships, types.RelationshipRecord{
+			edge := types.RelationshipRecord{
 				FromID: filePath,
 				ToID:   parent,
 				Kind:   "EXTENDS",
-			})
+			}
+			if isOpenZeppelinBase(parent) {
+				usesOZ = true
+				setProp(&rec.Properties, "framework", "openzeppelin")
+				setProp(&rec.Properties, "openzeppelin", "true")
+				edge.Properties = map[string]string{"framework": "openzeppelin"}
+			}
+			rec.Relationships = append(rec.Relationships, edge)
+		}
+		if usesOZ {
+			setProp(&rec.Properties, "openzeppelin", "true")
 		}
 
 		contractIdx := len(out)
