@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 261 records · **C/C++**: 25 · **clojure**: 4 · **crystal**: 2 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **elm**: 1 · **erlang**: 1 · **F#**: 2 · **go**: 21 · **groovy**: 1 · **haskell**: 3 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **OCaml**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 17 · **scala**: 14 · **swift**: 5
+**Total**: 262 records · **C/C++**: 25 · **clojure**: 4 · **crystal**: 2 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **elm**: 1 · **erlang**: 1 · **F#**: 2 · **go**: 21 · **groovy**: 1 · **haskell**: 3 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **OCaml**: 1 · **php**: 16 · **python**: 25 · **ReScript**: 1 · **ruby**: 9 · **rust**: 17 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -225,6 +225,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [JS/TS](../by-language/jsts.md) | [Svelte](../detail/lang.jsts.framework.svelte.md) | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 17/17 | |
 | [JS/TS](../by-language/jsts.md) | [Vue](../detail/lang.jsts.framework.vue.md) | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | 🟢 19/19 | |
 | [python](../by-language/python.md) | [gql (GraphQL client)](../detail/lang.python.framework.gql-client.md) | 🟡 2/3 | 🔴 0/1 | 🟡 1/24 | 🔴 0/8 | |
+| [ReScript](../by-language/rescript.md) | [ReScript-React (@rescript/react)](../detail/lang.rescript.framework.rescript-react.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/24 | 🟡 2/8 | |
 | [swift](../by-language/swift.md) | [SwiftUI](../detail/lang.swift.framework.swiftui.md) | 🟡 2/3 | ✅ 1/1 | 🟡 18/24 | 🟡 3/8 | |
 
 

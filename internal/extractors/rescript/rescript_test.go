@@ -251,9 +251,10 @@ let make = (~name: string) => {
 `
 	ents := runReScript(t, src, "app.res")
 
-	fn := rsFind(ents, "make", "SCOPE.Operation")
+	// @react.component re-kinds `make` to SCOPE.UIComponent (#5378).
+	fn := rsFind(ents, "make", "SCOPE.UIComponent")
 	if fn == nil {
-		t.Fatal("expected 'make' as SCOPE.Operation")
+		t.Fatal("expected 'make' as SCOPE.UIComponent")
 	}
 
 	wantRenders := []string{"Header", "UserCard", "Footer"}
@@ -379,7 +380,9 @@ let make = () => {
 	ents := runReScript(t, src, "TodoApp.res")
 
 	// --- Entity recall checks ---
-	wantOps := []string{"filterCompleted", "sortByPriority", "fetchTodos", "make"}
+	// `make` carries @react.component → re-kinded SCOPE.UIComponent (#5378); the
+	// rest are plain SCOPE.Operation let bindings.
+	wantOps := []string{"filterCompleted", "sortByPriority", "fetchTodos"}
 	wantTypes := []string{"todoId", "priority", "todo", "state"}
 	wantModules := []string{"TodoUtils", "Api"}
 
@@ -389,6 +392,10 @@ let make = () => {
 			t.Errorf("synthetic fixture: expected SCOPE.Operation %q", name)
 			missingOps++
 		}
+	}
+	if rsFind(ents, "make", "SCOPE.UIComponent") == nil {
+		t.Error("synthetic fixture: expected SCOPE.UIComponent \"make\" (@react.component)")
+		missingOps++
 	}
 
 	missingTypes := 0
@@ -407,7 +414,7 @@ let make = () => {
 		}
 	}
 
-	totalWanted := len(wantOps) + len(wantTypes) + len(wantModules)
+	totalWanted := len(wantOps) + 1 /*make UIComponent*/ + len(wantTypes) + len(wantModules)
 	totalMissing := missingOps + missingTypes + missingModules
 	totalFound := totalWanted - totalMissing
 	recall := float64(totalFound) / float64(totalWanted)
@@ -444,7 +451,7 @@ let make = () => {
 	// --- RENDERS edges on make ---
 	wantRenders := []string{"LoadingSpinner", "TodoItem"}
 	for _, comp := range wantRenders {
-		if !rsHasRel(ents, "make", "SCOPE.Operation", "RENDERS", comp) {
+		if !rsHasRel(ents, "make", "SCOPE.UIComponent", "RENDERS", comp) {
 			t.Errorf("synthetic fixture: expected make RENDERS %q", comp)
 		}
 	}

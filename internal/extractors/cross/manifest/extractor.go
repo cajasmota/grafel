@@ -209,6 +209,12 @@ var exactManifestNames = map[string]bool{
 	// (.hash pins each dep), so there is no separate lockfile format.
 	"build.zig":     true,
 	"build.zig.zon": true,
+	// ReScript — rescript.json (v11+) / bsconfig.json (legacy). Same schema.
+	// bs-dependencies / bs-dev-dependencies / pinned-dependencies are flat npm
+	// package-name arrays (versions resolve from the sibling package.json), so
+	// the package manager is npm and rescript.json is NOT a lockfile (#5378).
+	"rescript.json": true,
+	"bsconfig.json": true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -308,6 +314,11 @@ func detectPackageManager(filePath string) string {
 		// Zig — build.zig (build system) + build.zig.zon (package manifest)
 		"build.zig":     "zig",
 		"build.zig.zon": "zig",
+		// ReScript — rescript.json / bsconfig.json. ReScript packages ARE npm
+		// packages (bs-dependencies name npm packages whose versions resolve
+		// from package.json), so the package manager is npm (#5378).
+		"rescript.json": "npm",
+		"bsconfig.json": "npm",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -1969,6 +1980,12 @@ var parsers = map[string]parserFn{
 	// buildEntitiesAndRels via buildZigTargetsProperty (#5377).
 	"build.zig":     parseBuildZig,
 	"build.zig.zon": parseBuildZigZon,
+	// ReScript — rescript.json (v11+) / bsconfig.json (legacy). bs-dependencies
+	// (runtime) + bs-dev-dependencies (dev) + pinned-dependencies (runtime).
+	// The JSX/module config is surfaced separately on the project anchor via
+	// reScriptConfigProperty.
+	"rescript.json": parseReScriptJSON,
+	"bsconfig.json": parseReScriptJSON,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {
@@ -2234,6 +2251,19 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 	var anchorProps map[string]string
 	if targets := buildZigTargetsProperty(file.Path, string(file.Content)); targets != "" {
 		anchorProps = map[string]string{"build_targets": targets}
+	}
+
+	// ReScript rescript.json / bsconfig.json — surface the declared JSX version/
+	// mode + module/suffix/namespace config on the project anchor as a
+	// "rescript_config" property so the JSX/module configuration is queryable
+	// without a new entity kind (#5378). Empty for every other manifest.
+	if base := filepath.Base(file.Path); base == "rescript.json" || base == "bsconfig.json" {
+		if cfg := reScriptConfigProperty(string(file.Content)); cfg != "" {
+			if anchorProps == nil {
+				anchorProps = map[string]string{}
+			}
+			anchorProps["rescript_config"] = cfg
+		}
 	}
 
 	return buildEntitiesAndRelsWithProps(file.Path, pm, deps, anchorProps), nil

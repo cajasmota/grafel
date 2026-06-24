@@ -1,12 +1,36 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # ReScript
 
-**Frameworks**: 0 · **Tools**: 0 · **ORMs**: 0 · **Other**: 0
+**Frameworks**: 1 · **Tools**: 1 · **ORMs**: 0 · **Other**: 0
 
 Back to [summary](../summary.md).
 
-> **No ecosystem records tracked yet.** grafel has extractor support for
-> this language (see `internal/extractors/rescript/`), but specific framework,
-> ORM, or tool records haven't been added to the registry yet. Contribute by
-> adding records via `go run ./tools/coverage add` with appropriate IDs
-> (e.g. `lang.rescript.framework.<name>`).
+### Legend
+
+Each group column shows `glyph covered/applicable` — **covered** = capabilities with extraction, **applicable** = covered + missing (not-applicable capabilities are excluded from both). The glyph is the group's **support level**:
+
+| Glyph | Level | Meaning |
+|---|---|---|
+| ✅ | **Comprehensive** | every applicable capability is `full` — fixture-proven, resolves the general case |
+| 🟢 | **Supported** | every applicable capability is extracted; some only *heuristically* (detected by pattern, not full AST/data-flow resolution) |
+| 🟡 | **Partial** | some capabilities extracted, some still missing |
+| 🔴 | **Not extracted** | nothing extracted yet |
+| — | **N/A** | capability does not apply to this framework |
+
+Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 12/20` = 8 not yet extracted. Detail pages use the same palette **per cell** (✅ full · 🟢 heuristic/partial · 🔴 missing · — n/a).
+
+## Frameworks
+
+
+### UI Frontend
+
+| Name | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|
+| [ReScript-React (@rescript/react)](../detail/lang.rescript.framework.rescript-react.md) | 🔴 0/3 | 🔴 0/1 | 🔴 0/24 | 🟡 2/8 | |
+
+
+## Tools
+
+| Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
+|---|---|---|---|---|---|---|
+| [rescript.json / bsconfig.json (ReScript manifest)](../detail/lang.rescript.tool.rescript-json.md) | — | — | — | 🟢 | — | |
