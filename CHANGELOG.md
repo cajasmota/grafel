@@ -9,6 +9,22 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Next.js Server Actions extracted as operations, including the `action()`
+  wrapper pattern (#5487):** Server Actions are now recognised in three forms,
+  each emitted as a `SCOPE.Operation`/`server_action` operation bound to its
+  module. (1) A file-level `'use server'` directive marks every exported async
+  function in the module as an action. (2) A function-level inline `'use server'`
+  (`async function f(){ 'use server'; … }` or arrow const) is an action
+  regardless of any module-level directive. (3) The common `action()`-wrapper
+  idiom — `export const doThing = action(schema, async (input) => {…})`, where
+  the callee is a known action-wrapper factory (`action`/`actionClient`,
+  `createServerAction`, and custom `authAction`/`safeAction`/`adminAction`/
+  `publicAction`/`protectedAction`/`createSafeActionClient`) — captures the
+  wrapped handler named after the exported const, recording an optional leading
+  validation-schema argument as the `validation_schema` attribute and the wrapper
+  name as `action_wrapper`. The wrapper is gated to the known callee-name set so
+  an ordinary `const x = foo()` is not misread as an action. Part of the Next.js
+  routing-coverage epic (#5479).
 - **Next.js App Router `route.ts` HTTP-method handlers extracted as endpoints
   (#5486):** each exported HTTP-method handler in an App Router Route Handler
   file (`app/.../route.{ts,js,tsx}`) is now synthesized as a per-method

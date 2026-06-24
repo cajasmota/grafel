@@ -38,6 +38,30 @@ var (
 	reNextjsServerActionFn = regexp.MustCompile(
 		`export\s+(?:async\s+)?function\s+(\w+)\s*\(`,
 	)
+	// Function-level inline Server Action (#5487): `async function f(){ 'use server'; … }`
+	// or an arrow `const f = async () => { 'use server'; … }`. The directive is the
+	// FIRST statement of the body, so each such function is an action regardless of
+	// whether the whole module carries a file-level `'use server'`.
+	reNextjsInlineServerAction = regexp.MustCompile(
+		`(?:async\s+function\s+(\w+)\s*\([^)]*\)|(?:export\s+)?const\s+(\w+)\s*=\s*async\s*\([^)]*\)\s*=>)\s*\{\s*['"]use server['"]`,
+	)
+	// Wrapped Server Action (#5487): the `action()`-wrapper idiom (next-safe-action /
+	// zsa / custom factories) — `export const doThing = action(schema, async (input)=>{…})`
+	// or `action(async ()=>{})`. Group 1 = exported const name; the rest of the line
+	// is inspected for an optional leading validation-schema argument. The callee is
+	// gated to the action-wrapper name set (reNextjsActionWrapperCallee) so an ordinary
+	// `const x = foo()` is not misread as an action.
+	reNextjsWrappedServerAction = regexp.MustCompile(
+		`export\s+const\s+(\w+)\s*=\s*(\w+)\s*\(([^)]*)`,
+	)
+	// reNextjsWrappedActionSchema captures a validation-schema first argument when the
+	// wrapped action is called as `action(schema, async …)` — a bare identifier or
+	// member ref (e.g. `createPostSchema`, `schemas.createPost`) immediately followed
+	// by a comma before the handler. A leading `async`/`function`/`(` means the first
+	// arg is the handler itself (no schema).
+	reNextjsWrappedActionSchema = regexp.MustCompile(
+		`^\s*([A-Za-z_$][\w$.]*)\s*,`,
+	)
 	reNextjsDynParam  = regexp.MustCompile(`\[([^\]]+)\]`)
 	reNextjsGroupPath = regexp.MustCompile(`\([^)]+\)`)
 
@@ -80,6 +104,25 @@ var (
 		`export\s+default\b|module\.exports\s*=|\bdefineConfig\s*\(|:\s*NextConfig\b`,
 	)
 )
+
+// nextjsActionWrapperCallees is the configurable set of higher-order
+// Server-Action wrapper factory names (#5487). The `action()`-wrapper idiom
+// (next-safe-action `action`/`actionClient`, zsa, and common custom factories)
+// wraps a server-action handler in a validating/authorizing closure. A
+// `const x = <callee>(…)` is only treated as a wrapped Server Action when the
+// callee is in this set OR the file/inline `'use server'` context applies, so an
+// ordinary `const x = foo()` is not misread as an action.
+var nextjsActionWrapperCallees = map[string]bool{
+	"action":                 true,
+	"actionClient":           true,
+	"authAction":             true,
+	"safeAction":             true,
+	"adminAction":            true,
+	"publicAction":           true,
+	"protectedAction":        true,
+	"createServerAction":     true,
+	"createSafeActionClient": true,
+}
 
 var (
 	nextjsPageFiles           = map[string]bool{"page": true, "layout": true, "loading": true, "error": true, "not-found": true, "template": true, "default": true}
@@ -326,15 +369,70 @@ func (e *nextjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 		addEntity(metafwServerComponentEntity(stem, file.Path, file.Language, "nextjs"))
 	}
 
-	// Server actions ("use server" + exported async functions)
+	// Server Actions (#2858, #5487). Recognised in three forms, each emitted as a
+	// SCOPE.Operation/server_action operation bound to its module:
+	//
+	//  1. File-level `'use server'` directive → every exported async function in
+	//     the module is an action.
+	//  2. Function-level inline `'use server'` → an `async function f(){ 'use server'; … }`
+	//     (or arrow const) is an action regardless of any module-level directive.
+	//  3. Wrapped actions → the `action()`-wrapper idiom
+	//     `export const doThing = action(schema, async (input)=>{…})`, where the
+	//     callee is an action-wrapper factory name (next-safe-action / zsa / custom).
+	//     A leading validation-schema argument is captured as `validation_schema`.
+	seenAction := map[string]bool{}
+	emitAction := func(name string, off int, extraKV ...string) {
+		if name == "" || seenAction[name] {
+			return
+		}
+		seenAction[name] = true
+		ent := makeEntity(name, "SCOPE.Operation", "server_action", file.Path, file.Language, lineOf(src, off))
+		setProps(&ent, "framework", "nextjs", "rendering", "server",
+			"provenance", "INFERRED_FROM_NEXTJS_SERVER_ACTION")
+		if len(extraKV) > 0 {
+			setProps(&ent, extraKV...)
+		}
+		addEntity(ent)
+	}
+
+	// Form 1: file-level `'use server'` → exported async functions are actions.
 	if reUseServerDirective.MatchString(src) {
 		for _, m := range reNextjsServerActionFn.FindAllStringSubmatchIndex(src, -1) {
-			fnName := src[m[2]:m[3]]
-			ent := makeEntity(fnName, "SCOPE.Operation", "server_action", file.Path, file.Language, lineOf(src, m[0]))
-			setProps(&ent, "framework", "nextjs", "rendering", "server",
-				"provenance", "INFERRED_FROM_NEXTJS_SERVER_ACTION")
-			addEntity(ent)
+			emitAction(src[m[2]:m[3]], m[0])
 		}
+	}
+
+	// Form 2: function-level inline `'use server'` directive.
+	for _, m := range reNextjsInlineServerAction.FindAllStringSubmatchIndex(src, -1) {
+		name := ""
+		if m[2] != -1 {
+			name = src[m[2]:m[3]] // named function
+		} else if m[4] != -1 {
+			name = src[m[4]:m[5]] // arrow const
+		}
+		emitAction(name, m[0])
+	}
+
+	// Form 3: wrapped actions via the `action()`-wrapper idiom. Gated to the
+	// action-wrapper callee set so ordinary `const x = foo()` is not an action.
+	for _, m := range reNextjsWrappedServerAction.FindAllStringSubmatchIndex(src, -1) {
+		callee := src[m[4]:m[5]]
+		if !nextjsActionWrapperCallees[callee] {
+			continue
+		}
+		name := src[m[2]:m[3]]
+		args := src[m[6]:m[7]]
+		// Capture a leading validation-schema argument (`action(schema, handler)`)
+		// when the first arg is a bare identifier / member ref, not the handler.
+		var extra []string
+		if sm := reNextjsWrappedActionSchema.FindStringSubmatch(args); sm != nil {
+			first := sm[1]
+			if first != "async" && first != "function" {
+				extra = append(extra, "validation_schema", first)
+			}
+		}
+		extra = append(extra, "action_wrapper", callee)
+		emitAction(name, m[0], extra...)
 	}
 
 	// Middleware runtime detection (issue #2878, middleware_runtime_detection).
