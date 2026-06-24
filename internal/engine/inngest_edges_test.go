@@ -11,6 +11,12 @@
 //     Function:module rather than dropping the edge.
 //   - non-Inngest files emit nothing (pre-filter gate).
 //   - non-JS/TS languages are skipped.
+//
+// And for the consumer / trigger edge added by #5483:
+//   - an event-triggered createFunction → SUBSCRIBES_TO its event topic.
+//   - a cron-triggered createFunction → no SUBSCRIBES_TO edge.
+//   - end-to-end workflow chain: function A sends event X and function B is
+//     triggered by X, yielding A →PUBLISHES_TO→ X →SUBSCRIBES_TO→ B.
 package engine
 
 import (
@@ -144,5 +150,103 @@ func TestInngest_NonJSLanguageSkipped(t *testing.T) {
 	ents, rels := runInngestDetect(t, "python", "x.py", src)
 	if len(ents) != 0 || len(rels) != 0 {
 		t.Errorf("non-JS/TS language should be skipped, got %d entities %d rels", len(ents), len(rels))
+	}
+}
+
+// TestInngest_Consumer_EventTriggerEmitsSubscribesTo asserts an event-triggered
+// createFunction emits a SUBSCRIBES_TO edge Function:<id> → its event topic,
+// reusing the same consumer edge kind/direction BullMQ uses (#5483).
+func TestInngest_Consumer_EventTriggerEmitsSubscribesTo(t *testing.T) {
+	src := `import { inngest } from './client';
+
+export const fn = inngest.createFunction(
+  { id: "send-welcome" },
+  { event: "user/created" },
+  async ({ event, step }) => { /* ... */ },
+);
+`
+	ents, rels := runInngestDetect(t, "typescript", "consumer.ts", src)
+
+	// Edge-only pass; the Function/topic entities belong to #5480/#5481.
+	if len(ents) != 0 {
+		t.Errorf("inngest edge pass should not emit entities, got %+v", ents)
+	}
+
+	r := relTo(rels, "SUBSCRIBES_TO", "SCOPE.MessageTopic:user/created")
+	if r == nil {
+		t.Fatalf("expected SUBSCRIBES_TO → SCOPE.MessageTopic:user/created, got %+v", rels)
+	}
+	if r.from != "Function:send-welcome" {
+		t.Errorf("SUBSCRIBES_TO FromID = %q, want Function:send-welcome", r.from)
+	}
+	if r.props["framework"] != "inngest" || r.props["event"] != "user/created" {
+		t.Errorf("edge props = %+v, want framework=inngest event=user/created", r.props)
+	}
+	if r.props["topic_id"] != "event:user/created" {
+		t.Errorf("edge topic_id = %q, want event:user/created", r.props["topic_id"])
+	}
+	if r.props["provenance"] != "INFERRED_FROM_INNGEST_CREATE_FUNCTION" {
+		t.Errorf("edge provenance = %q, want INFERRED_FROM_INNGEST_CREATE_FUNCTION", r.props["provenance"])
+	}
+}
+
+// TestInngest_Consumer_CronTriggerEmitsNoEdge asserts a cron-triggered function
+// (no `event:`) is a scheduled job and emits no SUBSCRIBES_TO edge.
+func TestInngest_Consumer_CronTriggerEmitsNoEdge(t *testing.T) {
+	src := `import { inngest } from './client';
+
+export const nightly = inngest.createFunction(
+  { id: "nightly-report" },
+  { cron: "0 0 * * *" },
+  async () => { /* ... */ },
+);
+`
+	_, rels := runInngestDetect(t, "typescript", "cron.ts", src)
+
+	if got := len(relsByKind(rels, "SUBSCRIBES_TO")); got != 0 {
+		t.Errorf("cron-triggered function should emit no SUBSCRIBES_TO edge, got %d (%+v)", got, rels)
+	}
+}
+
+// TestInngest_WorkflowChain asserts the end-to-end event→function→event chain:
+// function A sends event X (PUBLISHES_TO X) and function B is triggered by X
+// (SUBSCRIBES_TO X). Together these form A →PUBLISHES_TO→ X →SUBSCRIBES_TO→ B,
+// the workflow chain the topology renderer stitches via the shared topic.
+func TestInngest_WorkflowChain(t *testing.T) {
+	src := `import { inngest } from 'inngest';
+
+// Producer: function A emits event X.
+export async function emitX() {
+  await inngest.send({ name: "order/placed" });
+}
+
+// Consumer: function B is triggered by event X.
+export const handleX = inngest.createFunction(
+  { id: "handle-order" },
+  { event: "order/placed" },
+  async ({ event }) => { /* ... */ },
+);
+`
+	_, rels := runInngestDetect(t, "typescript", "workflow.ts", src)
+
+	pub := relTo(rels, "PUBLISHES_TO", "SCOPE.MessageTopic:order/placed")
+	if pub == nil {
+		t.Fatalf("expected producer PUBLISHES_TO → order/placed, got %+v", rels)
+	}
+	if pub.from != "Function:emitX" {
+		t.Errorf("PUBLISHES_TO FromID = %q, want Function:emitX", pub.from)
+	}
+
+	sub := relTo(rels, "SUBSCRIBES_TO", "SCOPE.MessageTopic:order/placed")
+	if sub == nil {
+		t.Fatalf("expected consumer SUBSCRIBES_TO → order/placed, got %+v", rels)
+	}
+	if sub.from != "Function:handle-order" {
+		t.Errorf("SUBSCRIBES_TO FromID = %q, want Function:handle-order", sub.from)
+	}
+
+	// Both edges share the same topic stub — the chain join point.
+	if pub.to != sub.to {
+		t.Errorf("workflow chain not joined: PUBLISHES_TO→%q vs SUBSCRIBES_TO→%q", pub.to, sub.to)
 	}
 }

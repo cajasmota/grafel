@@ -79,7 +79,24 @@ var (
 
 	// Event payload `name: "..."` key inside a send() call. An array of
 	// payloads yields one match per `name:` key in the bounded send region.
+	// Also doubles as the createFunction config `name:` fallback (#5483).
 	reInngestEdgeNameKey = regexp.MustCompile(`\bname\s*:\s*` + inngestEdgeStr)
+
+	// `<recv>.createFunction(` — the consumer side (#5483). Capture the
+	// receiver so the createFunction attribution gate (import present, or
+	// receiver named/ending in `inngest`) can be applied. Mirrors the #5480
+	// custom extractor's reInngestCreateFunction.
+	reInngestEdgeCreateFunction = regexp.MustCompile(`([A-Za-z_$][A-Za-z0-9_$.]*)\.createFunction\s*\(`)
+
+	// Config `id` key of a createFunction call — the function's identity, which
+	// becomes the FromID of the SUBSCRIBES_TO edge. `id` is preferred, the
+	// `name:` key (reInngestEdgeNameKey) is the fallback. Mirrors #5480.
+	reInngestEdgeID = regexp.MustCompile(`\bid\s*:\s*` + inngestEdgeStr)
+
+	// Trigger event name of a createFunction call — the topic this function
+	// SUBSCRIBES_TO. A function with only a `cron:` trigger (no `event:`) is a
+	// scheduled job and emits no subscriber edge.
+	reInngestEdgeEvent = regexp.MustCompile(`\bevent\s*:\s*` + inngestEdgeStr)
 )
 
 // inngestTopicToID returns the `Kind:Name` ToID stub for the event topic the
@@ -106,9 +123,35 @@ func inngestSendReceiverAttributed(receiver string, hasImport bool) bool {
 	return false
 }
 
-// applyInngestEdges APPENDS PUBLISHES_TO edges from the enclosing scope of each
-// `inngest.send` / `sendEvent` call to the event topic entity (#5481).
-// Append-only.
+// inngestCreateFunctionReceiverAttributed reports whether a
+// `<receiver>.createFunction(` call should be attributed to Inngest. Accept when
+// the file imports inngest, or the receiver is the conventional `inngest` client
+// (or a member access ending in `.inngest`). Mirrors the #5480 custom
+// extractor's createFunction attribution gate. There is no `step` form here —
+// createFunction is only ever called on the client.
+func inngestCreateFunctionReceiverAttributed(receiver string, hasImport bool) bool {
+	if hasImport {
+		return true
+	}
+	return receiver == "inngest" || strings.HasSuffix(receiver, ".inngest")
+}
+
+// applyInngestEdges APPENDS the Inngest messaging edges for a JS/TS file:
+//
+//   - PUBLISHES_TO — producer side (#5482): from the enclosing scope of each
+//     `inngest.send` / `sendEvent` call to the event topic entity (#5481).
+//   - SUBSCRIBES_TO — consumer/trigger side (#5483): from each
+//     `createFunction({ id }, { event }, …)` Function to the event topic it is
+//     triggered by, reusing the SAME consumer edge kind + direction BullMQ /
+//     Kafka / Azure use (consumer Function → topic). This is the symmetric
+//     partner of PUBLISHES_TO: a function that sends event X (PUBLISHES_TO X)
+//     and another triggered by X (SUBSCRIBES_TO X) form an event → function →
+//     event workflow chain. Cron-triggered functions (`{ cron }`, no event)
+//     emit no subscriber edge.
+//
+// Edge-only and append-only — the topic and Function entities belong to the
+// #5481/#5480 custom extractor; this pass never re-emits them. Refs #5482,
+// #5483, #5479.
 func applyInngestEdges(args DetectorPassArgs) DetectorPassResult {
 	lang := args.Lang
 	content := args.Content
@@ -123,12 +166,13 @@ func applyInngestEdges(args DetectorPassArgs) DetectorPassResult {
 
 	src := string(content)
 
-	// Fast pre-filter: a file with no inngest reference and no `.send` /
-	// `.sendEvent` call cannot produce an Inngest producer edge.
+	// Fast pre-filter: a file with no inngest reference cannot produce an
+	// Inngest edge; and one with neither a `.send` (producer) nor a
+	// `createFunction` (consumer/trigger) call cannot produce one either.
 	if !strings.Contains(src, "inngest") && !strings.Contains(src, "Inngest") {
 		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
-	if !strings.Contains(src, ".send") {
+	if !strings.Contains(src, ".send") && !strings.Contains(src, "createFunction") {
 		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
@@ -176,6 +220,59 @@ func applyInngestEdges(args DetectorPassArgs) DetectorPassResult {
 		for _, nm := range reInngestEdgeNameKey.FindAllStringSubmatch(seg, -1) {
 			emitEdge(caller, nm[1])
 		}
+	}
+
+	// Consumer / trigger side (#5483): `<client>.createFunction({ id }, { event },
+	// …)` SUBSCRIBES_TO the event topic it is triggered by. The function's
+	// identity is its config `id` (preferred) or `name` (fallback) — the SAME
+	// identity the #5480 custom extractor uses for the Function entity, so the
+	// edge's `Function:<id>` FromID binds to it. A function with only a `cron:`
+	// trigger (no `event:`) is a scheduled job and gets no subscriber edge.
+	seenSub := map[string]bool{}
+	for _, m := range reInngestEdgeCreateFunction.FindAllStringSubmatchIndex(src, -1) {
+		receiver := src[m[2]:m[3]]
+		if !inngestCreateFunctionReceiverAttributed(receiver, hasImport) {
+			continue
+		}
+		seg := boundedInngestCallSegment(src, m[1]-1)
+
+		// Function identity: prefer config `id`, fall back to `name`.
+		funcName := ""
+		if mm := reInngestEdgeID.FindStringSubmatch(seg); mm != nil {
+			funcName = mm[1]
+		} else if mm := reInngestEdgeNameKey.FindStringSubmatch(seg); mm != nil {
+			funcName = mm[1]
+		}
+		if funcName == "" {
+			continue // anonymous / dynamically-named — no anchor for the edge.
+		}
+
+		// Trigger event → SUBSCRIBES_TO. No `event:` (e.g. cron) → no edge.
+		mm := reInngestEdgeEvent.FindStringSubmatch(seg)
+		if mm == nil {
+			continue
+		}
+		eventName := mm[1]
+
+		fromID := fmt.Sprintf("Function:%s", funcName)
+		toID := inngestTopicToID(eventName)
+		key := fromID + "|" + toID
+		if seenSub[key] {
+			continue
+		}
+		seenSub[key] = true
+		relationships = append(relationships, types.RelationshipRecord{
+			FromID: fromID,
+			ToID:   toID,
+			Kind:   subscribesToEdgeKind,
+			Properties: map[string]string{
+				"framework":       "inngest",
+				"messaging_layer": "inngest",
+				"event":           eventName,
+				"topic_id":        "event:" + eventName,
+				"provenance":      "INFERRED_FROM_INNGEST_CREATE_FUNCTION",
+			},
+		})
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
