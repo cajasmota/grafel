@@ -36,6 +36,22 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   the function extractor. Phase 1 (entities) of the Inngest epic (#5479); the
   EMITS/TRIGGERS edges wiring topics to their producers/consumers are #5482/#5483.
   Records the `topic_attribution` capability on `msg.inngest`.
+- **Inngest `inngest.send` → EMITS edge (emitter → event) (#5482):** the new
+  `applyInngestEdges` engine pass wires the producer side of Inngest events. For
+  each `<client>.send({ name: "..." })` / `sendEvent(...)` call (and in-handler
+  `step.sendEvent(...)`), it emits a `PUBLISHES_TO` edge from the enclosing
+  scope to the `SCOPE.MessageTopic` event entity #5481 created, resolved via the
+  `SCOPE.MessageTopic:<name>` Kind:Name ToID stub. It **reuses the existing
+  `PUBLISHES_TO` edge kind** (the same kind the Kafka/BullMQ/RabbitMQ producer
+  passes emit), so the cross-repo topic linker and the dashboard topology/flows
+  panels understand it with no new code. An array of payloads yields one edge
+  per distinct event name; the enclosing function/handler/route is resolved via
+  `findEnclosingNodeName`, which falls back to the synthetic `Function:module`
+  scope when no enclosing function can be resolved (e.g. a module-top-level
+  send) rather than dropping the edge. Attribution-gated like the entity
+  extractor (`inngest` import or a receiver named/ending in `inngest`, plus the
+  `step` object). Append-only. Phase 2 (edges) of the Inngest epic (#5479);
+  records the `producer_extraction` capability on `msg.inngest`.
 - **Index-progress list sorts by status — active rows on top, done sinks (#5495):**
   on the dashboard index/group view the per-repo/module progress rows used to
   render in a static repo/module order, so with a large (e.g. 30-module) group

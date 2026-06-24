@@ -166,7 +166,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Consumer extraction | Producer extraction | Topic attribution | Notes |
 |---|---|---|---|---|
 | [BullMQ / bull (Node task queue)](../detail/msg.bullmq.md) | ✅ | ✅ | ✅ | |
-| [Inngest (durable functions / event-driven jobs)](../detail/msg.inngest.md) | 🟢 | — | 🟢 | |
+| [Inngest (durable functions / event-driven jobs)](../detail/msg.inngest.md) | 🟢 | ✅ | 🟢 | |
 
 
 ### Brokers

@@ -930,6 +930,14 @@ func (d *Detector) Detect(ctx context.Context, file extractor.FileInput) (*Detec
 	// linker with no new linker code. JS/TS only. Append-only — cannot regress
 	// surrounding passes.
 	applyPass(applyBullMQEdges)
+	// Inngest producer → event-topic edges (#5482, epic #5479 Phase 2). For
+	// each `inngest.send` / `sendEvent` call, emits a PUBLISHES_TO edge from
+	// the enclosing scope to the SCOPE.MessageTopic event entity the custom
+	// extractor created (#5481), keyed by the bare event name. Reuses the
+	// existing PUBLISHES_TO kind so the cross-repo topic linker and dashboard
+	// understand it with no new code. JS/TS only. Append-only — cannot regress
+	// surrounding passes.
+	applyPass(applyInngestEdges)
 	// Managed event-bus edges (#927): AWS EventBridge, Azure EventGrid, and
 	// CNCF CloudEvents. Emits SCOPE.EventBusEvent synthetic entities plus
 	// PUBLISHES_TO / SUBSCRIBES_TO edges for producers/consumers, and

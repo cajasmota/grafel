@@ -51,6 +51,7 @@ var _ = []passSignature{
 	applyPulsarEdges,
 	applyRedisPubSubEdges,
 	applyBullMQEdges,
+	applyInngestEdges,
 	applyEventBusEdges,
 
 	// Real-time / streaming
