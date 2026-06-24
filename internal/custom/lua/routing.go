@@ -79,7 +79,77 @@ var (
 	// OpenResty handler: content_by_lua_block or content_by_lua_file
 	reContentByLua = regexp.MustCompile(
 		`(?m)\bcontent_by_lua(?:_block|_file)\b`)
+
+	// OpenResty lifecycle directives that bind Lua code to an nginx request
+	// phase. Used to attribute a location block to the phase handler it
+	// declares (#5365 routing depth). Ordered roughly by request lifecycle.
+	reNginxLuaPhase = regexp.MustCompile(
+		`\b(rewrite_by_lua|access_by_lua|content_by_lua|header_filter_by_lua|body_filter_by_lua|log_by_lua)(?:_block|_file)?\b`)
+
+	// OpenResty per-location method restriction: `limit_except GET POST { ... }`
+	// allows ONLY the listed verbs (nginx inverts: everything EXCEPT these is
+	// denied for the guarded sub-block). The captured verb list is the set of
+	// methods the location effectively handles.
+	reNginxLimitExcept = regexp.MustCompile(
+		`(?m)^\s*limit_except\s+([A-Z][A-Z\s]*?)\s*\{`)
+
+	// OpenResty method guard via the nginx variable: `if ($request_method = POST)`.
+	reNginxRequestMethod = regexp.MustCompile(
+		`\$request_method\s*(?:=|!=|~)\s*["']?([A-Z]+)["']?`)
 )
+
+// nginxLocationBlockBody returns the brace-balanced body of an nginx `location`
+// block whose opening `{` is at or after openBraceAt. It is brace-counted and
+// returns the slice between the opening and matching closing brace. On an
+// unbalanced (truncated) block it returns the remainder of the source so the
+// caller still has a body to inspect.
+func nginxLocationBlockBody(src string, openBraceAt int) string {
+	depth := 0
+	for i := openBraceAt; i < len(src); i++ {
+		switch src[i] {
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return src[openBraceAt+1 : i]
+			}
+		}
+	}
+	if openBraceAt+1 < len(src) {
+		return src[openBraceAt+1:]
+	}
+	return ""
+}
+
+// openrestyLocationDepth inspects a location block body and returns the Lua
+// phase handler it declares (e.g. "content_by_lua") and the set of HTTP methods
+// it restricts to (via limit_except or $request_method guards), as a
+// comma-joined upper-case list. Empty strings mean "not declared".
+func openrestyLocationDepth(body string) (phase, methods string) {
+	if m := reNginxLuaPhase.FindStringSubmatch(body); m != nil {
+		phase = m[1]
+	}
+	methodSet := map[string]bool{}
+	var ordered []string
+	addMethod := func(v string) {
+		v = strings.ToUpper(strings.TrimSpace(v))
+		if v == "" || methodSet[v] {
+			return
+		}
+		methodSet[v] = true
+		ordered = append(ordered, v)
+	}
+	if m := reNginxLimitExcept.FindStringSubmatch(body); m != nil {
+		for _, v := range strings.Fields(m[1]) {
+			addMethod(v)
+		}
+	}
+	for _, m := range reNginxRequestMethod.FindAllStringSubmatch(body, -1) {
+		addMethod(m[1])
+	}
+	return phase, strings.Join(ordered, ",")
+}
 
 // Extract implements extractor.Extractor.
 func (e *luaRoutingExtractor) Extract(_ context.Context, file extractor.FileInput) ([]types.EntityRecord, error) {
@@ -110,9 +180,22 @@ func (e *luaRoutingExtractor) Extract(_ context.Context, file extractor.FileInpu
 	var out []types.EntityRecord
 
 	// --- OpenResty nginx location blocks ---
+	// #5365 routing depth: each location block is balanced-parsed for the Lua
+	// phase handler it declares (content_by_lua / access_by_lua / …) and any
+	// per-location HTTP-method restriction (limit_except / $request_method),
+	// so a location route carries its handler phase + method set rather than
+	// surfacing the directives as disconnected entities.
 	for _, idx := range reNginxLocation.FindAllStringSubmatchIndex(src, -1) {
 		path := src[idx[2]:idx[3]]
 		ln := lineOf(src, idx[0])
+		// idx[1] is the byte just past the matched `... {`; the opening brace is
+		// the last byte of the match, so the body starts there.
+		braceAt := strings.LastIndexByte(src[idx[0]:idx[1]], '{')
+		phase, methods := "", ""
+		if braceAt >= 0 {
+			body := nginxLocationBlockBody(src, idx[0]+braceAt)
+			phase, methods = openrestyLocationDepth(body)
+		}
 		entity := makeEntity("location:"+path, string(types.EntityKindRoute), "http_route", file.Path, "lua", ln)
 		setProps(&entity,
 			"signal", "routing",
@@ -121,6 +204,12 @@ func (e *luaRoutingExtractor) Extract(_ context.Context, file extractor.FileInpu
 			"path", path,
 			"canonical_path", luaCanonicalPath(path),
 		)
+		if phase != "" {
+			setProps(&entity, "handler_phase", phase)
+		}
+		if methods != "" {
+			setProps(&entity, "method", methods)
+		}
 		out = append(out, entity)
 	}
 

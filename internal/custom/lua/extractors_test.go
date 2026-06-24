@@ -57,6 +57,69 @@ location = /health {
 	}
 }
 
+// TestLuaRoutingOpenRestyDepth verifies the #5365 routing-depth uplift: a
+// location route carries the Lua phase handler it declares and the HTTP method
+// set it restricts to (limit_except / $request_method), instead of those
+// directives surfacing as disconnected entities.
+func TestLuaRoutingOpenRestyDepth(t *testing.T) {
+	src := `
+location /api/orders {
+    limit_except GET POST {
+        deny all;
+    }
+    access_by_lua_block {
+        require("auth").check()
+    }
+    content_by_lua_file /app/orders.lua;
+}
+location = /webhook {
+    if ($request_method = POST) {
+        content_by_lua_block {
+            ngx.say("ok")
+        }
+    }
+}
+`
+	e := &luaRoutingExtractor{}
+	got, err := e.Extract(context.Background(), makeFile("nginx.conf", src))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	find := func(path string) (handlerPhase, method string, ok bool) {
+		for _, r := range got {
+			if r.Properties["kind"] == "nginx_location" && r.Properties["path"] == path {
+				return r.Properties["handler_phase"], r.Properties["method"], true
+			}
+		}
+		return "", "", false
+	}
+
+	phase, method, ok := find("/api/orders")
+	if !ok {
+		t.Fatal("expected /api/orders location route")
+	}
+	// reNginxLuaPhase returns the first phase in source order; access_by_lua
+	// precedes content_by_lua_file in the block.
+	if phase != "access_by_lua" {
+		t.Errorf("/api/orders handler_phase=%q want access_by_lua", phase)
+	}
+	if method != "GET,POST" {
+		t.Errorf("/api/orders method=%q want GET,POST", method)
+	}
+
+	phase2, method2, ok := find("/webhook")
+	if !ok {
+		t.Fatal("expected /webhook location route")
+	}
+	if phase2 != "content_by_lua" {
+		t.Errorf("/webhook handler_phase=%q want content_by_lua", phase2)
+	}
+	if method2 != "POST" {
+		t.Errorf("/webhook method=%q want POST", method2)
+	}
+}
+
 func TestLuaRoutingLapis(t *testing.T) {
 	src := `
 local lapis = require("lapis")

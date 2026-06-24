@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # lua
 
-**Frameworks**: 4 · **Tools**: 0 · **ORMs**: 0 · **Other**: 1
+**Frameworks**: 4 · **Tools**: 2 · **ORMs**: 0 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -31,6 +31,13 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Lapis](../detail/lang.lua.framework.lapis.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
 | [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
 
+
+## Tools
+
+| Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
+|---|---|---|---|---|---|---|
+| [LuaRocks](../detail/lang.lua.tool.luarocks.md) | — | — | ✅ | ✅ | — | |
+| [busted](../detail/test.busted.md) | ✅ | — | — | — | ✅ | |
 
 ## Other
 

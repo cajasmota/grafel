@@ -179,6 +179,9 @@ var exactManifestNames = map[string]bool{
 	"rebar.lock":   true,
 	"erlang.mk":    true,
 	"Makefile":     true,
+	// Lua — LuaRocks lockfile (the *.rockspec manifest is suffix-matched in
+	// IsManifest/dispatchParser since rock names vary per package).
+	"luarocks.lock": true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -196,6 +199,12 @@ func IsManifest(filePath string) bool {
 	// *.app.src — Erlang/OTP application resource manifest (rebar3/hex deps
 	// surface via the {applications, [...]} list).
 	if strings.HasSuffix(basename, ".app.src") {
+		return true
+	}
+	// *.rockspec — LuaRocks package manifest (rock name + version are encoded
+	// in the filename, e.g. luafilesystem-1.8.0-1.rockspec, so it is matched by
+	// extension rather than an exact name).
+	if strings.HasSuffix(basename, ".rockspec") {
 		return true
 	}
 	return false
@@ -239,6 +248,8 @@ func detectPackageManager(filePath string) string {
 		"rebar.lock":   "rebar3",
 		"erlang.mk":    "erlang_mk",
 		"Makefile":     "erlang_mk",
+		// Lua — LuaRocks
+		"luarocks.lock": "luarocks",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -251,6 +262,10 @@ func detectPackageManager(filePath string) string {
 	// *.app.src → rebar3 (Erlang/OTP application resource)
 	if strings.HasSuffix(basename, ".app.src") {
 		return "rebar3"
+	}
+	// *.rockspec → luarocks (LuaRocks package manifest)
+	if strings.HasSuffix(basename, ".rockspec") {
+		return "luarocks"
 	}
 	return "unknown"
 }
@@ -1746,6 +1761,8 @@ var parsers = map[string]parserFn{
 	"rebar.config": parseRebarConfig,
 	"rebar.lock":   parseRebarLock,
 	"erlang.mk":    func(s string) []dep { return parseErlangMk(s, false) },
+	// Lua — LuaRocks lockfile (*.rockspec manifest is suffix-dispatched below).
+	"luarocks.lock": parseLuarocksLock,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {
@@ -1761,6 +1778,10 @@ func dispatchParser(filePath, source string) (string, []dep) {
 	// *.app.src — Erlang/OTP application resource (rebar3 runtime apps).
 	if strings.HasSuffix(basename, ".app.src") {
 		return "rebar3", parseAppSrc(source)
+	}
+	// *.rockspec — LuaRocks package manifest.
+	if strings.HasSuffix(basename, ".rockspec") {
+		return "luarocks", parseRockspec(source)
 	}
 	// Makefile — only an erlang.mk build when it includes erlang.mk / declares
 	// PROJECT (requireSignal=true); a plain Makefile is a no-op.

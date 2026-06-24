@@ -459,6 +459,12 @@ var extensionLanguageMap = map[string]string{
 	".rei": "reasonml",
 	// Lua
 	".lua": "lua",
+	// LuaRocks package manifest (#5365) — a *.rockspec is Lua source (a table
+	// literal of package/version/source/build/dependencies). Classified as
+	// "lua" so it survives classification and reaches the _cross_manifest
+	// extractor, which suffix-matches *.rockspec and parses its dependency
+	// lists. The Lua tree-sitter extractor also parses it cleanly (valid Lua).
+	".rockspec": "lua",
 	// SQL
 	".sql": "sql",
 	// Terraform / HCL
@@ -657,6 +663,11 @@ var basenameLanguageMap = map[string]string{
 	// (nginx upstream/proxy_pass, Caddy reverse_proxy).
 	"nginx.conf": "nginx",
 	"Caddyfile":  "caddy",
+	// LuaRocks lockfile (#5365) — luarocks.lock has no code extension; it is a
+	// Lua return-table of pinned resolved versions. Classified as "lua" so it
+	// reaches the _cross_manifest extractor (which exact-name-matches it and
+	// parses the resolved dependency tree as kind=locked deps).
+	"luarocks.lock": "lua",
 }
 
 // detectLanguage returns the language token for the given normalised path, or

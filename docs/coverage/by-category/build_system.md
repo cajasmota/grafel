@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # build_system
 
-**Total**: 108 records · **C/C++**: 12 · **clojure**: 4 · **C#**: 6 · **elixir**: 8 · **erlang**: 4 · **F#**: 1 · **go**: 7 · **groovy**: 1 · **java**: 8 · **JS/TS**: 20 · **multi**: 4 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 9 · **scala**: 2
+**Total**: 109 records · **C/C++**: 12 · **clojure**: 4 · **C#**: 6 · **elixir**: 8 · **erlang**: 4 · **F#**: 1 · **go**: 7 · **groovy**: 1 · **java**: 8 · **JS/TS**: 20 · **lua**: 1 · **multi**: 4 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 9 · **scala**: 2
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -79,6 +79,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [JS/TS](../by-language/jsts.md) | [npm](../detail/build.npm.md) | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [pnpm](../detail/build.pnpm.md) | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [tap / node:test](../detail/test.tap.md) | ✅ | ✅ | |
+| [lua](../by-language/lua.md) | [busted](../detail/test.busted.md) | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Bazel / BUCK / WORKSPACE](../detail/build.bazel.md) | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Dockerfile](../detail/build.dockerfile.md) | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Justfile](../detail/build.justfile.md) | ✅ | ✅ | |
