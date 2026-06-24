@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # grafel capabilities
 
-**Languages**: 39 (37 active · 2 placeholder) · **Frameworks**: 263 · **ORMs**: 186 · **Tools**: 160 · **Other**: 211
+**Languages**: 39 (38 active · 1 placeholder) · **Frameworks**: 263 · **ORMs**: 186 · **Tools**: 161 · **Other**: 211
 
 ## Coverage by language
 
@@ -38,6 +38,7 @@
 | [idris](by-language/idris.md) | 0 | 1 | 0 | 0 |
 | [javascript](by-language/javascript.md) | 0 | 0 | 0 | 1 |
 | [JCL](by-language/jcl.md) | 0 | 0 | 0 | 1 |
+| [lisp](by-language/lisp.md) | 0 | 1 | 0 | 0 |
 | [pony](by-language/pony.md) | 0 | 1 | 0 | 1 |
 | [Standard ML](by-language/sml.md) | 0 | 2 | 0 | 0 |
 | [solidity](by-language/solidity.md) | 0 | 2 | 0 | 2 |
@@ -81,6 +82,5 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | Language |
 |---|
 | [Bicep](by-language/bicep.md) |
-| [Lisp](by-language/lisp.md) |
 
-Total: 263 frameworks · 160 tools · 186 ORMs · 211 other
+Total: 263 frameworks · 161 tools · 186 ORMs · 211 other
