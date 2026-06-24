@@ -1053,3 +1053,226 @@ func sortedKeys(m map[string]bool) []string {
 	sort.Strings(out)
 	return out
 }
+
+// ---------------------------------------------------------------------------
+// #5363 — OTP/BEAM deepening: client message edges, restart strategy, tables.
+// ---------------------------------------------------------------------------
+
+// TestErlangExtractor_ClientMessageEdges verifies that gen_server client send
+// primitives (gen_server:call/cast) enrich the CALLS edge with the message
+// kind/server/tag, recovering the CLIENT side of the gen_server protocol.
+func TestErlangExtractor_ClientMessageEdges(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "cache_server.erl",
+		Content:  []byte(genServerFixture),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// get/1 → gen_server:call(?SERVER, {get, Key}) → kind=call, tag=get.
+	// put/2 → gen_server:cast(?SERVER, {put, Key, Value}) → kind=cast, tag=put.
+	// flush/0 → gen_server:cast(?SERVER, flush) → kind=cast, tag=flush.
+	type want struct{ kind, tag, server string }
+	wants := map[string]want{
+		"get":   {"call", "get", "cache_server"}, // ?SERVER → ?MODULE → cache_server
+		"put":   {"cast", "put", "cache_server"},
+		"flush": {"cast", "flush", "cache_server"},
+	}
+	found := map[string]bool{}
+	for _, rec := range got {
+		w, ok := wants[rec.Name]
+		if !ok || rec.Kind != "SCOPE.Operation" {
+			continue
+		}
+		var matched bool
+		for _, rel := range rec.Relationships {
+			if rel.Kind != "CALLS" || rel.Properties["otp_msg_kind"] == "" {
+				continue
+			}
+			matched = true
+			if rel.Properties["otp_msg_kind"] != w.kind {
+				t.Errorf("%s: otp_msg_kind=%q, want %q", rec.Name, rel.Properties["otp_msg_kind"], w.kind)
+			}
+			if rel.Properties["otp_msg_tag"] != w.tag {
+				t.Errorf("%s: otp_msg_tag=%q, want %q", rec.Name, rel.Properties["otp_msg_tag"], w.tag)
+			}
+			if rel.Properties["otp_msg_server"] != w.server {
+				t.Errorf("%s: otp_msg_server=%q, want %q", rec.Name, rel.Properties["otp_msg_server"], w.server)
+			}
+			if rel.Properties["provenance"] != "otp_client_send" {
+				t.Errorf("%s: provenance=%q, want otp_client_send", rec.Name, rel.Properties["provenance"])
+			}
+		}
+		if !matched {
+			t.Errorf("%s: no enriched OTP-message CALLS edge found", rec.Name)
+		}
+		// The entity should carry an otp_send:<kind> tag.
+		if !hasTag(rec.Tags, "otp_send:"+w.kind) {
+			t.Errorf("%s: missing tag otp_send:%s (tags=%v)", rec.Name, w.kind, rec.Tags)
+		}
+		found[rec.Name] = true
+	}
+	for name := range wants {
+		if !found[name] {
+			t.Errorf("client-send function %q not found", name)
+		}
+	}
+}
+
+// TestErlangExtractor_SupervisorRestartStrategy verifies the supervisor's
+// SupFlags restart strategy is recovered and stamped on the module entity.
+func TestErlangExtractor_SupervisorRestartStrategy(t *testing.T) {
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path:     "top_sup.erl",
+		Content:  []byte(supTreeFixture),
+		Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var found bool
+	for _, rec := range got {
+		if rec.Name != "top_sup" || rec.Kind != "SCOPE.Component" {
+			continue
+		}
+		found = true
+		if rec.Properties["otp_sup_strategy"] != "one_for_one" {
+			t.Errorf("otp_sup_strategy=%q, want one_for_one", rec.Properties["otp_sup_strategy"])
+		}
+		if rec.Properties["otp_sup_intensity"] != "5" {
+			t.Errorf("otp_sup_intensity=%q, want 5", rec.Properties["otp_sup_intensity"])
+		}
+		if rec.Properties["otp_sup_period"] != "10" {
+			t.Errorf("otp_sup_period=%q, want 10", rec.Properties["otp_sup_period"])
+		}
+		if !hasTag(rec.Tags, "otp_sup_strategy:one_for_one") {
+			t.Errorf("missing tag otp_sup_strategy:one_for_one (tags=%v)", rec.Tags)
+		}
+	}
+	if !found {
+		t.Fatal("supervisor module top_sup not found")
+	}
+}
+
+// TestErlangExtractor_SupervisorLegacyStrategy verifies the legacy tuple-form
+// SupFlags {one_for_all, 3, 60} is recovered.
+func TestErlangExtractor_SupervisorLegacyStrategy(t *testing.T) {
+	const fixture = `-module(legacy_sup).
+-behaviour(supervisor).
+-export([start_link/0, init/1]).
+
+start_link() -> supervisor:start_link({local, ?MODULE}, ?MODULE, []).
+
+init([]) ->
+    Child = {worker, {worker, start_link, []}, permanent, 5000, worker, [worker]},
+    {ok, {{one_for_all, 3, 60}, [Child]}}.
+`
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path: "legacy_sup.erl", Content: []byte(fixture), Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	var found bool
+	for _, rec := range got {
+		if rec.Name == "legacy_sup" && rec.Kind == "SCOPE.Component" {
+			found = true
+			if rec.Properties["otp_sup_strategy"] != "one_for_all" {
+				t.Errorf("otp_sup_strategy=%q, want one_for_all", rec.Properties["otp_sup_strategy"])
+			}
+			if rec.Properties["otp_sup_intensity"] != "3" || rec.Properties["otp_sup_period"] != "60" {
+				t.Errorf("intensity/period = %q/%q, want 3/60",
+					rec.Properties["otp_sup_intensity"], rec.Properties["otp_sup_period"])
+			}
+		}
+	}
+	if !found {
+		t.Fatal("supervisor module legacy_sup not found")
+	}
+}
+
+// TestErlangExtractor_MnesiaEtsTables verifies mnesia:create_table / ets:new
+// declarations become SCOPE.Datastore entities and table traffic emits
+// ACCESSES_TABLE edges to them.
+func TestErlangExtractor_MnesiaEtsTables(t *testing.T) {
+	const fixture = `-module(store).
+-export([setup/0, put/2, get/1, cache_put/2, cache_get/1]).
+
+setup() ->
+    mnesia:create_table(person, [{attributes, [id, name]}]),
+    ets:new(session_cache, [named_table, set, public]).
+
+put(Id, Name) ->
+    mnesia:write({person, Id, Name}).
+
+get(Id) ->
+    mnesia:read(person, Id).
+
+cache_put(K, V) ->
+    ets:insert(session_cache, {K, V}).
+
+cache_get(K) ->
+    ets:lookup(session_cache, K).
+`
+	e := ext(t)
+	got, err := e.Extract(context.Background(), extractor.FileInput{
+		Path: "store.erl", Content: []byte(fixture), Language: "erlang",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	// Two datastore entities: person (mnesia), session_cache (ets).
+	tables := map[string]string{} // name -> engine
+	for _, rec := range got {
+		if rec.Kind == "SCOPE.Datastore" {
+			tables[rec.Name] = rec.Properties["engine"]
+			if rec.Properties["table_ref"] == "" {
+				t.Errorf("datastore %q missing table_ref", rec.Name)
+			}
+		}
+	}
+	if tables["person"] != "mnesia" {
+		t.Errorf("person engine=%q, want mnesia", tables["person"])
+	}
+	if tables["session_cache"] != "ets" {
+		t.Errorf("session_cache engine=%q, want ets", tables["session_cache"])
+	}
+
+	// ACCESSES_TABLE edges: put→write(person), get→read(person),
+	// cache_put→write(session_cache), cache_get→read(session_cache).
+	type acc struct{ table, op string }
+	accesses := map[string][]acc{} // fn -> accesses
+	for _, rec := range got {
+		if rec.Kind != "SCOPE.Operation" {
+			continue
+		}
+		for _, rel := range rec.Relationships {
+			if rel.Kind == "ACCESSES_TABLE" {
+				accesses[rec.Name] = append(accesses[rec.Name],
+					acc{rel.Properties["table"], rel.Properties["op"]})
+			}
+		}
+	}
+	wantAcc := map[string]acc{
+		"put":       {"person", "write"},
+		"get":       {"person", "read"},
+		"cache_put": {"session_cache", "write"},
+		"cache_get": {"session_cache", "read"},
+	}
+	for fn, w := range wantAcc {
+		var ok bool
+		for _, a := range accesses[fn] {
+			if a == w {
+				ok = true
+			}
+		}
+		if !ok {
+			t.Errorf("%s: expected ACCESSES_TABLE %+v, got %v", fn, w, accesses[fn])
+		}
+	}
+}

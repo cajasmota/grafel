@@ -600,6 +600,10 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 		// "mod:fn" using the import tables so they bind to the source module.
 		callRels := collectCallsFromText(fi.calls, fi.name, importedFn, importedFnAr)
 
+		// #5363: ACCESSES_TABLE edges for mnesia/ets/dets table traffic in this
+		// function's clause bodies (read/write/delete/… on an atom-named table).
+		callRels = append(callRels, recoverTableAccessEdges(fi.calls)...)
+
 		rec := types.EntityRecord{
 			Name:               fi.name,
 			Kind:               "SCOPE.Operation",
@@ -651,6 +655,13 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 				}
 			}
 		}
+		// #5363: gen_server / gen_statem / gen_event CLIENT MESSAGE EDGES.
+		// Recover client send primitives (gen_server:call/cast, gen_event:notify,
+		// …) in this function's clause bodies and enrich the matching CALLS edge
+		// with the message kind/server/tag so the protocol's client side is
+		// traversable and pairs with the server-side otp_dispatch_tags.
+		enrichOTPMessageEdges(&rec, recoverOTPMessages(fi.calls))
+
 		opIdx := len(entities)
 		entities = append(entities, rec)
 
@@ -683,6 +694,12 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 			}
 		}
 		if initBody != "" {
+			// #5363: recover the restart strategy (SupFlags) and stamp it on the
+			// supervisor module entity so the supervision tree carries its
+			// restart semantics, not only its child topology.
+			if sf, ok := recoverSupFlags(initBody); ok {
+				stampSupFlags(&entities[moduleIdx], sf)
+			}
 			for _, c := range parseChildSpecs(initBody) {
 				rel := types.RelationshipRecord{
 					ToID: c.module,
@@ -699,6 +716,13 @@ func extractErlang(rawSrc, filePath string) []types.EntityRecord {
 			}
 		}
 	}
+
+	// ── 8. Mnesia / ETS / DETS table declarations → SCOPE.Datastore ─────────
+	// mnesia:create_table(person, …) / ets:new(cache, …) primitives declare a
+	// persistent/in-memory table; emit a datastore entity per (engine, table)
+	// so table traffic (the ACCESSES_TABLE edges emitted per-function above)
+	// converges on a node. Scans the macro-expanded source (`src`).
+	entities = append(entities, buildTableEntities(recoverTableDecls(src), filePath)...)
 
 	return entities
 }
