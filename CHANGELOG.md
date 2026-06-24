@@ -23,6 +23,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   epic (#5479); the EMITS/TRIGGERS edges that wire the trigger event to
   producers and topics are follow-up tickets (#5482/#5483/#5484). New registry
   record `msg.inngest` (`message_broker` / `task_queues`).
+- **Inngest event names extracted as MessageTopic entities (#5481):** the
+  `custom_js_inngest` extractor now also emits one `SCOPE.MessageTopic` entity
+  (subtype `inngest`, `framework=inngest`, `topic_id=event:<name>`) per
+  **distinct** Inngest event name — the event analogue of a BullMQ/Kafka topic.
+  Event names are harvested from `createFunction({ event: "..." })` triggers,
+  `<client>.send`/`sendEvent({ name: "..." })` producer payloads, and typed
+  `new EventSchemas().fromRecord<{ "name": ... }>()` / `fromUnion` schema
+  definitions (the quoted keys of the balanced type-argument record). Topics are
+  deduped by event name within a file and carry the first reference site as their
+  source location, attribution-gated on the same `inngest` import / receiver as
+  the function extractor. Phase 1 (entities) of the Inngest epic (#5479); the
+  EMITS/TRIGGERS edges wiring topics to their producers/consumers are #5482/#5483.
+  Records the `topic_attribution` capability on `msg.inngest`.
 - **Index-progress list sorts by status — active rows on top, done sinks (#5495):**
   on the dashboard index/group view the per-repo/module progress rows used to
   render in a static repo/module order, so with a large (e.g. 30-module) group

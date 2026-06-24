@@ -35,6 +35,14 @@ export const nightlyReport = inngest.createFunction(
   },
 );
 
+// #5481: producer side — inngest.send({ name }) references the same
+// "user/created" event (must dedupe with the trigger above) plus a new
+// "user/deleted" event, so this file declares two distinct MessageTopics.
+export async function deleteUser(id: string) {
+  await inngest.send({ name: "user/deleted", data: { id } });
+  await inngest.send({ name: "user/created", data: { id } });
+}
+
 declare function persistUser(data: unknown): Promise<void>;
 declare function sendEmail(to: string): Promise<void>;
 declare function buildReport(): Promise<void>;
