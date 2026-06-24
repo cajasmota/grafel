@@ -408,3 +408,199 @@ router.post('/dyn', (req, res) => {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Zod .refine() / .superRefine() / .transform() / .pipe() (issue #5497)
+// ---------------------------------------------------------------------------
+
+// refinementEntity returns the SCOPE.Schema/zod_refinement sub-entity by name.
+func refinementEntity(ents []types.EntityRecord, name string) *types.EntityRecord {
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "zod_refinement" && e.Name == name {
+			return e
+		}
+	}
+	return nil
+}
+
+// transformEntity returns the SCOPE.Schema/zod_transform sub-entity by name.
+func transformEntity(ents []types.EntityRecord, name string) *types.EntityRecord {
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "zod_transform" && e.Name == name {
+			return e
+		}
+	}
+	return nil
+}
+
+// A scalar zod schema with a single `.refine(fn, "msg")` → a zod_refinement
+// entity carrying the literal message, linked to its host schema by a CONTAINS
+// (member=refinement) edge.
+func TestZodRefine_ScalarWithMessage(t *testing.T) {
+	src := `import { z } from 'zod';
+const Slug = z.string().refine(v => v.length > 3, "too short");`
+	ents := extractFull(t, "custom_js_validation_schema", fi("slug.ts", "typescript", src))
+
+	if schemaEntity(ents, "Slug") == nil {
+		t.Fatal("expected SCOPE.Schema Slug")
+	}
+	ref := refinementEntity(ents, "Slug.refine#1")
+	if ref == nil {
+		t.Fatal("expected zod_refinement Slug.refine#1")
+	}
+	if ref.Properties["refinement_kind"] != "refine" {
+		t.Errorf("refinement_kind = %q, want refine", ref.Properties["refinement_kind"])
+	}
+	if ref.Properties["message"] != "too short" {
+		t.Errorf("message = %q, want 'too short' (props=%v)", ref.Properties["message"], ref.Properties)
+	}
+	if ref.Properties["parent_schema"] != "Slug" {
+		t.Errorf("parent_schema = %q, want Slug", ref.Properties["parent_schema"])
+	}
+	if !hasContainsTo(ents, ref.ID, ref.Name) {
+		t.Error("expected CONTAINS edge Slug -> Slug.refine#1")
+	}
+}
+
+// `.superRefine((v,ctx)=>{})` → a zod_refinement with refinement_kind=superRefine
+// (and no message — superRefine has no message argument).
+func TestZodSuperRefine(t *testing.T) {
+	src := `const Form = z.object({ a: z.string(), b: z.string() }).superRefine((v, ctx) => {});`
+	ents := extractFull(t, "custom_js_validation_schema", fi("form.ts", "typescript", src))
+	ref := refinementEntity(ents, "Form.refine#1")
+	if ref == nil {
+		t.Fatal("expected zod_refinement Form.refine#1")
+	}
+	if ref.Properties["refinement_kind"] != "superRefine" {
+		t.Errorf("refinement_kind = %q, want superRefine", ref.Properties["refinement_kind"])
+	}
+	if _, ok := ref.Properties["message"]; ok {
+		t.Errorf("superRefine should carry no message, got %q", ref.Properties["message"])
+	}
+	if !hasContainsTo(ents, ref.ID, ref.Name) {
+		t.Error("expected CONTAINS edge Form -> Form.refine#1")
+	}
+}
+
+// `z.object({}).transform(o => ({...o}))` → a zod_transform entity linked to its
+// host schema by a CONTAINS (member=transform) edge.
+func TestZodTransform(t *testing.T) {
+	src := `const Norm = z.object({ name: z.string() }).transform(o => ({ ...o, name: o.name.trim() }));`
+	ents := extractFull(t, "custom_js_validation_schema", fi("norm.ts", "typescript", src))
+	tr := transformEntity(ents, "Norm.transform#1")
+	if tr == nil {
+		t.Fatal("expected zod_transform Norm.transform#1")
+	}
+	if tr.Properties["pattern_type"] != "transform" {
+		t.Errorf("pattern_type = %q, want transform", tr.Properties["pattern_type"])
+	}
+	if !hasContainsTo(ents, tr.ID, tr.Name) {
+		t.Error("expected CONTAINS edge Norm -> Norm.transform#1")
+	}
+}
+
+// `.pipe(z.number())` records a pipe_target attribute on the host schema; an
+// inline factory target yields the attribute but (correctly) no named REFERENCES
+// edge. `.pipe(OtherSchema)` records a REFERENCES edge to the named schema.
+func TestZodPipe(t *testing.T) {
+	src := `const Other = z.number();
+const Coerced = z.string().pipe(z.number());
+const Chained = z.string().pipe(Other);`
+	ents := extractFull(t, "custom_js_validation_schema", fi("pipe.ts", "typescript", src))
+
+	coerced := schemaEntity(ents, "Coerced")
+	if coerced == nil {
+		t.Fatal("expected SCOPE.Schema Coerced")
+	}
+	if got := coerced.Properties["pipe_target"]; got != "z.number" {
+		t.Errorf("Coerced pipe_target = %q, want z.number", got)
+	}
+
+	chained := schemaEntity(ents, "Chained")
+	if chained == nil {
+		t.Fatal("expected SCOPE.Schema Chained")
+	}
+	if got := chained.Properties["pipe_target"]; got != "Other" {
+		t.Errorf("Chained pipe_target = %q, want Other", got)
+	}
+	// REFERENCES edge to the named target schema.
+	found := false
+	for _, r := range chained.Relationships {
+		if r.Kind == "REFERENCES" && r.ToID == "Schema:Other" &&
+			r.Properties["ref_kind"] == "zod_pipe" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected REFERENCES(zod_pipe) Chained -> Schema:Other, rels=%v", chained.Relationships)
+	}
+}
+
+// Two chained `.refine()`s → two refinement entities, order preserved by
+// chain_index, each with its own message.
+func TestZodRefine_MultipleChained_OrderPreserved(t *testing.T) {
+	src := `const Pwd = z.string()
+  .refine(v => v.length >= 8, "too short")
+  .refine(v => /[0-9]/.test(v), { message: "needs a digit" });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("pwd.ts", "typescript", src))
+
+	r1 := refinementEntity(ents, "Pwd.refine#1")
+	r2 := refinementEntity(ents, "Pwd.refine#2")
+	if r1 == nil || r2 == nil {
+		t.Fatalf("expected two refinements, got r1=%v r2=%v", r1, r2)
+	}
+	if r1.Properties["chain_index"] != "1" || r2.Properties["chain_index"] != "2" {
+		t.Errorf("chain order: r1=%q r2=%q", r1.Properties["chain_index"], r2.Properties["chain_index"])
+	}
+	if r1.Properties["message"] != "too short" {
+		t.Errorf("r1 message = %q, want 'too short'", r1.Properties["message"])
+	}
+	// Object-form message `{ message: "needs a digit" }`.
+	if r2.Properties["message"] != "needs a digit" {
+		t.Errorf("r2 message = %q, want 'needs a digit'", r2.Properties["message"])
+	}
+}
+
+// A refinement + transform chained together → both entities, order preserved.
+func TestZodRefineThenTransform_Chained(t *testing.T) {
+	src := `const Tag = z.string().refine(v => v.length > 0, "empty").transform(v => v.toLowerCase());`
+	ents := extractFull(t, "custom_js_validation_schema", fi("tag.ts", "typescript", src))
+	r := refinementEntity(ents, "Tag.refine#1")
+	tr := transformEntity(ents, "Tag.transform#2")
+	if r == nil {
+		t.Fatal("expected refinement Tag.refine#1")
+	}
+	if tr == nil {
+		t.Fatal("expected transform Tag.transform#2")
+	}
+	if r.Properties["message"] != "empty" {
+		t.Errorf("refine message = %q, want 'empty'", r.Properties["message"])
+	}
+}
+
+// Negative: a zod schema with NO refine/transform/pipe still works (field
+// extraction + binding intact) and emits no refinement/transform entities.
+func TestZodSchema_NoRefine_StillWorks(t *testing.T) {
+	src := `const Plain = z.object({ name: z.string(), age: z.number() });
+router.post('/p', (req, res) => { Plain.parse(req.body); res.json({}); });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("plain.ts", "typescript", src))
+
+	se := schemaEntity(ents, "Plain")
+	if se == nil {
+		t.Fatal("expected SCOPE.Schema Plain")
+	}
+	wantField(t, se, "name", "string")
+	if !hasDTOEdge(ents, "ACCEPTS_INPUT", "Schema:Plain") {
+		t.Fatal("expected ACCEPTS_INPUT -> Schema:Plain")
+	}
+	for _, e := range ents {
+		if e.Subtype == "zod_refinement" || e.Subtype == "zod_transform" {
+			t.Fatalf("no-refine schema must not emit %s entity %q", e.Subtype, e.Name)
+		}
+	}
+	if _, ok := se.Properties["pipe_target"]; ok {
+		t.Errorf("no-pipe schema must not carry pipe_target, got %q", se.Properties["pipe_target"])
+	}
+}

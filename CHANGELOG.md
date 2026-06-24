@@ -9,6 +9,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Zod `.refine()` / `.superRefine()` / `.transform()` / `.pipe()` →
+  entities (#5497):** the Zod schema extractor now captures the schema-level
+  custom-validator chain that follows a schema declaration, which the
+  field-constraint folder did not model. `.refine(fn, msg?)` and
+  `.superRefine(fn)` each emit a `SCOPE.Schema` child (subtype `zod_refinement`,
+  `refinement_kind=refine|superRefine`) carrying the literal/object `message`
+  attribute when one is statically present; `.transform(fn)` emits a
+  `SCOPE.Schema` child (subtype `zod_transform`). Both are linked to the host
+  schema via a `CONTAINS` (`member=refinement|transform`) edge with an
+  order-preserving `chain_index`, so multiple chained refinements/transforms
+  stay distinct and ordered. `.pipe(Other)` records a `pipe_target` attribute on
+  the host schema plus a `REFERENCES` (`ref_kind=zod_pipe`) edge to the named
+  target schema (an inline `z.<factory>()` pipe target records the attribute but
+  no named edge). Works on object, scalar (`z.string().refine(...)`), and nested
+  (#5496) schemas. Honest-partial: the inline arrow/function body is not
+  deep-analyzed — only the node and its literal message are captured; a schema
+  with no custom-validator chain is unchanged. Part of the framework-stack
+  coverage epic (#5479).
 - **Zod nested `z.object()` → nested schema tree (#5496):** the Zod schema
   extractor now recurses into nested `z.object({...})` sub-schemas instead of
   recording only the top-level scalar fields. A nested object reached directly

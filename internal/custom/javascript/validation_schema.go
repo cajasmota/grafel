@@ -41,6 +41,13 @@ var (
 	// the (possibly chained) initializer up to end of statement.
 	zodSchemaRe = regexp.MustCompile(
 		`(?m)(?:const|let|var)\s+([A-Za-z_]\w*)\s*(?::\s*[\w.<>\[\] ]+)?\s*=\s*(z|zod)\s*\.\s*object\s*\(`)
+	// zodScalarSchemaRe: any top-level `const X = z.<factory>(` declaration —
+	// `z.string()`, `z.number()`, `z.array(...)`, `z.object({...})`, etc. Group 1
+	// = var name, group 2 = the factory method. Used by the #5497 scalar-schema
+	// pass to attach a refine/transform/pipe chain to non-object zod schemas; the
+	// object pass owns `z.object`.
+	zodScalarSchemaRe = regexp.MustCompile(
+		`(?m)(?:const|let|var)\s+([A-Za-z_]\w*)\s*(?::\s*[\w.<>\[\] ]+)?\s*=\s*(?:z|zod)\s*\.\s*([A-Za-z_]\w*)\s*\(`)
 	// joiSchemaRe: `const CreateUser = Joi.object({ ... })`.
 	joiSchemaRe = regexp.MustCompile(
 		`(?m)(?:const|let|var)\s+([A-Za-z_]\w*)\s*(?::\s*[\w.<>\[\] ]+)?\s*=\s*(Joi|joi)\s*\.\s*object\s*\(`)
@@ -158,8 +165,15 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 			// z.record(...), .optional()/.nullable() wrappers and z.union([...])
 			// branches — is expanded into a child SCOPE.Schema linked to its parent.
 			var nested []types.EntityRecord
+			// Schema-level custom-validator chain (issue #5497, zod only):
+			// `.refine()`/`.superRefine()`/`.transform()`/`.pipe()` chained on the
+			// schema after `z.object({...})` are captured as refinement/transform
+			// child entities (+ pipe attribute/edge), order-preserved.
+			var chainKids []types.EntityRecord
 			if sd.lib == "zod" {
 				nested = expandNestedZodObjects(&ent, name, body, file.Path, file.Language, lineOf(src, m[0]))
+				tail := schemaTailChain(src, openParen)
+				chainKids = emitZodSchemaChainEntities(&ent, name, tail, file.Path, file.Language, lineOf(src, m[0]))
 			}
 			addSchema(ent)
 			for _, c := range children {
@@ -168,6 +182,43 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 			for _, n := range nested {
 				addSchema(n)
 			}
+			for _, c := range chainKids {
+				addSchema(c)
+			}
+		}
+	}
+
+	// 1.5 Scalar / non-object zod schemas carrying a custom-validator chain
+	// (issue #5497). `const Slug = z.string().refine(...)` is a top-level schema
+	// whose factory is NOT z.object, so the object pass above never sees it. We
+	// emit a SCOPE.Schema entity for it ONLY when it chains a
+	// refine/superRefine/transform/pipe link — a bare `z.string()` const carries
+	// nothing this issue models and would just add noise, so it is skipped
+	// (honest-partial). Object schemas are already handled above (skip them here).
+	for _, m := range zodScalarSchemaRe.FindAllStringSubmatchIndex(src, -1) {
+		name := src[m[2]:m[3]]
+		factory := src[m[4]:m[5]]
+		if factory == "object" {
+			continue // handled by the object pass (with field expansion)
+		}
+		if schemaNames[name] {
+			continue // already emitted as an object/class schema
+		}
+		openParen := m[1] - 1 // header ends at the `(` of `.<factory>(`
+		tail := schemaTailChain(src, openParen)
+		links := parseZodSchemaChain(tail)
+		if len(links) == 0 {
+			continue // no custom-validator chain — nothing to record here
+		}
+		ent := makeEntity(name, "SCOPE.Schema", "validation_schema", file.Path, file.Language, lineOf(src, m[0]))
+		setProps(&ent, "library", "zod", "pattern_type", "validation_schema",
+			"scalar_kind", normalizeScalar(factory),
+			"provenance", "INFERRED_FROM_ZOD_SCALAR")
+		applyFieldProps(&ent, nil)
+		chainKids := emitZodSchemaChainEntities(&ent, name, tail, file.Path, file.Language, lineOf(src, m[0]))
+		addSchema(ent)
+		for _, c := range chainKids {
+			addSchema(c)
 		}
 	}
 
