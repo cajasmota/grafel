@@ -80,7 +80,9 @@ const sharedSkillReadRef = "grafel-graph-read"
 const sharedSkillWriteRef = "grafel-graph-write"
 
 // telemetryCall is the MCP tool that must appear in every persona's Lifecycle telemetry section.
-const telemetryCall = "grafel_persona_event"
+// Post-consolidation (#5546), the dedicated grafel_persona_event tool was absorbed into the
+// canonical grafel_event tool (discriminated by kind=persona).
+const telemetryCall = "grafel_event"
 
 // frontmatter holds the parsed YAML frontmatter of a persona file.
 type frontmatter struct {
