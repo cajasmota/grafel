@@ -494,9 +494,14 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_get_source", s.handleGetNodeSource))
 
+	// grafel_find — CORE canonical locate tool (#5546/#5549). search= picks the
+	// matcher: bm25 (semantic, default) or substring (literal name match).
 	s.addTool(mcpapi.NewTool("grafel_find",
-		mcpapi.WithDescription("BM25 graph query. cwd-repo default; cross_repo=true spans all. min_score>=0.15."),
+		mcpapi.WithDescription("Locate entities. search=bm25(semantic,def)|substring(literal name)."),
 		mcpapi.WithString("query", mcpapi.Required()),
+		mcpapi.WithString("search", mcpapi.DefaultString("bm25"),
+			mcpapi.Description("bm25=semantic 'where is X?' ranking; substring=literal match on entity names.")),
+		mcpapi.WithAny("kind_filter"), // substring search: filter by entity kind
 		mcpapi.WithString("mode", mcpapi.DefaultString("bfs")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(3)),
 		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
@@ -512,7 +517,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"),                                        // PH1c: optional git ref; defaults to CWD HEAD ref
 		mcpapi.WithNumber("min_confidence", mcpapi.DefaultNumber(0)), // #2769 Phase 1C
-	), s.wrap("grafel_find", s.handleQueryGraph))
+	), s.wrap("grafel_find", s.handleCoreFind))
 
 	s.addTool(mcpapi.NewTool("grafel_inspect",
 		mcpapi.WithDescription("Look up entity by id/qname/label; line-precise calls+called_by. verbose=true."),
@@ -544,16 +549,26 @@ func (s *Server) registerTools() {
 		// #1639 token-ceiling pattern; see internal/mcp/tools.go::argMinConfidence.
 	), s.wrap("grafel_expand", s.handleGetNeighbors))
 
+	// grafel_trace — CORE canonical flow-trace tool (#5546/#5549). kind= selects
+	// what to trace; default path (source→target shortest path, back-compat).
 	s.addTool(mcpapi.NewTool("grafel_trace",
-		mcpapi.WithDescription("Confidence-weighted shortest path between two nodes."),
-		mcpapi.WithString("source", mcpapi.Required()),
-		mcpapi.WithString("target", mcpapi.Required()),
+		mcpapi.WithDescription("Trace flow. kind=path(def)|data|control|def_use|effects|flows|process."),
+		mcpapi.WithString("kind", mcpapi.DefaultString("path"),
+			mcpapi.Description("path=src→tgt route; data=input→sink; control=CFG; def_use=reaching defs; effects=db/http/fs; flows=dead-ends; process=process traces.")),
+		mcpapi.WithString("source"),    // kind=path
+		mcpapi.WithString("target"),    // kind=path
+		mcpapi.WithString("entity_id"), // kind=control|effects|data|def_use
+		mcpapi.WithString("detail"),    // kind=control
+		mcpapi.WithString("include"),   // kind=effects
+		mcpapi.WithString("sink_kind"), // kind=data
+		mcpapi.WithString("action"),    // kind=flows|process
 		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(100)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
-	), s.wrap("grafel_trace", s.handleShortestPath))
+	), s.wrap("grafel_trace", s.handleCoreTrace))
 
 	// grafel_traces — process-flow query surface (#724).
 	// action=list|get|follow — defaults to "list" when omitted.
@@ -592,15 +607,21 @@ func (s *Server) registerTools() {
 	// cross layer / cross file-type / peripheral->hub, with reasons), and
 	// templated orientation questions mined from ambiguous edges, bridge nodes,
 	// and isolated nodes. Caps overridable via top_entities/top_edges/max_questions.
+	// grafel_orient — CORE canonical zoom-out tool (#5546/#5549). view= routes
+	// over the orientation handlers; default overview.
 	s.addTool(mcpapi.NewTool("grafel_orient",
-		mcpapi.WithDescription("Orientation analysis: key entities, cross-cutting edges, orientation questions."),
+		mcpapi.WithDescription("Zoom out. view=overview|me|clusters|topology|modules|stats (def overview)."),
+		mcpapi.WithString("view", mcpapi.DefaultString("overview"),
+			mcpapi.Description("overview=hubs+bridges; me=resolve repo/ref; clusters=communities; topology=channels; modules=SCC/PageRank; stats=corpus metrics.")),
 		mcpapi.WithArray("repo_filter"),
 		mcpapi.WithNumber("top_entities", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("top_edges", mcpapi.DefaultNumber(15)),
 		mcpapi.WithNumber("max_questions", mcpapi.DefaultNumber(12)),
+		mcpapi.WithAny("topic_id"), // topology view
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
-	), s.wrap("grafel_orient", s.handleOrient))
+		mcpapi.WithAny("ref"),
+	), s.wrap("grafel_orient", s.handleCoreOrient))
 
 	// #2764 — Phase 1A effect classification. Returns the union of
 	// db/http/fs/mutation effects for the named entity, plus per-effect
@@ -965,9 +986,13 @@ func (s *Server) registerTools() {
 	// Folds grafel_get_subgraph + grafel_summarize_subgraph into one
 	// entry point; discriminated by format="raw"|"markdown".
 	s.addTool(mcpapi.NewTool("grafel_subgraph",
-		mcpapi.WithDescription("Nodes+edges within N hops (format=raw) or Markdown summary (format=markdown)."),
+		mcpapi.WithDescription("Graph slice. mode=hops(N-hop,def)|expand(immediate both-dir neighbors)."),
 		mcpapi.WithString("entity_id", mcpapi.Required()),
+		mcpapi.WithString("mode", mcpapi.DefaultString("hops"),
+			mcpapi.Description("hops=nodes+edges within depth N; expand=just the immediate neighbours of the entity.")),
 		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(2)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)), // mode=expand
+		mcpapi.WithArray("fields"),                                   // mode=expand
 		mcpapi.WithString("format", mcpapi.DefaultString("raw")),
 		// #3924: max_nodes caps format=raw node expansion to bound a
 		// high-degree subgraph; truncation is reported via "truncated".
@@ -975,10 +1000,12 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
-	), s.wrap("grafel_subgraph", s.handleSubgraph))
+	), s.wrap("grafel_subgraph", s.handleCoreSubgraph))
 
+	// grafel_find_paths — CORE canonical route tool (#5546/#5549). Keeps the
+	// verb because "paths" collides with URL/file paths.
 	s.addTool(mcpapi.NewTool("grafel_find_paths",
-		mcpapi.WithDescription("Shortest path between two entities with confidence."),
+		mcpapi.WithDescription("Route(s) between two entities (from→to) over the graph, with confidence."),
 		mcpapi.WithString("from", mcpapi.Required()),
 		mcpapi.WithString("to", mcpapi.Required()),
 		mcpapi.WithNumber("max_hops", mcpapi.DefaultNumber(5)),
@@ -992,11 +1019,18 @@ func (s *Server) registerTools() {
 	// action=definitions|calls|stats; path_contains+method filter BEFORE limit.
 	// format="terse" (default) returns one-line "lines" entries; "full" returns
 	// per-record structs with kind + deduplicated properties (path/verb stripped).
+	// grafel_endpoints — CORE canonical HTTP-surface tool (#5546/#5549). detail=
+	// routes the listing vs per-verb contract vs posture views.
 	s.addTool(mcpapi.NewTool("grafel_endpoints",
-		mcpapi.WithDescription("HTTP endpoints: definitions|calls|stats. kind=navigation. effect= filter."),
-		mcpapi.WithString("action", mcpapi.Required()),
+		mcpapi.WithDescription("HTTP endpoints. detail=list(def)|contract(per-verb)|posture(auth/limits)."),
+		mcpapi.WithString("detail", mcpapi.DefaultString("list"),
+			mcpapi.Description("list=routes (action=definitions|calls|stats); contract=per-verb effective contract of a ViewSet; posture=auth/rate_limit/throws/flags.")),
+		mcpapi.WithString("entity_id"),   // detail=contract|posture
+		mcpapi.WithAny("qualified_name"), // detail=contract
+		mcpapi.WithString("facet"),       // detail=posture
+		mcpapi.WithString("action"),      // detail=list (definitions|calls|stats)
 		mcpapi.WithBoolean("orphan_only", mcpapi.DefaultBool(false)),
-		mcpapi.WithAny("effect"), // #2811 — filter definitions by handler effect closure
+		mcpapi.WithAny("effect"),                                            // #2811 — filter definitions by handler effect closure
 		mcpapi.WithBoolean("include_navigation", mcpapi.DefaultBool(false)), // #2665
 		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(20)),
 		mcpapi.WithNumber("offset", mcpapi.DefaultNumber(0)),
@@ -1010,7 +1044,7 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
-	), s.wrap("grafel_endpoints", s.handleEndpoints))
+	), s.wrap("grafel_endpoints", s.handleCoreEndpoints))
 
 	// grafel_effective_contract — per-verb EFFECTIVE CONTRACT of a ViewSet /
 	// controller (epic #3829, T6 #3836). Given a ViewSet/controller (or a single
@@ -1046,6 +1080,24 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("grafel_neighbors", s.handleNeighbors))
 
+	// grafel_related — CORE canonical "entities related to X" tool (#5546/#5549).
+	// direction= routes over callers/callees/neighbours/navigation. Default
+	// callers — the hot "who calls this?" case.
+	s.addTool(mcpapi.NewTool("grafel_related",
+		mcpapi.WithDescription("Entities related to X. direction=callers(def)|callees|neighbors|uses|used_by."),
+		mcpapi.WithString("entity_id", mcpapi.Required()),
+		mcpapi.WithString("direction", mcpapi.DefaultString("callers"),
+			mcpapi.Description("callers=who calls it; callees=what it calls; neighbors=both dirs; uses=NAVIGATES_TO out; used_by=NAVIGATES_TO in.")),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(1)),
+		mcpapi.WithNumber("token_budget", mcpapi.DefaultNumber(800)),
+		mcpapi.WithArray("fields"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+		mcpapi.WithAny("ref"), // PH1c: optional git ref
+		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
+	), s.wrap("grafel_related", s.handleCoreRelated))
+
 	// verbose=true (default false) read from request map to stay under token ceiling.
 	s.addTool(mcpapi.NewTool("grafel_find_callers",
 		mcpapi.WithDescription("Inbound callers of an entity (who calls it). grafel_neighbors(direction=in)."),
@@ -1069,15 +1121,23 @@ func (s *Server) registerTools() {
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
 	), s.wrap("grafel_find_callees", s.handleFindCallees))
 
+	// grafel_impact_radius — CORE canonical blast-radius tool (#5546/#5549).
+	// scope= picks entity blast-radius vs changeset (PR/diff) impact.
 	s.addTool(mcpapi.NewTool("grafel_impact_radius",
-		mcpapi.WithDescription("Inbound blast-radius: affected entities with risk_score [0,1]."),
-		mcpapi.WithString("entity_id", mcpapi.Required()),
+		mcpapi.WithDescription("What changing X affects. scope=entity(def,blast-radius)|changeset(PR/diff)."),
+		mcpapi.WithString("scope", mcpapi.DefaultString("entity"),
+			mcpapi.Description("entity=inbound blast-radius of one entity_id; changeset=PR/diff impact + merge-risk across base/head or refs.")),
+		mcpapi.WithString("entity_id"), // scope=entity
+		mcpapi.WithString("repo"),      // scope=changeset
+		mcpapi.WithString("base"),      // scope=changeset
+		mcpapi.WithString("head"),      // scope=changeset
+		mcpapi.WithArray("refs"),       // scope=changeset (conflicts mode)
 		mcpapi.WithNumber("hops", mcpapi.DefaultNumber(2)),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 		mcpapi.WithAny("ref"), // PH1c: optional git ref
 		// #2769 Phase 1C: min_confidence accepted via #1639 token-ceiling pattern.
-	), s.wrap("grafel_impact_radius", s.handleImpactRadius))
+	), s.wrap("grafel_impact_radius", s.handleCoreImpactRadius))
 
 	s.addTool(mcpapi.NewTool("grafel_find_dead_code",
 		mcpapi.WithDescription("Dead/unwired code: isolated, marked-unused, or test_only_referenced symbols."),

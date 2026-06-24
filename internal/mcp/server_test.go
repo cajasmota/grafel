@@ -574,6 +574,10 @@ func TestToolNameSurface(t *testing.T) {
 		"grafel_docgen_promote", "grafel_docgen_abort",
 		// #1753 traversal fold & #1769 status sentinel
 		"grafel_neighbors", "grafel_status",
+		// #5546/#5549 CORE-cluster canonical: grafel_related (callers/callees/
+		// neighbors/uses/used_by). The other 7 CORE canonicals (orient/find/
+		// find_paths/subgraph/trace/endpoints/impact_radius) reuse existing names.
+		"grafel_related",
 		// Additional audit/analysis tools
 		"grafel_secrets", "grafel_quality_cycles",
 		"grafel_test_coverage", "grafel_license_audit",
@@ -635,7 +639,7 @@ func TestToolNameSurface(t *testing.T) {
 		"grafel_list_enrichment_candidates", "grafel_submit_enrichment", "grafel_reject_enrichment",
 		"grafel_list_residuals", "grafel_submit_repair",
 		// old renamed tool names
-		"grafel_search", "grafel_describe", "grafel_related",
+		"grafel_search", "grafel_describe",
 		"grafel_list_clusters", "grafel_graph_stats",
 		// bare unprefixed names (Refs #62)
 		"query_graph", "get_node", "get_neighbors", "shortest_path",
@@ -723,8 +727,11 @@ func TestToolNameSurface(t *testing.T) {
 	// +1 grafel_contract_test_effectiveness (#4893 tautological/oracle-blind spec detector).
 	// +1 grafel_coverage_effectiveness (#5063 reachability x line-coverage cross-product).
 	// +1 grafel_index_status (#5435 per-repo index freshness, no global-is_indexing block).
-	if got := len(allRegisteredTools); got != 69 {
-		t.Errorf("expected 69 registered tools, got %d — update this count if tools are added/removed (added grafel_index_status #5435)", got)
+	// +1 grafel_related (#5546/#5549 CORE-cluster canonical: callers/callees/
+	//    neighbors/uses/used_by discriminator; the other 7 CORE canonicals reuse
+	//    existing tool names so add no new registrations).
+	if got := len(allRegisteredTools); got != 70 {
+		t.Errorf("expected 70 registered tools, got %d — update this count if tools are added/removed (added grafel_related #5549)", got)
 	}
 }
 
@@ -3205,7 +3212,9 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"grafel_index_status":           {"group": "g"}, // #5435 per-repo index freshness
 		"grafel_secrets":                {"group": "g"},
 		"grafel_neighbors":              {"group": "g", "entity_id": "r1::a2", "direction": "both"},
-		"grafel_status":                 {"group": "g"},
+		// #5546/#5549 CORE-cluster canonical: grafel_related (direction=callers default).
+		"grafel_related": {"group": "g", "entity_id": "r1::a2"},
+		"grafel_status":  {"group": "g"},
 		// PH5 (#2093): diff tool — repo/ref_a/ref_b all required.
 		"grafel_diff_refs": {"group": "g", "repo": "r1", "ref_a": "main", "ref_b": "feat/x"},
 		// #4292: PR-impact tool. Single mode args; repo lookup fails gracefully
@@ -3310,8 +3319,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 69 {
-		t.Errorf("expected 69 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_index_status #5435)", len(tools))
+	if len(tools) != 70 {
+		t.Errorf("expected 70 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_related #5549)", len(tools))
 	}
 
 	for _, st := range tools {

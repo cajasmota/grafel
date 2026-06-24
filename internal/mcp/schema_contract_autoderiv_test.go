@@ -343,10 +343,17 @@ func extractDispatchTree(mcpDir string, directMap map[string]string) (map[string
 				return true
 			}
 
-			// Only record if the parent is a directly registered handler.
-			if _, isRegistered := directMap[parent]; !isRegistered {
-				return true
-			}
+			// Record edges from ANY function, not just directly-registered
+			// handlers. BFS propagation (in buildFuncToToolFromAST) only assigns
+			// a tool to a child when the parent already carries one, so recording
+			// every s.Xxx(...) edge is safe: edges off any never-reached function
+			// simply never receive a tool. This is required for multi-level
+			// dispatch chains introduced by the #5546/#5549 CORE-cluster canonical
+			// tools, where a canonical handler (handleCoreEndpoints) delegates to
+			// an absorbed handler (handleEndpoints) which in turn fans out to
+			// sub-handlers (handleEndpointDefinitions, …). The absorbed handler is
+			// no longer in directMap, so gating on directMap[parent] would sever
+			// the chain and orphan the leaf sub-handlers.
 
 			// Skip self-calls, wrap calls, and pure receiver ops (e.g. s.MCP.AddTool).
 			if calleeName == parent || calleeName == "wrap" {

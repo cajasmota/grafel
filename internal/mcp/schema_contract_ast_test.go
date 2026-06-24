@@ -215,6 +215,14 @@ var intentionalGaps = []intentionalGap{
 	// budget (#1639 pattern). entity_id/facet/path_contains/method ARE declared.
 	{"grafel_endpoint_posture", "limit", "#1639 token ceiling pattern — scan-mode result limit"},
 	{"grafel_endpoint_posture", "offset", "#1639 token ceiling pattern — scan-mode pagination offset"},
+
+	// grafel_orient: the CORE-cluster dispatcher (#5546/#5549) reads `action`
+	// only to inject a default (orphan_publishers) before delegating to the
+	// absorbed handleTopology for view=topology. `action` is NOT a user-facing
+	// param of grafel_orient — the user selects the view via view=topology — so
+	// it is intentionally undeclared on the orient schema. handleTopology's own
+	// `action` is declared on grafel_topology.
+	{"grafel_orient", "action", "#5549 CORE-cluster — internal topology-view default, not user-facing"},
 }
 
 // handlerToTool and dispatchTree have been REMOVED.
