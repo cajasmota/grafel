@@ -27,6 +27,8 @@
 //   - composer.lock        (composer — PHP lockfile_parsing, packages/packages-dev)
 //   - *.rockspec           (luarocks — Lua manifest_parsing, dependencies lists)
 //   - *.nimble             (nimble — Nim manifest_parsing, requires directives)
+//   - paket.dependencies   (paket — .NET/F# manifest_parsing, nuget directives)
+//   - paket.lock           (paket — .NET/F# lockfile_parsing, resolved NUGET tree)
 //
 // Entity kind: "SCOPE.Component"
 // Relationships emitted: DEPENDS_ON(kind=external_dependency)
@@ -187,6 +189,9 @@ var exactManifestNames = map[string]bool{
 	// Crystal — shards (shard.yml manifest + shard.lock lockfile)
 	"shard.yml":  true,
 	"shard.lock": true,
+	// .NET / F# — Paket (paket.dependencies manifest + paket.lock lockfile)
+	"paket.dependencies": true,
+	"paket.lock":         true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -263,6 +268,9 @@ func detectPackageManager(filePath string) string {
 		// Crystal — shards
 		"shard.yml":  "shards",
 		"shard.lock": "shards",
+		// .NET / F# — Paket
+		"paket.dependencies": "paket",
+		"paket.lock":         "paket",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -1900,6 +1908,9 @@ var parsers = map[string]parserFn{
 	// Crystal — shards
 	"shard.yml":  parseShardYml,
 	"shard.lock": parseShardLock,
+	// .NET / F# — Paket
+	"paket.dependencies": parsePaketDependencies,
+	"paket.lock":         parsePaketLock,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {

@@ -209,6 +209,163 @@ var fsharpMinimalApiRe = regexp.MustCompile(
 		`(?:\s*,\s*([A-Za-z_][A-Za-z0-9_']*)\s*\))?`,
 )
 
+// ---------------------------------------------------------------------------
+// #5368 (epic #5360) — Saturn `controller { }` computation-expression routing.
+//
+// Saturn's RESTful resource `controller { }` CE is the headline Saturn routing
+// idiom that the bare `router { get "/x" h }` recogniser does NOT cover: a
+// controller maps CONVENTIONAL CRUD ACTION KEYWORDS to a fixed REST verb+path
+// shape, never naming the path literally. The action set is the Saturn contract:
+//
+//	let userController = controller {
+//	    index   (fun ctx -> ...)        // GET    <prefix>           (collection)
+//	    show    (fun ctx id -> ...)     // GET    <prefix>/{id}      (one item)
+//	    add     (fun ctx -> ...)        // GET    <prefix>/add       (new form)
+//	    edit    (fun ctx id -> ...)     // GET    <prefix>/{id}/edit (edit form)
+//	    create  (fun ctx -> ...)        // POST   <prefix>           (insert)
+//	    update  (fun ctx id -> ...)     // PUT    <prefix>/{id}      (replace)
+//	    patch   (fun ctx id -> ...)     // PATCH  <prefix>/{id}      (partial)
+//	    delete  (fun ctx id -> ...)     // DELETE <prefix>/{id}      (remove)
+//	    deleteAll (fun ctx -> ...)      // DELETE <prefix>           (remove all)
+//	}
+//
+// The controller is mounted under a path PREFIX where it is `forward`ed inside a
+// parent router (`forward "/users" userController`) — Saturn's idiomatic mount.
+// We resolve that prefix by matching `forward "<prefix>" <controllerName>`
+// against the controller's `let`-bound name; a controller with no resolvable
+// mount emits its actions at the bare convention path (honest — the action↔verb
+// mapping is statically certain even when the mount prefix is not).
+//
+// Honest exclusions (no fabricated routes):
+//   - `pipeline { }` is a Saturn MIDDLEWARE CE (plug/set-header/…), not a route
+//     emitter, so it is deliberately NOT synthesised here.
+//   - A `subController` / nested-resource mount prefix that is interpolated or
+//     unresolvable does not fold; the actions still emit at the conventional
+//     path. An action whose keyword is not in the Saturn contract is ignored.
+// ---------------------------------------------------------------------------
+
+// saturnControllerAction maps a Saturn controller action keyword to its
+// conventional REST (verb, path-suffix) shape. The path suffix is appended to
+// the controller's mount prefix; "{id}" is the canonical single-resource param.
+type saturnControllerAction struct {
+	verb   string
+	suffix string // appended to the mount prefix ("" = bare collection path)
+}
+
+// saturnControllerActions is the Saturn resource-controller action contract.
+// Each present action keyword in a `controller { }` block emits one endpoint.
+var saturnControllerActions = map[string]saturnControllerAction{
+	"index":     {"GET", ""},
+	"show":      {"GET", "/{id}"},
+	"add":       {"GET", "/add"},
+	"edit":      {"GET", "/{id}/edit"},
+	"create":    {"POST", ""},
+	"update":    {"PUT", "/{id}"},
+	"patch":     {"PATCH", "/{id}"},
+	"delete":    {"DELETE", "/{id}"},
+	"deleteAll": {"DELETE", ""},
+}
+
+// saturnControllerDeclRE matches a `let <name> = controller {` binding and
+// captures (1) the controller's bound name. The `controller {` CE opener is
+// anchored so an unrelated value named `controller` is not matched.
+var saturnControllerDeclRE = regexp.MustCompile(
+	`(?m)\blet\s+([A-Za-z_][A-Za-z0-9_']*)\s*=\s*controller\s*\{`,
+)
+
+// saturnControllerActionRE matches an action operation line inside a controller
+// block: a leading action keyword at a statement boundary. Capture group 1 is
+// the action keyword. The keyword is validated against saturnControllerActions.
+var saturnControllerActionRE = regexp.MustCompile(
+	`(?m)^[ \t]*([A-Za-z]+)\b`,
+)
+
+// saturnForwardMountRE matches a Saturn `forward "<prefix>" <controllerName>`
+// mount inside a parent router, capturing (1) the mount prefix and (2) the
+// forwarded controller's bound name. Resolves a controller's mount path.
+var saturnForwardMountRE = regexp.MustCompile(
+	`(?m)\bforward\s+"([^"\n\r]*)"\s+([A-Za-z_][A-Za-z0-9_']*)`,
+)
+
+// synthesizeSaturnControllers scans for Saturn `controller { }` resource blocks
+// and emits one http_endpoint_definition per present action, folding any
+// resolvable `forward "<prefix>" <controllerName>` mount prefix.
+func synthesizeSaturnControllers(content string, emitRoute func(verb, path, handler string, pos int)) {
+	if !strings.Contains(content, "controller {") {
+		return
+	}
+	// Resolve controllerName -> mount prefix from `forward "<p>" <name>` mounts.
+	prefixByController := map[string]string{}
+	for _, m := range saturnForwardMountRE.FindAllStringSubmatch(content, -1) {
+		if len(m) >= 3 {
+			prefixByController[m[2]] = m[1]
+		}
+	}
+
+	for _, loc := range saturnControllerDeclRE.FindAllStringSubmatchIndex(content, -1) {
+		name := submatch(content, loc, 1)
+		open := loc[1] - 1 // byte offset of the `{` (regex ends just past it)
+		close := matchCloseBrace(content, open+1)
+		if close < 0 {
+			continue
+		}
+		body := content[open+1 : close]
+		prefix := strings.TrimRight(prefixByController[name], "/")
+
+		seenAction := map[string]bool{}
+		for _, am := range saturnControllerActionRE.FindAllStringSubmatch(body, -1) {
+			if len(am) < 2 {
+				continue
+			}
+			kw := am[1]
+			act, ok := saturnControllerActions[kw]
+			if !ok || seenAction[kw] {
+				continue
+			}
+			seenAction[kw] = true
+			path := prefix + act.suffix
+			if path == "" {
+				path = "/"
+			}
+			// The controller is the handler scope for its actions.
+			emitRoute(act.verb, path, name, open)
+		}
+	}
+}
+
+// matchCloseBrace returns the byte offset of the `}` closing the `{` whose body
+// starts at `open`, or -1 if unbalanced. String-literal aware so a brace inside
+// a quoted path does not unbalance the count.
+func matchCloseBrace(content string, open int) int {
+	depth := 1
+	inStr := false
+	for i := open; i < len(content); i++ {
+		c := content[i]
+		if inStr {
+			if c == '\\' {
+				i++
+				continue
+			}
+			if c == '"' {
+				inStr = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inStr = true
+		case '{':
+			depth++
+		case '}':
+			depth--
+			if depth == 0 {
+				return i
+			}
+		}
+	}
+	return -1
+}
+
 // giraffeHasRoute is a fast pre-filter: the file must reference an F# web marker
 // (Giraffe / Saturn) AND a route token to be worth scanning, so we never misfire
 // on arbitrary F# code.
@@ -227,6 +384,8 @@ func giraffeHasRoute(content string) bool {
 		strings.Contains(content, ".Map") ||
 		strings.Contains(content, ">=>") ||
 		strings.Contains(content, "router {") ||
+		// #5368: Saturn resource-controller CE marker.
+		strings.Contains(content, "controller {") ||
 		strings.Contains(content, "HttpHandler") ||
 		strings.Contains(content, "subRoute") ||
 		strings.Contains(content, "forward") ||
@@ -236,6 +395,8 @@ func giraffeHasRoute(content string) bool {
 	}
 	return strings.Contains(content, "route") ||
 		strings.Contains(content, "router {") ||
+		// #5368: Saturn resource-controller CE.
+		strings.Contains(content, "controller {") ||
 		// #5114: Falco `mapGet`/bare-verb, Suave `path`, minimal-API `.Map*`.
 		strings.Contains(content, "path ") ||
 		strings.Contains(content, ".Map") ||
@@ -457,4 +618,13 @@ func synthesizeGiraffeRoutes(content string, emit emitFn) {
 	}
 	// Oxpecker is Giraffe-compatible (`GET >=> route "/users"` / `routef`) and
 	// is captured by the giraffeRouteRe loop above — no separate recogniser.
+
+	// #5368 — Saturn `controller { }` resource controllers. The conventional
+	// action paths carry the `{id}` curly param, which emitRoute's interpolation
+	// guard would drop; pre-canonicalise it to the printf `%s` token (the same
+	// treatment minimal-API curly params get) so FrameworkGiraffe maps it to the
+	// positional `{}` wildcard.
+	synthesizeSaturnControllers(content, func(verb, path, handler string, pos int) {
+		emitRoute(verb, canonicalizeMinimalApiCurly(path), handler, pos)
+	})
 }

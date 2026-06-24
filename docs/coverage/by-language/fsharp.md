@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # F#
 
-**Frameworks**: 2 · **Tools**: 1 · **ORMs**: 0 · **Other**: 2
+**Frameworks**: 2 · **Tools**: 2 · **ORMs**: 0 · **Other**: 2
 
 Back to [summary](../summary.md).
 
@@ -41,6 +41,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
 |---|---|---|---|---|---|---|
 | [Expecto / xUnit (F#)](../detail/test.fsharp-expecto.md) | 🔴 | — | — | — | ✅ | |
+| [Paket (.NET/F# package manager)](../detail/lang.fsharp.tool.paket.md) | — | — | ✅ | ✅ | — | |
 
 ## Other
 

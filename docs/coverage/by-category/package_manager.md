@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 25 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 1 · **go**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
+**Total**: 26 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -17,6 +17,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [dart](../by-language/dart.md) | [pubspec.yaml](../detail/pkg.pubspec.md) | — | ✅ | ✅ | |
 | [elixir](../by-language/elixir.md) | [mix.exs](../detail/pkg.mix.md) | — | — | 🔴 | |
 | [erlang](../by-language/erlang.md) | [rebar3 / hex.pm (rebar.config, rebar.lock)](../detail/pkg.rebar3.md) | — | ✅ | ✅ | |
+| [F#](../by-language/fsharp.md) | [Paket (.NET/F# package manager)](../detail/lang.fsharp.tool.paket.md) | — | ✅ | ✅ | |
 | [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | ✅ | ✅ | |
 | [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | 🔴 | 🟢 | |
 | [java](../by-language/java.md) | [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | |

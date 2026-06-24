@@ -406,3 +406,103 @@ func TestFSharp5114_WrongLanguageNoOp(t *testing.T) {
 		"http:GET:/users",
 	}, "5114-wrong-language")
 }
+
+// TestSaturn_ControllerForwarded (#5368) covers a Saturn `controller { }`
+// resource block mounted under a prefix via `forward "/users" userController`
+// inside a parent router. Each conventional action keyword present in the
+// controller body must synthesise its REST verb+path at the mount prefix.
+func TestSaturn_ControllerForwarded(t *testing.T) {
+	src := `module App
+open Saturn
+
+let userController = controller {
+    index (fun ctx -> listUsers ctx)
+    show (fun ctx id -> getUser ctx id)
+    create (fun ctx -> createUser ctx)
+    update (fun ctx id -> updateUser ctx id)
+    delete (fun ctx id -> deleteUser ctx id)
+}
+
+let apiRouter = router {
+    forward "/users" userController
+}
+`
+	ids, _ := runDetect(t, "fsharp", "src/Controller.fs", src)
+	requireContains(t, ids, []string{
+		"http:GET:/users",
+		"http:GET:/users/{}",
+		"http:POST:/users",
+		"http:PUT:/users/{}",
+		"http:DELETE:/users/{}",
+	}, "saturn-controller-forwarded")
+}
+
+// TestSaturn_ControllerActionsCoverage (#5368) proves the full Saturn action
+// contract (index/show/add/edit/create/update/patch/delete/deleteAll) maps to
+// the correct conventional REST verb+path shapes.
+func TestSaturn_ControllerActionsCoverage(t *testing.T) {
+	src := `module App
+open Saturn
+
+let postController = controller {
+    index (fun ctx -> ())
+    add (fun ctx -> ())
+    edit (fun ctx id -> ())
+    patch (fun ctx id -> ())
+    deleteAll (fun ctx -> ())
+}
+
+let r = router {
+    forward "/posts" postController
+}
+`
+	ids, _ := runDetect(t, "fsharp", "src/Posts.fs", src)
+	requireContains(t, ids, []string{
+		"http:GET:/posts",
+		"http:GET:/posts/add",
+		"http:GET:/posts/{}/edit",
+		"http:PATCH:/posts/{}",
+		"http:DELETE:/posts",
+	}, "saturn-controller-actions")
+}
+
+// TestSaturn_ControllerUnmounted (#5368) honest fallback: a controller with no
+// resolvable `forward` mount still emits its single-resource actions at the bare
+// convention path (the action↔verb mapping is statically certain even without a
+// prefix). The collection-root action (create → POST "/") canonicalises to "/"
+// and is correctly dropped (root is not a distinct routable endpoint), so only
+// the parametrised `show` action survives.
+func TestSaturn_ControllerUnmounted(t *testing.T) {
+	src := `module App
+open Saturn
+
+let widgetController = controller {
+    show (fun ctx id -> ())
+    create (fun ctx -> ())
+}
+`
+	ids, _ := runDetect(t, "fsharp", "src/Widget.fs", src)
+	requireContains(t, ids, []string{
+		"http:GET:/{}",
+	}, "saturn-controller-unmounted")
+}
+
+// TestSaturn_PipelineNotSynthesised (#5368) honest-exclusion guard: a Saturn
+// `pipeline { }` middleware CE is NOT a route emitter, so it must not forge any
+// endpoint even though it shares the CE shape with a controller.
+func TestSaturn_PipelineNotSynthesised(t *testing.T) {
+	src := `module App
+open Saturn
+
+let headerPipeline = pipeline {
+    set_header "x-foo" "bar"
+    plug acceptJson
+}
+`
+	ids, _ := runDetect(t, "fsharp", "src/Pipe.fs", src)
+	for _, id := range ids {
+		if len(id) > 5 && id[:5] == "http:" {
+			t.Fatalf("pipeline CE must not synthesise an endpoint; got %v", ids)
+		}
+	}
+}
