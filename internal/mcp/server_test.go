@@ -628,6 +628,10 @@ func TestToolNameSurface(t *testing.T) {
 		// existing name (re-pointed to the kind= dispatcher); these five are new.
 		"grafel_debt", "grafel_security", "grafel_test_analysis",
 		"grafel_findings", "grafel_diff",
+		// #5546/#5551 WORKFLOW/META-cluster canonical tools. grafel_mcp_metrics
+		// and grafel_index_status are kept-as-is (already registered above);
+		// these three are new.
+		"grafel_docgen", "grafel_docgen_apply", "grafel_event",
 	}
 	for _, n := range wantPresent {
 		if !registered[n] {
@@ -736,8 +740,10 @@ func TestToolNameSurface(t *testing.T) {
 	//    existing tool names so add no new registrations).
 	// +5 grafel_debt/security/test_analysis/findings/diff (#5546/#5550 ANALYSIS-
 	//    cluster canonicals; grafel_patterns reuses an existing name).
-	if got := len(allRegisteredTools); got != 75 {
-		t.Errorf("expected 75 registered tools, got %d — update this count if tools are added/removed (added analysis cluster #5550)", got)
+	// +3 grafel_docgen/docgen_apply/event (#5546/#5551 WORKFLOW/META-cluster
+	//    canonicals; grafel_mcp_metrics + grafel_index_status are kept-as-is).
+	if got := len(allRegisteredTools); got != 78 {
+		t.Errorf("expected 78 registered tools, got %d — update this count if tools are added/removed (added workflow/meta cluster #5551)", got)
 	}
 }
 
@@ -3289,6 +3295,10 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 		"grafel_test_analysis": {"group": "g"},                         // kind=coverage default
 		"grafel_findings":      {"group": "g"},                         // action=list default
 		"grafel_diff":          {"group_oracle": "g", "group_v3": "g"}, // aspect=response_shape default
+		// #5546/#5551 WORKFLOW/META-cluster canonical tools.
+		"grafel_docgen":       {"action": "list", "group": "g"},                     // action=status default needs run_id; list needs only group
+		"grafel_docgen_apply": {"kind": "semantics", "group": "g", "dry_run": true}, // kind=semantics default
+		"grafel_event":        {"outcome": "helped"},                                // kind=feedback default
 	}
 
 	// extractElapsedMS mirrors the bench extraction logic:
@@ -3333,8 +3343,8 @@ func TestElapsedMSCoverageAllTools(t *testing.T) {
 	}
 
 	tools := srv.MCP.ListTools()
-	if len(tools) != 75 {
-		t.Errorf("expected 75 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_debt/security/test_analysis/findings/diff #5550)", len(tools))
+	if len(tools) != 78 {
+		t.Errorf("expected 78 registered tools, got %d — update minimalArgs if tools are added/removed (added grafel_docgen/docgen_apply/event #5551)", len(tools))
 	}
 
 	for _, st := range tools {

@@ -1454,6 +1454,38 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_docgen_list", s.handleDocgenList))
 
+	// grafel_docgen — WORKFLOW canonical docgen-lifecycle tool (#5546/#5551).
+	// action= routes over the six docgen staging handlers; default status.
+	s.addTool(mcpapi.NewTool("grafel_docgen",
+		mcpapi.WithDescription("Docgen run lifecycle. action=start|status|list|promote|abort|validate."),
+		mcpapi.WithString("action", mcpapi.DefaultString("status"),
+			mcpapi.Description("start=open run(group); status=files+SHAs(run_id); list=canonical docs(group); promote/abort=run_id; validate=lint(run_id).")),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("run_id"),
+		mcpapi.WithBoolean("resume", mcpapi.DefaultBool(true)),
+		mcpapi.WithBoolean("no_git", mcpapi.DefaultBool(false)),
+		mcpapi.WithBoolean("force", mcpapi.DefaultBool(false)),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("grafel_docgen", s.handleWorkflowDocgen))
+
+	// grafel_docgen_apply — WORKFLOW canonical doc-enrichment/repair apply tool
+	// (#5546/#5551). kind= routes over the apply/queue handlers; default semantics.
+	s.addTool(mcpapi.NewTool("grafel_docgen_apply",
+		mcpapi.WithDescription("Apply doc enrichments/repairs. kind=semantics|repairs|enrichments."),
+		mcpapi.WithString("kind", mcpapi.DefaultString("semantics"),
+			mcpapi.Description("semantics=L2 DesignDecision apply; repairs=docgen→graph apply (or residual queue w/ action); enrichments=candidate queue (action=list|submit|reject).")),
+		mcpapi.WithString("action"),
+		mcpapi.WithArray("repo_filter"),
+		mcpapi.WithBoolean("dry_run"),
+		mcpapi.WithNumber("limit", mcpapi.DefaultNumber(10)),
+		mcpapi.WithAny("candidate_id"),
+		mcpapi.WithAny("value"),
+		mcpapi.WithNumber("confidence", mcpapi.DefaultNumber(1)),
+		mcpapi.WithAny("reason"),
+		mcpapi.WithAny("group"),
+		mcpapi.WithAny("cwd"),
+	), s.wrap("grafel_docgen_apply", s.handleWorkflowDocgenApply))
+
 	// grafel_navigates — NAVIGATES_TO edge query tool (#2658).
 	// Phase 2 of #2655: filter NAVIGATES_TO edges by route, param, direction.
 	// mode=flow enables multi-hop BFS following navigation chains.
@@ -1499,6 +1531,26 @@ func (s *Server) registerTools() {
 		mcpapi.WithAny("capability"),
 		mcpapi.WithAny("note"),
 	), s.wrap("grafel_feedback_event", s.handleFeedbackEvent))
+
+	// grafel_event — META canonical telemetry tool (#5546/#5551). kind= routes
+	// over the local-only event handlers; default feedback. LOCAL ONLY.
+	s.addTool(mcpapi.NewTool("grafel_event",
+		mcpapi.WithDescription("Emit local telemetry. kind=feedback|persona (def feedback). LOCAL ONLY."),
+		mcpapi.WithString("kind", mcpapi.DefaultString("feedback"),
+			mcpapi.Description("feedback=agent-experience(outcome req); persona=lifecycle(persona+event_type req).")),
+		mcpapi.WithAny("outcome"),
+		mcpapi.WithAny("phase"),
+		mcpapi.WithAny("library"),
+		mcpapi.WithAny("capability"),
+		mcpapi.WithAny("note"),
+		mcpapi.WithAny("persona"),
+		mcpapi.WithAny("event_type"),
+		mcpapi.WithAny("target_persona"),
+		mcpapi.WithNumber("depth", mcpapi.DefaultNumber(0)),
+		mcpapi.WithArray("chain"),
+		mcpapi.WithAny("metadata"),
+		mcpapi.WithAny("group"),
+	), s.wrap("grafel_event", s.handleMetaEvent))
 
 	// grafel_mcp_metrics — per-tool session metrics + daily rollup (#2192).
 	// Returns in-memory per-tool counters (calls, errors, p50/p95 ms) for the

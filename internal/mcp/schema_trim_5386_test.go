@@ -182,4 +182,8 @@ var wantToolParams = map[string]string{
 	"grafel_test_analysis": "cwd,entity_id,group,kind,limit,ref,repo_filter,severity|req:",
 	"grafel_findings":      "action,answer,cwd,group,question|req:",
 	"grafel_diff":          "aspect,cwd,drift_class,group,group_oracle,group_v3,ref_a,ref_b,repo,set|req:",
+	// #5546/#5551 WORKFLOW/META-cluster canonical tools.
+	"grafel_docgen":       "action,cwd,force,group,no_git,resume,run_id|req:",
+	"grafel_docgen_apply": "action,candidate_id,confidence,cwd,dry_run,group,kind,limit,reason,repo_filter,value|req:",
+	"grafel_event":        "capability,chain,depth,event_type,group,kind,library,metadata,note,outcome,persona,phase,target_persona|req:",
 }
