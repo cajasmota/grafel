@@ -782,6 +782,87 @@ func TestEndpointStats_ByFrameworkConfidence(t *testing.T) {
 	}
 }
 
+// TestEndpointStats_ASTExtractionMethodPromotesConfidence verifies the #5527
+// per-entity confidence refinement: a `fetch` client call (a framework name NOT
+// in astBackedFrameworks) that carries extraction_method=ast — emitted by the
+// tree-sitter fetch/axios pass — is classified ast/exact, while a sibling fetch
+// call WITHOUT the stamp keeps the framework at ast (since at least one entity is
+// AST). A second framework that is purely regex stays heuristic, proving the
+// stamp is honest per entity and never blanket-applied.
+func TestEndpointStats_ASTExtractionMethodPromotesConfidence(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			// fetch call, AST-extracted (static URL via tree-sitter) → exact.
+			{ID: "c1", Kind: "http_endpoint_call", Name: "GET /a",
+				Properties: map[string]string{"verb": "GET", "path": "/a",
+					"framework": "fetch", "extraction_method": "ast"}},
+			// express route, regex-extracted (no stamp) → heuristic.
+			{ID: "d1", Kind: "http_endpoint_definition", Name: "GET /b",
+				Properties: map[string]string{"verb": "GET", "path": "/b",
+					"framework": "express"}},
+		},
+	}
+	srv := newTestServer(t, doc)
+	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
+
+	bf, ok := res["by_framework"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework in %v", res)
+	}
+	fetch, ok := bf["fetch"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework.fetch in %v", bf)
+	}
+	if got, _ := fetch["detector"].(string); got != "ast" {
+		t.Errorf("fetch.detector: want ast (extraction_method=ast), got %q", got)
+	}
+	if got, _ := fetch["confidence"].(string); got != "exact" {
+		t.Errorf("fetch.confidence: want exact (AST-extracted), got %q", got)
+	}
+
+	express, ok := bf["express"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework.express in %v", bf)
+	}
+	if got, _ := express["detector"].(string); got != "regex" {
+		t.Errorf("express.detector: want regex (no AST stamp), got %q", got)
+	}
+	if got, _ := express["confidence"].(string); got != "heuristic" {
+		t.Errorf("express.confidence: want heuristic, got %q", got)
+	}
+}
+
+// TestEndpointStats_ASTStampUpgradesMixedFramework verifies that when a single
+// framework has a MIX of AST- and regex-extracted entities, the framework's
+// coarse confidence is upgraded to ast/exact as soon as one entity is AST
+// (never downgraded by a later regex sibling).
+func TestEndpointStats_ASTStampUpgradesMixedFramework(t *testing.T) {
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			// regex-extracted fetch (template literal) — seen FIRST.
+			{ID: "c1", Kind: "http_endpoint_call", Name: "GET /a",
+				Properties: map[string]string{"verb": "GET", "path": "/a", "framework": "fetch"}},
+			// AST-extracted fetch (static URL) — seen SECOND.
+			{ID: "c2", Kind: "http_endpoint_call", Name: "GET /b",
+				Properties: map[string]string{"verb": "GET", "path": "/b",
+					"framework": "fetch", "extraction_method": "ast"}},
+		},
+	}
+	srv := newTestServer(t, doc)
+	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
+	bf := res["by_framework"].(map[string]any)
+	fetch, ok := bf["fetch"].(map[string]any)
+	if !ok {
+		t.Fatalf("missing by_framework.fetch in %v", bf)
+	}
+	if got := getFloat(t, fetch, "calls"); got != 2 {
+		t.Errorf("fetch.calls: want 2, got %v", got)
+	}
+	if got, _ := fetch["confidence"].(string); got != "exact" {
+		t.Errorf("fetch.confidence: want exact (one entity AST upgrades the framework), got %q", got)
+	}
+}
+
 // TestEndpointStats_ExtractionExactWhenAllAST verifies that the top-level
 // extraction.method advertises "exact" only when every framework present is
 // AST-backed — the honest all-clear case.

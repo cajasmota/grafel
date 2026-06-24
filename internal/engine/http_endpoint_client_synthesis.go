@@ -798,6 +798,15 @@ func buildJSConstantObjectTable(content string) map[string]map[string]string {
 // then clears the field.
 type clientSynthState struct {
 	pendingPolySubscript string
+	// pendingExtractionMethod, when non-empty just before an `emit(...)` call,
+	// records HOW the about-to-be-emitted client synthetic was extracted. It is
+	// set to "ast" by the tree-sitter pass (synthesizeFetchAxiosAST) and left
+	// empty by the regex passes. The JS client adapter reads it and stamps the
+	// `extraction_method` property so the endpoint-stats confidence classifier
+	// (classifyDetector) can honestly mark AST-extracted client calls as
+	// ast/exact instead of blanket regex/heuristic (#5527). Reset to "" after
+	// each emit so a regex emit never inherits a stale stamp.
+	pendingExtractionMethod string
 }
 
 // newClientSynthState returns an empty state ready to be threaded through
@@ -1531,18 +1540,24 @@ func synthesizeFetchAxios(content string, emit emitFn, state *clientSynthState) 
 // jsRuntimeEmitFn is the runtime-dynamic-aware emitter type used by
 // synthesizeFetchAxiosWithRuntime. Mirrors pyClientEmitFn / javaClientEmitFn.
 //
-// #2709 extension: the trailing polySubscript argument carries an optional
+// #2709 extension: the polySubscript argument carries an optional
 // `<ident>[<keyExpr>]` tag identifying entries produced by static
 // enumeration of an object-subscript template-literal interpolation. The
 // downstream emit closure stamps this on the entity's Properties.
-type jsRuntimeEmitFn func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool, polySubscript string)
+//
+// #5527 extension: the trailing extractionMethod argument is "ast" for client
+// synthetics extracted by the tree-sitter pass (synthesizeFetchAxiosAST) and
+// "" for the regex passes. The downstream emit closure stamps it as the
+// `extraction_method` property so endpoint-stats confidence is honest per
+// entity rather than per framework name.
+type jsRuntimeEmitFn func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool, polySubscript, extractionMethod string)
 
 // synthesizeFetchAxiosWithRuntime is the #721 entry point for JS/TS
 // consumer-side synthesis. It calls the existing synthesizeFetchAxios for
 // all static/template-literal patterns (delegating via an adapter) and
 // additionally scans for env-var URL concatenations, emitting those with
 // runtime_dynamic=true.
-func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
+func synthesizeFetchAxiosWithRuntime(content, lang string, emit jsRuntimeEmitFn) {
 	// Delegate all existing static/template/wrapper/axios-instance patterns
 	// through the adapter. The adapter bridges emitFn → jsRuntimeEmitFn
 	// with runtimeDynamic=false (these URLs are known at analysis time).
@@ -1552,8 +1567,13 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 	// then trusts synthesizeFetchAxios to clear / reset for the next call.
 	state := newClientSynthState()
 	adapter := func(method, canonicalPath, framework, refKind, refName string) {
-		emit(method, canonicalPath, framework, refKind, refName, false, state.pendingPolySubscript)
+		emit(method, canonicalPath, framework, refKind, refName, false, state.pendingPolySubscript, state.pendingExtractionMethod)
 	}
+	// #5527 — tree-sitter AST pass runs FIRST so its emits win the side-scoped
+	// ID dedup in makeEmit and earn the `extraction_method=ast` stamp. The regex
+	// passes below re-claim the same IDs (no-op via dedup) and pick up only the
+	// calls the AST pass could not statically resolve, which stay heuristic.
+	synthesizeFetchAxiosAST(content, lang, adapter, state)
 	synthesizeFetchAxios(content, adapter, state)
 
 	// Env-var concatenation patterns — emit with runtimeDynamic=true.
@@ -1580,7 +1600,7 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
 		caller := enclosingJSFuncAt(funcs, m[0])
-		emit(verb, canonical, "fetch", "Function", caller, true, "")
+		emit(verb, canonical, "fetch", "Function", caller, true, "", "")
 	}
 
 	// axios.<verb>(process.env.X + "/path")
@@ -1595,7 +1615,7 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
 		caller := enclosingJSFuncAt(funcs, m[0])
-		emit(verb, canonical, "axios", "Function", caller, true, "")
+		emit(verb, canonical, "axios", "Function", caller, true, "", "")
 	}
 
 	// <ident>.<verb>(process.env.X + "/path") — $http, apiClient, etc.
@@ -1616,7 +1636,7 @@ func synthesizeFetchAxiosWithRuntime(content string, emit jsRuntimeEmitFn) {
 		}
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, stripURLHost(suffix))
 		caller := enclosingJSFuncAt(funcs, m[0])
-		emit(verb, canonical, "http_client", "Function", caller, true, "")
+		emit(verb, canonical, "http_client", "Function", caller, true, "", "")
 	}
 }
 

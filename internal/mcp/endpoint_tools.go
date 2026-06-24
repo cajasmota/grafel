@@ -1255,6 +1255,22 @@ func classifyDetector(framework string) (detectorMethod, confidenceLevel) {
 	return detectorRegex, confidenceHeuristic
 }
 
+// classifyDetectorForEntity is the per-entity refinement of classifyDetector
+// (#5527). Confidence is honestly a property of HOW a specific entity was
+// extracted, not a blanket claim over a framework name: a framework's endpoints
+// can be a mix of AST- and regex-extracted entities. When an entity carries an
+// `extraction_method=ast` provenance stamp (currently emitted by the JS/TS
+// tree-sitter fetch/axios client pass, synthesizeFetchAxiosAST) it earns
+// ast/exact regardless of whether its framework name is in astBackedFrameworks.
+// Otherwise it falls back to the framework-name classification, so anything
+// still regex-extracted stays heuristic.
+func classifyDetectorForEntity(framework, extractionMethod string) (detectorMethod, confidenceLevel) {
+	if strings.EqualFold(strings.TrimSpace(extractionMethod), "ast") {
+		return detectorAST, confidenceExact
+	}
+	return classifyDetector(framework)
+}
+
 // frameworkStat is the per-framework breakdown row in the stats response.
 // It is keyed by framework name in the by_framework map.
 type frameworkStat struct {
@@ -1306,12 +1322,22 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 	// property; the empty key ("") collects synthetics with no framework
 	// attribution and is rendered as "unknown" in the response.
 	byFramework := map[string]*frameworkStat{}
-	bumpFramework := func(framework string, isDef bool) {
+	bumpFramework := func(framework, extractionMethod string, isDef bool) {
 		fs := byFramework[framework]
 		if fs == nil {
 			det, conf := classifyDetector(framework)
 			fs = &frameworkStat{Detector: det, Confidence: conf}
 			byFramework[framework] = fs
+		}
+		// #5527 — a framework's entities can be a MIX of AST- and regex-extracted
+		// (e.g. fetch/axios client calls: the static ones the tree-sitter pass
+		// resolves are AST, the template-literal/runtime ones stay regex). Upgrade
+		// the framework's coarse confidence to ast/exact as soon as at least one
+		// of its entities is AST-extracted; never downgrade an already-AST stat.
+		if fs.Detector != detectorAST {
+			if det, conf := classifyDetectorForEntity(framework, extractionMethod); det == detectorAST {
+				fs.Detector, fs.Confidence = det, conf
+			}
 		}
 		if isDef {
 			fs.Definitions++
@@ -1329,22 +1355,23 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		for i := range r.Doc.Entities {
 			e := &r.Doc.Entities[i]
 			fw := e.Properties["framework"]
+			xm := e.Properties["extraction_method"] // #5527 per-entity AST provenance
 			switch classifyEndpointKind(e.Kind) {
 			case endpointKindDefinition:
 				rs.Definitions++
-				bumpFramework(fw, true)
+				bumpFramework(fw, xm, true)
 			case endpointKindCall:
 				rs.Calls++
-				bumpFramework(fw, false)
+				bumpFramework(fw, xm, false)
 			case endpointKindLegacy:
 				// Pre-Sub-A entity; count separately.
 				rs.LegacyKind++
 				if e.Properties["pattern_type"] == patternTypeHTTPEndpointClientSynthesis {
 					rs.Calls++ // treat client-synthesis as a call
-					bumpFramework(fw, false)
+					bumpFramework(fw, xm, false)
 				} else {
 					rs.Definitions++ // treat producer as a definition
-					bumpFramework(fw, true)
+					bumpFramework(fw, xm, true)
 				}
 			}
 		}

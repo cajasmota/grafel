@@ -1128,19 +1128,31 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		// shared (verb, path, framework, refKind, refName, runtimeDynamic)
 		// closure with the JS-specific extra polySubscript argument: after the
 		// upstream emit appends the entity, we stamp the property in place.
-		emitJSClientRuntime := func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool, polySubscript string) {
+		emitJSClientRuntime := func(method, canonicalPath, framework, refKind, refName string, runtimeDynamic bool, polySubscript, extractionMethod string) {
 			before := len(entities)
 			emitClientRuntime(method, canonicalPath, framework, refKind, refName, runtimeDynamic)
-			if polySubscript == "" || len(entities) == before {
+			if len(entities) == before {
 				return
 			}
 			last := &entities[len(entities)-1]
+			if polySubscript == "" && extractionMethod == "" {
+				return
+			}
 			if last.Properties == nil {
 				last.Properties = map[string]string{}
 			}
-			last.Properties["polymorphic_subscript"] = polySubscript
+			if polySubscript != "" {
+				last.Properties["polymorphic_subscript"] = polySubscript
+			}
+			// #5527 — record per-entity extraction provenance so the
+			// endpoint-stats confidence classifier can honestly mark this
+			// AST-extracted client call as ast/exact rather than the regex
+			// passes' blanket heuristic.
+			if extractionMethod != "" {
+				last.Properties["extraction_method"] = extractionMethod
+			}
 		}
-		synthesizeFetchAxiosWithRuntime(string(content), emitJSClientRuntime)
+		synthesizeFetchAxiosWithRuntime(string(content), lang, emitJSClientRuntime)
 		// SOAP + JSON-RPC (epic #3628): node-soap `client.<Op>Async()` SOAP
 		// calls, jayson server method maps (producer) + `client.request('m')`
 		// client calls, keyed http:SOAP:/soap/... and http:JSONRPC:/jsonrpc/...
