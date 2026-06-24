@@ -334,6 +334,16 @@ func (e *JSExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]typ
 		// the component/hook entities exist.
 		x.decorateSWR(root)
 
+		// Issue #5492 — TanStack/React Query entity extraction. Component / custom
+		// hook bodies calling useQuery / useSuspenseQuery / useInfiniteQuery /
+		// useQueries / useMutation emit one decorated SCOPE.Operation per call
+		// (subtype tanstack_query | tanstack_mutation) with the queryKey/queryFn/
+		// mutationFn captured as attributes + a CONTAINS edge from the enclosing
+		// component. No-op unless @tanstack/react-query (or react-query) is
+		// imported. The queryKey->endpoint USES edge is the follow-up #5494. Runs
+		// after walk so the owner component/hook entities already exist.
+		x.reactTanstackQuery(root)
+
 		// Issue #2894 PR3 — React Hook Form / Formik form decoration. Components
 		// and custom hooks using useForm/register/Controller (RHF) or useFormik/
 		// <Formik>/<Field> (Formik) are stamped form_library + form_hooks +

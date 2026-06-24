@@ -9,6 +9,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **TanStack/React Query hooks → query/mutation entities (#5492):**
+  TanStack Query (React adapter) was previously presence-detected only — the
+  `useQuery` family surfaced as generic `USES_HOOK` edges. Each call site is now
+  extracted as a decorated `SCOPE.Operation`: `useQuery` / `useSuspenseQuery` /
+  `useInfiniteQuery` / `useQueries` → subtype `tanstack_query`, and
+  `useMutation` → subtype `tanstack_mutation` (`via=tanstack_query`,
+  `framework=react`), with a `CONTAINS` edge from the enclosing component /
+  custom hook. Attributes captured: `query_key` (the literal `queryKey` array
+  stringified, e.g. `['user', id]` → `user,id`), `query_fn` / `mutation_fn`
+  (the `queryFn`/`mutationFn` callee ref name when resolvable), `query_kind`,
+  and `query_call`. Both the object-arg form (`useQuery({ queryKey, queryFn })`)
+  and the older positional form (`useQuery(key, fn)`) are handled. The pass is
+  import-gated on `@tanstack/react-query` (or legacy `react-query`) so a
+  non-TanStack function named `useQuery` is not mis-tagged; `useQueryClient`
+  still surfaces as a plain hook edge (it returns the client handle, not an
+  operation). The `queryKey`→endpoint `USES` edge is a follow-up (#5494). Mirrors
+  the existing Angular (`injectQuery`) and Vue/Svelte (`createQuery`) adapter
+  extraction. Part of the framework-stack coverage epic (#5479).
 - **Kysely query-builder data-access → db_read/db_write effects with table attribution (#5491):**
   Kysely, the type-safe SQL query builder (previously 0 coverage), is now
   credited with receiver-gated, table-bearing db effects, mirroring the Prisma

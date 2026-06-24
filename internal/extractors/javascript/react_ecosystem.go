@@ -1226,6 +1226,255 @@ func (x *extractor) angularTanstackQuery(body ts.Node, className string) ([]type
 	return ents, rels
 }
 
+// reactTanstackCallKind maps a React/Vue TanStack Query `use*` call leaf to its
+// canonical query kind, or "" when the leaf is not a TanStack entry point.
+// Covers useQuery / useSuspenseQuery / useInfiniteQuery / useQueries (all query
+// family) and useMutation (mutation family). useQueryClient is intentionally
+// excluded: it returns the client handle, not a query/mutation operation.
+func reactTanstackCallKind(leaf string) (kind, subtype string) {
+	switch leaf {
+	case "useQuery", "useSuspenseQuery":
+		return "query", "tanstack_query"
+	case "useInfiniteQuery", "useSuspenseInfiniteQuery":
+		return "infinite_query", "tanstack_query"
+	case "useQueries", "useSuspenseQueries":
+		return "queries", "tanstack_query"
+	case "useMutation":
+		return "mutation", "tanstack_mutation"
+	}
+	return "", ""
+}
+
+// stringifyQueryKey renders a TanStack `queryKey` value node to a stable,
+// human-readable string. A literal array `["users", id]` becomes "users,id"
+// (each element's source text, array brackets/quotes stripped); a bare
+// identifier or other expression is returned as its trimmed source text.
+func (x *extractor) stringifyQueryKey(v ts.Node) string {
+	if v == nil {
+		return ""
+	}
+	if v.Type() == "array" {
+		var parts []string
+		for i := 0; i < int(v.ChildCount()); i++ {
+			ch := v.Child(i)
+			if ch == nil {
+				continue
+			}
+			switch ch.Type() {
+			case "[", "]", ",", "comment":
+				continue
+			}
+			t := strings.TrimSpace(x.nodeText(ch))
+			t = strings.Trim(t, `"'`+"`")
+			if t != "" {
+				parts = append(parts, t)
+			}
+		}
+		return strings.Join(parts, ",")
+	}
+	return strings.Trim(strings.TrimSpace(x.nodeText(v)), `"'`+"`")
+}
+
+// calleeRefName returns a callee reference name for a queryFn/mutationFn value
+// node: a bare identifier (`getUsers`) is returned verbatim; an inline arrow /
+// function expression yields "" (no named ref to record). For an arrow whose
+// body is a single call (`() => fetchUsers(id)`) the inner callee is recovered.
+func (x *extractor) calleeRefName(v ts.Node) string {
+	if v == nil {
+		return ""
+	}
+	switch v.Type() {
+	case "identifier":
+		return x.nodeText(v)
+	case "member_expression":
+		return x.nodeText(v)
+	case "arrow_function", "function_expression":
+		body := v.ChildByFieldName("body")
+		if body == nil {
+			return ""
+		}
+		// `() => fetchUsers(...)` — body is the call directly (concise arrow).
+		if call := unwrapCall(body); call != nil {
+			return factoryLeaf(x, call)
+		}
+		// `() => { return fetchUsers(...) }` — find the first call in the body.
+		for _, c := range findAllNodes(body, "call_expression") {
+			if leaf := factoryLeaf(x, c); leaf != "" {
+				return leaf
+			}
+		}
+	}
+	return ""
+}
+
+// tanstackCallProps extracts the queryKey/queryFn/mutationFn attributes from a
+// TanStack `use*` call. Handles both the object-arg form
+// (`useQuery({ queryKey: [...], queryFn })`) and the older positional form
+// (`useQuery(key, fn)`). The returned map is stamped onto the operation entity;
+// the queryKey->endpoint USES edge is a follow-up (#5494).
+func (x *extractor) tanstackCallProps(call ts.Node, subtype string) map[string]string {
+	out := map[string]string{}
+	obj := configObjectArg(call)
+	if obj != nil {
+		// Object-arg form.
+		if subtype == "tanstack_mutation" {
+			if fn := objectPairValue(x, obj, "mutationFn"); fn != nil {
+				if ref := x.calleeRefName(fn); ref != "" {
+					out["mutation_fn"] = ref
+				}
+			}
+			return out
+		}
+		if k := objectPairValue(x, obj, "queryKey"); k != nil {
+			if s := x.stringifyQueryKey(k); s != "" {
+				out["query_key"] = s
+			}
+		}
+		if fn := objectPairValue(x, obj, "queryFn"); fn != nil {
+			if ref := x.calleeRefName(fn); ref != "" {
+				out["query_fn"] = ref
+			}
+		}
+		return out
+	}
+	// Positional form: useQuery(key, fn) / useMutation(fn).
+	args := call.ChildByFieldName("arguments")
+	if args == nil {
+		return out
+	}
+	var pos []ts.Node
+	for i := 0; i < int(args.ChildCount()); i++ {
+		ch := args.Child(i)
+		if ch == nil {
+			continue
+		}
+		switch ch.Type() {
+		case "(", ")", ",", "comment":
+			continue
+		}
+		pos = append(pos, ch)
+	}
+	if subtype == "tanstack_mutation" {
+		if len(pos) >= 1 {
+			if ref := x.calleeRefName(pos[0]); ref != "" {
+				out["mutation_fn"] = ref
+			}
+		}
+		return out
+	}
+	if len(pos) >= 1 {
+		if s := x.stringifyQueryKey(pos[0]); s != "" {
+			out["query_key"] = s
+		}
+	}
+	if len(pos) >= 2 {
+		if ref := x.calleeRefName(pos[1]); ref != "" {
+			out["query_fn"] = ref
+		}
+	}
+	return out
+}
+
+// reactTanstackQuery scans React/Vue component and custom-hook bodies for
+// TanStack Query React-adapter hook calls (useQuery / useSuspenseQuery /
+// useInfiniteQuery / useQueries / useMutation) and emits one decorated
+// SCOPE.Operation per call (subtype tanstack_query | tanstack_mutation) with a
+// CONTAINS edge from the enclosing component/hook (#5492). No-op unless a
+// TanStack/React Query package is imported (gate against a non-TanStack call
+// named useQuery). Decorate-only (#2839): reuses SCOPE.Operation, mirroring the
+// Angular adapter path (angularTanstackQuery) and RTK Query endpoint emission.
+//
+// Attributes captured: query_key (literal key array stringified), query_fn /
+// mutation_fn (the callee ref name), query_kind, query_call. The
+// queryKey->endpoint USES edge is the follow-up #5494; here we only stamp the
+// key/fn as attributes.
+func (x *extractor) reactTanstackQuery(root ts.Node) {
+	r := x.buildReactEcosystemImports()
+	if r == nil || !r.hasTanstack || root == nil {
+		return
+	}
+	scan := func(owner string, body ts.Node) {
+		if owner == "" || body == nil {
+			return
+		}
+		if !isComponentName(owner) && !isReactHookName(owner) {
+			return
+		}
+		seen := map[string]bool{}
+		for _, call := range findAllNodes(body, "call_expression") {
+			leaf := factoryLeaf(x, call)
+			kind, subtype := reactTanstackCallKind(leaf)
+			if kind == "" {
+				continue
+			}
+			start, _ := lines(call)
+			name := "tanstack." + leaf + ":" + strconv.Itoa(start)
+			if seen[name] {
+				continue
+			}
+			seen[name] = true
+			props := map[string]string{
+				"kind":       "SCOPE.Operation",
+				"subtype":    subtype,
+				"via":        propViaTanstackQuery,
+				"component":  owner,
+				"query_kind": kind,
+				"query_call": leaf,
+				"framework":  "react",
+			}
+			for k, v := range x.tanstackCallProps(call, subtype) {
+				props[k] = v
+			}
+			x.emitWithProps(name, "SCOPE.Operation", call, subtype, leaf+"(…)", props, nil)
+			// Attach the CONTAINS edge to the enclosing component/hook entity.
+			x.attachTanstackContains(owner, name, subtype)
+		}
+	}
+	for _, fn := range findAllNodes(root, "function_declaration") {
+		nameNode := fn.ChildByFieldName("name")
+		if nameNode == nil {
+			continue
+		}
+		scan(x.nodeText(nameNode), fn.ChildByFieldName("body"))
+	}
+	for _, d := range findAllNodes(root, "variable_declarator") {
+		nameNode := d.ChildByFieldName("name")
+		valNode := d.ChildByFieldName("value")
+		if nameNode == nil || valNode == nil {
+			continue
+		}
+		if valNode.Type() == "arrow_function" || valNode.Type() == "function_expression" {
+			scan(x.nodeText(nameNode), valNode.ChildByFieldName("body"))
+		}
+	}
+}
+
+// attachTanstackContains appends a CONTAINS edge (component/hook → tanstack
+// operation) onto the already-emitted owner entity, so the operation hangs off
+// its enclosing component like the Angular adapter and RTK Query endpoints do.
+func (x *extractor) attachTanstackContains(owner, toName, subtype string) {
+	for i := range x.entities {
+		e := &x.entities[i]
+		if e.SourceFile != x.filePath || e.Name != owner {
+			continue
+		}
+		if e.Kind != "SCOPE.Operation" && e.Kind != "SCOPE.Component" {
+			continue
+		}
+		e.Relationships = append(e.Relationships, types.RelationshipRecord{
+			ToID: toName,
+			Kind: "CONTAINS",
+			Properties: map[string]string{
+				"component": owner,
+				"subtype":   subtype,
+				"via":       propViaTanstackQuery,
+				"framework": "react",
+			},
+		})
+		return
+	}
+}
+
 // fileImportsReduxObservable reports whether redux-observable is imported.
 func (x *extractor) fileImportsReduxObservable() bool {
 	for _, b := range x.importByLocal {
