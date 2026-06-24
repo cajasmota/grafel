@@ -218,11 +218,16 @@ func applyPulumiEdges(args DetectorPassArgs) DetectorPassResult {
 	// resource entity.
 	varToName := map[string]string{}
 	resourceNames := map[string]bool{}
+	// nameToType maps a resource logical name to its construct type so the
+	// event-source wiring pass (#5501) can tell whether a resource is a wiring
+	// resource (EventSourceMapping / BucketNotification / Integration / ...).
+	nameToType := map[string]string{}
 
 	emitResource := func(logicalName, resourceType, scopeOverride string, offset int) {
 		if logicalName == "" || resourceType == "" {
 			return
 		}
+		nameToType[logicalName] = resourceType
 		key := pulumiResourceKind + "|" + logicalName + "|" + path
 		if seenEnt[key] {
 			return
@@ -342,7 +347,7 @@ func applyPulumiEdges(args DetectorPassArgs) DetectorPassResult {
 	}
 
 	if pulumiIsPython(lang) {
-		applyPulumiEdgesPython(src, emitResource, emitDependsOn, emitCrossStack, stampScalarProps, varToName, resourceNames)
+		applyPulumiEdgesPython(src, emitResource, emitDependsOn, emitCrossStack, stampScalarProps, varToName, resourceNames, nameToType)
 		return DetectorPassResult{Entities: entities, Relationships: relationships}
 	}
 
@@ -410,6 +415,9 @@ func applyPulumiEdges(args DetectorPassArgs) DetectorPassResult {
 		// epic #4194: stamp curated literal scalar config props onto the entity.
 		stampScalarProps(consumerName, argsBody)
 		applyPulumiArgEdges(consumerName, argsBody, varToName, emitDependsOn)
+		// #5501: if this resource is an event-source wiring resource, emit the
+		// direct source→target event_source edge.
+		applyPulumiWiringEdges(nameToType[consumerName], argsBody, varToName, emitDependsOn)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -455,6 +463,7 @@ func applyPulumiEdgesPython(
 	stampScalarProps func(logicalName, argsBody string),
 	varToName map[string]string,
 	resourceNames map[string]bool,
+	nameToType map[string]string,
 ) {
 	// Pass 1: assigned resource declarations — `VAR = type("name"`.
 	for _, m := range pulumiPyResourceDeclRe.FindAllStringSubmatchIndex(src, -1) {
@@ -512,5 +521,7 @@ func applyPulumiEdgesPython(
 		// epic #4194: stamp curated literal scalar config props onto the entity.
 		stampScalarProps(consumerName, argsBody)
 		applyPulumiArgEdges(consumerName, argsBody, varToName, emitDependsOn)
+		// #5501: event-source wiring source→target edge for wiring resources.
+		applyPulumiWiringEdges(nameToType[consumerName], argsBody, varToName, emitDependsOn)
 	}
 }

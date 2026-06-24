@@ -24,6 +24,26 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   the receiver is tracer-like (`tracer` / `*Tracer` / a `getTracer(...)` chain),
   so an unrelated `.startSpan(` from a non-OTEL library is no longer matched.
   The JS/TS framework `trace_extraction` coverage cells flip partial→full.
+- **Pulumi-AWS resource-property capture + event-source wiring edges
+  (#5501):** Pulumi-AWS coverage is uplifted on two fronts. (1) *Resource
+  properties* — the curated literal-scalar allow-list (epic #4194) now stamps
+  the high-signal AWS config props onto each Pulumi `SCOPE.InfraResource`:
+  Lambda `runtime`/`handler`/`memorySize`, S3 `bucket`, DynamoDB `billingMode`/
+  `streamViewType`/`readCapacity`/`writeCapacity`, SQS `fifoQueue`/
+  `visibilityTimeoutSeconds`. Only literal scalars are stamped (quoted strings,
+  numbers, booleans); Output/member-access refs (`data.id`, `sizing.nodeType`)
+  stay reference edges. (2) *Event-source / trigger wiring* (the real gap) —
+  AWS wiring resources now emit a direct **source→target** `DEPENDS_ON` edge
+  carrying `reason=event_source` (the same edge CDK's `addEventSource` pass
+  produces), resolving the wiring resource's references (`queue.arn`,
+  `fn.name`) to the resource nodes they point to: `aws.lambda.EventSourceMapping`
+  (SQS/DynamoDB-stream/Kinesis → Lambda), `aws.s3.BucketNotification` (bucket →
+  Lambda/SQS/SNS, fan-out), `aws.apigatewayv2.Integration` + `aws.apigateway.
+  Integration` (API → Lambda), `aws.sns.TopicSubscription` (topic → endpoint),
+  `aws.cloudwatch.EventTarget` (rule → target), `aws.lambda.Permission`
+  (sourceArn → function). TypeScript + Python; Pulumi-Go/C# wiring deferred.
+  Registry flips `infra.iac.pulumi` `iac_event_source_wiring` →`full` and
+  `iac_resource_property_extraction` →`full`.
 - **Authorization checks → AUTHORIZES edges (NestJS guards + home-rolled
   idioms) (#5499):** the JS/TS auth resolver now recovers an endpoint's
   authorization posture from two idiom families that did not reach the

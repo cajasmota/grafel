@@ -18125,6 +18125,39 @@ records:
 
   infra.iac.pulumi:
     capabilities:
+      iac_event_source_wiring:
+        # #5501: AWS event-source / trigger wiring resources (EventSourceMapping,
+        # BucketNotification, apigateway(v2) Integration, SNS TopicSubscription,
+        # CloudWatch EventTarget, Lambda Permission) emit a direct source→target
+        # DEPENDS_ON edge reason=event_source — the same edge CDK's addEventSource
+        # pass produces — resolving the wiring resource's source/target refs
+        # (queue.arn, fn.name) to their resource nodes. TS + Python.
+        status: full
+        symbols:
+          - file: internal/engine/pulumi_wiring.go
+            functions: [applyPulumiWiringEdges, pulumiWiringSpecFor]
+          - file: internal/engine/pulumi_edges.go
+            functions: [applyPulumiEdges, applyPulumiEdgesPython]
+        tests:
+          - file: internal/engine/pulumi_wiring_test.go
+        issues_implemented: ["5501"]
+        verified_at: "2026-06-24"
+      iac_resource_property_extraction:
+        # #5501 / epic #4194: curated AWS scalar config props stamped onto each
+        # Pulumi resource node (Lambda runtime/handler/memorySize, SQS fifoQueue/
+        # visibilityTimeoutSeconds, DynamoDB billingMode/streamViewType, S3
+        # bucket, …) from the resource's literal-scalar args. TS + Python.
+        status: full
+        symbols:
+          - file: internal/engine/iac_code_properties.go
+            functions: [iacCodeExtractScalarProperties, iacCodeLiteralScalarValue]
+          - file: internal/engine/pulumi_edges.go
+            functions: [applyPulumiEdges, applyPulumiEdgesPython]
+        tests:
+          - file: internal/engine/pulumi_properties_test.go
+          - file: internal/engine/pulumi_wiring_test.go
+        issues_implemented: ["4194", "5501"]
+        verified_at: "2026-06-24"
       iac_stack_app_topology:
         status: partial
         symbols:

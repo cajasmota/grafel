@@ -16,7 +16,7 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [multi](../by-language/multi.md) | [Ansible (playbooks)](../detail/infra.iac.ansible.md) | 🟢 | — | — | — | — | — | — | — | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Azure Bicep](../detail/infra.iac.bicep.md) | ✅ | — | — | — | — | ✅ | 🟢 | ✅ | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [OpenTofu (HCL)](../detail/infra.iac.opentofu.md) | ✅ | ✅ | — | — | — | ✅ | 🟢 | ✅ | ✅ | 🟢 | |
-| [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | 🟢 | — | — | — | — | 🟢 | 🟢 | 🟢 | 🟢 | |
+| [multi](../by-language/multi.md) | [Pulumi](../detail/infra.iac.pulumi.md) | 🟢 | 🟢 | — | ✅ | — | — | ✅ | 🟢 | 🟢 | 🟢 | |
 | [multi](../by-language/multi.md) | [Serverless Framework](../detail/infra.iac.serverless-framework.md) | ✅ | — | ✅ | ✅ | — | — | 🟢 | — | ✅ | 🟢 | |
 | [multi](../by-language/multi.md) | [Terraform (HCL)](../detail/infra.iac.terraform.md) | ✅ | ✅ | — | — | — | ✅ | 🟢 | ✅ | ✅ | 🟢 | |
 | [rust](../by-language/rust.md) | [Shuttle (deploy runtime)](../detail/platform.rust.shuttle.md) | — | — | — | — | — | — | 🟢 | — | 🟢 | 🟢 | |
