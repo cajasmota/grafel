@@ -9,6 +9,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **TanStack query/mutation → HTTP endpoint `USES`/`CALLS` edge (#5494):**
+  Each `tanstack_query` / `tanstack_mutation` operation (#5492) is now linked to
+  the backend endpoint its `queryFn`/`mutationFn` fetcher calls, making the
+  frontend-query → backend-endpoint cross-stack flow queryable. An **inline**
+  static fetcher (`() => fetch('/api/users')`, `() => axios.get('/api/users')`,
+  `() => fetch(url, { method: 'POST' })`) emits a `USES` edge to the endpoint
+  stub `http:<VERB>:<path>` — the *same* synthetic `http_endpoint` Name the
+  consumer-side HTTP synthesiser emits, so the existing cross-repo HTTP linker
+  binds the query straight to the server route. A **named ref**
+  (`queryFn: getUsers`, `mutationFn: createUser`) emits a `CALLS` edge to the
+  data function; the existing call-graph + http-client edges then carry the
+  transitive query → … → endpoint path (one hop is enough here). The `queryKey`
+  label is never treated as an endpoint (no regression of #3171 — only the
+  fetcher body is resolved). Both the object-arg form and the older positional
+  form are handled. Part of the framework-stack coverage epic (#5479).
 - **TanStack/React Query hooks → query/mutation entities (#5492):**
   TanStack Query (React adapter) was previously presence-detected only — the
   `useQuery` family surfaced as generic `USES_HOOK` edges. Each call site is now
