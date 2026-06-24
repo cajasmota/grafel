@@ -70,6 +70,26 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   import or a receiver named/ending in `inngest`); append-only. Phase 2 (edges)
   of the Inngest epic (#5479); flips the `consumer_extraction` capability on
   `msg.inngest` to full.
+- **Inngest durable step structure inside a function (#5484):** the
+  `custom_js_inngest` extractor now extracts the durable **step** structure
+  inside each `createFunction` handler body. Every `step.run("id", …)`,
+  `step.sleep`, `step.sleepUntil`, `step.waitForEvent`, and `step.invoke` call
+  becomes one `SCOPE.Operation` child entity (subtype `inngest_step`,
+  `framework=inngest`) named after the step-id literal, carrying a `step_kind`
+  attribute (`run` / `sleep` / `sleepUntil` / `waitForEvent` / `invoke`),
+  `step_id`, `inngest_function`, and the source location. Each step is
+  **`CONTAINS`-linked** from its enclosing Inngest function (`Function:<id>` →
+  step), so the durable workflow's internal structure is navigable on the graph.
+  `step.waitForEvent` additionally records the awaited event name as a
+  `wait_event` attribute, and `step.invoke` records the invoked-function
+  reference as an `invoke_target` attribute (the `SUBSCRIBES_TO` / invoke edges
+  to those targets are deferred follow-ups). Steps are read from the bounded
+  `createFunction` argument region — so they bind to the right enclosing function
+  with no cross-function bleed — and gated by the existing `inngest` attribution
+  plus a `step`-receiver gate, so a stray `.run(`/`.invoke(` on an unrelated
+  receiver is not misattributed. Phase 2 (step structure) of the Inngest epic
+  (#5479); records the framework-specific `step_structure` capability on
+  `msg.inngest`.
 - **Index-progress list sorts by status — active rows on top, done sinks (#5495):**
   on the dashboard index/group view the per-repo/module progress rows used to
   render in a static repo/module order, so with a large (e.g. 30-module) group

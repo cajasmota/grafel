@@ -267,3 +267,138 @@ func TestInngestSendNoImportNoTopic(t *testing.T) {
 		t.Errorf("expected no topics without inngest attribution, got %+v", ents)
 	}
 }
+
+// findStep returns the SCOPE.Operation (subtype inngest_step) entity for a
+// step-id, or nil.
+func findStep(ents []types.EntityRecord, stepID string) *types.EntityRecord {
+	for i := range ents {
+		if ents[i].Kind == string(types.EntityKindOperation) &&
+			ents[i].Subtype == "inngest_step" && ents[i].Name == stepID {
+			return &ents[i]
+		}
+	}
+	return nil
+}
+
+// containsStep reports whether the function entity carries a CONTAINS edge to
+// the given step entity ID.
+func containsStep(fn *types.EntityRecord, stepID string) bool {
+	for _, r := range fn.Relationships {
+		if r.Kind == string(types.RelationshipKindContains) && r.ToID == stepID {
+			return true
+		}
+	}
+	return false
+}
+
+// #5484 (epic #5479, Phase 2): the durable step structure inside a function
+// handler — step.run / sleep / sleepUntil / waitForEvent / invoke — is
+// extracted as SCOPE.Operation child entities (subtype inngest_step) with a
+// step_kind attribute, each CONTAINED by the enclosing Inngest Function.
+// waitForEvent records the awaited event as wait_event; invoke records the
+// invoked-function reference as invoke_target.
+func TestInngestStepStructure(t *testing.T) {
+	src := `
+import { inngest } from "./client";
+
+export const checkout = inngest.createFunction(
+  { id: "checkout", name: "Checkout" },
+  { event: "cart/checkout" },
+  async ({ event, step }) => {
+    const charge = await step.run("charge-card", () => chargeCard(event.data));
+    await step.sleep("cooldown", "1m");
+    await step.sleepUntil("until-midnight", "2026-01-01T00:00:00Z");
+    const paid = await step.waitForEvent("await-payment", {
+      event: "payment/succeeded",
+      timeout: "1d",
+    });
+    await step.invoke("fulfil", { function: fulfilOrder, data: charge });
+  }
+);
+`
+	ents := extractInngest(t, "src/inngest/checkout.ts", src)
+	fn := findFunc(ents, "checkout")
+	if fn == nil {
+		t.Fatalf("expected SCOPE.Function 'checkout', got %+v", ents)
+	}
+
+	cases := []struct{ id, kind string }{
+		{"charge-card", "run"},
+		{"cooldown", "sleep"},
+		{"until-midnight", "sleepUntil"},
+		{"await-payment", "waitForEvent"},
+		{"fulfil", "invoke"},
+	}
+	for _, c := range cases {
+		st := findStep(ents, c.id)
+		if st == nil {
+			t.Fatalf("expected step entity %q, got %+v", c.id, ents)
+		}
+		if got := st.Properties["step_kind"]; got != c.kind {
+			t.Errorf("step %q: expected step_kind=%s, got %q", c.id, c.kind, got)
+		}
+		if got := st.Properties["framework"]; got != "inngest" {
+			t.Errorf("step %q: expected framework=inngest, got %q", c.id, got)
+		}
+		if got := st.Properties["inngest_function"]; got != "checkout" {
+			t.Errorf("step %q: expected inngest_function=checkout, got %q", c.id, got)
+		}
+		// CONTAINS from the function to the step.
+		if !containsStep(fn, st.ID) {
+			t.Errorf("step %q: expected CONTAINS edge from function, edges=%+v", c.id, fn.Relationships)
+		}
+	}
+
+	// waitForEvent captures the awaited event name.
+	if got := findStep(ents, "await-payment").Properties["wait_event"]; got != "payment/succeeded" {
+		t.Errorf("expected wait_event=payment/succeeded, got %q", got)
+	}
+	// invoke captures the invoked-function reference.
+	if got := findStep(ents, "fulfil").Properties["invoke_target"]; got != "fulfilOrder" {
+		t.Errorf("expected invoke_target=fulfilOrder, got %q", got)
+	}
+}
+
+// #5484: steps are only harvested from real Inngest handlers — a `.run(` /
+// `.invoke(` on a non-step receiver inside an unrelated file yields no step
+// entities (the createFunction attribution gate + the step receiver gate).
+func TestInngestStepNonInngestNoOp(t *testing.T) {
+	src := `
+const runner = makeRunner();
+runner.run("not-a-step", () => {});
+runner.invoke("nope", { function: x });
+`
+	ents := extractInngest(t, "unrelated.ts", src)
+	for i := range ents {
+		if ents[i].Subtype == "inngest_step" {
+			t.Errorf("expected no inngest_step entities, got %+v", ents[i])
+		}
+	}
+}
+
+// #5484: a cron-triggered function whose handler runs steps still gets its
+// steps extracted and contained — steps are independent of the trigger kind.
+func TestInngestStepsUnderCronFunction(t *testing.T) {
+	src := `
+import { inngest } from "inngest";
+export const nightly = inngest.createFunction(
+  { id: "nightly" },
+  { cron: "0 0 * * *" },
+  async ({ step }) => {
+    await step.run("cleanup", () => cleanup());
+  }
+);
+`
+	ents := extractInngest(t, "nightly.ts", src)
+	fn := findFunc(ents, "nightly")
+	if fn == nil {
+		t.Fatal("expected function 'nightly'")
+	}
+	st := findStep(ents, "cleanup")
+	if st == nil {
+		t.Fatalf("expected step 'cleanup', got %+v", ents)
+	}
+	if !containsStep(fn, st.ID) {
+		t.Errorf("expected CONTAINS edge to cleanup step")
+	}
+}

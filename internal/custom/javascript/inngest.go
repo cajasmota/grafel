@@ -37,6 +37,17 @@ func init() {
 // producer payloads, and typed `new EventSchemas().fromRecord<{ "name": ... }>()`
 // schema definitions. The topic is deduped by event name; the EMITS/TRIGGERS
 // edges that wire the topic to its producers/consumers remain #5482/#5483.
+//
+// Ticket #5484 (epic #5479, Phase 2 — step structure) extracts the durable
+// step structure INSIDE each function handler: every `step.run("id", …)`,
+// `step.sleep`, `step.sleepUntil`, `step.waitForEvent`, `step.invoke` call in
+// the handler body becomes one SCOPE.Operation child entity (subtype
+// inngest_step) named after the step-id literal, carrying a `step_kind`
+// attribute and the source location, and CONTAINED by its enclosing Inngest
+// Function via a CONTAINS edge (Function → step). `waitForEvent` also records
+// the awaited event name as a `wait_event` attribute; `invoke` records the
+// invoked-function reference as an `invoke_target` attribute (the SUBSCRIBES_TO
+// / invoke EDGES wiring those to topics/functions are a follow-up).
 type inngestExtractor struct{}
 
 func (e *inngestExtractor) Language() string { return "custom_js_inngest" }
@@ -78,7 +89,40 @@ var (
 	// region after `fromRecord` / `fromUnion` and harvest its quoted keys.
 	reInngestEventSchemas = regexp.MustCompile(`\bnew\s+EventSchemas\s*\(`)
 	reInngestSchemaKey    = regexp.MustCompile(inngestStr + `\s*:`)
+
+	// #5484: durable step calls inside a createFunction handler —
+	// `step.run("id", …)`, `step.sleep("id", …)`, `step.sleepUntil("id", …)`,
+	// `step.waitForEvent("id", …)`, `step.invoke("id", …)`. The receiver is the
+	// `step` object the handler is invoked with (commonly destructured as
+	// `{ step }`); a member-access form like `tools.step.run(` is also accepted
+	// (receiver ends in `.step`). Group 1 = receiver, group 2 = the step kind,
+	// group 3 = the step-id string literal (the step's durable name). Anchored on
+	// `(` so the bounded-arg region of the call can then be sliced for
+	// waitForEvent's awaited event / invoke's target function.
+	reInngestStep = regexp.MustCompile(
+		`([A-Za-z_$][A-Za-z0-9_$.]*)\.(run|sleep|sleepUntil|waitForEvent|invoke)\s*\(\s*` + inngestStr)
+
+	// Inside a `step.waitForEvent("id", { event: "x/y" })` call, the awaited
+	// event name lives in an `{ event: "..." }` option — the cross-function
+	// wait-on-event signal.
+	reInngestStepWaitEvent = regexp.MustCompile(`\bevent\s*:\s*` + inngestStr)
+
+	// Inside a `step.invoke("id", { function: ref })` call, the invoked-function
+	// reference. Captured as a free-form attribute (it is typically an imported
+	// Function value or a `referenceFunction({...})`), so the value is taken up
+	// to the next `,`/`}` rather than as a string literal.
+	reInngestStepInvokeFn = regexp.MustCompile(`\bfunction\s*:\s*([^,}\n]+)`)
 )
+
+// inngestStepReceiverAttributed reports whether a `<receiver>.<kind>(` step call
+// should be attributed to an Inngest handler. The conventional handler argument
+// is the `step` object (destructured `{ step }`), so accept a receiver literally
+// named `step` or a member access ending in `.step`. The enclosing createFunction
+// has already been attribution-gated, so this only disambiguates the step object
+// from an unrelated `.run(`/`.invoke(` on some other receiver in the same body.
+func inngestStepReceiverAttributed(receiver string) bool {
+	return receiver == "step" || strings.HasSuffix(receiver, ".step")
+}
 
 func (e *inngestExtractor) Extract(ctx context.Context, file extreg.FileInput) ([]types.EntityRecord, error) {
 	tracer := otel.Tracer("grafel/custom/javascript")
@@ -178,6 +222,73 @@ func (e *inngestExtractor) Extract(ctx context.Context, file extreg.FileInput) (
 			addEventTopic(mm[1], lineOf(src, callStart), false)
 		} else if mm := reInngestCron.FindStringSubmatch(seg); mm != nil {
 			setProps(&ent, "trigger_cron", mm[1], "trigger_type", "cron")
+		}
+
+		// #5484: durable step structure. Each `step.<kind>("step-id", …)` call
+		// inside this function's handler body (which lives within the bounded
+		// createFunction argument region `seg`) becomes one SCOPE.Operation child
+		// entity, contained by the function via a CONTAINS edge. The step entities
+		// are appended to `entities`; the CONTAINS edges are hung off the Function
+		// entity's Relationships (mirroring the drizzle field-membership pattern),
+		// with FromID `Function:<id>` so the resolver binds them to this function.
+		segBase := callStart // absolute offset of `seg[0]` in `src`
+		for _, sm := range reInngestStep.FindAllStringSubmatchIndex(seg, -1) {
+			receiver := seg[sm[2]:sm[3]]
+			if !inngestStepReceiverAttributed(receiver) {
+				continue
+			}
+			stepKind := seg[sm[4]:sm[5]]
+			stepID := seg[sm[6]:sm[7]]
+			if stepID == "" {
+				continue
+			}
+			stepLine := lineOf(src, segBase+sm[0])
+
+			stepEnt := makeEntity(stepID, string(types.EntityKindOperation), "inngest_step",
+				file.Path, file.Language, stepLine)
+			setProps(&stepEnt, "framework", "inngest", "step_kind", stepKind,
+				"step_id", stepID, "inngest_function", funcName,
+				"provenance", "INFERRED_FROM_INNGEST_STEP")
+
+			// Bounded argument region of THIS step call (from its opening paren),
+			// so a waitForEvent's awaited event / invoke's target are read from
+			// the right call and do not bleed across steps. The call's `(` sits
+			// between the kind (ends at sm[5]) and the step-id literal (starts at
+			// sm[6]); locate it from the kind-end offset.
+			stepSeg := ""
+			if parenRel := strings.IndexByte(seg[sm[5]:], '('); parenRel >= 0 {
+				stepSeg = boundedCallSegment(seg, sm[5]+parenRel)
+			}
+			switch stepKind {
+			case "waitForEvent":
+				// Awaited event name → wait_event attribute (a wait-on-event
+				// signal). Edge wiring to that topic is a follow-up (#5484 note).
+				if mm := reInngestStepWaitEvent.FindStringSubmatch(stepSeg); mm != nil {
+					setProps(&stepEnt, "wait_event", mm[1])
+				}
+			case "invoke":
+				// Invoked-function reference → invoke_target attribute (cross-
+				// function invoke). An edge to that Function is a follow-up.
+				if mm := reInngestStepInvokeFn.FindStringSubmatch(stepSeg); mm != nil {
+					setProps(&stepEnt, "invoke_target", strings.TrimSpace(mm[1]))
+				}
+			}
+
+			// CONTAINS: Function → step. Hung off the function entity so the step
+			// is a child operation of the durable function (#5484). Append-only.
+			ent.Relationships = append(ent.Relationships, types.RelationshipRecord{
+				FromID: "Function:" + funcName,
+				ToID:   stepEnt.ID,
+				Kind:   string(types.RelationshipKindContains),
+				Properties: map[string]string{
+					"framework":  "inngest",
+					"member":     "step",
+					"step_kind":  stepKind,
+					"step_id":    stepID,
+					"provenance": "INFERRED_FROM_INNGEST_STEP_MEMBERSHIP",
+				},
+			})
+			addEntity(stepEnt)
 		}
 
 		addEntity(ent)
