@@ -286,6 +286,63 @@ func TestCrossLanguageBridge_JCLtoCOBOL(t *testing.T) {
 	}
 }
 
+// TestMainframeLineageSpike_JobPgmDataset proves the full JCL job→program→
+// dataset lineage chain the migration spike targets (#5369) in one topology:
+//   - the JOB CONTAINS its EXEC steps,
+//   - an EXEC PGM= step CALLS the program (the cross_language=cobol bridge),
+//   - the step's DD DSN= cards bind datasets with DISP-governed direction
+//     (DISP=SHR → READS_FROM, DISP=NEW → WRITES_TO).
+// Together these form the enterprise-migration lineage graph: which job runs
+// which program, reading and writing which datasets. Honest-partial: bare-name
+// program/dataset binding; no STEPLIB load-library disambiguation, catalog
+// resolution, or GDG absolute-generation expansion.
+func TestMainframeLineageSpike_JobPgmDataset(t *testing.T) {
+	recs := run(t, "payjob.jcl", payJobFixture)
+
+	// JOB → step CONTAINS lineage.
+	jobs := findByKind(recs, "SCOPE.Component", "job")
+	if len(jobs) == 0 {
+		t.Fatal("expected a JOB entity")
+	}
+	var jobContainsStep bool
+	for _, rel := range jobs[0].Relationships {
+		if rel.Kind == "CONTAINS" && rel.Properties["child"] == "PAYSTEP" {
+			jobContainsStep = true
+		}
+	}
+	if !jobContainsStep {
+		t.Error("expected JOB CONTAINS the PAYSTEP step")
+	}
+
+	// step → program CALLS bridge.
+	rel, ok := callTo(recs, "PAYROLL")
+	if !ok {
+		t.Fatal("expected EXEC PGM=PAYROLL CALLS edge")
+	}
+	if rel.Properties["via"] != "EXEC PGM" || rel.Properties["cross_language"] != "cobol" {
+		t.Errorf("PAYROLL CALL props = %+v, want via=EXEC PGM cross_language=cobol", rel.Properties)
+	}
+
+	// step → dataset READS_FROM / WRITES_TO lineage (DISP-governed direction).
+	var reads, writes bool
+	for _, r := range recs {
+		for _, rel := range r.Relationships {
+			if rel.Kind == "READS_FROM" && rel.ToID == "PROD.PAYROLL.MASTER" {
+				reads = true
+			}
+			if rel.Kind == "WRITES_TO" && rel.ToID == "PROD.PAYROLL.RESULTS" {
+				writes = true
+			}
+		}
+	}
+	if !reads {
+		t.Error("expected READS_FROM PROD.PAYROLL.MASTER (DISP=SHR input dataset)")
+	}
+	if !writes {
+		t.Error("expected WRITES_TO PROD.PAYROLL.RESULTS (DISP=NEW output dataset)")
+	}
+}
+
 // TestExtractor_IncludeImports proves an `INCLUDE MEMBER=<name>` card emits
 // an IMPORTS edge to the spliced PROCLIB/JCLLIB member (a cross-file dep).
 func TestExtractor_IncludeImports(t *testing.T) {

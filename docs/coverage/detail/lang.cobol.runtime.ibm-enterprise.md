@@ -5,7 +5,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 - **Language:** [COBOL](../by-language/cobol.md)
 - **Category:** [language](../by-category/language.md)
-- **Capability cells:** 6
+- **Capability cells:** 7
 
 ## Capabilities
 
@@ -17,6 +17,7 @@ Auto-generated. Back to [summary](../summary.md).
 | Fs effect | ✅ `full` | `2026-06-12` | 4908 | `internal/extractors/cobol/depth.go`<br>`internal/extractors/cobol/extractor.go`<br>`internal/extractors/cobol/extractor_test.go`<br>`internal/extractors/cobol/testdata/payroll.cbl`<br>`internal/substrate/effect_sinks_cobol.go` | Native file I/O verbs (READ/OPEN INPUT|I-O/START → fs_read; WRITE/REWRITE/DELETE/OPEN OUTPUT|EXTEND → fs_write) are sniffed and attributed to the enclosing paragraph (effect_sinks_cobol.go). NEW in #4908: ENVIRONMENT ▸ FILE-CONTROL ▸ SELECT <logical> ASSIGN TO <ddname> [ORGANIZATION/ACCESS/RECORD KEY] now emits a resolvable SCOPE.Datastore/file entity (parseFileSelect/buildFileResourceEntity) with assign_to upper-cased to match the JCL DD coupling key, organization/access_mode/record_key props, and storage=vsam for INDEXED/RELATIVE/keyed clusters (else sequential). PROCEDURE-DIVISION OPEN/READ/WRITE on the logical file wire READS_FROM/WRITES_TO edges to that resource, so abstract file effects now bind to a physical dataset / VSAM cluster and shared-VSAM cross-program coupling is visible. Proven by TestExtractor_FileControlSelect / _FileIODataFlow / _VSAMKsds. |
 | HTTP effect | ✅ `full` | `2026-05-28` | 2838 | `internal/extractors/cobol/depth.go`<br>`internal/substrate/effect_sinks_cobol.go` | — |
 | Import resolution quality | ✅ `full` | `2026-05-28` | 2838 | `internal/extractors/cobol/depth.go`<br>`internal/extractors/cobol/extractor.go` | — |
+| Navigates to | 🟢 `partial` | `2026-06-24` | 5369 | `internal/extractors/cobol/extractor.go`<br>`internal/extractors/cobol/extractor_test.go`<br>`internal/extractors/cobol/testdata/payroll.cbl`<br>`internal/extractors/cobol/testdata/taxrules.cpy` | PARTIAL (mainframe-migration lineage spike #5369) — the cross-file COBOL call-graph lineage: intra-program PERFORM/PERFORM-THRU/GO-TO transfers and inter-program CALL '<prog>' edges are emitted as bare-name CALLS that the by-name resolver binds to a sibling program PROGRAM-ID, and COPY <member> brings in the copybook 01/05-level DATA-DIVISION field entities (resolved to the on-disk .cpy). Honest-partial: dynamic CALL <var> only partially recovered via move-literal tracing (#5040); no STEPLIB/load-library disambiguation or REPLACING-rewritten field renaming. See TestMainframeLineageSpike_CallGraph / _CopybookFields. |
 
 ## Provenance
 

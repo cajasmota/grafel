@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
@@ -1488,5 +1489,107 @@ func TestExtractor_IMSDLINoMatchNoOp(t *testing.T) {
 	// The ordinary CALL is still emitted.
 	if !hasCallTo(recs, "AUDITLOG") {
 		t.Error("expected the ordinary CALL 'AUDITLOG' edge to survive")
+	}
+}
+
+// TestMainframeLineageSpike_CopybookFields proves the cross-file mainframe
+// lineage chain the migration spike targets (#5369): a COBOL program's
+// `COPY <member>` brings in the copybook's own 01/05-level DATA-DIVISION
+// fields, and those fields are resolvable to the field entities extracted from
+// the sibling .cpy file. This is the copybook-field half of the spike — the
+// COPY edge is a real cross-file dependency whose target carries data fields,
+// not an opaque include. Honest-partial: bare-name field resolution, no
+// REPLACING-rewritten field renaming.
+func TestMainframeLineageSpike_CopybookFields(t *testing.T) {
+	root := filepath.Join("testdata")
+	cpyPath := filepath.Join(root, "taxrules.cpy")
+	cpySrc, err := os.ReadFile(cpyPath)
+	if err != nil {
+		t.Fatalf("read copybook fixture: %v", err)
+	}
+	// 1. Extract the copybook on its own — a .cpy carries data items with no
+	//    surrounding division; the extractor still emits its fields.
+	cpyRecs := runWithRoot(t, "taxrules.cpy", string(cpySrc), root)
+	gotFields := map[string]bool{}
+	for _, f := range findByKind(cpyRecs, "SCOPE.Schema", "field") {
+		gotFields[f.Name] = true
+	}
+	for _, want := range []string{"TAX-RULES", "TR-BRACKET", "TR-RATE", "TR-CAP"} {
+		if !gotFields[want] {
+			t.Errorf("copybook field %q not extracted from taxrules.cpy", want)
+		}
+	}
+
+	// 2. Extract the program with RepoRoot so the COPY directive resolves to
+	//    the on-disk copybook file.
+	cblPath := filepath.Join(root, "payroll.cbl")
+	cblSrc, err := os.ReadFile(cblPath)
+	if err != nil {
+		t.Fatalf("read cobol fixture: %v", err)
+	}
+	cblRecs := runWithRoot(t, "payroll.cbl", string(cblSrc), root)
+	imp, ok := importEdge(cblRecs, "TAXRULES")
+	if !ok {
+		t.Fatal("expected a COPY TAXRULES IMPORTS edge from payroll.cbl")
+	}
+	if imp.Properties["resolved"] != "true" {
+		t.Errorf("COPY TAXRULES resolved = %q, want true (on-disk .cpy present)",
+			imp.Properties["resolved"])
+	}
+}
+
+// TestMainframeLineageSpike_CallGraph proves the COBOL call-graph lineage half
+// of the spike (#5369): intra-program PERFORM transfers and inter-program CALL
+// edges, with the inter-program CALL targets resolvable to sibling COBOL
+// PROGRAM-ID entities. Honest-partial: literal-CALL targets bind by name;
+// dynamic `CALL <var>` is only partially recovered (move-literal tracing).
+func TestMainframeLineageSpike_CallGraph(t *testing.T) {
+	root := filepath.Join("testdata")
+	cblSrc, err := os.ReadFile(filepath.Join(root, "payroll.cbl"))
+	if err != nil {
+		t.Fatalf("read cobol fixture: %v", err)
+	}
+	recs := runWithRoot(t, "payroll.cbl", string(cblSrc), root)
+
+	// Intra-program PERFORM → CALLS(via=PERFORM).
+	var perform, external bool
+	for _, rel := range relationsByKind(recs, "CALLS") {
+		switch rel.Properties["via"] {
+		case "PERFORM", "PERFORM-THRU":
+			perform = true
+		case "CALL":
+			if rel.Properties["external"] == "true" {
+				external = true
+			}
+		}
+	}
+	if !perform {
+		t.Error("expected at least one intra-program PERFORM CALLS edge")
+	}
+	if !external {
+		t.Error("expected at least one inter-program CALL (external) edge")
+	}
+
+	// Inter-program CALL targets (TAXCALC / AUDITLOG) are emitted as bare-name
+	// CALLS edges the by-name resolver binds to a sibling program's PROGRAM-ID.
+	for _, target := range []string{"TAXCALC", "AUDITLOG"} {
+		if !hasCallTo(recs, target) {
+			t.Errorf("expected inter-program CALL edge to %q", target)
+		}
+	}
+
+	// Simulate the sibling-program resolution the indexer's by-name resolver
+	// performs: a TAXCALC PROGRAM-ID extracted from another .cbl binds the
+	// bare CALL 'TAXCALC' edge to that program entity.
+	taxcalc := []types.EntityRecord{{
+		ID: "cobtaxcalc000001", Name: "TAXCALC",
+		Kind: "SCOPE.Component", Subtype: "program", Language: "cobol",
+	}}
+	all := append([]types.EntityRecord{}, recs...)
+	all = append(all, taxcalc...)
+	idx := resolve.BuildIndex(all)
+	id, ok := idx.Lookup("TAXCALC")
+	if !ok || id != "cobtaxcalc000001" {
+		t.Fatalf("by-name lookup of TAXCALC = (%q,%v), want the sibling program ID", id, ok)
 	}
 }

@@ -196,6 +196,20 @@ records:
           - file: internal/extractors/cobol/extractor_test.go
         issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
+      navigates_to:
+        # #5369 mainframe-migration lineage spike: cross-file call-graph +
+        # copybook-field lineage — PERFORM/CALL bare-name edges bind to a
+        # sibling PROGRAM-ID, COPY pulls in copybook field entities. PARTIAL.
+        status: partial
+        symbols:
+          - file: internal/extractors/cobol/extractor.go
+            functions: [extractCOBOL, attachCall]
+          - file: internal/extractors/cobol/depth.go
+            functions: [resolveCopybook, parseCopyDirective, buildCopyImportEdge]
+        tests:
+          - file: internal/extractors/cobol/extractor_test.go
+        issues_implemented: ["5369"]
+        verified_at: "2026-06-24"
 
   lang.cobol.runtime.gnucobol:
     capabilities:
@@ -270,6 +284,22 @@ records:
           - file: internal/substrate/effect_sinks_cobol_test.go
         issues_implemented: ["2743", "2838"]
         verified_at: "2026-05-28"
+
+  lang.jcl.runtime.zos:
+    capabilities:
+      navigates_to:
+        # #5369 mainframe-migration lineage spike: the full job->program->
+        # dataset lineage chain — JOB CONTAINS steps, EXEC PGM= bare-name
+        # CALLS binds to the COBOL PROGRAM-ID, DD DSN= datasets carry
+        # DISP-governed READS_FROM/WRITES_TO direction. PARTIAL.
+        status: partial
+        symbols:
+          - file: internal/extractors/jcl/extractor.go
+            functions: [extractJCL, scanControlCards]
+        tests:
+          - file: internal/extractors/jcl/extractor_test.go
+        issues_implemented: ["5369", "2843"]
+        verified_at: "2026-06-24"
 
   lang.assembly.toolchain.gnu-as:
     capabilities:

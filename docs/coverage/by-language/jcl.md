@@ -23,4 +23,4 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [IBM z/OS JCL (JES2/JES3)](../detail/lang.jcl.runtime.zos.md) | [language](../by-category/language.md) | ✅ | |
+| [IBM z/OS JCL (JES2/JES3)](../detail/lang.jcl.runtime.zos.md) | [language](../by-category/language.md) | 🟢 | |

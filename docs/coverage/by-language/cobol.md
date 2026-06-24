@@ -23,8 +23,8 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Category | Status | Notes |
 |---|---|---|---|
-| [COBOL](../detail/lang.cobol.core.md) | [language](../by-category/language.md) | ✅ | |
+| [COBOL](../detail/lang.cobol.core.md) | [language](../by-category/language.md) | 🟢 | |
 | [COBOL CICS](../detail/lang.cobol.embedded.cics.md) | [language](../by-category/language.md) | ✅ | |
 | [COBOL Embedded DB2 SQL](../detail/lang.cobol.embedded.db2-sql.md) | [language](../by-category/language.md) | ✅ | |
 | [GnuCOBOL](../detail/lang.cobol.runtime.gnucobol.md) | [language](../by-category/language.md) | ✅ | |
-| [IBM Enterprise COBOL](../detail/lang.cobol.runtime.ibm-enterprise.md) | [language](../by-category/language.md) | ✅ | |
+| [IBM Enterprise COBOL](../detail/lang.cobol.runtime.ibm-enterprise.md) | [language](../by-category/language.md) | 🟢 | |
