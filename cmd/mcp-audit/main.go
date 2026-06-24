@@ -1,21 +1,28 @@
 // cmd/mcp-audit measures the MCP handshake token budget.
 //
 // It instantiates the MCP server against a minimal empty registry, captures
-// every registered tool definition via the server's internal tool list, and
-// estimates the handshake token count using a conservative 4-chars-per-token
-// ratio (matches Claude's cl100k tokenizer within 5 % on English text).
+// every ADVERTISED tool definition via the server's internal tool list
+// (hidden #5546 aliases are excluded — see toolsFromServer), and estimates the
+// handshake token count using a conservative 4-chars-per-token ratio (matches
+// Claude's cl100k tokenizer within 5 % on English text).
+//
+// After the #5546 consolidation (68 → 22 intent-named tools, validated in
+// #5556), the advertised surface is the 22 canonical tools plus the
+// grafel_status sentinel (23 rows here; the live tools/list handshake drops
+// the sentinel → exactly 22). The measured handshake is ~3,545 tokens, down
+// from the 7,592-token, 68-tool baseline (~53 % reduction).
 //
 // # Usage
 //
 //	go run ./cmd/mcp-audit                   # human-readable report
 //	go run ./cmd/mcp-audit -json             # machine-readable JSON
-//	go run ./cmd/mcp-audit -ceiling 3500     # override token ceiling
+//	go run ./cmd/mcp-audit -ceiling 4500     # override token ceiling
 //	make mcp-audit                           # CI gate (uses AUDIT_CEILING env)
 //
 // # Environment variables
 //
-//	AUDIT_CEILING   token ceiling (default 3500). Exit 1 when exceeded.
-//	AUDIT_BASELINE  baseline token count for delta output.
+//	AUDIT_CEILING   token ceiling (default mcp.TokenCeiling). Exit 1 when exceeded.
+//	AUDIT_BASELINE  baseline token count for delta output (default defaultBaseline).
 package main
 
 import (
@@ -42,6 +49,13 @@ import (
 // See that file's const comment for the full bump history.
 // To raise the ceiling, update TokenCeiling in internal/mcp/budget.go only.
 var defaultCeiling = mcp.TokenCeiling
+
+// defaultBaseline is the pre-#5546 handshake cost (68 tools, 7,592 tokens via
+// this same chars/4 estimator + envelope), recorded by #5556 as the reference
+// for the consolidation delta. Reported out-of-the-box; override with
+// AUDIT_BASELINE or -baseline. Post-consolidation the advertised handshake is
+// ~3,545 tokens (~53 % reduction).
+const defaultBaseline = 7592
 
 // maxDescLen is the per-tool description character limit.
 const maxDescLen = 80
@@ -90,7 +104,7 @@ func main() {
 		ceiling = *ceilingFlag
 	}
 
-	baseline := 0
+	baseline := defaultBaseline
 	if v := os.Getenv("AUDIT_BASELINE"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 {
 			baseline = n
