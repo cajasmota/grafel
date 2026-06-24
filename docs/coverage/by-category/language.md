@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # language
 
-**Total**: 26 records · **assembly**: 5 · **clojure**: 1 · **COBOL**: 5 · **crystal**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 2 · **F#**: 1 · **groovy**: 1 · **JCL**: 1 · **lua**: 1 · **nim**: 1 · **scala**: 1 · **solidity**: 2 · **swift**: 1 · **verilog**: 1
+**Total**: 27 records · **assembly**: 5 · **clojure**: 1 · **COBOL**: 5 · **crystal**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 2 · **F#**: 1 · **groovy**: 1 · **JCL**: 1 · **lua**: 1 · **nim**: 1 · **scala**: 1 · **solidity**: 2 · **swift**: 1 · **verilog**: 1 · **VHDL**: 1
 
 Back to [summary](../summary.md). Bucket: **Other**.
 
@@ -33,3 +33,4 @@ Back to [summary](../summary.md). Bucket: **Other**.
 | [solidity](../by-language/solidity.md) | [Solidity](../detail/lang.solidity.core.md) | 🟢 | ✅ | — | — | — | — | 🟢 | 🟢 | |
 | [swift](../by-language/swift.md) | [Swift (base language)](../detail/lang.swift.base.md) | ✅ | ✅ | — | — | — | — | ✅ | ✅ | |
 | [verilog](../by-language/verilog.md) | [Verilog / SystemVerilog](../detail/lang.verilog.core.md) | — | 🟢 | — | — | — | — | — | 🟢 | |
+| [VHDL](../by-language/vhdl.md) | [VHDL](../detail/lang.vhdl.core.md) | — | 🟢 | — | — | — | — | — | 🟢 | |

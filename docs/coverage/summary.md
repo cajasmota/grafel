@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # grafel capabilities
 
-**Languages**: 39 (33 active · 6 placeholder) · **Frameworks**: 263 · **ORMs**: 186 · **Tools**: 151 · **Other**: 209
+**Languages**: 39 (34 active · 5 placeholder) · **Frameworks**: 263 · **ORMs**: 186 · **Tools**: 156 · **Other**: 210
 
 ## Coverage by language
 
@@ -39,6 +39,7 @@
 | [JCL](by-language/jcl.md) | 0 | 0 | 0 | 1 |
 | [solidity](by-language/solidity.md) | 0 | 2 | 0 | 2 |
 | [verilog](by-language/verilog.md) | 0 | 4 | 0 | 1 |
+| [VHDL](by-language/vhdl.md) | 0 | 5 | 0 | 1 |
 | [zig](by-language/zig.md) | 0 | 3 | 0 | 0 |
 
 ## Cross-cutting infrastructure
@@ -81,6 +82,5 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Lisp](by-language/lisp.md) |
 | [Pony](by-language/pony.md) |
 | [Standard ML](by-language/sml.md) |
-| [VHDL](by-language/vhdl.md) |
 
-Total: 263 frameworks · 151 tools · 186 ORMs · 209 other
+Total: 263 frameworks · 156 tools · 186 ORMs · 210 other

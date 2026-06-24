@@ -493,6 +493,205 @@ func TestVHDL_TestbenchFixture(t *testing.T) {
 	}
 }
 
+// ── Port topology (#5381) ─────────────────────────────────────────────────────
+
+func vhFindPort(ents []types.EntityRecord, name string) *types.EntityRecord {
+	return vhFindSubtype(ents, name, "SCOPE.Schema", "port")
+}
+
+func TestVHDL_EntityPorts(t *testing.T) {
+	src := `
+entity Adder is
+  port (
+    clk  : in    std_logic;
+    a, b : in    std_logic_vector(7 downto 0);
+    sum  : out   std_logic_vector(8 downto 0);
+    bus  : inout std_logic
+  );
+end entity Adder;
+`
+	ents := runVHDL(t, src, "adder.vhd")
+
+	for _, tc := range []struct{ name, dir, width string }{
+		{"Adder.clk", "in", ""},
+		{"Adder.a", "in", "(7 downto 0)"},
+		{"Adder.b", "in", "(7 downto 0)"},
+		{"Adder.sum", "out", "(8 downto 0)"},
+		{"Adder.bus", "inout", ""},
+	} {
+		p := vhFindPort(ents, tc.name)
+		if p == nil {
+			t.Errorf("missing port %s", tc.name)
+			continue
+		}
+		if p.Properties["direction"] != tc.dir {
+			t.Errorf("%s: direction=%q want %q", tc.name, p.Properties["direction"], tc.dir)
+		}
+		if p.Properties["width"] != tc.width {
+			t.Errorf("%s: width=%q want %q", tc.name, p.Properties["width"], tc.width)
+		}
+	}
+
+	// CONTAINS edges entity → ports.
+	if !vhHasRelPartial(ents, "Adder", "SCOPE.Component", "CONTAINS", "Adder.clk") {
+		t.Error("expected CONTAINS edge Adder → Adder.clk")
+	}
+}
+
+func TestVHDL_PortDedup(t *testing.T) {
+	src := `
+entity Dut is
+  port (
+    clk : in std_logic
+  );
+end entity Dut;
+`
+	ents := runVHDL(t, src, "dut.vhd")
+	count := 0
+	for i := range ents {
+		if ents[i].Name == "Dut.clk" && ents[i].Subtype == "port" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("expected exactly 1 Dut.clk port entity, got %d", count)
+	}
+}
+
+// ── Instance topology props (#5381) ───────────────────────────────────────────
+
+func TestVHDL_InstanceTopology(t *testing.T) {
+	src := `
+entity Top is
+end entity Top;
+
+architecture rtl of Top is
+begin
+  u_dut : CounterTop port map (clk => clk_s);
+  u_cfg : ParamBlock generic map (W => 8) port map (clk => clk_s);
+end architecture rtl;
+`
+	ents := runVHDL(t, src, "top.vhd")
+
+	arch := vhFindSubtype(ents, "rtl_of_Top", "SCOPE.Component", "architecture")
+	if arch == nil {
+		t.Fatal("missing architecture rtl_of_Top")
+	}
+	got := map[string]types.RelationshipRecord{}
+	for _, r := range arch.Relationships {
+		if r.Kind == "USES" {
+			got[r.ToID] = r
+		}
+	}
+	dut, ok := got["CounterTop"]
+	if !ok {
+		t.Fatal("missing USES edge → CounterTop")
+	}
+	if dut.Properties["instance_name"] != "u_dut" {
+		t.Errorf("CounterTop instance_name=%q want u_dut", dut.Properties["instance_name"])
+	}
+	if dut.Properties["component_type"] != "CounterTop" {
+		t.Errorf("CounterTop component_type=%q want CounterTop", dut.Properties["component_type"])
+	}
+	cfg, ok := got["ParamBlock"]
+	if !ok {
+		t.Fatal("missing USES edge → ParamBlock")
+	}
+	if cfg.Properties["parameterized"] != "true" {
+		t.Errorf("ParamBlock should be flagged parameterized; props=%v", cfg.Properties)
+	}
+}
+
+// ── Sim/synth tool detection (#5381) ──────────────────────────────────────────
+
+func vhFindTool(ents []types.EntityRecord, label string) *types.EntityRecord {
+	return vhFindSubtype(ents, label, "SCOPE.Component", "tool")
+}
+
+func TestVHDL_GhdlPragma(t *testing.T) {
+	src := `
+architecture rtl of Foo is
+begin
+  -- pragma translate_off
+  assert false report "sim only" severity note;
+  -- pragma translate_on
+end architecture rtl;
+`
+	ents := runVHDL(t, src, "foo.vhd")
+	tool := vhFindTool(ents, "GHDL")
+	if tool == nil {
+		t.Fatal("expected GHDL tool entity from translate_off pragma")
+	}
+	if tool.Properties["tool"] != "ghdl" {
+		t.Errorf("tool prop=%q want ghdl", tool.Properties["tool"])
+	}
+}
+
+func TestVHDL_ModelsimPragma(t *testing.T) {
+	src := `
+architecture rtl of Foo is
+begin
+  -- synthesis off
+  assert false;
+  -- synthesis on
+end architecture rtl;
+`
+	ents := runVHDL(t, src, "foo.vhd")
+	if vhFindTool(ents, "ModelSim/QuestaSim") == nil {
+		t.Fatal("expected ModelSim/QuestaSim tool entity from -- synthesis off")
+	}
+}
+
+func TestVHDL_VivadoAttrs(t *testing.T) {
+	src := `
+architecture rtl of Foo is
+  attribute keep       : string;
+  attribute mark_debug : string;
+begin
+end architecture rtl;
+`
+	ents := runVHDL(t, src, "foo.vhd")
+	if vhFindTool(ents, "Vivado") == nil {
+		t.Fatal("expected Vivado tool entity from attribute keep / mark_debug")
+	}
+}
+
+func TestVHDL_QuartusAttrs(t *testing.T) {
+	src := `
+architecture rtl of Foo is
+  attribute altera_attribute : string;
+  attribute preserve         : boolean;
+begin
+end architecture rtl;
+`
+	ents := runVHDL(t, src, "foo.vhd")
+	if vhFindTool(ents, "Quartus") == nil {
+		t.Fatal("expected Quartus tool entity from altera_attribute / preserve")
+	}
+}
+
+func TestVHDL_YosysAttr(t *testing.T) {
+	src := `
+architecture rtl of Foo is
+  attribute blackbox : boolean;
+begin
+end architecture rtl;
+`
+	ents := runVHDL(t, src, "foo.vhd")
+	if vhFindTool(ents, "Yosys") == nil {
+		t.Fatal("expected Yosys tool entity from attribute blackbox")
+	}
+}
+
+func TestVHDL_NoToolFalsePositive(t *testing.T) {
+	ents := runVHDL(t, counterSrc, "counter.vhd")
+	for i := range ents {
+		if ents[i].Subtype == "tool" {
+			t.Errorf("unexpected tool entity %q on plain counter", ents[i].Name)
+		}
+	}
+}
+
 // TestVHDL_NoFalsePositives verifies that VHDL keywords do not appear as USES edges.
 func TestVHDL_NoFalsePositives(t *testing.T) {
 	ents := runVHDL(t, counterSrc, "counter.vhd")
