@@ -10,6 +10,29 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.5.3] — 2026-06-25
+
+**Patch — Windows install & UX hardening.** Six fixes from a real Windows user
+report spanning install, upgrade, and the dashboard.
+
+### Fixed
+- **PATH no longer lost on long PATHs (#5589):** the Windows installer writes the
+  user PATH via the registry instead of `setx` (which silently truncates past 1024
+  chars), so `grafel` lands on PATH even with a long existing PATH.
+- **Upgrade no longer blocked by a running binary (#5590):** the installer stops
+  the daemon before replacing `grafel.exe`, then restarts it.
+- **Robust release-tag resolution (#5591):** the Windows installers resolve the
+  latest tag via the GitHub API with strict validation, failing fast with a clear
+  hint instead of a garbage tag.
+- **Daemon survives terminal close (#5594):** the Windows daemon launches
+  detached/hidden, so closing the launching terminal no longer takes it down.
+- **Clean install status (#5596):** `install` prints a one-line daemon version
+  instead of dumping the dashboard HTML.
+- **Drive switching in the folder picker (#5595):** the dashboard picker enumerates
+  drives and lets you switch (e.g. C: to D:); the paste-absolute-path fallback stays.
+
+---
+
 ## [0.1.5.2] — 2026-06-24
 
 **Patch — `grafel update` end-to-end fix.** v0.1.5.1 fixed which release asset the
