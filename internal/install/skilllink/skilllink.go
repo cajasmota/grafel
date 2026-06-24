@@ -13,9 +13,12 @@ package skilllink
 import (
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
+
+	grafelassets "github.com/cajasmota/grafel"
 )
 
 // SkillNames lists the 15 user-invocable grafel skills in canonical order.
@@ -142,9 +145,15 @@ func PruneOrphanSkillSymlinks(out io.Writer, skillsSubdir string) {
 //  5. Walk up ancestor directories from dirname(binPath) up to 5 levels,
 //     checking <ancestor>/skills at each level — handles arbitrary repo layouts
 //     such as repo/build/grafel + repo/skills
+//  6. Fall back to the skills EMBEDDED in the binary (#5503): materialise the
+//     bundled skills/ tree into a stable on-disk cache and return that path.
+//     This is what makes `grafel install` work for a released-tarball,
+//     binary-only install where no skills/ directory exists next to the binary
+//     (the macOS symptom in #5503). Steps 1–5 still win when a real on-disk
+//     source is present (so a dev checkout always uses the live tree).
 //
-// Returns "" if none of the locations exist, which signals the caller to
-// error or skip the step.
+// Returns "" only if every source — including the embedded fallback — is
+// unavailable, which signals the caller to error or skip the step.
 //
 // DiscoverSkillsDir is a thin wrapper over DiscoverSkillsDirVerbose that
 // discards the list of attempted paths.
@@ -224,7 +233,104 @@ func DiscoverSkillsDirVerbose(binPath, skillsSourceDir string) (string, []string
 		}
 	}
 
+	// Final fallback (#5503): no on-disk skills/ source was found next to the
+	// binary or in any ancestor. This is the normal situation for a released
+	// tarball install (the binary ships alone). Materialise the skills that are
+	// embedded in the binary into a stable cache dir and use that. This is what
+	// fixes the macOS symptom where MCP registered but no skills landed.
+	if p, err := MaterializeEmbeddedSkills(); err == nil && p != "" {
+		attempted = append(attempted, fmt.Sprintf("embedded: %s", p))
+		return p, attempted
+	} else if err != nil {
+		attempted = append(attempted, fmt.Sprintf("embedded: %v", err))
+	}
+
 	return "", attempted
+}
+
+// embeddedSkillsCacheDir returns the stable on-disk location where the
+// binary-embedded skills are materialised: $HOME/.grafel/skills-cache.
+// It honours HOME on every platform so tests and sidecar HOMEs resolve
+// consistently with the rest of the install lifecycle (DefaultStatePath,
+// MCP registration). XDG is intentionally not consulted here because the
+// grafel state root is HOME/.grafel everywhere.
+func embeddedSkillsCacheDir() (string, error) {
+	home := os.Getenv("HOME")
+	if home == "" {
+		h, err := os.UserHomeDir()
+		if err != nil {
+			return "", fmt.Errorf("resolve home dir: %w", err)
+		}
+		home = h
+	}
+	return filepath.Join(home, ".grafel", "skills-cache"), nil
+}
+
+// MaterializeEmbeddedSkills extracts the skills bundled into the binary
+// (grafelassets.SkillsFS, embedded from the repo-root skills/ tree) into a
+// stable cache directory and returns that directory's path.
+//
+// The returned directory contains one subdirectory per skill (matching the
+// SkillNames the rest of the install lifecycle copies/symlinks from), so it is
+// a drop-in replacement for an on-disk skills/ source.
+//
+// It is idempotent: a file is only rewritten when its content differs from the
+// embedded copy, so re-installs are cheap and re-materialisation is a no-op
+// when nothing changed (e.g. same binary version).
+func MaterializeEmbeddedSkills() (string, error) {
+	cacheDir, err := embeddedSkillsCacheDir()
+	if err != nil {
+		return "", err
+	}
+	// Walk the embedded "skills" tree and mirror it under cacheDir. The embed
+	// FS roots paths at "skills/...", so we strip that prefix and write the
+	// remainder under cacheDir.
+	const root = "skills"
+	walkErr := fs.WalkDir(grafelassets.SkillsFS, root, func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			return err
+		}
+		if rel == "." {
+			return os.MkdirAll(cacheDir, 0o755)
+		}
+		dst := filepath.Join(cacheDir, filepath.FromSlash(rel))
+		if d.IsDir() {
+			return os.MkdirAll(dst, 0o755)
+		}
+		data, err := grafelassets.SkillsFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		// Idempotent write: skip if the on-disk file already matches.
+		if existing, rerr := os.ReadFile(dst); rerr == nil && bytesEqual(existing, data) {
+			return nil
+		}
+		if err := os.MkdirAll(filepath.Dir(dst), 0o755); err != nil {
+			return err
+		}
+		return os.WriteFile(dst, data, 0o644)
+	})
+	if walkErr != nil {
+		return "", fmt.Errorf("materialise embedded skills into %s: %w", cacheDir, walkErr)
+	}
+	return cacheDir, nil
+}
+
+// bytesEqual is a tiny helper avoiding a bytes import for one comparison.
+func bytesEqual(a, b []byte) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // InstallSkillsInClaudeConfigs symlinks the grafel skills into every

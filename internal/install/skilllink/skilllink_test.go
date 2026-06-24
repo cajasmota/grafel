@@ -30,10 +30,16 @@ func TestDiscoverSkillsDir(t *testing.T) {
 		}
 	})
 
-	t.Run("explicit skillsSourceDir that does not exist returns empty", func(t *testing.T) {
+	t.Run("explicit skillsSourceDir that does not exist falls back to embedded", func(t *testing.T) {
+		// A bad explicit flag must not short-circuit; with no on-disk source
+		// anywhere, discovery now materialises the binary-embedded skills (#5503).
+		t.Setenv("HOME", t.TempDir())
 		result := DiscoverSkillsDir("", "/nonexistent/path/skills")
-		if result != "" {
-			t.Errorf("expected empty result, got %q", result)
+		if result == "" {
+			t.Error("expected embedded fallback to provide a skills dir, got empty")
+		}
+		if !strings.HasSuffix(filepath.ToSlash(result), ".grafel/skills-cache") {
+			t.Errorf("expected embedded skills-cache dir, got %q", result)
 		}
 	})
 
@@ -101,25 +107,37 @@ func TestDiscoverSkillsDir(t *testing.T) {
 		}
 	})
 
-	t.Run("no skills anywhere on path returns empty", func(t *testing.T) {
+	t.Run("no on-disk skills anywhere falls back to embedded (#5503)", func(t *testing.T) {
+		// The released-tarball case: no skills/ next to the binary or in any
+		// ancestor. Discovery must materialise the embedded skills rather than
+		// return empty (which previously skipped the skills install on macOS).
+		home := t.TempDir()
+		t.Setenv("HOME", home)
 		dir := t.TempDir()
 		// Do NOT create a skills/ directory anywhere.
 		binPath := filepath.Join(dir, "grafel")
 		result := DiscoverSkillsDir(binPath, "")
-		if result != "" {
-			t.Errorf("expected empty result when no skills/ exists, got %q", result)
+		want := filepath.Join(home, ".grafel", "skills-cache")
+		if result != want {
+			t.Errorf("expected embedded fallback cache %q, got %q", want, result)
+		}
+		// And the materialised cache must actually contain the skills.
+		for _, name := range SkillNames {
+			if _, err := os.Stat(filepath.Join(result, name, "SKILL.md")); err != nil {
+				t.Errorf("embedded skill %s/SKILL.md missing in cache: %v", name, err)
+			}
 		}
 	})
 
-	t.Run("no hardcoded home path dependency", func(t *testing.T) {
-		// Override HOME to a temp dir that has no skills/ — ensures no
-		// machine-specific fallback fires.
-		emptyHome := t.TempDir()
-		t.Setenv("HOME", emptyHome)
+	t.Run("embedded cache is HOME-derived (no hardcoded path)", func(t *testing.T) {
+		// Override HOME to a temp dir — the embedded cache must land under it,
+		// proving no machine-specific path is baked in.
+		home := t.TempDir()
+		t.Setenv("HOME", home)
 		dir := t.TempDir()
 		result := DiscoverSkillsDir(filepath.Join(dir, "grafel"), "")
-		if result != "" {
-			t.Errorf("should return empty with empty HOME + no skills layout; got %q", result)
+		if !strings.HasPrefix(result, home) {
+			t.Errorf("embedded cache should live under HOME %q; got %q", home, result)
 		}
 	})
 
@@ -139,22 +157,24 @@ func TestDiscoverSkillsDir(t *testing.T) {
 	})
 }
 
-// TestDiscoverSkillsDirVerbose_ReportsAllAttemptedPaths verifies that when
-// discovery fails, the returned attempted-paths list names EVERY candidate that
-// was probed (#4459) — including the explicit flag, sibling, one-up, env var,
-// and ancestor walk — so the caller can build a non-misleading error instead of
-// blaming the cwd.
+// TestDiscoverSkillsDirVerbose_ReportsAllAttemptedPaths verifies that the
+// returned attempted-paths list names EVERY on-disk candidate that was probed
+// (#4459) — explicit flag, sibling, one-up, env var, ancestor walk — AND that
+// when none of them exist, discovery succeeds via the binary-embedded fallback
+// (#5503), which is itself recorded in the attempted list.
 func TestDiscoverSkillsDirVerbose_ReportsAllAttemptedPaths(t *testing.T) {
 	envSkills := "/nonexistent/env/skills"
 	t.Setenv("GRAFEL_SKILLS_DIR", envSkills)
+	t.Setenv("HOME", t.TempDir())
 
 	dir := t.TempDir()
 	binPath := filepath.Join(dir, "deep", "build", "grafel")
 	explicit := "/nonexistent/flag/skills"
 
 	result, attempted := DiscoverSkillsDirVerbose(binPath, explicit)
-	if result != "" {
-		t.Fatalf("expected discovery to fail, got %q", result)
+	// With no on-disk source, the embedded fallback now provides the dir.
+	if result == "" {
+		t.Fatal("expected embedded fallback to provide a skills dir, got empty")
 	}
 
 	joined := strings.Join(attempted, "\n")
@@ -166,10 +186,36 @@ func TestDiscoverSkillsDirVerbose_ReportsAllAttemptedPaths(t *testing.T) {
 		"GRAFEL_SKILLS_DIR",
 		envSkills,
 		"ancestor",
+		"embedded",
 	} {
 		if !strings.Contains(joined, want) {
 			t.Errorf("attempted-paths list missing %q; got:\n%s", want, joined)
 		}
+	}
+}
+
+// TestMaterializeEmbeddedSkills verifies the embedded skills materialise to the
+// HOME-derived cache dir, are complete, and are idempotent on a second run.
+func TestMaterializeEmbeddedSkills(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	dir, err := MaterializeEmbeddedSkills()
+	if err != nil {
+		t.Fatalf("MaterializeEmbeddedSkills: %v", err)
+	}
+	want := filepath.Join(home, ".grafel", "skills-cache")
+	if dir != want {
+		t.Fatalf("expected cache dir %q, got %q", want, dir)
+	}
+	for _, name := range SkillNames {
+		if _, err := os.Stat(filepath.Join(dir, name, "SKILL.md")); err != nil {
+			t.Errorf("embedded skill %s/SKILL.md missing: %v", name, err)
+		}
+	}
+	// Second run must be a clean no-op (idempotent).
+	if dir2, err := MaterializeEmbeddedSkills(); err != nil || dir2 != want {
+		t.Fatalf("re-materialise not idempotent: dir=%q err=%v", dir2, err)
 	}
 }
 

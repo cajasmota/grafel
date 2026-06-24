@@ -437,21 +437,25 @@ func assertGitignoreEntry(t *testing.T, repoRoot string) {
 	t.Errorf(".gitignore does not contain /.grafel/; content: %q", string(data))
 }
 
-// TestRunCopy_MissingSkillsDirectory_GracefulDegrade verifies that when the
-// skills directory cannot be discovered, RunCopy WARNS and CONTINUES rather
-// than hard-failing (#4460): the install still succeeds, the daemon/MCP steps
-// proceed, and the persisted state records SkillsSkipped=true. The daemon must
-// be installable from a brand-new binary-only checkout with no skills source.
-func TestRunCopy_MissingSkillsDirectory_GracefulDegrade(t *testing.T) {
+// TestRunCopy_NoOnDiskSkills_EmbeddedFallbackInstalls verifies the #5503 fix:
+// when no skills/ directory can be discovered on disk (a brand-new binary-only
+// install — the macOS released-tarball case), RunCopy now falls back to the
+// skills EMBEDDED in the binary and installs them, while the daemon/MCP steps
+// still proceed. Skills are NOT skipped (the pre-#5503 behaviour, where the
+// user got the MCP but none of the skills).
+//
+// The #4460 "install never hard-fails on a missing skills source" guarantee is
+// preserved: even though discovery finds no on-disk tree, the install succeeds.
+func TestRunCopy_NoOnDiskSkills_EmbeddedFallbackInstalls(t *testing.T) {
 	env := newTestEnv(t)
 
 	// Ensure the env-var discovery path can't accidentally satisfy discovery.
 	t.Setenv("GRAFEL_SKILLS_DIR", "")
 
 	// Place the binary in an isolated dir with NO skills/ anywhere on its
-	// sibling/one-up/ancestor path, so discovery genuinely fails (a brand-new
-	// binary-only install). env.fakeBin lives next to env.skillsSourceDir and
-	// would be found via the sibling/ancestor walk.
+	// sibling/one-up/ancestor path, so on-disk discovery genuinely misses and
+	// the embedded fallback is what provides the skills. env.fakeBin lives next
+	// to env.skillsSourceDir and would be found via the sibling/ancestor walk.
 	isoBinDir := filepath.Join(t.TempDir(), "iso", "bin")
 	if err := os.MkdirAll(isoBinDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -479,13 +483,13 @@ func TestRunCopy_MissingSkillsDirectory_GracefulDegrade(t *testing.T) {
 
 	result, err := install.RunCopy(opts)
 	if err != nil {
-		t.Fatalf("expected graceful degrade (no error) when skills dir missing, got: %v", err)
+		t.Fatalf("expected success via embedded fallback when on-disk skills missing, got: %v", err)
 	}
-	if len(result.SkillsInstalled) != 0 {
-		t.Errorf("expected no skills installed, got %v", result.SkillsInstalled)
+	if len(result.SkillsInstalled) == 0 {
+		t.Error("expected embedded skills to install when no on-disk source exists (#5503)")
 	}
 	if !restartCalled {
-		t.Error("expected daemon restart (step 4) to run after skills were skipped")
+		t.Error("expected daemon restart (step 4) to run")
 	}
 	if result.DaemonVersion != "test-daemon-v0" {
 		t.Errorf("expected daemon to be installed, got version %q", result.DaemonVersion)
@@ -493,19 +497,30 @@ func TestRunCopy_MissingSkillsDirectory_GracefulDegrade(t *testing.T) {
 
 	// MCP must still be registered.
 	if len(result.MCPPaths) == 0 {
-		t.Error("expected MCP registration to proceed even though skills were skipped")
+		t.Error("expected MCP registration to proceed")
 	}
 
-	// State must record the skip.
+	// State must record the skills (not a skip) and a complete install.
 	state, err := install.ReadState(env.statePath)
 	if err != nil {
 		t.Fatalf("read state: %v", err)
 	}
-	if !state.SkillsSkipped {
-		t.Error("expected state.SkillsSkipped=true after graceful skills skip")
+	if state.SkillsSkipped {
+		t.Error("expected state.SkillsSkipped=false now that embedded skills install (#5503)")
+	}
+	if len(state.Skills) == 0 {
+		t.Error("expected state.Skills to record the installed embedded skills")
 	}
 	if state.PartialInstall {
-		t.Error("expected a graceful skills-skip to NOT mark the install partial")
+		t.Error("expected a successful install to NOT be marked partial")
+	}
+
+	// The skill files must physically exist under the resolved Claude skills dir.
+	skillsDest := skilllink.ClaudeSkillsDirForConfig(env.claudeJSON)
+	for _, name := range skilllink.SkillNames {
+		if _, serr := os.Stat(filepath.Join(skillsDest, name, "SKILL.md")); serr != nil {
+			t.Errorf("embedded skill %s/SKILL.md missing after install: %v", name, serr)
+		}
 	}
 }
 

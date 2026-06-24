@@ -9,6 +9,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Fixed
+- **Install now ships the bundled skills, not just the MCP (#5503):** on a
+  released-tarball install (the common path on macOS) the `grafel` binary lands
+  on its own with no `skills/` directory beside it, so `grafel install` found no
+  on-disk skills source, silently skipped the skills step, and registered only
+  the MCP server — leaving users with the grafel MCP tools but none of the
+  `/grafel-*` slash-command skills. The skills are now **embedded in the binary**
+  (single source of truth stays the repo-root `skills/` tree) and skill discovery
+  falls back to materialising them into a stable `~/.grafel/skills-cache` when no
+  on-disk source exists, so `install` copies the full skill set into every
+  detected Claude config's `skills/` dir on macOS, Linux, and Windows alike. A
+  dev/repo checkout still uses the live on-disk tree; the embedded copy is only
+  the last-resort fallback. The copy is idempotent (re-install overwrites
+  cleanly) and `grafel uninstall` removes the installed skills, mirroring the MCP
+  deregistration. All home-derived paths honour `$HOME` consistently with the MCP
+  registration.
 - **Index-concurrency cap — no more all-at-once monorepo storms (#5493):** when a
   group/monorepo with many modules was registered or rebuilt, the daemon indexed
   every module up to the memory-auto-tuned rebuild cap (8 on a 16 GB host, 16 on
