@@ -52,6 +52,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   extractor (`inngest` import or a receiver named/ending in `inngest`, plus the
   `step` object). Append-only. Phase 2 (edges) of the Inngest epic (#5479);
   records the `producer_extraction` capability on `msg.inngest`.
+- **Inngest event → function `SUBSCRIBES_TO` trigger edge (#5483):** the
+  `applyInngestEdges` engine pass now also wires the consumer/trigger side. For
+  each event-triggered `<client>.createFunction({ id }, { event: "..." }, …)`
+  call, it emits a `SUBSCRIBES_TO` edge from the function (`Function:<id>`, the
+  consumer entity #5480 created) to the `SCOPE.MessageTopic` event entity #5481
+  created, resolved via the `SCOPE.MessageTopic:<name>` Kind:Name ToID stub. It
+  **reuses the existing `SUBSCRIBES_TO` consumer edge kind and direction**
+  (consumer function → topic — the same as the Kafka/BullMQ/Azure consumer
+  passes), so the cross-repo topic linker and the dashboard topology/flows
+  panels understand it with no new code. This is the symmetric partner of
+  #5482's `PUBLISHES_TO`: a function that sends event X and another triggered by
+  X form an event → function → event workflow chain. **Cron**-triggered
+  functions (`{ cron: "..." }`, no event) are scheduled jobs and emit no
+  subscriber edge. The function identity is the config `id` (preferred) or
+  `name` (fallback); attribution-gated like the entity extractor (`inngest`
+  import or a receiver named/ending in `inngest`); append-only. Phase 2 (edges)
+  of the Inngest epic (#5479); flips the `consumer_extraction` capability on
+  `msg.inngest` to full.
 - **Index-progress list sorts by status — active rows on top, done sinks (#5495):**
   on the dashboard index/group view the per-repo/module progress rows used to
   render in a static repo/module order, so with a large (e.g. 30-module) group
