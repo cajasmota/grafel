@@ -14,10 +14,14 @@
 package install
 
 import (
+	"archive/tar"
+	"archive/zip"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"net/http"
 	"os"
+	"path"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -312,24 +316,61 @@ func extractJSONStringField(json, field string) string {
 	return rest[1 : end+1]
 }
 
-// downloadReleaseBinary fetches the grafel binary for the given tag/os/arch
-// from the GitHub release assets and writes it to destPath.
+// releaseAssetName builds the release-archive asset name for the given tag and
+// GOOS/GOARCH. It MUST stay in sync with the "Package archive" step of
+// .github/workflows/release.yml, which publishes goreleaser-style archives:
 //
-// The asset naming convention is:
+//	grafel_<version-without-v>_<oslabel>_<arch>.<ext>
 //
-//	grafel-<goos>-<goarch>[.exe]
+// where:
+//   - oslabel = linux | macos (GOOS=darwin) | windows
+//   - arch    = x86_64 (GOARCH=amd64) | arm64
+//   - ext     = zip for windows, tar.gz otherwise
 //
 // e.g.:
 //
-//	grafel-darwin-amd64
-//	grafel-darwin-arm64
-//	grafel-linux-amd64
-//	grafel-windows-amd64.exe
-func downloadReleaseBinary(client *http.Client, tag, goos, goarch, destPath string) error {
-	assetName := fmt.Sprintf("grafel-%s-%s", goos, goarch)
-	if goos == "windows" {
-		assetName += ".exe"
+//	grafel_0.1.5_macos_arm64.tar.gz
+//	grafel_0.1.5_linux_x86_64.tar.gz
+//	grafel_0.1.5_windows_x86_64.zip
+func releaseAssetName(tag, goos, goarch string) string {
+	version := strings.TrimPrefix(tag, "v")
+
+	osLabel := goos
+	if goos == "darwin" {
+		osLabel = "macos"
 	}
+
+	arch := goarch
+	if goarch == "amd64" {
+		arch = "x86_64"
+	}
+
+	ext := "tar.gz"
+	if goos == "windows" {
+		ext = "zip"
+	}
+
+	return fmt.Sprintf("grafel_%s_%s_%s.%s", version, osLabel, arch, ext)
+}
+
+// binaryMemberName returns the name of the binary member inside the release
+// archive for the given GOOS.
+func binaryMemberName(goos string) string {
+	if goos == "windows" {
+		return "grafel.exe"
+	}
+	return "grafel"
+}
+
+// downloadReleaseBinary fetches the grafel release archive for the given
+// tag/os/arch from the GitHub release assets, extracts the grafel binary
+// member from it, and writes that member to destPath.
+//
+// release.yml ships ARCHIVES (not raw binaries): a .tar.gz (linux/macos) or
+// .zip (windows) that bundles the grafel binary alongside LICENSE and
+// README.md. We extract only the binary member and ignore the rest.
+func downloadReleaseBinary(client *http.Client, tag, goos, goarch, destPath string) error {
+	assetName := releaseAssetName(tag, goos, goarch)
 
 	// First, get the release to find the asset download URL.
 	releaseURL := fmt.Sprintf("%s/tags/%s", githubReleasesAPI, tag)
@@ -376,17 +417,102 @@ func downloadReleaseBinary(client *http.Client, tag, goos, goarch, destPath stri
 		return fmt.Errorf("download returned HTTP %d for %s", dlResp.StatusCode, downloadURL)
 	}
 
-	// Write to destination.
+	// Stream the archive to a temp file so we can extract from it (zip needs a
+	// io.ReaderAt; tar/gzip stream fine but a temp file keeps both paths uniform
+	// and bounds memory).
 	if err := os.MkdirAll(filepath.Dir(destPath), 0o755); err != nil {
 		return fmt.Errorf("create dest dir: %w", err)
 	}
-	f, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	archiveTmp, err := os.CreateTemp(filepath.Dir(destPath), "grafel-archive-*"+filepath.Ext(assetName))
 	if err != nil {
-		return fmt.Errorf("create dest file: %w", err)
+		return fmt.Errorf("create temp archive: %w", err)
+	}
+	archivePath := archiveTmp.Name()
+	defer func() { _ = os.Remove(archivePath) }()
+
+	if _, err := io.Copy(archiveTmp, dlResp.Body); err != nil {
+		_ = archiveTmp.Close()
+		return fmt.Errorf("download archive %s: %w", assetName, err)
+	}
+	if err := archiveTmp.Close(); err != nil {
+		return fmt.Errorf("close temp archive: %w", err)
+	}
+
+	member := binaryMemberName(goos)
+	if strings.HasSuffix(assetName, ".zip") {
+		return extractZipMember(archivePath, member, destPath)
+	}
+	return extractTarGzMember(archivePath, member, destPath)
+}
+
+// extractTarGzMember extracts the file named member from the gzip-compressed
+// tar archive at archivePath and writes it to destPath with the executable bit
+// set. Other members (LICENSE, README.md) are ignored.
+func extractTarGzMember(archivePath, member, destPath string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("open archive: %w", err)
 	}
 	defer f.Close()
 
-	if _, err := io.Copy(f, dlResp.Body); err != nil {
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("open gzip stream: %w", err)
+	}
+	defer gz.Close()
+
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("read tar stream: %w", err)
+		}
+		if path.Base(hdr.Name) != member || hdr.Typeflag != tar.TypeReg {
+			continue
+		}
+		return writeBinaryMember(tr, destPath)
+	}
+	return fmt.Errorf("binary member %q not found in archive %s", member, filepath.Base(archivePath))
+}
+
+// extractZipMember extracts the file named member from the zip archive at
+// archivePath and writes it to destPath with the executable bit set. Other
+// members (LICENSE, README.md) are ignored.
+func extractZipMember(archivePath, member, destPath string) error {
+	zr, err := zip.OpenReader(archivePath)
+	if err != nil {
+		return fmt.Errorf("open zip archive: %w", err)
+	}
+	defer zr.Close()
+
+	for _, zf := range zr.File {
+		if path.Base(zf.Name) != member || zf.FileInfo().IsDir() {
+			continue
+		}
+		rc, err := zf.Open()
+		if err != nil {
+			return fmt.Errorf("open zip member %q: %w", member, err)
+		}
+		err = writeBinaryMember(rc, destPath)
+		_ = rc.Close()
+		return err
+	}
+	return fmt.Errorf("binary member %q not found in archive %s", member, filepath.Base(archivePath))
+}
+
+// writeBinaryMember writes the extracted binary stream to destPath with the
+// executable bit set (0o755).
+func writeBinaryMember(src io.Reader, destPath string) error {
+	out, err := os.OpenFile(destPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o755)
+	if err != nil {
+		return fmt.Errorf("create dest file: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, src); err != nil {
 		return fmt.Errorf("write binary: %w", err)
 	}
 	return nil
