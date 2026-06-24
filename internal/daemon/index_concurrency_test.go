@@ -60,8 +60,26 @@ func TestIndexGateCapsConcurrency(t *testing.T) {
 	}
 }
 
-// TestIndexGateFIFOOrder verifies roughly-FIFO admission within a priority class:
-// with cap=1, requests acquired in order 0..N complete in that same order.
+// waitQueued blocks until the gate reports at least want queued waiters (or
+// fails the test after a generous timeout). It is the deterministic alternative
+// to sleeping for enqueues to "settle".
+func waitQueued(t *testing.T, g *IndexGate, want int) {
+	t.Helper()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		if _, queued := g.Stats(); queued >= want {
+			return
+		}
+		if time.Now().After(deadline) {
+			_, queued := g.Stats()
+			t.Fatalf("timed out waiting for queued >= %d (got %d)", want, queued)
+		}
+		time.Sleep(100 * time.Microsecond)
+	}
+}
+
+// TestIndexGateFIFOOrder verifies FIFO admission within a priority class: with
+// cap=1, requests enqueued in order 0..N complete in that same order.
 func TestIndexGateFIFOOrder(t *testing.T) {
 	const n = 8
 	g := NewIndexGate(1)
@@ -73,16 +91,18 @@ func TestIndexGateFIFOOrder(t *testing.T) {
 
 	var mu sync.Mutex
 	var order []int
-	var started sync.WaitGroup
 	var done sync.WaitGroup
 
+	// Launch acquirers one at a time and confirm each is actually enqueued (queued
+	// count reaches idx+1) before launching the next. Sleeps are NOT a reliable
+	// ordering primitive — under loaded CI scheduling, goroutine i can append its
+	// ticket to the gate's FIFO after goroutine i+1, scrambling the queue order
+	// (observed flake: order=[0 1 3 2 5 4 6 7]). Gating on the published queued
+	// count makes the enqueue order well-defined, so the gate's FIFO admission
+	// guarantee is what's actually under test.
 	for i := 0; i < n; i++ {
-		started.Add(1)
 		done.Add(1)
 		go func(idx int) {
-			// Stagger enqueue so tickets queue in a deterministic order.
-			time.Sleep(time.Duration(idx) * 2 * time.Millisecond)
-			started.Done()
 			_ = g.Run(context.Background(), false, func() error {
 				mu.Lock()
 				order = append(order, idx)
@@ -91,10 +111,11 @@ func TestIndexGateFIFOOrder(t *testing.T) {
 			})
 			done.Done()
 		}(i)
+		// Wait until this acquirer's ticket is in the queue before launching the
+		// next, so tickets enqueue strictly in 0..n-1 order.
+		waitQueued(t, g, i+1)
 	}
-	// Wait until all are queued, then release the held slot to drain them FIFO.
-	started.Wait()
-	time.Sleep(20 * time.Millisecond) // let the last enqueues settle into the queue
+	// Release the held slot to drain the queue FIFO.
 	g.Release()
 	done.Wait()
 
