@@ -33,9 +33,14 @@
 //   - an association SCOPE.Schema/association entity per belongs_to/has_many/
 //     has_one carrying assoc_kind + target.
 //
-// Honest exclusions / follow-ups (no fabricated schema):
-//   - Crecto query/repo DSL attribution, migrations, and transactions are
-//     deferred.
+// #5366 deepening — query attribution, migrations, transactions:
+//   - a `Repo.<verb>(Model, …)` call site naming an in-file model (Crecto routes
+//     reads through the Repo with the model as the leading argument) emits a
+//     QUERIES edge model → table stamped with the canonical SQL op.
+//   - a migration `create_table/drop_table/alter_table :x` DSL call (or raw
+//     schema-op SQL via `.exec`) emits a shared SCOPE.Evolution migration-op.
+//   - a `<db>.transaction do … end` block emits a SCOPE.Pattern/
+//     transaction_boundary. Shared helpers in orm_query_migration.go.
 //
 // Registration key: "custom_crystal_crecto_orm".
 package crystal
@@ -83,7 +88,35 @@ var (
 	// crectoPrimaryKeyOptRe matches an explicit `set_primary_key` / `primary_key`
 	// override declaration (opts out of the implicit id synthesis).
 	crectoPrimaryKeyOptRe = regexp.MustCompile(`(?m)^[ \t]*(?:set_primary_key|primary_key)\b`)
+
+	// crectoRepoQueryRe matches a Crecto Repo query whose FIRST argument names the
+	// queried model — `Repo.all(User)`, `Repo.get(User, id)`,
+	// `Repo.get_by(User, ...)`, `Repo.delete_all(User)`. Crecto routes every read
+	// through the Repo with the model class as the leading argument, so this is the
+	// statically-attributable query form (the instance-arg insert/update/delete
+	// pass a lowercase changeset/struct that is not a model name → honest skip).
+	// Group 1 = Repo verb; group 2 = the model class argument.
+	crectoRepoQueryRe = regexp.MustCompile(
+		`(?m)\b\w*Repo\s*\.\s*(all|get_by|get|where|query|aggregate|delete_all|update_all)\s*\(\s*([A-Z]\w*)\b`)
 )
+
+// collectCrectoRepoQueries attributes a canonical SQL op to a model for each
+// `Repo.<verb>(Model, …)` call site naming an in-file model.
+func collectCrectoRepoQueries(src string, modelNames map[string]bool) map[string]map[string]bool {
+	out := map[string]map[string]bool{}
+	for _, m := range crectoRepoQueryRe.FindAllStringSubmatch(src, -1) {
+		verb, model := m[1], m[2]
+		if !modelNames[model] {
+			continue
+		}
+		op := crystalQueryOp(verb)
+		if out[model] == nil {
+			out[model] = map[string]bool{}
+		}
+		out[model][op] = true
+	}
+	return out
+}
 
 // crectoHasModel is a fast pre-filter: the file must reference Crecto::Schema.
 func crectoHasModel(content string) bool {
@@ -106,6 +139,11 @@ func (e *crectoORMExtractor) Extract(
 	if len(models) == 0 {
 		return nil, nil
 	}
+	modelNames := make(map[string]bool, len(models))
+	for _, m := range models {
+		modelNames[m.name] = true
+	}
+	queryOps := collectCrectoRepoQueries(src, modelNames)
 
 	var out []types.EntityRecord
 	for _, m := range models {
@@ -127,6 +165,8 @@ func (e *crectoORMExtractor) Extract(
 				},
 			})
 		}
+		// Query attribution: model → its table, one QUERIES edge per attributed op.
+		rels = append(rels, crystalQueryRels(m.name, m.table, queryOps[m.name], "crecto")...)
 		model.Relationships = rels
 		model.ID = model.ComputeID()
 		out = append(out, model)
@@ -181,6 +221,10 @@ func (e *crectoORMExtractor) Extract(
 			out = append(out, assoc)
 		}
 	}
+
+	// 5. transaction boundaries + 6. migration schema ops (#5366).
+	out = append(out, collectCrystalTransactions(src, file.Path, "crecto")...)
+	out = append(out, collectCrystalMigrations(src, file.Path, "crecto")...)
 	return out, nil
 }
 

@@ -32,20 +32,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4936 | — | Crecto Repo/query DSL attribution is deferred — this PR (#4936) implements model/table/column/association extraction only. Granite (lang.crystal.orm.granite) carries query_attribution; Crecto's is a follow-up. |
+| Query attribution | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/crecto_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | Crecto routes reads through the Repo with the model as leading arg: Repo.<verb>(Model,...) naming an in-file model emits a QUERIES edge model->table with the canonical SQL op (collectCrectoRepoQueries). Instance-arg insert/update/delete pass a lowercase changeset -> honest skip. |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | 4936 | — | Crecto migration parsing is deferred — this PR implements model/table/column/association extraction only. Granite carries migrations; Crecto's is a follow-up. |
-| Migration schema ops | 🔴 `missing` | — | 4936 | — | Crecto migration schema-op normalisation is deferred — see migration_parsing. |
+| Migration parsing | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/crecto_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | Crecto migration create_table/drop_table/alter_table DSL emits a shared SCOPE.Evolution migration-op (collectCrystalMigrations). |
+| Migration schema ops | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/crecto_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | create/drop/alter_table + raw schema-op SQL via .exec map to SCOPE.Evolution create_table/drop_table/alter_table. |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | 🔴 `missing` | — | 4936 | — | Crecto transaction-boundary stamping is deferred — this PR implements model/table/column/association extraction only. Granite carries transactions; Crecto's is a follow-up. |
+| Transaction function stamping | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/crecto_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | A <repo>.transaction do block emits a SCOPE.Pattern/transaction_boundary (collectCrystalTransactions). |
 
 ## Provenance
 

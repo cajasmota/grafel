@@ -34,9 +34,13 @@
 //     has_one carrying assoc_kind + target.
 //   - the `timestamps` macro synthesises created_at/updated_at Time columns.
 //
-// Honest exclusions / follow-ups (no fabricated schema):
-//   - Avram query DSL attribution, operations/SaveOperations, migrations, and
-//     transactions are deferred.
+// #5366 deepening — query attribution, migrations, transactions:
+//   - a `Model.<verb>` / SaveOperation query-DSL call site naming an in-file
+//     model emits a QUERIES edge model → table stamped with the canonical SQL op.
+//   - an Avram migration `create_table/drop_table/alter_table :x` DSL call (or
+//     raw schema-op SQL via `.exec`) emits a shared SCOPE.Evolution migration-op.
+//   - a `<db>.transaction do … end` block emits a SCOPE.Pattern/
+//     transaction_boundary. Shared helpers in orm_query_migration.go.
 //
 // Registration key: "custom_crystal_avram_orm".
 package crystal
@@ -109,6 +113,13 @@ func (e *avramORMExtractor) Extract(
 	if len(models) == 0 {
 		return nil, nil
 	}
+	// Known-model set + query attribution: a `Model.<verb>` / `SaveModel.create`
+	// call site naming an in-file model attributes a canonical SQL op to it.
+	modelNames := make(map[string]bool, len(models))
+	for _, m := range models {
+		modelNames[m.name] = true
+	}
+	queryOps := collectCrystalModelQueries(src, modelNames)
 
 	var out []types.EntityRecord
 	for _, m := range models {
@@ -135,6 +146,8 @@ func (e *avramORMExtractor) Extract(
 				},
 			})
 		}
+		// Query attribution: model → its table, one QUERIES edge per attributed op.
+		rels = append(rels, crystalQueryRels(m.name, tableName, queryOps[m.name], "avram")...)
 		model.Relationships = rels
 		model.ID = model.ComputeID()
 		out = append(out, model)
@@ -188,6 +201,10 @@ func (e *avramORMExtractor) Extract(
 			out = append(out, assoc)
 		}
 	}
+
+	// 5. transaction boundaries + 6. migration schema ops (#5366).
+	out = append(out, collectCrystalTransactions(src, file.Path, "avram")...)
+	out = append(out, collectCrystalMigrations(src, file.Path, "avram")...)
 	return out, nil
 }
 

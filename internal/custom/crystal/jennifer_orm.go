@@ -39,9 +39,13 @@
 //   - the `with_timestamps` macro synthesises the conventional created_at/
 //     updated_at Time audit columns (auto_timestamp=true).
 //
-// Honest exclusions / follow-ups (no fabricated schema):
-//   - Jennifer query DSL attribution, migrations, and transactions are deferred
-//     (Granite has them; Jennifer's are a separate follow-up).
+// #5366 deepening — query attribution, migrations, transactions:
+//   - a `Model.<verb>` query-DSL call site naming an in-file model emits a
+//     QUERIES edge model → table stamped with the canonical SQL op.
+//   - a Jennifer migration `create_table/drop_table/alter_table :x` DSL call (or
+//     raw schema-op SQL via `.exec`) emits a shared SCOPE.Evolution migration-op.
+//   - a `<db>.transaction do … end` block emits a SCOPE.Pattern/
+//     transaction_boundary. Shared helpers in orm_query_migration.go.
 //
 // Registration key: "custom_crystal_jennifer_orm".
 package crystal
@@ -114,6 +118,11 @@ func (e *jenniferORMExtractor) Extract(
 	if len(models) == 0 {
 		return nil, nil
 	}
+	modelNames := make(map[string]bool, len(models))
+	for _, m := range models {
+		modelNames[m.name] = true
+	}
+	queryOps := collectCrystalModelQueries(src, modelNames)
 
 	var out []types.EntityRecord
 	for _, m := range models {
@@ -140,6 +149,8 @@ func (e *jenniferORMExtractor) Extract(
 				},
 			})
 		}
+		// Query attribution: model → its table, one QUERIES edge per attributed op.
+		rels = append(rels, crystalQueryRels(m.name, tableName, queryOps[m.name], "jennifer")...)
 		model.Relationships = rels
 		model.ID = model.ComputeID()
 		out = append(out, model)
@@ -193,6 +204,10 @@ func (e *jenniferORMExtractor) Extract(
 			out = append(out, assoc)
 		}
 	}
+
+	// 5. transaction boundaries + 6. migration schema ops (#5366).
+	out = append(out, collectCrystalTransactions(src, file.Path, "jennifer")...)
+	out = append(out, collectCrystalMigrations(src, file.Path, "jennifer")...)
 	return out, nil
 }
 

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 255 records · **C/C++**: 25 · **clojure**: 4 · **crystal**: 1 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 2 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 17 · **scala**: 14 · **swift**: 5
+**Total**: 256 records · **C/C++**: 25 · **clojure**: 4 · **crystal**: 2 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 2 · **go**: 21 · **groovy**: 1 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 17 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -31,6 +31,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [clojure](../by-language/clojure.md) | [Reitit](../detail/lang.clojure.framework.reitit.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 | [clojure](../by-language/clojure.md) | [Ring](../detail/lang.clojure.framework.ring.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 | [crystal](../by-language/crystal.md) | [Kemal (Crystal HTTP)](../detail/lang.crystal.framework.kemal.md) | 🟡 3/7 | 🔴 0/1 | 🟡 3/4 | ✅ 1/1 | 🟡 13/24 | 🟡 3/10 | |
+| [crystal](../by-language/crystal.md) | [Lucky (Crystal web framework)](../detail/lang.crystal.framework.lucky.md) | 🟡 2/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 | [C#](../by-language/csharp.md) | [ASP.NET Core](../detail/lang.csharp.framework.aspnet-core.md) | 🟡 3/7 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 25/25 | 🟡 10/11 | |
 | [C#](../by-language/csharp.md) | [ASP.NET MVC (legacy)](../detail/lang.csharp.framework.aspnet-mvc.md) | 🟡 3/7 | ✅ 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 25/25 | 🟡 10/11 | |
 | [C#](../by-language/csharp.md) | [Carter](../detail/lang.csharp.framework.carter.md) | 🟡 3/7 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟢 25/25 | 🟡 10/11 | |

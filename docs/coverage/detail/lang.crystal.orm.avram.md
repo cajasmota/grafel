@@ -32,20 +32,20 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4936 | — | Avram query DSL attribution (Model.query chains binding to a table) is deferred — this PR (#4936) implements model/table/column/association extraction only. Granite (lang.crystal.orm.granite) carries query_attribution; Avram's is a follow-up. |
+| Query attribution | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/avram_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | Avram Query/SaveOperation DSL: a Model.<verb> call site naming an in-file model emits a QUERIES edge model->table with the canonical SQL op (collectCrystalModelQueries/crystalQueryRels). Mirrors Granite. |
 
 ### Migrations
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | 4936 | — | Avram migration parsing is deferred — this PR implements model/table/column/association extraction only. Granite carries migrations; Avram's is a follow-up. |
-| Migration schema ops | 🔴 `missing` | — | 4936 | — | Avram migration schema-op normalisation is deferred — see migration_parsing. |
+| Migration parsing | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/avram_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | Avram migration create_table/drop_table/alter_table :x DSL (collectCrystalMigrations) emits a shared SCOPE.Evolution migration-op. |
+| Migration schema ops | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/avram_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | create/drop/alter_table ops + raw schema-op SQL via .exec map to SCOPE.Evolution create_table/drop_table/alter_table (collectCrystalMigrations). |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | 🔴 `missing` | — | 4936 | — | Avram transaction-boundary stamping is deferred — this PR implements model/table/column/association extraction only. Granite carries transactions; Avram's is a follow-up. |
+| Transaction function stamping | ✅ `full` | `2026-06-24` | 5366 | `internal/custom/crystal/avram_orm.go`<br>`internal/custom/crystal/orm_query_migration.go`<br>`internal/custom/crystal/orm_query_migration_test.go` | A <db>.transaction do block emits a SCOPE.Pattern/transaction_boundary (collectCrystalTransactions). |
 
 ## Provenance
 

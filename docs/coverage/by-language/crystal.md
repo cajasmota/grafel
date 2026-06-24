@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # crystal
 
-**Frameworks**: 1 · **Tools**: 0 · **ORMs**: 5 · **Other**: 1
+**Frameworks**: 2 · **Tools**: 1 · **ORMs**: 5 · **Other**: 1
 
 Back to [summary](../summary.md).
 
@@ -27,7 +27,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [Kemal (Crystal HTTP)](../detail/lang.crystal.framework.kemal.md) | 🟡 3/7 | 🔴 0/1 | 🟡 3/4 | ✅ 1/1 | 🟡 13/24 | 🟡 3/10 | |
+| [Lucky (Crystal web framework)](../detail/lang.crystal.framework.lucky.md) | 🟡 2/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 
+
+## Tools
+
+| Name | Dependency graph | Dependency usage status | Lockfile parsing | Manifest parsing | Target extraction | Notes |
+|---|---|---|---|---|---|---|
+| [shards (Crystal)](../detail/pkg.shards.md) | — | — | ✅ | ✅ | — | |
 
 ## ORMs
 
@@ -36,11 +43,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [Avram (Lucky Crystal ORM)](../detail/lang.crystal.orm.avram.md) | 🟡 5/9 | |
-| [Clear (Crystal ORM)](../detail/lang.crystal.orm.clear.md) | 🟡 5/9 | |
-| [Crecto (Crystal ORM)](../detail/lang.crystal.orm.crecto.md) | 🟡 5/9 | |
+| [Avram (Lucky Crystal ORM)](../detail/lang.crystal.orm.avram.md) | ✅ 9/9 | |
+| [Clear (Crystal ORM)](../detail/lang.crystal.orm.clear.md) | ✅ 9/9 | |
+| [Crecto (Crystal ORM)](../detail/lang.crystal.orm.crecto.md) | ✅ 9/9 | |
 | [Granite (Crystal ORM)](../detail/lang.crystal.orm.granite.md) | ✅ 10/10 | |
-| [Jennifer (Crystal ORM)](../detail/lang.crystal.orm.jennifer.md) | 🟡 5/9 | |
+| [Jennifer (Crystal ORM)](../detail/lang.crystal.orm.jennifer.md) | ✅ 9/9 | |
 
 
 ## Other

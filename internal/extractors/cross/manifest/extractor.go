@@ -182,6 +182,9 @@ var exactManifestNames = map[string]bool{
 	// Lua — LuaRocks lockfile (the *.rockspec manifest is suffix-matched in
 	// IsManifest/dispatchParser since rock names vary per package).
 	"luarocks.lock": true,
+	// Crystal — shards (shard.yml manifest + shard.lock lockfile)
+	"shard.yml":  true,
+	"shard.lock": true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -250,6 +253,9 @@ func detectPackageManager(filePath string) string {
 		"Makefile":     "erlang_mk",
 		// Lua — LuaRocks
 		"luarocks.lock": "luarocks",
+		// Crystal — shards
+		"shard.yml":  "shards",
+		"shard.lock": "shards",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -1723,6 +1729,123 @@ func parseBuildGradle(source string) []dep {
 }
 
 // ---------------------------------------------------------------------------
+// Parser: shard.yml (Crystal shards manifest)
+// ---------------------------------------------------------------------------
+//
+// shard.yml is the Crystal `shards` package-manager manifest (YAML). A
+// dependency is a sub-key under the top-level `dependencies:` (runtime) or
+// `development_dependencies:` (dev) maps; the shard name is the sub-key and the
+// version is an INDENTED `version:` line in the dependency's nested body (the
+// source — github:/git:/path: — is the resolution coordinate, not the version):
+//
+//	name: myapp
+//	version: 0.1.0
+//	dependencies:
+//	  kemal:
+//	    github: kemalcr/kemal
+//	    version: ~> 1.1.0
+//	  jennifer:
+//	    github: imdrasil/jennifer.cr
+//	development_dependencies:
+//	  spectator:
+//	    github: crystal-loot/spectator
+//	    version: ~> 0.10.0
+//
+// Honest-partial: a shard with no nested `version:` (pinned only by branch/commit
+// /path) still emits the dependency with an empty version. The top-level
+// `name:`/`version:`/`crystal:`/`license:` scalar keys are project metadata, not
+// dependencies, and are excluded by the section-scoping below.
+var shardDepKeyRE = regexp.MustCompile(`(?m)^  ([A-Za-z0-9_-]+):\s*$`)
+var shardVersionRE = regexp.MustCompile(`(?m)^\s+version:\s*"?([^"\n]+?)"?\s*$`)
+
+// shardSectionBody returns the indented body of a top-level `<section>:` map in a
+// shard.yml / shard.lock document, i.e. every line until the next column-0 key.
+func shardSectionBody(source, section string) string {
+	marker := "\n" + section + ":"
+	idx := strings.Index(source, marker)
+	if idx < 0 {
+		if strings.HasPrefix(source, section+":") {
+			idx = -1 // body starts at offset 0's section line
+		} else {
+			return ""
+		}
+	}
+	body := source[idx+len(marker):]
+	if idx < 0 {
+		body = source[len(section+":"):]
+	}
+	// Stop at the next top-level key (a line beginning in column 0).
+	if end := regexp.MustCompile(`(?m)^[A-Za-z]`).FindStringIndex(body); end != nil {
+		body = body[:end[0]]
+	}
+	return body
+}
+
+// parseShardSection extracts the shards declared under one section body, reading
+// each shard's nested `version:` line. Used for both shard.yml's
+// dependencies/development_dependencies and shard.lock's shards map.
+func parseShardSection(body string, isDev bool, kind string) []dep {
+	idx := shardDepKeyRE.FindAllStringSubmatchIndex(body, -1)
+	var out []dep
+	for i, m := range idx {
+		name := body[m[2]:m[3]]
+		blockEnd := len(body)
+		if i+1 < len(idx) {
+			blockEnd = idx[i+1][0]
+		}
+		block := body[m[1]:blockEnd]
+		version := ""
+		if vm := shardVersionRE.FindStringSubmatch(block); vm != nil {
+			version = strings.TrimSpace(vm[1])
+		}
+		out = append(out, dep{name: name, version: version, isDev: isDev, kind: kind})
+	}
+	return out
+}
+
+func parseShardYml(source string) []dep {
+	var out []dep
+	seen := map[string]bool{}
+	add := func(deps []dep) {
+		for _, d := range deps {
+			if seen[d.name] {
+				continue
+			}
+			seen[d.name] = true
+			out = append(out, d)
+		}
+	}
+	add(parseShardSection(shardSectionBody(source, "dependencies"), false, "runtime"))
+	add(parseShardSection(shardSectionBody(source, "development_dependencies"), true, "dev"))
+	return out
+}
+
+// ---------------------------------------------------------------------------
+// Parser: shard.lock (Crystal shards lockfile)
+// ---------------------------------------------------------------------------
+//
+// shard.lock is the resolved-tree lockfile `shards` writes after `shards
+// install`. It is YAML with a top-level `shards:` map (every dependency in the
+// resolved closure — including transitive shards the manifest never names) each
+// carrying a `git:`/`github:` source and the exact resolved `version:`:
+//
+//	version: 2.0
+//	shards:
+//	  kemal:
+//	    git: https://github.com/kemalcr/kemal.git
+//	    version: 1.1.2
+//	  radix:
+//	    git: https://github.com/luislavena/radix.git
+//	    version: 0.4.1
+//
+// Lockfile deps record the EXACT resolved version (kind="locked") — the point of
+// lockfile_parsing. The top-level `version:` scalar is the lockfile-format
+// version, not a shard, and is excluded by scoping to the `shards:` section.
+func parseShardLock(source string) []dep {
+	return parseShardSection(shardSectionBody(source, "shards"), false, "locked")
+}
+
+// ---------------------------------------------------------------------------
 
 type parserFn func(source string) []dep
 
@@ -1763,6 +1886,9 @@ var parsers = map[string]parserFn{
 	"erlang.mk":    func(s string) []dep { return parseErlangMk(s, false) },
 	// Lua — LuaRocks lockfile (*.rockspec manifest is suffix-dispatched below).
 	"luarocks.lock": parseLuarocksLock,
+	// Crystal — shards
+	"shard.yml":  parseShardYml,
+	"shard.lock": parseShardLock,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {

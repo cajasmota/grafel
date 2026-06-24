@@ -698,6 +698,111 @@ sdks:
 }
 
 // ---------------------------------------------------------------------------
+// shard.yml / shard.lock (Crystal shards)
+// ---------------------------------------------------------------------------
+
+// TestShardYml_Basic proves shards manifest_parsing: dependencies (runtime) and
+// development_dependencies (dev) maps yield deps under package_manager=shards,
+// reading each shard's nested `version:` line and excluding the top-level
+// name/version/crystal project-metadata scalars.
+func TestShardYml_Basic(t *testing.T) {
+	src := `name: myapp
+version: 0.1.0
+crystal: ">= 1.0.0"
+license: MIT
+
+dependencies:
+  kemal:
+    github: kemalcr/kemal
+    version: ~> 1.1.0
+  jennifer:
+    github: imdrasil/jennifer.cr
+
+development_dependencies:
+  spectator:
+    github: crystal-loot/spectator
+    version: ~> 0.10.0
+`
+	deps := depEntities(runExtract(t, "shard.yml", src))
+	if len(deps) != 3 {
+		t.Fatalf("expected 3 deps (kemal, jennifer, spectator), got %d: %+v", len(deps), deps)
+	}
+	for _, d := range deps {
+		if d.Properties["package_manager"] != "shards" {
+			t.Errorf("%s package_manager=%q want shards", d.Name, d.Properties["package_manager"])
+		}
+	}
+	kemal := depByName(deps, "kemal")
+	if kemal == nil {
+		t.Fatal("expected kemal dep")
+	}
+	if kemal.Properties["version"] != "~> 1.1.0" {
+		t.Errorf("kemal version=%q want '~> 1.1.0'", kemal.Properties["version"])
+	}
+	if kemal.Properties["is_dev"] != "false" {
+		t.Errorf("kemal should be is_dev=false")
+	}
+	// jennifer has no version: line — honest empty version, still emitted.
+	jennifer := depByName(deps, "jennifer")
+	if jennifer == nil || jennifer.Properties["version"] != "" {
+		t.Errorf("jennifer should be present with empty version, got %+v", jennifer)
+	}
+	if d := depByName(deps, "spectator"); d == nil || d.Properties["is_dev"] != "true" {
+		t.Errorf("spectator should be present and is_dev=true, got %+v", d)
+	}
+	// Project metadata scalars must NOT be parsed as deps.
+	if depByName(deps, "crystal") != nil || depByName(deps, "license") != nil {
+		t.Error("project-metadata scalar leaked as a dependency")
+	}
+}
+
+func TestShardYml_Empty(t *testing.T) {
+	src := `name: empty
+version: 0.0.1
+crystal: ">= 1.0.0"
+`
+	if deps := depEntities(runExtract(t, "shard.yml", src)); len(deps) != 0 {
+		t.Errorf("expected 0 deps, got %d", len(deps))
+	}
+}
+
+// TestShardLock_Resolved proves shards lockfile_parsing: the `shards:` map yields
+// the exact resolved versions (kind=locked) and the top-level lockfile-format
+// `version:` scalar is excluded.
+func TestShardLock_Resolved(t *testing.T) {
+	src := `version: 2.0
+shards:
+  kemal:
+    git: https://github.com/kemalcr/kemal.git
+    version: 1.1.2
+  radix:
+    git: https://github.com/luislavena/radix.git
+    version: 0.4.1
+`
+	deps := depEntities(runExtract(t, "shard.lock", src))
+	if len(deps) != 2 {
+		t.Fatalf("expected 2 locked deps, got %d: %+v", len(deps), deps)
+	}
+	kemal := depByName(deps, "kemal")
+	if kemal == nil {
+		t.Fatal("expected kemal dep")
+	}
+	if kemal.Properties["version"] != "1.1.2" {
+		t.Errorf("kemal version=%q want 1.1.2", kemal.Properties["version"])
+	}
+	if kemal.Properties["dependency_kind"] != "locked" {
+		t.Errorf("kemal dependency_kind=%q want locked", kemal.Properties["dependency_kind"])
+	}
+	if kemal.Properties["package_manager"] != "shards" {
+		t.Errorf("kemal package_manager=%q want shards", kemal.Properties["package_manager"])
+	}
+	// The top-level format `version: 2.0` must NOT be a dependency.
+	if depByName(deps, "2.0") != nil {
+		t.Error("lockfile-format version leaked as a dependency")
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Gemfile
 // ---------------------------------------------------------------------------
 
