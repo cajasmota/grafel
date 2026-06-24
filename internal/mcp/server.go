@@ -54,31 +54,47 @@ func resolveReloadDebounce() time.Duration {
 // (pushed to the model at the MCP `initialize` step — no tool call required).
 //
 // It is a deliberately compact ORIENTATION MAP, not a manual: it tells agents
-// to call grafel_whoami first, states the cross-cutting CONVENTIONS that
-// every tool shares (id forms, token budgeting, repo/ref scoping, deprecated
-// tools), and groups the real tools by INTENT so an agent can pick one without
-// a discovery round-trip. Per-tool param detail intentionally stays in each
-// tool's inputSchema — duplicating it here would blow the handshake budget.
+// to call grafel_orient (view=me) first, states the cross-cutting CONVENTIONS
+// that every tool shares (id forms, token budgeting, repo/ref scoping), and
+// routes the canonical 22 tools (#5546) by the INTENT an agent HAS so it can
+// pick one — with the right discriminator value — without a discovery
+// round-trip. It names ONLY the 22 canonical tools; absorbed legacy names stay
+// callable as hidden aliases but are never advertised here. Per-tool param
+// detail intentionally stays in each tool's inputSchema — duplicating it here
+// would blow the handshake budget.
 //
 // This string is BUDGET-SENSITIVE: it ships in the initialize envelope counted
 // by cmd/mcp-audit against mcp.TokenCeiling. Every tool named below MUST be a
 // real registration (see registerTools); audit fails the build if the handshake
 // exceeds the ceiling. When you edit this text, re-run `go run ./cmd/mcp-audit`
 // and update initEnvelopeBytes in cmd/mcp-audit/main.go to match the new length.
-const mcpInstructions = `grafel: a code knowledge-graph over your indexed repos (entities + typed edges). Call grafel_whoami first - it resolves group/repo/ref from your cwd; act on its suggested_action.
+const mcpInstructions = `grafel: a code knowledge-graph over your indexed repos (entities + typed edges). Call grafel_orient (view=me) first - it resolves group/repo/ref from your cwd; act on its suggested_action.
 
 CONVENTIONS
 - entity_id/source/target accept an id, qualified_name, OR a bare label.
 - Output is token-budgeted; pass verbose / token_budget / max_results for more.
 - Defaults to cwd repo at HEAD; widen with cross_repo=true or group/ref. Each tool's inputSchema documents its params.
 
-PICK A TOOL BY INTENT
-- Find code: find (semantic "where is X?"); search_entities (substring); get_source (by id|qname|label); inspect (entity + calls/called_by).
-- Navigate: neighbors (in|out|both); trace / find_paths (path between nodes); subgraph (N-hop); impact_radius (blast-radius); traces (process flows).
-- HTTP: endpoints; effective_contract (per-verb); endpoint_posture (auth/rate_limit); cross_links, payload_drift (cross-repo).
-- Cross-group parity: literal_parity (oracle vs v3 ConstantSet/enum value-set diff); stub_detector (v3 looks-implemented but oracle computes).
-- Effects/security: effects (db/http/fs/mutation); data_flows; security_findings (taint); auth_coverage; secrets.
-- Structure: dead_code; import_cycles / quality_cycles; clusters; module_analysis; stats.`
+PICK A TOOL BY INTENT (use these instead of reading raw source by hand)
+- Compare two refs/versions/responses: grafel_diff (aspect=response_shape|payload|auth|literals|refs) - NOT get_source + eyeball.
+- Who calls X / what X calls: grafel_related (direction=callers|callees|neighbors|uses|used_by).
+- Trace data/control flow: grafel_trace (kind=data|control|def_use|effects).
+- What breaks if I change X: grafel_impact_radius (scope=entity|changeset for a PR/diff).
+- Dead code / cycles / stubs / tech debt: grafel_debt (kind=dead_code|cycles|stubs|impure|license).
+- Security posture: grafel_security (kind=findings|secrets|auth_coverage).
+- Test coverage/reach/effectiveness: grafel_test_analysis (kind=coverage|reachability|contract_effectiveness).
+- Recurring code/graph/template patterns: grafel_patterns (kind=code|graph|template).
+- Front<->back HTTP joins (cross-repo): grafel_cross_links.
+
+FIND & NAVIGATE
+- Locate entities: grafel_find (name/pattern/kind). Full detail on one: grafel_inspect. Raw source: grafel_get_source.
+- Route between two entities: grafel_find_paths. Graph slice around entity(s): grafel_subgraph.
+- HTTP endpoints + contract/posture: grafel_endpoints (detail=list|contract|posture).
+- Zoom out (overview/clusters/topology/modules): grafel_orient (view=...). Per-repo freshness: grafel_index_status.
+
+WORKFLOW & META
+- Findings store: grafel_findings (action=list|save). Docgen lifecycle: grafel_docgen (action=...); apply enrichments: grafel_docgen_apply.
+- Telemetry: grafel_event (kind=feedback|persona). Tool-call metrics: grafel_mcp_metrics.`
 
 // sentinelToolName is the single tool returned when the caller's cwd is not
 // covered by any registered grafel group (#1769).

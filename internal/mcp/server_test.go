@@ -3458,40 +3458,53 @@ func TestMCP_WhoamiP50Under50ms(t *testing.T) {
 // (mcpInstructions) so it can't silently rot back to a thin one-liner. The
 // instructions are pushed to the model at MCP initialize with no tool call, so
 // they are the agent's first and only zero-cost orientation surface. We assert
-// the load-bearing pieces: the whoami directive, the shared id-form convention,
-// the deprecated-tool steer, and at least one real tool name per INTENT group.
+// the load-bearing pieces: the orient-first directive, the shared id-form
+// convention, the comparison/analysis cluster leading, and at least one tool
+// per INTENT group — naming ONLY the canonical 22 (#5546).
 //
-// Every tool named here MUST be a live registration; cmd/mcp-audit enforces the
-// token budget separately. If a tool below is renamed/removed, update both the
-// map in server.go and this test (and re-run mcp-audit).
+// Every tool named here MUST be a canonical, live registration; cmd/mcp-audit
+// enforces the token budget separately. If a tool below is renamed/removed,
+// update both the map in server.go and this test (and re-run mcp-audit).
 func TestMCPInstructionsOrientationMap(t *testing.T) {
 	t.Parallel()
 
-	// (1) whoami-first directive.
-	if !strings.Contains(mcpInstructions, "grafel_whoami") {
-		t.Errorf("instructions must direct agents to call grafel_whoami first")
+	// (1) orient-first directive (whoami is now a hidden alias of orient view=me).
+	if !strings.Contains(mcpInstructions, "grafel_orient") {
+		t.Errorf("instructions must direct agents to call grafel_orient first")
 	}
 	if !strings.Contains(mcpInstructions, "suggested_action") {
 		t.Errorf("instructions must tell agents to act on suggested_action")
 	}
 
-	// (2) cross-cutting conventions: the id|qualified_name|label form and the
-	// neighbors navigation tool.
-	for _, want := range []string{"qualified_name", "bare label", "neighbors"} {
+	// (2) cross-cutting conventions: the id|qualified_name|label form.
+	for _, want := range []string{"qualified_name", "bare label"} {
 		if !strings.Contains(mcpInstructions, want) {
 			t.Errorf("instructions missing convention marker %q", want)
 		}
 	}
 
-	// (3) at least one real tool name per INTENT category, so the map covers
-	// the breadth of the toolset and can't decay to a single category.
+	// (3) the comparison/analysis cluster must lead the intent map — it's the
+	// biggest behavior change (steer agents off manual get_source diffing).
+	for _, want := range []string{
+		"grafel_diff", "grafel_related", "grafel_trace", "grafel_impact_radius",
+		"grafel_debt", "grafel_cross_links",
+	} {
+		if !strings.Contains(mcpInstructions, want) {
+			t.Errorf("instructions missing comparison/analysis tool %q", want)
+		}
+	}
+
+	// (4) at least one tool per remaining INTENT category, so the map covers
+	// the breadth of the canonical surface and can't decay to one category.
 	perCategory := map[string]string{
-		"find code": "find",
-		"navigate":  "neighbors",
-		"http":      "endpoints",
-		"effects":   "effects",
-		"security":  "security_findings",
-		"structure": "module_analysis",
+		"find code":      "grafel_find",
+		"navigate":       "grafel_find_paths",
+		"http":           "grafel_endpoints",
+		"security":       "grafel_security",
+		"test analysis":  "grafel_test_analysis",
+		"patterns":       "grafel_patterns",
+		"findings store": "grafel_findings",
+		"meta":           "grafel_mcp_metrics",
 	}
 	for category, tool := range perCategory {
 		if !strings.Contains(mcpInstructions, tool) {
@@ -3499,7 +3512,8 @@ func TestMCPInstructionsOrientationMap(t *testing.T) {
 		}
 	}
 
-	// Every tool token in the map must be a registered tool. Build the live
+	// Every grafel_* tool token named in the map must be a canonical, registered
+	// tool — no absorbed/legacy/deprecated name may appear. Build the live
 	// tool-name set from a fully-constructed server (NewServer runs
 	// registerTools and wires the underlying MCP server; newTestServer does
 	// not, so srv.MCP would be nil here).
@@ -3515,21 +3529,31 @@ func TestMCPInstructionsOrientationMap(t *testing.T) {
 	for name := range srv.MCP.ListTools() {
 		registered[name] = true
 	}
-	candidates := []string{
-		"find", "search_entities", "get_source", "inspect",
-		"neighbors", "trace", "find_paths", "subgraph", "impact_radius", "traces",
-		"endpoints", "effective_contract", "endpoint_posture", "cross_links", "payload_drift",
-		"effects", "data_flows", "security_findings", "auth_coverage", "secrets",
-		"dead_code", "import_cycles", "quality_cycles", "clusters", "module_analysis", "stats",
-		"expand", "find_callers", "find_callees",
+	// Each canonical tool we expect the map to teach.
+	canonical := []string{
+		"grafel_orient", "grafel_index_status", "grafel_find", "grafel_inspect",
+		"grafel_get_source", "grafel_related", "grafel_find_paths", "grafel_subgraph",
+		"grafel_trace", "grafel_endpoints", "grafel_cross_links", "grafel_impact_radius",
+		"grafel_diff", "grafel_debt", "grafel_security", "grafel_test_analysis",
+		"grafel_patterns", "grafel_findings", "grafel_docgen", "grafel_docgen_apply",
+		"grafel_event", "grafel_mcp_metrics",
 	}
-	for _, c := range candidates {
-		full := "grafel_" + c
-		if !strings.Contains(mcpInstructions, c) {
+	for _, full := range canonical {
+		if !strings.Contains(mcpInstructions, full) {
 			continue // only validate names that actually appear in the map
 		}
 		if !registered[full] {
-			t.Errorf("instructions name %q (%s) is not a registered tool", c, full)
+			t.Errorf("instructions name %q is not a registered tool", full)
+		}
+		if IsHiddenAlias(full) {
+			t.Errorf("instructions name %q is a hidden alias, not canonical", full)
+		}
+	}
+
+	// No absorbed/legacy tool name may appear in the advertised map.
+	for alias := range aliasToolNames {
+		if strings.Contains(mcpInstructions, alias) {
+			t.Errorf("instructions name deprecated alias %q — use its canonical tool", alias)
 		}
 	}
 }

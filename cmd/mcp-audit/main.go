@@ -236,9 +236,9 @@ func buildReport(tools []mcpapi.Tool, ceiling, baseline int) AuditReport {
 // Derived from empirical measurement; update when instructions change.
 //
 // Breakdown: ~339 bytes of fixed framing (server name/version + JSON-RPC) plus
-// the mcpInstructions orientation map (~1180 bytes; internal/mcp/server.go).
+// the mcpInstructions orientation map (~2053 bytes; internal/mcp/server.go).
 // When mcpInstructions changes, recompute as framing + len(mcpInstructions).
-const initEnvelopeBytes = 1519
+const initEnvelopeBytes = 2392
 
 // printHuman writes a human-readable table to stdout.
 func printHuman(r AuditReport) {
