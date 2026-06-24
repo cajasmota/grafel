@@ -54,6 +54,11 @@ func reqWithArgs(req mcpapi.CallToolRequest, overrides map[string]any) mcpapi.Ca
 //	modules            → handleModuleAnalysis (module SCC/PageRank/betweenness)
 //	stats              → handleGraphStats     (corpus-level metrics)
 func (s *Server) handleCoreOrient(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("view", argString(req, "view", ""),
+		[]string{"overview", "me", "whoami", "clusters", "communities", "topology", "modules", "module_analysis", "stats"},
+		[]string{"overview", "me", "clusters", "topology", "modules", "stats"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "view", "overview") {
 	case "me", "whoami":
 		return s.handleWhoami(ctx, req)
@@ -83,6 +88,11 @@ func (s *Server) handleCoreOrient(ctx context.Context, req mcpapi.CallToolReques
 //	bm25 (default) → handleQueryGraph    (semantic "where is X?" BM25 ranking)
 //	substring      → handleSearchEntities (literal substring over entity names)
 func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("search", argString(req, "search", ""),
+		[]string{"bm25", "substring", "literal", "name"},
+		[]string{"bm25", "substring"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "search", "bm25") {
 	case "substring", "literal", "name":
 		return s.handleSearchEntities(ctx, req)
@@ -101,6 +111,11 @@ func (s *Server) handleCoreFind(ctx context.Context, req mcpapi.CallToolRequest)
 //	uses              → handleNavigates(direction=outgoing)  (NAVIGATES_TO out)
 //	used_by           → handleNavigates(direction=incoming)  (NAVIGATES_TO in)
 func (s *Server) handleCoreRelated(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("direction", argString(req, "direction", ""),
+		[]string{"callers", "callees", "neighbors", "both", "uses", "used_by"},
+		[]string{"callers", "callees", "neighbors", "uses", "used_by"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "direction", "callers") {
 	case "callees":
 		return s.handleFindCallees(ctx, req)
@@ -144,6 +159,11 @@ func (s *Server) handleCoreSubgraph(ctx context.Context, req mcpapi.CallToolRequ
 //	flows          → handleFlows        (process-flow diagnostics)
 //	process        → handleTraces       (process-flow traces list/get/follow)
 func (s *Server) handleCoreTrace(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("kind", argString(req, "kind", ""),
+		[]string{"path", "data", "data_flows", "control", "control_flow", "def_use", "defuse", "effects", "flows", "process", "traces"},
+		[]string{"path", "data", "control", "def_use", "effects", "flows", "process"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "kind", "path") {
 	case "data", "data_flows":
 		return s.handleDataFlows(ctx, req)
@@ -173,6 +193,11 @@ func (s *Server) handleCoreTrace(ctx context.Context, req mcpapi.CallToolRequest
 //	contract       → handleEffectiveContract  (per-verb effective contract)
 //	posture        → handleEndpointPosture    (auth/rate_limit/throws/flags)
 func (s *Server) handleCoreEndpoints(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("detail", argString(req, "detail", ""),
+		[]string{"list", "contract", "posture"},
+		[]string{"list", "contract", "posture"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "detail", "list") {
 	case "contract":
 		return s.handleEffectiveContract(ctx, req)
@@ -193,6 +218,11 @@ func (s *Server) handleCoreEndpoints(ctx context.Context, req mcpapi.CallToolReq
 //	entity (default) → handleImpactRadius (inbound blast-radius of one entity)
 //	changeset        → handlePRImpact     (PR/diff impact + merge-risk)
 func (s *Server) handleCoreImpactRadius(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("scope", argString(req, "scope", ""),
+		[]string{"entity", "changeset", "pr", "diff"},
+		[]string{"entity", "changeset"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "scope", "entity") {
 	case "changeset", "pr", "diff":
 		return s.handlePRImpact(ctx, req)
