@@ -22,7 +22,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Data loaders | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2858) | `internal/custom/javascript/issue2858_metafw_server_test.go`<br>`internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/custom/javascript/nextjs.go` | — |
+| Data loaders | ✅ `full` | — | [link](https://github.com/cajasmota/grafel/issues/2858) | `internal/custom/javascript/issue2858_metafw_server_test.go`<br>`internal/custom/javascript/issue2858_realdata_test.go`<br>`internal/custom/javascript/issue5488_rsc_datafetch_test.go`<br>`internal/custom/javascript/nextjs.go`<br>`internal/custom/javascript/rsc_datafetch.go` | #5488 (epic #5479): App-Router async Server Components now emit server-side data-fetch edges — CALLS to awaited data fns / *.server.ts model fns and READS_FROM for direct await fetch(url), each tagged rsc_data_fetch=true. Gated to server components (no use client) so client event handlers are not mislabelled. |
 
 ### Server
 

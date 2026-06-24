@@ -9,6 +9,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Next.js React Server Component data-fetch edges (#5488):** an async
+  App-Router Server Component (a `page.tsx`/`layout.tsx` or other server
+  component with no `'use client'` directive) now emits first-class edges to the
+  data sources it awaits during render, so the server-side data flow of a route
+  is queryable. An awaited call to a local/imported data function — `await
+  getUser(id)`, `await db.user.findMany()`, a `*.server.ts` model fn — produces a
+  `CALLS` edge from the component to the callee, and a direct `await fetch(url)`
+  produces a `data_fetch` site plus a `READS_FROM` edge. Both are tagged
+  `rsc_data_fetch=true` (with the resolved `url`/`callee` and `rendering=server`).
+  The pass is gated to server components — App-Router page/layout files with no
+  module-level `'use client'` — so client components and their event handlers,
+  which use the same call syntax, are never mislabelled as server data-fetches.
+  Completes the Next.js routing-coverage epic (#5479).
 - **Next.js Server Actions extracted as operations, including the `action()`
   wrapper pattern (#5487):** Server Actions are now recognised in three forms,
   each emitted as a `SCOPE.Operation`/`server_action` operation bound to its

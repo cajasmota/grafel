@@ -366,7 +366,22 @@ func (e *nextjsExtractor) Extract(ctx context.Context, file extreg.FileInput) ([
 	// Component (the RSC default). Gated to genuine route component files so
 	// non-route .ts utilities don't get the implicit-server marker.
 	if isJSXFile && isAppRouter && nextjsPageFiles[stem] && !hasUseClient {
-		addEntity(metafwServerComponentEntity(stem, file.Path, file.Language, "nextjs"))
+		sc := metafwServerComponentEntity(stem, file.Path, file.Language, "nextjs")
+		// RSC data-fetch edges (#5488): an async server component loads its data on
+		// the server by awaiting data-access calls (`await getUsers()`,
+		// `await db.user.findMany()`) and direct `await fetch(url)`. Emit the
+		// component → data-source edges, tagged rsc_data_fetch. Gated to a server
+		// component above (no `'use client'`, App-Router page/layout), so client
+		// components / event handlers are never mislabelled as server data-fetches.
+		dfEnts, dfRels := rscDataFetchEdges(&sc, src, file.Path, file.Language)
+		if len(dfRels) > 0 {
+			setProps(&sc, "rsc_data_fetch", "true")
+			sc.Relationships = append(sc.Relationships, dfRels...)
+		}
+		addEntity(sc)
+		for _, de := range dfEnts {
+			addEntity(de)
+		}
 	}
 
 	// Server Actions (#2858, #5487). Recognised in three forms, each emitted as a

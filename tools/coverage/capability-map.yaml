@@ -2323,6 +2323,19 @@ records:
 
   lang.jsts.framework.next-api:
     capabilities:
+      Data Flow:
+        data_loaders:
+          status: full
+          symbols:
+            - file: internal/custom/javascript/nextjs.go
+              functions: [Extract]
+            - file: internal/custom/javascript/rsc_datafetch.go
+              functions: [rscDataFetchEdges]
+          tests:
+            - file: internal/custom/javascript/issue5488_rsc_datafetch_test.go
+              functions: [TestNextjs5488RSCCallsModelFn, TestNextjs5488RSCMemberChainCall, TestNextjs5488RSCAwaitFetch, TestNextjs5488ClientComponentNotTagged]
+          issues_implemented: ["2858", "5488"]
+          verified_at: "2026-06-24"
       Routing:
         route_extraction:
           status: full
