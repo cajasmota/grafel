@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 31 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **elm**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **OCaml**: 1 · **php**: 1 · **python**: 3 · **ReScript**: 1 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1 · **zig**: 1
+**Total**: 32 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **elm**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **OCaml**: 1 · **php**: 1 · **python**: 3 · **ReasonML**: 1 · **ReScript**: 1 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1 · **zig**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -33,6 +33,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | 🟢 | ✅ | |
 | [python](../by-language/python.md) | [requirements.txt](../detail/pkg.requirements.md) | — | — | ✅ | |
+| [ReasonML](../by-language/reasonml.md) | [bsconfig.json (BuckleScript/Reason manifest)](../detail/lang.reasonml.tool.bsconfig.md) | — | — | 🟢 | |
 | [ReScript](../by-language/rescript.md) | [rescript.json / bsconfig.json (ReScript manifest)](../detail/lang.rescript.tool.rescript-json.md) | — | — | 🟢 | |
 | [ruby](../by-language/ruby.md) | [Gemfile](../detail/pkg.gemfile.md) | — | 🔴 | ✅ | |
 | [rust](../by-language/rust.md) | [Cargo.toml](../detail/pkg.cargo.md) | — | 🔴 | ✅ | |

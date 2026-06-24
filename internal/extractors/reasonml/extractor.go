@@ -241,6 +241,11 @@ func extractReasonML(src, filePath string) []types.EntityRecord {
 		})
 	}
 
+	// Reason-React decoration pass (#5379): re-kind [@react.component]-annotated
+	// `let` operations to SCOPE.UIComponent and record their prop set. No-op when
+	// the file declares no [@react.component] component.
+	applyReasonReact(src, entities)
+
 	return entities
 }
 
