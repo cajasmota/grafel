@@ -12,6 +12,7 @@ package dashboard
 import (
 	"net/http"
 	"os"
+	"sort"
 	"strings"
 	"time"
 
@@ -33,6 +34,27 @@ type topicEntityRecord struct {
 	StartLine      int      `json:"start_line"`
 	Repo           string   `json:"repo"`
 	FlowProcessIDs []string `json:"flow_process_ids"`
+	// Framework labels the entity's messaging framework (e.g. "inngest") so the
+	// detail panel can badge an Inngest function/event distinctly (#5485).
+	Framework string `json:"framework,omitempty"`
+	// InngestSteps lists the durable step structure of an Inngest function
+	// (#5484's inngest_step Operation children, CONTAINED by the Function). Only
+	// populated for Inngest functions; empty for everything else (#5485). Lets
+	// the topology detail panel show a function's durable steps inline.
+	InngestSteps []inngestStepRecord `json:"inngest_steps,omitempty"`
+}
+
+// inngestStepRecord is one durable step of an Inngest function — a #5484
+// inngest_step Operation. step_kind is one of run/sleep/sleepUntil/
+// waitForEvent/invoke; wait_event / invoke_target are populated for the
+// cross-function step kinds.
+type inngestStepRecord struct {
+	StepID       string `json:"step_id"`
+	StepKind     string `json:"step_kind"`
+	SourceFile   string `json:"source_file,omitempty"`
+	StartLine    int    `json:"start_line,omitempty"`
+	WaitEvent    string `json:"wait_event,omitempty"`
+	InvokeTarget string `json:"invoke_target,omitempty"`
 }
 
 // topicDetailResponse is the wire shape for GET /api/topology/{group}/topic/{topicId}.
@@ -166,6 +188,14 @@ func buildTopicDetail(grp *DashGroup, groupName, topicID string) (topicDetailRes
 
 	producers := resolveEntityRecords(grp, topicRepoSlug, rawProducerIDs)
 	consumers := resolveEntityRecords(grp, topicRepoSlug, rawConsumerIDs)
+
+	// #5485: for Inngest event topics, surface each producer/consumer function's
+	// durable step structure (#5484 inngest_step children) inline so the panel
+	// shows the run/sleep/waitForEvent/invoke steps of the event→function chain.
+	if framework == "inngest" {
+		attachInngestSteps(grp, producers)
+		attachInngestSteps(grp, consumers)
+	}
 
 	// Populate FlowProcessIDs for each producer/consumer so the ↗ flow action
 	// on the topology right panel can deep-link to the relevant flow (#1943).
@@ -475,7 +505,70 @@ func entityToRecord(repo string, e *graph.Entity) topicEntityRecord {
 		StartLine:      e.StartLine,
 		Repo:           repo,
 		FlowProcessIDs: []string{},
+		Framework:      e.Properties["framework"],
 	}
+}
+
+// attachInngestSteps populates InngestSteps on every Inngest function in recs by
+// scanning the group for the function's #5484 inngest_step Operation children,
+// found via CONTAINS edges (Function → step). No-op for non-Inngest entities.
+// This surfaces a durable function's step structure in the topology detail panel
+// (#5485): clicking an Inngest event shows each producer/consumer function's
+// run/sleep/waitForEvent/invoke steps inline.
+func attachInngestSteps(grp *DashGroup, recs []topicEntityRecord) {
+	for i := range recs {
+		if recs[i].Framework != "inngest" {
+			continue
+		}
+		_, localID := dashSplitPrefixed(recs[i].EntityID)
+		steps := collectInngestSteps(grp, recs[i].Repo, localID)
+		if len(steps) > 0 {
+			recs[i].InngestSteps = steps
+		}
+	}
+}
+
+// collectInngestSteps returns the inngest_step Operation children of the Inngest
+// function with local ID funcLocalID in repo funcRepo, resolved via CONTAINS
+// edges. Steps are returned in source order (by start line) for stable display.
+func collectInngestSteps(grp *DashGroup, funcRepo, funcLocalID string) []inngestStepRecord {
+	r, ok := grp.Repos[funcRepo]
+	if !ok || r.Doc == nil {
+		return nil
+	}
+	// Build a lookup of step entities by local ID for this repo.
+	stepByID := map[string]*graph.Entity{}
+	for i := range r.Doc.Entities {
+		e := &r.Doc.Entities[i]
+		if dashStripScopePrefix(e.Kind) == "Operation" && e.Properties["framework"] == "inngest" {
+			stepByID[e.ID] = e
+		}
+	}
+	if len(stepByID) == 0 {
+		return nil
+	}
+	var out []inngestStepRecord
+	seen := map[string]bool{}
+	for _, rel := range r.Doc.Relationships {
+		if rel.Kind != "CONTAINS" || rel.FromID != funcLocalID {
+			continue
+		}
+		e := stepByID[rel.ToID]
+		if e == nil || seen[e.ID] {
+			continue
+		}
+		seen[e.ID] = true
+		out = append(out, inngestStepRecord{
+			StepID:       e.Properties["step_id"],
+			StepKind:     e.Properties["step_kind"],
+			SourceFile:   e.SourceFile,
+			StartLine:    e.StartLine,
+			WaitEvent:    e.Properties["wait_event"],
+			InvokeTarget: e.Properties["invoke_target"],
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].StartLine < out[j].StartLine })
+	return out
 }
 
 // findFlowsForEntityAndTopic returns the prefixed Process entity IDs of every

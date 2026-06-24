@@ -341,6 +341,7 @@ export type BrokerCanonical =
   | "celery"
   | "task-queue"
   | "serverless"
+  | "inngest"
   | "unknown"
   | (string & Record<never, never>); // allow extension strings
 
@@ -453,6 +454,26 @@ export interface TopologyEntityRef {
   /** Prefixed Process entity IDs of flows that contain both this entity and
    *  the channel as steps — powers the ↗ flow action (#1943). */
   flow_process_ids?: string[];
+  /** Messaging framework of the entity (e.g. "inngest") — lets the detail panel
+   *  badge an Inngest function/event distinctly (#5485). */
+  framework?: string;
+  /** Durable step structure of an Inngest function (#5484 inngest_step children).
+   *  Present only for Inngest functions; powers the step list in the topology
+   *  detail panel (#5485). */
+  inngest_steps?: InngestStep[];
+}
+
+/** One durable step of an Inngest function (#5484 inngest_step Operation). */
+export interface InngestStep {
+  step_id: string;
+  /** run | sleep | sleepUntil | waitForEvent | invoke */
+  step_kind: string;
+  source_file?: string;
+  start_line?: number;
+  /** Awaited event name for a waitForEvent step. */
+  wait_event?: string;
+  /** Invoked-function reference for an invoke step. */
+  invoke_target?: string;
 }
 
 /** Detailed channel view — GET /api/topology/:group/topic/:topicId.

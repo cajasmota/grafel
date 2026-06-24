@@ -915,6 +915,12 @@ func brokerCanonical(broker, framework string) string {
 		return "sidekiq"
 	case "bullmq", "bull":
 		return "bullmq"
+	case "inngest":
+		// Inngest event topics carry framework=inngest and no broker name. Map
+		// them to their own canonical so the topology bands them under an Inngest
+		// group and the frontend can render the event→function→event workflow with
+		// Inngest-specific labeling instead of the generic "unknown" bucket (#5485).
+		return "inngest"
 	case "hangfire":
 		return "hangfire"
 	case "quartz", "quartz.net":

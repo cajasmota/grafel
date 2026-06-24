@@ -9,6 +9,19 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Topology screen renders Inngest event→function workflows (#5485):** the
+  dashboard topology surface now reflects the Inngest async-workflow graph.
+  Inngest event topics (`framework=inngest`) are grouped under a dedicated
+  `inngest` broker band (previously they fell into the generic `unknown`
+  bucket), so the event→function→event chain — a function emitting an event that
+  triggers another function, wired by the `PUBLISHES_TO`/`SUBSCRIBES_TO` edges
+  from #5482/#5483 — reads as one connected workflow. The topology detail panel
+  badges producers/consumers as "Inngest function" / "Inngest event" and, for
+  each Inngest function, lists its durable step structure inline (#5484's
+  `inngest_step` children: `run`/`sleep`/`sleepUntil`/`waitForEvent`/`invoke`,
+  with the awaited event for `waitForEvent` and the invoked target for
+  `invoke`). Extends the existing pub-sub/queue topology rendering — no new
+  extraction. Completes the Inngest epic (#5479) headline.
 - **Inngest durable functions extracted as Function entities (#5480):** the new
   `custom_js_inngest` JS/TS extractor recognises `inngest.createFunction({ id |
   name }, { event | cron }, handler)` call sites (both the modern object-config

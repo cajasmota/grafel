@@ -91,8 +91,23 @@ const BROKER_META: Record<
   celery:                { color: "#a3e635", bgColor: "#a3e63522", shape: "clock-shape" },
   "task-queue":          { color: "#a3e635", bgColor: "#a3e63522", shape: "clock-shape" },
   serverless:            { color: "#fde047", bgColor: "#fde04722", shape: "bolt" },
+  // Inngest event→function→event workflows (#5485). A bolt nods to the durable
+  // async-function model; the indigo hue distinguishes Inngest events from the
+  // yellow serverless bolt.
+  inngest:               { color: "#6366f1", bgColor: "#6366f122", shape: "bolt" },
   unknown:               { color: "#94a3b8", bgColor: "#94a3b822", shape: "circle" },
 };
+
+/** Human label for a topology entity's framework badge (#5485). Inngest events
+ *  and functions read as "Inngest event" / "Inngest function" so the workflow
+ *  graph is legible as Inngest rather than a generic pub-sub topic. */
+function inngestEntityLabel(framework?: string, kind?: string): string | null {
+  if (framework !== "inngest") return null;
+  const k = (kind ?? "").toLowerCase();
+  if (k === "function") return "Inngest function";
+  if (k === "messagetopic") return "Inngest event";
+  return "Inngest";
+}
 
 function brokerMeta(canonical: BrokerCanonical) {
   return BROKER_META[canonical] ?? BROKER_META["unknown"];
@@ -1131,6 +1146,12 @@ function EntityRefList({
         const flowProcessIds: string[] =
           typeof entry !== "string" ? (entry.flow_process_ids ?? []) : [];
         const firstFlowId = flowProcessIds[0] ?? null;
+        // #5485: Inngest function step structure + framework badge.
+        const framework =
+          typeof entry !== "string" ? entry.framework : undefined;
+        const inngestSteps =
+          typeof entry !== "string" ? (entry.inngest_steps ?? []) : [];
+        const inngestLabel = inngestEntityLabel(framework, ref.kind);
 
         return (
           <div
@@ -1157,10 +1178,25 @@ function EntityRefList({
                   {ref.name}
                 </span>
               )}
-              {ref.kind && ref.kind !== "unresolved" && (
-                <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-4 border border-border shrink-0 tabular-nums">
-                  {ref.kind}
+              {inngestLabel ? (
+                <span
+                  className="text-[10px] px-1.5 py-0.5 rounded shrink-0 border"
+                  style={{
+                    color: BROKER_META.inngest.color,
+                    background: BROKER_META.inngest.bgColor,
+                    borderColor: BROKER_META.inngest.color + "55",
+                  }}
+                  title={inngestLabel}
+                >
+                  {inngestLabel}
                 </span>
+              ) : (
+                ref.kind &&
+                ref.kind !== "unresolved" && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-surface-2 text-text-4 border border-border shrink-0 tabular-nums">
+                    {ref.kind}
+                  </span>
+                )
               )}
               {/* ↗ flow action — links to first matching flow */}
               {firstFlowId && (
@@ -1201,6 +1237,47 @@ function EntityRefList({
               <p className="mt-0.5 text-[10px] text-text-4 italic">
                 Synthetic publisher (no resolved entity)
               </p>
+            )}
+
+            {/* #5485: Inngest durable step structure — run / sleep / waitForEvent
+                / invoke. Surfaced so clicking an Inngest event shows the steps of
+                the producer/consumer function inline. */}
+            {inngestSteps.length > 0 && (
+              <ol className="mt-1.5 space-y-0.5 border-l-2 border-[#6366f155] pl-2">
+                {inngestSteps.map((s, si) => (
+                  <li
+                    key={s.step_id || si}
+                    className="flex items-baseline gap-1.5 text-[11px]"
+                  >
+                    <span className="text-text-4 tabular-nums shrink-0">
+                      {si + 1}.
+                    </span>
+                    <span
+                      className="font-mono px-1 rounded shrink-0"
+                      style={{
+                        color: BROKER_META.inngest.color,
+                        background: BROKER_META.inngest.bgColor,
+                      }}
+                      title={`step.${s.step_kind}`}
+                    >
+                      {s.step_kind}
+                    </span>
+                    <span className="font-mono text-text-2 truncate">
+                      {s.step_id}
+                    </span>
+                    {s.wait_event && (
+                      <span className="text-text-4 truncate">
+                        ↦ {s.wait_event}
+                      </span>
+                    )}
+                    {s.invoke_target && (
+                      <span className="text-text-4 truncate">
+                        → {s.invoke_target}
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ol>
             )}
           </div>
         );
