@@ -22,7 +22,7 @@ into a systematic second opinion on every PR — one that catches impact leakage
 broken call chains, and pattern drift that diff-only review misses.
 
 Prerequisite: the `/using-grafel` skill. This skill assumes you already
-know all 19 MCP tools and the Pass-based orientation workflow.
+know the 22 MCP tools and the orientation workflow.
 
 ---
 
@@ -61,20 +61,18 @@ structural pass and review the diff purely on its own terms.
 When time is short, a single call surfaces most structural risk:
 
 ```
-grafel_find(
-  question="<paste the name of the changed entity>",
-  depth=2,
-  token_budget=800
+grafel_impact_radius(
+  target="<the changed entity>",
+  scope="entity"
 )
 ```
 
 This call returns:
-- The entity's direct callers and callees (depth-1 neighbours).
-- Their callers and callees (depth-2 neighbours).
-- Whether any neighbours live in a different repo (cross-repo risk).
-- PageRank of the changed entity (high PageRank = high blast radius).
+- The blast radius of the change — directly and transitively affected entities.
+- Whether any affected entities live in a different repo (cross-repo risk).
+- The PageRank weight of the changed entity (high = high blast radius).
 
-If the entity is not found (`hits: []`), it is either brand-new (check for
+If the entity is not found, it is either brand-new (check for
 orphan callers of the new name) or the repo has not been re-indexed since the
 PR was opened.
 
@@ -93,16 +91,16 @@ or assume a return type that no longer exists.
 
 ```
 # Step 1: Find the entity and all depth-2 callers
-grafel_find(question="<FunctionName>", depth=2, context_filter=["CALLS"])
+grafel_related(entity="<FunctionName>", direction="callers")
 
 # Step 2: Inspect for PageRank (blast-radius indicator)
-grafel_inspect(label_or_id="<FunctionName>")
+grafel_inspect(entity="<FunctionName>")
 
 # Step 3: For each top caller — does its call site match the new signature?
-grafel_get_source(node_id="<CallerEntityId>", context_lines=20)
+grafel_get_source(entity="<CallerEntityId>", context_lines=20)
 
 # Step 4: Check cross-repo callers
-grafel_expand(node="<FunctionName>", depth=1)
+grafel_related(entity="<FunctionName>", direction="callers")
 # Look for entries where entity_id prefix differs from current repo slug
 ```
 
@@ -119,15 +117,15 @@ creating dead code (orphan callers).
 
 ```
 # Step 1: Find all callers before deletion is confirmed as safe
-grafel_find(question="<DeletedFunctionName>", depth=1)
-# If hits is empty: the entity was already absent from the index — safe.
-# If hits exist: callers remain.
+grafel_related(entity="<DeletedFunctionName>", direction="callers")
+# If callers is empty: the entity was already absent from the index — safe.
+# If callers exist: call-sites remain.
 
 # Step 2: Expand to enumerate every direct caller
-grafel_expand(node="<DeletedFunctionName>", depth=1)
+grafel_related(entity="<DeletedFunctionName>", direction="callers")
 
 # Step 3: Source-read each caller to verify it is also removed in this PR
-grafel_get_source(node_id="<CallerId>", context_lines=15)
+grafel_get_source(entity="<CallerId>", context_lines=15)
 ```
 
 **Review comment trigger:** any caller not removed in the same PR. Block
@@ -142,18 +140,18 @@ if caller is in a different repo (cross-repo breakage).
 
 ```
 # Step 1: Confirm the new endpoint appears in the index (may need re-index)
-grafel_endpoint_definitions(repo_filter=["<server-repo>"])
+grafel_endpoints(detail="list", repo_filter=["<server-repo>"])
 # Look for the new path+method pair in the returned list.
 
 # Step 2: Check if any client call-site targets this path
-grafel_endpoint_calls(repo_filter=["<client-repo>"])
-# If none match: the endpoint is currently unused — note it.
+grafel_cross_links(group="<group>")
+# If no client join matches: the endpoint is currently unused — note it.
 
 # Step 3: Check for route conflicts (same path, any method)
-grafel_find(question="<new-route-path>", depth=1)
+grafel_find(query="<new-route-path>")
 
 # Step 4: Endpoint stats for overall orphan picture
-grafel_endpoint_stats()
+grafel_endpoints(detail="list")
 ```
 
 **Review comment trigger:** no matching client call found (potential dead
@@ -169,15 +167,15 @@ the old path.
 
 ```
 # Step 1: Find orphan callers after the change
-grafel_endpoint_calls(orphan_only=true)
-# Any entry here references an endpoint that no longer has a definition.
+grafel_cross_links(group="<group>")
+# Look for client joins that no longer resolve to a definition (orphaned).
 
 # Step 2: Confirm the specific old path is now orphaned
-grafel_find(question="<old-route-path>", depth=1)
+grafel_find(query="<old-route-path>")
 
 # Step 3: Source-read each orphan caller to confirm it is updated in this PR
-grafel_inspect(label_or_id="<orphan-caller-entity-id>")
-grafel_get_source(node_id="<orphan-caller-entity-id>", context_lines=20)
+grafel_inspect(entity="<orphan-caller-entity-id>")
+grafel_get_source(entity="<orphan-caller-entity-id>", context_lines=20)
 ```
 
 **Review comment trigger:** any orphan caller that is NOT updated in this
@@ -192,20 +190,20 @@ introduces a cluster-level cycle, or violates an established layering pattern.
 
 ```
 # Step 1: Orient — which clusters do the importer and importee belong to?
-grafel_clusters()
+grafel_orient(view="clusters")
 # Note cluster IDs for both the importing and imported entity.
 
 # Step 2: Inspect both entities for cluster membership
-grafel_inspect(label_or_id="<ImportingModule>")
-grafel_inspect(label_or_id="<ImportedModule>")
+grafel_inspect(entity="<ImportingModule>")
+grafel_inspect(entity="<ImportedModule>")
 # Compare `community_id` fields.
 
 # Step 3: Check if a reverse path already exists (cycle detection)
-grafel_trace(source="<ImportedModule>", target="<ImportingModule>")
+grafel_find_paths(from="<ImportedModule>", to="<ImportingModule>")
 # If found=true: this import creates a cycle — block.
 
 # Step 4: Look for established layering patterns
-grafel_list_findings(entity_id="<ImportingModule>")
+grafel_findings(action="list", entity_id="<ImportingModule>")
 # Prior agents may have recorded "this cluster must not depend on <other>".
 ```
 
@@ -222,16 +220,15 @@ a new subscribe has no publisher (orphan subscriber).
 
 ```
 # Step 1: Find the message topic entity
-grafel_find(question="<TopicName OR event name>", depth=1,
-                context_filter=["PUBLISHES_TO", "SUBSCRIBES_TO"])
+grafel_find(query="<TopicName OR event name>")
 
 # Step 2: Expand to see full publish/subscribe graph around the topic
-grafel_expand(node="<TopicEntityId>", depth=2)
+grafel_subgraph(entities=["<TopicEntityId>"], depth=2)
 # Look for at least one PUBLISHES_TO and one SUBSCRIBES_TO edge.
 
 # Step 3: Check cross-repo — publisher and subscriber may be in different repos
-grafel_stats()  # verify both repos loaded without error
-grafel_trace(source="<PublisherEntity>", target="<SubscriberEntity>")
+grafel_orient(view="overview")  # verify both repos loaded without error
+grafel_find_paths(from="<PublisherEntity>", to="<SubscriberEntity>")
 ```
 
 **Review comment trigger:** publish with no subscriber (dead message —
@@ -251,11 +248,11 @@ grafel_cross_links(action="list", repo_filter=["<calling-repo>"], limit=20)
 # Find the new candidate corresponding to the added call.
 
 # Step 2: Inspect the target entity in the remote repo
-grafel_inspect(label_or_id="<remote-repo>::<TargetEntityId>")
+grafel_inspect(entity="<remote-repo>::<TargetEntityId>")
 # If not found: the target may not be indexed yet — note as risk.
 
 # Step 3: Trace the end-to-end path
-grafel_trace(source="<local-caller>", target="<remote-repo>::<target>")
+grafel_find_paths(from="<local-caller>", to="<remote-repo>::<target>")
 # Verify crosses_repos=true and weakest_link_confidence is acceptable.
 ```
 
@@ -272,19 +269,19 @@ for entities of this kind in this cluster.
 
 ```
 # Step 1: Find an existing entity of the same kind for comparison
-grafel_find(question="<existing example of same pattern>", depth=1)
+grafel_find(query="<existing example of same pattern>")
 
 # Step 2: Expand both the existing and new entity to compare neighbour sets
-grafel_expand(node="<ExistingPatternEntity>", depth=1)
-grafel_expand(node="<NewEntity>", depth=1)
+grafel_related(entity="<ExistingPatternEntity>", direction="neighbors")
+grafel_related(entity="<NewEntity>", direction="neighbors")
 # Compare edge kinds: both should have the same set (e.g., CALLS, REGISTERED_IN, USES).
 
 # Step 3: Check saved pattern findings
-grafel_list_findings(entity_id="<ExistingPatternEntity>")
+grafel_findings(action="list", entity_id="<ExistingPatternEntity>")
 # Look for findings of type="decision" that record the expected structure.
 
 # Step 4: Discover patterns if none are saved
-grafel_find(question="<pattern keyword> convention structure", depth=2)
+grafel_patterns(kind="code")
 ```
 
 **Review comment trigger:** missing edge that all existing entities of this
@@ -304,7 +301,7 @@ Use this rubric to decide how strongly to flag an grafel finding.
 | **Note** | New entity with low PageRank and no cross-cluster callers. Pattern difference that is documented as intentional. | Inline comment only — informational. |
 | **Pass** | Entity not found in index (brand-new, not yet indexed). Style-only diff. Pure test code with no exported names. | Skip grafel check — not applicable. |
 
-**Confidence threshold:** any `grafel_trace` path with
+**Confidence threshold:** any `grafel_find_paths` path with
 `weakest_link_confidence < 0.5` should be verified with `grafel_get_source`
 before escalating to Block. Low confidence edges may be indexer stubs, not
 real edges.
@@ -322,9 +319,9 @@ self-check from Section 1 first.
 
 ### Do not skip Pass 0 even in review context
 
-`grafel_whoami` + `grafel_stats` still costs ~200 tokens and prevents
+`grafel_orient(view="me")` + `grafel_orient(view="overview")` still costs ~200 tokens and prevents
 querying the wrong group or a repo that failed to load. A repo that shows
-`status: "load_error"` in stats means grafel results for that repo are
+`status: "load_error"` in the overview means grafel results for that repo are
 stale — lower confidence thresholds accordingly.
 
 ### Do not treat "entity not found" as "safe"
@@ -340,18 +337,18 @@ Grafel tells you about the structural graph — it does not know what
 changed in the PR. Always read the diff first; use grafel to answer
 follow-up structural questions the diff raises.
 
-### Do not escalate low-confidence traces to Block without source verification
+### Do not escalate low-confidence paths to Block without source verification
 
-`grafel_trace` with `weakest_link_confidence < 0.5` means at least one
+`grafel_find_paths` with `weakest_link_confidence < 0.5` means at least one
 edge in the path is an indexer stub, not a confirmed call. Verify with
 `grafel_get_source` before blocking a PR on the basis of that trace.
 
-### Do not call grafel_expand at depth > 2 during review
+### Do not call grafel_subgraph at depth > 2 during review
 
-Review bandwidth is limited. `grafel_expand` at depth 3 on a
+Review bandwidth is limited. `grafel_subgraph` at depth 3 on a
 high-PageRank entity returns hundreds of edges and is nearly impossible to
-interpret in a review comment. Cap at depth 2; use `context_filter` to
-narrow to the relevant edge kind.
+interpret in a review comment. Cap at depth 2; use `grafel_related` with a
+`direction` to narrow to the relevant edge kind.
 
 ---
 
@@ -370,21 +367,20 @@ Each example follows the same structure: PR summary → tool sequence → findin
 **Tool sequence:**
 
 ```
-grafel_whoami()
+grafel_orient(view="me")
 # → group: "orders-platform", repo: "orders-api"
 
-grafel_find(question="OrderService create_order", depth=2,
-                context_filter=["CALLS"])
-# → hits: [OrderService (orders-api), CheckoutController (orders-api),
-#           MobileCheckoutFlow (mobile-app)]
+grafel_related(entity="OrderService.create_order", direction="callers")
+# → callers: [CheckoutController (orders-api),
+#             MobileCheckoutFlow (mobile-app)]
 
-grafel_inspect(label_or_id="CheckoutController")
+grafel_inspect(entity="CheckoutController")
 # → source_file: src/controllers/checkout.py, community_id: 2
 
-grafel_get_source(node_id="CheckoutController", context_lines=15)
+grafel_get_source(entity="CheckoutController", context_lines=15)
 # → line 88: self.order_service.create_order(cart)  ← old name, not updated
 
-grafel_inspect(label_or_id="mobile-app::MobileCheckoutFlow")
+grafel_inspect(entity="mobile-app::MobileCheckoutFlow")
 # → cross-repo caller, not in this PR's diff
 ```
 
@@ -411,16 +407,16 @@ grafel_inspect(label_or_id="mobile-app::MobileCheckoutFlow")
 **Tool sequence:**
 
 ```
-grafel_endpoint_definitions(repo_filter=["billing-api"])
+grafel_endpoints(detail="list", repo_filter=["billing-api"])
 # → definitions include: { method: "POST", path: "/api/v2/invoices/bulk", ... }
 
-grafel_endpoint_calls(repo_filter=["admin-frontend"])
-# → no call matching "/api/v2/invoices/bulk"
+grafel_cross_links(group="billing-platform")
+# → no client join matching "/api/v2/invoices/bulk"
 
-grafel_endpoint_calls(orphan_only=true)
+grafel_endpoints(detail="posture")
 # → 0 orphan callers (this is a new definition, not a changed one)
 
-grafel_endpoint_stats()
+grafel_endpoints(detail="list")
 # → definitions: 14, calls: 11, orphan_calls: 0
 ```
 
@@ -445,14 +441,14 @@ Client not updated.
 **Tool sequence:**
 
 ```
-grafel_endpoint_calls(orphan_only=true)
-# → [{ entity_id: "mobile-app::OrderListScreen", method: "GET",
-#       path: "/api/v1/orders" }]
+grafel_cross_links(group="orders-platform")
+# → orphan client join: { entity_id: "mobile-app::OrderListScreen",
+#                         method: "GET", path: "/api/v1/orders" }
 
-grafel_inspect(label_or_id="mobile-app::OrderListScreen")
+grafel_inspect(entity="mobile-app::OrderListScreen")
 # → source_file: src/screens/OrderList.tsx, repo: mobile-app
 
-grafel_get_source(node_id="mobile-app::OrderListScreen", context_lines=10)
+grafel_get_source(entity="mobile-app::OrderListScreen", context_lines=10)
 # → line 22: fetch("/api/v1/orders")  ← old path
 ```
 
@@ -477,23 +473,23 @@ path which is now orphaned.
 **Tool sequence:**
 
 ```
-grafel_whoami()
-grafel_clusters()
+grafel_orient(view="me")
+grafel_orient(view="clusters")
 # → cluster 1: payments (top entities: PaymentGateway, ChargeService)
 # → cluster 4: reporting (top entities: MetricsDashboard, ReportingClient)
 
-grafel_inspect(label_or_id="PaymentGateway")
+grafel_inspect(entity="PaymentGateway")
 # → community_id: 1
 
-grafel_inspect(label_or_id="ReportingClient")
+grafel_inspect(entity="ReportingClient")
 # → community_id: 4
 
-grafel_trace(source="ReportingClient", target="PaymentGateway")
+grafel_find_paths(from="ReportingClient", to="PaymentGateway")
 # → found: true, path: [ReportingClient → ... → PaymentGateway]
 # → weakest_link_confidence: 0.92
 
 # Now check the reverse (new import direction)
-grafel_trace(source="PaymentGateway", target="ReportingClient")
+grafel_find_paths(from="PaymentGateway", to="ReportingClient")
 # → found: true (via the new import in this PR)
 # Together these confirm a cycle: payments ↔ reporting
 ```
@@ -527,11 +523,11 @@ grafel_cross_links(action="list", repo_filter=["admin-frontend"], limit=10)
 # → [{ candidate_id: "lc-a1b2c3", source: "admin-frontend::BillingWidget",
 #       target: "billing-api::??", status: "pending" }]
 
-grafel_inspect(label_or_id="billing-api::BillingSummaryHandler")
+grafel_inspect(entity="billing-api::BillingSummaryHandler")
 # → found, source_file: api/billing/views.py, community_id: 3
 
-grafel_trace(source="admin-frontend::BillingWidget",
-                 target="billing-api::BillingSummaryHandler")
+grafel_find_paths(from="admin-frontend::BillingWidget",
+                  to="billing-api::BillingSummaryHandler")
 # → found: true, crosses_repos: true, weakest_link_confidence: 0.70
 ```
 
@@ -559,17 +555,17 @@ but does not register it in `billing/api.py`.
 **Tool sequence:**
 
 ```
-grafel_find(question="serializer billing", depth=1)
+grafel_find(query="serializer billing")
 # → hits: [InvoiceSerializer, LineItemSerializer, InvoiceItemSerializer]
 
-grafel_expand(node="InvoiceSerializer", depth=1)
+grafel_related(entity="InvoiceSerializer", direction="neighbors")
 # → edges: [CALLS → validate, REGISTERED_IN → billing/api.py::BillingRouter]
 
-grafel_expand(node="InvoiceItemSerializer", depth=1)
+grafel_related(entity="InvoiceItemSerializer", direction="neighbors")
 # → edges: [CALLS → validate]
 # ← missing REGISTERED_IN edge
 
-grafel_list_findings(entity_id="InvoiceSerializer")
+grafel_findings(action="list", entity_id="InvoiceSerializer")
 # → finding: "All billing serializers must be registered in BillingRouter
 #              to be reachable from the API."
 ```
@@ -596,7 +592,8 @@ After completing a structural review, save any non-obvious decisions for
 future agents:
 
 ```
-grafel_save_finding(
+grafel_findings(
+  action="save",
   question="Why does payments cluster not import from reporting?",
   answer="Cycle prevention — see PR #<N>. Use core/instrumentation for
           shared metric-push. Enforced by cluster layering rule.",
@@ -606,7 +603,7 @@ grafel_save_finding(
 ```
 
 This takes ~50 tokens and means the next reviewer sees the rationale
-immediately via `grafel_inspect` without re-running the trace.
+immediately via `grafel_inspect` without re-running the path query.
 
 ---
 
@@ -631,7 +628,7 @@ immediately via `grafel_inspect` without re-running the trace.
 - ADR-0018 — Agent-learned pattern store.
 - ADR-0020 — Multi-branch + worktree graph snapshots. When reviewing a PR that
   is not yet merged, the branch's graph may already be indexed; use
-  `grafel_diff(ref_a="main", ref_b="feature/...")` to get a structural
+  `grafel_diff(left="main", right="feature/...", aspect="refs")` to get a structural
   summary before examining the line-level diff. See also
   [docs/user-guide/multi-branch.md](../../docs/user-guide/multi-branch.md).
 - Issue #1269 — tracking issue for this skill.

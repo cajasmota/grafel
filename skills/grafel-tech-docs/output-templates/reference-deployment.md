@@ -37,4 +37,4 @@
 
 ## Known deployment pitfalls
 
-> Pull from the convention's `cross_cutting_pitfalls` and from prior incidents (if `grafel_recent_activity` surfaced any).
+> Pull from the convention's `cross_cutting_pitfalls` and from prior incidents (if `grafel_index_status` surfaced any).

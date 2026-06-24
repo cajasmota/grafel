@@ -39,7 +39,7 @@ After the doc is written (AFTER — do not interrupt prose generation):
    ~/.grafel/groups/<group>/docgen-repairs.jsonl
    ```
 
-   To obtain the exact path, call `grafel_apply_docgen_repairs` with no
+   To obtain the exact path, call `grafel_docgen_apply (kind=repairs)` with no
    parameters and read the `state_dir` field, or use the path recorded in
    `docgen-state.json`.
 
@@ -207,7 +207,7 @@ business workflow, distinguished only by an A/B flag at entry. Emission:
 - Never emit below confidence 0.5. If you are not sure, use the Pass 3a
   "Runtime-resolved edge" callout in prose instead.
 - Emission is additive: if the same repair was already submitted by Pass 1a or
-  Pass 3a via `grafel_repairs(action=submit)`, the daemon deduplicates; you
+  Pass 3a via `grafel_docgen_apply(kind="repairs", action=submit)`, the daemon deduplicates; you
   may still emit it here — the duplicate will be silently dropped.
 - The JSONL file may already contain entries from a prior pass or a prior run;
   always append, never overwrite.

@@ -17,11 +17,11 @@ This skill does **NOT** hard-depend on `/grafel-tech-docs` having been run. Ever
 
 ## CRITICAL TOOL DISCIPLINE
 
-For ANY structural question about the codebase, use grafel MCP tools: `grafel_whoami`, `grafel_find`, `grafel_inspect`, `grafel_expand`, `grafel_traces`, `grafel_clusters`, `grafel_stats`. Do NOT grep or read source files for entity discovery.
+For ANY structural question about the codebase, use grafel MCP tools: `grafel_orient (view=me)`, `grafel_find`, `grafel_inspect`, `grafel_subgraph`, `grafel_trace`, `grafel_orient (view=clusters)`, `grafel_orient (view=overview)`. Do NOT grep or read source files for entity discovery.
 
 ### Pre-flight assertion
 
-Call `grafel_whoami` before doing anything. If it errors: ABORT with "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/grafel-business-docs`."
+Call `grafel_orient (view=me)` before doing anything. If it errors: ABORT with "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/grafel-business-docs`."
 
 ## When to use this skill
 
@@ -40,9 +40,9 @@ Every business pass reads `snippets/business-voice.md` first (if present). The c
 ## Staging-dir + atomic promote architecture
 
 Same pattern as `/grafel-tech-docs`:
-1. Pass 15 (first pass) calls `grafel_docgen_start_run(group="<group>")` → receives `run_id` and `staging_path`.
+1. Pass 15 (first pass) calls `grafel_docgen(action="start", group="<group>")` → receives `run_id` and `staging_path`.
 2. Passes 15–19 write all files into `<staging_path>/<relative-path>`.
-3. Pass 19 (last pass) calls `grafel_docgen_validate(run_id)` then `grafel_docgen_promote(run_id)`.
+3. Pass 19 (last pass) calls `grafel_docgen(action="validate", run_id)` then `grafel_docgen(action="promote", run_id)`.
 
 ## Pass chain
 
@@ -77,12 +77,12 @@ The business tier is **not per-repo**. It is synthesised across every repo in th
 
 ## grafel MCP tool surface
 
-- `grafel_whoami` — group/repo resolution.
-- `grafel_find`, `grafel_inspect`, `grafel_expand` — entity navigation.
-- `grafel_traces`, `grafel_clusters` — flow and cluster navigation.
-- `grafel_enrichments` — read enriched frontmatter for endpoint/flow summaries.
-- `grafel_save_finding` — persist domain interview answers.
-- `grafel_docgen_start_run`, `grafel_docgen_validate`, `grafel_docgen_promote` — staging lifecycle.
+- `grafel_orient (view=me)` — group/repo resolution.
+- `grafel_find`, `grafel_inspect`, `grafel_subgraph` — entity navigation.
+- `grafel_trace`, `grafel_orient (view=clusters)` — flow and cluster navigation.
+- `grafel_docgen_apply (kind=enrichments)` — read enriched frontmatter for endpoint/flow summaries.
+- `grafel_findings (action=save)` — persist domain interview answers.
+- `grafel_docgen (action=start)`, `grafel_docgen (action=validate)`, `grafel_docgen (action=promote)` — staging lifecycle.
 
 ## Related
 

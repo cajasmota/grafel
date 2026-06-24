@@ -14,7 +14,7 @@ Do NOT invoke this skill on first install when no group is registered, when `gra
 
 ## Inputs the skill expects
 
-- A registered group resolvable via `grafel_whoami`.
+- A registered group resolvable via `grafel_orient (view=me)`.
 - An up-to-date `<repo>/.grafel/graph.json` per repo. If any repo's graph is stale, stop and tell the user to run `grafel rebuild <group>` first.
 - Read access to `<group>/.grafel/patterns.json` (the pattern store) and `patterns-config.json` (thresholds — defaults applied when absent).
 
@@ -22,7 +22,7 @@ Do NOT invoke this skill on first install when no group is registered, when `gra
 
 ### Step 1 — Slice the codebase
 
-Dispatch one subagent per top-level module cluster (as returned by `grafel_list_clusters`). Each subagent receives:
+Dispatch one subagent per top-level module cluster (as returned by `grafel_orient (view=clusters)`). Each subagent receives:
 
 - Its cluster's entity ID set.
 - A read-only copy of the existing pattern store (so it can skip shapes already covered).

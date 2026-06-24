@@ -10,8 +10,8 @@ Read `run_id` and `staging_path` from `~/.grafel/groups/<group>/plan.json` (writ
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -24,7 +24,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -71,7 +71,7 @@ grafel_find(
 Then for each of the top-5 entities in the module:
 
 ```
-grafel_expand(node="<entity>", depth=2, repo_filter=["<repo>"])
+grafel_subgraph(node="<entity>", depth=2, repo_filter=["<repo>"])
 ```
 
 These neighbors are what you describe in the module README's "Key entities" section.
@@ -98,17 +98,17 @@ When you find one, name both ends of the connection in a backticked heading insi
 **Process flows (added in #724).** For modules that own entry points (HTTP route handlers, scheduled jobs, message consumers), call:
 
 ```
-grafel_traces(action=list, repo_filter=["<repo>"], limit=25)
+grafel_trace(action=list, repo_filter=["<repo>"], limit=25)
 ```
 
 This returns pre-computed BFS call chains from the indexer's pass over the CALLS graph. For each process whose `entry_id` falls within your module's community, either:
 
 - Include the call chain directly in `flows.md` as a numbered list under a `## Process flows` section, OR
-- Call `grafel_traces(action=follow, entry_point_id=<id>, max_depth=8)` for entities that were not selected as pre-computed entry points.
+- Call `grafel_trace(action=follow, entry_point_id=<id>, max_depth=8)` for entities that were not selected as pre-computed entry points.
 
-Until #769 lands, `grafel_traces` returns chains that stay within a single repo — describe cross-repo flows from `grafel_cross_links` instead.
+Until #769 lands, `grafel_trace` returns chains that stay within a single repo — describe cross-repo flows from `grafel_cross_links` instead.
 
-**New edge kinds to surface in prose.** grafel now emits several richer edge kinds introduced in 2026-05. When you encounter these via `grafel_expand` or `grafel_find`, include the corresponding narrative:
+**New edge kinds to surface in prose.** grafel now emits several richer edge kinds introduced in 2026-05. When you encounter these via `grafel_subgraph` or `grafel_find`, include the corresponding narrative:
 
 - **`FETCHES`** (HTTP consumer → endpoint): "Frontend `X` FETCHES backend endpoint `Y` via `Z`." Include in `flows.md` under an "HTTP consumer flows" section.
 - **`QUERIES`** (code → ORM table/column): "Service `A` QUERIES table `B` (columns `C`, `D`)." Include in `flows.md` under "Data access flows" or in `reference/api.md` if the module is the primary owner.
@@ -119,7 +119,7 @@ Until #769 lands, `grafel_traces` returns chains that stay within a single repo 
 
 When you find entities of kind `Queue` (generic message broker abstraction, e.g., RabbitMQ, SQS, Google Pub-Sub) or `MessageTopic` (Kafka-specific topic), treat them as message destinations and document them in the event-flows section rather than the data-model section. Note the distinction: `Queue` is a broker-agnostic concept, while `MessageTopic` is Kafka-specific.
 
-**Empty-result rule (#1618 — the top quality failure).** When `grafel_find_callees`, `grafel_find_callers`, `grafel_expand`, or `grafel_traces(action=follow)` returns an empty edge list for a valid entity, the response carries `"result": "no_outgoing_edges"` / `"no_incoming_edges"` / `"no_edges"` / `"no_outgoing_calls"`. This is an explicit graph signal, not a gap to fill.
+**Empty-result rule (#1618 — the top quality failure).** When `grafel_related (direction=callees)`, `grafel_related (direction=callers)`, `grafel_subgraph`, or `grafel_trace(action=follow)` returns an empty edge list for a valid entity, the response carries `"result": "no_outgoing_edges"` / `"no_incoming_edges"` / `"no_edges"` / `"no_outgoing_calls"`. This is an explicit graph signal, not a gap to fill.
 
 Required behaviour:
 - **State the absence verbatim**: "The graph records no callee/edge for `X`."
@@ -163,13 +163,11 @@ Use `source: "generate-docs/pass-4"` in every candidate.
 ### Step 8 — Save
 
 ```
-grafel_save_finding(
-  question="What does the <module-slug> module do in <repo>?",
+grafel_findings(action="save", question="What does the <module-slug> module do in <repo>?",
   answer="<file: ~/.grafel/docs/<group>/<repo-slug>/modules/<module-slug>/README.md>",
   type="module",
   nodes=["<top-entity-1>", "<top-entity-2>"],
-  repo_filter=["<repo>"],
-)
+  repo_filter=["<repo>"],)
 ```
 
 Hand control back to the orchestrator. The orchestrator joins all writer subagents and starts Pass 5 only when every module has produced verified output.

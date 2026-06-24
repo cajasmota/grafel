@@ -10,8 +10,8 @@ Read `run_id` and `staging_path` from `~/.grafel/groups/<group>/plan.json` (writ
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -24,7 +24,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -48,7 +48,7 @@ badges, rank scores, gap warnings, and disqualification signals.
 
 - Group inventory already produced in Passes 1–2.
 - Existing doc files under `~/.grafel/docs/<group>/<repo-slug>/` (Pass 4–6 output) — enrich in-place.
-- `grafel_enrichments(action=list)` — pre-computed enrichment candidates
+- `grafel_docgen_apply(kind="enrichments", action=list)` — pre-computed enrichment candidates
   from the daemon; use as signals, not as verbatim output.
 - Per-kind templates at `skills/generate-docs/templates/<kind>.md` — use as
   starting point when creating new files.
@@ -68,9 +68,9 @@ Build a working list of entity IDs grouped by kind.
 ### Step 2 — Enrichment candidates queue
 
 ```
-grafel_enrichments(action=list, kind="http_endpoint")
-grafel_enrichments(action=list, kind="process_flow")
-grafel_enrichments(action=list, kind="message_topic")
+grafel_docgen_apply(kind="enrichments", action=list, entity_kind="http_endpoint")
+grafel_docgen_apply(kind="enrichments", action=list, entity_kind="process_flow")
+grafel_docgen_apply(kind="enrichments", action=list, entity_kind="message_topic")
 ```
 
 Merge candidates into your working list; they carry pre-computed signals
@@ -84,7 +84,7 @@ For each entity in the working list:
    inbound FETCHES:
 
    ```
-   grafel_expand(node="<entity_id>", depth=2)
+   grafel_subgraph(node="<entity_id>", depth=2)
    ```
 
 2. **Decide merge / disqualify** — if two entities are near-duplicates (same
@@ -142,8 +142,8 @@ confident data for:
 - `auth` — one-sentence description of the auth requirement.
 - `effects` — the handler's transitive effect closure (#2811): any of
   `db_read`, `db_write`, `http_out`, `fs_read`, `fs_write`, `mutation`, `env`.
-  Copy verbatim from `grafel_endpoints(action=definitions)` (the `effects`
-  field) or `grafel_effects(entity_id=<endpoint id>)` — both read it from
+  Copy verbatim from `grafel_endpoints(detail=list)` (the `effects`
+  field) or `grafel_trace(kind=effects, target=<endpoint id>)` — both read it from
   the effects sidecar, so you do not need to re-derive it. Lets the Paths panel
   answer "which endpoints write to the DB / touch the filesystem / mutate state".
 - `tables_touched` — list DB tables or ORM models that this handler reads or writes.
@@ -231,12 +231,10 @@ After writing the frontmatter, record the enrichment in the daemon so the
 group state reflects it and the `docgen_status` transitions to `enriched`:
 
 ```
-grafel_enrichments(
-  action=submit,
+grafel_docgen_apply(kind="enrichments", action=submit,
   entity_id="<id>",
   summary="<one-sentence summary>",
-  kind="<kind>",
-)
+  kind="<kind>",)
 ```
 
 ### Step 6 — Verification
@@ -258,12 +256,12 @@ verify:
 ### Step 7 — Emit repair candidates
 
 Run the emission step from `snippets/docgen-repair-emission.md`. Pass 13 reads
-`grafel_expand` neighborhoods for every entity in the working list; this is
+`grafel_subgraph` neighborhoods for every entity in the working list; this is
 rich signal for repair candidates.
 
 Primary discovery types in this pass:
 
-- **`fix_kind`** — the enrichment candidate list from `grafel_enrichments`
+- **`fix_kind`** — the enrichment candidate list from `grafel_docgen_apply (kind=enrichments)`
   may contain entities whose graph kind contradicts what you observe. For
   example, a `process_flow` entity that is actually an `http_endpoint` (a
   handler with route metadata), or a `message_topic` catalogued as `Class`.
@@ -315,11 +313,9 @@ Use `source: "generate-docs/pass-13"` in all candidates. Append to
 Save a finding summarising enrichment coverage:
 
 ```
-grafel_save_finding(
-  question="What enrichment data was produced for this group?",
+grafel_findings(action="save", question="What enrichment data was produced for this group?",
   answer="Pass 13 enriched <N> http_endpoints, <M> process_flows, <K> message_topics. <X> disqualified. <Y> merged. Health coverage: <Z> message_topics at 6/6, <W> process_flows at 5/5.",
-  type="enrichment",
-)
+  type="enrichment",)
 ```
 
 Hand control back to the orchestrator. The orchestrator marks Pass 13 complete

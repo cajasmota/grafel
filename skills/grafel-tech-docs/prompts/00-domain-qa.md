@@ -6,8 +6,8 @@
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -20,7 +20,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 

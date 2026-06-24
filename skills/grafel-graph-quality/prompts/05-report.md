@@ -105,7 +105,7 @@ Token ratio formatted as `0.42×` (MCP saved 58%) or `2.10×` (MCP burned 110% m
 - `<question id + concrete example>` - bullet describing the win with the cite to the per-question row.
 
 ### Where MCP loses
-- `<question id + concrete example>` - what MCP missed or burned tokens on, plus the visible root cause if any (e.g., "grafel_search returned 0 hits because the entity name uses a non-ASCII suffix").
+- `<question id + concrete example>` - what MCP missed or burned tokens on, plus the visible root cause if any (e.g., "grafel_find returned 0 hits because the entity name uses a non-ASCII suffix").
 
 ### Surprising patterns
 - Anything that does not fit the above two buckets.
@@ -126,7 +126,7 @@ Concrete tuning ideas for the grafel coordinator. Each recommendation cites the 
 - **Tool description for `grafel_<X>`** - rewrite to clarify `<Y>` (cites: q03, q07).
 - **Add cache for `<call pattern>`** - the agent ran the same call N times on q05; consider memoization.
 - **Pattern discovery weak on `<kind>`** - q08 missed obvious recurrence; suggests Phase 4 of ADR-0018 needs `<X>`.
-- **Doc-gen flow should leverage `<MCP capability>`** - q02 showed a 6× token saving for reference finding; docgen should call this tool directly instead of round-tripping through `grafel_search`.
+- **Doc-gen flow should leverage `<MCP capability>`** - q02 showed a 6× token saving for reference finding; docgen should call this tool directly instead of round-tripping through `grafel_find`.
 
 ### Anti-patterns to avoid
 - `<X>` - observed in q04, costs N tokens per occurrence.

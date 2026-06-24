@@ -10,8 +10,8 @@ Read `run_id` and `staging_path` from `~/.grafel/groups/<group>/plan.json` (writ
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -24,7 +24,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -71,7 +71,7 @@ Fill `output-templates/group-synthesis.md`. Required sections:
 1. **What this group does** — one-paragraph mission lifted from `domain.md`.
 2. **Repos at a glance** — table from `domain.md` repos block.
 3. **Runtime communication map** — describe the synchronous and asynchronous edges across repos. Include:
-   - HTTP call chains surfaced via `grafel_traces` (process flows). Note: until #769 lands, only single-repo chains are available; describe cross-repo flows via `grafel_cross_links` instead.
+   - HTTP call chains surfaced via `grafel_trace` (process flows). Note: until #769 lands, only single-repo chains are available; describe cross-repo flows via `grafel_cross_links` instead.
    - `FETCHES` edges: which frontend/consumer calls which backend endpoint.
    - `PUBLISHES_TO` / `SUBSCRIBES_TO` / `TRANSFORMS` edges: event flows through `Queue` (generic brokers) and `MessageTopic` (Kafka-specific) entities.
    - Real-time edges (`WS_SUBSCRIBES_TO`, `WS_EMITS`, `GRAPHQL_SUBSCRIBES`, `GRAPHQL_PUBLISHES`, `STREAMS_FROM`, `STREAMS_TO`): WebSocket, SSE, and GraphQL subscription flows.
@@ -88,11 +88,9 @@ Every code identifier in every heading must be backticked. The synthesis page is
 ### Step 5 — Save
 
 ```
-grafel_save_finding(
-  question="What is the synthesized architecture of the <group> group?",
+grafel_findings(action="save", question="What is the synthesized architecture of the <group> group?",
   answer="<file: ~/.grafel/groups/<group>/docs/group-synthesis.md>",
-  type="synthesis",
-)
+  type="synthesis",)
 ```
 
 Hand back to the orchestrator.

@@ -6,7 +6,7 @@ Reads `phase1-findings.json`, confirms or dismisses each finding with LLM reason
 
 - Load `phase1-findings.json` from `~/.grafel/groups/<group>/grafel-security-audit/`.
 - Load prior `~/.grafel/groups/<group>/grafel-security-audit/state.json` (if exists) to skip already-confirmed findings by fingerprint.
-- Also call `grafel_list_findings(type="security_finding")` to load findings already promoted to the graph (the `fingerprint=` trailer in each `answer` is the dedup key) so a re-run does not double-promote.
+- Also call `grafel_findings(action="list", type="security_finding")` to load findings already promoted to the graph (the `fingerprint=` trailer in each `answer` is the dedup key) so a re-run does not double-promote.
 - If no findings remain after deduplication: print "No new findings to confirm." and exit. An EMPTY finding set is the expected, correct outcome on a clean codebase — still write the index (Step 4) with all-zero counts; do not error or fabricate findings.
 
 ## Step 1 — Cost estimate
@@ -20,7 +20,7 @@ Gate on user confirmation unless `--auto` is set.
 
 For each finding in priority order (critical first, then high, medium, low, info):
 
-1. Call `grafel_expand(node=<entity_id>, depth=2)` to get neighbour context.
+1. Call `grafel_subgraph(node=<entity_id>, depth=2)` to get neighbour context.
 2. If tech docs exist at `~/.grafel/docs/<group>/<repo>/modules/`, load the relevant module README section.
 3. Construct an LLM prompt:
    > Entity: `<name>` (`<kind>`) in `<repo>`
@@ -40,25 +40,23 @@ For each finding in priority order (critical first, then high, medium, low, info
 
 ## Step 3 — Persist confirmed findings
 
-For each confirmed finding, call `grafel_save_finding` to promote it into
+For each confirmed finding, call `grafel_findings (action=save)` to promote it into
 the group memory store as a first-class, queryable `security_finding` record:
 ```
-grafel_save_finding(
-  type="security_finding",
+grafel_findings(action="save", type="security_finding",
   question="[<SEVERITY>] <check_name> on <entity_name>",
   answer="<explanation>\n\nseverity=<severity>; fingerprint=<fingerprint>; check=<check_name>",
-  nodes=["<entity_id>"]
-)
+  nodes=["<entity_id>"])
 ```
 
 Field mapping (the tool persists `type`, `nodes`, and `repo_filter` alongside
 `question`/`answer`):
 - `type="security_finding"` — promotes the record so it is queryable in
-  isolation via `grafel_list_findings(type="security_finding")`, separate
+  isolation via `grafel_findings(action="list", type="security_finding")`, separate
   from ordinary `note` findings.
 - `nodes=["<entity_id>"]` — the entity reference. This is what makes the
   finding graph-queryable by entity:
-  `grafel_list_findings(entity_id="<entity_id>")`. Do NOT pass `entity_id`
+  `grafel_findings(action="list", entity_id="<entity_id>")`. Do NOT pass `entity_id`
   or `severity` as top-level args — the tool ignores them; carry severity in
   the `question` prefix and the `answer` trailer instead.
 

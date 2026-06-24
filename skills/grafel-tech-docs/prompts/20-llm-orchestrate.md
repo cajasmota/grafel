@@ -6,8 +6,8 @@
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -20,7 +20,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -238,12 +238,12 @@ LLM orchestrate complete
 ### Step 8 — Promote staging to canonical
 
 Once all bundles are processed and `contract failures: 0`, call
-`grafel_docgen_promote` to atomically move the staging directory to the
+`grafel_docgen (action=promote)` to atomically move the staging directory to the
 canonical docs location. Read `run_id` from
 `~/.grafel/groups/<group>/plan.json`.
 
 ```
-grafel_docgen_promote(run_id="<run_id>")
+grafel_docgen(action="promote", run_id="<run_id>")
 # response: { "promoted": true, "canonical_path": "~/.grafel/docs/<group>/",
 #             "files_promoted": N }
 ```
@@ -258,7 +258,7 @@ not have. Report the exact error to the user:
 
 > "Promote refused: SSG scaffolding detected (`<file>`). The generate-docs skill
 > must not emit build manifests. Remove the offending file from the staging
-> directory and re-try promote, or run `grafel_docgen_abort(run_id=...)` to
+> directory and re-try promote, or run `grafel_docgen(action="abort", run_id=...)` to
 > discard the run and start over."
 
 Do NOT silently remove the offending file. Surface it to the user so the writer

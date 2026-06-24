@@ -10,8 +10,8 @@ Read `run_id` and `staging_path` from `~/.grafel/groups/<group>/plan.json` (writ
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -24,7 +24,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -37,12 +37,12 @@ Two responsibilities:
 
 ## Step 1 — Static link check via MCP
 
-Call `grafel_docgen_validate` to lint frontmatter and cross-links across the
+Call `grafel_docgen (action=validate)` to lint frontmatter and cross-links across the
 entire staging tree in a single structured response. Pass the `run_id` from
 `plan.json`:
 
 ```
-grafel_docgen_validate(run_id="<run_id>")
+grafel_docgen(action="validate", run_id="<run_id>")
 # response: { "frontmatter_errors": [...], "link_errors": [...], "ok": true|false }
 ```
 
@@ -51,7 +51,7 @@ links. Broken links must be repaired (or downgraded to backticked identifiers)
 before the run can be considered clean — the report's "Broken intra-doc links"
 section must be empty.
 
-The `grafel_docgen_validate` tool applies the same rules as
+The `grafel_docgen (action=validate)` tool applies the same rules as
 `snippets/link-hygiene.md` and `snippets/anchor-contract.md` (which remain the
 source-of-truth documentation for WHAT constitutes a valid link/anchor). The
 tool enforces them across the whole staging tree including:
@@ -104,13 +104,13 @@ Record every decision in `~/.grafel/groups/<group>/docs/cross-links.md` so a hum
 Anything that blocked a doc page in earlier passes shows up in:
 
 ```
-grafel_enrichments(action=list, limit=100)
+grafel_docgen_apply(kind="enrichments", action=list, limit=100)
 ```
 
 For each:
 
-- If you can answer it from the docs you just wrote, call `grafel_enrichments(action=submit, candidate_id=..., value=..., confidence=...)`.
-- If you cannot, call `grafel_enrichments(action=reject, candidate_id=..., reason=...)`.
+- If you can answer it from the docs you just wrote, call `grafel_docgen_apply(kind="enrichments", action=submit, candidate_id=..., value=..., confidence=...)`.
+- If you cannot, call `grafel_docgen_apply(kind="enrichments", action=reject, candidate_id=..., reason=...)`.
 - If a human must decide, leave it alone and list it in the cross-link report under "Human-required enrichment".
 
 ## Step 4 — Report

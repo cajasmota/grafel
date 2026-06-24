@@ -6,8 +6,8 @@
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -20,7 +20,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -30,14 +30,14 @@ Convert the raw community list from Pass 1 into a documentation plan. The plan i
 
 ## Staging run
 
-**FIRST action in this pass** (after `grafel_whoami`): call `grafel_docgen_start_run` to create a staging run for this group. Capture `run_id` and `staging_path` from the response and carry them through every subsequent write in this pass and all downstream passes.
+**FIRST action in this pass** (after `grafel_orient (view=me)`): call `grafel_docgen (action=start)` to create a staging run for this group. Capture `run_id` and `staging_path` from the response and carry them through every subsequent write in this pass and all downstream passes.
 
 ```
-grafel_docgen_start_run(group="<group>")
+grafel_docgen(action="start", group="<group>")
 # response: { "run_id": "<id>", "staging_path": "<project>/.grafel/staging/<id>/" }
 ```
 
-All doc files written in Passes 2–19 MUST target `<staging_path>/<relative-path>` rather than `~/.grafel/docs/<group>/`. The daemon promotes the staging directory to canonical at the end of Pass 20 via `grafel_docgen_promote`. Do NOT write to `~/.grafel/docs/` directly.
+All doc files written in Passes 2–19 MUST target `<staging_path>/<relative-path>` rather than `~/.grafel/docs/<group>/`. The daemon promotes the staging directory to canonical at the end of Pass 20 via `grafel_docgen (action=promote)`. Do NOT write to `~/.grafel/docs/` directly.
 
 Pass the `run_id` and `staging_path` to every downstream writer subagent and the orchestrator.
 
@@ -50,12 +50,12 @@ Pass the `run_id` and `staging_path` to every downstream writer subagent and the
 
 ### Step 1 — Group communities into modules
 
-A Louvain community from `grafel_clusters` is a graph cluster, not necessarily a "module" a human would want documented. Merge or split as needed:
+A Louvain community from `grafel_orient (view=clusters)` is a graph cluster, not necessarily a "module" a human would want documented. Merge or split as needed:
 
 - Merge two communities if they share more than 30% of their bridge-doc nodes or if their top-entity names share a clear prefix (e.g., `users.views`, `users.serializers` -> module `users`).
 - Split a community if it contains entities from two unrelated layers (e.g., HTTP handlers + DB migrations); rare, but the convention file for the stack tells you when to expect it.
 
-**Prefer real graph communities over directory fallback.** Call `grafel_clusters(repo_filter=["<r>"])` first. As of grafel #1620 communities persist through the daemon load path, so a non-empty cluster list is the norm. Only fall back to directory-derived modules when `grafel_clusters` genuinely returns `[]` for a repo.
+**Prefer real graph communities over directory fallback.** Call `grafel_orient(view="clusters", repo_filter=["<r>"])` first. As of grafel #1620 communities persist through the daemon load path, so a non-empty cluster list is the norm. Only fall back to directory-derived modules when `grafel_orient (view=clusters)` genuinely returns `[]` for a repo.
 
 #### Step 1b — Volume control (fragmentation guard)
 
@@ -84,8 +84,8 @@ Write `~/.grafel/groups/<group>/plan.json` (this is group metadata, NOT a doc fi
 ```json
 {
   "group": "<group>",
-  "run_id": "<run_id from grafel_docgen_start_run>",
-  "staging_path": "<staging_path from grafel_docgen_start_run>",
+  "run_id": "<run_id from grafel_docgen (action=start)>",
+  "staging_path": "<staging_path from grafel_docgen (action=start)>",
   "tiers": ["technical", "business"],
   "primary_repo": "<slug>",
   "volume_control": {

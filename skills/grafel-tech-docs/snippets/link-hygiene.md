@@ -47,7 +47,7 @@ The registry slug (`upvate-core`, hyphenated) and the on-disk directory
 `upvate_core`).
 
 - **Relative link paths** (`../../<dir>/docs/...`) MUST use the actual
-  filesystem directory name. Resolve it from `grafel_whoami` /
+  filesystem directory name. Resolve it from `grafel_orient (view=me)` /
   `inventory.json` `repo.path` (the last path segment), not from the slug.
 - **Prose / display text** may use the human slug.
 

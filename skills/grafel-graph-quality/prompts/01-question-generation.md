@@ -55,8 +55,8 @@ Entity-lookup questions that stand alone without a follow-up are **not permitted
 ## Setup
 
 1. Confirm the run directory: `~/.grafel/quality-check/<YYYY-MM-DD-HHMMSS>/` (the orchestrator passes the exact path). Create it if missing.
-2. Call `grafel_whoami` to resolve the group, repos, and entity stats. If this fails, **stop** and report "no daemon running" - do not start one.
-3. Capture the group's entity-kind distribution and top entities by degree using `grafel_stats` and `grafel_clusters`.
+2. Call `grafel_orient (view=me)` to resolve the group, repos, and entity stats. If this fails, **stop** and report "no daemon running" - do not start one.
+3. Capture the group's entity-kind distribution and top entities by degree using `grafel_orient (view=overview)` and `grafel_orient (view=clusters)`.
 
 ## Category definitions
 
@@ -82,7 +82,7 @@ Entity-lookup questions that stand alone without a follow-up are **not permitted
 
 ## Adaptation rules
 
-- Never invent entity names. Every entity in every question MUST exist in the group (verified via `grafel_search_entities` or `grafel_inspect`).
+- Never invent entity names. Every entity in every question MUST exist in the group (verified via `grafel_find` or `grafel_inspect`).
 - If a category cannot be filled (e.g., single-repo group has no cross-stack trace), record `"skipped": true` for that category with a reason string. The final report flags skipped categories.
 - For single-repo groups: treat "cross-repo" questions as "cross-subsystem" — trace across API, service, and persistence layers instead of across repos.
 - If `--focus <category>` is set, only generate questions from that category (4-8 of them) and skip the others entirely.

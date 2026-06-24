@@ -10,8 +10,8 @@ Read `run_id` and `staging_path` from `~/.grafel/groups/<group>/plan.json` (writ
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -24,7 +24,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -69,8 +69,8 @@ kebab-case (e.g. `field-inspection-day`, `customer-places-order`,
 A journey is a goal a real user accomplishes, end to end. Find them from:
 
 ```
-grafel_flows(repo_filter=null, limit=200)
-grafel_traces(action=list, repo_filter=null, limit=50)
+grafel_trace(repo_filter=null, limit=200)
+grafel_trace(action=list, repo_filter=null, limit=50)
 grafel_cross_links(action=list, limit=200)   # cross-repo legs of a journey
 ```
 
@@ -102,14 +102,14 @@ file paths ONLY in the collapsed `<details>` block.
 ### Step 5 — Emit repair candidates
 
 Run the emission step from `snippets/docgen-repair-emission.md`. This pass
-calls `grafel_flows`, `grafel_traces`, and `grafel_cross_links`.
+calls `grafel_trace`, `grafel_trace`, and `grafel_cross_links`.
 The expected repair types here are narrow:
 
 - **`merge_flow`** — Step 1 may reveal two flow entities returned by
-  `grafel_flows` that represent legs of the same end-to-end journey (e.g.
+  `grafel_trace` that represent legs of the same end-to-end journey (e.g.
   `sync_to_office_flow` and `offline_sync_flow` are the same flow triggered
   from two contexts). Emit a `merge_flow` only when the evidence from
-  `grafel_traces` or `grafel_cross_links` makes the identity
+  `grafel_trace` or `grafel_cross_links` makes the identity
   unambiguous (confidence ≥ 0.75).
 
   Example:
@@ -120,7 +120,7 @@ The expected repair types here are narrow:
     "source_entity_id": "<offline_sync_flow entity id>",
     "target": "<sync_to_office_flow entity id>",
     "confidence": 0.76,
-    "evidence": "grafel_traces result: offline_sync_flow and sync_to_office_flow share identical call chain terminating at SyncService.commit — same business journey, different connectivity contexts",
+    "evidence": "grafel_trace result: offline_sync_flow and sync_to_office_flow share identical call chain terminating at SyncService.commit — same business journey, different connectivity contexts",
     "source": "generate-docs/pass-17",
     "emitted_at": "<ISO 8601 timestamp>"
   }
@@ -137,11 +137,9 @@ Use `source: "generate-docs/pass-17"` in all candidates. Append to
 Run `snippets/verification-checklist.md`. Then:
 
 ```
-grafel_save_finding(
-  question="What are the business user journeys for the <group> group?",
+grafel_findings(action="save", question="What are the business user journeys for the <group> group?",
   answer="<files: ~/.grafel/docs/<group>/business/journeys/*.md>",
-  type="business_journeys",
-)
+  type="business_journeys",)
 ```
 
 Hand back; report the list of journey slugs for Pass 19's index.

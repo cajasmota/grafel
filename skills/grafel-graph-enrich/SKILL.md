@@ -26,13 +26,13 @@ Do **not** invoke it for prose documentation (that is `/grafel-tech-docs`). Do n
 
 ## Inputs the skill expects
 
-- A running grafel daemon (`grafel_whoami` must succeed).
-- A registered, indexed group with enrichment candidates in the queue (`grafel_enrichments(action=list, status="pending")` returns results).
+- A running grafel daemon (`grafel_orient (view=me)` must succeed).
+- A registered, indexed group with enrichment candidates in the queue (`grafel_docgen_apply(kind="enrichments", action=list, status="pending")` returns results).
 - Optional: `--delta-only` flag — process only entities with `status="pending"` that are newly added since the last run (the default behaviour; the flag makes it explicit).
 - Optional: `--yes` flag — skip the cost-estimate confirmation prompt (for automation).
 - Optional: `--group <name>` — override group when CWD is ambiguous.
 
-If `grafel_enrichments(action=list, status="pending")` returns zero results, the skill exits with "No pending enrichment candidates. Nothing to do." (success).
+If `grafel_docgen_apply(kind="enrichments", action=list, status="pending")` returns zero results, the skill exits with "No pending enrichment candidates. Nothing to do." (success).
 
 ## Cost and model selection
 
@@ -49,7 +49,7 @@ Typical cost for a 5,800-entity group: **$5–$15** total. A 1,000-entity group:
 
 ## Idempotency and delta mode
 
-Phase 1 always begins by fetching `grafel_enrichments(action=list, status="enriched")` and excluding those entity IDs from all batches. This makes the skill safe to restart after any failure without re-enriching or incurring duplicate LLM costs.
+Phase 1 always begins by fetching `grafel_docgen_apply(kind="enrichments", action=list, status="enriched")` and excluding those entity IDs from all batches. This makes the skill safe to restart after any failure without re-enriching or incurring duplicate LLM costs.
 
 State is persisted at `~/.grafel/groups/<group>/grafel-graph-enrich/state.json`:
 
@@ -64,16 +64,16 @@ State is persisted at `~/.grafel/groups/<group>/grafel-graph-enrich/state.json`:
 ## Procedure
 
 ### Pre-flight
-Call `grafel_whoami`. If it errors: abort with "grafel MCP not configured for this directory. Run `/mcp` to fix."
+Call `grafel_orient (view=me)`. If it errors: abort with "grafel MCP not configured for this directory. Run `/mcp` to fix."
 
 ### Phase 1 — Enrichment
 Follow the full procedure in `prompts/13-enrichment.md`. Key steps:
 1. Resume check: fetch already-enriched IDs (skip them).
 2. Collect all pending candidates (three kinds: `http_endpoint`, `process_flow`, `message_topic`).
-3. Build entity stubs with `grafel_expand(node=<id>, depth=2)` for neighbour context.
+3. Build entity stubs with `grafel_subgraph(node=<id>, depth=2)` for neighbour context.
 4. Partition by `criticality_band` → Sonnet vs Haiku batches.
 5. Print cost estimate; gate on user confirmation (or `--yes`).
-6. Dispatch batches, write YAML frontmatter to doc files, call `grafel_enrichments(action=submit)`.
+6. Dispatch batches, write YAML frontmatter to doc files, call `grafel_docgen_apply(kind="enrichments", action=submit)`.
 7. Run verification checklist on a sample of ≥10 entities per tier.
 
 ### Phase 2 — Validation
@@ -85,10 +85,10 @@ End with:
 
 ## grafel MCP tool surface
 
-- `grafel_whoami` — group/repo resolution.
-- `grafel_enrichments` — primary tool (`action=list|submit|reject`).
-- `grafel_expand` — depth-2 neighbour context for entity stubs.
-- `grafel_save_finding` — persist the Phase 2 validation report.
+- `grafel_orient (view=me)` — group/repo resolution.
+- `grafel_docgen_apply (kind=enrichments)` — primary tool (`action=list|submit|reject`).
+- `grafel_subgraph` — depth-2 neighbour context for entity stubs.
+- `grafel_findings (action=save)` — persist the Phase 2 validation report.
 
 ## Output layout
 

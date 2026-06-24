@@ -10,8 +10,8 @@ Read `run_id` and `staging_path` from `~/.grafel/groups/<group>/plan.json` (writ
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -24,7 +24,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -72,10 +72,10 @@ For each route/export, capture: name (in backticks), kind, file path, and a one-
 ```
 grafel_find(question="environment variables", repo_filter=["<r>"], depth=2, token_budget=900)
 grafel_find(question="settings constants", repo_filter=["<r>"], depth=2, token_budget=900)
-grafel_enrichments(action=list, repo_filter=["<r>"], kind="env-var")
+grafel_docgen_apply(kind="enrichments", action=list, repo_filter=["<r>"], entity_kind="env-var")
 ```
 
-If `grafel_enrichments(action=list)` returns blocking unknowns, list them in a "Known gaps" section. Do not fabricate values.
+If `grafel_docgen_apply(kind="enrichments", action=list)` returns blocking unknowns, list them in a "Known gaps" section. Do not fabricate values.
 
 ### `deployment.md`
 
@@ -150,12 +150,10 @@ Use `source: "generate-docs/pass-5"` in every candidate. Append to
 Then save:
 
 ```
-grafel_save_finding(
-  question="What is the reference documentation for <repo>?",
+grafel_findings(action="save", question="What is the reference documentation for <repo>?",
   answer="<paths to reference/*.md>",
   type="reference",
-  repo_filter=["<r>"],
-)
+  repo_filter=["<r>"],)
 ```
 
 When all repos in the group have completed reference docs, hand back to the orchestrator.

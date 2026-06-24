@@ -24,7 +24,7 @@ If tech docs are missing, the skill aborts:
 
 ## CRITICAL TOOL DISCIPLINE
 
-The active persona MUST use grafel MCP tools for ALL graph navigation. Pre-flight: call `grafel_whoami` first.
+The active persona MUST use grafel MCP tools for ALL graph navigation. Pre-flight: call `grafel_orient (view=me)` first.
 
 ## When to use this skill
 
@@ -143,7 +143,7 @@ The session directory `~/.grafel/sessions/` is created if it does not exist (use
 
 ### Pre-flight (once per invocation)
 
-1. Call `grafel_whoami` — confirm group.
+1. Call `grafel_orient (view=me)` — confirm group.
 2. Verify tech docs exist at `~/.grafel/docs/<group>/modules/`. If not, abort with the message above.
 3. Scan `skills/grafel-consult/personas/*.md` + `~/.claude/agents/grafel-*.md` to build the catalog.
 4. If `--list` / `--catalog`: print the catalog (name + one-line description from frontmatter) and exit.
@@ -218,12 +218,10 @@ Cap Consult-Outs at 2 per conversation to prevent panel sprawl. Beyond that, sug
 If the user explicitly asks ("save this finding to the graph"), the active persona calls:
 
 ```
-grafel_save_finding(
-  type="consultant_finding",
+grafel_findings(action="save", type="consultant_finding",
   question="<persona>: <finding_title>",
   answer="<explanation>",
-  entity_id="<entity_id if applicable>"
-)
+  entity_id="<entity_id if applicable>")
 ```
 
 The skill does NOT auto-save. v1/v2's `confidence >= 0.7` auto-save behaviour is retired.
@@ -243,9 +241,9 @@ This is not as robust as Claude Code's true subagent isolation. The known failur
 
 ## grafel MCP tool surface
 
-All personas use: `grafel_whoami`, `grafel_find`, `grafel_inspect`, `grafel_expand`, `grafel_traces`, `grafel_clusters`, `grafel_stats`.
+All personas use: `grafel_orient (view=me)`, `grafel_find`, `grafel_inspect`, `grafel_subgraph`, `grafel_trace`, `grafel_orient (view=clusters)`, `grafel_orient (view=overview)`.
 
-User-opt-in: `grafel_save_finding`, `grafel_list_findings`.
+User-opt-in: `grafel_findings (action=save)`, `grafel_findings (action=list)`.
 
 Cross-repo: `grafel_cross_links`.
 

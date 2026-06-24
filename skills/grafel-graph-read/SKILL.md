@@ -6,7 +6,7 @@ description: Shared grafel read protocol — status → inspect → expand. Comp
 # READ Protocol
 
 ## Step 1 — status
-Call `grafel_whoami` first. Confirms the group name and which repos are indexed. If no graph is loaded, ask the user to run `grafel index <path>` first.
+Call `grafel_orient (view=me)` first. Confirms the group name and which repos are indexed. If no graph is loaded, ask the user to run `grafel index <path>` first.
 
 ## Step 2 — inspect
 For each entity of interest (a class, function, file path the user named):
@@ -19,16 +19,16 @@ For each entity of interest (a class, function, file path the user named):
 
 ## Step 3 — expand
 When you need to traverse:
-- `grafel_expand entity_id=<id> edge=CALLS direction=incoming` for callers
-- `grafel_expand entity_id=<id> edge=CALLS direction=outgoing` for callees
+- `grafel_subgraph entity_id=<id> edge=CALLS direction=incoming` for callers
+- `grafel_subgraph entity_id=<id> edge=CALLS direction=outgoing` for callees
 - `grafel_find name=<substring>` if you don't have an id yet
 
-Other useful read tools to layer in: `grafel_traces` (process-flow BFS), `grafel_cross_links` (HTTP/Kafka/WS cross-repo), `grafel_clusters` (Louvain communities), `grafel_module_analysis`, `grafel_subgraph`.
+Other useful read tools to layer in: `grafel_trace` (process-flow BFS), `grafel_cross_links` (HTTP/Kafka/WS cross-repo), `grafel_orient (view=clusters)` (Louvain communities), `grafel_orient (view=modules)`, `grafel_subgraph`.
 
 ### In-app navigation (#2665)
 For Expo Router / React Navigation / Next.js push-sites, two shortcuts fold the NAVIGATES_TO graph into the existing read tools:
 - `grafel_endpoints(kind="navigation")` — list distinct routes, with merged `params_keys` (sorted, deduped JSON array) per route. Use this to answer "which screens take param X?".
-- `grafel_find_callers("/route/literal")` — pass a literal beginning with `/`; the handler reverse-traverses NAVIGATES_TO and returns push-site callers with `file`, `line`, and per-call `params_keys`. Use this when adding a required param: callers whose `params_keys` is missing the new key are the diff candidates.
+- `grafel_related(direction="callers", "/route/literal")` — pass a literal beginning with `/`; the handler reverse-traverses NAVIGATES_TO and returns push-site callers with `file`, `line`, and per-call `params_keys`. Use this when adding a required param: callers whose `params_keys` is missing the new key are the diff candidates.
 
 ## When the READ phase is enough
 Many user questions resolve at Step 2 (inspect a single entity, read the neighbors). Don't over-traverse. Three rules:

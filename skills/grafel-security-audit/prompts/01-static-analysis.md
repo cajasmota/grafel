@@ -4,9 +4,9 @@ Runs deterministic, graph-based security checks. No LLM calls. Produces `phase1-
 
 ## Pre-flight
 
-Call `grafel_whoami`. If it errors, abort.
+Call `grafel_orient (view=me)`. If it errors, abort.
 
-If `--since <sha>` was passed: call `grafel_recent_activity(since=<sha>)` to get the changed entity set and restrict all queries below to that set.
+If `--since <sha>` was passed: call `grafel_index_status(since=<sha>)` to get the changed entity set and restrict all queries below to that set.
 
 ## Step 1 — Auth coverage sweep
 
@@ -16,7 +16,7 @@ endpoints = grafel_find(query="kind:http_endpoint", limit=500)
 ```
 
 For each endpoint:
-- Call `grafel_expand(node=<id>, depth=1)` to see its edges.
+- Call `grafel_subgraph(node=<id>, depth=1)` to see its edges.
 - Check for any edge of kind `AUTHENTICATED_BY`, `REQUIRES_PERMISSION`, or `GUARDED_BY`.
 - If none found: classify as `auth_missing`.
 
@@ -43,7 +43,7 @@ For each PII field: trace whether any `http_endpoint` returns it AND that endpoi
 ## Step 5 — Residual edges on auth paths
 
 ```
-residuals = grafel_repairs(action=list, limit=100)
+residuals = grafel_docgen_apply(kind="repairs", action=list, limit=100)
 ```
 
 For each residual whose `from_entity` is an `http_endpoint` or `middleware`: classify as `residual_on_security_path`, severity: info. These are candidates for `/grafel-resolve`.

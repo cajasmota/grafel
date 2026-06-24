@@ -6,8 +6,8 @@
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -20,13 +20,13 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
 ---
 
-Surfaces the residuals Pass 1a could not auto-resolve (see Pass 1a § "Classify each residual" for the narrowed auto-resolve scope). The user answers in plain language; the agent translates each answer into an `grafel_repairs(action=submit)` call.
+Surfaces the residuals Pass 1a could not auto-resolve (see Pass 1a § "Classify each residual" for the narrowed auto-resolve scope). The user answers in plain language; the agent translates each answer into an `grafel_docgen_apply(kind="repairs", action=submit)` call.
 
 This pass handles all three resolution kinds — `bind_to_entity`, `reclassify_as_external`, `reclassify_as_dynamic` — because the user's answer provides the disambiguation that Pass 1a lacked. When the user provides a binding target for `bind_to_entity`, use `grafel_find` to confirm the entity exists before submitting; do not fabricate ids.
 
@@ -40,7 +40,7 @@ This pass is **skipped** when `~/.grafel/groups/<group>/repair-questions.json` i
 
 ## Outputs
 
-- Side effects: one `grafel_repairs(action=submit)` call per answered question.
+- Side effects: one `grafel_docgen_apply(kind="repairs", action=submit)` call per answered question.
 - `~/.grafel/groups/<group>/repair-history.json` — appended with this run's Q/A pairs (per-residual). Keyed by `residual_id`. On the next run, Pass 1a consults this file before re-asking.
 - `~/.grafel/groups/<group>/repair-sweep.md` — appended with a "User-answered" section.
 
@@ -80,7 +80,7 @@ For each question in `repair-questions.json`, present it in this shape:
 
 ### Step 4 — Translate answer → submit
 
-Translate the user's natural-language answer into the corresponding `grafel_repairs(action=submit, ...)` call. Required fields per `docs/specs/repair-trust-model.md`:
+Translate the user's natural-language answer into the corresponding `grafel_docgen_apply(kind="repairs", action=submit, ...)` call. Required fields per `docs/specs/repair-trust-model.md`:
 
 | Answer | resolution | Required extra fields |
 |---|---|---|
@@ -97,7 +97,7 @@ Always set:
 
 ### Step 5 — Handle rejections
 
-If `grafel_repairs(action=submit)` returns `rejected_reason`, do not silently retry. Surface the reason to the user in their own terms:
+If `grafel_docgen_apply(kind="repairs", action=submit)` returns `rejected_reason`, do not silently retry. Surface the reason to the user in their own terms:
 
 - `target_entity_not_found` → "That id doesn't exist in the graph for this group. Did you mean one of: <top-3 fuzzy matches from `inventory.json`>?"
 - `self_loop_disallowed` → "That would point the edge back at itself. Was this a typo, or should we abandon the edge?"

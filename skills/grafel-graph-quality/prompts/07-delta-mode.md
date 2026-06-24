@@ -10,12 +10,12 @@ This phase executes only when `/grafel-graph-quality` is invoked with `--since <
 
 ## Pre-flight assertion
 
-Call `grafel_whoami` before doing anything. If it errors, abort with:
+Call `grafel_orient (view=me)` before doing anything. If it errors, abort with:
 "grafel MCP not configured for this directory. Run `/mcp` to fix."
 
 ## Inputs
 
-- `--since <sha>`: the git commit SHA to diff against. The skill treats this as an opaque identifier passed to `grafel_recent_activity(since=<sha>)`.
+- `--since <sha>`: the git commit SHA to diff against. The skill treats this as an opaque identifier passed to `grafel_index_status(since=<sha>)`.
 - Existing full-benchmark output at `~/.grafel/quality-check/<prior-timestamp>/` (optional — used as baseline if `--baseline` is also set).
 
 ## Procedure
@@ -23,10 +23,10 @@ Call `grafel_whoami` before doing anything. If it errors, abort with:
 ### Step 1 — Resolve the changed entity set
 
 ```
-changed = grafel_recent_activity(since=<sha>)
+changed = grafel_index_status(since=<sha>)
 ```
 
-`grafel_recent_activity` returns entities whose source files changed since the given timestamp or SHA. If the result is empty (nothing changed), print:
+`grafel_index_status` returns entities whose source files changed since the given timestamp or SHA. If the result is empty (nothing changed), print:
 
 > No entities changed since `<sha>`. Nothing to benchmark. Exiting.
 
@@ -36,7 +36,7 @@ and exit cleanly (success, not error).
 
 Run Phase 1 (`prompts/01-question-generation.md`) with the restriction: generate questions **only** about entities in `changed`. Use the same nine question categories but constrain entity picks to `changed`.
 
-If `changed` contains fewer than 5 entities, generate at minimum 5 questions by expanding to the 1-hop neighbours of the changed entities (via `grafel_expand`). This avoids a degenerate benchmark on trivial diffs.
+If `changed` contains fewer than 5 entities, generate at minimum 5 questions by expanding to the 1-hop neighbours of the changed entities (via `grafel_subgraph`). This avoids a degenerate benchmark on trivial diffs.
 
 Persist as `questions.json` in the run directory (same format as a full benchmark run).
 

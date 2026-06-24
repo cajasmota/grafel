@@ -30,7 +30,7 @@ A Django "app" is the natural module boundary. For each app:
 - `migrations/*.py` are usually summarized, not described per-file.
 - `tests/` is excluded from generated docs.
 
-A community detected by `grafel_clusters` that mixes two apps is rare in idiomatic Django. When it happens, split it back along app boundaries.
+A community detected by `grafel_orient (view=clusters)` that mixes two apps is rare in idiomatic Django. When it happens, split it back along app boundaries.
 
 ## Entry points (Pass 3)
 

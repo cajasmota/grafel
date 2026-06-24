@@ -6,8 +6,8 @@
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -20,7 +20,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -37,14 +37,14 @@ Discover what is actually in each repo by querying grafel. Do not read source fi
 
 ### Step 1 — Confirm group
 
-Call `grafel_whoami`. Verify the resolved group matches what the user expected. If it does not, stop and ask the user to set `cwd` or pass `group` explicitly.
+Call `grafel_orient (view=me)`. Verify the resolved group matches what the user expected. If it does not, stop and ask the user to set `cwd` or pass `group` explicitly.
 
 ### Step 2 — Corpus metrics
 
 For each repo `<r>` in the group:
 
 ```
-grafel_stats(repo_filter=["<r>"])
+grafel_orient(view="overview", repo_filter=["<r>"])
 ```
 
 Record: total nodes, total edges, top entity kinds, top edge kinds, communities count, bridge-doc count.
@@ -54,7 +54,7 @@ Record: total nodes, total edges, top entity kinds, top edge kinds, communities 
 For each repo:
 
 ```
-grafel_clusters(repo_filter=["<r>"])
+grafel_orient(view="clusters", repo_filter=["<r>"])
 ```
 
 A community is a candidate "module" for Pass 2 to plan around. Capture community id, size, and the top-5 entities (by centrality) in each. This is your raw module list before grouping.
@@ -72,14 +72,14 @@ These are pending cross-repo edges. Note them — Pass 8 will resolve them, but 
 For each repo:
 
 ```
-grafel_enrichments(action=list, repo_filter=["<r>"], limit=20)
+grafel_docgen_apply(kind="enrichments", action=list, repo_filter=["<r>"], limit=20)
 ```
 
 If anything blocks accurate documentation (e.g., an unresolved env-var, a class with unknown base), flag it. Pass 4 writers will need to either route around it or prompt the user during the deep-dive.
 
 ### Step 6 — Recent activity (optional)
 
-If the user said "regenerate after the recent refactor", call `grafel_recent_activity(since=<timestamp>)` and tag those entities so Pass 2 prioritizes their modules.
+If the user said "regenerate after the recent refactor", call `grafel_index_status(since=<timestamp>)` and tag those entities so Pass 2 prioritizes their modules.
 
 ## Output
 

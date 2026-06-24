@@ -6,7 +6,7 @@ Answer every question from `questions.json` using **only grafel MCP tools**. Rec
 
 ## Allowed tools
 
-You may call any grafel MCP tool: `grafel_whoami`, `grafel_search`, `grafel_describe`, `grafel_related`, `grafel_trace`, `grafel_list_clusters`, `grafel_get_source`, `grafel_recent_activity`, `grafel_list_link_candidates`, `grafel_list_enrichment_candidates`, `grafel_graph_stats`, `grafel_patterns`, `grafel_get_telemetry`, etc.
+You may call any grafel MCP tool: `grafel_orient (view=me)`, `grafel_find`, `grafel_inspect`, `grafel_related`, `grafel_trace`, `grafel_orient (view=clusters)`, `grafel_get_source`, `grafel_index_status`, `grafel_cross_links`, `grafel_docgen_apply (kind=enrichments)`, `grafel_orient (view=overview)`, `grafel_patterns`, `grafel_mcp_metrics`, etc.
 
 You may **not** call `rg`, `grep`, `Read` on source files, or any other non-MCP file-inspection tool. If a question is unanswerable through MCP alone, record `confidence: 0.0` and mark `unknown: true` - that is a valid result.
 
@@ -47,10 +47,10 @@ See `prompts/03a-rpc-capture.md` for the detailed daemon RPC capture protocol, i
       "confidence": 0.85,
       "unknown": false,
       "tool_calls": [
-        {"tool": "grafel_search", "args_digest": "sha256:...", "ok": true, "ms": 142}
+        {"tool": "grafel_find", "args_digest": "sha256:...", "ok": true, "ms": 142}
       ],
       "tool_call_count": 4,
-      "tools_used": ["grafel_search", "grafel_describe", "grafel_related"],
+      "tools_used": ["grafel_find", "grafel_inspect", "grafel_related"],
       "metrics": {
         "input_tokens": 12345,
         "output_tokens": 678,
@@ -62,14 +62,14 @@ See `prompts/03a-rpc-capture.md` for the detailed daemon RPC capture protocol, i
         "mcp_rpc_handler_ms_p50": 1850,
         "mcp_rpc_handler_ms_p99": 2410,
         "mcp_rpc_per_tool": {
-          "grafel_search": {"count": 2, "sum_ms": 3600, "sum_bytes": 4096, "sum_token_est": 1024},
-          "grafel_describe": {"count": 1, "sum_ms": 2120, "sum_bytes": 1536, "sum_token_est": 384},
+          "grafel_find": {"count": 2, "sum_ms": 3600, "sum_bytes": 4096, "sum_token_est": 1024},
+          "grafel_inspect": {"count": 1, "sum_ms": 2120, "sum_bytes": 1536, "sum_token_est": 384},
           "grafel_related": {"count": 1, "sum_ms": 2260, "sum_bytes": 2048, "sum_token_est": 512}
         },
         "mcp_rpc_wire_bytes_sum": 7680,
         "mcp_rpc_payload_token_estimate_sum": 1920
       },
-      "notes": "Mentioned grafel_search returned 0 hits initially; widened query."
+      "notes": "Mentioned grafel_find returned 0 hits initially; widened query."
     }
   ]
 }

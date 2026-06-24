@@ -6,8 +6,8 @@
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -20,7 +20,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -33,7 +33,7 @@ blank panel in the dashboard.
 > **Read-only pass** — Pass 14 does not modify any doc file. It only reports.
 > Re-run Pass 13 to fix any entity with validation failures.
 
-> **Note:** Pass 14 and Pass 8 both call `grafel_docgen_validate`. They are
+> **Note:** Pass 14 and Pass 8 both call `grafel_docgen (action=validate)`. They are
 > not consolidated (out of scope for #2215) but the duplication is intentional:
 > Pass 8 focuses on link hygiene and cross-repo candidates; Pass 14 focuses on
 > enrichment frontmatter schema correctness. The `validate` response contains
@@ -50,10 +50,10 @@ blank panel in the dashboard.
 
 ### Step 1 — Run structured validation via MCP
 
-Call `grafel_docgen_validate` with the `run_id` from `plan.json`:
+Call `grafel_docgen (action=validate)` with the `run_id` from `plan.json`:
 
 ```
-grafel_docgen_validate(run_id="<run_id>")
+grafel_docgen(action="validate", run_id="<run_id>")
 # response: { "frontmatter_errors": [...], "link_errors": [...], "ok": true|false }
 ```
 
@@ -166,11 +166,9 @@ Produce a structured summary with:
 ### Step 4 — Save finding
 
 ```
-grafel_save_finding(
-  question="Pass 14 frontmatter validation report",
+grafel_findings(action="save", question="Pass 14 frontmatter validation report",
   answer="<Structured summary: N files scanned, M passed, K failed. Failing files: [list]. Incomplete health: [list]>",
-  type="enrichment_validation",
-)
+  type="enrichment_validation",)
 ```
 
 ### Step 5 — Hand back

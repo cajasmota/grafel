@@ -10,8 +10,8 @@ Read `run_id` and `staging_path` from `~/.grafel/groups/<group>/plan.json` (writ
 ========================
 For ANY question about "what entities/files exist in this codebase", "who calls X",
 "what does Y import", "what's in module Z", you MUST use grafel MCP tools:
-`grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`,
-`grafel_clusters`, `grafel_whoami`, (full list in SKILL.md).
+`grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`,
+`grafel_orient (view=clusters)`, `grafel_orient (view=me)`, (full list in SKILL.md).
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase for
 entity discovery, or reading source files directly to enumerate APIs.
@@ -24,7 +24,7 @@ do NOT silently substitute grep results for graph queries.
 
 ### Pre-flight assertion -- FIRST action in this pass
 
-Call `grafel_whoami` before doing anything else in this pass. If it errors:
+Call `grafel_orient (view=me)` before doing anything else in this pass. If it errors:
 ABORT with: "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/generate-docs`."
 
 
@@ -63,12 +63,12 @@ kebab-case business name (e.g. `schedule-inspection`, `submit-report`,
 
 ```
 grafel_endpoints(repo_filter=null, limit=500)        # what the product exposes
-grafel_flows(repo_filter=null, limit=200)            # process flows / call chains
+grafel_trace(repo_filter=null, limit=200)            # process flows / call chains
 grafel_find(question="scheduled jobs and background processing", repo_filter=null, depth=2, token_budget=1000)
 grafel_find(question="message topics and events the system emits", repo_filter=null, depth=2, token_budget=1000)
 ```
 
-If `grafel_endpoints` / `grafel_flows` are unavailable, fall back to
+If `grafel_endpoints` / `grafel_trace` are unavailable, fall back to
 reading the technical-tier `reference/api.md` and module `flows.md`.
 
 ### Step 2 — Cluster into capabilities
@@ -99,7 +99,7 @@ references only in the collapsed `<details>` block.
 ### Step 5 — Emit repair candidates
 
 Run the emission step from `snippets/docgen-repair-emission.md`. This pass
-calls `grafel_endpoints` and `grafel_flows`, which surfaces concrete
+calls `grafel_endpoints` and `grafel_trace`, which surfaces concrete
 entity data. The expected repair types are:
 
 - **`merge_flow`** — Step 2's clustering often reveals two process-flow or
@@ -115,7 +115,7 @@ entity data. The expected repair types are:
     "source_entity_id": "<checkout_legacy_flow entity id>",
     "target": "<checkout_flow entity id>",
     "confidence": 0.78,
-    "evidence": "grafel_flows result: checkout_legacy_flow and checkout_flow both terminate at OrderConfirmed — same business outcome, merged into capability 'conduct-checkout'",
+    "evidence": "grafel_trace result: checkout_legacy_flow and checkout_flow both terminate at OrderConfirmed — same business outcome, merged into capability 'conduct-checkout'",
     "source": "generate-docs/pass-16",
     "emitted_at": "<ISO 8601 timestamp>"
   }
@@ -125,8 +125,8 @@ entity data. The expected repair types are:
   catalogued as `Function` but are clearly HTTP endpoints (they have a route
   path and method). Emit a `fix_kind` if you observe this.
 
-Only emit when `grafel_endpoints` / `grafel_flows` data or a direct
-`grafel_expand` result provides concrete evidence. Business-layer
+Only emit when `grafel_endpoints` / `grafel_trace` data or a direct
+`grafel_subgraph` result provides concrete evidence. Business-layer
 clustering reasoning alone does not reach the 0.5 threshold.
 
 Use `source: "generate-docs/pass-16"` in all candidates. Append to
@@ -137,11 +137,9 @@ Use `source: "generate-docs/pass-16"` in all candidates. Append to
 Run `snippets/verification-checklist.md`. Then once, for the capability set:
 
 ```
-grafel_save_finding(
-  question="What product capabilities does the <group> group provide?",
+grafel_findings(action="save", question="What product capabilities does the <group> group provide?",
   answer="<files: ~/.grafel/docs/<group>/business/capabilities/*.md>",
-  type="business_capabilities",
-)
+  type="business_capabilities",)
 ```
 
 Hand back. Pass 19 (business overview) will index every capability page you

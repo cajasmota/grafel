@@ -41,8 +41,8 @@ It runs **before** `/generate-docs` because docgen amplifies whatever bias the M
 
 ## Inputs the skill expects
 
-- A resolved grafel group (the skill calls `grafel_whoami` first to confirm).
-- A running grafel daemon (per the user's `grafel install` setup). **The skill never spawns a daemon.** If `grafel_whoami` fails, stop and tell the user to start their daemon.
+- A resolved grafel group (the skill calls `grafel_orient (view=me)` first to confirm).
+- A running grafel daemon (per the user's `grafel install` setup). **The skill never spawns a daemon.** If `grafel_orient (view=me)` fails, stop and tell the user to start their daemon.
 - Optional flags:
   - `--output <path>` - report destination. Default: `~/private/benchmarks/mcp-quality-bench-<YYYY-MM-DD>.md`.
   - `--iterations N` - run each question N times for noise reduction. Default 1. Reports median + stddev when N > 1.
@@ -50,7 +50,7 @@ It runs **before** `/generate-docs` because docgen amplifies whatever bias the M
   - `--question-set <path>` - JSON file with a user-curated question set instead of auto-generated. Schema documented in Phase 1.
   - `--baseline <path>` - prior report markdown to diff against. Surfaces deltas in token/quality/speed.
   - `--no-calibration` - skip Phase 6 (the extraction over/under audit). By default calibration always runs.
-  - `--since <sha>` — delta mode: restrict Phase 1 question generation and Phase 6 calibration to entities whose source files changed since `<sha>`. Reads `grafel_recent_activity(since=<sha>)` to get the entity set. Full benchmark phases 2/3/4/5 still run on the restricted question set. See `prompts/07-delta-mode.md` for the complete delta procedure.
+  - `--since <sha>` — delta mode: restrict Phase 1 question generation and Phase 6 calibration to entities whose source files changed since `<sha>`. Reads `grafel_index_status(since=<sha>)` to get the entity set. Full benchmark phases 2/3/4/5 still run on the restricted question set. See `prompts/07-delta-mode.md` for the complete delta procedure.
 
 ## Daemon discipline
 
@@ -68,7 +68,7 @@ The skill is a strict pipeline. Each phase has a dedicated prompt under `prompts
 
 | Phase | Prompt | Purpose |
 |------|--------|---------|
-| 1 | `prompts/01-question-generation.md` | Call `grafel_whoami`, learn the group's real entities, generate ~10-15 questions across nine categories. Persist as `questions.json`. |
+| 1 | `prompts/01-question-generation.md` | Call `grafel_orient (view=me)`, learn the group's real entities, generate ~10-15 questions across nine categories. Persist as `questions.json`. |
 | 2 | `prompts/02-without-mcp-run.md` | Answer every question using **only** `rg` / `grep` / `Read` / `Bash`. No grafel MCP. Record tokens / time / tool calls / confidence per question. Persist as `without-mcp.json`. **Runs FIRST** — fresh context, no MCP results in scope. |
 | 3 | `prompts/03-with-mcp-run.md` | Answer the **same** questions using grafel MCP tools only. Same metrics. Persist as `with-mcp.json`. **Runs SECOND** — fresh context that has not seen Phase 2's transcript. See `prompts/03a-rpc-capture.md` for the daemon RPC capture protocol. |
 | 3a | `prompts/03a-rpc-capture.md` | Daemon RPC capture protocol: log-offset snapshot procedure, CLI helper invocation, field semantics, error handling. Referenced by Phase 3 per-question metric collection. |
@@ -103,7 +103,7 @@ Each phase reads its predecessor's output from the run directory:
 
 ## Question categories
 
-Phase 1 generates questions across nine categories. Each question is adapted to the registered group's actual entities (e.g., "what is UserService?" only if a `UserService`-like entity exists; otherwise substitute a real entity discovered via `grafel_search`).
+Phase 1 generates questions across nine categories. Each question is adapted to the registered group's actual entities (e.g., "what is UserService?" only if a `UserService`-like entity exists; otherwise substitute a real entity discovered via `grafel_find`).
 
 1. **Entity lookup** - "what is `<ClassName>`?"
 2. **Reference finding** - "what calls `<Class>.<method>`?"
@@ -162,7 +162,7 @@ Quantify each as a count and a rate (share of the affected kind or of total enti
 Things that SHOULD be in the graph but are missing:
 
 - **Missing relationships that should exist** - e.g. test entities present but **zero** `TESTS` edges; Celery/pub-sub topics with null publishers or subscribers; cross-repo HTTP calls left as orphans because the client path (`/inspections/{id}`) doesn't match the server route (`/api/v1/inspections/{pk}`) — a prefix/param-name normalization gap, not a real missing endpoint. Quantify orphan-call rate and cross-repo link coverage (linked ÷ linkable).
-- **Missing entities** - real symbols grep finds that `grafel_search` / `grafel_inspect` cannot. Sample a few known classes/functions from each repo and confirm presence.
+- **Missing entities** - real symbols grep finds that `grafel_find` / `grafel_inspect` cannot. Sample a few known classes/functions from each repo and confirm presence.
 - **Empty qualified_names** - entities whose `qualified_name` is `""`. These break path-finding and cross-repo joins. Report the rate by kind.
 - **Unlinked framework patterns** - DI bindings, signal/event handlers, route→handler wiring that exist in source but produce no edge.
 - **Missing kinds** - structurally important kinds that are absent or near-empty (e.g. a `Process` label expected but unpopulated).
@@ -217,7 +217,7 @@ Source snippets are referenced by path+line, not embedded. The raw-data appendix
 
 - The skill's six prompt files exist: `01` through `06`, with `02-without-mcp-run.md` (grep first) preceding `03-with-mcp-run.md` (MCP second).
 - The orchestrator spawns Phase 2 and Phase 3 as independent subagents with no shared transcript.
-- The skill calls `grafel_whoami` before generating any question, and questions reference only entities actually present in the group.
+- The skill calls `grafel_orient (view=me)` before generating any question, and questions reference only entities actually present in the group.
 - Token counts come from the host's `usage_info`, with a labeled estimation fallback.
 - Phase 3 captures `[mcp-rpc] tool=<X> elapsed=<N>ms` lines from `~/.grafel/logs/daemon.log` during each question by running `grafel bench-capture rpc --start $START --end $END` (#2298) and merges its JSON into the question's `metrics` block. The `mcp_rpc_*` field definitions are the authoritative schema in `schema/with-mcp-artifact.schema.json` (#2302). The Phase 5 report includes a "Handler vs Transport" subsection splitting wall time into handler and transport (#2291).
 - Ground truth is established by an independent grep+read pass in Phase 4 before scoring either answer — Phase 4 does not read `without-mcp.json` or `with-mcp.json` until after its own grep pass is committed.

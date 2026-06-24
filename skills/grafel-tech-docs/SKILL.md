@@ -12,7 +12,7 @@ This skill is a direct extraction of the technical tier (Passes 0–12 + Pass 20
 
 ## CRITICAL TOOL DISCIPLINE (enforced on every pass — read before ANY action)
 
-For ANY question about "what entities/files exist in this codebase", "who calls X", "what does Y import", "what's in module Z", you MUST use grafel MCP tools: `grafel_inspect`, `grafel_find`, `grafel_expand`, `grafel_stats`, `grafel_clusters`, `grafel_traces`, `grafel_whoami`.
+For ANY question about "what entities/files exist in this codebase", "who calls X", "what does Y import", "what's in module Z", you MUST use grafel MCP tools: `grafel_inspect`, `grafel_find`, `grafel_subgraph`, `grafel_orient (view=overview)`, `grafel_orient (view=clusters)`, `grafel_trace`, `grafel_orient (view=me)`.
 
 You are STRICTLY FORBIDDEN from using `find`/`ls`/`wc`/`grep` on the codebase **for entity discovery**. Use Bash ONLY for reading specific source line ranges that `grafel_get_source` returns, running `grafel docgen --llm-mode=apply`, and writing output files into the staging directory.
 
@@ -20,7 +20,7 @@ If the MCP returns empty or seems wrong, file a side ticket and ABORT — do NOT
 
 ### Pre-flight assertion (FIRST action in every pass)
 
-Call `grafel_whoami` before doing anything else. If it errors: ABORT with "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/grafel-tech-docs`."
+Call `grafel_orient (view=me)` before doing anything else. If it errors: ABORT with "grafel MCP not configured for this directory. Run `/mcp` to fix, then re-invoke `/grafel-tech-docs`."
 
 ## When to use this skill
 
@@ -44,10 +44,10 @@ Do not invoke it for business-tier docs (that is `/grafel-business-docs`), enric
 
 Documentation is written into a **staging directory** during the run and atomically promoted to the canonical store only when all passes complete without errors. This makes in-repo write accidents architecturally impossible.
 
-1. **Pass 2** calls `grafel_docgen_start_run(group="<group>")` → receives `run_id` and `staging_path`.
+1. **Pass 2** calls `grafel_docgen(action="start", group="<group>")` → receives `run_id` and `staging_path`.
 2. **Passes 3–12** write doc files into `<staging_path>/<relative-path>` using the Write tool.
-3. **Pass 8** and **Pass 14** (if enrichment exists) call `grafel_docgen_validate(run_id)`.
-4. **Pass 20** (or end of pass chain) calls `grafel_docgen_promote(run_id)` to atomically move staging → canonical.
+3. **Pass 8** and **Pass 14** (if enrichment exists) call `grafel_docgen(action="validate", run_id)`.
+4. **Pass 20** (or end of pass chain) calls `grafel_docgen(action="promote", run_id)` to atomically move staging → canonical.
 
 ## Pass chain
 
@@ -117,13 +117,13 @@ Writer passes (3, 3a, 4, 5, 6, 12) emit repair candidates to `docgen-repairs.jso
 
 ## grafel MCP tool surface
 
-- `grafel_whoami`, `grafel_find`, `grafel_inspect`, `grafel_expand`
-- `grafel_trace`, `grafel_traces`, `grafel_clusters`, `grafel_stats`
-- `grafel_get_source`, `grafel_recent_activity`
-- `grafel_save_finding`, `grafel_list_findings`
-- `grafel_cross_links`, `grafel_enrichments`, `grafel_repairs`
+- `grafel_orient (view=me)`, `grafel_find`, `grafel_inspect`, `grafel_subgraph`
+- `grafel_trace`, `grafel_trace`, `grafel_orient (view=clusters)`, `grafel_orient (view=overview)`
+- `grafel_get_source`, `grafel_index_status`
+- `grafel_findings (action=save)`, `grafel_findings (action=list)`
+- `grafel_cross_links`, `grafel_docgen_apply (kind=enrichments)`, `grafel_docgen_apply (kind=repairs)`
 - `grafel_patterns`
-- `grafel_docgen_start_run`, `grafel_docgen_status`, `grafel_docgen_validate`, `grafel_docgen_promote`, `grafel_docgen_abort`, `grafel_docgen_list`
+- `grafel_docgen (action=start)`, `grafel_docgen (action=status)`, `grafel_docgen (action=validate)`, `grafel_docgen (action=promote)`, `grafel_docgen (action=abort)`, `grafel_docgen (action=list)`
 
 ## Related
 

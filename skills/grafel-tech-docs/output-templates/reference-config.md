@@ -28,4 +28,4 @@
 
 ## Known gaps
 
-> List `grafel_enrichments(action=list, kind="env-var")` blockers here verbatim. Do not fabricate values.
+> List `grafel_docgen_apply(kind="enrichments", action=list, entity_kind="env-var")` blockers here verbatim. Do not fabricate values.
