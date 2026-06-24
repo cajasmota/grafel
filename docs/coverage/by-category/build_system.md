@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # build_system
 
-**Total**: 112 records · **C/C++**: 12 · **clojure**: 4 · **C#**: 6 · **elixir**: 8 · **erlang**: 4 · **F#**: 1 · **go**: 7 · **groovy**: 1 · **haskell**: 1 · **java**: 8 · **JS/TS**: 20 · **lua**: 1 · **multi**: 4 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 9 · **scala**: 2 · **solidity**: 2
+**Total**: 113 records · **C/C++**: 12 · **clojure**: 4 · **C#**: 6 · **elixir**: 8 · **erlang**: 4 · **F#**: 1 · **go**: 7 · **groovy**: 1 · **haskell**: 1 · **java**: 8 · **JS/TS**: 20 · **lua**: 1 · **multi**: 4 · **OCaml**: 1 · **php**: 5 · **python**: 12 · **ruby**: 5 · **rust**: 9 · **scala**: 2 · **solidity**: 2
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -85,6 +85,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [multi](../by-language/multi.md) | [Dockerfile](../detail/build.dockerfile.md) | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Justfile](../detail/build.justfile.md) | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Makefile](../detail/build.makefile.md) | 🔴 | 🟢 | |
+| [OCaml](../by-language/ocaml.md) | [alcotest (OCaml testing)](../detail/test.alcotest.md) | 🟢 | ✅ | |
 | [php](../by-language/php.md) | [Behat](../detail/test.behat.md) | 🟢 | 🟢 | |
 | [php](../by-language/php.md) | [Codeception](../detail/test.codeception.md) | 🟢 | 🟢 | |
 | [php](../by-language/php.md) | [Composer](../detail/build.composer.md) | ✅ | ✅ | |

@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # grafel capabilities
 
-**Languages**: 39 (27 active · 12 placeholder) · **Frameworks**: 259 · **ORMs**: 185 · **Tools**: 139 · **Other**: 208
+**Languages**: 39 (28 active · 11 placeholder) · **Frameworks**: 260 · **ORMs**: 186 · **Tools**: 141 · **Other**: 208
 
 ## Coverage by language
 
@@ -29,6 +29,7 @@
 | [erlang](by-language/erlang.md) | 1 | 5 | 0 | 2 |
 | [groovy](by-language/groovy.md) | 1 | 1 | 1 | 1 |
 | [nim](by-language/nim.md) | 1 | 1 | 4 | 1 |
+| [OCaml](by-language/ocaml.md) | 1 | 2 | 1 | 0 |
 | [assembly](by-language/assembly.md) | 0 | 0 | 0 | 5 |
 | [COBOL](by-language/cobol.md) | 0 | 0 | 0 | 5 |
 | [javascript](by-language/javascript.md) | 0 | 0 | 0 | 1 |
@@ -74,7 +75,6 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Elm](by-language/elm.md) |
 | [Idris](by-language/idris.md) |
 | [Lisp](by-language/lisp.md) |
-| [OCaml](by-language/ocaml.md) |
 | [Pony](by-language/pony.md) |
 | [ReScript](by-language/rescript.md) |
 | [ReasonML](by-language/reasonml.md) |
@@ -83,4 +83,4 @@ The [Platform / k8s](by-category/platform.md) category splits into the lanes bel
 | [Verilog](by-language/verilog.md) |
 | [Zig](by-language/zig.md) |
 
-Total: 259 frameworks · 139 tools · 185 ORMs · 208 other
+Total: 260 frameworks · 141 tools · 186 ORMs · 208 other

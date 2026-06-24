@@ -292,6 +292,10 @@ const (
 	// NORMALISES each `Capture "name" _` to the Express-style `:name` form before
 	// canonicalisation, so it reuses canonicalizeColonParams.
 	FrameworkServant = "servant"
+	// FrameworkDream (#5374) — OCaml Dream `Dream.get "/users/:id" handler` verb
+	// routes. Dream uses the Sinatra/Express-style `:name` colon path-parameter
+	// convention, so canonicalisation reuses canonicalizeColonParams.
+	FrameworkDream = "dream"
 )
 
 // Canonicalize maps a framework-specific raw path string to the canonical
@@ -353,7 +357,7 @@ func Canonicalize(framework, raw string) string {
 		FrameworkRobyn, FrameworkPlug, FrameworkCowboy,
 		FrameworkLapis, FrameworkOpenResty, FrameworkVapor, FrameworkClojure,
 		FrameworkKemal, FrameworkRatpack, FrameworkGrape, FrameworkRoda,
-		FrameworkScotty, FrameworkYesod, FrameworkServant:
+		FrameworkScotty, FrameworkYesod, FrameworkServant, FrameworkDream:
 		out = canonicalizeColonParams(raw)
 	case FrameworkGiraffe:
 		// Giraffe `routef "/users/%i"` printf placeholders → `{}` first, then

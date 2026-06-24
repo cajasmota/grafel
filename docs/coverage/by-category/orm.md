@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # orm
 
-**Total**: 185 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 5 · **C#**: 16 · **dart**: 6 · **elixir**: 10 · **go**: 17 · **groovy**: 1 · **haskell**: 1 · **java**: 15 · **JS/TS**: 20 · **kotlin**: 7 · **nim**: 4 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
+**Total**: 186 records · **C/C++**: 10 · **clojure**: 5 · **crystal**: 5 · **C#**: 16 · **dart**: 6 · **elixir**: 10 · **go**: 17 · **groovy**: 1 · **haskell**: 1 · **java**: 15 · **JS/TS**: 20 · **kotlin**: 7 · **nim**: 4 · **OCaml**: 1 · **php**: 14 · **python**: 18 · **ruby**: 14 · **rust**: 15 · **scala**: 7
 
 Back to [summary](../summary.md). Bucket: **ORMs**.
 
@@ -128,6 +128,7 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [nim](../by-language/nim.md) | [Debby (Nim ORM)](../detail/lang.nim.orm.debby.md) | 🟡 8/9 | |
 | [nim](../by-language/nim.md) | [Norm (Nim ORM)](../detail/lang.nim.orm.norm.md) | 🟢 8/8 | |
 | [nim](../by-language/nim.md) | [ormin (Nim compile-time ORM)](../detail/lang.nim.orm.ormin.md) | 🟡 5/8 | |
+| [OCaml](../by-language/ocaml.md) | [Caqti (OCaml DB)](../detail/lang.ocaml.orm.caqti.md) | 🟡 1/11 | |
 | [php](../by-language/php.md) | [AWS SDK DynamoDB (PHP)](../detail/lang.php.driver.dynamodb.md) | 🟡 1/4 | |
 | [php](../by-language/php.md) | [CycleORM](../detail/lang.php.orm.cycleorm.md) | 🟡 8/11 | |
 | [php](../by-language/php.md) | [Doctrine ORM](../detail/lang.php.orm.doctrine.md) | 🟡 8/11 | |

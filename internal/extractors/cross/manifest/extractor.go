@@ -196,6 +196,9 @@ var exactManifestNames = map[string]bool{
 	// The *.cabal Cabal package description is suffix-dispatched below.
 	"stack.yaml":   true,
 	"package.yaml": true,
+	// OCaml — Dune project file (inline (package (depends ...)) stanzas). The
+	// *.opam package manifest is suffix-dispatched below (#5374).
+	"dune-project": true,
 }
 
 // IsManifest returns true when filePath names a supported manifest file.
@@ -229,6 +232,11 @@ func IsManifest(filePath string) bool {
 	// *.cabal — Haskell Cabal package description (the package name is the
 	// file's base name, e.g. mylib.cabal, so it is matched by extension; #5373).
 	if strings.HasSuffix(basename, ".cabal") {
+		return true
+	}
+	// *.opam — OCaml opam package manifest (the package name is the file's base
+	// name, e.g. my-service.opam, so it is matched by extension; #5374).
+	if strings.HasSuffix(basename, ".opam") {
 		return true
 	}
 	return false
@@ -283,6 +291,8 @@ func detectPackageManager(filePath string) string {
 		// Haskell — Stack (extra-deps) + hpack (package.yaml)
 		"stack.yaml":   "stack",
 		"package.yaml": "hpack",
+		// OCaml — Dune project file
+		"dune-project": "dune",
 	}
 	basename := filepath.Base(filePath)
 	if v, ok := pm[basename]; ok {
@@ -307,6 +317,10 @@ func detectPackageManager(filePath string) string {
 	// *.cabal → cabal (Haskell package description)
 	if strings.HasSuffix(basename, ".cabal") {
 		return "cabal"
+	}
+	// *.opam → opam (OCaml package manifest)
+	if strings.HasSuffix(basename, ".opam") {
+		return "opam"
 	}
 	return "unknown"
 }
@@ -1931,6 +1945,8 @@ var parsers = map[string]parserFn{
 	// dispatched below).
 	"stack.yaml":   parseStackYaml,
 	"package.yaml": parsePackageYaml,
+	// OCaml — Dune project file (*.opam is suffix-dispatched below).
+	"dune-project": parseDuneProject,
 }
 
 func dispatchParser(filePath, source string) (string, []dep) {
@@ -1958,6 +1974,10 @@ func dispatchParser(filePath, source string) (string, []dep) {
 	// *.cabal — Haskell Cabal package description.
 	if strings.HasSuffix(basename, ".cabal") {
 		return "cabal", parseCabal(source)
+	}
+	// *.opam — OCaml opam package manifest.
+	if strings.HasSuffix(basename, ".opam") {
+		return "opam", parseOpam(source)
 	}
 	// Makefile — only an erlang.mk build when it includes erlang.mk / declares
 	// PROJECT (requireSignal=true); a plain Makefile is a no-op.

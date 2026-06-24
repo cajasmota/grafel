@@ -154,6 +154,12 @@ func synthesisSupportsLanguage(lang string) bool {
 	// Files without a Haskell web marker are no-ops inside the synthesizers.
 	case "haskell":
 		return true
+	// #5374 (bootstrap epic #5360): OCaml Dream producer-side route synthesis —
+	// `Dream.get "/path" handler` verb registrations have no compiled YAML
+	// rules, so allow OCaml through for synthesizeDreamRoutes. Files without a
+	// `Dream.` web marker are no-ops inside the synthesizer.
+	case "ocaml":
+		return true
 	// #4749 (epic #4615 tail): Erlang Cowboy producer-side route synthesis —
 	// `cowboy_router:compile([{'_', [{"/path", handler, []}]}])` dispatch tables
 	// have no compiled YAML rules, so allow Erlang through for synthesizeCowboy.
@@ -1473,6 +1479,15 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeScottyRoutes(string(content), emit)
 		synthesizeYesodRoutes(string(content), emit)
 		synthesizeServantRoutes(string(content), emit)
+	case "ocaml":
+		// Producer side (#5374, bootstrap epic #5360): OCaml Dream web route
+		// registrations — `Dream.get "/users/:id" handler` verb routes →
+		// canonical http_endpoint_definition, in the same shape
+		// axum/Scotty/Kemal/Vapor emit, so the shared resolver and the e2e
+		// route-test linker (#4351) light up for OCaml. The base ocaml extractor
+		// stays structural-only; this pass adds the canonical definitions the
+		// coverage substrate keys off.
+		synthesizeDreamRoutes(string(content), emit)
 	case "yaml", "json":
 		// Producer side (#3628, area #16): OpenAPI 3.x / Swagger 2.0 spec
 		// files declare the HTTP API surface as ground-truth. Each

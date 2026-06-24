@@ -117,6 +117,9 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 		return nil, nil
 	}
 	out := extractOCaml(string(file.Content), file.Path)
+	// Framework-aware depth pass (#5374): Caqti DB queries + alcotest suites.
+	out = append(out, extractCaqtiQueries(string(file.Content), file.Path)...)
+	out = append(out, extractAlcotestSuite(string(file.Content), file.Path)...)
 	extractor.TagRelationshipsLanguage(out, "ocaml")
 	extractor.TagEntitiesLanguage(out, "ocaml")
 	return out, nil

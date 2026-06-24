@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # http_framework
 
-**Total**: 259 records · **C/C++**: 25 · **clojure**: 4 · **crystal**: 2 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 2 · **go**: 21 · **groovy**: 1 · **haskell**: 3 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 17 · **scala**: 14 · **swift**: 5
+**Total**: 260 records · **C/C++**: 25 · **clojure**: 4 · **crystal**: 2 · **C#**: 18 · **dart**: 3 · **elixir**: 14 · **erlang**: 1 · **F#**: 2 · **go**: 21 · **groovy**: 1 · **haskell**: 3 · **java**: 23 · **JS/TS**: 33 · **kotlin**: 18 · **lua**: 4 · **nim**: 1 · **OCaml**: 1 · **php**: 16 · **python**: 25 · **ruby**: 9 · **rust**: 17 · **scala**: 14 · **swift**: 5
 
 Back to [summary](../summary.md). Bucket: **Frameworks**.
 
@@ -95,6 +95,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
 | [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
 | [nim](../by-language/nim.md) | [Jester / Prologue (Nim HTTP)](../detail/lang.nim.framework.jester.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🟡 1/13 | |
+| [OCaml](../by-language/ocaml.md) | [Dream (OCaml HTTP)](../detail/lang.ocaml.framework.dream.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 | [php](../by-language/php.md) | [API Platform](../detail/lang.php.framework.api-platform.md) | 🟡 4/7 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/24 | 🟡 2/12 | |
 | [php](../by-language/php.md) | [API Platform GraphQL](../detail/lang.php.framework.api-platform-graphql.md) | 🟡 3/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/24 | 🟡 2/13 | |
 | [php](../by-language/php.md) | [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 3/7 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 24/25 | 🟡 6/11 | |

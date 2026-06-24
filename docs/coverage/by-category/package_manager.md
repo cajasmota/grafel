@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 27 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
+**Total**: 28 records · **C/C++**: 4 · **crystal**: 1 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 1 · **F#**: 1 · **go**: 1 · **haskell**: 1 · **java**: 2 · **JS/TS**: 2 · **lua**: 1 · **multi**: 1 · **nim**: 1 · **OCaml**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -27,6 +27,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [lua](../by-language/lua.md) | [LuaRocks](../detail/lang.lua.tool.luarocks.md) | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Dependency hygiene (used / unused / phantom)](../detail/analysis.dependency-hygiene.md) | ✅ | — | — | |
 | [nim](../by-language/nim.md) | [nimble (Nim package manager)](../detail/lang.nim.tool.nimble.md) | — | — | ✅ | |
+| [OCaml](../by-language/ocaml.md) | [Dune / opam (OCaml build)](../detail/lang.ocaml.tool.dune.md) | — | — | ✅ | |
 | [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ✅ | ✅ | |
 | [python](../by-language/python.md) | [Pipfile / Pipfile.lock](../detail/pkg.pipfile.md) | — | 🟢 | 🟢 | |
 | [python](../by-language/python.md) | [pyproject.toml](../detail/pkg.pyproject.md) | — | 🟢 | ✅ | |
