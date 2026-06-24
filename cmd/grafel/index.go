@@ -1494,6 +1494,19 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 			excStats.Retargeted, excStats.SyntheticDropped, excStats.SyntheticKept)
 	}
 
+	// #5526 — package.json declared-dependency cross-reference. Runs AFTER
+	// external.Synthesize so the import-derived ext:<pkg> nodes exist: joins
+	// declared deps (package.json), resolved versions (lockfile), and the
+	// import graph to stamp used/unused (dead_dependency_candidate) + resolved
+	// versions on each declared npm dep and surface versions on ext: nodes.
+	xrefStats := external.CrossReferenceManifests(doc)
+	if verbose() {
+		fmt.Fprintf(os.Stderr,
+			"manifest-xref: declared_reconciled=%d dead_candidates=%d versions_resolved=%d ext_enriched=%d\n",
+			xrefStats.DeclaredReconciled, xrefStats.DeadCandidates,
+			xrefStats.VersionsResolved, xrefStats.ExternalNodesEnriched)
+	}
+
 	// Issue #1381 — stamp module="_external" on synthesised placeholder
 	// entities that have no source_file (ext:* nodes from external.Synthesize,
 	// and any other synthetic entities that buildDocument could not tag because

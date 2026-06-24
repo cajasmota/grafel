@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # JS/TS
 
-**Frameworks**: 33 · **Tools**: 21 · **ORMs**: 20 · **Other**: 9
+**Frameworks**: 33 · **Tools**: 22 · **ORMs**: 20 · **Other**: 9
 
 Back to [summary](../summary.md).
 
@@ -119,6 +119,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [Yarn](../detail/build.yarn.md) | ✅ | — | — | — | ✅ | |
 | [esbuild](../detail/build.esbuild.md) | ✅ | — | — | — | ✅ | |
 | [npm](../detail/build.npm.md) | ✅ | — | — | — | ✅ | |
+| [npm / yarn / pnpm (package.json + lockfile)](../detail/lang.jsts.tool.npm-manifest.md) | — | ✅ | ✅ | ✅ | — | |
 | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | — | ✅ | ✅ | — | |
 | [pnpm](../detail/build.pnpm.md) | ✅ | — | — | — | ✅ | |
 | [tap / node:test](../detail/test.tap.md) | ✅ | — | — | — | ✅ | |

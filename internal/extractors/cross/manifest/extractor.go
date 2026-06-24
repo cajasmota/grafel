@@ -71,8 +71,15 @@ type dep struct {
 	name    string
 	version string
 	isDev   bool
-	// kind is "runtime", "dev", "peer", "locked", or (go.mod) "indirect"
+	// kind is "runtime", "dev", "peer", "optional", "locked", or
+	// (go.mod) "indirect"
 	kind string
+	// section is the package.json manifest section a declared dependency came
+	// from, one of "prod", "dev", "peer", "optional" (#5526). Empty for
+	// non-package.json manifests and for lockfile-derived (kind="locked") deps.
+	// It feeds the External-node `dep_section` attribute and the declared/
+	// dead-dependency cross-reference pass.
+	section string
 	// indirect marks a transitive dependency. For go.mod this is the
 	// `// indirect` marker on a require line; surfaced via the
 	// "indirect" entity/edge property so direct and transitive deps are
@@ -250,24 +257,44 @@ func detectPackageManager(filePath string) string {
 // Parser: package.json
 // ---------------------------------------------------------------------------
 
+// parsePackageJSON parses all four declared-dependency sections of an npm
+// package.json: dependencies (prod), devDependencies, peerDependencies, and
+// optionalDependencies (#5526). Each dep carries its manifest version RANGE
+// in `version` plus the originating `section` so the cross-reference pass can
+// distinguish declared (range-versioned) deps from the lockfile's resolved
+// tree and flag declared-but-unused (dead) dependencies.
 func parsePackageJSON(source string) []dep {
 	var data struct {
-		Dependencies     map[string]string `json:"dependencies"`
-		DevDependencies  map[string]string `json:"devDependencies"`
-		PeerDependencies map[string]string `json:"peerDependencies"`
+		Dependencies         map[string]string `json:"dependencies"`
+		DevDependencies      map[string]string `json:"devDependencies"`
+		PeerDependencies     map[string]string `json:"peerDependencies"`
+		OptionalDependencies map[string]string `json:"optionalDependencies"`
 	}
 	if err := json.Unmarshal([]byte(source), &data); err != nil {
 		return nil
 	}
 	var out []dep
+	seen := map[string]bool{}
+	add := func(pkg, ver string, isDev bool, kind, section string) {
+		// First section wins on duplicate names (prod > dev > peer > optional),
+		// matching npm's own precedence; keeps one declared record per package.
+		if pkg == "" || seen[pkg] {
+			return
+		}
+		seen[pkg] = true
+		out = append(out, dep{name: pkg, version: ver, isDev: isDev, kind: kind, section: section})
+	}
 	for pkg, ver := range data.Dependencies {
-		out = append(out, dep{name: pkg, version: ver, isDev: false, kind: "runtime"})
+		add(pkg, ver, false, "runtime", "prod")
 	}
 	for pkg, ver := range data.DevDependencies {
-		out = append(out, dep{name: pkg, version: ver, isDev: true, kind: "dev"})
+		add(pkg, ver, true, "dev", "dev")
 	}
 	for pkg, ver := range data.PeerDependencies {
-		out = append(out, dep{name: pkg, version: ver, isDev: false, kind: "peer"})
+		add(pkg, ver, false, "peer", "peer")
+	}
+	for pkg, ver := range data.OptionalDependencies {
+		add(pkg, ver, false, "optional", "optional")
 	}
 	return out
 }
@@ -1670,26 +1697,45 @@ func buildEntitiesAndRels(filePath, packageManager string, deps []dep) []types.E
 			indirect = "true"
 		}
 
+		// #5526 — package.json declared-dependency provenance. `dep_section`
+		// (prod/dev/peer/optional) and `declared=true` mark a dep that the
+		// manifest explicitly lists, distinct from a lockfile-only resolved
+		// dep. Empty section ⇒ omit the attributes (lockfiles, other
+		// ecosystems) so non-package.json records are byte-identical.
+		extraProps := func() map[string]string {
+			if d.section == "" {
+				return nil
+			}
+			return map[string]string{
+				"dep_section": d.section,
+				"declared":    "true",
+			}
+		}()
+
 		// #560: emit a single SCOPE.Component carrying the DEPENDS_ON edge
 		// embedded in its Relationships, rather than a real entity plus a
 		// synthetic "relationship"-kind container entity that the downstream
 		// pipeline would otherwise count as a phantom entity.
+		depProps := map[string]string{
+			"external_dependency": "true",
+			"package_manager":     packageManager,
+			"version":             d.version,
+			"is_dev":              isDev,
+			"dependency_kind":     depKind,
+			"indirect":            indirect,
+			"ref":                 pRef,
+			"provenance":          "INFERRED_FROM_PACKAGE_MANIFEST",
+		}
+		for k, v := range extraProps {
+			depProps[k] = v
+		}
 		out = append(out, types.EntityRecord{
 			Name:       d.name,
 			Kind:       "SCOPE.Component",
 			Subtype:    "external_dependency",
 			SourceFile: filePath,
 			Language:   "",
-			Properties: map[string]string{
-				"external_dependency": "true",
-				"package_manager":     packageManager,
-				"version":             d.version,
-				"is_dev":              isDev,
-				"dependency_kind":     depKind,
-				"indirect":            indirect,
-				"ref":                 pRef,
-				"provenance":          "INFERRED_FROM_PACKAGE_MANIFEST",
-			},
+			Properties: depProps,
 			Relationships: []types.RelationshipRecord{
 				{
 					FromID: projRef,

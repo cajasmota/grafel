@@ -1,7 +1,7 @@
 <!-- DO NOT EDIT — generated from docs/coverage/registry.json by 'go run ./tools/coverage gen' -->
 # package_manager
 
-**Total**: 21 records · **C/C++**: 4 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 1 · **go**: 1 · **java**: 2 · **JS/TS**: 1 · **multi**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
+**Total**: 22 records · **C/C++**: 4 · **C#**: 1 · **dart**: 1 · **elixir**: 1 · **erlang**: 1 · **go**: 1 · **java**: 2 · **JS/TS**: 2 · **multi**: 1 · **php**: 1 · **python**: 3 · **ruby**: 1 · **rust**: 1 · **scala**: 1 · **swift**: 1
 
 Back to [summary](../summary.md). Bucket: **Tools**.
 
@@ -19,6 +19,7 @@ Back to [summary](../summary.md). Bucket: **Tools**.
 | [go](../by-language/go.md) | [go.mod](../detail/pkg.go-mod.md) | — | ✅ | ✅ | |
 | [java](../by-language/java.md) | [build.gradle / build.gradle.kts](../detail/pkg.gradle.md) | — | 🔴 | 🟢 | |
 | [java](../by-language/java.md) | [pom.xml](../detail/pkg.pom.md) | — | — | ✅ | |
+| [JS/TS](../by-language/jsts.md) | [npm / yarn / pnpm (package.json + lockfile)](../detail/lang.jsts.tool.npm-manifest.md) | ✅ | ✅ | ✅ | |
 | [JS/TS](../by-language/jsts.md) | [package.json (npm/yarn/pnpm)](../detail/pkg.npm.md) | — | ✅ | ✅ | |
 | [multi](../by-language/multi.md) | [Dependency hygiene (used / unused / phantom)](../detail/analysis.dependency-hygiene.md) | ✅ | — | — | |
 | [php](../by-language/php.md) | [composer.json](../detail/pkg.composer.md) | — | ✅ | ✅ | |
