@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4910 | — | next.jdbc (the modern Clojure JDBC wrapper) DETECTED via internal/engine/rules/clojure/orms/next_jdbc.yaml + next_jdbc_postgresql.yaml (next.jdbc imports, (jdbc/execute! …)/(sql/insert! …)/(sql/query …)/(jdbc/with-transaction …) markers). SQL-string verb/table attribution and transaction-function stamping are NOT yet extracted into the graph — detection-only. Follow-up #4910 (highest-value Clojure DB extraction target). |
+| Query attribution | 🟢 `partial` | — | 5362 | `internal/engine/orm_queries_clojure.go`<br>`internal/engine/orm_queries_clojure_test.go` | #5362: scanClojureJDBC (orm_queries_clojure.go) emits QUERIES edges (caller → Class:<Table>, operation, orm=next.jdbc) for two next.jdbc idioms: the raw-SQL vector form (jdbc/execute!|execute-one!|execute / sql/query ds ["SELECT … FROM users …" …]) — table+verb parsed from the SQL string via extractSQLTable/sqlOp — and the next.jdbc.sql friendly fns (sql/insert!|update!|delete!|query|find-by-keys|get-by-id ds :users …) where the table is the keyword arg after the datasource. Proven by TestClojure_NextJDBC_SQLString / _FriendlyFns. Partial: dynamic/interpolated SQL and non-literal table args are honest-skipped; transaction-function stamping still tracked under #4910. |
 
 ### Migrations
 

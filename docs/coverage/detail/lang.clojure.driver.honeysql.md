@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4910 | — | HoneySQL (SQL DSL — data → SQL) DETECTED via internal/engine/rules/clojure/orms/honeysql.yaml (honey.sql/honeysql.core imports, (sql/format …)/(h/select …)/{:select [..] :from [..]} markers). The {:select/:from/:where …} query-map → table/verb attribution is NOT yet extracted into the graph — detection-only. Follow-up #4910. |
+| Query attribution | 🟢 `partial` | — | 5362 | `internal/engine/orm_queries_clojure.go`<br>`internal/engine/orm_queries_clojure_test.go` | #5362: scanClojureHoneySQL (orm_queries_clojure.go) emits QUERIES edges (caller → Class:<Table>, operation, orm=honeysql) from the HoneySQL data DSL — the table is read from the :from clause ({:select [..] :from [:users] :where …} → find) and from the insert-into / update / delete-from DML clauses ({:insert-into :orders …} → create, {:update :users …} → update, {:delete-from :sessions …} → delete). Proven by TestClojure_HoneySQL. Partial: non-literal table keywords and JOINs are honest-skipped; full predicate/column attribution still under #4910. |
 
 ### Migrations
 

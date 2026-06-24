@@ -264,6 +264,14 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 		// the cross-language QUERIES topology edge.
 		scanElixirDrivers(src, funcs, emit)
 		scanInfra()
+	case "clojure":
+		// Persistence-driver topology (#5362): next.jdbc / clojure.java.jdbc SQL
+		// + friendly fns, HoneySQL `:from`/DML data-DSL, and Datomic/DataScript
+		// datalog attribute-namespace targets. Fills the declared-empty Clojure
+		// driver cells with QUERIES edges in the cross-language shape.
+		scanClojureJDBC(src, funcs, emit)
+		scanClojureHoneySQL(src, funcs, emit)
+		scanClojureDatalog(src, funcs, emit)
 	}
 
 	return DetectorPassResult{Entities: entities, Relationships: relationships}
@@ -275,7 +283,7 @@ func applyORMQueries(args DetectorPassArgs) DetectorPassResult {
 func ormQueriesSupportsLanguage(lang string) bool {
 	switch lang {
 	case "python", "javascript", "typescript", "go", "java", "ruby",
-		"csharp", "php", "rust", "elixir":
+		"csharp", "php", "rust", "elixir", "clojure":
 		return true
 	default:
 		return false
@@ -401,6 +409,13 @@ var (
 	elixirOrmFuncRe = regexp.MustCompile(
 		`(?m)^[ \t]*defp?\s+([A-Za-z_]\w*)`,
 	)
+
+	// Clojure: a top-level `(defn name`, `(defn- name` or `(defmethod name`
+	// form head. The handler/query call sites are attributed to their nearest
+	// preceding `defn`. Names allow the Lisp identifier punctuation set.
+	clojureOrmFuncRe = regexp.MustCompile(
+		`(?m)^\s*\((?:defn-?|defmethod)\s+([\w\-\?!\*'+]+)`,
+	)
 )
 
 func indexEnclosingFunctions(lang, content string) []funcSpan {
@@ -424,6 +439,8 @@ func indexEnclosingFunctions(lang, content string) []funcSpan {
 		re = rustOrmFuncRe
 	case "elixir":
 		re = elixirOrmFuncRe
+	case "clojure":
+		re = clojureOrmFuncRe
 	default:
 		return nil
 	}

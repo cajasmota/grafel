@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4910 | — | DataScript (in-memory Datalog, ClojureScript) DETECTED via internal/engine/rules/clojure/orms/datascript.yaml (datascript.core imports, (d/create-conn)/(d/transact!)/(d/q '[:find …]) markers). Datalog query/transaction attribution is NOT yet extracted into the graph — detection-only. Follow-up #4910. |
+| Query attribution | 🟢 `partial` | — | 5362 | `internal/engine/orm_queries_clojure.go`<br>`internal/engine/orm_queries_clojure_test.go` | #5362: scanClojureDatalog (orm_queries_clojure.go) emits QUERIES edges (caller → Class:<AttrNamespace>, operation=find, orm=datalog) for DataScript datalog queries — it walks each (d/q …) / (q …) form body and resolves each namespaced :where attribute (e.g. [?e :user/email _] → namespace `user`) to a resource target. Proven by TestClojure_Datalog (shared code path). Honest partial: datalog has no single table, so the attribute namespace is the closest resolvable resource; the reserved :db/ schema namespace is excluded; (d/transact!) write attribution stays under #4910. |
 
 ### Migrations
 

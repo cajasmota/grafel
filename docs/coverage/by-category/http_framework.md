@@ -27,7 +27,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [C/C++](../by-language/c-cpp.md) | [libevent](../detail/lang.c-cpp.framework.libevent.md) | 🔴 0/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/8 | |
 | [C/C++](../by-language/c-cpp.md) | [libuv](../detail/lang.c-cpp.framework.libuv.md) | 🔴 0/4 | — | ✅ 4/4 | ✅ 1/1 | 🟡 22/25 | 🟡 3/8 | |
 | [clojure](../by-language/clojure.md) | [Compojure](../detail/lang.clojure.framework.compojure.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
-| [clojure](../by-language/clojure.md) | [Pedestal](../detail/lang.clojure.framework.pedestal.md) | 🔴 0/7 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
+| [clojure](../by-language/clojure.md) | [Pedestal](../detail/lang.clojure.framework.pedestal.md) | 🟡 2/7 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 | [clojure](../by-language/clojure.md) | [Reitit](../detail/lang.clojure.framework.reitit.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 | [clojure](../by-language/clojure.md) | [Ring](../detail/lang.clojure.framework.ring.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 | [crystal](../by-language/crystal.md) | [Kemal (Crystal HTTP)](../detail/lang.crystal.framework.kemal.md) | 🟡 3/7 | 🔴 0/1 | 🟡 3/4 | ✅ 1/1 | 🟡 13/24 | 🟡 3/10 | |

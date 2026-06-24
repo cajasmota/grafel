@@ -21,11 +21,11 @@ Back to [summary](../summary.md). Bucket: **ORMs**.
 | [C/C++](../by-language/c-cpp.md) | [nanodbc (ODBC)](../detail/lang.c-cpp.orm.nanodbc.md) | 🟡 1/6 | |
 | [C/C++](../by-language/c-cpp.md) | [redis-plus-plus](../detail/lang.c-cpp.driver.redis-plus-plus.md) | 🟡 1/4 | |
 | [C/C++](../by-language/c-cpp.md) | [sqlpp11](../detail/lang.c-cpp.orm.sqlpp11.md) | 🟡 3/6 | |
-| [clojure](../by-language/clojure.md) | [DataScript](../detail/lang.clojure.driver.datascript.md) | 🔴 0/11 | |
-| [clojure](../by-language/clojure.md) | [Datomic](../detail/lang.clojure.driver.datomic.md) | 🔴 0/11 | |
-| [clojure](../by-language/clojure.md) | [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🔴 0/11 | |
-| [clojure](../by-language/clojure.md) | [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🔴 0/11 | |
-| [clojure](../by-language/clojure.md) | [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🔴 0/11 | |
+| [clojure](../by-language/clojure.md) | [DataScript](../detail/lang.clojure.driver.datascript.md) | 🟡 1/11 | |
+| [clojure](../by-language/clojure.md) | [Datomic](../detail/lang.clojure.driver.datomic.md) | 🟡 1/11 | |
+| [clojure](../by-language/clojure.md) | [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🟡 1/11 | |
+| [clojure](../by-language/clojure.md) | [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🟡 1/11 | |
+| [clojure](../by-language/clojure.md) | [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🟡 1/11 | |
 | [crystal](../by-language/crystal.md) | [Avram (Lucky Crystal ORM)](../detail/lang.crystal.orm.avram.md) | 🟡 5/9 | |
 | [crystal](../by-language/crystal.md) | [Clear (Crystal ORM)](../detail/lang.crystal.orm.clear.md) | 🟡 5/9 | |
 | [crystal](../by-language/crystal.md) | [Crecto (Crystal ORM)](../detail/lang.crystal.orm.crecto.md) | 🟡 5/9 | |

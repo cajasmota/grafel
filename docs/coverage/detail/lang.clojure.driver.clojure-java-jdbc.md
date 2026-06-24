@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4910 | — | Legacy clojure.java.jdbc DETECTED via internal/engine/rules/clojure/orms/clojure_java_jdbc_legacy.yaml (clojure.java.jdbc imports, (jdbc/query …)/(jdbc/insert! …)/(jdbc/execute! …) markers). Query-attribution edges (SQL verb → table) are NOT yet extracted into the graph — detection-only. Follow-up #4910. |
+| Query attribution | 🟢 `partial` | — | 5362 | `internal/engine/orm_queries_clojure.go`<br>`internal/engine/orm_queries_clojure_test.go` | #5362: scanClojureJDBC (orm_queries_clojure.go) also covers the legacy clojure.java.jdbc surface — it gates on the clojure.java.jdbc import and the shared (jdbc/execute! …) / (jdbc/query …) markers and emits QUERIES edges (caller → Class:<Table>, operation) from the SQL-string vector form via extractSQLTable/sqlOp. Proven by TestClojure_NextJDBC_SQLString (same code path). Partial: dynamic SQL is honest-skipped; the legacy (jdbc/insert! db :table {…}) keyword-table sugar is tracked under #4910. |
 
 ### Migrations
 

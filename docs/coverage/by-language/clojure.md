@@ -27,7 +27,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
 |---|---|---|---|---|---|---|---|
 | [Compojure](../detail/lang.clojure.framework.compojure.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
-| [Pedestal](../detail/lang.clojure.framework.pedestal.md) | 🔴 0/7 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
+| [Pedestal](../detail/lang.clojure.framework.pedestal.md) | 🟡 2/7 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 | [Reitit](../detail/lang.clojure.framework.reitit.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
 | [Ring](../detail/lang.clojure.framework.ring.md) | 🔴 0/6 | 🔴 0/1 | 🔴 0/4 | 🔴 0/1 | 🔴 0/24 | 🔴 0/13 | |
 
@@ -48,11 +48,11 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 | Name | Other capabilities | Notes |
 |---|---|---|
-| [DataScript](../detail/lang.clojure.driver.datascript.md) | 🔴 0/11 | |
-| [Datomic](../detail/lang.clojure.driver.datomic.md) | 🔴 0/11 | |
-| [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🔴 0/11 | |
-| [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🔴 0/11 | |
-| [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🔴 0/11 | |
+| [DataScript](../detail/lang.clojure.driver.datascript.md) | 🟡 1/11 | |
+| [Datomic](../detail/lang.clojure.driver.datomic.md) | 🟡 1/11 | |
+| [HoneySQL](../detail/lang.clojure.driver.honeysql.md) | 🟡 1/11 | |
+| [clojure.java.jdbc (legacy)](../detail/lang.clojure.driver.clojure-java-jdbc.md) | 🟡 1/11 | |
+| [next.jdbc](../detail/lang.clojure.driver.next-jdbc.md) | 🟡 1/11 | |
 
 
 ## Other

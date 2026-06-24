@@ -86,6 +86,21 @@ var cljReititVerbRe = regexp.MustCompile(
 	`:(get|post|put|delete|patch|head|options)\b`,
 )
 
+// cljPedestalRouteRe matches a Pedestal terse/table route vector head:
+//
+//	["/users/:id" :get  get-user :route-name :get-user]
+//	["/users"     :post create-user]
+//
+// In Pedestal's table-routing syntax a route is a vector whose FIRST element
+// is a string-literal path and whose SECOND element is the HTTP-verb keyword
+// (`:get`/`:post`/…). The interceptor/handler follows. Capture group 1 is the
+// literal path; group 2 is the verb keyword. The verb keyword immediately
+// after the path string is what distinguishes a Pedestal table route from a
+// Reitit route (whose second element is a `{...}` data map).
+var cljPedestalRouteRe = regexp.MustCompile(
+	`\[\s*"(/[^"\n\r]*)"\s+:(get|post|put|delete|patch|head|options|any)\b`,
+)
+
 // cljHasWebRoutes is a fast pre-filter: the file must reference a Compojure verb
 // macro or a Reitit/Ring router marker to be worth scanning.
 func cljHasWebRoutes(content string) bool {
@@ -96,9 +111,16 @@ func cljHasWebRoutes(content string) bool {
 		return true
 	}
 	// Reitit data routes are framework-marked by a ring/router or reitit require.
-	return strings.Contains(content, "reitit") &&
+	if strings.Contains(content, "reitit") &&
 		(strings.Contains(content, "ring/router") || strings.Contains(content, ":get") ||
-			strings.Contains(content, ":post"))
+			strings.Contains(content, ":post")) {
+		return true
+	}
+	// Pedestal table routes are framework-marked by an io.pedestal require and
+	// carry `["/path" :verb ...]` route vectors.
+	return strings.Contains(content, "io.pedestal") &&
+		(strings.Contains(content, ":get") || strings.Contains(content, ":post") ||
+			strings.Contains(content, ":put") || strings.Contains(content, ":delete"))
 }
 
 // synthesizeClojureRoutes scans a Clojure source file for Compojure macro routes
@@ -150,6 +172,19 @@ func synthesizeClojureRoutes(content string, emit emitFn) {
 		}
 		for _, vm := range verbs {
 			emitRoute(vm[1], path, "reitit")
+		}
+	}
+
+	// Pedestal table routes — `["/path" :verb handler ...]`. The verb keyword
+	// directly follows the literal path; emit one endpoint per (verb, path).
+	// Reitit's second element is a `{...}` data map, so the verb-keyword shape
+	// here never double-fires on a Reitit route.
+	if strings.Contains(content, "io.pedestal") {
+		for _, m := range cljPedestalRouteRe.FindAllStringSubmatch(content, -1) {
+			if len(m) < 3 {
+				continue
+			}
+			emitRoute(m[2], m[1], "pedestal")
 		}
 	}
 }

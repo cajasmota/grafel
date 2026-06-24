@@ -51,6 +51,29 @@ func TestClojure_ReititRoutes(t *testing.T) {
 	}, "reitit-routes")
 }
 
+// TestClojure_PedestalRoutes covers the Pedestal table-routing shape — a vector
+// whose head is a string path and whose second element is the verb keyword
+// (#5362). Fills the previously-empty Pedestal (0/1) routing cell.
+func TestClojure_PedestalRoutes(t *testing.T) {
+	src := `(ns myapp.service
+  (:require [io.pedestal.http :as http]
+            [io.pedestal.http.route :as route]))
+
+(def routes
+  #{["/greet"        :get  greet-handler  :route-name :greet]
+    ["/users"        :post create-user]
+    ["/users/:id"    :get  get-user       :route-name :get-user]
+    ["/users/:id"    :delete delete-user]})
+`
+	ids, _ := runDetect(t, "clojure", "service.clj", src)
+	requireContains(t, ids, []string{
+		"http:GET:/greet",
+		"http:POST:/users",
+		"http:GET:/users/{id}",
+		"http:DELETE:/users/{id}",
+	}, "pedestal-routes")
+}
+
 // TestClojure_NonRouteStringIgnored is the negative guard: a verb-named local or
 // a bare string elsewhere must not forge an endpoint.
 func TestClojure_NonRouteStringIgnored(t *testing.T) {

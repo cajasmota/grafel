@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 4910 | — | Datomic (immutable graph DB) DETECTED via internal/engine/rules/clojure/orms/datomic.yaml (datomic.api/datomic.client.api imports, (d/transact …)/(d/q '[:find …])/(d/pull …) markers). Datalog query + (d/transact …) attribution is NOT yet extracted into the graph — detection-only. Follow-up #4910. |
+| Query attribution | 🟢 `partial` | — | 5362 | `internal/engine/orm_queries_clojure.go`<br>`internal/engine/orm_queries_clojure_test.go` | #5362: scanClojureDatalog (orm_queries_clojure.go) emits QUERIES edges (caller → Class:<AttrNamespace>, operation=find, orm=datalog) for Datomic datalog queries — it walks each (d/q …) form body and resolves each namespaced :where attribute (e.g. [?e :order/sku _] → namespace `order`) to a resource target. Proven by TestClojure_Datalog. Honest partial: datalog has no single table, so the attribute namespace is the closest resolvable resource; the reserved :db/ schema namespace is excluded; (d/transact …)/(d/pull …) attribution stays under #4910. |
 
 ### Migrations
 
