@@ -47,7 +47,7 @@ var (
 	// pass to attach a refine/transform/pipe chain to non-object zod schemas; the
 	// object pass owns `z.object`.
 	zodScalarSchemaRe = regexp.MustCompile(
-		`(?m)(?:const|let|var)\s+([A-Za-z_]\w*)\s*(?::\s*[\w.<>\[\] ]+)?\s*=\s*(?:z|zod)\s*\.\s*([A-Za-z_]\w*)\s*\(`)
+		`(?m)(?:const|let|var)\s+(?P<name>[A-Za-z_]\w*)\s*(?::\s*[\w.<>\[\] ]+)?\s*=\s*(?:z|zod)\s*\.\s*(?P<coerce>coerce\s*\.\s*)?(?P<kind>[A-Za-z_]\w*)\s*\(`)
 	// joiSchemaRe: `const CreateUser = Joi.object({ ... })`.
 	joiSchemaRe = regexp.MustCompile(
 		`(?m)(?:const|let|var)\s+([A-Za-z_]\w*)\s*(?::\s*[\w.<>\[\] ]+)?\s*=\s*(Joi|joi)\s*\.\s*object\s*\(`)
@@ -60,12 +60,16 @@ var (
 	classValidatorDtoRe = regexp.MustCompile(
 		`(?m)(?:export\s+)?(?:abstract\s+)?class\s+([A-Za-z_]\w*)\s*(?:extends\s+[\w.<>, ]+?)?\s*\{`)
 
-	// zod field: `name: z.string()`, `age: z.number().int()`.
-	zodFieldRe = regexp.MustCompile(`(?m)([A-Za-z_]\w*)\s*:\s*(?:z|zod)\s*\.\s*([A-Za-z_]\w*)\s*\(`)
+	// zod field: `name: z.string()`, `age: z.number().int()`. The optional
+	// `coerce.` segment (#5498) recognises zod's coercion factory
+	// `z.coerce.<type>()` (`z.coerce.number()`, `z.coerce.date()`, …): the
+	// captured `kind` is still the underlying scalar type and the `coerce` group
+	// marks the field as coerced.
+	zodFieldRe = regexp.MustCompile(`(?m)(?P<name>[A-Za-z_]\w*)\s*:\s*(?:z|zod)\s*\.\s*(?P<coerce>coerce\s*\.\s*)?(?P<kind>[A-Za-z_]\w*)\s*\(`)
 	// joi field: `name: Joi.string()`.
-	joiFieldRe = regexp.MustCompile(`(?m)([A-Za-z_]\w*)\s*:\s*(?:Joi|joi)\s*\.\s*([A-Za-z_]\w*)\s*\(`)
+	joiFieldRe = regexp.MustCompile(`(?m)(?P<name>[A-Za-z_]\w*)\s*:\s*(?:Joi|joi)\s*\.\s*(?P<kind>[A-Za-z_]\w*)\s*\(`)
 	// yup field: `name: yup.string()`.
-	yupFieldRe = regexp.MustCompile(`(?m)([A-Za-z_]\w*)\s*:\s*(?:yup|Yup)\s*\.\s*([A-Za-z_]\w*)\s*\(`)
+	yupFieldRe = regexp.MustCompile(`(?m)(?P<name>[A-Za-z_]\w*)\s*:\s*(?:yup|Yup)\s*\.\s*(?P<kind>[A-Za-z_]\w*)\s*\(`)
 	// cvNestedTypeRe: a class-transformer `@Type(() => TargetClass)` thunk,
 	// optionally preceded/followed by other decorators, bound to a property name.
 	// Group 1 = target class, group 2 = field name. Issue #4328.
@@ -195,9 +199,14 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 	// refine/superRefine/transform/pipe link — a bare `z.string()` const carries
 	// nothing this issue models and would just add noise, so it is skipped
 	// (honest-partial). Object schemas are already handled above (skip them here).
+	scalarNameIdx := zodScalarSchemaRe.SubexpIndex("name")
+	scalarKindIdx := zodScalarSchemaRe.SubexpIndex("kind")
+	scalarCoerceIdx := zodScalarSchemaRe.SubexpIndex("coerce")
 	for _, m := range zodScalarSchemaRe.FindAllStringSubmatchIndex(src, -1) {
-		name := src[m[2]:m[3]]
-		factory := src[m[4]:m[5]]
+		name := src[m[2*scalarNameIdx]:m[2*scalarNameIdx+1]]
+		factory := src[m[2*scalarKindIdx]:m[2*scalarKindIdx+1]]
+		// zod `const X = z.coerce.<type>()` (#5498): a coerced scalar schema.
+		coerced := scalarCoerceIdx >= 0 && m[2*scalarCoerceIdx] >= 0
 		if factory == "object" {
 			continue // handled by the object pass (with field expansion)
 		}
@@ -207,13 +216,17 @@ func (e *validationSchemaExtractor) Extract(ctx context.Context, file extreg.Fil
 		openParen := m[1] - 1 // header ends at the `(` of `.<factory>(`
 		tail := schemaTailChain(src, openParen)
 		links := parseZodSchemaChain(tail)
-		if len(links) == 0 {
-			continue // no custom-validator chain — nothing to record here
+		if len(links) == 0 && !coerced {
+			continue // no custom-validator chain and not coerced — nothing to record
 		}
 		ent := makeEntity(name, "SCOPE.Schema", "validation_schema", file.Path, file.Language, lineOf(src, m[0]))
 		setProps(&ent, "library", "zod", "pattern_type", "validation_schema",
 			"scalar_kind", normalizeScalar(factory),
 			"provenance", "INFERRED_FROM_ZOD_SCALAR")
+		// Coercion attribute on the scalar schema itself (#5498).
+		if coerced {
+			setProps(&ent, "coerced", "true", "coercion_type", normalizeScalar(factory))
+		}
 		applyFieldProps(&ent, nil)
 		chainKids := emitZodSchemaChainEntities(&ent, name, tail, file.Path, file.Language, lineOf(src, m[0]))
 		addSchema(ent)
@@ -420,6 +433,12 @@ type schemaField struct {
 	// onto the field member's Properties["validations"] for the ShapeTree.
 	validations []string
 	optional    bool
+	// coerced records whether the field is declared with zod's coercion factory
+	// `z.coerce.<type>()` (#5498). When true, coercionType carries the underlying
+	// coerced scalar type (`number`, `date`, `boolean`, …). The field's `typ`
+	// remains the coerced (underlying) type — coercion is an attribute on top.
+	coerced      bool
+	coercionType string
 }
 
 // extractSchemaFields pulls `name: lib.<kind>()` field declarations out of a
@@ -432,22 +451,33 @@ type schemaField struct {
 func extractSchemaFields(re *regexp.Regexp, body string, lib string) []schemaField {
 	var fields []schemaField
 	seen := make(map[string]bool)
+	nameIdx := re.SubexpIndex("name")
+	kindIdx := re.SubexpIndex("kind")
+	coerceIdx := re.SubexpIndex("coerce") // -1 for joi/yup (no coerce group)
 	for _, m := range re.FindAllStringSubmatchIndex(body, -1) {
-		name := body[m[2]:m[3]]
+		name := body[m[2*nameIdx]:m[2*nameIdx+1]]
 		if seen[name] {
 			continue
 		}
 		seen[name] = true
-		kind := body[m[4]:m[5]]
+		kind := body[m[2*kindIdx]:m[2*kindIdx+1]]
+		// zod `z.coerce.<type>()` coercion (#5498): the `coerce` group matched, so
+		// the field's underlying type is `kind` and it carries a coercion attribute.
+		coerced := coerceIdx >= 0 && m[2*coerceIdx] >= 0
 		// The chain begins at the factory call's opening `(` (one char before the
 		// match end) and runs to the end of this field's value (the next
 		// top-level comma in the object body, or EOF).
 		chain := fieldChain(body, m[1]-1)
 		chips := parseChainConstraints(lib, kind, chain)
 		optional := chainIsOptional(lib, kind, chips, chain)
-		fields = append(fields, schemaField{
+		f := schemaField{
 			name: name, typ: normalizeScalar(kind), validations: chips, optional: optional,
-		})
+		}
+		if coerced {
+			f.coerced = true
+			f.coercionType = normalizeScalar(kind)
+		}
+		fields = append(fields, f)
 	}
 	return fields
 }
@@ -912,6 +942,12 @@ func applyFieldProps(ent *types.EntityRecord, fields []schemaField) {
 	names := make([]string, 0, len(fields))
 	for _, f := range fields {
 		setProps(ent, "field_"+f.name, f.typ)
+		// zod `z.coerce.<type>()` coercion (#5498): surface the coercion flag at the
+		// schema-entity level too, keyed per field, so consumers reading the entity
+		// props (not just the expanded field member) see it.
+		if f.coerced {
+			setProps(ent, "field_"+f.name+"_coerced", "true")
+		}
 		names = append(names, f.name)
 	}
 	sort.Strings(names)
@@ -973,6 +1009,14 @@ func emitSchemaFieldMembers(owner *types.EntityRecord, fields []schemaField, lib
 			"provenance", "INFERRED_FROM_SCHEMA_FIELD_MEMBERSHIP")
 		if f.optional {
 			setProps(&child, "optional", "true")
+		}
+		// zod `z.coerce.<type>()` coercion (#5498): flag the coerced field and
+		// record the coerced (underlying) scalar type.
+		if f.coerced {
+			setProps(&child, "coerced", "true")
+			if f.coercionType != "" {
+				setProps(&child, "coercion_type", f.coercionType)
+			}
 		}
 		if len(annots) > 0 {
 			setProps(&child, "validators", strings.Join(annots, " "))

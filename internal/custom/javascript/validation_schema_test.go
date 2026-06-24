@@ -166,6 +166,130 @@ router.post('/users', (req, res) => { CreateUser.parse(req.body); res.json({}); 
 }
 
 // ---------------------------------------------------------------------------
+// z.coerce.* coercion flags (issue #5498)
+// ---------------------------------------------------------------------------
+
+// A zod object schema mixing coerced (`z.coerce.number()`, `z.coerce.date()`)
+// and non-coerced (`z.string()`) fields: the coerced fields carry the
+// underlying type AND a `coerced=true` / `coercion_type` attribute; the
+// non-coerced field carries neither (regression guard).
+func TestZodCoerce_ObjectFields(t *testing.T) {
+	src := `import { z } from 'zod';
+const Filter = z.object({ age: z.coerce.number(), when: z.coerce.date(), name: z.string() });
+router.post('/f', (req, res) => { Filter.parse(req.body); res.json({}); });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("f.ts", "typescript", src))
+
+	se := schemaEntity(ents, "Filter")
+	if se == nil {
+		t.Fatal("expected SCOPE.Schema Filter")
+	}
+	// Underlying types preserved.
+	wantField(t, se, "age", "number")
+	wantField(t, se, "when", "date")
+	wantField(t, se, "name", "string")
+	// Entity-level coercion flags.
+	if se.Properties["field_age_coerced"] != "true" {
+		t.Errorf("age field_age_coerced = %q, want true (props=%v)", se.Properties["field_age_coerced"], se.Properties)
+	}
+	if se.Properties["field_when_coerced"] != "true" {
+		t.Errorf("when field_when_coerced = %q, want true", se.Properties["field_when_coerced"])
+	}
+	if _, ok := se.Properties["field_name_coerced"]; ok {
+		t.Errorf("non-coerced name must not carry field_name_coerced (props=%v)", se.Properties)
+	}
+
+	// Coerced field member carries coerced=true + coercion_type=<underlying>.
+	age := fieldChild(ents, "Filter.age")
+	if age == nil {
+		t.Fatal("expected field sub-entity Filter.age")
+	}
+	if age.Properties["coerced"] != "true" {
+		t.Errorf("Filter.age coerced = %q, want true (props=%v)", age.Properties["coerced"], age.Properties)
+	}
+	if age.Properties["coercion_type"] != "number" {
+		t.Errorf("Filter.age coercion_type = %q, want number", age.Properties["coercion_type"])
+	}
+	if age.Properties["field_type"] != "number" {
+		t.Errorf("Filter.age field_type = %q, want number (coerced base type)", age.Properties["field_type"])
+	}
+
+	when := fieldChild(ents, "Filter.when")
+	if when == nil || when.Properties["coerced"] != "true" || when.Properties["coercion_type"] != "date" {
+		t.Errorf("Filter.when coercion model wrong (props=%v)", when.Properties)
+	}
+
+	// Regression: non-coerced field must NOT carry the coercion attribute.
+	name := fieldChild(ents, "Filter.name")
+	if name == nil {
+		t.Fatal("expected field sub-entity Filter.name")
+	}
+	if _, ok := name.Properties["coerced"]; ok {
+		t.Errorf("non-coerced Filter.name must not carry coerced (props=%v)", name.Properties)
+	}
+	if _, ok := name.Properties["coercion_type"]; ok {
+		t.Errorf("non-coerced Filter.name must not carry coercion_type (props=%v)", name.Properties)
+	}
+}
+
+// A bare scalar coercion schema `const Flag = z.coerce.boolean()` is emitted as
+// a SCOPE.Schema carrying scalar_kind=boolean + coerced=true / coercion_type.
+func TestZodCoerce_ScalarSchema(t *testing.T) {
+	src := `import { z } from 'zod';
+const Flag = z.coerce.boolean();`
+	ents := extractFull(t, "custom_js_validation_schema", fi("flag.ts", "typescript", src))
+
+	se := schemaEntity(ents, "Flag")
+	if se == nil {
+		t.Fatal("expected SCOPE.Schema Flag for coerced scalar")
+	}
+	if se.Properties["scalar_kind"] != "boolean" {
+		t.Errorf("Flag scalar_kind = %q, want boolean", se.Properties["scalar_kind"])
+	}
+	if se.Properties["coerced"] != "true" {
+		t.Errorf("Flag coerced = %q, want true (props=%v)", se.Properties["coerced"], se.Properties)
+	}
+	if se.Properties["coercion_type"] != "boolean" {
+		t.Errorf("Flag coercion_type = %q, want boolean", se.Properties["coercion_type"])
+	}
+}
+
+// Regression: a bare non-coerced scalar `const S = z.string()` with no chain is
+// still skipped (honest-partial) — coercion handling must not start emitting
+// noise schemas for plain scalars.
+func TestZodCoerce_BareScalarStillSkipped(t *testing.T) {
+	src := `import { z } from 'zod';
+const S = z.string();`
+	ents := extractFull(t, "custom_js_validation_schema", fi("s.ts", "typescript", src))
+	if schemaEntity(ents, "S") != nil {
+		t.Error("bare non-coerced scalar z.string() must not emit a schema entity")
+	}
+}
+
+// Regression: a non-coerced object schema carries no coercion attributes at all.
+func TestZodCoerce_NonCoercedRegression(t *testing.T) {
+	src := `import { z } from 'zod';
+const Plain = z.object({ age: z.number(), name: z.string() });
+router.post('/p', (req, res) => { Plain.parse(req.body); res.json({}); });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("p.ts", "typescript", src))
+	se := schemaEntity(ents, "Plain")
+	if se == nil {
+		t.Fatal("expected SCOPE.Schema Plain")
+	}
+	wantField(t, se, "age", "number")
+	for k := range se.Properties {
+		if k == "field_age_coerced" || k == "field_name_coerced" {
+			t.Errorf("non-coerced schema must not carry %q", k)
+		}
+	}
+	age := fieldChild(ents, "Plain.age")
+	if age != nil {
+		if _, ok := age.Properties["coerced"]; ok {
+			t.Errorf("non-coerced Plain.age must not carry coerced (props=%v)", age.Properties)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Nested z.object() → nested schema tree (issue #5496)
 // ---------------------------------------------------------------------------
 

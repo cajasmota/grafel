@@ -9,6 +9,18 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Zod `z.coerce.*` coercion flags (#5498):** the Zod schema extractor now
+  recognizes the coercion factory `z.coerce.<type>()`
+  (`z.coerce.string/number/boolean/date/bigint`) wherever a plain `z.<type>()`
+  base type is recognized — object fields, nested `z.object()` fields, and
+  bare scalar schemas. A coerced field keeps its underlying scalar type
+  (`z.coerce.number()` → type `number`) and additionally carries a coercion
+  attribute: the expanded field member gets `coerced=true` plus
+  `coercion_type=<underlying>`, the owning schema entity gets a per-field
+  `field_<name>_coerced=true` marker, and a bare `const Flag = z.coerce.boolean()`
+  is emitted as a `SCOPE.Schema` with `scalar_kind=boolean` + `coerced=true`.
+  Non-coerced `z.number()` / `z.string()` carry no coercion attribute. Last Zod
+  item in the framework-stack coverage epic (#5479).
 - **Zod `.refine()` / `.superRefine()` / `.transform()` / `.pipe()` →
   entities (#5497):** the Zod schema extractor now captures the schema-level
   custom-validator chain that follows a schema declaration, which the

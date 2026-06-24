@@ -29,7 +29,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Type coercion recognition | 🔴 `missing` | — | 4925 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | z.coerce.* coercion wrappers are not recognized as coercion flags. |
+| Type coercion recognition | ✅ `full` | `2026-06-24` | 5498 | `internal/custom/javascript/validation_schema.go`<br>`internal/custom/javascript/validation_schema_test.go` | extractSchemaFields recognizes zod's coercion factory z.coerce.<type>() (z.coerce.string/number/boolean/date/bigint) wherever a z.<type>() base type is recognized — object fields, nested z.object() fields, scalar schemas. The field/schema keeps its underlying scalar type AND carries a coercion attribute: the field member gets coerced=true + coercion_type=<underlying> (e.g. z.coerce.number() -> field_type=number, coerced=true, coercion_type=number), the owning schema entity gets a per-field field_<name>_coerced=true marker, and a bare scalar 'const Flag = z.coerce.boolean()' is emitted as a SCOPE.Schema with scalar_kind=boolean + coerced=true. Non-coerced z.number()/z.string() carry no coercion attribute (regression-guarded). Proven by TestZodCoerce_ObjectFields, TestZodCoerce_ScalarSchema, TestZodCoerce_BareScalarStillSkipped, TestZodCoerce_NonCoercedRegression. |
 
 ### Testing
 
