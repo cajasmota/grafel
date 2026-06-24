@@ -7,6 +7,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -135,7 +136,9 @@ func assertExtractedBinary(t *testing.T, destPath, wantContent string) {
 	if err != nil {
 		t.Fatalf("stat extracted binary: %v", err)
 	}
-	if info.Mode().Perm()&0o111 == 0 {
+	// Windows has no Unix exec bit (files report -rw-rw-rw-), so the executable
+	// check only applies on Unix-like platforms.
+	if runtime.GOOS != "windows" && info.Mode().Perm()&0o111 == 0 {
 		t.Errorf("extracted binary not executable: mode = %v", info.Mode())
 	}
 
