@@ -104,12 +104,14 @@ func (e *nimOrminORMExtractor) Extract(
 	}
 	src := string(file.Content)
 
-	// Nim side: importModel(...) binding.
+	// Nim side: importModel(...) binding + query DSL attribution.
 	if file.Language == "nim" {
 		if !nimOrminHasImport(src) {
 			return nil, nil
 		}
-		return e.extractNimImport(src, file.Path), nil
+		out := e.extractNimImport(src, file.Path)
+		out = append(out, e.extractNimQueries(src, file.Path)...)
+		return out, nil
 	}
 
 	// SQL DSL side: ormin model files are `.sql`. We parse create-table DDL only
@@ -137,6 +139,109 @@ func (e *nimOrminORMExtractor) extractNimImport(src, path string) []types.Entity
 		out = append(out, ent)
 	}
 	return out
+}
+
+var (
+	// nimOrminQueryBlockRe matches an ormin `query:` DSL invocation head (the
+	// macro that compiles a typed SQL query). Group 0 anchors the block; the body
+	// (the indentation-delimited statements that follow, or the inline tail on the
+	// same line) is scanned by nimOrminQueryTableRe for table references. Both the
+	// block form (`query:`) and the call form (`query do:` / `query(...)`) open
+	// with the `query` keyword followed by a `:`.
+	nimOrminQueryBlockRe = regexp.MustCompile(`(?m)^[ \t]*(?:let|var|const)?[ \t]*(?:[A-Za-z_][A-Za-z0-9_]*[ \t]*=[ \t]*)?query\s*:`)
+
+	// nimOrminQueryTableRe extracts the verb + target table from an ormin query
+	// DSL body. ormin mirrors SQL: `select … from T`, `insert into T`,
+	// `update T`, `delete from T`. Group 1 is the keyword phrase, group 2 the
+	// table identifier.
+	nimOrminQueryTableRe = regexp.MustCompile(
+		`(?i)\b(from|insert\s+into|update|delete\s+from)\s+"?([A-Za-z_][A-Za-z0-9_]*)"?`)
+)
+
+// extractNimQueries scans ormin `query:` DSL blocks and emits one QUERIES edge
+// (table-targeted, operation-stamped) per attributed (operation, table) on a
+// SCOPE.Schema/query entity. ormin's query DSL is compile-time and SQL-shaped;
+// the verb keyword (select/insert/update/delete) before the table maps to the
+// operation. Honest partial: nested sub-selects and dynamic table identifiers
+// are not attributed (no fabricated query).
+func (e *nimOrminORMExtractor) extractNimQueries(src, path string) []types.EntityRecord {
+	if !strings.Contains(src, "query") {
+		return nil
+	}
+	lines := strings.Split(src, "\n")
+	type qedge struct {
+		op    string
+		table string
+	}
+	var edges []qedge
+	seen := map[string]bool{}
+	headLine := 0
+	for _, m := range nimOrminQueryBlockRe.FindAllStringSubmatchIndex(src, -1) {
+		startLine := strings.Count(src[:m[0]], "\n") + 1
+		if headLine == 0 {
+			headLine = startLine
+		}
+		headerIndent := leadingIndent(lineAt(lines, startLine))
+		// The query body is the inline tail of the header line plus the lines
+		// indented strictly more than the header (the off-side block).
+		var body strings.Builder
+		body.WriteString(lineAt(lines, startLine))
+		body.WriteByte('\n')
+		for ln := startLine + 1; ln <= len(lines); ln++ {
+			raw := lineAt(lines, ln)
+			if strings.TrimSpace(raw) == "" {
+				continue
+			}
+			if leadingIndent(raw) <= headerIndent {
+				break
+			}
+			body.WriteString(raw)
+			body.WriteByte('\n')
+		}
+		for _, tm := range nimOrminQueryTableRe.FindAllStringSubmatch(body.String(), -1) {
+			op := orminQueryVerb(tm[1])
+			table := tm[2]
+			key := op + ":" + table
+			if op == "" || table == "" || seen[key] {
+				continue
+			}
+			seen[key] = true
+			edges = append(edges, qedge{op: op, table: table})
+		}
+	}
+	if len(edges) == 0 {
+		return nil
+	}
+	ent := newOrminSchema("ormin:query", "query", path, headLine, "INFERRED_FROM_ORMIN_QUERY")
+	var rels []types.RelationshipRecord
+	for _, e := range edges {
+		rels = append(rels, types.RelationshipRecord{
+			ToID: e.table,
+			Kind: "QUERIES",
+			Properties: map[string]string{
+				"operation": e.op,
+				"table":     e.table,
+			},
+		})
+	}
+	ent.Relationships = rels
+	ent.ID = ent.ComputeID()
+	return []types.EntityRecord{ent}
+}
+
+// orminQueryVerb normalises an ormin query DSL keyword phrase to an operation.
+func orminQueryVerb(kw string) string {
+	switch strings.ToLower(strings.Fields(kw)[0]) {
+	case "from":
+		return "select"
+	case "insert":
+		return "insert"
+	case "update":
+		return "update"
+	case "delete":
+		return "delete"
+	}
+	return ""
 }
 
 // extractSQLSchema parses `create table T(...)` DDL into table + column entities.

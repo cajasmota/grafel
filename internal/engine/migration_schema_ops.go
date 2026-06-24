@@ -325,6 +325,20 @@ func evolutionOp(e *graph.Entity, p map[string]string) []migrationSchemaOp {
 			return nil
 		}
 		return []migrationSchemaOp{{op: op, table: table, column: p["column"]}}
+	// Nim Debby createTable/dropTable(Model) migration op (#5367). The op subtype
+	// is the normalised op (create_table|drop_table); the `table` property is the
+	// MODEL NAME (Debby's table identity = the model type name, debby_orm.go),
+	// bound to its table convergence node by the shared resolver.
+	case "debby":
+		op := e.Subtype
+		if op == "" {
+			return nil
+		}
+		table := p["table"]
+		if table == "" {
+			return nil
+		}
+		return []migrationSchemaOp{{op: op, table: table, column: p["column"]}}
 	}
 	return nil
 }

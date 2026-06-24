@@ -1347,3 +1347,255 @@ discard rdb().raw("PRAGMA foreign_keys = ON")
 		t.Fatalf("expected no entities for non-rdb file, got %d", len(ents))
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Debby migrations + transactions (#5367)
+// ---------------------------------------------------------------------------
+
+// TestNimDebbyMigrations proves createTable/dropTable(Model) emit SCOPE.Evolution
+// migration ops (framework=debby) targeting the model name (= Debby's table).
+func TestNimDebbyMigrations(t *testing.T) {
+	src := `
+import debby/sqlite
+
+type
+  User = object
+    id: int
+    name: string
+  Post = object
+    id: int
+    title: string
+
+proc setup(db: Db) =
+  db.createTable(User)
+  db.createTable(Post)
+  db.dropTable(Post)
+`
+	e, ok := extreg.Get("custom_nim_debby_migrations")
+	if !ok {
+		t.Fatal("custom_nim_debby_migrations not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("src/migrate.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	got := map[string]string{}
+	for _, en := range ents {
+		if en.Kind != "SCOPE.Evolution" {
+			continue
+		}
+		if en.Properties["framework"] != "debby" {
+			t.Errorf("entity %q: framework=%q want debby", en.Name, en.Properties["framework"])
+		}
+		got[en.Name] = en.Subtype
+	}
+	want := map[string]string{
+		"create_table:User": "create_table",
+		"create_table:Post": "create_table",
+		"drop_table:Post":   "drop_table",
+	}
+	for n, sub := range want {
+		if got[n] != sub {
+			t.Errorf("expected migration op %q subtype %q, got %q (all=%v)", n, sub, got[n], got)
+		}
+	}
+}
+
+// TestNimDebbyTransactions proves db.withTransaction: blocks emit a
+// SCOPE.Pattern/transaction_boundary with the in-block writes stamped.
+func TestNimDebbyTransactions(t *testing.T) {
+	src := `
+import debby/sqlite
+
+proc work(db: Db) =
+  db.withTransaction:
+    db.insert(user)
+    db.update(post)
+`
+	e, _ := extreg.Get("custom_nim_debby_migrations")
+	ents, _ := e.Extract(context.Background(), fi("src/tx.nim", "nim", src))
+	var txn *types.EntityRecord
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Pattern" && ents[i].Subtype == "transaction_boundary" {
+			txn = &ents[i]
+		}
+	}
+	if txn == nil {
+		t.Fatal("expected a transaction_boundary entity")
+	}
+	if txn.Properties["framework"] != "debby" {
+		t.Errorf("framework=%q want debby", txn.Properties["framework"])
+	}
+	if txn.Properties["transactional"] != "true" {
+		t.Error("expected transactional=true")
+	}
+	if txn.Properties["db_handle"] != "db" {
+		t.Errorf("db_handle=%q want db", txn.Properties["db_handle"])
+	}
+	if w := txn.Properties["writes"]; !strings.Contains(w, "insert") || !strings.Contains(w, "update") {
+		t.Errorf("writes=%q want insert+update", w)
+	}
+}
+
+func TestNimDebbyMigrations_NoDebbyNoop(t *testing.T) {
+	src := "proc x() =\n  db.createTable(User)\n"
+	e, _ := extreg.Get("custom_nim_debby_migrations")
+	if ents, _ := e.Extract(context.Background(), fi("src/x.nim", "nim", src)); len(ents) != 0 {
+		t.Fatalf("expected no entities without a debby import marker, got %d", len(ents))
+	}
+}
+
+func TestNimDebbyMigrations_WrongLanguageNoop(t *testing.T) {
+	src := "import debby/sqlite\ndb.createTable(User)"
+	e, _ := extreg.Get("custom_nim_debby_migrations")
+	if ents, _ := e.Extract(context.Background(), fi("src/x.nim", "go", src)); len(ents) != 0 {
+		t.Fatalf("expected no entities for non-nim language, got %d", len(ents))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ormin query DSL attribution (#5367)
+// ---------------------------------------------------------------------------
+
+// TestNimOrminQueries proves the ormin `query:` DSL emits QUERIES edges with the
+// verb→operation mapping and the table target.
+func TestNimOrminQueries(t *testing.T) {
+	src := `
+import ormin
+importModel(DbBackend.postgre, "model")
+
+proc fetch() =
+  let users = query:
+    select id, name
+    from User
+    where id == 1
+  let p = query:
+    insert into Post
+  query:
+    update User
+  discard users
+`
+	e, _ := extreg.Get("custom_nim_ormin_orm")
+	ents, err := e.Extract(context.Background(), fi("src/queries.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	var q *types.EntityRecord
+	for i := range ents {
+		if ents[i].Kind == "SCOPE.Schema" && ents[i].Subtype == "query" {
+			q = &ents[i]
+		}
+	}
+	if q == nil {
+		t.Fatal("expected a SCOPE.Schema/query entity")
+	}
+	got := map[string]string{} // table -> operation
+	for _, r := range q.Relationships {
+		if r.Kind == "QUERIES" {
+			got[r.Properties["table"]] = r.Properties["operation"]
+		}
+	}
+	want := map[string]string{
+		"User": "update", // last-write-wins is fine; both select+update target User
+		"Post": "insert",
+	}
+	if got["Post"] != want["Post"] {
+		t.Errorf("Post operation=%q want insert (all=%v)", got["Post"], got)
+	}
+	// User must be attributed (select and/or update); assert it exists.
+	if _, ok := got["User"]; !ok {
+		t.Errorf("expected a QUERIES edge to User (all=%v)", got)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Jester / Prologue middleware coverage (#5367)
+// ---------------------------------------------------------------------------
+
+// TestNimJesterFilters proves Jester before:/after: filter blocks emit
+// SCOPE.Pattern middleware entities with the phase + path scope stamped.
+func TestNimJesterFilters(t *testing.T) {
+	src := `
+import jester
+
+routes:
+  before:
+    resp Http200, "hi"
+  before re"/admin/.*":
+    checkAuth()
+  get "/":
+    resp "home"
+  after:
+    logRequest()
+`
+	e, ok := extreg.Get("custom_nim_jester_middleware")
+	if !ok {
+		t.Fatal("custom_nim_jester_middleware not registered")
+	}
+	ents, err := e.Extract(context.Background(), fi("src/app.nim", "nim", src))
+	if err != nil {
+		t.Fatalf("extract: %v", err)
+	}
+	var before, after, scoped int
+	for _, en := range ents {
+		if en.Kind != "SCOPE.Pattern" || en.Properties["framework"] != "jester" {
+			continue
+		}
+		switch en.Properties["phase"] {
+		case "before":
+			before++
+			if en.Properties["path_scope"] == "/admin/.*" {
+				scoped++
+			}
+		case "after":
+			after++
+		}
+	}
+	if before != 2 {
+		t.Errorf("expected 2 before filters, got %d", before)
+	}
+	if after != 1 {
+		t.Errorf("expected 1 after filter, got %d", after)
+	}
+	if scoped != 1 {
+		t.Errorf("expected 1 path-scoped before filter, got %d", scoped)
+	}
+}
+
+// TestNimPrologueMiddleware proves app.use(...) and newApp(middlewares = @[...])
+// emit middleware entities (framework=prologue) gated to *Middleware names.
+func TestNimPrologueMiddleware(t *testing.T) {
+	src := `
+import prologue
+
+let app = newApp(settings = settings, middlewares = @[debugRequestMiddleware()])
+app.use(staticFileMiddleware("static"))
+app.use(@[corsMiddleware(), sessionMiddleware()])
+app.use(plainHelper())
+`
+	e, _ := extreg.Get("custom_nim_jester_middleware")
+	ents, _ := e.Extract(context.Background(), fi("src/main.nim", "nim", src))
+	got := map[string]bool{}
+	for _, en := range ents {
+		if en.Properties["framework"] == "prologue" {
+			got[en.Properties["middleware_type"]] = true
+		}
+	}
+	for _, want := range []string{"debugRequestMiddleware", "staticFileMiddleware", "corsMiddleware", "sessionMiddleware"} {
+		if !got[want] {
+			t.Errorf("expected prologue middleware %q (all=%v)", want, got)
+		}
+	}
+	// The honest *Middleware gate must reject a plain helper call.
+	if got["plainHelper"] {
+		t.Error("plainHelper is not middleware and must not be emitted")
+	}
+}
+
+func TestNimJesterMiddleware_WrongLanguageNoop(t *testing.T) {
+	src := "routes:\n  before:\n    x()"
+	e, _ := extreg.Get("custom_nim_jester_middleware")
+	if ents, _ := e.Extract(context.Background(), fi("src/x.nim", "go", src)); len(ents) != 0 {
+		t.Fatalf("expected no entities for non-nim language, got %d", len(ents))
+	}
+}

@@ -73,3 +73,40 @@ proc createUser(name: string): User =
 		t.Fatalf("expected no testmap entities for a production file, got %d", len(recs))
 	}
 }
+
+// TestNimTestament_SpecHeaderFileLevel proves a testament-style Nim test file
+// (a `discard """ … """` spec header, asserting via top-level doAssert rather
+// than `test "…"` cases) is recognised as one file-level test, with its
+// production call linked (#5367).
+func TestNimTestament_SpecHeaderFileLevel(t *testing.T) {
+	src := `discard """
+  output: "ok"
+  description: "validate parseConfig"
+"""
+
+import config
+
+let cfg = parseConfig("app.cfg")
+doAssert cfg.name == "app"
+`
+	recs := runExtract(t, "tests/tparser.nim", "nim", src)
+	if len(recs) == 0 {
+		t.Fatalf("expected >=1 testmap entity for a testament file")
+	}
+	if !hasEdgeAny(recs, "validate_parseConfig", "parseConfig") {
+		t.Errorf("missing TESTS edge validate_parseConfig -> parseConfig")
+	}
+}
+
+// TestNimTestament_NoSpecNoFallback proves a non-test file without a testament
+// spec or unittest case is not spuriously detected.
+func TestNimTestament_NoSpecNoFallback(t *testing.T) {
+	src := `import config
+let cfg = parseConfig("app.cfg")
+echo cfg.name
+`
+	recs := runExtract(t, "tests/tparser.nim", "nim", src)
+	if len(recs) != 0 {
+		t.Fatalf("expected no testmap entities without a spec/test, got %d", len(recs))
+	}
+}

@@ -149,5 +149,49 @@ func detectNimUnittest(source string) []testFunction {
 		body := extractNimBlockBody(source, m[0])
 		out = append(out, testFunction{qname: name, body: body, describeSubject: subject})
 	}
+	// Testament fallback (#5367): a Nim file may carry a testament spec header
+	// (`discard """ … """` at file top, parsed by the Nim compiler's test runner)
+	// and assert via top-level doAssert/check rather than `test "…"` cases. When
+	// the unittest scan found no `test` leaf but a testament spec is present, the
+	// WHOLE FILE is one test — synthesise a single file-level test case whose body
+	// is the post-spec source so its production calls still link.
+	if len(out) == 0 {
+		if tc := detectNimTestament(source); tc != nil {
+			out = append(out, *tc)
+		}
+	}
 	return out
+}
+
+// nimTestamentSpecRE matches a testament spec header: a `discard """ … """`
+// triple-quoted block at (or near) the top of a Nim test file. Testament reads
+// the spec (the `output:`/`errormsg:`/`matrix:` keys) from this block; its
+// presence is the signal that the file is a testament test. Group 1 is the spec
+// body (used to seed the test-case name from a `description:` key when present).
+var nimTestamentSpecRE = regexp.MustCompile(`(?s)^\s*discard\s+"""(.*?)"""`)
+
+// nimTestamentDescRE pulls a `description:` value out of a testament spec body so
+// a more meaningful test-case name than the bare file marker can be used.
+var nimTestamentDescRE = regexp.MustCompile(`(?mi)^\s*description:\s*"?([^"\n\r]+?)"?\s*$`)
+
+// detectNimTestament recognises a testament-style Nim test file (one carrying a
+// `discard """ … """` spec header) and returns a single file-level test case
+// whose body is the source AFTER the spec header (the actual test code). Returns
+// nil when no testament spec is present. The synthesised qname is the spec's
+// `description:` (normalised) or the marker "testament_spec"; the file-level
+// production calls in the body are what link the test to the code under test.
+func detectNimTestament(source string) *testFunction {
+	m := nimTestamentSpecRE.FindStringSubmatchIndex(source)
+	if m == nil {
+		return nil
+	}
+	specBody := source[m[2]:m[3]]
+	body := source[m[1]:] // everything after the closing """
+	name := "testament_spec"
+	if dm := nimTestamentDescRE.FindStringSubmatch(specBody); dm != nil {
+		if n := nimTestCaseName(dm[1]); n != "" {
+			name = n
+		}
+	}
+	return &testFunction{qname: name, body: body, describeSubject: nimSuiteSubject(body)}
 }

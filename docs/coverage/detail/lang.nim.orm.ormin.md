@@ -32,7 +32,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Query attribution | 🔴 `missing` | — | 5031 | — | The ormin compile-time query DSL (`query: select id from User`) is not yet attributed to its table — query-DSL attribution is deferred to follow-up #5031. This record covers model->table/column mapping only. |
+| Query attribution | 🟢 `partial` | `2026-06-24` | 5367 | `internal/custom/nim/extractors_test.go`<br>`internal/custom/nim/ormin_orm.go` | ormin's compile-time query: DSL (SQL-shaped: select … from T / insert into T / update T / delete from T) is scanned by extractNimQueries: each query: block body yields QUERIES edges (operation+table) on a SCOPE.Schema/query entity, with the verb keyword mapped to the operation. Honest partial: nested sub-selects and dynamic table identifiers are not attributed (no fabricated query); the model->table mapping itself lives in the SQL-DSL create-table parse. |
 
 ### Migrations
 

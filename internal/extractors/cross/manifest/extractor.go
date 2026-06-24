@@ -25,6 +25,8 @@
 //   - vcpkg.json           (vcpkg) — dependencies array
 //   - composer.json        (composer — PHP manifest_parsing, require/require-dev)
 //   - composer.lock        (composer — PHP lockfile_parsing, packages/packages-dev)
+//   - *.rockspec           (luarocks — Lua manifest_parsing, dependencies lists)
+//   - *.nimble             (nimble — Nim manifest_parsing, requires directives)
 //
 // Entity kind: "SCOPE.Component"
 // Relationships emitted: DEPENDS_ON(kind=external_dependency)
@@ -210,6 +212,11 @@ func IsManifest(filePath string) bool {
 	if strings.HasSuffix(basename, ".rockspec") {
 		return true
 	}
+	// *.nimble — Nim nimble package manifest (the package name is the file's
+	// base name, e.g. jester.nimble, so it is matched by extension; #5367).
+	if strings.HasSuffix(basename, ".nimble") {
+		return true
+	}
 	return false
 }
 
@@ -272,6 +279,10 @@ func detectPackageManager(filePath string) string {
 	// *.rockspec → luarocks (LuaRocks package manifest)
 	if strings.HasSuffix(basename, ".rockspec") {
 		return "luarocks"
+	}
+	// *.nimble → nimble (Nim package manifest)
+	if strings.HasSuffix(basename, ".nimble") {
+		return "nimble"
 	}
 	return "unknown"
 }
@@ -1908,6 +1919,10 @@ func dispatchParser(filePath, source string) (string, []dep) {
 	// *.rockspec — LuaRocks package manifest.
 	if strings.HasSuffix(basename, ".rockspec") {
 		return "luarocks", parseRockspec(source)
+	}
+	// *.nimble — Nim nimble package manifest.
+	if strings.HasSuffix(basename, ".nimble") {
+		return "nimble", parseNimble(source)
 	}
 	// Makefile — only an erlang.mk build when it includes erlang.mk / declares
 	// PROJECT (requireSignal=true); a plain Makefile is a no-op.

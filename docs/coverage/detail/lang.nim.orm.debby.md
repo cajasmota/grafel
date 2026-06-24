@@ -38,14 +38,14 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Migration parsing | 🔴 `missing` | — | 5031 | — | — |
-| Migration schema ops | 🔴 `missing` | — | 5031 | — | — |
+| Migration parsing | ✅ `full` | `2026-06-24` | 5367 | `internal/custom/nim/debby_migrations.go`<br>`internal/custom/nim/extractors_test.go` | Debby creates/drops tables imperatively against a db handle taking the model TYPE (db.createTable(User)/db.dropTable(Post)); custom_nim_debby_migrations parses both verbs (and the receiver-less form) into normalised create_table/drop_table ops. A lowercase instance argument is skipped (Debby schema ops take the type), keeping attribution honest. |
+| Migration schema ops | ✅ `full` | `2026-06-24` | 5367 | `internal/custom/nim/debby_migrations.go`<br>`internal/custom/nim/extractors_test.go`<br>`internal/engine/migration_schema_ops.go`<br>`internal/engine/migration_schema_ops_test.go` | Each Debby migration op is emitted as a shared SCOPE.Evolution entity (framework=debby, migration_op, table=model name, provenance INFERRED_FROM_DEBBY_MIGRATION) with the normalised op subtype — the same Kind the Nim Norm/Allographer and JS knex/typeorm migration extractors use. The engine migration-schema-ops pass (case "debby") derives the MODIFIES_TABLE op->table convergence edge; table identity = the model type name (matching debby_orm.go QUERIES->table). |
 
 ### Transactions
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Transaction function stamping | 🔴 `missing` | — | 5031 | — | Debby `db.withTransaction:` block boundaries are not yet stamped — transaction-boundary extraction (mirroring the Norm db.transaction: shape) is follow-up #5031. This record covers model->table/column mapping + FK + query attribution only. |
+| Transaction function stamping | ✅ `full` | `2026-06-24` | 5367 | `internal/custom/nim/debby_migrations.go`<br>`internal/custom/nim/extractors_test.go` | A Debby db.withTransaction: block header emits a SCOPE.Pattern/transaction_boundary entity (transactional=true, framework=debby, db_handle, provenance INFERRED_FROM_DEBBY_TRANSACTION), mirroring the Norm db.transaction: boundary and the Kotlin/Java @Transactional shape. The boundary is stamped with the set of in-block write ops (insert/update/delete) so it records WHAT it wraps. |
 
 ## Provenance
 

@@ -91,7 +91,7 @@ Back to [summary](../summary.md). Bucket: **Frameworks**.
 | [lua](../by-language/lua.md) | [Kong](../detail/lang.lua.framework.kong.md) | 🟡 2/7 | ✅ 1/1 | 🔴 0/4 | 🟢 1/1 | 🔴 0/24 | 🟡 7/12 | |
 | [lua](../by-language/lua.md) | [Lapis](../detail/lang.lua.framework.lapis.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
 | [lua](../by-language/lua.md) | [OpenResty](../detail/lang.lua.framework.openresty.md) | 🟡 3/7 | ✅ 1/1 | — | ✅ 1/1 | 🟡 18/22 | 🟡 6/11 | |
-| [nim](../by-language/nim.md) | [Jester / Prologue (Nim HTTP)](../detail/lang.nim.framework.jester.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🔴 0/13 | |
+| [nim](../by-language/nim.md) | [Jester / Prologue (Nim HTTP)](../detail/lang.nim.framework.jester.md) | 🟡 3/7 | 🔴 0/1 | 🔴 0/4 | ✅ 1/1 | 🔴 0/24 | 🟡 1/13 | |
 | [php](../by-language/php.md) | [API Platform](../detail/lang.php.framework.api-platform.md) | 🟡 4/7 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/24 | 🟡 2/12 | |
 | [php](../by-language/php.md) | [API Platform GraphQL](../detail/lang.php.framework.api-platform-graphql.md) | 🟡 3/6 | ✅ 1/1 | 🔴 0/4 | 🔴 0/1 | 🟡 23/24 | 🟡 2/13 | |
 | [php](../by-language/php.md) | [CakePHP](../detail/lang.php.framework.cakephp.md) | 🟡 3/7 | 🟢 1/1 | ✅ 3/3 | 🟢 1/1 | 🟡 24/25 | 🟡 6/11 | |
