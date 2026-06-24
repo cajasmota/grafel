@@ -32,6 +32,7 @@
 //   - *.ipkg               (idris2 — Idris manifest_parsing, depends/modules)
 //   - corral.json          (corral — Pony manifest_parsing, deps[].locator)
 //   - bundle.json          (corral — Pony legacy manifest, corral-signal gated)
+//   - *.asd                (asdf — Common Lisp manifest_parsing, :depends-on list)
 //
 // Entity kind: "SCOPE.Component"
 // Relationships emitted: DEPENDS_ON(kind=external_dependency)
@@ -274,6 +275,11 @@ func IsManifest(filePath string) bool {
 	if strings.HasSuffix(basename, ".cm") || strings.HasSuffix(basename, ".mlb") {
 		return true
 	}
+	// *.asd — Common Lisp ASDF system definition (the system name is the file's
+	// base name, e.g. my-app.asd, so it is matched by extension; #5385).
+	if strings.HasSuffix(basename, ".asd") {
+		return true
+	}
 	return false
 }
 
@@ -381,6 +387,10 @@ func detectPackageManager(filePath string) string {
 	}
 	if strings.HasSuffix(basename, ".mlb") {
 		return "mlton_mlb"
+	}
+	// *.asd → asdf (Common Lisp ASDF / Quicklisp system definition)
+	if strings.HasSuffix(basename, ".asd") {
+		return "asdf"
 	}
 	return "unknown"
 }
@@ -2069,6 +2079,10 @@ func dispatchParser(filePath, source string) (string, []dep) {
 	if strings.HasSuffix(basename, ".mlb") {
 		return "mlton_mlb", parseMLB(source)
 	}
+	// *.asd — Common Lisp ASDF / Quicklisp system definition.
+	if strings.HasSuffix(basename, ".asd") {
+		return "asdf", parseAsd(source)
+	}
 	// Makefile — only an erlang.mk build when it includes erlang.mk / declares
 	// PROJECT (requireSignal=true); a plain Makefile is a no-op.
 	if basename == "Makefile" {
@@ -2362,6 +2376,19 @@ func (e *Extractor) Extract(ctx context.Context, file extractor.FileInput) ([]ty
 				anchorProps = map[string]string{}
 			}
 			anchorProps["mlb_config"] = cfg
+		}
+	}
+
+	// Common Lisp *.asd — surface the system name + top-level component member
+	// names on the project anchor as an "asd_config" property so the ASDF system
+	// configuration is queryable without a new entity kind (#5385). Empty for
+	// every other manifest. Same model as ipkg_config / cm_config / build_targets.
+	if strings.HasSuffix(filepath.Base(file.Path), ".asd") {
+		if cfg := asdConfigProperty(string(file.Content)); cfg != "" {
+			if anchorProps == nil {
+				anchorProps = map[string]string{}
+			}
+			anchorProps["asd_config"] = cfg
 		}
 	}
 
