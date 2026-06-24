@@ -9,6 +9,24 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Prisma model-layer data-access → db_read/db_write effects with model attribution (#5490):**
+  the data-access layer — model functions in `*.server.ts` (and `*.server.tsx`)
+  modules that wrap the Prisma client — is now credited with a receiver-gated,
+  model-bearing db effect, so the read/write data-access flow is queryable by
+  model and ties to the Prisma model entity (#5489). A `(prisma|db|tx).<model>.<verb>()`
+  call emits a `db_read` or `db_write` effect attributed to its enclosing
+  function, carrying a model-bearing sink tag (`prisma.read:User`,
+  `prisma.write:Post`). Verb → effect: `findUnique/findFirst/findMany/count/
+  aggregate/groupBy` are reads; `create/createMany/update/updateMany/upsert/
+  delete/deleteMany` are writes; `$queryRaw` reads and `$executeRaw` writes (as
+  before). The receiver gate requires an imported Prisma client / delegate
+  (`prisma`, `db`, or a `tx` interactive-transaction callback handle), so an
+  unrelated `.create()`/`.update()` on some other object is not misread as a
+  Prisma data-access effect, and the inner delegate calls of a
+  `prisma.$transaction(async (tx) => …)` are credited per-model. The effect-
+  propagation pass already unions these effects up the CALLS graph, so a caller
+  of a model function such as `getUsers()` transitively shows the `db_read`
+  effect. Part of the framework-stack coverage epic (#5479).
 - **Prisma modular split schema resolved cross-file (#5489):** the Prisma schema
   extractor now treats a modular split schema — `prisma/schema/*.prisma`, one
   domain per file, the `prismaSchemaFolder` preview feature — as ONE logical

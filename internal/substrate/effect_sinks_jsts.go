@@ -186,6 +186,88 @@ var jstsPrismaRawWriteRe = regexp.MustCompile(
 	`\.\s*\$executeRaw(?:Unsafe)?\s*[\(` + "`" + `]`,
 )
 
+// --- #5490 Prisma model-layer data-access (db/prisma client gate + model) ---
+//
+// The data-access layer in a Prisma codebase is the set of model functions in
+// `*.server.ts` / `*.data.ts` modules that wrap the Prisma client. The generic
+// bare-match (jstsDBReadRe/jstsDBWriteRe) already credits `prisma.user.find*` /
+// `prisma.user.create` to the enclosing function, and the propagation pass
+// unions that up the CALLS graph so a caller of `getUsers()` transitively shows
+// db_read. This pass UPLIFTS that credit with a Prisma-specific, RECEIVER-GATED
+// match that captures the target model in the sink tag (`prisma.read:User`,
+// `prisma.write:Post`) so the data-access flow is queryable BY MODEL and ties to
+// the Prisma model entity (#5489). It is additive — the EffectSet accumulates
+// sink tags — so it never removes or weakens the generic credit.
+//
+// The receiver gate (`(?:this\.)?(?:prisma|db|tx)\.`) requires an imported
+// Prisma client / delegate as the receiver, so an unrelated `foo.create(...)` or
+// a builder `repo.create(...)` is NOT misread as a Prisma data-access effect.
+// `tx` covers the interactive-transaction callback handle
+// (`prisma.$transaction(async (tx) => tx.user.create(...))`).
+//
+// Verb → effect mapping (mirrors the documented Prisma delegate classification):
+//   - db_read : findUnique/findUniqueOrThrow/findFirst/findFirstOrThrow/
+//               findMany/count/aggregate/groupBy
+//   - db_write: create/createMany/update/updateMany/upsert/delete/deleteMany
+const jstsPrismaReadVerbs = `findUnique(?:OrThrow)?|findFirst(?:OrThrow)?|findMany|count|aggregate|groupBy`
+const jstsPrismaWriteVerbs = `create(?:Many)?|update(?:Many)?|upsert|delete(?:Many)?`
+
+// jstsPrismaModelReadRe matches a read-verb delegate call on a Prisma client
+// receiver, capturing the model name (group 1, lower-camel delegate → PascalCase
+// model). Receiver is `prisma`, `db`, or a `tx` transaction handle, optionally
+// `this.`-qualified.
+var jstsPrismaModelReadRe = regexp.MustCompile(
+	`(?:this\s*\.\s*)?(?:prisma|db|tx)\s*\.\s*([a-z][A-Za-z0-9_]*)\s*\.\s*(?:` + jstsPrismaReadVerbs + `)\s*\(`,
+)
+
+// jstsPrismaModelWriteRe matches a write-verb delegate call on a Prisma client
+// receiver, capturing the model name (group 1).
+var jstsPrismaModelWriteRe = regexp.MustCompile(
+	`(?:this\s*\.\s*)?(?:prisma|db|tx)\s*\.\s*([a-z][A-Za-z0-9_]*)\s*\.\s*(?:` + jstsPrismaWriteVerbs + `)\s*\(`,
+)
+
+// Note on path scoping: the effect sniffer is given only file content (no
+// path), so we cannot gate on the `*.server.ts` filename directly. The
+// model-bearing uplift is harmless on any file — it only fires on a real Prisma
+// client receiver (prisma/db/tx) — so we run it everywhere; the canonical
+// data-access location is the model layer (`*.server.ts`), documented by the
+// registry note and the fixture.
+
+// prismaModelFromDelegate maps a Prisma delegate accessor (lower-camel, e.g.
+// `user`, `userProfile`) to its PascalCase model name (`User`, `UserProfile`),
+// matching the convention used by the #5489 schema extractor.
+func prismaModelFromDelegate(delegate string) string {
+	if delegate == "" {
+		return ""
+	}
+	b := []byte(delegate)
+	if b[0] >= 'a' && b[0] <= 'z' {
+		b[0] -= 'a' - 'A'
+	}
+	return string(b)
+}
+
+// appendPrismaModelMatches credits each Prisma client delegate call to its
+// enclosing function with a model-bearing sink tag (`prisma.read:User`).
+func appendPrismaModelMatches(out []EffectMatch, content string, headers []funcHeader, re *regexp.Regexp, eff Effect) []EffectMatch {
+	verb := "read"
+	if eff == EffectDBWrite {
+		verb = "write"
+	}
+	for _, m := range re.FindAllStringSubmatchIndex(content, -1) {
+		line := lineOfOffset(content, m[0])
+		model := prismaModelFromDelegate(content[m[2]:m[3]])
+		out = append(out, EffectMatch{
+			Function:   nearestHeader(headers, line),
+			Line:       line,
+			Effect:     eff,
+			Sink:       "prisma." + verb + ":" + model,
+			Confidence: 0.9,
+		})
+	}
+	return out
+}
+
 // jstsMutationRe matches `this.<field> = ...` — assignment to a receiver
 // field. We require an assignment operator on the same line and reject
 // `this.<field> ==` (comparison) by anchoring on `=` followed by a
@@ -206,6 +288,10 @@ func sniffEffectsJSTS(content string) []EffectMatch {
 	out = appendJSTSMatches(out, content, headers, jstsDBWriteRe, EffectDBWrite, "orm.write", 0.8)
 	out = appendJSTSMatches(out, content, headers, jstsPrismaRawRe, EffectDBRead, "prisma.$queryRaw", 0.9)
 	out = appendJSTSMatches(out, content, headers, jstsPrismaRawWriteRe, EffectDBWrite, "prisma.$executeRaw", 0.9)
+	// #5490 model-layer data-access: receiver-gated Prisma delegate calls credited
+	// with a model-bearing sink tag so the data-access flow is queryable by model.
+	out = appendPrismaModelMatches(out, content, headers, jstsPrismaModelReadRe, EffectDBRead)
+	out = appendPrismaModelMatches(out, content, headers, jstsPrismaModelWriteRe, EffectDBWrite)
 	out = append(out, jstsBuilderDataAccessMatches(content, headers)...)
 	out = appendJSTSMatches(out, content, headers, jstsFSReadRe, EffectFSRead, "fs.read", 1.0)
 	out = appendJSTSMatches(out, content, headers, jstsFSWriteRe, EffectFSWrite, "fs.write", 1.0)
