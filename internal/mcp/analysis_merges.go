@@ -32,6 +32,11 @@ import (
 //	impure              → handlePureFunctions     (functions with no effects)
 //	license             → handleLicenseAudit      (dependency-license conflicts)
 func (s *Server) handleAnalysisDebt(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("kind", argString(req, "kind", ""),
+		[]string{"dead_code", "find_dead_code", "unwired", "cycles", "import_cycles", "stubs", "stub", "impure", "pure", "pure_functions", "license", "licenses"},
+		[]string{"dead_code", "cycles", "stubs", "impure", "license"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "kind", "dead_code") {
 	case "find_dead_code", "unwired":
 		return s.handleFindDeadCode(ctx, req)
@@ -57,6 +62,11 @@ func (s *Server) handleAnalysisDebt(ctx context.Context, req mcpapi.CallToolRequ
 //	secrets            → handleSecrets          (hardcoded-secret scan)
 //	auth_coverage      → handleAuthCoverage     (endpoints missing auth)
 func (s *Server) handleAnalysisSecurity(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("kind", argString(req, "kind", ""),
+		[]string{"findings", "secrets", "auth_coverage", "auth"},
+		[]string{"findings", "secrets", "auth_coverage"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "kind", "findings") {
 	case "secrets":
 		return s.handleSecrets(ctx, req)
@@ -75,6 +85,11 @@ func (s *Server) handleAnalysisSecurity(ctx context.Context, req mcpapi.CallTool
 //	contract_effectiveness → handleContractTestEffectiveness (tautological specs)
 //	coverage_effectiveness → handleCoverageEffectiveness  (reachable-but-0%-lines)
 func (s *Server) handleAnalysisTest(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("kind", argString(req, "kind", ""),
+		[]string{"coverage", "reachability", "reach", "contract_effectiveness", "contract_eff", "contract", "coverage_effectiveness", "coverage_eff", "effectiveness"},
+		[]string{"coverage", "reachability", "contract_effectiveness", "coverage_effectiveness"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "kind", "coverage") {
 	case "reachability", "reach":
 		return s.handleTestReachability(ctx, req)
@@ -96,6 +111,11 @@ func (s *Server) handleAnalysisTest(ctx context.Context, req mcpapi.CallToolRequ
 //	graph          → handleGraphPatterns    (indexer-extracted patterns)
 //	template       → handleTemplatePatterns (i18n/log_format/sql literals)
 func (s *Server) handleAnalysisPatterns(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("kind", argString(req, "kind", ""),
+		[]string{"code", "graph", "graph_patterns", "template", "templates", "template_patterns"},
+		[]string{"code", "graph", "template"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "kind", "code") {
 	case "graph", "graph_patterns":
 		// handleGraphPatterns requires action=; default to list when the caller
@@ -117,6 +137,11 @@ func (s *Server) handleAnalysisPatterns(ctx context.Context, req mcpapi.CallTool
 //	list (default) → handleListFindings (enumerate stored findings)
 //	save           → handleSaveResult   (persist a Q&A finding)
 func (s *Server) handleAnalysisFindings(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("action", argString(req, "action", ""),
+		[]string{"list", "save", "store", "persist"},
+		[]string{"list", "save"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "action", "list") {
 	case "save", "store", "persist":
 		return s.handleSaveResult(ctx, req)
@@ -142,6 +167,25 @@ func (s *Server) handleAnalysisFindings(ctx context.Context, req mcpapi.CallTool
 //	literals                 → handleLiteralParity     (ConstantSet/enum parity)
 //	refs                     → handleDiffRefs          (entity/rel deltas, 2 refs)
 func (s *Server) handleAnalysisDiff(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	rawAspect := argString(req, "aspect", "")
+	if e := validateDiscriminator("aspect", rawAspect,
+		[]string{"response_shape", "payload", "payload_drift", "auth", "auth_posture", "literals", "literal", "literal_parity", "refs", "diff_refs"},
+		[]string{"response_shape", "payload", "auth", "literals", "refs"}); e != nil {
+		return e, nil
+	}
+	// Per-aspect required params: the params a grafel_diff call needs depend on
+	// the chosen aspect. Validate the value-specific requirements up front so a
+	// caller gets an aspect-aware message instead of a downstream hard-fail.
+	switch rawAspect {
+	case "refs", "diff_refs":
+		if e := requireArgs(req, "aspect", "refs", "repo", "ref_a", "ref_b"); e != nil {
+			return e, nil
+		}
+	case "literals", "literal", "literal_parity":
+		if e := requireArgs(req, "aspect", "literals", "set"); e != nil {
+			return e, nil
+		}
+	}
 	var (
 		res    *mcpapi.CallToolResult
 		err    error

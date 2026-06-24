@@ -1139,16 +1139,16 @@ func (s *Server) registerTools() {
 	// response_shape/auth/literals=per-endpoint parity verdicts; payload=drift
 	// findings) and the result is stamped with `aspect` so the caller knows which.
 	s.addTool(mcpapi.NewTool("grafel_diff",
-		mcpapi.WithDescription("Compare two refs/versions; aspect picks what to compare (shape varies)."),
+		mcpapi.WithDescription("Compare two refs/versions; aspect picks what (params vary by aspect)."),
 		mcpapi.WithString("aspect", mcpapi.DefaultString("response_shape"),
-			mcpapi.Description("response_shape=per-status field drift; payload=schema/envelope drift; auth=auth-posture parity; literals=enum/ConstantSet parity; refs=entity/rel deltas between two git refs.")),
-		mcpapi.WithString("group_oracle"), // response_shape|auth|literals
-		mcpapi.WithString("group_v3"),     // response_shape|auth|literals
-		mcpapi.WithString("set"),          // aspect=literals
-		mcpapi.WithString("drift_class"),  // aspect=payload
-		mcpapi.WithString("repo"),         // aspect=refs
-		mcpapi.WithString("ref_a"),        // aspect=refs
-		mcpapi.WithString("ref_b"),        // aspect=refs
+			mcpapi.Description("response_shape=per-status field drift (group_oracle+group_v3); payload=schema/envelope drift (group); auth=auth-posture parity (group_oracle+group_v3); literals=enum/ConstantSet parity (group_oracle+group_v3+set); refs=entity/rel deltas between two git refs (repo+ref_a+ref_b).")),
+		mcpapi.WithString("group_oracle", mcpapi.Description("aspect=response_shape|auth|literals: baseline group.")),
+		mcpapi.WithString("group_v3", mcpapi.Description("aspect=response_shape|auth|literals: comparison group.")),
+		mcpapi.WithString("set", mcpapi.Description("aspect=literals (required): ConstantSet/enum name to compare.")),
+		mcpapi.WithString("drift_class", mcpapi.Description("aspect=payload: optional drift-class filter.")),
+		mcpapi.WithString("repo", mcpapi.Description("aspect=refs (required): repo whose two refs are compared.")),
+		mcpapi.WithString("ref_a", mcpapi.Description("aspect=refs (required): first git ref.")),
+		mcpapi.WithString("ref_b", mcpapi.Description("aspect=refs (required): second git ref.")),
 		mcpapi.WithAny("group"),
 		mcpapi.WithAny("cwd"),
 	), s.wrap("grafel_diff", s.handleAnalysisDiff))

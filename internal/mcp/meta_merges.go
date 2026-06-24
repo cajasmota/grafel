@@ -31,6 +31,11 @@ import (
 //	abort    → handleDocgenAbort    (rm -rf staging, release lock; needs run_id)
 //	validate → handleDocgenValidate (frontmatter+cross-links, read-only)
 func (s *Server) handleWorkflowDocgen(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("action", argString(req, "action", ""),
+		[]string{"start", "start_run", "status", "list", "promote", "abort", "validate"},
+		[]string{"start", "status", "list", "promote", "abort", "validate"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "action", "status") {
 	case "start", "start_run":
 		return s.handleDocgenStartRun(ctx, req)
@@ -58,6 +63,11 @@ func (s *Server) handleWorkflowDocgen(ctx context.Context, req mcpapi.CallToolRe
 //	enrichments         → handleEnrichments (enrichment-candidate queue;
 //	                      reads its own action=list|submit|reject)
 func (s *Server) handleWorkflowDocgenApply(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("kind", argString(req, "kind", ""),
+		[]string{"semantics", "repairs", "repair", "enrichments", "enrichment"},
+		[]string{"semantics", "repairs", "enrichments"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "kind", "semantics") {
 	case "repairs", "repair":
 		// The residual-repair queue (handleRepairs) is driven by action=list|
@@ -80,6 +90,11 @@ func (s *Server) handleWorkflowDocgenApply(ctx context.Context, req mcpapi.CallT
 //	feedback (default) → handleFeedbackEvent (agent-experience; needs outcome)
 //	persona            → handlePersonaEvent  (persona lifecycle; needs persona+event_type)
 func (s *Server) handleMetaEvent(ctx context.Context, req mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error) {
+	if e := validateDiscriminator("kind", argString(req, "kind", ""),
+		[]string{"feedback", "persona"},
+		[]string{"feedback", "persona"}); e != nil {
+		return e, nil
+	}
 	switch argString(req, "kind", "feedback") {
 	case "persona":
 		return s.handlePersonaEvent(ctx, req)
