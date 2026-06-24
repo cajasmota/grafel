@@ -9,6 +9,21 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **OpenTelemetry span-creation sites → INSTRUMENTS edges in JS/TS (#5500):**
+  the JS/TS tracing pass now reaches parity with the Python lane. OTEL presence
+  was already detected, and `tracer.startSpan` / `tracer.startActiveSpan` already
+  stamped an INSTRUMENTS edge (enclosing function → `span:<name>` stub); this
+  expands the recognised span-creation surface and adds an attribution gate.
+  NEW idioms: inline `trace.getTracer(...).startSpan(...)` chains, the
+  `@vercel/otel` `registerOTel('service')` setup site, and manual
+  `context.with(trace.setSpan(...), cb)` span scopes. Every span site emits the
+  same INSTRUMENTS edge shape as Python (`library=opentelemetry`, `api`, `line`,
+  `traced=true`, plus `span_name` or, for dynamic/variable names, `dynamic=true`
+  keyed on the enclosing function). NEW attribution gate: a span call is honoured
+  only when the file imports an `@opentelemetry/*` (or `@vercel/otel`) package OR
+  the receiver is tracer-like (`tracer` / `*Tracer` / a `getTracer(...)` chain),
+  so an unrelated `.startSpan(` from a non-OTEL library is no longer matched.
+  The JS/TS framework `trace_extraction` coverage cells flip partial→full.
 - **Authorization checks → AUTHORIZES edges (NestJS guards + home-rolled
   idioms) (#5499):** the JS/TS auth resolver now recovers an endpoint's
   authorization posture from two idiom families that did not reach the
