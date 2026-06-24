@@ -486,6 +486,17 @@ func runDaemon(argv []string) error {
 			os.Getenv(daemon.EnvRoot))
 	}
 
+	// Windows: detach from any inherited console window so the background daemon
+	// survives the launching terminal. When `grafel install` (or a Task
+	// Scheduler InteractiveToken action) starts the daemon, it can inherit the
+	// installing shell's console; closing that window would otherwise take the
+	// daemon — and the dashboard it serves — down with it. FreeConsole drops the
+	// association. Skipped in foreground mode, where the console is intentionally
+	// the log sink (CI / container). No-op on macOS/Linux. See detachconsole_*.go.
+	if !foreground {
+		detachConsole()
+	}
+
 	layout, err := daemon.DefaultLayout()
 	if err != nil {
 		return fmt.Errorf("resolve daemon layout: %w", err)

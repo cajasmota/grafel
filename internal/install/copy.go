@@ -99,8 +99,38 @@ func defaultHealthzGet(port int) (string, error) {
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("/healthz returned HTTP %d", resp.StatusCode)
 	}
+	// The daemon dashboard does not register a dedicated /healthz route, so an
+	// unmatched GET /healthz falls through to the SPA catch-all and returns the
+	// dashboard index.html (HTTP 200 + HTML) rather than a version string. If we
+	// see an HTML content-type, treat /healthz as unavailable so the caller
+	// keeps the real version from the socket Ping instead of echoing the HTML
+	// body as the "daemon" version (#5596). See looksLikeVersion / waitForDaemonReady.
+	if ct := resp.Header.Get("Content-Type"); strings.Contains(strings.ToLower(ct), "text/html") {
+		return "", fmt.Errorf("/healthz returned HTML (SPA fallback, no version endpoint)")
+	}
 	body, _ := io.ReadAll(resp.Body)
 	return string(body), nil
+}
+
+// looksLikeVersion reports whether s is a plausible daemon version string
+// (short, single-line, not an HTML/JSON document). It is the last line of
+// defense against the /healthz SPA-fallback bug: even if a future /healthz
+// response slips past the content-type check, we never let a multi-line HTML
+// blob become the printed "daemon" version. A real version looks like
+// "0.1.5.2", "v0.1.5", "1.2.3-socket", or "dev".
+func looksLikeVersion(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" || len(s) > 64 {
+		return false
+	}
+	if strings.ContainsAny(s, "\n\r<>") {
+		return false
+	}
+	lower := strings.ToLower(s)
+	if strings.HasPrefix(lower, "<!doctype") || strings.HasPrefix(lower, "<html") {
+		return false
+	}
+	return true
 }
 
 // defaultDaemonRestart is the production daemon restart implementation.
@@ -734,7 +764,11 @@ func waitForDaemonReady(socketPath string, port int, timeout time.Duration, ping
 			// enrich the version string, but do NOT block on it (it lags behind
 			// the cold index).
 			if healthz != nil {
-				if body, herr := healthz(port); herr == nil && strings.TrimSpace(body) != "" {
+				// Only let /healthz enrich the version when its body actually
+				// looks like a version string. A future SPA-fallback (HTML body)
+				// or any garbage must never replace the real socket-Ping version
+				// — otherwise install prints `daemon: <!doctype html>...`.
+				if body, herr := healthz(port); herr == nil && looksLikeVersion(body) {
 					version = strings.TrimSpace(body)
 				}
 			}

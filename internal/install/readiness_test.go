@@ -2,6 +2,7 @@ package install
 
 import (
 	"fmt"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -49,6 +50,54 @@ func TestWaitForDaemonReady_HealthzEnrichesVersion(t *testing.T) {
 	}
 	if version != "healthz-ver" {
 		t.Errorf("expected /healthz body to enrich version, got %q", version)
+	}
+}
+
+// TestWaitForDaemonReady_HealthzHTMLDoesNotOverrideVersion is the regression
+// guard for the install "daemon: <!doctype html>..." bug. The daemon dashboard
+// has no dedicated /healthz route, so an unmatched GET falls through to the SPA
+// catch-all and returns the dashboard index.html (HTTP 200 + HTML). That HTML
+// must NEVER replace the real socket-Ping version — install would otherwise
+// print the entire HTML document as the "daemon" status line.
+func TestWaitForDaemonReady_HealthzHTMLDoesNotOverrideVersion(t *testing.T) {
+	ping := func(socketPath string) (string, error) { return "0.1.5.2", nil }
+	healthz := func(port int) (string, error) {
+		return "<!doctype html><html lang=\"en\"><head><title>grafel</title></head><body></body></html>", nil
+	}
+
+	version, err := waitForDaemonReady("/tmp/fake.sock", 47274, 2*time.Second, ping, healthz)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if version != "0.1.5.2" {
+		t.Errorf("expected the socket-Ping version to be kept (HTML body ignored), got %q", version)
+	}
+}
+
+// TestLooksLikeVersion exercises the version-string sanity guard that protects
+// the printed "daemon:" status line from non-version bodies (the SPA-fallback
+// HTML dump in particular).
+func TestLooksLikeVersion(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"0.1.5.2", true},
+		{"v0.1.5", true},
+		{"1.2.3-socket", true},
+		{"  dev  ", true}, // trimmed
+		{"", false},
+		{"<!doctype html><html></html>", false},
+		{"<html><body>hi</body></html>", false},
+		{"line1\nline2", false},          // multi-line
+		{strings.Repeat("a", 65), false}, // too long
+		{"{\"version\":\"1.0\"}", true},  // short JSON is tolerated (no angle brackets / newline)
+		{"<svg>", false},                 // angle brackets
+	}
+	for _, c := range cases {
+		if got := looksLikeVersion(c.in); got != c.want {
+			t.Errorf("looksLikeVersion(%q) = %v, want %v", c.in, got, c.want)
+		}
 	}
 }
 
