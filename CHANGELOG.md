@@ -32,6 +32,26 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
   `meta_framework` subcategory (new Auth lane) and flipped to `partial` for
   next-api / nuxt / remix / sveltekit; NestJS notes updated. Part of the
   framework-stack coverage epic (#5479).
+- **package.json / lockfile → declared deps + versions + dead-dep detection
+  (#5526):** the JS/TS dependency graph now carries ALL *declared* packages,
+  not only the imported ones. The cross-manifest extractor parses every
+  package.json section — `dependencies` (`dep_section=prod`), `devDependencies`
+  (`dev`), `peerDependencies` (`peer`) and now `optionalDependencies`
+  (`optional`) — stamping each declared external dependency with its version
+  RANGE (`version_range`), section, and `declared=true`. A new whole-graph pass
+  `external.CrossReferenceManifests` (run after external synthesis) joins the
+  three views — **declared** (package.json), **resolved** (the
+  package-lock.json / pnpm-lock.yaml / yarn.lock exact versions) and
+  **imported** (the import graph) — and: (1) sets each declared dep's `version`
+  to the lockfile-resolved exact version, falling back to the manifest range
+  when no lockfile exists; (2) marks each dep `imported=true|false`, flagging a
+  declared-but-unimported package `dead_dependency_candidate=true` (the
+  dead-dependency view); and (3) enriches the import-derived `ext:<pkg>`
+  External node with the resolved version + section so a version surfaces on the
+  node an agent navigates to. Subpath imports (`lodash/fp`) and scoped packages
+  (`@scope/name`) normalise to the package root for matching. JS/TS-scoped;
+  other ecosystems (requirements.txt/pyproject, go.mod, Cargo.toml, Gemfile,
+  pom.xml) are follow-ups.
 - **Zod `z.coerce.*` coercion flags (#5498):** the Zod schema extractor now
   recognizes the coercion factory `z.coerce.<type>()`
   (`z.coerce.string/number/boolean/date/bigint`) wherever a plain `z.<type>()`
