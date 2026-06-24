@@ -166,6 +166,131 @@ router.post('/users', (req, res) => { CreateUser.parse(req.body); res.json({}); 
 }
 
 // ---------------------------------------------------------------------------
+// Nested z.object() → nested schema tree (issue #5496)
+// ---------------------------------------------------------------------------
+
+// nestedSchema returns the nested SCOPE.Schema sub-entity named "<dotted.path>".
+func nestedSchema(ents []types.EntityRecord, dottedPath string) *types.EntityRecord {
+	for i := range ents {
+		e := &ents[i]
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "nested_schema" && e.Name == dottedPath {
+			return e
+		}
+	}
+	return nil
+}
+
+// hasNestedSchemaEdge reports whether the parent schema declares a CONTAINS edge
+// (member=nested_schema) to the given child id with the expected field path.
+func hasNestedSchemaEdge(ents []types.EntityRecord, childID, fieldPath string) bool {
+	for _, e := range ents {
+		for _, r := range e.Relationships {
+			if r.Kind != string(types.RelationshipKindContains) {
+				continue
+			}
+			if r.ToID == childID && r.Properties["member"] == "nested_schema" &&
+				r.Properties["field_path"] == fieldPath {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// A zod schema with a nested z.object, an array-of-objects, an optional nested
+// object, and a union branch carrying an object → each nested object expands to
+// a child SCOPE.Schema linked to its parent with the dotted field path; a flat
+// sibling field still records normally.
+func TestZodSchema_NestedObjects(t *testing.T) {
+	src := `import { z } from 'zod';
+const Profile = z.object({
+  name: z.string(),
+  address: z.object({ city: z.string(), zip: z.string() }),
+  tags: z.array(z.object({ label: z.string() })),
+  meta: z.object({ source: z.string() }).optional(),
+  contact: z.union([z.string(), z.object({ email: z.string() })]),
+});
+router.post('/profiles', (req, res) => { Profile.parse(req.body); res.json({}); });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("profile.ts", "typescript", src))
+
+	// Flat schema not regressed: top-level scalar + the object-typed fields.
+	se := schemaEntity(ents, "Profile")
+	if se == nil {
+		t.Fatal("expected SCOPE.Schema Profile")
+	}
+	wantField(t, se, "name", "string")
+	wantField(t, se, "address", "object")
+
+	// Direct nested object: Profile.address with its own scalar fields.
+	addr := nestedSchema(ents, "Profile.address")
+	if addr == nil {
+		t.Fatal("expected nested schema Profile.address")
+	}
+	wantField(t, addr, "city", "string")
+	wantField(t, addr, "zip", "string")
+	if addr.Properties["parent_schema"] != "Profile" {
+		t.Errorf("address parent_schema = %q, want Profile", addr.Properties["parent_schema"])
+	}
+	if !hasNestedSchemaEdge(ents, addr.ID, "Profile.address") {
+		t.Error("expected CONTAINS(nested_schema) edge Profile -> Profile.address")
+	}
+	// Nested object's own field members emitted (parity with flat schemas).
+	if fieldChild(ents, "Profile.address.city") == nil {
+		t.Error("expected field member Profile.address.city")
+	}
+
+	// Array-of-objects: z.array(z.object({...})) descends.
+	tags := nestedSchema(ents, "Profile.tags")
+	if tags == nil {
+		t.Fatal("expected nested schema Profile.tags (z.array(z.object))")
+	}
+	wantField(t, tags, "label", "string")
+
+	// Optional nested object: z.object({...}).optional() descends.
+	meta := nestedSchema(ents, "Profile.meta")
+	if meta == nil {
+		t.Fatal("expected nested schema Profile.meta (.optional())")
+	}
+	wantField(t, meta, "source", "string")
+
+	// Union branch carrying an object: z.union([..., z.object({...})]) descends.
+	contact := nestedSchema(ents, "Profile.contact")
+	if contact == nil {
+		t.Fatal("expected nested schema Profile.contact (z.union object branch)")
+	}
+	wantField(t, contact, "email", "string")
+}
+
+// Deeply nested objects expand recursively with a dotted name path per level.
+func TestZodSchema_NestedObjects_Recursive(t *testing.T) {
+	src := `const Root = z.object({ a: z.object({ b: z.object({ c: z.string() }) }) });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("root.ts", "typescript", src))
+	if nestedSchema(ents, "Root.a") == nil {
+		t.Fatal("expected nested schema Root.a")
+	}
+	if nestedSchema(ents, "Root.a.b") == nil {
+		t.Fatal("expected nested schema Root.a.b")
+	}
+	leaf := nestedSchema(ents, "Root.a.b")
+	wantField(t, leaf, "c", "string")
+}
+
+// A flat schema with no nested objects produces no nested_schema entities.
+func TestZodSchema_NoNesting_NoNestedEntities(t *testing.T) {
+	src := `const Flat = z.object({ x: z.string(), y: z.number() });`
+	ents := extractFull(t, "custom_js_validation_schema", fi("flat.ts", "typescript", src))
+	for _, e := range ents {
+		if e.Kind == "SCOPE.Schema" && e.Subtype == "nested_schema" {
+			t.Fatalf("flat schema must not yield nested_schema entities: got %s", e.Name)
+		}
+	}
+	// Flat schema itself still works.
+	se := schemaEntity(ents, "Flat")
+	wantField(t, se, "x", "string")
+	wantField(t, se, "y", "number")
+}
+
+// ---------------------------------------------------------------------------
 // Joi
 // ---------------------------------------------------------------------------
 

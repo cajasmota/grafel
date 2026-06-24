@@ -9,6 +9,20 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Zod nested `z.object()` → nested schema tree (#5496):** the Zod schema
+  extractor now recurses into nested `z.object({...})` sub-schemas instead of
+  recording only the top-level scalar fields. A nested object reached directly
+  (`address: z.object({...})`), inside a wrapper (`z.array(z.object({...}))`,
+  `z.record(z.object({...}))`), through a chain (`z.object({...}).optional()` /
+  `.nullable()` / `.default()` / `.describe()`), or as a `z.union([...])` branch
+  is emitted as a child `SCOPE.Schema` (subtype `nested_schema`) named with the
+  dotted field path (`Profile.address`, `Profile.address.city`), carrying its own
+  scalar fields and field members, and linked to its parent via a
+  `CONTAINS` (`member=nested_schema`) edge. Recursion is capped at depth 8 to
+  bound pathological nesting. Honest-partial: a field with no statically
+  locatable `z.object()` (dynamic/computed, or a `$ref` to another named schema)
+  yields no nested child — no false nesting. Flat schemas and chain-constraint
+  chips are unchanged. Part of the framework-stack coverage epic (#5479).
 - **TanStack query/mutation → HTTP endpoint `USES`/`CALLS` edge (#5494):**
   Each `tanstack_query` / `tanstack_mutation` operation (#5492) is now linked to
   the backend endpoint its `queryFn`/`mutationFn` fetcher calls, making the
