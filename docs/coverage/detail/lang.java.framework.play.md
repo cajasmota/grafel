@@ -38,6 +38,11 @@ Auto-generated. Back to [summary](../summary.md).
 | Route extraction | 🟢 `partial` | — | 3090 | `internal/engine/http_endpoint_synthesis.go` | — |
 | Router pattern | 🔴 `missing` | `2026-05-29` | [link](https://github.com/cajasmota/grafel/issues/3586) | `internal/custom/java/play_routes.go` | playRoutesLineRE in play_routes.go extracts HTTP verb+path patterns from conf/routes DSL (#3178). |
 
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+
 ### Build
 
 | Capability | Status | Verified at | Issue | Cites | Notes |

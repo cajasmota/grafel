@@ -368,6 +368,10 @@ func applyJSTSAuthPolicy(content, path string, entities []types.EntityRecord, be
 	adonisRouteAuth := indexAdonisRouteAuth(content, path)
 	// Index Marble.js per-effect auth middleware by canonical path.
 	marbleRouteAuth := indexMarbleRouteAuth(content, path)
+	// #5499 — index home-rolled / custom auth checks in handler bodies
+	// (`const u = await requireUser()`, `if (!session) redirect('/login')`).
+	// Keyed by handler name and by handler start line.
+	authBodyByName, authBodyByLine := indexAuthBodyChecks(content)
 
 	for i := before; i < len(entities); i++ {
 		e := &entities[i]
@@ -390,9 +394,11 @@ func applyJSTSAuthPolicy(content, path string, entities []types.EntityRecord, be
 		canonical := e.Properties["path"]
 		key := verb + " " + canonical
 
+		bodyPolicy, hasBody := authBodyEndpointKey(e, authBodyByName, authBodyByLine, path)
 		policy := resolveEndpointAuth(
 			framework, key, e.Properties["source_handler"],
 			ctx, routeAuth, methodGuards, methodMetaAuth, hapiRouteAuth, adonisRouteAuth, marbleRouteAuth,
+			bodyPolicy, hasBody,
 		)
 		stampAuthPolicy(e.Properties, policy)
 	}
@@ -416,6 +422,7 @@ func resolveEndpointAuth(
 	hapiRouteAuth map[string]hapiAuth,
 	adonisRouteAuth map[string][]AuthSignal,
 	marbleRouteAuth map[string][]AuthSignal,
+	bodyPolicy AuthPolicy, hasBody bool,
 ) AuthPolicy {
 	// 1a. Express-shaped route-level middleware chain.
 	if sigs, ok := routeAuth[key]; ok && len(sigs) > 0 {
@@ -471,6 +478,15 @@ func resolveEndpointAuth(
 			Required: true, Method: "middleware", Confidence: "high",
 			SourceChain: sigs,
 		}
+	}
+
+	// 2. Home-rolled / custom auth check in the handler body (#5499) —
+	//    `const u = await requireUser()` / `if (!session) redirect('/login')`.
+	//    The check is IN the handler (route-direct), so it ranks above the
+	//    file-scope inherited signals below, but below an explicit route
+	//    middleware / method decorator above (those are the declared gate).
+	if hasBody {
+		return bodyPolicy
 	}
 
 	// 3. File-scope signals (router/app-level middleware, Nest class guards,
@@ -606,6 +622,11 @@ func stampAuthPolicy(props map[string]string, policy AuthPolicy) {
 		switch policy.Method {
 		case "guard":
 			props["auth_guard"] = authEvidenceSymbol(head.Text)
+		case "check":
+			// #5499 — a home-rolled body check. Surface the check-callee symbol
+			// under auth_guard (the MCP signal-1 key) so grafel_auth_coverage
+			// fires without parsing the JSON source chain.
+			props["auth_guard"] = authBodyEvidenceSymbol(head.Text)
 		case "middleware", "config", "framework_default":
 			props["auth_middleware"] = authEvidenceSymbol(head.Text)
 		}

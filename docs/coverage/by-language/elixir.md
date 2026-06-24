@@ -42,9 +42,9 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Meta Framework
 
-| Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|---|
-| [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | 🟢 2/2 | 🟢 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 5/5 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Phoenix LiveView](../detail/lang.elixir.framework.phoenix-liveview.md) | 🟢 2/2 | 🔴 0/1 | 🟢 3/3 | ✅ 1/1 | 🟡 23/24 | 🟢 5/5 | |
 
 
 ### RPC Framework

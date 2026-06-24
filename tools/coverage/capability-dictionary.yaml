@@ -329,6 +329,7 @@ subcategories:
       - component_extraction
       - hook_recognition
       - router_pattern
+      - auth_coverage
       - interface_extraction
       - type_alias_extraction
       - enum_extraction
@@ -367,6 +368,8 @@ subcategories:
         keys: [server_components, hydration_boundaries]
       - name: Routing
         keys: [route_extraction, router_pattern]
+      - name: Auth
+        keys: [auth_coverage]
       - name: Build
         keys: [static_generation]
       - name: Type System

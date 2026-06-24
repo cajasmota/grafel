@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 41
+- **Capability cells:** 42
 
 ## Capabilities
 
@@ -37,6 +37,12 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Route extraction | ✅ `full` | `2026-06-24` | [link](https://github.com/cajasmota/grafel/issues/5486) | `internal/custom/javascript/nextjs.go`<br>`internal/engine/http_endpoint_jsts_extra.go`<br>`internal/engine/http_endpoint_next_route_handler_5486_test.go`<br>`internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` | App Router Route Handlers (#5486): each exported HTTP-method handler in app/.../route.{ts,js,tsx} — both `export async function GET(` and `export const GET = ...` forms — is synthesized as one http_endpoint_definition keyed `http:<METHOD>:<path>`. Path = the app/-relative directory with route groups `(group)` stripped and dynamic `[seg]`/`[...seg]` normalised to `{seg}`; Route Handlers are recognised anywhere under app/, not only under api/. Gating on the `route.*` basename keeps page.tsx/layout.tsx and arbitrary verb exports out. The verb-named handler is bound by the resolver to the SCOPE.Operation the JS/TS extractor emits. |
 | Router pattern | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/frameworks/next_js.yaml` | — |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🟢 `partial` | `2026-06-24` | 5499 | `internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_authbody.go`<br>`internal/engine/http_endpoint_jsts_authbody_test.go` | #5499: home-rolled / custom auth checks in handler bodies. indexAuthBodyChecks scans each route-handler / server-action / loader body opener for an inline authorization check — a require*/authorize/assertCan/checkPermission/getServerSession-family call (jsAuthCheckLeafSet) or an `if (!session|!user) throw|redirect('/login')` guard — and stamps the AuthPolicy contract (auth_required/auth_method=check/auth_guard/auth_roles/auth_permissions/auth_scopes + the JSON source chain), i.e. the AUTHORIZES relation from the endpoint to its check callee. Confined to the body opener (no false positives on ordinary calls). Honest-partial: a dynamically-dispatched / runtime-assembled check, and framework session middleware config, are out of scope here. |
 
 ### Build
 

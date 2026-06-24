@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [elixir](../by-language/elixir.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 37
+- **Capability cells:** 38
 
 ## Capabilities
 
@@ -37,6 +37,12 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Route extraction | ✅ `full` | `2026-05-30` | — | `internal/custom/elixir/phoenix.go`<br>`internal/engine/elixir_routes.go`<br>`internal/engine/elixir_routes_test.go`<br>`internal/engine/phoenix_routes.go` | synthesizePhoenixLive emits the initial-GET http_endpoint for each Phoenix LiveView 'live "/path", Module, :action' route, composing the active scope prefix and normalising :id->{id}; live-module :action attributed as handler (route_type=live). Value-asserting tests (TestPhoenixLive_Routes proves GET /dashboard + GET /users/{id} with handler attribution; TestPhoenixLive_NoAction covers the action-less form). |
 | Router pattern | 🟢 `partial` | — | — | `internal/custom/elixir/phoenix.go` | Phoenix scope blocks extracted as SCOPE.Pattern/scope; pipeline declarations as SCOPE.Pattern; live_session not yet separately tracked |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🔴 `missing` | — | 5499 | — | #5499: meta_framework Auth lane added. The JS/TS home-rolled body-check resolver (indexAuthBodyChecks) is JS/TS-only; Phoenix LiveView auth (Elixir on_mount / plug pipelines) is unaddressed here — honest missing. |
 
 ### Build
 

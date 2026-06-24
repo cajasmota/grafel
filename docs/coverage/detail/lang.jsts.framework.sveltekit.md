@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 39
+- **Capability cells:** 40
 
 ## Capabilities
 
@@ -37,6 +37,12 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Route extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/frameworks/sveltekit.yaml` | — |
 | Router pattern | ✅ `full` | — | 2880 | `internal/custom/javascript/issue2880_metafw_routing_test.go`<br>`internal/custom/javascript/svelte.go` | — |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🟢 `partial` | `2026-06-24` | 5499 | `internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_authbody.go`<br>`internal/engine/http_endpoint_jsts_authbody_test.go` | #5499: home-rolled / custom auth checks in handler bodies. indexAuthBodyChecks scans each route-handler / server-action / loader body opener for an inline authorization check — a require*/authorize/assertCan/checkPermission/getServerSession-family call (jsAuthCheckLeafSet) or an `if (!session|!user) throw|redirect('/login')` guard — and stamps the AuthPolicy contract (auth_required/auth_method=check/auth_guard/auth_roles/auth_permissions/auth_scopes + the JSON source chain), i.e. the AUTHORIZES relation from the endpoint to its check callee. Confined to the body opener (no false positives on ordinary calls). Honest-partial: a dynamically-dispatched / runtime-assembled check, and framework session middleware config, are out of scope here. |
 
 ### Build
 

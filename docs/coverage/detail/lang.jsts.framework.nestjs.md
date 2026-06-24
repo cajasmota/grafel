@@ -33,7 +33,7 @@ Auto-generated. Back to [summary](../summary.md).
 
 | Capability | Status | Verified at | Issue | Cites | Notes |
 |------------|--------|-------------|-------|-------|-------|
-| Auth coverage | ✅ `full` | `2026-05-28` | — | `cmd/grafel/audit2852_jsauth_test.go`<br>`internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`testdata/fixtures/typescript/nestjs_auth.ts` | — |
+| Auth coverage | ✅ `full` | `2026-06-24` | — | `cmd/grafel/audit2852_jsauth_test.go`<br>`internal/engine/http_endpoint_jsts_auth.go`<br>`internal/engine/http_endpoint_jsts_auth_test.go`<br>`internal/engine/http_endpoint_jsts_authbody.go`<br>`internal/engine/http_endpoint_jsts_authbody_test.go`<br>`testdata/fixtures/typescript/nestjs_auth.ts` | #5499: a NestJS handler with NO @UseGuards / metadata decorator but a body opening with a home-rolled check (await this.authz.assertCan('x') / requireUser()) is now recovered via indexAuthBodyChecks (auth_method=check). |
 
 ### Validation
 

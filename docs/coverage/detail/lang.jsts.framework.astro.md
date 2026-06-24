@@ -6,7 +6,7 @@ Auto-generated. Back to [summary](../summary.md).
 - **Language:** [JS/TS](../by-language/jsts.md)
 - **Category:** [http_framework](../by-category/http_framework.md)
 - **Subcategory:** Meta Framework
-- **Capability cells:** 39
+- **Capability cells:** 40
 
 ## Capabilities
 
@@ -37,6 +37,12 @@ Auto-generated. Back to [summary](../summary.md).
 |------------|--------|-------------|-------|-------|-------|
 | Route extraction | ✅ `full` | `2026-05-28` | — | `internal/engine/rules/javascript_typescript/frameworks/astro.yaml` | — |
 | Router pattern | ✅ `full` | `2026-05-28` | [link](https://github.com/cajasmota/grafel/issues/2857) | `internal/extractors/astro/extractor.go`<br>`internal/extractors/astro/issue2857_routing_test.go` | — |
+
+### Auth
+
+| Capability | Status | Verified at | Issue | Cites | Notes |
+|------------|--------|-------------|-------|-------|-------|
+| Auth coverage | 🔴 `missing` | — | 5499 | — | #5499: meta_framework Auth lane added. This framework is predominantly static/build-time and carries no server-side auth-check idiom this pass recognises; honest missing pending a framework-specific auth surface. |
 
 ### Build
 

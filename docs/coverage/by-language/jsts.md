@@ -55,14 +55,14 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 
 ### Meta Framework
 
-| Name | Routing | Type System | Testing | Substrate | Other capabilities | Notes |
-|---|---|---|---|---|---|---|
-| [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 7/7 | |
-| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
-| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 11/11 | |
-| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
-| [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
-| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
+| Name | Routing | Auth | Type System | Testing | Substrate | Other capabilities | Notes |
+|---|---|---|---|---|---|---|---|
+| [Astro](../detail/lang.jsts.framework.astro.md) | ✅ 2/2 | 🔴 0/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 7/7 | |
+| [Gatsby](../detail/lang.jsts.framework.gatsby.md) | ✅ 2/2 | 🔴 0/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
+| [Next.js API Routes / App Router](../detail/lang.jsts.framework.next-api.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 11/11 | |
+| [Nuxt](../detail/lang.jsts.framework.nuxt.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
+| [Remix](../detail/lang.jsts.framework.remix.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
+| [SvelteKit](../detail/lang.jsts.framework.sveltekit.md) | ✅ 2/2 | 🟢 1/1 | ✅ 3/3 | ✅ 1/1 | 🟢 24/24 | ✅ 8/8 | |
 
 
 ### Mobile

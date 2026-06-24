@@ -9,6 +9,29 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 ## [Unreleased]
 
 ### Added
+- **Authorization checks → AUTHORIZES edges (NestJS guards + home-rolled
+  idioms) (#5499):** the JS/TS auth resolver now recovers an endpoint's
+  authorization posture from two idiom families that did not reach the
+  route/decorator surface. (1) NestJS `@UseGuards(AuthGuard, RolesGuard)` with
+  `@Roles('admin')` / metadata decorators were already resolved at class &
+  method level; (2) NEW — *home-rolled / custom* checks in the handler body:
+  a route-handler / server-action / loader / page whose body OPENS with an
+  inline check — a `require*` / `authorize` / `assertCan` / `checkPermission` /
+  `can` / `hasRole` / `getServerSession`-family call (the auth-idiom set
+  `jsAuthCheckLeafSet`), or an `if (!session|!user) throw|redirect('/login')`
+  guard — now stamps the same AuthPolicy contract (`auth_required`,
+  `auth_method=check`, `auth_guard`, `auth_roles`, `auth_permissions`,
+  `auth_scopes`, plus the JSON `auth_policy` source chain), i.e. the AUTHORIZES
+  relation from the endpoint to its check callee. This greens the meta-framework
+  auth lane (Next.js App-Router route handlers, server actions, Remix/SvelteKit
+  loaders) that gate inside the handler rather than via middleware. Recognition
+  is confined to the body opener and gated on the auth-idiom callee set, so an
+  ordinary call (e.g. `require('./db')`, a business call) is never misread as
+  auth. Honest-partial: a dynamically-dispatched or runtime-assembled check is
+  left to the route/decorator resolvers. Registry: `auth_coverage` added to the
+  `meta_framework` subcategory (new Auth lane) and flipped to `partial` for
+  next-api / nuxt / remix / sveltekit; NestJS notes updated. Part of the
+  framework-stack coverage epic (#5479).
 - **Zod `z.coerce.*` coercion flags (#5498):** the Zod schema extractor now
   recognizes the coercion factory `z.coerce.<type>()`
   (`z.coerce.string/number/boolean/date/bigint`) wherever a plain `z.<type>()`
