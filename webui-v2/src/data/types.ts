@@ -1426,6 +1426,13 @@ export interface FsListReply {
   parent: string;
   entries: FsEntry[];
   shortcuts?: FsShortcut[];
+  /**
+   * Available drive roots on Windows (C:\, D:\, …), attached to every listing
+   * so the picker can render a drive selector. Empty/absent off Windows.
+   */
+  drives?: FsEntry[];
+  /** True when `path` is the virtual "drives level" (Windows): entries ARE the drives. */
+  isDrives?: boolean;
   /** Human-readable reason when the path couldn't be listed. */
   error?: string;
 }

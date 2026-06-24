@@ -29,6 +29,12 @@ import (
 	"strings"
 )
 
+// drivesSentinel is the virtual path representing the "drives level" above the
+// per-drive roots on Windows (C:\, D:\, …). Listing it returns one entry per
+// available drive; navigating "up" from a drive root yields it. It is never a
+// real on-disk path, so it is meaningless (and unreachable) off Windows.
+const drivesSentinel = "drives:"
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Wire shapes
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,6 +68,13 @@ type v2FsListReply struct {
 	Entries []v2FsEntry `json:"entries"`
 	// Shortcuts are quick-jump targets (only populated for the default/home view).
 	Shortcuts []v2FsShortcut `json:"shortcuts,omitempty"`
+	// Drives lists the available drive roots on Windows (C:\, D:\, …). It is
+	// populated on EVERY listing so the frontend can render a drive selector and
+	// let the user switch drives without first navigating up. Empty off Windows.
+	Drives []v2FsEntry `json:"drives,omitempty"`
+	// IsDrives is true when Path is the virtual "drives level" (Windows only):
+	// Entries are the drive roots themselves and there is no parent.
+	IsDrives bool `json:"isDrives,omitempty"`
 	// Error is a human-readable reason when the path could not be listed
 	// (nonexistent / permission denied). Entries is empty in that case.
 	Error string `json:"error,omitempty"`
@@ -80,6 +93,20 @@ func (s *Server) handleV2FsList(w http.ResponseWriter, r *http.Request) {
 	raw := strings.TrimSpace(r.URL.Query().Get("path"))
 
 	home, _ := os.UserHomeDir()
+
+	// Windows "drives level": list the available drive roots so the user can
+	// switch C:→D: etc. This sits above every drive root; it has no parent.
+	if drivesSupported && raw == drivesSentinel {
+		drives := listDrives()
+		writeV2JSON(w, http.StatusOK, v2OK(v2FsListReply{
+			Path:     drivesSentinel,
+			Parent:   "",
+			Entries:  drives,
+			Drives:   drives,
+			IsDrives: true,
+		}))
+		return
+	}
 
 	// Default start: the user's home directory.
 	if raw == "" {
@@ -154,6 +181,16 @@ func (s *Server) handleV2FsList(w http.ResponseWriter, r *http.Request) {
 	// one-click jumps without the user typing.
 	if home != "" && abs == home {
 		reply.Shortcuts = homeShortcuts(home)
+	}
+
+	// On Windows attach the available drives to EVERY listing (so the UI can
+	// render a drive selector) and ensure "up" from a drive root ascends to the
+	// drives level rather than dead-ending on the same drive.
+	if drivesSupported {
+		reply.Drives = listDrives()
+		if isDriveRoot(abs) {
+			reply.Parent = drivesSentinel
+		}
 	}
 
 	writeV2JSON(w, http.StatusOK, v2OK(reply))

@@ -260,6 +260,16 @@ export function ScanWizard(props: ScanWizardProps) {
   // back to the manual-paste field when the user typed a path instead.
   const browsePath = fs.data?.path ?? "";
 
+  // The drive root (e.g. "C:\\") that the current browse path lives on, so the
+  // Windows drive <select> reflects the active drive. null when at the drives
+  // level or off Windows (no drives reported). Compared on the leading
+  // "<letter>:" segment so any depth under C:\ maps back to the C:\ option.
+  const currentDrive =
+    fs.data?.drives?.find((d) => {
+      const letter = d.path.slice(0, 2).toLowerCase(); // "c:"
+      return browsePath.slice(0, 2).toLowerCase() === letter;
+    })?.path ?? null;
+
   // runDetect scans an explicit absolute path. The folder browser passes the
   // directory the user navigated into; the manual field passes its trimmed
   // text. Either way a single value drives the Detect step — no typing needed
@@ -515,8 +525,28 @@ export function ScanWizard(props: ScanWizardProps) {
                 title={browsePath}
                 data-testid="wizard-fs-cwd"
               >
-                {browsePath || "…"}
+                {fs.data?.isDrives ? "Drives" : browsePath || "…"}
               </code>
+
+              {/* Windows drive selector — lets the user switch C:→D: directly
+                  without first navigating up to the drives level (#5595). Only
+                  rendered when the backend reports drives (Windows hosts). */}
+              {fs.data?.drives && fs.data.drives.length > 0 && (
+                <select
+                  className="shrink-0 rounded-md border border-border bg-surface px-2 py-1.5 font-mono text-xs text-text-2"
+                  value={currentDrive ?? ""}
+                  onChange={(e) => setBrowseDir(e.target.value)}
+                  data-testid="wizard-fs-drive"
+                  title="Switch drive"
+                >
+                  {currentDrive === null && <option value="">Drive…</option>}
+                  {fs.data.drives.map((d) => (
+                    <option key={d.path} value={d.path}>
+                      {d.name}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
 
             {/* Shortcuts (home view only) */}
@@ -591,7 +621,9 @@ export function ScanWizard(props: ScanWizardProps) {
                 // overflowed the fixed-height border box — reading as a double
                 // border. Keep it a single-line pill with one clean border (#1531).
                 className="shrink-0 whitespace-nowrap"
-                disabled={!browsePath || inspect.isPending}
+                // The virtual drives level (Windows) is not a real folder, so
+                // it cannot be selected/indexed — only its drive entries can.
+                disabled={!browsePath || fs.data?.isDrives || inspect.isPending}
                 onClick={() => {
                   setPath(browsePath);
                   void runDetect(browsePath);
