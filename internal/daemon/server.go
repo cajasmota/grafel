@@ -572,9 +572,16 @@ func Run(ctx context.Context, cfg Config) error {
 				// #5142: also reap stale/orphaned `grafel watch` PIDs that
 				// registered in the daemon-owned registry under the daemon root.
 				WatchRegistry: watchreg.New(watchreg.DefaultPath(cfg.Layout.Root)),
-				DeadRefs:      deadRefSweeper,
-				OrphanRoots:   orphanRootSweeper,
-				Logger:        logger,
+				// #5632: also reap live `grafel watch` processes for managed
+				// repos that run from a STALE/foreign binary (version skew) or
+				// duplicate an existing watcher. ManagedRepo gates the sweep to
+				// the daemon's tracked repos only; the watcher's repo arg is
+				// matched (cleaned-absolute) against this set so unrelated
+				// processes are never touched.
+				ManagedRepo: makeManagedRepoPredicate(trackedRepos),
+				DeadRefs:    deadRefSweeper,
+				OrphanRoots: orphanRootSweeper,
+				Logger:      logger,
 			})
 			reaperStop := make(chan struct{})
 			reaper.Start(reaperStop)

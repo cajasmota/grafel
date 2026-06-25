@@ -36,6 +36,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/watchreg"
+	"github.com/cajasmota/grafel/internal/daemon/watchscan"
 	"github.com/cajasmota/grafel/internal/process"
 )
 
@@ -77,6 +78,28 @@ type ReaperConfig struct {
 	// watcher reaping (e.g. modes without standalone watchers).
 	WatchRegistry *watchreg.Registry
 
+	// ManagedRepo, when non-nil, reports whether a repo path is one the daemon
+	// manages. It gates the foreign/orphan-watcher sweep (#5632): only watchers
+	// for managed repos are ever reaped. nil disables that sweep — the
+	// watchreg-based sweep above still runs.
+	ManagedRepo func(repoPath string) bool
+
+	// SelfExe returns the daemon's own executable path (os.Executable() in
+	// production). The foreign-watcher sweep (#5632) reaps `grafel watch`
+	// processes whose executable differs from this. nil → os.Executable.
+	SelfExe func() (string, error)
+
+	// ListWatchProcs enumerates live `grafel watch <repo>` processes for the
+	// foreign-watcher sweep (#5632). nil → process.ListWatchProcesses. A lister
+	// error (or an unsupported platform) makes the sweep a best-effort no-op.
+	ListWatchProcs func() ([]process.WatchProc, error)
+
+	// KillWatchProc terminates the foreign/duplicate watcher with the given pid
+	// (#5632). nil → sigtermPID (a graceful SIGTERM, matching the watchreg
+	// sweep). Injectable for tests so the sweep can be exercised without
+	// touching real processes.
+	KillWatchProc func(pid int) error
+
 	// LiveDaemonPID returns the PID of the currently-live daemon, used to detect
 	// orphaned watchers. nil → os.Getpid (the running daemon owns the sweep).
 	LiveDaemonPID func() int
@@ -116,6 +139,11 @@ type ReapResult struct {
 	// WatchersReaped is the number of stale/orphaned `grafel watch` PID
 	// registry entries reaped this sweep (#5142).
 	WatchersReaped int
+	// ForeignWatchersReaped is the number of live `grafel watch` processes
+	// reaped this sweep because their executable differed from the daemon's own
+	// (version skew / orphan) or they duplicated a managed repo's watcher
+	// (#5632). Independent of the watchreg-based count above.
+	ForeignWatchersReaped int
 	// DeadRefs summarises the dead-ref / dead-worktree sub-sweep (#5236).
 	DeadRefs DeadRefResult
 	// OrphanRoots summarises the orphan top-level store-root sub-sweep (#5263).
@@ -172,6 +200,12 @@ func (r *Reaper) Sweep() ReapResult {
 	// #5142: reap stale/orphaned `grafel watch` PIDs. Independent of the
 	// vanished-repo GC below, so it runs even in configs without TrackedRepos.
 	res.WatchersReaped = r.sweepWatchers()
+	// #5632: reap live `grafel watch` processes for MANAGED repos whose
+	// executable differs from the daemon's own (version skew / init-reparented
+	// orphans the watchreg sweep misses), and collapse duplicate watchers to one
+	// per repo. Best-effort: an unsupported platform / enumeration error is a
+	// no-op. Independent of the watchreg sweep above.
+	res.ForeignWatchersReaped = r.sweepForeignWatchers()
 	// #5236: dead-ref / dead-worktree sweep. Independent of the vanished-repo
 	// GC below; runs on the same cadence so a deleted branch's store + resident
 	// graph are reclaimed without a separate scheduler.
@@ -262,6 +296,74 @@ func (r *Reaper) sweepWatchers() int {
 			"dead", res.Dead, "orphaned", res.Orphaned, "kill_errors", len(res.KillErrors))
 	}
 	return res.Reaped()
+}
+
+// sweepForeignWatchers reaps live standalone `grafel watch <repo>` processes
+// for repos the daemon MANAGES whose executable differs from the daemon's own
+// (#5632) — the stale-`$GOPATH/bin`-version watcher and the init-reparented
+// orphan that the watchreg sweep cannot see (it only knows self-registered
+// PIDs, and only flags owner-PID mismatches, never executable skew). It also
+// collapses duplicate watchers down to one per managed repo. Returns the number
+// of processes reaped.
+//
+// Strictly scoped + fail-safe:
+//   - only processes targeting a MANAGED repo are ever considered;
+//   - the decision (watchscan.Compute) is pure and unit-tested;
+//   - enumeration is best-effort — a lister error or an unsupported platform
+//     yields an empty plan and the daemon is undisturbed;
+//   - a nil ManagedRepo disables the sweep entirely.
+func (r *Reaper) sweepForeignWatchers() int {
+	if r.cfg.ManagedRepo == nil {
+		return 0
+	}
+	list := r.cfg.ListWatchProcs
+	if list == nil {
+		list = process.ListWatchProcesses
+	}
+	selfExeFn := r.cfg.SelfExe
+	if selfExeFn == nil {
+		selfExeFn = os.Executable
+	}
+	selfExe, _ := selfExeFn() // empty self-exe → watchscan never declares a mismatch.
+
+	kill := r.cfg.KillWatchProc
+	if kill == nil {
+		kill = sigtermPID
+	}
+
+	plan := watchscan.Compute(watchscan.Deps{
+		SelfExe: selfExe,
+		Managed: r.cfg.ManagedRepo,
+		List: func() ([]watchscan.Proc, error) {
+			procs, err := list()
+			if err != nil {
+				return nil, err
+			}
+			out := make([]watchscan.Proc, 0, len(procs))
+			for _, p := range procs {
+				out = append(out, watchscan.Proc{PID: p.PID, Exe: p.Exe, Repo: p.Repo})
+			}
+			return out, nil
+		},
+	})
+
+	pids := plan.PIDs()
+	reaped := 0
+	for _, pid := range pids {
+		if pid == os.Getpid() {
+			continue // never signal the daemon itself.
+		}
+		if err := kill(pid); err != nil {
+			r.logger.Warn("reaper: foreign-watcher SIGTERM failed (non-fatal)", "pid", pid, "err", err)
+			continue
+		}
+		reaped++
+	}
+	if reaped > 0 {
+		r.logger.Info("reaper: reaped foreign/duplicate grafel-watch processes",
+			"reaped", reaped, "foreign", len(plan.Foreign), "duplicate", len(plan.Duplicate))
+	}
+	return reaped
 }
 
 // pidAliveProbe reports whether pid names a live process (signal-0 existence

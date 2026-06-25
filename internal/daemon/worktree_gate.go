@@ -12,6 +12,8 @@
 package daemon
 
 import (
+	"path/filepath"
+
 	"github.com/cajasmota/grafel/internal/daemon/worktree"
 )
 
@@ -65,6 +67,37 @@ func makeReaperTrackedRepos(reposToWatch func() []string, wtStore *worktree.Stor
 			}
 		}
 		return out
+	}
+}
+
+// makeManagedRepoPredicate returns the foreign-watcher sweep's ManagedRepo
+// gate (#5632): reports whether repoPath is one of the daemon's currently
+// tracked repos. The tracked set is re-read on every call (so repos
+// registered/worktrees added after boot are covered), and both sides are
+// compared as cleaned-absolute paths so a watcher's `watch <repo>` argument
+// matches regardless of how it was written. A nil trackedRepos disables the
+// sweep (the predicate is nil → reaper skips it).
+func makeManagedRepoPredicate(trackedRepos func() []string) func(string) bool {
+	if trackedRepos == nil {
+		return nil
+	}
+	cleanAbs := func(p string) string {
+		if abs, err := filepath.Abs(p); err == nil {
+			return filepath.Clean(abs)
+		}
+		return filepath.Clean(p)
+	}
+	return func(repoPath string) bool {
+		if repoPath == "" {
+			return false
+		}
+		want := cleanAbs(repoPath)
+		for _, r := range trackedRepos() {
+			if r != "" && cleanAbs(r) == want {
+				return true
+			}
+		}
+		return false
 	}
 }
 
