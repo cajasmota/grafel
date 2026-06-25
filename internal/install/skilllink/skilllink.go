@@ -376,18 +376,26 @@ func InstallSkillsInClaudeConfigs(out io.Writer, binPath, skillsSourceDir string
 			// Check if destination exists.
 			dstInfo, err := os.Lstat(dst)
 			if err == nil {
-				// Destination exists. Check if it's a symlink.
+				// Destination exists. A reparse point (symlink on unix, or a
+				// symlink/junction on Windows — Go sets ModeSymlink for both)
+				// is a prior grafel link; replace it idempotently.
+				//
+				// A plain directory at one of OUR grafel-namespaced skill paths
+				// is a prior grafel COPY-mode install (#5318 non-admin Windows
+				// fallback), not a user's manual install — the names here come
+				// from the fixed SkillNames list, so it is safe to replace.
 				if dstInfo.Mode()&os.ModeSymlink != 0 {
-					// It's a symlink. Replace it (idempotent update).
 					if err := os.Remove(dst); err != nil {
-						fmt.Fprintf(out, "    ⚠ remove old symlink %s: %v\n", dst, err)
+						fmt.Fprintf(out, "    ⚠ remove old link %s: %v\n", dst, err)
 						allOK = false
 						continue
 					}
 				} else {
-					// It's a regular directory (user manual install). Skip with warning.
-					fmt.Fprintf(out, "    ⚠ %s exists as directory (manual install?); skipping\n", skillName)
-					continue
+					if err := os.RemoveAll(dst); err != nil {
+						fmt.Fprintf(out, "    ⚠ remove old skill dir %s: %v\n", dst, err)
+						allOK = false
+						continue
+					}
 				}
 			} else if !os.IsNotExist(err) {
 				// Other error (e.g., permission denied).
@@ -396,11 +404,19 @@ func InstallSkillsInClaudeConfigs(out io.Writer, binPath, skillsSourceDir string
 				continue
 			}
 
-			// Create the symlink.
-			if err := os.Symlink(src, dst); err != nil {
-				fmt.Fprintf(out, "    ⚠ symlink %s: %v\n", skillName, err)
+			// Link the skill directory. On unix this is a symlink; on Windows
+			// it prefers a directory junction (no admin / Developer Mode
+			// needed) and falls back to a copy — see linkdir.go. This removes
+			// the symlink elevation gate that previously forced PowerShell in
+			// admin mode (#5318).
+			mode, err := linkSkillDir(src, dst)
+			if err != nil {
+				fmt.Fprintf(out, "    ⚠ link %s: %v\n", skillName, err)
 				allOK = false
 				continue
+			}
+			if mode == LinkModeJunction || mode == LinkModeCopy {
+				fmt.Fprintf(out, "    %s (%s mode)\n", skillName, mode)
 			}
 		}
 
@@ -463,17 +479,24 @@ func RemoveSkillsFromClaudeConfigs(out io.Writer, claudeConfigDirs []string) []s
 				continue
 			}
 
-			// Only remove if it's a symlink.
-			if dstInfo.Mode()&os.ModeSymlink == 0 {
-				fmt.Fprintf(out, "    ⚠ %s is not a symlink (manual install?); leaving alone\n", skillName)
-				continue
-			}
-
-			// Remove the symlink.
-			if err := os.Remove(dst); err != nil {
-				fmt.Fprintf(out, "    ⚠ remove symlink %s: %v\n", skillName, err)
-				allOK = false
-				continue
+			// A reparse point (symlink/junction) is a prior grafel link;
+			// remove it with os.Remove. A plain directory at one of OUR
+			// grafel-namespaced skill paths is a prior grafel COPY-mode
+			// install (#5318 non-admin Windows fallback) — remove it too so
+			// uninstall is clean. The names iterated here all come from the
+			// fixed SkillNames list, so this never touches a user directory.
+			if dstInfo.Mode()&os.ModeSymlink != 0 {
+				if err := os.Remove(dst); err != nil {
+					fmt.Fprintf(out, "    ⚠ remove link %s: %v\n", skillName, err)
+					allOK = false
+					continue
+				}
+			} else {
+				if err := os.RemoveAll(dst); err != nil {
+					fmt.Fprintf(out, "    ⚠ remove skill dir %s: %v\n", skillName, err)
+					allOK = false
+					continue
+				}
 			}
 		}
 
@@ -492,10 +515,15 @@ func RemoveSkillsFromClaudeConfigs(out io.Writer, claudeConfigDirs []string) []s
 }
 
 // ValidateSkillSymlinks checks that all expected skills are correctly
-// symlinked in the given directory. Used for testing and verification.
+// installed in the given directory. Used for testing and verification.
 //
-// Returns a description of any missing or incorrect symlinks, empty string
-// if all are correct.
+// A skill is considered correctly installed when its destination exists as
+// EITHER a reparse point (symlink/junction) OR a directory — the latter
+// covers the #5318 non-admin Windows copy-mode fallback. Only a missing or
+// non-directory destination is an error.
+//
+// Returns a description of any missing or incorrect entries, empty string if
+// all are correct.
 func ValidateSkillSymlinks(skillsSubdir string) string {
 	var errs []string
 	for _, skillName := range SkillNames {
@@ -509,8 +537,10 @@ func ValidateSkillSymlinks(skillsSubdir string) string {
 			}
 			continue
 		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			errs = append(errs, fmt.Sprintf("%s: not a symlink", skillName))
+		// Accept symlink/junction (reparse point) or a real directory (copy
+		// mode). Reject only plain non-directory files.
+		if info.Mode()&os.ModeSymlink == 0 && !info.IsDir() {
+			errs = append(errs, fmt.Sprintf("%s: not a link or directory", skillName))
 		}
 	}
 	if len(errs) > 0 {

@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -503,7 +504,13 @@ func TestInstallSkillsIdempotent(t *testing.T) {
 	}
 }
 
-func TestInstallSkillsSkipsManualInstall(t *testing.T) {
+// TestInstallReplacesPriorCopyDir verifies that a plain directory sitting at a
+// grafel-namespaced skill path (i.e. a prior #5318 Windows copy-mode install)
+// is REPLACED on re-install, rather than skipped. The names are grafel-owned
+// (from SkillNames), so this can never be a user's manual install — those
+// would carry non-grafel names (covered by TestInstallSkillsInClaudeConfigs_
+// PrunesOrphans, where "my-custom-skill" is left untouched).
+func TestInstallReplacesPriorCopyDir(t *testing.T) {
 	dir := t.TempDir()
 
 	// Source skills.
@@ -516,6 +523,11 @@ func TestInstallSkillsSkipsManualInstall(t *testing.T) {
 		if err := os.MkdirAll(skillPath, 0o755); err != nil {
 			t.Fatal(err)
 		}
+		// Stamp a marker so we can prove the source content is what ends up
+		// resolvable through the link/junction.
+		if err := os.WriteFile(filepath.Join(skillPath, "SKILL.md"), []byte("src"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	primaryCfg := filepath.Join(dir, ".claude.json")
@@ -524,40 +536,32 @@ func TestInstallSkillsSkipsManualInstall(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Manually-installed skill at the first canonical name (regular dir).
-	manualSkillPath := filepath.Join(skillsSubdir, SkillNames[0])
-	if err := os.MkdirAll(manualSkillPath, 0o755); err != nil {
+	// Prior copy-mode install at the first canonical name (regular dir) with
+	// stale content that must be cleared on re-install.
+	priorCopy := filepath.Join(skillsSubdir, SkillNames[0])
+	if err := os.MkdirAll(priorCopy, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(priorCopy, "STALE"), []byte("old"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
 	out := &bytes.Buffer{}
-	_ = InstallSkillsInClaudeConfigs(out, "", skillsDir, []string{primaryCfg})
-
-	outStr := out.String()
-	if !stringContains(outStr, "Skills linked in:") {
-		t.Errorf("should report partial success: %s", outStr)
-	}
-	if !stringContains(outStr, "exists as directory") && !stringContains(outStr, "manual install") {
-		t.Errorf("should warn about manual install: %s", outStr)
+	installed := InstallSkillsInClaudeConfigs(out, "", skillsDir, []string{primaryCfg})
+	if len(installed) != 1 {
+		t.Fatalf("expected 1 installed dir, got %d: %v", len(installed), installed)
 	}
 
-	// Manual skill must NOT have been replaced with a symlink.
-	info, err := os.Lstat(filepath.Join(skillsSubdir, SkillNames[0]))
-	if err != nil {
-		t.Fatalf("manual skill was deleted: %v", err)
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		t.Errorf("manual skill was replaced with a symlink")
+	// The stale prior-copy marker must be gone (destination was replaced).
+	if _, err := os.Stat(filepath.Join(skillsSubdir, SkillNames[0], "STALE")); !os.IsNotExist(err) {
+		t.Errorf("stale copy-mode content survived re-install (err=%v)", err)
 	}
 
-	// Other skills should be symlinks.
-	for _, skillName := range SkillNames[1:] {
-		linkInfo, err := os.Lstat(filepath.Join(skillsSubdir, skillName))
-		if err != nil {
-			t.Fatalf("symlink not created for %s: %v", skillName, err)
-		}
-		if linkInfo.Mode()&os.ModeSymlink == 0 {
-			t.Fatalf("%s is not a symlink", skillName)
+	// Every skill must now resolve to the source content (symlink on unix,
+	// junction/copy on Windows — all resolve via os.Stat through the path).
+	for _, skillName := range SkillNames {
+		if _, err := os.Stat(filepath.Join(skillsSubdir, skillName, "SKILL.md")); err != nil {
+			t.Errorf("skill %s does not resolve to source content: %v", skillName, err)
 		}
 	}
 }
@@ -666,7 +670,8 @@ func TestValidateSkillSymlinks(t *testing.T) {
 		t.Errorf("should not report errors for valid symlinks: %s", errors)
 	}
 
-	// Test 3: One skill is a regular directory instead of symlink.
+	// Test 3: One skill is a regular directory (#5318 Windows copy-mode
+	// fallback). A directory is a VALID install — validation must accept it.
 	skillsSubdir3 := filepath.Join(dir, "mixed-skills")
 	if err := os.MkdirAll(skillsSubdir3, 0o755); err != nil {
 		t.Fatal(err)
@@ -685,11 +690,34 @@ func TestValidateSkillSymlinks(t *testing.T) {
 		}
 	}
 	errors = ValidateSkillSymlinks(skillsSubdir3)
-	if errors == "" {
-		t.Errorf("should report error for non-symlink directory")
+	if errors != "" {
+		t.Errorf("directory (copy-mode) skill should validate, got: %s", errors)
 	}
-	if !stringContains(errors, "not a symlink") {
-		t.Errorf("error message should mention 'not a symlink': %s", errors)
+
+	// Test 4: One skill is a plain FILE (neither link nor directory) — that
+	// IS an error.
+	skillsSubdir4 := filepath.Join(dir, "broken-skills")
+	if err := os.MkdirAll(skillsSubdir4, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for i, skillName := range SkillNames {
+		dst := filepath.Join(skillsSubdir4, skillName)
+		if i == 0 {
+			if err := os.WriteFile(dst, []byte("oops"), 0o644); err != nil {
+				t.Fatal(err)
+			}
+		} else {
+			if err := os.Symlink(filepath.Join(skillsDir, skillName), dst); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+	errors = ValidateSkillSymlinks(skillsSubdir4)
+	if errors == "" {
+		t.Errorf("should report error for non-directory file")
+	}
+	if !stringContains(errors, "not a link or directory") {
+		t.Errorf("error message should mention 'not a link or directory': %s", errors)
 	}
 }
 
@@ -730,5 +758,82 @@ func TestSkillNames_Reconciled(t *testing.T) {
 			t.Errorf("duplicate skill: %s", s)
 		}
 		seen[s] = true
+	}
+}
+
+// TestLinkSkillDir exercises the cross-platform link helper directly.
+//
+// On unix it must create a real symbolic link (LinkModeSymlink) whose target
+// resolves to the source content. On Windows the helper prefers a directory
+// junction (LinkModeJunction) and degrades to a copy (LinkModeCopy); in all
+// modes the destination must resolve to the source content via os.Stat. This
+// asserts the unix contract and the universal "destination resolves to source"
+// invariant so the Windows codepath is exercised for the command/mode chain
+// even on a non-Windows runner. (#5318)
+func TestLinkSkillDir(t *testing.T) {
+	dir := t.TempDir()
+
+	src := filepath.Join(dir, "skill-src")
+	if err := os.MkdirAll(filepath.Join(src, "nested"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "SKILL.md"), []byte("hello"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(src, "nested", "f.txt"), []byte("deep"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dst := filepath.Join(dir, "skill-dst")
+	mode, err := linkSkillDir(src, dst)
+	if err != nil {
+		t.Fatalf("linkSkillDir: %v", err)
+	}
+	if mode == LinkModeNone {
+		t.Fatalf("linkSkillDir returned LinkModeNone with no error")
+	}
+
+	// Universal invariant: destination resolves to source content.
+	got, err := os.ReadFile(filepath.Join(dst, "SKILL.md"))
+	if err != nil {
+		t.Fatalf("read through link: %v", err)
+	}
+	if string(got) != "hello" {
+		t.Errorf("content mismatch through link: got %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(dst, "nested", "f.txt")); err != nil {
+		t.Errorf("nested file not reachable through link: %v", err)
+	}
+
+	// Platform contract: unix must produce a real symlink.
+	if runtime.GOOS == "windows" {
+		if mode != LinkModeJunction && mode != LinkModeCopy && mode != LinkModeSymlink {
+			t.Errorf("windows: unexpected mode %v", mode)
+		}
+	} else {
+		if mode != LinkModeSymlink {
+			t.Errorf("unix: expected symlink mode, got %v", mode)
+		}
+		info, err := os.Lstat(dst)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			t.Errorf("unix: destination is not a symlink")
+		}
+	}
+}
+
+func TestLinkModeString(t *testing.T) {
+	cases := map[LinkMode]string{
+		LinkModeNone:     "none",
+		LinkModeSymlink:  "symlink",
+		LinkModeJunction: "junction",
+		LinkModeCopy:     "copy",
+	}
+	for m, want := range cases {
+		if got := m.String(); got != want {
+			t.Errorf("LinkMode(%d).String() = %q, want %q", m, got, want)
+		}
 	}
 }
