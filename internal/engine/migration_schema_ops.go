@@ -287,7 +287,7 @@ func evolutionOp(e *graph.Entity, p map[string]string) []migrationSchemaOp {
 	// objection). These carry `framework` + a `table` property and an op
 	// subtype; `migration_op` is the raw method name.
 	switch p["framework"] {
-	case "knex", "typeorm", "sequelize", "objection", "mikroorm":
+	case "knex", "typeorm", "sequelize", "objection", "mikroorm", "kysely":
 		op := e.Subtype
 		if op == "" {
 			op = p["migration_op"]

@@ -167,6 +167,41 @@ func TestTypeORMAddColumn(t *testing.T) {
 	assertModifies(t, doc, "t1", "svc", "users", "add_column", "email")
 }
 
+// TestKyselyMigrationSchemaOps proves Kysely SCOPE.Evolution migration-op
+// entities (framework=kysely, #5599) converge to MODIFIES_TABLE for create,
+// alter and drop table ops — the same convergence as knex/typeorm.
+func TestKyselyMigrationSchemaOps(t *testing.T) {
+	create := graph.Entity{
+		ID: "ky1", Name: "create_table:account", Kind: string(types.EntityKindEvolution),
+		Subtype: "create_table",
+		Properties: map[string]string{
+			"framework": "kysely", "migration_op": "createTable", "table": "account",
+		},
+	}
+	alter := graph.Entity{
+		ID: "ky2", Name: "alter_table:account", Kind: string(types.EntityKindEvolution),
+		Subtype: "alter_table",
+		Properties: map[string]string{
+			"framework": "kysely", "migration_op": "alterTable", "table": "account",
+		},
+	}
+	drop := graph.Entity{
+		ID: "ky3", Name: "drop_table:entry", Kind: string(types.EntityKindEvolution),
+		Subtype: "drop_table",
+		Properties: map[string]string{
+			"framework": "kysely", "migration_op": "dropTable", "table": "entry",
+		},
+	}
+	doc := docOf("svc", create, alter, drop)
+	st := ApplyMigrationSchemaOps(doc)
+	if st.Skipped {
+		t.Fatal("skipped")
+	}
+	assertModifies(t, doc, "ky1", "svc", "account", "create_table", "")
+	assertModifies(t, doc, "ky2", "svc", "account", "alter_table", "")
+	assertModifies(t, doc, "ky3", "svc", "entry", "drop_table", "")
+}
+
 // TestAllographerAlterDropMigration proves a Nim Allographer SCOPE.Evolution
 // migration-op entity (framework=allographer, #5029) derives a MODIFIES_TABLE
 // edge for both a column-scoped alter op and a table-level drop.

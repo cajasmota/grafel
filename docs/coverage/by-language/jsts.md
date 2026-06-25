@@ -135,7 +135,7 @@ Examples: `🟢 20/20` = fully supported, some capabilities heuristic · `🟡 1
 | [AWS SDK DynamoDB (JS)](../detail/lang.jsts.driver.dynamodb.md) | 🟡 1/4 | |
 | [Drizzle](../detail/lang.jsts.orm.drizzle.md) | 🟡 7/10 | |
 | [Knex (query builder)](../detail/lang.jsts.orm.knex.md) | 🟡 8/9 | |
-| [Kysely (type-safe query builder)](../detail/lang.jsts.orm.kysely.md) | 🟡 1/7 | |
+| [Kysely (type-safe query builder)](../detail/lang.jsts.orm.kysely.md) | 🟡 6/7 | |
 | [MikroORM](../detail/lang.jsts.orm.mikro-orm.md) | 🟡 8/11 | |
 | [MongoDB Node.js driver](../detail/lang.jsts.driver.mongodb.md) | 🟡 1/4 | |
 | [Mongoose](../detail/lang.jsts.orm.mongoose.md) | 🟡 7/10 | |
