@@ -30,6 +30,9 @@
 package graph
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
+	"fmt"
 	"math"
 	"math/rand/v2"
 	"os"
@@ -193,6 +196,89 @@ func BuildGraph(entities []Entity, rels []Relationship) (*simple.WeightedDirecte
 		g.SetWeightedEdge(g.NewWeightedEdge(simple.Node(from), simple.Node(to), w))
 	}
 	return g, idx
+}
+
+// CommunityInputHash returns a stable content hash over the COMMUNITY-RELEVANT
+// input graph that BuildGraph would construct from (entities, rels): the set of
+// node ids (every entity, including isolated ones — they still receive scores)
+// plus the accumulated directed weighted edge set (endpoints both in the node
+// set, self-loops dropped, parallel edges weight-accumulated — exactly the
+// transformation BuildGraph applies). The hash is the COMPLETE determinant of
+// the deterministic Pass-4 output (community partition + integer labels +
+// PageRank + betweenness): the gonum node-id assignment is a pure function of
+// entity insertion order, and Modularize is seeded with a fixed PCG source, so
+// two unions with the same CommunityInputHash produce byte-identical
+// AlgorithmResults.
+//
+// This is the gate for incremental community detection (#5309 layer 4): when a
+// reindex leaves this hash unchanged (docs/comment/config edits, or any change
+// that touches neither a node nor a community-graph edge), the prior overlay is
+// exactly what a full recompute would yield, so the recompute can be SKIPPED
+// while maintaining strict parity with a full rebuild. When the hash changes, a
+// full deterministic recompute runs (CPU-bounded by the daemon-wide ceiling,
+// #5602).
+//
+// The hash is order-independent (node ids and accumulated edges are both
+// sorted before hashing) so it depends only on the graph CONTENT, not on the
+// order entities/rels happen to arrive in — a re-sort of the same union yields
+// the same hash. Edge weights are rendered at the same determinism rounding
+// the algorithm layer uses so float jitter never spuriously invalidates.
+func CommunityInputHash(entities []Entity, rels []Relationship) string {
+	// Node set: mirror BuildGraph — every entity id is a node.
+	nodes := make(map[string]struct{}, len(entities))
+	nodeIDs := make([]string, 0, len(entities))
+	for i := range entities {
+		id := entities[i].ID
+		if _, ok := nodes[id]; ok {
+			continue // BuildGraph de-dups via AddNode-if-absent
+		}
+		nodes[id] = struct{}{}
+		nodeIDs = append(nodeIDs, id)
+	}
+	sort.Strings(nodeIDs)
+
+	// Edge set: accumulate weights for parallel (from,to) edges exactly as
+	// BuildGraph does, keyed by the directed (from,to) pair. Endpoints must both
+	// be nodes; self-loops are dropped.
+	type edgeKey struct{ from, to string }
+	weights := make(map[edgeKey]float64, len(rels))
+	for i := range rels {
+		r := &rels[i]
+		if r.FromID == "" || r.ToID == "" {
+			continue
+		}
+		if _, ok := nodes[r.FromID]; !ok {
+			continue
+		}
+		if _, ok := nodes[r.ToID]; !ok {
+			continue
+		}
+		if r.FromID == r.ToID {
+			continue // self-loops rejected by the simple graph
+		}
+		weights[edgeKey{r.FromID, r.ToID}] += edgeWeight(r.Properties)
+	}
+	edges := make([]string, 0, len(weights))
+	for k, w := range weights {
+		// Round to the algorithm layer's determinism precision so float jitter
+		// in confidence weights never spuriously flips the hash.
+		edges = append(edges, fmt.Sprintf("%s\x1f%s\x1f%.6f", k.from, k.to, roundForDeterminism(sanitizeFloat(w))))
+	}
+	sort.Strings(edges)
+
+	h := sha256.New()
+	// Length-prefix each section so a node id can never alias an edge string.
+	fmt.Fprintf(h, "nodes:%d\n", len(nodeIDs))
+	for _, id := range nodeIDs {
+		h.Write([]byte(id))
+		h.Write([]byte{0})
+	}
+	fmt.Fprintf(h, "edges:%d\n", len(edges))
+	for _, e := range edges {
+		h.Write([]byte(e))
+		h.Write([]byte{0})
+	}
+	return hex.EncodeToString(h.Sum(nil))
 }
 
 func edgeWeight(props map[string]string) float64 {

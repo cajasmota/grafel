@@ -49,6 +49,19 @@ type GroupAlgoResult struct {
 	NumEntities  int
 	NumRels      int
 	NumRepos     int
+
+	// InputHash is the content hash of the community-relevant input graph of the
+	// assembled union (graph.CommunityInputHash). Because the Pass-4 pass is
+	// deterministic, two unions with the same InputHash produce byte-identical
+	// Results — this is the gate the incremental path uses to SKIP a recompute
+	// when a reindex left the community graph unchanged (#5309 layer 4).
+	InputHash string
+
+	// Skipped is true when RunGroupAlgorithmsIncremental preserved a prior
+	// overlay verbatim instead of recomputing (the input graph was unchanged).
+	// Informational; the caller still writes the (unchanged) overlay so its
+	// source_mtimes are refreshed.
+	Skipped bool
 }
 
 // resolveGroup looks up a group by name and loads its config.
@@ -166,5 +179,80 @@ func RunGroupAlgorithms(group string) (*GroupAlgoResult, error) {
 		NumEntities:  len(entities),
 		NumRels:      len(rels),
 		NumRepos:     numRepos,
+		InputHash:    graph.CommunityInputHash(entities, rels),
+	}, nil
+}
+
+// RunGroupAlgorithmsIncremental is the incremental (#5309 layer 4) entrypoint
+// for the group-scope Pass-4 sweep. It assembles the group union (cheap), then:
+//
+//   - if a prior <group>-algo.json overlay exists AND its recorded input_hash
+//     equals the freshly assembled union's CommunityInputHash, the community
+//     graph is UNCHANGED. Because the pass is deterministic, a full recompute
+//     would reproduce the existing overlay byte-for-byte — so the recompute is
+//     SKIPPED and the prior overlay is reconstituted into a GroupAlgoResult
+//     verbatim (community ids, PageRank, centrality, flags, communities, stats
+//     all preserved). Only source_mtimes are refreshed when the caller writes
+//     it back, settling the staleness gate. This is the ~zero-cost path a
+//     docs-only / comment-only / config-only push takes.
+//
+//   - otherwise (no overlay, stale/corrupt overlay, or a changed input hash —
+//     a node added/removed or any community-graph edge changed), it falls
+//     through to a full deterministic RunGroupAlgorithms. This is identical to
+//     the prior behaviour and is CPU-bounded by the daemon-wide reindex ceiling
+//     (#5602).
+//
+// The result is ALWAYS strictly equivalent to a full RunGroupAlgorithms over
+// the same end-state union: the skip branch is only taken when the input that
+// fully determines the deterministic output is identical, so there is no
+// partition drift or label relabel. (A blast-radius-local community update is
+// deliberately NOT attempted: global integer community labels are a function of
+// the whole union and a partial pass could not reproduce the exact same labels
+// a full pass assigns — that would break strict parity.)
+func RunGroupAlgorithmsIncremental(group string) (*GroupAlgoResult, error) {
+	entities, rels, entityRepo, srcMtimes, err := AssembleGroupGraph(group)
+	if err != nil {
+		return nil, err
+	}
+
+	cfg, _ := resolveGroup(group)
+	numRepos := 0
+	if cfg != nil {
+		numRepos = len(cfg.Repos)
+	}
+
+	inputHash := graph.CommunityInputHash(entities, rels)
+
+	// Skip-when-unaffected: a prior overlay whose recorded input hash matches the
+	// freshly assembled union is, by determinism, exactly what a full recompute
+	// would produce. Reconstitute it instead of re-running Louvain+PageRank.
+	if path, perr := OverlayPath(group); perr == nil && path != "" {
+		if prior := readOverlayUnconditional(path); prior != nil && prior.InputHash != "" && prior.InputHash == inputHash {
+			res := overlayToResults(prior, entities)
+			return &GroupAlgoResult{
+				Group:        group,
+				Results:      res,
+				EntityRepo:   entityRepo,
+				SourceMtimes: srcMtimes,
+				NumEntities:  len(entities),
+				NumRels:      len(rels),
+				NumRepos:     numRepos,
+				InputHash:    inputHash,
+				Skipped:      true,
+			}, nil
+		}
+	}
+
+	// Full deterministic recompute (input changed, or no usable prior overlay).
+	res := graph.RunAlgorithms(entities, rels)
+	return &GroupAlgoResult{
+		Group:        group,
+		Results:      res,
+		EntityRepo:   entityRepo,
+		SourceMtimes: srcMtimes,
+		NumEntities:  len(entities),
+		NumRels:      len(rels),
+		NumRepos:     numRepos,
+		InputHash:    inputHash,
 	}, nil
 }

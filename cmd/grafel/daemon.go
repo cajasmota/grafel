@@ -947,7 +947,14 @@ func daemonSchedulerGroupAlgo(ctx context.Context, group string) error {
 	// In-process fallback (opt-out via GRAFEL_SUBPROCESS_INDEXER=0). Runs under
 	// the scheduler's algoSem cap. The union heap is freed when the result goes
 	// out of scope; no per-repo graph.fb is rewritten.
-	res, err := groupalgo.RunGroupAlgorithms(group)
+	//
+	// #5309 layer 4 — incremental community detection: when the assembled union's
+	// community-input hash matches the prior overlay's, the heavy Louvain +
+	// PageRank + betweenness recompute is skipped and the prior overlay is
+	// reconstituted verbatim (strict parity by determinism); otherwise a full
+	// deterministic recompute runs (CPU-bounded by #5602). Either way the overlay
+	// is re-written so its source_mtimes settle the staleness gate.
+	res, err := groupalgo.RunGroupAlgorithmsIncremental(group)
 	if err != nil {
 		return err
 	}

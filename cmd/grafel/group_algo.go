@@ -95,7 +95,18 @@ func runGroupAlgo(args []string) int {
 		dryRun = true
 	}
 
-	res, err := groupalgo.RunGroupAlgorithms(group)
+	// #5309 layer 4 — the --write path (the subprocess group-algo the daemon's
+	// scheduler forks) runs incrementally: an unchanged community-input graph
+	// skips the Louvain+PageRank+betweenness recompute and preserves the prior
+	// overlay verbatim (strict parity by determinism), CPU-bounded by #5602.
+	// The diagnostic --dry-run / --diff paths above always full-recompute.
+	var res *groupalgo.GroupAlgoResult
+	var err error
+	if write {
+		res, err = groupalgo.RunGroupAlgorithmsIncremental(group)
+	} else {
+		res, err = groupalgo.RunGroupAlgorithms(group)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "grafel group-algo: %v\n", err)
 		return 1

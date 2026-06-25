@@ -56,6 +56,14 @@ type Overlay struct {
 	// SourceMtimes records each repo's graph.fb mtime (unix nanos) at compute
 	// time. Used for N-way staleness invalidation.
 	SourceMtimes map[string]int64 `json:"source_mtimes"`
+	// InputHash is the content hash of the community-relevant input graph
+	// (graph.CommunityInputHash) of the assembled union this overlay was
+	// computed from. The incremental group-algo path (#5309 layer 4) compares it
+	// against the freshly assembled union: an equal hash means the deterministic
+	// pass would reproduce this overlay byte-for-byte, so the recompute is
+	// skipped and this overlay is preserved verbatim (strict parity). Empty on
+	// overlays written before this field existed — treated as "always recompute".
+	InputHash string `json:"input_hash,omitempty"`
 	// Results maps entity id → its group-scope algo values.
 	Results map[string]EntityOverlay `json:"results"`
 	// Communities is the group community summary (for grafel_clusters /
@@ -87,6 +95,7 @@ func BuildOverlay(res *GroupAlgoResult) *Overlay {
 		Group:        res.Group,
 		ComputedAt:   time.Now().UTC(),
 		SourceMtimes: map[string]int64{},
+		InputHash:    res.InputHash,
 		Results:      make(map[string]EntityOverlay, len(r.CommunityID)),
 		Communities:  r.Communities,
 		Stats:        r.Stats,
@@ -200,6 +209,69 @@ func ReadOverlay(path string, currentMtimes map[string]int64) (*Overlay, bool) {
 		return nil, false
 	}
 	return &ov, true
+}
+
+// readOverlayUnconditional loads and unmarshals the overlay at path WITHOUT the
+// mtime-staleness check ReadOverlay applies. The incremental group-algo path
+// uses the recorded input_hash (a content gate) — not source mtimes — to decide
+// whether the prior overlay is reusable, so it must see the overlay even when an
+// mtime moved (a docs-only push bumps graph.fb mtime but leaves the community
+// input graph, and therefore the hash, unchanged). Returns nil on absent /
+// unreadable / corrupt.
+func readOverlayUnconditional(path string) *Overlay {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil
+	}
+	var ov Overlay
+	if err := json.Unmarshal(data, &ov); err != nil {
+		return nil
+	}
+	return &ov
+}
+
+// overlayToResults reconstitutes a *graph.AlgorithmResults from a stored overlay
+// for the skip-when-unaffected path: when the input hash matches, the prior
+// overlay is exactly what a full recompute would produce, so we rebuild the
+// in-memory result from it rather than re-running the algorithms. The per-entity
+// maps are keyed by entity id (only entities present in the current union are
+// emitted, so a removed entity does not leak — though a hash match implies the
+// node set is identical anyway). SurpriseEndpoints is left empty: it is derived
+// from SurpriseEdges, which the overlay does not persist, and no current
+// consumer of the group result reads it off the reconstituted skip path (the
+// overlay the caller re-writes carries Communities + Stats, the MCP-applied
+// fields). The community/PageRank/centrality/flag fields — the ones the overlay
+// applies to entities — are fully reconstructed.
+func overlayToResults(ov *Overlay, entities []graph.Entity) *graph.AlgorithmResults {
+	res := &graph.AlgorithmResults{
+		CommunityID:        make(map[string]int, len(ov.Results)),
+		Centrality:         make(map[string]float64, len(ov.Results)),
+		PageRank:           make(map[string]float64, len(ov.Results)),
+		GodNodes:           map[string]bool{},
+		ArticulationPoints: map[string]bool{},
+		SurpriseEndpoints:  map[string]bool{},
+		Communities:        ov.Communities,
+		Stats:              ov.Stats,
+	}
+	present := make(map[string]struct{}, len(entities))
+	for i := range entities {
+		present[entities[i].ID] = struct{}{}
+	}
+	for id, eo := range ov.Results {
+		if _, ok := present[id]; !ok {
+			continue
+		}
+		res.CommunityID[id] = eo.CommunityID
+		res.PageRank[id] = eo.PageRank
+		res.Centrality[id] = eo.Centrality
+		if eo.IsGodNode {
+			res.GodNodes[id] = true
+		}
+		if eo.IsArticulationPoint {
+			res.ArticulationPoints[id] = true
+		}
+	}
+	return res
 }
 
 // CurrentSourceMtimes returns each repo's current graph.fb mtime (unix nanos)
