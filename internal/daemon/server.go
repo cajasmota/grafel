@@ -697,6 +697,22 @@ func Run(ctx context.Context, cfg Config) error {
 		return errors.New("listener closed")
 	}
 
+	// #5633: graceful MCP drain. Mark the service as draining so any MCP RPC
+	// that arrives from here on gets a clean retryable error (the bridge
+	// reconnects to the replacement daemon) instead of being half-served and
+	// then killed when the socket closes. Then wait — bounded — for already
+	// in-flight MCP calls to finish so a clean restart does not drop them with
+	// "connection is shut down to the client". The bound keeps a wedged handler
+	// from blocking launchd/systemd stop indefinitely; whatever is still
+	// running past the deadline is the bridge's retry-on-shutdown to mop up.
+	svc.beginDrain()
+	if drained := svc.waitDrain(mcpDrainTimeout); drained {
+		logger.Info("graceful shutdown: in-flight MCP calls drained")
+	} else {
+		logger.Warn("graceful shutdown: MCP drain timed out — closing socket with calls still in flight",
+			"timeout", mcpDrainTimeout)
+	}
+
 	// Cleanup hook: best-effort shutdown operations (e.g. metric flush).
 	// Does not block the shutdown path (issue #2530).
 	if cfg.ShutdownCleanup != nil {
@@ -710,6 +726,14 @@ func Run(ctx context.Context, cfg Config) error {
 	logger.Info("graceful shutdown complete")
 	return nil
 }
+
+// mcpDrainTimeout bounds how long graceful shutdown waits for in-flight MCP
+// RPCs to finish before closing the socket (#5633). It is generous enough for
+// a typical graph query to complete (most return in well under a second) yet
+// short enough to stay inside the host service manager's stop grace period
+// (launchd's default SIGTERM→SIGKILL window and systemd's TimeoutStopSec are
+// both ~5 s+; we deliberately stay under that).
+const mcpDrainTimeout = 3 * time.Second
 
 // acceptLoop pulls connections off the listener and hands each to
 // jsonrpc.ServeConn under the registered server. The waitgroup tracks

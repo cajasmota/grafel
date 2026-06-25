@@ -75,6 +75,13 @@ const (
 	LogFieldTS = "ts"
 )
 
+// ErrDaemonDraining is the retryable error returned by the MCP RPC methods
+// when the daemon is shutting down (#5633). The bridge treats this — like a
+// connection-shutdown — as a transient condition and reconnects+retries
+// against the replacement daemon rather than surfacing it to the MCP client.
+// The string is matched by the bridge, so keep it stable.
+const ErrDaemonDrainingMsg = "grafel daemon is restarting — retry"
+
 // ── Injected function types ───────────────────────────────────────────────────
 
 // MCPToolEntry is a single tool's metadata returned by MCPListTools.
@@ -167,6 +174,15 @@ type MCPToolCallReply struct {
 // *mcp.Server in cmd/grafel), so registerTools() remains the source of
 // truth — no duplication.
 func (s *Service) MCPToolList(args *MCPToolListArgs, reply *MCPToolListReply) error {
+	// #5633: refuse new MCP work once graceful shutdown has begun, and register
+	// this call with the drain WaitGroup so Run waits for it before closing the
+	// socket. A draining daemon returns a retryable error the bridge handles.
+	leave, ok := s.enterMCP()
+	if !ok {
+		return fmt.Errorf("%s", ErrDaemonDrainingMsg)
+	}
+	defer leave()
+
 	if s.mcpListTools == nil {
 		// Daemon started without MCP wiring (e.g. tests that only test
 		// the index/rebuild surface). Return empty rather than an error
@@ -218,6 +234,16 @@ func (s *Service) MCPToolList(args *MCPToolListArgs, reply *MCPToolListReply) er
 // CWD is forwarded so ADR-0008 caller-CWD routing works identically to
 // the old stdio path.
 func (s *Service) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) error {
+	// #5633: refuse new MCP work once graceful shutdown has begun, and register
+	// this call with the drain WaitGroup so Run waits for it (bounded) before
+	// closing the socket. The retryable error makes the bridge reconnect to the
+	// replacement daemon instead of hard-failing the caller.
+	leave, ok := s.enterMCP()
+	if !ok {
+		return fmt.Errorf("%s", ErrDaemonDrainingMsg)
+	}
+	defer leave()
+
 	if args == nil || args.Name == "" {
 		return fmt.Errorf("MCPToolCall: name is required")
 	}

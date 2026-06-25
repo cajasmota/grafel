@@ -212,6 +212,18 @@ type Service struct {
 	// daemonMode is the operational mode the daemon booted in (S7 #2157).
 	// Surfaced by the Status RPC for `grafel status`.
 	daemonMode string
+
+	// ── Graceful MCP drain (#5633) ────────────────────────────────────────
+	//
+	// mcpDrain tracks MCP RPCs (MCPToolCall / MCPToolList) that are currently
+	// executing inside the dispatcher. On shutdown Run sets draining=1 (so
+	// newly-arriving MCP RPCs return a clean retryable error instead of being
+	// half-served and hard-killed), then waits — with a bounded timeout — for
+	// mcpDrain to reach zero before closing the socket. This lets a clean
+	// daemon restart finish in-flight graph queries rather than dropping them
+	// with "connection is shut down to the client".
+	mcpDrain sync.WaitGroup
+	draining int32 // atomic; 1 once graceful shutdown has begun
 }
 
 // newService wires the injected entrypoints onto a fresh Service. The
@@ -240,6 +252,54 @@ func newService(idx IndexFunc, rb RebuildFunc, qa QualityAuditFunc, socketPath s
 		progress:            make(map[string]*rebuildSession),
 		logger:              logger,
 		maxConcurrentGroups: maxConcurrentGroups,
+	}
+}
+
+// beginDrain marks the service as draining so newly-arriving MCP RPCs are
+// rejected with a clean retryable error rather than being half-served and then
+// killed mid-flight when the socket closes (#5633). Idempotent.
+func (s *Service) beginDrain() {
+	atomic.StoreInt32(&s.draining, 1)
+}
+
+// isDraining reports whether graceful shutdown has begun.
+func (s *Service) isDraining() bool {
+	return atomic.LoadInt32(&s.draining) == 1
+}
+
+// enterMCP registers an in-flight MCP RPC for the graceful-drain WaitGroup,
+// unless the daemon is already draining. It returns false when the caller
+// must NOT proceed (the daemon is shutting down) — the caller then returns a
+// clean retryable error so the bridge reconnects to the replacement daemon.
+func (s *Service) enterMCP() (leave func(), ok bool) {
+	if s.isDraining() {
+		return func() {}, false
+	}
+	s.mcpDrain.Add(1)
+	// Re-check after Add to close the race where beginDrain + waitDrain ran
+	// between the isDraining check and the Add: if we are now draining, the
+	// drain waiter may already have observed a zero counter, so undo and bail.
+	if s.isDraining() {
+		s.mcpDrain.Done()
+		return func() {}, false
+	}
+	return func() { s.mcpDrain.Done() }, true
+}
+
+// waitDrain blocks until all in-flight MCP RPCs finish or the timeout elapses.
+// Returns true if the drain completed cleanly, false if it timed out. Callers
+// MUST have called beginDrain first so no new RPCs are admitted.
+func (s *Service) waitDrain(timeout time.Duration) bool {
+	done := make(chan struct{})
+	go func() {
+		s.mcpDrain.Wait()
+		close(done)
+	}()
+	select {
+	case <-done:
+		return true
+	case <-time.After(timeout):
+		return false
 	}
 }
 

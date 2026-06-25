@@ -10,8 +10,10 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"strings"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -216,6 +218,80 @@ func (b *bridge) resetRPCClient() {
 	b.rpcMu.Unlock()
 }
 
+// bridgeMaxRetries is the number of additional attempts the bridge makes for a
+// single daemon RPC after a transient connection-shutdown (#5633). A daemon
+// restart drops the socket mid-call; the bridge reconnects to the replacement
+// daemon and retries rather than surfacing the failure to the MCP client. All
+// grafel MCP tools are read-mostly graph queries, so retrying is safe — there
+// is no non-idempotent call to special-case.
+const bridgeMaxRetries = 3
+
+// bridgeRetryBackoff is the pause between reconnect attempts, giving the
+// replacement daemon a brief window to (re)bind its socket after a restart.
+var bridgeRetryBackoff = 150 * time.Millisecond
+
+// isRetryableRPCErr reports whether a daemon RPC error is a transient
+// connection-shutdown / restart condition the bridge should reconnect+retry on,
+// rather than a genuine tool/protocol failure. Covers:
+//   - rpc.ErrShutdown        — the cached client's connection was torn down
+//   - io.EOF / ErrUnexpectedEOF — the daemon closed the socket mid-read
+//   - the daemon's "restarting — retry" drain sentinel (#5633), which arrives
+//     as a plain error string over the wire (net/rpc collapses the typed error
+//     to ServerError(text)), so we string-match it.
+func isRetryableRPCErr(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, rpc.ErrShutdown) ||
+		errors.Is(err, io.EOF) ||
+		errors.Is(err, io.ErrUnexpectedEOF) {
+		return true
+	}
+	return strings.Contains(err.Error(), daemon.ErrDaemonDrainingMsg)
+}
+
+// callDaemon invokes a daemon RPC method with reconnect+retry on transient
+// connection-shutdown (#5633). On a retryable error it drops the dead client,
+// backs off briefly, reconnects, and retries up to bridgeMaxRetries times. A
+// non-retryable error (a real tool/protocol failure) is returned immediately.
+// The final error after exhausting retries is returned to the caller, which
+// renders it as a structured MCP error.
+//
+// reply must be a pointer; it is reused across attempts (net/rpc overwrites it
+// on each Call, and a failed Call leaves it at its zero value).
+func (b *bridge) callDaemon(method string, args, reply any) error {
+	var lastErr error
+	for attempt := 0; attempt <= bridgeMaxRetries; attempt++ {
+		if attempt > 0 {
+			// Transient failure on the previous attempt: drop the dead client
+			// so getRPCClient redials, and pause so a restarting daemon has a
+			// moment to rebind its socket.
+			b.resetRPCClient()
+			time.Sleep(bridgeRetryBackoff)
+			b.log("retrying %s after transient error (attempt %d/%d): %v",
+				method, attempt, bridgeMaxRetries, lastErr)
+		}
+		rpcClient, err := b.getRPCClient()
+		if err != nil {
+			// Could not even dial — treat as retryable (the replacement daemon
+			// may not have rebound yet) but remember the error.
+			lastErr = err
+			continue
+		}
+		callErr := rpcClient.Call(method, args, reply)
+		if callErr == nil {
+			return nil
+		}
+		lastErr = callErr
+		if !isRetryableRPCErr(callErr) {
+			// Genuine failure (bad args, tool error, unknown method) — do not
+			// retry; surface it to the caller immediately.
+			return callErr
+		}
+	}
+	return lastErr
+}
+
 // closeRPCClient is the shutdown counterpart to getRPCClient. Safe to call
 // multiple times.
 func (b *bridge) closeRPCClient() {
@@ -248,6 +324,18 @@ func (b *bridge) defaultSocketPath() (string, error) {
 //     sees a clean disconnect.
 func (b *bridge) run(r io.Reader, w io.Writer) error {
 	defer b.closeRPCClient()
+
+	// #5633: guarantee exactly one bridge per daemon socket. Reap an orphaned
+	// prior bridge (e.g. one left attached after a daemon restart) and claim a
+	// per-socket pidfile. Best-effort: a failure here must not stop us serving,
+	// so we log and continue. Skipped when the socket path cannot be resolved.
+	if socketPath, serr := b.defaultSocketPath(); serr == nil && socketPath != "" {
+		if release, aerr := acquireBridgeSingleton(socketPath, b.log); aerr != nil {
+			b.log("bridge singleton: %v (continuing)", aerr)
+		} else {
+			defer release()
+		}
+	}
 
 	br := bufio.NewReaderSize(r, 64*1024)
 	bw := bufio.NewWriterSize(w, 64*1024)
@@ -366,21 +454,13 @@ func (b *bridge) handleInitialize(req rpc2Request) *rpc2Response {
 // Falls back to a static minimal tool catalog when the daemon is unreachable
 // so Claude Code always sees _some_ tools and can display a useful error.
 func (b *bridge) handleToolsList(req rpc2Request) *rpc2Response {
-	rpcClient, err := b.getRPCClient()
-	if err != nil {
-		b.log("daemon not reachable (%v); returning offline stub for tools/list", err)
-		return b.offlineToolList(req.ID)
-	}
-
 	var reply MCPToolListReply
-	if err := rpcClient.Call("Daemon.MCPToolList", MCPToolListArgs{CWD: b.startupCWD}, &reply); err != nil {
+	if err := b.callDaemon("Daemon.MCPToolList", MCPToolListArgs{CWD: b.startupCWD}, &reply); err != nil {
 		b.log("Daemon.MCPToolList: %v", err)
-		// Drop the dead client so the next request reconnects.
-		if errors.Is(err, rpc.ErrShutdown) || errors.Is(err, io.EOF) {
-			b.resetRPCClient()
-		}
-		// Daemon is running but doesn't implement MCPToolList yet (pre-Phase D).
-		// Return the static list so Claude Code works in the interim.
+		// callDaemon already reconnected+retried on transient
+		// connection-shutdown (#5633). A persistent failure here means the
+		// daemon is unreachable or pre-Phase D — return the static list so
+		// Claude Code keeps working in the interim.
 		return b.offlineToolList(req.ID)
 	}
 
@@ -428,8 +508,9 @@ func (b *bridge) handleToolsCall(req rpc2Request) *rpc2Response {
 		cwd = b.startupCWD
 	}
 
-	rpcClient, err := b.getRPCClient()
-	if err != nil {
+	// Fast path: if we cannot even dial the daemon, surface the clean
+	// "daemon not running" guidance rather than a retry storm.
+	if _, err := b.getRPCClient(); err != nil {
 		b.log("daemon not reachable (%v)", err)
 		return b.daemonError(req.ID, "grafel daemon is not running — run 'grafel start' or 'grafel install'")
 	}
@@ -440,11 +521,11 @@ func (b *bridge) handleToolsCall(req rpc2Request) *rpc2Response {
 		CWD:       cwd,
 	}
 	var reply MCPToolCallReply
-	if err := rpcClient.Call("Daemon.MCPToolCall", args, &reply); err != nil {
+	// callDaemon reconnects+retries on a transient connection-shutdown so a
+	// daemon restart mid-call does not hard-fail the MCP client (#5633). Only a
+	// persistent failure (or a genuine tool/protocol error) reaches here.
+	if err := b.callDaemon("Daemon.MCPToolCall", args, &reply); err != nil {
 		b.log("Daemon.MCPToolCall %s: %v", params.Name, err)
-		if errors.Is(err, rpc.ErrShutdown) || errors.Is(err, io.EOF) {
-			b.resetRPCClient()
-		}
 		// Return a structured MCP tool error so Claude sees the message.
 		toolErr := mcpToolCallResult{
 			IsError: true,
