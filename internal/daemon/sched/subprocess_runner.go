@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -52,6 +53,100 @@ func backgroundYieldGOMAXPROCS() (int, bool) {
 		return BackgroundYieldGOMAXPROCS(), true
 	}
 	return 0, false
+}
+
+// ---------------------------------------------------------------------------
+// Daemon-wide reindex CPU ceiling for the graph-wide phases (#5602).
+//
+// PROBLEM. A per-repo reindex runs as `grafel index-internal` (subprocess, S5).
+// The extract sub-subprocesses it spawns are bounded by GRAFEL_EXTRACT_GOMAXPROCS
+// (default 2), but the GRAPH-WIDE PHASES that run IN the index-internal process
+// itself — resolution, cross-repo links, flow, buildIndex/classification, plus
+// the Go GC that scales with GOMAXPROCS — run at the child's GOMAXPROCS. Today
+// RunSubprocessIndex sets the child's GOMAXPROCS only when YIELDING to a
+// foreground index (#5328); in the normal background case it sets nothing, so
+// the child inherits the host core count (the daemon caps ITS OWN GOMAXPROCS via
+// runtime.GOMAXPROCS, not via the env var the child reads).
+//
+// The IndexGate (#5493) bounds CONCURRENT reindexes to GRAFEL_INDEX_CONCURRENCY
+// (default 2), but each admitted child then runs its graph-wide phases at the
+// FULL host core count — so the ceiling is per-child, not daemon-wide:
+//
+//	total reindex CPU ≈ indexConcurrency × hostCores
+//
+// On a 12-core host with cap=2 that is ~24 cores — the live 200–1011% (#5602).
+//
+// FIX. Derive a single daemon-wide reindex CPU BUDGET (≈ half the host cores,
+// the same ½-core policy as the daemon's own GOMAXPROCS and #5326) and split it
+// across the concurrency slots, so the SUM over all concurrent reindexes of the
+// per-child graph-phase GOMAXPROCS stays under the one budget regardless of how
+// many children the IndexGate admits:
+//
+//	perChild = max(1, budget / indexConcurrency)
+//
+// With budget = hostCores/2 and indexConcurrency = 2 on a 12-core host this is
+// max(1, 6/2) = 3 cores per child × 2 children = 6 cores total — a ceiling, not
+// a per-child grant. Single-group reindex (one child) gets the whole budget, so
+// throughput is not crippled. The foreground-yield cap (#5328) still takes
+// precedence when a human-awaited index is running.
+
+// ReindexBudgetEnv overrides the daemon-wide reindex CPU budget (total cores the
+// graph-wide phases of ALL concurrent reindexes may use). A strictly-positive
+// integer; unset/invalid → the ½-host-core default.
+const ReindexBudgetEnv = "GRAFEL_REINDEX_CPU_BUDGET"
+
+// reindexCPUBudget resolves the daemon-wide reindex CPU budget (#5602): the
+// total cores the in-process graph-wide phases of ALL concurrent reindex
+// children may collectively use. GRAFEL_REINDEX_CPU_BUDGET wins; otherwise the
+// resource-safe default is ~half the host cores (floored at 1), matching the
+// daemon's own GOMAXPROCS default policy.
+func reindexCPUBudget() int {
+	if raw := strings.TrimSpace(os.Getenv(ReindexBudgetEnv)); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	n := runtime.NumCPU() / 2
+	if n < 1 {
+		n = 1
+	}
+	return n
+}
+
+// reindexConcurrency mirrors the daemon-package IndexGate cap
+// (GRAFEL_INDEX_CONCURRENCY, default 2). The sched package cannot import
+// internal/daemon (import cycle: daemon → sched), so the env knob is resolved
+// here too — both read the SAME variable, so the value the budget is divided by
+// matches the actual number of concurrent reindex slots the gate admits.
+func reindexConcurrency() int {
+	if raw := strings.TrimSpace(os.Getenv("GRAFEL_INDEX_CONCURRENCY")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n >= 1 {
+			return n
+		}
+	}
+	return 2
+}
+
+// ReindexGraphPhaseGOMAXPROCS returns the per-child GOMAXPROCS to apply to a
+// background reindex subprocess so the SUM of the graph-wide-phase CPU across all
+// concurrent reindexes stays under the daemon-wide budget (#5602):
+//
+//	perChild = max(1, reindexCPUBudget() / reindexConcurrency())
+//
+// This is the daemon-wide ceiling: with the IndexGate admitting at most
+// reindexConcurrency() children, total graph-phase parallelism is bounded by
+// perChild × concurrency ≈ budget, instead of concurrency × hostCores.
+func ReindexGraphPhaseGOMAXPROCS() int {
+	budget := reindexCPUBudget()
+	conc := reindexConcurrency()
+	if conc < 1 {
+		conc = 1
+	}
+	n := budget / conc
+	if n < 1 {
+		n = 1
+	}
+	return n
 }
 
 // groupAlgoGOMAXPROCSDefault is the per-child CPU cap (Go GOMAXPROCS) for the
@@ -185,6 +280,21 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 		cmd.Env = append(cmd.Env, "GOMAXPROCS="+strconv.Itoa(n))
 		if logger != nil {
 			logger.Info("subprocess-indexer: yielding to foreground index",
+				"gomaxprocs", n, "repo", repoPath)
+		}
+	} else {
+		// #5602: daemon-wide reindex CPU ceiling. The child runs the in-process
+		// graph-wide phases (resolution / links / flow / buildIndex) at ITS
+		// GOMAXPROCS; without this it inherits the host core count, so N
+		// concurrent reindexes admitted by the IndexGate draw N × hostCores and
+		// blow past the intended ceiling (the live 200–1011%, #5602). Cap the
+		// child at the budget-per-slot share so the SUM across all concurrent
+		// reindexes stays under one daemon-wide budget. GOMAXPROCS is appended
+		// last so it wins over any inherited value.
+		n := ReindexGraphPhaseGOMAXPROCS()
+		cmd.Env = append(cmd.Env, "GOMAXPROCS="+strconv.Itoa(n))
+		if logger != nil {
+			logger.Info("subprocess-indexer: daemon-wide reindex CPU ceiling",
 				"gomaxprocs", n, "repo", repoPath)
 		}
 	}
