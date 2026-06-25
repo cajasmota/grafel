@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"testing"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -86,11 +87,62 @@ func TestAnalysisFindingsDispatch(t *testing.T) {
 	assertSameDispatch(t, "action=list", srv.handleAnalysisFindings,
 		map[string]any{"group": "g", "action": "list"}, srv.handleListFindings, g)
 	assertSameDispatch(t, "action=default", srv.handleAnalysisFindings, g, srv.handleListFindings, g)
-	// save: handleSaveResult requires question + answer.
+	// save: handleSaveResult requires question + answer. The result is
+	// {"path": "<memDir>/<ts>-<hash>.json"}; the <ts> segment is wall-clock and
+	// two independent saves can straddle a second boundary (flaky on slow CI),
+	// so we compare the saved path with its volatile timestamp normalized away
+	// rather than pinning identical filenames.
 	save := map[string]any{"group": "g", "question": "q", "answer": "a"}
-	assertSameDispatch(t, "action=save", srv.handleAnalysisFindings,
+	assertSameSaveDispatch(t, "action=save", srv.handleAnalysisFindings,
 		map[string]any{"group": "g", "action": "save", "question": "q", "answer": "a"},
 		srv.handleSaveResult, save)
+}
+
+// savedPathTimestamp matches the leading "<YYYYMMDDThhmmssZ>-" of a saved
+// findings filename (see handleSaveResult). The timestamp is wall-clock and
+// therefore non-deterministic between two independent saves; the trailing hash
+// segment is deterministic (sha256 of question+answer).
+var savedPathTimestamp = regexp.MustCompile(`/\d{8}T\d{6}Z-`)
+
+// normalizeSaveResult rewrites the volatile timestamp in a {"path": ...} save
+// result to a fixed sentinel so two genuinely-equivalent saves compare equal,
+// while still asserting that a path was returned and that the deterministic
+// (memDir + hash) portion matches. Non-object/error results pass through.
+func normalizeSaveResult(t *testing.T, s string) string {
+	t.Helper()
+	var obj map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(s), &obj); err != nil {
+		return s // not a JSON object (error/text result) — compare verbatim
+	}
+	raw, ok := obj["path"]
+	if !ok {
+		t.Errorf("save result missing path key: %s", s)
+		return s
+	}
+	var path string
+	if err := json.Unmarshal(raw, &path); err != nil {
+		t.Errorf("save result path not a string: %s", raw)
+		return s
+	}
+	path = savedPathTimestamp.ReplaceAllString(path, "/<ts>-")
+	obj["path"], _ = json.Marshal(path)
+	out, _ := json.Marshal(obj)
+	return string(out)
+}
+
+// assertSameSaveDispatch is assertSameDispatch specialized for the findings
+// save path: it verifies the canonical dispatcher routes to handleSaveResult
+// with the same args, comparing the structural result with the non-deterministic
+// timestamp in the saved filename normalized away (see normalizeSaveResult).
+func assertSameSaveDispatch(t *testing.T, label string,
+	canonical func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), canonArgs map[string]any,
+	old func(context.Context, mcpapi.CallToolRequest) (*mcpapi.CallToolResult, error), oldArgs map[string]any) {
+	t.Helper()
+	got := normalizeSaveResult(t, callBare(t, canonical, canonArgs))
+	want := normalizeSaveResult(t, callBare(t, old, oldArgs))
+	if got != want {
+		t.Errorf("%s: canonical dispatch differs from absorbed handler\n got=%s\nwant=%s", label, got, want)
+	}
 }
 
 // 6. grafel_diff aspect= → response_shape/payload/auth/literals/refs.
