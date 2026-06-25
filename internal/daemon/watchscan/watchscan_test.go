@@ -2,17 +2,22 @@ package watchscan
 
 import (
 	"errors"
+	"path/filepath"
 	"reflect"
 	"testing"
 )
 
-// managedSet builds a Managed predicate from a fixed set of repo paths.
+// managedSet builds a Managed predicate from a fixed set of repo paths. Both
+// the stored set and the lookup are filepath.Clean'd so the forward-slash test
+// literals match Compute's internally-cleaned repo paths on EVERY OS — on
+// Windows, Clean rewrites "/work/repo-a" to "\work\repo-a", and Compute calls
+// Managed with that cleaned form.
 func managedSet(repos ...string) func(string) bool {
 	m := map[string]bool{}
 	for _, r := range repos {
-		m[r] = true
+		m[filepath.Clean(r)] = true
 	}
-	return func(p string) bool { return m[p] }
+	return func(p string) bool { return m[filepath.Clean(p)] }
 }
 
 // A foreign-exe watcher for a MANAGED repo is selected; a same-exe watcher and

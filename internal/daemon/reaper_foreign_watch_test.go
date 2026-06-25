@@ -1,6 +1,7 @@
 package daemon
 
 import (
+	"path/filepath"
 	"reflect"
 	"sort"
 	"testing"
@@ -8,18 +9,32 @@ import (
 	"github.com/cajasmota/grafel/internal/process"
 )
 
-// TestReaper_sweepForeignWatchers verifies the #5632 wiring: a foreign-version
-// `grafel watch` process for a MANAGED repo is SIGTERM'd, while a same-exe
-// watcher and a watcher for an UNMANAGED repo are left alone. Kills are observed
-// via the injected KillWatchProc so no real process is touched.
+// managedClean returns a ManagedRepo predicate matching cleaned paths, so the
+// test fixtures (forward-slash literals) match watchscan's filepath.Clean
+// normalization on EVERY OS — including Windows, where Clean rewrites the
+// separators. This mirrors the production makeManagedRepoPredicate, which also
+// compares cleaned-absolute paths on both sides.
+func managedClean(repos ...string) func(string) bool {
+	m := map[string]bool{}
+	for _, r := range repos {
+		m[filepath.Clean(r)] = true
+	}
+	return func(p string) bool { return m[filepath.Clean(p)] }
+}
+
+// TestReaper_sweepForeignWatchers verifies the #5632 wiring on ALL platforms by
+// injecting a FAKE process list through the ListWatchProcs seam (so the unix-
+// only live enumeration is bypassed): a foreign-version `grafel watch` process
+// for a MANAGED repo is SIGTERM'd, while a same-exe watcher and a watcher for an
+// UNMANAGED repo are left alone. Kills are observed via the injected
+// KillWatchProc so no real process is touched.
 func TestReaper_sweepForeignWatchers(t *testing.T) {
 	const self = "/home/u/.grafel/bin/grafel"
-	managed := map[string]bool{"/work/repo-a": true}
 
 	var killed []int
 	r := NewReaper(ReaperConfig{
 		SelfExe:     func() (string, error) { return self, nil },
-		ManagedRepo: func(p string) bool { return managed[p] },
+		ManagedRepo: managedClean("/work/repo-a"),
 		ListWatchProcs: func() ([]process.WatchProc, error) {
 			return []process.WatchProc{
 				{PID: 100, Exe: "/home/u/go/bin/grafel", Repo: "/work/repo-a"},  // foreign, managed → reap
@@ -39,13 +54,14 @@ func TestReaper_sweepForeignWatchers(t *testing.T) {
 	}
 }
 
-// Duplicate same-exe watchers for one managed repo are collapsed to one.
+// Duplicate same-exe watchers for one managed repo are collapsed to one. Driven
+// through the ListWatchProcs seam so it runs on every OS.
 func TestReaper_sweepForeignWatchers_DuplicateCollapse(t *testing.T) {
 	const self = "/opt/grafel"
 	var killed []int
 	r := NewReaper(ReaperConfig{
 		SelfExe:     func() (string, error) { return self, nil },
-		ManagedRepo: func(p string) bool { return p == "/work/repo-a" },
+		ManagedRepo: managedClean("/work/repo-a"),
 		ListWatchProcs: func() ([]process.WatchProc, error) {
 			return []process.WatchProc{
 				{PID: 200, Exe: self, Repo: "/work/repo-a"},
