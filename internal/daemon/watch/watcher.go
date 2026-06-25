@@ -104,14 +104,18 @@ type Watcher struct {
 	cfg       Config
 	sink      EventSink
 	extraSkip map[string]struct{}
-	mu        sync.Mutex
-	fs        *fsnotify.Watcher
-	repos     map[string]*repoState // key: absolute repo path
-	dirToRepo map[string]string     // key: absolute dir path → repo path
-	stopOnce  sync.Once
-	stopCh    chan struct{}
-	stoppedCh chan struct{}
-	restartCh chan struct{} // signals heartbeat loop to recreate fsnotify
+	// quarantine is the adaptive trash detector (#5394). When non-nil, it
+	// observes per-directory churn at the event boundary and drops events
+	// under directories it has quarantined. nil disables the feature.
+	quarantine *QuarantineTracker
+	mu         sync.Mutex
+	fs         *fsnotify.Watcher
+	repos      map[string]*repoState // key: absolute repo path
+	dirToRepo  map[string]string     // key: absolute dir path → repo path
+	stopOnce   sync.Once
+	stopCh     chan struct{}
+	stoppedCh  chan struct{}
+	restartCh  chan struct{} // signals heartbeat loop to recreate fsnotify
 	// counters — accessed atomically outside mu where latency matters
 	totalEvents   uint64
 	droppedSkips  uint64
@@ -177,9 +181,48 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		stoppedCh: make(chan struct{}),
 		restartCh: make(chan struct{}, 1),
 	}
+	// Adaptive index-trash quarantine (#5394). The tracker observes
+	// per-directory churn at the event boundary and quarantines dirs that
+	// thrash pathologically (build loops the static skip + gitignore missed),
+	// then self-heals when they go quiet. Wired with the watcher's logger as
+	// the audit sink. nil/disabled is a transparent no-op.
+	logfn := func(event, repo, rel, detail string) {
+		w.logger.Info("watcher: quarantine", "event", event, "repo", repo, "dir", rel, "detail", detail)
+	}
+	w.quarantine = NewQuarantineTracker(logfn)
+
 	go w.loop()
 	go w.heartbeat()
+	go w.quarantineSweep()
 	return w, nil
+}
+
+// Quarantine returns the watcher's quarantine tracker (#5394) for the
+// transparency surface / CLI (Q2). May be nil if the feature is disabled.
+func (w *Watcher) Quarantine() *QuarantineTracker { return w.quarantine }
+
+// quarantineSweep periodically re-evaluates quarantined directories and
+// auto-un-quarantines any that have gone quiet (self-heal). The interval is a
+// fraction of the heal window so recovery is responsive without busy-looping.
+func (w *Watcher) quarantineSweep() {
+	interval := quarantineSweepInterval()
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-w.stopCh:
+			return
+		case <-ticker.C:
+			if w.quarantine == nil {
+				continue
+			}
+			if healed := w.quarantine.Sweep(); len(healed) > 0 {
+				for repo, dirs := range healed {
+					w.logger.Info("watcher: quarantine self-heal", "repo", repo, "dirs", dirs)
+				}
+			}
+		}
+	}
 }
 
 // shouldSkipDir extends the package-level ShouldSkipDir with instance
@@ -540,6 +583,17 @@ func (w *Watcher) handleEvent(ev fsnotify.Event) {
 	// the reindex loop + heap thrash even when the artifact dir doesn't
 	// match a well-known static name.
 	if ShouldSkipPathForRepo(repo, ev.Name) {
+		atomic.AddUint64(&w.droppedSkips, 1)
+		return
+	}
+
+	// Adaptive quarantine (#5394): the static + gitignore filters above catch
+	// KNOWN trash; this catches the long tail. Observe per-directory churn and
+	// drop the event if its directory is — or just became — quarantined for
+	// pathological churn (a build loop the lists above didn't anticipate). A
+	// normal human edit burst stays well under the threshold, so legitimate
+	// source dirs are never quarantined.
+	if w.quarantine.Observe(repo, ev.Name) {
 		atomic.AddUint64(&w.droppedSkips, 1)
 		return
 	}
