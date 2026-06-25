@@ -58,8 +58,14 @@ export function NavRail() {
         </span>
       </div>
 
-      {/* Screen nav */}
-      <nav aria-label="Screens" className="flex flex-col gap-0.5 py-1">
+      {/* Screen nav — the scrollable middle (#5614). Brand (above) and the
+          foot (below) stay pinned; this list scrolls when worktree/module
+          subtrees overflow a short viewport. `min-h-0` lets a flex child shrink
+          below its content height so overflow actually kicks in. */}
+      <nav
+        aria-label="Screens"
+        className="flex flex-col gap-0.5 py-1 flex-1 min-h-0 overflow-y-auto ag-scroll-mac"
+      >
         {SCREENS.map(({ to, label, Icon, shortcut }) => (
           <NavLink key={to} to={`${base}/${to}`} className={({ isActive }) => rowClass(isActive)} title={label}>
             <Icon size={18} className="shrink-0" />
@@ -91,8 +97,8 @@ export function NavRail() {
         <MonorepoModuleList groupId={groupId} />
       </nav>
 
-      {/* Foot */}
-      <div className="mt-auto flex flex-col gap-0.5 py-2">
+      {/* Foot — pinned below the scrollable nav (#5614) */}
+      <div className="shrink-0 flex flex-col gap-0.5 py-2">
         <NavLink to={`${base}/${SETTINGS_SCREEN.to}`} className={({ isActive }) => rowClass(isActive)} title={SETTINGS_SCREEN.label}>
           <SettingsIcon size={18} className="shrink-0" />
           <span className="flex-1 whitespace-nowrap text-md opacity-0 group-hover/rail:opacity-100 transition-opacity">

@@ -313,6 +313,34 @@
 }
 ::-webkit-scrollbar-thumb:hover { background: var(--text-4); }
 
+/* macOS-style always-visible overlay scrollbar (#5614).
+   Thin rounded thumb on a subtle track, theme-aware via tokens. Applied to
+   panes that must scroll their middle while pinned chrome stays fixed (e.g.
+   the left nav rail). `scrollbar-gutter: stable` reserves the track so content
+   doesn't shift when the thumb appears. */
+.ag-scroll-mac {
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+  /* Firefox */
+  scrollbar-width: thin;
+  scrollbar-color: var(--border-strong) transparent;
+}
+.ag-scroll-mac::-webkit-scrollbar { width: 8px; height: 8px; }
+.ag-scroll-mac::-webkit-scrollbar-track {
+  background: transparent;
+}
+.ag-scroll-mac::-webkit-scrollbar-thumb {
+  background: var(--border-strong);
+  border-radius: var(--r-full);
+  /* inset the thumb so it reads as a thin overlay pill, not a full-width bar */
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.ag-scroll-mac::-webkit-scrollbar-thumb:hover {
+  background: var(--text-4);
+  background-clip: padding-box;
+}
+
 ::selection { background: var(--accent-ring); }
 
 /* utility classes used across components */

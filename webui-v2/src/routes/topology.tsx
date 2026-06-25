@@ -308,11 +308,17 @@ function nameFromId(id: string): { name: string; repo: string | null } {
   return { name, repo };
 }
 
-function refToDisplay(ref: TopologyEntityRef): DisplayRef {
+function refToDisplay(ref: TopologyEntityRef | null | undefined): DisplayRef {
   // The backend emits "unresolved" kind with a derived name when an id can't be
-  // matched; still prefer that name over the raw hash.
+  // matched; still prefer that name over the raw hash. The `ref` may also be a
+  // null/undefined hole in a partially-resolved refs array (#5613) — the runtime
+  // shape is looser than the `TopologyEntityRef` type promises, so guard every
+  // field access and fall back to a synthetic "unresolved" ref.
+  if (!ref) {
+    return { name: "unknown", kind: "unresolved" };
+  }
   return {
-    name: ref.name || nameFromId(ref.entity_id).name,
+    name: ref.name || nameFromId(ref.entity_id ?? "").name || "unknown",
     repo: ref.repo,
     sourceFile: ref.source_file || undefined,
     startLine: ref.start_line || undefined,
@@ -321,15 +327,18 @@ function refToDisplay(ref: TopologyEntityRef): DisplayRef {
   };
 }
 
-function idToDisplay(id: string): DisplayRef {
-  const { name, repo } = nameFromId(id);
-  return { name, repo: repo ?? undefined, entityId: id };
+function idToDisplay(id: string | null | undefined): DisplayRef {
+  const { name, repo } = nameFromId(id ?? "");
+  return { name, repo: repo ?? undefined, entityId: id ?? undefined };
 }
 
-/** Resolve display refs for a channel side, preferring resolved refs over ids. */
+/** Resolve display refs for a channel side, preferring resolved refs over ids.
+ *  Both inputs may contain nullish holes from a partially-resolved backend
+ *  payload (#5613); `refToDisplay`/`idToDisplay` normalise those to a safe
+ *  "unresolved" DisplayRef rather than letting them crash the render path. */
 function resolveSide(
-  refs: TopologyEntityRef[] | undefined,
-  ids: string[] | undefined,
+  refs: (TopologyEntityRef | null | undefined)[] | undefined,
+  ids: (string | null | undefined)[] | undefined,
 ): DisplayRef[] {
   if (refs && refs.length > 0) return refs.map(refToDisplay);
   return (ids ?? []).map(idToDisplay);
@@ -357,9 +366,12 @@ function EntityChip({
   ref,
   crossRepo = false,
 }: {
-  ref: DisplayRef;
+  ref: DisplayRef | null | undefined;
   crossRepo?: boolean;
 }) {
+  // Defensive: a nullish ref should never reach here after `resolveSide`
+  // normalisation, but guard so a stray hole can't white-screen the view (#5613).
+  if (!ref) return null;
   const fileRef = ref.sourceFile
     ? `${shortFile(ref.sourceFile)}${ref.startLine ? `:${ref.startLine}` : ""}`
     : null;
@@ -701,7 +713,8 @@ function BrokerDiagram({
 
             {/* Publisher nodes (clickable — highlight full downstream path) */}
             {pubKeys.map((k, i) => {
-              const ref = pubMap.get(k)!;
+              const ref = pubMap.get(k);
+              if (!ref) return null;
               const y = PAD_Y + i * ROW_H;
               const lit = litPub(k);
               const sel = selection?.col === "pub" && selection.key === k;
@@ -792,7 +805,8 @@ function BrokerDiagram({
 
             {/* Subscriber nodes (clickable — highlight upstream path) */}
             {subKeys.map((k, i) => {
-              const ref = subMap.get(k)!;
+              const ref = subMap.get(k);
+              if (!ref) return null;
               const y = PAD_Y + i * ROW_H;
               const lit = litSub(k);
               const sel = selection?.col === "sub" && selection.key === k;
@@ -938,14 +952,18 @@ function SideSummary({
   const first = refs[0];
   const overflow = refs.length - 1;
   const title = refs
-    .map((r) => `${r.name}${r.sourceFile ? ` — ${shortFile(r.sourceFile)}:${r.startLine ?? ""}` : ""}`)
+    .map((r) =>
+      r
+        ? `${r.name ?? "unknown"}${r.sourceFile ? ` — ${shortFile(r.sourceFile)}:${r.startLine ?? ""}` : ""}`
+        : "unknown",
+    )
     .join("\n");
   return (
     <span
       className={cn("flex items-baseline gap-1 min-w-0", align === "right" && "justify-end")}
       title={title}
     >
-      <span className="font-mono text-sm text-text-2 truncate">{first.name}</span>
+      <span className="font-mono text-sm text-text-2 truncate">{first?.name ?? "unknown"}</span>
       {overflow > 0 && <span className="text-xs text-text-4 shrink-0">+{overflow}</span>}
     </span>
   );
@@ -1133,24 +1151,25 @@ function EntityRefList({
   entries,
   groupId,
 }: {
-  entries: (TopologyEntityRef | string)[];
+  entries: (TopologyEntityRef | string | null | undefined)[];
   groupId: string;
 }) {
   if (!entries || entries.length === 0) return null;
   return (
     <div className="space-y-1">
       {entries.map((entry, i) => {
+        // `entry` may be a nullish hole in a partially-resolved payload (#5613);
+        // `isRef` is true only for a non-null object entry so field access below
+        // (flow_process_ids / framework / inngest_steps) is always safe.
+        const isRef = typeof entry !== "string" && entry != null;
         const ref: DisplayRef =
           typeof entry === "string" ? idToDisplay(entry) : refToDisplay(entry);
         const isUnresolved = ref.kind === "unresolved" || (!ref.name && !ref.sourceFile);
-        const flowProcessIds: string[] =
-          typeof entry !== "string" ? (entry.flow_process_ids ?? []) : [];
+        const flowProcessIds: string[] = isRef ? (entry.flow_process_ids ?? []) : [];
         const firstFlowId = flowProcessIds[0] ?? null;
         // #5485: Inngest function step structure + framework badge.
-        const framework =
-          typeof entry !== "string" ? entry.framework : undefined;
-        const inngestSteps =
-          typeof entry !== "string" ? (entry.inngest_steps ?? []) : [];
+        const framework = isRef ? entry.framework : undefined;
+        const inngestSteps = isRef ? (entry.inngest_steps ?? []) : [];
         const inngestLabel = inngestEntityLabel(framework, ref.kind);
 
         return (
