@@ -253,43 +253,58 @@ REM --- add %BINDIR% to the USER PATH (non-admin, never touches system PATH) ---
 REM `grafel install` registers MCP/hooks/watchers but does NOT manage the OS
 REM PATH, so the installer owns it here, exactly like install.ps1's
 REM Add-ToUserPath.
-set "USERPATH="
-for /f "usebackq tokens=2,*" %%A in (`reg query HKCU\Environment /v Path 2^>nul ^| findstr /I "Path"`) do set "USERPATH=%%B"
+REM
+REM IMPORTANT: the USER PATH in the registry often contains unexpanded %VARS%
+REM (e.g. %PNPM_HOME%, %USERPROFILE%\...). Reading it via `for /f %%B` inside
+REM a session with EnableDelayedExpansion would silently expand those, so a
+REM subsequent `reg add` would write the expanded (absolute) form back and break
+REM every shell that relied on the variables. We therefore use PowerShell (one-
+REM liner, no script file) which reads and writes REG_EXPAND_SZ faithfully.
+REM PowerShell is available on all Windows versions we support (Win10+).
 
+REM Read the raw REG_EXPAND_SZ PATH without expanding embedded %VARS%.
+REM EnableDelayedExpansion would expand them during `for /f` assignment, so we
+REM use a setlocal DisableDelayedExpansion subblock just for the read, then
+REM pass the raw value back via a temp file (one-line, no exec).
+set "GPTMP=%TEMP%\grafel-userpath.tmp"
+setlocal DisableDelayedExpansion
+for /f "usebackq skip=2 tokens=2,*" %%A in (`reg query HKCU\Environment /v PATH 2^>nul`) do (
+    echo %%B> "%GPTMP%"
+)
+endlocal
+
+REM Read the raw value back (single line) into USERPATH_RAW in the outer scope.
+set "USERPATH_RAW="
+for /f "usebackq delims=" %%L in ("%GPTMP%") do set "USERPATH_RAW=%%L"
+del /f /q "%GPTMP%" >nul 2>&1
+
+REM Presence check: pad with ; on both sides so we match whole entries only.
 set "ALREADY="
-if defined USERPATH (
-    REM case-insensitive substring check, padded with ; so we match whole entries.
-    set "PADDED=;!USERPATH!;"
-    set "NEEDLE=;%BINDIR%;"
-    if /I not "!PADDED:%NEEDLE%=!"=="!PADDED!" set "ALREADY=1"
+if defined USERPATH_RAW (
+    set "_PAD=;!USERPATH_RAW!;"
+    set "_NEEDLE=;%BINDIR%;"
+    if /I not "!_PAD:%BINDIR%=!"=="!_PAD!" set "ALREADY=1"
 )
 
 if defined ALREADY (
     echo   PATH already contains %BINDIR%
 ) else (
-    REM Write the USER PATH via the registry rather than `setx`: setx silently
-    REM TRUNCATES any value longer than 1024 chars, so on a machine with a long
-    REM existing PATH our %BINDIR% append is dropped and grafel never resolves.
-    REM `reg add HKCU\Environment` has no such limit. We use REG_EXPAND_SZ so
-    REM any %VARS% already embedded in the user's PATH keep expanding.
-    if defined USERPATH (
-        REM trim a single trailing ; then append.
-        if "!USERPATH:~-1!"==";" set "USERPATH=!USERPATH:~0,-1!"
-        set "NEWPATH=!USERPATH!;%BINDIR%"
+    REM Append BINDIR to the raw value and write back as REG_EXPAND_SZ.
+    REM reg add has no 1024-char limit (unlike setx) and preserves %%VARS%%.
+    if defined USERPATH_RAW (
+        set "_RAW=!USERPATH_RAW!"
+        if "!_RAW:~-1!"==";" set "_RAW=!_RAW:~0,-1!"
+        set "NEWPATH=!_RAW!;%BINDIR%"
     ) else (
         set "NEWPATH=%BINDIR%"
     )
-    reg add "HKCU\Environment" /v Path /t REG_EXPAND_SZ /d "!NEWPATH!" /f >nul 2>&1
+    reg add "HKCU\Environment" /v PATH /t REG_EXPAND_SZ /d "!NEWPATH!" /f >nul 2>&1
     if errorlevel 1 (
         echo   warning: could not update USER PATH automatically.
         echo   add this folder to PATH manually: %BINDIR%
     ) else (
         echo   added %BINDIR% to your USER PATH
-        REM `reg add` writes the registry but does NOT broadcast
-        REM WM_SETTINGCHANGE, so already-open shells (and Explorer) won't see the
-        REM new PATH until a broadcast. setx on a throwaway variable triggers
-        REM that broadcast as a side effect (its own 1024-char truncation is
-        REM irrelevant here — we are only using it to notify, not to store PATH).
+        REM Broadcast WM_SETTINGCHANGE so open Explorer/shells pick up the new PATH.
         setx GRAFEL_PATH_SYNC 1 >nul 2>&1
         reg delete "HKCU\Environment" /v GRAFEL_PATH_SYNC /f >nul 2>&1
     )
