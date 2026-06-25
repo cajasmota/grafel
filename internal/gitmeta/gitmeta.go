@@ -13,6 +13,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/cajasmota/grafel/internal/executil"
 )
 
 // EnvGitTimeout overrides the default external-git deadline (in seconds) used
@@ -53,6 +55,7 @@ func RunGitBounded(dir string, args ...string) (string, bool) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	applyWaitDelay(cmd)
+	executil.NoWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return "", false
@@ -86,6 +89,7 @@ func RunGitBoundedC(dir string, args ...string) ([]byte, bool) {
 	full := append([]string{"-C", dir}, args...)
 	cmd := exec.CommandContext(ctx, "git", full...)
 	applyWaitDelay(cmd)
+	executil.NoWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, false
@@ -153,6 +157,7 @@ func RunGit(dir string, args ...string) string {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
+	executil.NoWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return ""

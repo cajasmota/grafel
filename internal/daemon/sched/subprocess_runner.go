@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+
+	"github.com/cajasmota/grafel/internal/executil"
 )
 
 // groupAlgoGOMAXPROCSDefault is the per-child CPU cap (Go GOMAXPROCS) for the
@@ -132,6 +134,9 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	// GRAFEL_HOME). Do NOT set cmd.Env explicitly so the child inherits
 	// the daemon's full environment.
 	cmd.Env = os.Environ()
+	// On Windows, prevent a console window from flashing when the daemon
+	// (running as a Task Scheduler task) spawns this subprocess.
+	executil.NoWindow(cmd)
 
 	// Pipe child stdout for IPC JSON lines.
 	stdoutPipe, err := cmd.StdoutPipe()
@@ -245,6 +250,9 @@ func RunSubprocessGroupAlgo(ctx context.Context, group string, logger *slog.Logg
 	// guarded off on platforms without setpriority (e.g. Windows). See
 	// applyGroupAlgoNice (platform-split files).
 	applyGroupAlgoNice(cmd)
+	// On Windows, prevent a console window from flashing when the daemon
+	// (running as a Task Scheduler task) spawns this subprocess.
+	executil.NoWindow(cmd)
 
 	stderrPipe, err := cmd.StderrPipe()
 	if err != nil {

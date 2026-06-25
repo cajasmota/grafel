@@ -60,6 +60,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/fsnotify/fsnotify"
 )
 
@@ -374,6 +375,7 @@ func runWorktreeList(repoPath string) ([]RawWorktree, error) {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "git", "worktree", "list", "--porcelain")
 	cmd.Dir = repoPath
+	executil.NoWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err

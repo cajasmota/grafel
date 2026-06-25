@@ -91,6 +91,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/module"
 )
@@ -358,6 +359,7 @@ func isGitRoot(repoPath string) bool {
 
 	// Step 1: quick guard — must be inside a working tree at all.
 	insideCmd := exec.CommandContext(ctx, "git", "-C", repoPath, "rev-parse", "--is-inside-work-tree")
+	executil.NoWindow(insideCmd)
 	insideOut, err := insideCmd.Output()
 	if err != nil || strings.TrimSpace(string(insideOut)) != "true" {
 		return false
@@ -368,6 +370,7 @@ func isGitRoot(repoPath string) bool {
 	ctx2, cancel2 := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel2()
 	topCmd := exec.CommandContext(ctx2, "git", "-C", repoPath, "rev-parse", "--show-toplevel")
+	executil.NoWindow(topCmd)
 	topOut, err := topCmd.Output()
 	if err != nil {
 		return false
@@ -407,6 +410,7 @@ func scanCommitHistory(repoPath string, cfg CommitCouplingConfig) ([]commitRecor
 		"--pretty=format:__grafel_commit__:%H",
 		"--name-only",
 	)
+	executil.NoWindow(cmd)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	stdout, err := cmd.StdoutPipe()

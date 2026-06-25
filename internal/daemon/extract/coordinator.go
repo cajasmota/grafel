@@ -19,6 +19,7 @@ import (
 	"github.com/cajasmota/grafel/internal/classifier"
 	"github.com/cajasmota/grafel/internal/daemon/caps"
 	"github.com/cajasmota/grafel/internal/engine"
+	"github.com/cajasmota/grafel/internal/executil"
 	bazelextract "github.com/cajasmota/grafel/internal/extractors/bazel"
 	configextract "github.com/cajasmota/grafel/internal/extractors/config"
 	"github.com/cajasmota/grafel/internal/resolve"
@@ -440,6 +441,9 @@ func Coordinate(ctx context.Context, repoRoot string, files []string, cfg Coordi
 			// inherited value.
 			cmd.Env = childEnv
 			cmd.Stderr = stderr
+			// On Windows, prevent a console window from flashing when the
+			// daemon (running as a Task Scheduler task) spawns this subprocess.
+			executil.NoWindow(cmd)
 			stdout, perr := cmd.StdoutPipe()
 			if perr != nil {
 				setErr(fmt.Errorf("stdout pipe (%s): %w", b.id, perr))

@@ -9,10 +9,20 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/executil"
 )
 
 // windowsLoader implements Loader using schtasks for Windows Task Scheduler.
 type windowsLoader struct{}
+
+// schtasksCmd returns an exec.Cmd for schtasks.exe with CREATE_NO_WINDOW set
+// so that the subprocess never flashes a visible console window.
+func schtasksCmd(args ...string) *exec.Cmd {
+	cmd := exec.Command("schtasks", args...)
+	executil.NoWindow(cmd)
+	return cmd
+}
 
 // NewLoader returns the Windows schtasks-based Loader.
 func NewLoader() Loader { return windowsLoader{} }
@@ -35,8 +45,7 @@ func (windowsLoader) Load(u Unit) error {
 
 	// /f forces overwrite of an existing task with the same name so Load
 	// is idempotent even when the task is already registered.
-	out, err := exec.Command(
-		"schtasks",
+	out, err := schtasksCmd(
 		"/create",
 		"/tn", tn,
 		"/xml", path,
@@ -49,7 +58,7 @@ func (windowsLoader) Load(u Unit) error {
 	// Start the task immediately; it will also fire at next logon via
 	// LogonTrigger. A start failure is non-fatal — the task is registered
 	// and will activate on next logon.
-	if out, err := exec.Command("schtasks", "/run", "/tn", tn).CombinedOutput(); err != nil {
+	if out, err := schtasksCmd("/run", "/tn", tn).CombinedOutput(); err != nil {
 		// Log the failure via the returned error wrapped as a non-fatal hint
 		// so callers can surface it as a warning rather than an error.
 		return fmt.Errorf("task registered but /run failed (starts at next logon): %w\n%s", errNonFatal{err}, out)
@@ -75,19 +84,19 @@ func (windowsLoader) Unload(u Unit) error {
 	// (locale-invariant) rather than by matching the localized /delete error
 	// text ("cannot find" etc.), which breaks on non-English Windows. If the
 	// task is not registered there is nothing to delete.
-	if err := exec.Command("schtasks", "/query", "/tn", tn).Run(); err != nil {
+	if err := schtasksCmd("/query", "/tn", tn).Run(); err != nil {
 		return nil // task doesn't exist — already gone
 	}
 
 	// Stop any running instance — ignore errors (may not be running).
-	_ = exec.Command("schtasks", "/end", "/tn", tn).Run()
+	_ = schtasksCmd("/end", "/tn", tn).Run()
 
-	out, err := exec.Command("schtasks", "/delete", "/tn", tn, "/f").CombinedOutput()
+	out, err := schtasksCmd("/delete", "/tn", tn, "/f").CombinedOutput()
 	if err != nil {
 		// Race: the task was registered above but disappeared before /delete.
 		// Re-check via the /query exit code; if it is gone now, the desired
 		// absent state is reached. Never match the localized error text.
-		if qerr := exec.Command("schtasks", "/query", "/tn", tn).Run(); qerr != nil {
+		if qerr := schtasksCmd("/query", "/tn", tn).Run(); qerr != nil {
 			return nil // gone now — success-to-proceed
 		}
 		return fmt.Errorf("schtasks /delete %s: %w\n%s", tn, err, out)
@@ -112,7 +121,7 @@ func (windowsLoader) Status(u Unit) (WatcherStatus, error) {
 	}
 
 	tn := u.Label()
-	out, qerr := exec.Command("schtasks", "/query", "/tn", tn, "/fo", "csv", "/v").Output()
+	out, qerr := schtasksCmd("/query", "/tn", tn, "/fo", "csv", "/v").Output()
 	if qerr != nil {
 		// Task doesn't exist in the scheduler.
 		return ws, nil

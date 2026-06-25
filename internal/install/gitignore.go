@@ -8,6 +8,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+
+	"github.com/cajasmota/grafel/internal/executil"
 )
 
 // grafelGitignoreEntry is the line we append to .gitignore when the
@@ -74,6 +76,7 @@ func hasGitignoreEntry(content []byte, entry string) bool {
 // always tolerates the case where git is not installed (returns false).
 func DetectGitRepo(cwd string) (string, bool) {
 	cmd := exec.Command("git", "-C", cwd, "rev-parse", "--show-toplevel")
+	executil.NoWindow(cmd)
 	out, err := cmd.Output()
 	if err != nil {
 		// Not a git repo, or git not installed — both are fine; caller handles.

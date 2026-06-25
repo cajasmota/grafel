@@ -29,6 +29,8 @@ for /f %%R in ('copy /Z "%~f0" nul') do set "CR=%%R"
 set "TMPZIP=%TEMP%\grafel-%RANDOM%%RANDOM%.zip"
 set "TMPSUMS=%TEMP%\grafel-%RANDOM%%RANDOM%-checksums.txt"
 set "TMPEXTRACT=%TEMP%\grafel-extract-%RANDOM%%RANDOM%"
+set "TMPAPI=%TEMP%\grafel-%RANDOM%%RANDOM%-api.json"
+set "TMPTAG=%TEMP%\grafel-%RANDOM%%RANDOM%-tag.txt"
 
 REM --- architecture detection (mirror install.ps1 Get-Arch) ---
 set "PROC=%PROCESSOR_ARCHITECTURE%"
@@ -66,16 +68,28 @@ REM ("tag_name": "vX.Y.Z"), which is far less error-prone to parse than a
 REM redirect "location:" header (a partial-URL parse there could otherwise leave
 REM a fragment in VERSION and produce a confusing 404). The redirect-header path
 REM is kept ONLY as a fallback for when the API is unreachable/rate-limited.
+REM
+REM We write the API response to a temp file FIRST, then parse with for /f.
+REM Parsing directly from a pipe inside for /f ('curl ... | findstr ...') can
+REM fail silently on some Windows machines (antivirus real-time scanning,
+REM AppLocker, or WDAC policies that block unsigned binaries spawned from a
+REM %TEMP% .bat file). Reading a file instead of a pipe avoids that class of
+REM failure entirely.
 if not defined VERSION (
-    for /f "tokens=2 delims=:, " %%T in ('curl -fsSL "https://api.github.com/repos/%REPO%/releases/latest" 2^>nul ^| findstr /I /C:"tag_name"') do (
-        if not defined VERSION (
-            set "RAW=%%T"
-            REM strip surrounding double quotes from the JSON string value, plus
-            REM any stray CR the header/body might carry.
-            set "RAW=!RAW:"=!"
-            if defined CR set "RAW=!RAW:%CR%=!"
-            set "VERSION=!RAW!"
+    curl -fsSL "https://api.github.com/repos/%REPO%/releases/latest" -o "%TMPAPI%" 2>nul
+    if exist "%TMPAPI%" (
+        REM Extract ONLY the first tag_name line into a single-line scratch
+        REM file. Parsing the full API JSON directly hits multiple tag_name
+        REM occurrences (release assets embed the tag too), so the for /f
+        REM loop would stop on the wrong match. findstr /I /N picks line 1.
+        REM %%~T strips the surrounding JSON double-quotes natively via the
+        REM for /f tilde modifier, avoiding the broken !RAW:"=! delayed-
+        REM expansion quote-replacement (cmd.exe cannot replace '"' that way).
+        findstr /I /C:"tag_name" "%TMPAPI%" >"%TMPTAG%" 2>nul
+        for /f "usebackq tokens=2 delims=:, " %%T in ("%TMPTAG%") do (
+            if not defined VERSION set "VERSION=%%~T"
         )
+        del /f /q "%TMPTAG%" >nul 2>&1
     )
 )
 
@@ -311,5 +325,7 @@ exit /b 1
 :cleanup
 if exist "%TMPZIP%" del /f /q "%TMPZIP%" >nul 2>&1
 if exist "%TMPSUMS%" del /f /q "%TMPSUMS%" >nul 2>&1
+if exist "%TMPAPI%" del /f /q "%TMPAPI%" >nul 2>&1
+if exist "%TMPTAG%" del /f /q "%TMPTAG%" >nul 2>&1
 if exist "%TMPEXTRACT%" rmdir /s /q "%TMPEXTRACT%" >nul 2>&1
 goto :eof

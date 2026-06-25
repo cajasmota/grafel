@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/transport"
+	"github.com/cajasmota/grafel/internal/executil"
 )
 
 const (
@@ -110,6 +111,16 @@ func currentUserSID() string {
 	return strings.TrimSpace(u.Uid)
 }
 
+// schtasksCmd returns an exec.Cmd for schtasks.exe with CREATE_NO_WINDOW set
+// so that the subprocess never flashes a visible console window when grafel is
+// launched from a GUI context (e.g., Task Scheduler running grafel install,
+// or the daemon task itself restarting on logon).
+func schtasksCmd(args ...string) *exec.Cmd {
+	cmd := exec.Command("schtasks", args...)
+	executil.NoWindow(cmd)
+	return cmd
+}
+
 // GenerateTaskXML renders the Task Scheduler XML for the given options.
 // Exported for testing; production code calls install() which calls this.
 func GenerateTaskXML(opts Options) ([]byte, error) {
@@ -169,7 +180,7 @@ func (m *schtasksManager) WriteUnit() error {
 }
 
 func (m *schtasksManager) IsLoaded() (bool, error) {
-	if err := exec.Command("schtasks", "/query", "/tn", taskName).Run(); err != nil {
+	if err := schtasksCmd("/query", "/tn", taskName).Run(); err != nil {
 		return false, nil // task doesn't exist
 	}
 	return true, nil
@@ -190,8 +201,8 @@ func (m *schtasksManager) Unload() error {
 	// success-to-proceed (the desired absent state is reached). The English
 	// string match below remains as a best-effort fallback for races where the
 	// task disappears between IsLoaded() and /delete.
-	_ = exec.Command("schtasks", "/end", "/tn", taskName).Run()
-	out, err := exec.Command("schtasks", "/delete", "/tn", taskName, "/f").CombinedOutput()
+	_ = schtasksCmd("/end", "/tn", taskName).Run()
+	out, err := schtasksCmd("/delete", "/tn", taskName, "/f").CombinedOutput()
 	if err != nil {
 		s := string(out)
 		// best-effort race fallback only; the PRIMARY, locale-invariant decision
@@ -209,13 +220,13 @@ func (m *schtasksManager) Unload() error {
 func (m *schtasksManager) Load() error {
 	// /f forces overwrite of any existing task (callers Unload first, but /f
 	// keeps Load itself idempotent against a leftover registration).
-	if out, err := exec.Command("schtasks", "/create", "/tn", taskName, "/xml", m.xmlPath, "/f").CombinedOutput(); err != nil {
+	if out, err := schtasksCmd("/create", "/tn", taskName, "/xml", m.xmlPath, "/f").CombinedOutput(); err != nil {
 		return fmt.Errorf("schtasks /create: %w\n%s", err, out)
 	}
 	// Start now; it would otherwise fire at next logon. A /run failure is
 	// non-fatal — the readiness poll is the real success signal, and the task
 	// will start at next logon regardless.
-	_ = exec.Command("schtasks", "/run", "/tn", taskName).Run()
+	_ = schtasksCmd("/run", "/tn", taskName).Run()
 	return nil
 }
 
@@ -294,7 +305,7 @@ func status(opts Options) (StatusInfo, error) {
 	// Check whether the XML file exists as a proxy for "installed".
 	if _, serr := os.Stat(xmlPath); os.IsNotExist(serr) {
 		// Also check the scheduler directly in case XML was deleted manually.
-		out, qerr := exec.Command("schtasks", "/query", "/tn", taskName, "/fo", "csv", "/v").Output()
+		out, qerr := schtasksCmd("/query", "/tn", taskName, "/fo", "csv", "/v").Output()
 		if qerr != nil {
 			return info, nil // task doesn't exist
 		}
@@ -304,7 +315,7 @@ func status(opts Options) (StatusInfo, error) {
 	}
 	info.Installed = true
 
-	out, err := exec.Command("schtasks", "/query", "/tn", taskName, "/fo", "csv", "/v").Output()
+	out, err := schtasksCmd("/query", "/tn", taskName, "/fo", "csv", "/v").Output()
 	if err != nil {
 		// The task XML exists but schtasks can't find it — scheduler and
 		// filesystem are out of sync; report installed-but-not-running.
