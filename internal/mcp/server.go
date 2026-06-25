@@ -287,6 +287,11 @@ type QuarantineRecoverer interface {
 	// Returns the recovered rel and whether anything changed. A no-op (and
 	// cheap) when path is not under a quarantined dir.
 	Recover(repo, path string) (rel string, recovered bool)
+	// NoteUsage records that the directory containing path was just queried /
+	// referenced, so the Q4 value-based detector (#5619) never treats it as
+	// unused. Cheap and best-effort. Same access signal as Recover, but it keeps
+	// a live-but-not-quarantined dir OUT of value-quarantine in the first place.
+	NoteUsage(repo, path string)
 }
 
 // SetQuarantineRecoverer wires the index-quarantine auto-recover hook (#5618)
@@ -311,6 +316,9 @@ func (s *Server) noteEntityAccess(lr *LoadedRepo, srcFile string) {
 		abs = filepath.Join(lr.Path, srcFile)
 	}
 	s.quarantineRecoverer.Recover(lr.Path, abs)
+	// Q4 (#5619): the same access also proves the dir is in use, so it must not
+	// later be value-quarantined as expensive-and-unused.
+	s.quarantineRecoverer.NoteUsage(lr.Path, abs)
 }
 
 // NewServer wires everything together: loads the registry, performs an

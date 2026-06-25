@@ -189,6 +189,12 @@ type QuarantineTracker struct {
 	// lives in quarantine_content.go; this is the only coupling point. nil
 	// until first use (lazily initialised, kill-switch aware).
 	content *contentDetector
+	// value is the Q4 value-based detector (T2, #5619): quarantine a directory
+	// that is expensive to index AND never used (queried/referenced). Its state
+	// and logic live entirely in quarantine_value.go; this is the only field the
+	// core tracker reserves for it (kept minimal so the parallel Q5 content
+	// detector, #5620, does not collide on this file). Lazily initialised.
+	value *valueDetector
 }
 
 // NewQuarantineTracker constructs a tracker. audit may be nil.

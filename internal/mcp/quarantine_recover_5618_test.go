@@ -32,12 +32,17 @@ func absRepoRoot(t *testing.T) string {
 
 type fakeRecoverer struct {
 	calls []struct{ repo, path string }
+	usage []struct{ repo, path string }
 	ret   bool
 }
 
 func (f *fakeRecoverer) Recover(repo, path string) (string, bool) {
 	f.calls = append(f.calls, struct{ repo, path string }{repo, path})
 	return "", f.ret
+}
+
+func (f *fakeRecoverer) NoteUsage(repo, path string) {
+	f.usage = append(f.usage, struct{ repo, path string }{repo, path})
 }
 
 func TestNoteEntityAccess_RelativeSourceResolvedToAbs(t *testing.T) {
