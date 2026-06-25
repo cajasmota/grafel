@@ -140,14 +140,18 @@ func dvIncremental(t *testing.T, repo, stateDir string) *graph.Document {
 //     does not re-run the module-agg pass (#5309 link/flow layer).
 //   - enrichment-only entity properties (`module`, `test_reachable`): produced
 //     by passes the incremental path defers (module-agg + test-reachability).
-//   - un-resolved cross-file edge endpoints: the incremental scoped resolver can
-//     leave a freshly-extracted edge's endpoint in stub form rather than the
-//     hashed entity id the full resolver assigns (#5309 resolution layer).
+//
+// RESOLUTION PARITY — closed (#5309 layer 1). The scoped resolver previously
+// left a freshly-extracted edge's endpoint in stub form rather than the hashed
+// entity id the full resolver assigns; the validator normalized it via
+// NormalizeStubEndpoints. The scoped resolver now re-resolves the full blast
+// radius (both endpoints of every affected edge) via the same Format A ladder
+// the full resolver uses, so that tolerance is removed — the harness asserts
+// STRICT resolution parity on resolved call/reference endpoints.
 func dvBaselineProfile() parity.Options {
 	return parity.Options{
-		IgnoreRelKinds:         map[string]bool{"CONTAINS": true, "DEPENDS_ON": true},
-		IgnoreEntityProps:      map[string]bool{"module": true, "test_reachable": true},
-		NormalizeStubEndpoints: true,
+		IgnoreRelKinds:    map[string]bool{"CONTAINS": true, "DEPENDS_ON": true},
+		IgnoreEntityProps: map[string]bool{"module": true, "test_reachable": true},
 	}
 }
 

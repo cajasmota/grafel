@@ -33,9 +33,51 @@ package sresolver
 
 import (
 	"log"
+	"strings"
 
 	"github.com/cajasmota/grafel/internal/graph"
 )
+
+// Format A structural-ref stub constants — kept in lockstep with the canonical
+// definitions in internal/resolve (refs.go: stubPrefixScope / stubDelim /
+// stubScopeSegments / stubScopeFileIndex / stubScopeTailIndex / stubMemberDelim).
+// They are duplicated here rather than imported because internal/resolve is a
+// heavy package whose test suite imports internal/extractors; this package is
+// deliberately kept light (see the package doc). The values are stable wire
+// format, asserted against the resolver in scoped_test.go.
+const (
+	stubPrefixScope    = "scope:"
+	stubDelim          = ":"
+	stubMemberDelim    = '#'
+	stubScopeSegments  = 6
+	stubScopeFileIndex = 4
+	stubScopeTailIndex = 5
+)
+
+// splitFormatAStructuralRef parses a Format A structural-ref stub
+// (`scope:<kind>:<subtype>:<lang>:<file>:<name>`) into its file path and bare
+// tail name. Returns ok=false for shapes that are not a 6-segment Format A stub
+// or whose tail carries the Format B member delimiter `#`. Mirrors
+// internal/resolve/imports.go:splitFormatAStructuralRef so the scoped resolver
+// binds the same stubs the full resolver does.
+func splitFormatAStructuralRef(stub string) (filePath, name string, ok bool) {
+	if !strings.HasPrefix(stub, stubPrefixScope) {
+		return "", "", false
+	}
+	parts := strings.SplitN(stub, stubDelim, stubScopeSegments)
+	if len(parts) != stubScopeSegments {
+		return "", "", false
+	}
+	filePath = parts[stubScopeFileIndex]
+	tail := parts[stubScopeTailIndex]
+	if filePath == "" || tail == "" {
+		return "", "", false
+	}
+	if strings.IndexByte(tail, stubMemberDelim) >= 0 {
+		return "", "", false
+	}
+	return filePath, tail, true
+}
 
 // ScopedResult is the output of ResolveScoped.
 type ScopedResult struct {
@@ -118,38 +160,75 @@ func ResolveScoped(
 
 	// Build name → ID index: existing first, then new (new entities win on conflict).
 	nameToID := make(map[string]string, len(newEntities)+len(existingEntities))
-	for _, e := range existingEntities {
-		if e.Name != "" {
-			nameToID[e.Name] = e.ID
-		}
-		if e.QualifiedName != "" {
-			nameToID[e.QualifiedName] = e.ID
+	// Build a (file, name) → ID location index so a Format A structural stub
+	// (`scope:operation:method:<lang>:<file>:<name>`) binds to a SAME-FILE callee
+	// first — mirroring the full resolver's byLocation tier — before falling back
+	// to the unique bare-name index. byLocation[file][name] holds "" as an
+	// ambiguity sentinel when two entities in the same file share a name.
+	byLocation := make(map[string]map[string]string)
+	addName := func(name, id string) {
+		if name != "" {
+			nameToID[name] = id
 		}
 	}
+	addLocation := func(e graph.Entity) {
+		if e.SourceFile == "" || e.Name == "" {
+			return
+		}
+		bucket := byLocation[e.SourceFile]
+		if bucket == nil {
+			bucket = make(map[string]string)
+			byLocation[e.SourceFile] = bucket
+		}
+		if prev, seen := bucket[e.Name]; seen && prev != e.ID {
+			bucket[e.Name] = "" // ambiguous within the file
+		} else {
+			bucket[e.Name] = e.ID
+		}
+	}
+	for _, e := range existingEntities {
+		addName(e.Name, e.ID)
+		addName(e.QualifiedName, e.ID)
+		addLocation(e)
+	}
 	for _, e := range newEntities {
-		if e.Name != "" {
-			nameToID[e.Name] = e.ID
+		addName(e.Name, e.ID)
+		addName(e.QualifiedName, e.ID)
+		addLocation(e)
+	}
+
+	// resolveStub maps a non-hex relationship endpoint to a canonical entity ID,
+	// returning ok=false when it cannot be bound (the stub is then left verbatim,
+	// exactly as the full resolver leaves an unresolved structural ref). The ladder
+	// mirrors internal/resolve/refs.go:lookupStructural for Format A stubs:
+	//   1. whole-string name / qualified-name match (handles bare-name stubs);
+	//   2. Format A (file, tail): same-file byLocation, then unique bare-name.
+	resolveStub := func(stub string) (string, bool) {
+		if id, ok := nameToID[stub]; ok && id != "" {
+			return id, true
 		}
-		if e.QualifiedName != "" {
-			nameToID[e.QualifiedName] = e.ID
+		file, tail, ok := splitFormatAStructuralRef(stub)
+		if !ok {
+			return "", false
 		}
+		if bucket, ok := byLocation[file]; ok {
+			if id, ok := bucket[tail]; ok {
+				if id == "" {
+					return "", false // ambiguous within the file → leave verbatim
+				}
+				return id, true
+			}
+		}
+		if id, ok := nameToID[tail]; ok && id != "" {
+			return id, true
+		}
+		return "", false
 	}
 
 	// Build source-file set for re-extracted files (for safety-net check).
 	newFileSet := make(map[string]bool, len(newEntities))
 	for _, e := range newEntities {
 		newFileSet[e.SourceFile] = true
-	}
-
-	// Build name set for newly extracted entities (for inbound-fixup).
-	newEntityByName := make(map[string]graph.Entity, len(newEntities))
-	for _, e := range newEntities {
-		if e.Name != "" {
-			newEntityByName[e.Name] = e
-		}
-		if e.QualifiedName != "" {
-			newEntityByName[e.QualifiedName] = e
-		}
 	}
 
 	// Build set of signature-changed entity IDs for fast lookup (#2170).
@@ -164,15 +243,30 @@ func ResolveScoped(
 		newEntityByID[e.ID] = e
 	}
 
-	// Step 1: resolve stub ToIDs in newRels.
+	// Step 1: resolve stub endpoints in newRels. The full resolver rewrites BOTH
+	// the from- and to-side of every edge (refs.go logs `from: rw=N to: rw=N`);
+	// the scoped pass must too, or an outbound edge from a freshly-extracted
+	// entity is left with a stub FromID (e.g. a class→method CONTAINS edge, or a
+	// caller whose own structural-ref the extractor emits) that a full rebuild
+	// resolves to the hashed id (#5309 resolution parity).
 	resolvedNewRels := make([]graph.Relationship, 0, len(newRels))
 	for _, r := range newRels {
-		if !isHexID(r.ToID) {
-			if resolved, ok := nameToID[r.ToID]; ok {
-				r.ToID = resolved
-				r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
+		changed := false
+		if !isHexID(r.FromID) {
+			if resolved, ok := resolveStub(r.FromID); ok {
+				r.FromID = resolved
+				changed = true
 			}
-			// Unresolved stubs are kept as-is — same behaviour as the full resolver.
+		}
+		if !isHexID(r.ToID) {
+			if resolved, ok := resolveStub(r.ToID); ok {
+				r.ToID = resolved
+				changed = true
+			}
+		}
+		// Unresolved stubs are kept as-is — same behaviour as the full resolver.
+		if changed {
+			r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
 		}
 		resolvedNewRels = append(resolvedNewRels, r)
 	}
@@ -184,9 +278,12 @@ func ResolveScoped(
 	updatedExistingRels := make([]graph.Relationship, 0, len(existingRels))
 	for _, r := range existingRels {
 		if !isHexID(r.ToID) {
-			if newE, ok := newEntityByName[r.ToID]; ok {
-				// Update to the new entity's ID.
-				r.ToID = newE.ID
+			if resolved, ok := resolveStub(r.ToID); ok {
+				// Bind the inbound stub to the (possibly re-keyed) entity ID via
+				// the same Format A ladder the full resolver uses, so a cross-file
+				// edge from a surviving file is never left in stub form when a
+				// full rebuild would resolve it (#5309 resolution parity).
+				r.ToID = resolved
 				r.ID = graph.RelationshipID(r.FromID, r.ToID, r.Kind)
 				inboundFixed++
 			} else if newFileSet[r.ToID] {
