@@ -563,6 +563,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /api/cleanup/preview", s.handleCleanupPreview)
 	mux.HandleFunc("POST /api/cleanup", s.handleCleanup)
 
+	// Index quarantine transparency surface (Q2, #5617)
+	mux.HandleFunc("GET /api/groups/{group}/quarantine", s.handleQuarantineList)
+	mux.HandleFunc("POST /api/groups/{group}/repos/{repo}/quarantine/unquarantine", s.handleQuarantineUnquarantine)
+	mux.HandleFunc("POST /api/groups/{group}/repos/{repo}/quarantine/pin", s.handleQuarantinePin)
+
 	// Quality surface (#1198, #1236)
 	mux.HandleFunc("GET /api/quality/orphans/{group}", s.handleQualityOrphans)
 	mux.HandleFunc("POST /api/quality/orphans/{group}", s.handleRunQualityOrphans)

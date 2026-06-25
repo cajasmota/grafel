@@ -63,6 +63,7 @@ func newRoot() *cobra.Command {
 		newPatternsCmd(),
 		newMCPBridgeCmd(),
 		newCleanupCmd(),
+		newQuarantineCmd(),
 		newStoreCmd(),
 		newDocgenCmd(),
 		newRegisterCmd(),
@@ -156,6 +157,10 @@ Branch management (PH6):
 
 Maintenance:
   cleanup [--dry-run]             Remove orphaned registry entries
+  quarantine list [group]         List auto-quarantined directories per repo
+  quarantine remove <repo> <dir>  Un-quarantine a directory (manual override)
+  quarantine pin   <repo> <dir>   Pin a dir so auto-heal never removes it
+  quarantine unpin <repo> <dir>   Clear an operator pin
 
 Daemon (manual):
   start                           Start daemon (MCP + indexer + dashboard + watchers)

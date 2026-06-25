@@ -1535,6 +1535,33 @@ export interface CleanupReply {
   message: string;
 }
 
+/**
+ * One auto-quarantined directory (Q2 transparency surface, #5617).
+ * The self-healing watcher quarantines dirs that churn pathologically.
+ */
+export interface QuarantineEntry {
+  repo: string;
+  path: string;
+  signal: string;
+  detail: string;
+  at: string;
+  pinned: boolean;
+}
+
+/** GET /api/groups/{group}/quarantine result. */
+export interface QuarantineListReply {
+  group: string;
+  entries: QuarantineEntry[];
+}
+
+/** Result of an un-quarantine / pin action. */
+export interface QuarantineActionReply {
+  repo: string;
+  rel: string;
+  action: string;
+  changed: boolean;
+}
+
 /** POST /api/v2/update/apply result. */
 export interface UpdateApplyReply {
   exit_code: number;

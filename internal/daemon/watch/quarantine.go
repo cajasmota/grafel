@@ -542,6 +542,145 @@ func (q *QuarantineTracker) Recover(repo, path string) (rel string, recovered bo
 	}
 }
 
+// Pin marks rel as operator-pinned so the self-heal sweep never auto-removes
+// it (the dir stays quarantined until an explicit Unquarantine). The dir must
+// already be quarantined. Returns true if the pin state changed. Q2 operator
+// override.
+func (q *QuarantineTracker) Pin(repo, rel string) bool {
+	return q.setPin(repo, rel, true)
+}
+
+// Unpin clears the operator pin on rel so the dir becomes eligible for
+// auto-heal again. Returns true if the pin state changed.
+func (q *QuarantineTracker) Unpin(repo, rel string) bool {
+	return q.setPin(repo, rel, false)
+}
+
+func (q *QuarantineTracker) setPin(repo, rel string, pinned bool) bool {
+	if q == nil {
+		return false
+	}
+	rel = filepath.ToSlash(rel)
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	q.ensureLoadedLocked(repo)
+	set := q.quarantined[repo]
+	reason, ok := set[rel]
+	if !ok || reason.Pinned == pinned {
+		return false
+	}
+	reason.Pinned = pinned
+	set[rel] = reason
+	q.persistLocked(repo)
+	if q.audit != nil {
+		evt := "pin"
+		if !pinned {
+			evt = "unpin"
+		}
+		q.audit(evt, repo, rel, "operator override")
+	}
+	return true
+}
+
+// ---- daemon-less file surface (Q2 transparency: CLI + dashboard) ----
+//
+// The persisted <repo>/.grafel/quarantine.json is the canonical store across
+// daemon restarts, and the live tracker reloads it lazily + rewrites it on
+// every mutation. These package-level helpers let the CLI and the dashboard
+// read and mutate the set WITHOUT a live tracker handle, staying consistent
+// with the running daemon (which re-reads the file on its next touch of the
+// repo). They are best-effort and never panic on a missing/corrupt file.
+
+// ReadQuarantineFile returns the persisted quarantine set for a repo, sorted by
+// rel. A missing or corrupt file yields an empty slice and no error.
+func ReadQuarantineFile(repo string) ([]QuarantineReason, error) {
+	data, err := os.ReadFile(quarantinePath(repo))
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	var f quarantineFile
+	if err := json.Unmarshal(data, &f); err != nil {
+		return nil, err
+	}
+	out := make([]QuarantineReason, 0, len(f.Dirs))
+	for _, r := range f.Dirs {
+		if r.Rel != "" {
+			out = append(out, r)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Rel < out[j].Rel })
+	return out, nil
+}
+
+// writeQuarantineFile persists a set of reasons to <repo>/.grafel/quarantine.json
+// (atomic-ish temp+rename), mirroring (*QuarantineTracker).persistLocked.
+func writeQuarantineFile(repo string, dirs []QuarantineReason) error {
+	f := quarantineFile{Version: 1, Dirs: append([]QuarantineReason(nil), dirs...)}
+	sort.Slice(f.Dirs, func(i, j int) bool { return f.Dirs[i].Rel < f.Dirs[j].Rel })
+	if err := os.MkdirAll(filepath.Join(repo, ".grafel"), 0o755); err != nil {
+		return err
+	}
+	data, err := json.MarshalIndent(f, "", "  ")
+	if err != nil {
+		return err
+	}
+	tmp := quarantinePath(repo) + ".tmp"
+	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+		return err
+	}
+	return os.Rename(tmp, quarantinePath(repo))
+}
+
+// UnquarantineFile removes rel from a repo's persisted quarantine set. Returns
+// true if it was present (and the file rewritten).
+func UnquarantineFile(repo, rel string) (bool, error) {
+	rel = filepath.ToSlash(rel)
+	dirs, err := ReadQuarantineFile(repo)
+	if err != nil {
+		return false, err
+	}
+	out := make([]QuarantineReason, 0, len(dirs))
+	found := false
+	for _, r := range dirs {
+		if r.Rel == rel {
+			found = true
+			continue
+		}
+		out = append(out, r)
+	}
+	if !found {
+		return false, nil
+	}
+	return true, writeQuarantineFile(repo, out)
+}
+
+// SetPinFile sets or clears the operator pin on rel in a repo's persisted
+// quarantine set. Returns true if the pin state changed.
+func SetPinFile(repo, rel string, pinned bool) (bool, error) {
+	rel = filepath.ToSlash(rel)
+	dirs, err := ReadQuarantineFile(repo)
+	if err != nil {
+		return false, err
+	}
+	changed := false
+	for i := range dirs {
+		if dirs[i].Rel == rel {
+			if dirs[i].Pinned != pinned {
+				dirs[i].Pinned = pinned
+				changed = true
+			}
+			break
+		}
+	}
+	if !changed {
+		return false, nil
+	}
+	return true, writeQuarantineFile(repo, dirs)
+}
+
 // ---- persistence: <repo>/.grafel/quarantine.json ----
 
 // quarantineFile is the on-disk shape.

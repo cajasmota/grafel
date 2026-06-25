@@ -94,6 +94,41 @@ export function useCleanup() {
 }
 
 // ---------------------------------------------------------------------------
+// Index quarantine — transparency surface (Q2, #5617)
+// ---------------------------------------------------------------------------
+
+export const quarantineKey = (groupId: string) => ["ops", "quarantine", groupId] as const;
+
+/** Lists auto-quarantined directories for a group. */
+export function useQuarantine(groupId: string) {
+  return useQuery({
+    queryKey: quarantineKey(groupId),
+    queryFn: () => api.getQuarantine(groupId),
+    enabled: !!groupId,
+    retry: 1,
+  });
+}
+
+/** Manual un-quarantine of a directory. */
+export function useUnquarantine(groupId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { repo: string; rel: string }) => api.unquarantine(groupId, v.repo, v.rel),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: quarantineKey(groupId) }),
+  });
+}
+
+/** Pin (never auto-heal) or unpin a quarantined directory. */
+export function usePinQuarantine(groupId: string) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (v: { repo: string; rel: string; pinned: boolean }) =>
+      api.pinQuarantine(groupId, v.repo, v.rel, v.pinned),
+    onSuccess: () => void qc.invalidateQueries({ queryKey: quarantineKey(groupId) }),
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Patterns
 // ---------------------------------------------------------------------------
 

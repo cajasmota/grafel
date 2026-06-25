@@ -38,6 +38,9 @@ import {
   RefreshCw,
   Server,
   SquareTerminal,
+  ShieldAlert,
+  Pin,
+  PinOff,
   Trash2,
   XCircle,
   Zap,
@@ -79,6 +82,9 @@ import {
   useRunOrphanAudit,
   useQualityFixtures,
   useRunRecall,
+  useQuarantine,
+  useUnquarantine,
+  usePinQuarantine,
 } from "@/hooks/use-operations";
 import { useRunDoctor } from "@/hooks/use-settings";
 import { useIndexProgress } from "@/hooks/use-index-progress";
@@ -1832,6 +1838,131 @@ const OPERATIONS_INSIGHT: InsightValue = {
   },
 };
 
+// ---------------------------------------------------------------------------
+// Quarantine tab — index-quarantine transparency surface (Q2, #5617)
+//
+// The self-healing watcher auto-quarantines directories that churn
+// pathologically (a build-output loop, generated content) so they stop arming
+// reindexes. This panel surfaces that set with operator override: un-quarantine
+// or pin (so auto-heal never touches a dir).
+// ---------------------------------------------------------------------------
+
+function QuarantineTab({ groupId }: { groupId: string }) {
+  const { data, isLoading, isError } = useQuarantine(groupId);
+  const unquarantine = useUnquarantine(groupId);
+  const pin = usePinQuarantine(groupId);
+
+  const entries = data?.entries ?? [];
+
+  return (
+    <Section
+      title="Quarantined paths"
+      sub="Directories the self-healing watcher auto-quarantined for pathological churn (e.g. a build-output loop). They stop arming reindexes until healed or overridden."
+    >
+      {isLoading ? (
+        <div className="space-y-2">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-10 w-full" />
+        </div>
+      ) : isError ? (
+        <p className="text-sm text-text-3">Could not load the quarantine set.</p>
+      ) : entries.length === 0 ? (
+        <div className="flex items-center gap-2 text-sm text-text-3">
+          <ShieldAlert size={15} className="text-text-3" />
+          No directories are quarantined.
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-border">
+          <table className="w-full text-sm" data-testid="quarantine-table">
+            <thead className="bg-surface-2 text-left text-xs text-text-3">
+              <tr>
+                <th className="px-3 py-2 font-medium">Path</th>
+                <th className="px-3 py-2 font-medium">Repo</th>
+                <th className="px-3 py-2 font-medium">Signal</th>
+                <th className="px-3 py-2 font-medium">Detail</th>
+                <th className="px-3 py-2 font-medium">Since</th>
+                <th className="px-3 py-2 font-medium text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {entries.map((e) => {
+                const busy =
+                  (unquarantine.isPending &&
+                    unquarantine.variables?.repo === e.repo &&
+                    unquarantine.variables?.rel === e.path) ||
+                  (pin.isPending &&
+                    pin.variables?.repo === e.repo &&
+                    pin.variables?.rel === e.path);
+                return (
+                  <tr key={`${e.repo}:${e.path}`} className="border-t border-border">
+                    <td className="px-3 py-2 font-mono text-xs text-text">
+                      <span className="inline-flex items-center gap-1.5">
+                        {e.path}
+                        {e.pinned && (
+                          <Badge tone="info" className="gap-1">
+                            <Pin size={10} />
+                            pinned
+                          </Badge>
+                        )}
+                      </span>
+                    </td>
+                    <td className="px-3 py-2 text-text-3">{e.repo}</td>
+                    <td className="px-3 py-2 text-text-3">{e.signal}</td>
+                    <td className="px-3 py-2 text-text-3">{e.detail}</td>
+                    <td className="px-3 py-2 text-text-3">{relativeTime(e.at)}</td>
+                    <td className="px-3 py-2">
+                      <div className="flex items-center justify-end gap-1.5">
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            pin.mutate(
+                              { repo: e.repo, rel: e.path, pinned: !e.pinned },
+                              {
+                                onSuccess: () =>
+                                  toast.success(
+                                    `${e.pinned ? "Unpinned" : "Pinned"} ${e.repo}/${e.path}`,
+                                  ),
+                                onError: (err) => toast.error(String(err)),
+                              },
+                            )
+                          }
+                        >
+                          {e.pinned ? <PinOff size={13} className="mr-1" /> : <Pin size={13} className="mr-1" />}
+                          {e.pinned ? "Unpin" : "Pin"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="secondary"
+                          disabled={busy}
+                          onClick={() =>
+                            unquarantine.mutate(
+                              { repo: e.repo, rel: e.path },
+                              {
+                                onSuccess: () =>
+                                  toast.success(`Un-quarantined ${e.repo}/${e.path}`),
+                                onError: (err) => toast.error(String(err)),
+                              },
+                            )
+                          }
+                        >
+                          <Trash2 size={13} className="mr-1" />
+                          Un-quarantine
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Section>
+  );
+}
+
 export default function OperationsScreen() {
   useSetInsight(OPERATIONS_INSIGHT);
   const { groupId = "" } = useParams<{ groupId: string }>();
@@ -1867,6 +1998,10 @@ export default function OperationsScreen() {
               <HardDrive size={13} className="mr-1.5" />
               Quality
             </TabsTrigger>
+            <TabsTrigger value="quarantine">
+              <ShieldAlert size={13} className="mr-1.5" />
+              Quarantine
+            </TabsTrigger>
             <TabsTrigger value="updates">
               <Download size={13} className="mr-1.5" />
               Updates
@@ -1883,6 +2018,10 @@ export default function OperationsScreen() {
 
           <TabsContent value="quality">
             <QualityTab groupId={groupId} />
+          </TabsContent>
+
+          <TabsContent value="quarantine">
+            <QuarantineTab groupId={groupId} />
           </TabsContent>
 
           <TabsContent value="updates">

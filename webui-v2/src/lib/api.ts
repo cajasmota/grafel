@@ -53,6 +53,8 @@ import type {
   JobAck,
   ActionJob,
   CleanupReply,
+  QuarantineListReply,
+  QuarantineActionReply,
   UpdateApplyReply,
   ScanInspectReply,
   WizardRepo,
@@ -988,6 +990,30 @@ export const api = {
   getErrorFlow: (groupId: string) =>
     request<ErrorFlowReport>(
       `/errorflow/${encodeURIComponent(groupId)}`,
+    ),
+
+  // --- Index quarantine transparency (Q2, #5617) ---
+  // The self-healing watcher auto-quarantines dirs that churn pathologically.
+  // These surface that set and let an operator override it.
+
+  /** GET /api/groups/{group}/quarantine — quarantined dirs across the group's repos. */
+  getQuarantine: (groupId: string) =>
+    request<QuarantineListReply>(
+      `/groups/${encodeURIComponent(groupId)}/quarantine`,
+    ),
+
+  /** POST .../quarantine/unquarantine — manual un-quarantine of a directory. */
+  unquarantine: (groupId: string, repo: string, rel: string) =>
+    request<QuarantineActionReply>(
+      `/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repo)}/quarantine/unquarantine`,
+      { method: "POST", body: JSON.stringify({ rel }) },
+    ),
+
+  /** POST .../quarantine/pin — pin (never auto-heal) or unpin a directory. */
+  pinQuarantine: (groupId: string, repo: string, rel: string, pinned: boolean) =>
+    request<QuarantineActionReply>(
+      `/groups/${encodeURIComponent(groupId)}/repos/${encodeURIComponent(repo)}/quarantine/pin`,
+      { method: "POST", body: JSON.stringify({ rel, pinned }) },
     ),
 };
 
