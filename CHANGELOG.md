@@ -10,6 +10,35 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.5.4] — 2026-06-25
+
+**Patch — Windows fixes + reindex resource ceiling.** Closes the remaining Windows
+install/UX issues from the real-user report, lands a daemon-wide reindex CPU cap,
+and adds Kysely schema/migration coverage.
+
+### Fixed
+- **Windows `install.bat` latest-tag resolution (#5591):** parses the GitHub API
+  response from a temp file with a native tilde-modifier quote strip, fixing the
+  `RAW:=` garbage-tag failure on some Windows machines. A plain one-liner install now
+  resolves the latest version without `GRAFEL_VERSION`.
+- **No more flashing console windows on Windows (#5604):** every daemon subprocess
+  (extract, index, group-algo, git, schtasks, worktree, watchers) spawns with
+  `CREATE_NO_WINDOW`, so indexing no longer floods the screen with terminal windows.
+- **Daemon-wide reindex CPU ceiling (#5602):** the graph-wide reindex phases
+  (resolution, communities, links/flows) respect a shared daemon-wide CPU budget
+  (~½ host cores) instead of running uncapped per group — concurrent multi-group
+  reindex no longer spikes past 1000% CPU.
+
+### Added
+- **Foreground index priority (#5328):** interactive indexing (wizard, explicit CLI
+  `index`/`rebuild`) takes priority over background watcher/git-hook reindex, which
+  yields its CPU share while a foreground index runs.
+- **Kysely schema + migration extraction (#5599):** schema-builder DSL
+  (createTable/addColumn/foreign keys) and `up()/down()` migrations are extracted and
+  converged to `MODIFIES_TABLE`.
+
+---
+
 ## [0.1.5.3] — 2026-06-25
 
 **Patch — Windows install & UX hardening.** Six fixes from a real Windows user
