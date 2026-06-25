@@ -182,6 +182,13 @@ type QuarantineTracker struct {
 	quarantined map[string]map[string]QuarantineReason
 	// loaded tracks which repos have had their persisted set read in.
 	loaded map[string]bool
+
+	// content is the T3 content-signature detector (#5620). It accumulates a
+	// per-directory generated-vs-total fingerprint tally and quarantines dirs
+	// whose content is overwhelmingly machine-generated. All of its logic
+	// lives in quarantine_content.go; this is the only coupling point. nil
+	// until first use (lazily initialised, kill-switch aware).
+	content *contentDetector
 }
 
 // NewQuarantineTracker constructs a tracker. audit may be nil.
@@ -326,6 +333,17 @@ func (q *QuarantineTracker) Observe(repo, path string) (drop bool) {
 		delete(byDir, rel)
 		return true
 	}
+
+	// T3 content-signature detection (#5620): the churn detector above catches
+	// dirs that thrash; this catches dirs whose *content* is overwhelmingly
+	// machine-generated (minified/vendored/lockfiles/@generated) even at low
+	// churn. All logic lives in quarantine_content.go. It returns the trip
+	// detail when the generated-share crosses the threshold; quarantine then.
+	if detail, trip := q.observeContentLocked(repo, rel, path, now); trip {
+		q.quarantineLocked(repo, rel, "content", detail, now)
+		delete(byDir, rel)
+		return true
+	}
 	return false
 }
 
@@ -414,6 +432,7 @@ func (q *QuarantineTracker) Sweep() (healed map[string][]string) {
 				if m := q.churn[repo]; m != nil {
 					delete(m, rel)
 				}
+				q.content.dropContentDir(repo, rel)
 				dirty = true
 				healed[repo] = append(healed[repo], rel)
 				if q.audit != nil {
@@ -467,6 +486,7 @@ func (q *QuarantineTracker) Unquarantine(repo, rel string) bool {
 	if m := q.churn[repo]; m != nil {
 		delete(m, rel)
 	}
+	q.content.dropContentDir(repo, rel)
 	q.persistLocked(repo)
 	if q.audit != nil {
 		q.audit("unquarantine", repo, rel, "manual override")
@@ -528,6 +548,7 @@ func (q *QuarantineTracker) Recover(repo, path string) (rel string, recovered bo
 			if m := q.churn[repo]; m != nil {
 				delete(m, cur)
 			}
+			q.content.dropContentDir(repo, cur)
 			q.persistLocked(repo)
 			if q.audit != nil {
 				q.audit("unquarantine", repo, cur, "recover on query/reference")
