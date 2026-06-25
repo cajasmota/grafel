@@ -104,6 +104,11 @@ type Watcher struct {
 	cfg       Config
 	sink      EventSink
 	extraSkip map[string]struct{}
+	// clk is the time seam for the debounce/bulk path. Defaults to the real
+	// wall clock; tests inject a fake clock so coalesce/debounce outcomes are
+	// deterministic instead of racing the CI scheduler. Production behaviour
+	// is identical to using time.Now/time.AfterFunc directly.
+	clk clock
 	// quarantine is the adaptive trash detector (#5394). When non-nil, it
 	// observes per-directory churn at the event boundary and drops events
 	// under directories it has quarantined. nil disables the feature.
@@ -127,7 +132,7 @@ type repoState struct {
 	path string
 
 	// debounce timer
-	timer   *time.Timer
+	timer   timer
 	pending bool
 
 	// bulk detection — count events in the current bulkWindow
@@ -174,6 +179,7 @@ func NewWatcherConfig(cfg Config, sink EventSink, logger *slog.Logger) (*Watcher
 		cfg:       cfg,
 		sink:      sink,
 		extraSkip: extraSkip,
+		clk:       realClock{},
 		fs:        fw,
 		repos:     map[string]*repoState{},
 		dirToRepo: map[string]string{},
@@ -675,7 +681,7 @@ func (w *Watcher) recordAndArm(repo string) {
 		return
 	}
 
-	now := time.Now()
+	now := w.clk.Now()
 	rs.totalEvents++
 	rs.lastEventAt = now
 
@@ -713,7 +719,7 @@ func (w *Watcher) recordAndArm(repo string) {
 	}
 	rs.pending = true
 	repoPath := repo
-	rs.timer = time.AfterFunc(debounce, func() {
+	rs.timer = w.clk.AfterFunc(debounce, func() {
 		w.mu.Lock()
 		rs := w.repos[repoPath]
 		if rs != nil {

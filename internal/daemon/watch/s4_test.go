@@ -220,32 +220,46 @@ func TestWatcherSkipsGitignored(t *testing.T) {
 	// Evict so loadRepoIgnoreState picks up the new .gitignore.
 	evictRepoIgnoreState(repo)
 
+	const debounce = 100 * time.Millisecond
+	fc := newManualClock()
 	var calls atomic.Int32
-	w, err := newTestWatcher(100*time.Millisecond, func(string, bool) {
+	w, err := newTestWatcher(debounce, func(string, bool) {
 		calls.Add(1)
 	})
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
+	// Manual clock: the gitignored write arms no timer (it's filtered before
+	// recordAndArm), and the src write's debounce only fires when we advance.
+	// This removes the wall-clock dependence that could let a slow CI observe
+	// the sink before/after the expected window.
+	w.clk = fc
 	defer w.Stop()
 	if _, err := w.AddRepo(repo); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	// Write into the gitignored dir — should NOT fire the sink.
+	// Write into the gitignored dir — should NOT fire the sink. The gitignored
+	// "generated/" dir is never even subscribed (filtered at subscribe time),
+	// so no fsnotify event is produced and no debounce timer is ever armed.
+	// Advancing the manual clock therefore cannot manufacture a call: this is a
+	// deterministic negative assertion with no wall-clock dependence.
 	if err := os.WriteFile(filepath.Join(generatedDir, "foo.go"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(300 * time.Millisecond)
+	fc.Advance(debounce + time.Millisecond) // would fire any armed timer — there is none
 	if n := calls.Load(); n != 0 {
 		t.Errorf("expected 0 sink calls for gitignored dir write, got %d", n)
 	}
 
-	// Write into src — should fire.
+	// Write into src — should fire exactly once after the window advances. Wait
+	// for the debounce timer to be armed (the precise precondition), then
+	// advance past the window so the single coalesced call fires.
 	if err := os.WriteFile(filepath.Join(srcDir, "bar.go"), []byte("x"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	time.Sleep(300 * time.Millisecond)
+	waitForArmed5392(t, w, repo, 5*time.Second)
+	fc.Advance(debounce + time.Millisecond)
 	if n := calls.Load(); n != 1 {
 		t.Errorf("expected 1 sink call for src write, got %d", n)
 	}

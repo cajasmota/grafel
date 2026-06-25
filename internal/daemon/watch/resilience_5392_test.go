@@ -116,6 +116,13 @@ func TestExtraSkipDirsEnv5392(t *testing.T) {
 // TestCoalesce_RapidWrites5392 is the per-repo coalesce guard: a burst of
 // N rapid writes to a single repo within the debounce window collapses to
 // at most ONE sink invocation (one reindex), not N.
+//
+// Deterministic via the injected fake clock (no wall-clock dependence): the
+// debounce timer only fires when the test ADVANCES the clock, so all 20
+// writes are guaranteed to land inside a single debounce window regardless of
+// how slowly CI delivers the fsnotify events. We wait for the events to be
+// observed by polling the watcher's event counter (a guarded predicate, not a
+// sleep), then advance time once past the window — exactly one coalesced call.
 func TestCoalesce_RapidWrites5392(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
@@ -127,31 +134,64 @@ func TestCoalesce_RapidWrites5392(t *testing.T) {
 	}
 	evictRepoIgnoreState(repo)
 
+	const debounce = 200 * time.Millisecond
+	fc := newManualClock()
+
 	var calls atomic.Int32
-	w, err := newTestWatcher(200*time.Millisecond, func(string, bool) {
+	w, err := newTestWatcher(debounce, func(string, bool) {
 		calls.Add(1)
 	})
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
+	// Install the fake clock BEFORE subscribing the repo so no event is ever
+	// armed against the real clock. Safe: no events flow until AddRepo runs.
+	w.clk = fc
 	defer w.Stop()
 	if _, err := w.AddRepo(repo); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	// 20 rapid writes well within the 200ms debounce window.
+	// 20 rapid writes. The fake clock does not advance, so every armed
+	// debounce reset stays inside one window — coalescing is forced.
 	for i := 0; i < 20; i++ {
 		f := filepath.Join(src, "f"+itoa5392(i)+".go")
 		if err := os.WriteFile(f, []byte("package main\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		time.Sleep(2 * time.Millisecond)
 	}
 
-	// Wait past the debounce window for the coalesced sink to fire.
-	time.Sleep(500 * time.Millisecond)
+	// Wait until all 20 write events have been observed by the watcher. This
+	// is the only real-time wait, and it polls a guarded counter rather than
+	// asserting on a fixed sleep, so slow CI just waits a little longer — it
+	// can never split the batch (the clock has not advanced).
+	waitForEvents5392(t, w, 20, 5*time.Second)
+
+	// Now advance the clock once past the debounce window. The single pending
+	// debounce timer fires exactly once, on this goroutine, before Advance
+	// returns — so the assertion below is race-free.
+	fc.Advance(debounce + time.Millisecond)
+
 	if n := calls.Load(); n != 1 {
 		t.Errorf("expected exactly 1 coalesced sink call for 20 rapid writes, got %d", n)
+	}
+}
+
+// waitForEvents5392 blocks until the watcher has processed at least n total
+// fs events, or fails the test on timeout. Polls a guarded counter — never a
+// fixed sleep — so it is robust to slow event delivery without coupling the
+// outcome to wall-clock timing.
+func waitForEvents5392(t *testing.T, w *Watcher, n uint64, d time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		if _, _, ev, _ := w.Stats(); ev >= n {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	if _, _, ev, _ := w.Stats(); ev < n {
+		t.Fatalf("watcher observed %d events, want ≥ %d within %s", ev, n, d)
 	}
 }
 

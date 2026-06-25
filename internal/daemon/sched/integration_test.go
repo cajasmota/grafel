@@ -314,7 +314,16 @@ func TestIntegrationBudgetBlowoutWithoutCap(t *testing.T) {
 	s.Enqueue("/a")
 	s.Enqueue("/b")
 	s.Enqueue("/c")
-	time.Sleep(250 * time.Millisecond)
+	// With the cap disabled all three jobs must reach the gate concurrently.
+	// Poll until they do (a guarded predicate with a generous deadline) rather
+	// than asserting peak after a fixed sleep — a slow CI just takes longer to
+	// schedule the three goroutines, it can never make fewer than 3 run
+	// concurrently when the admission cap is off.
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return peak == 3
+	})
 	mu.Lock()
 	got := peak
 	mu.Unlock()
