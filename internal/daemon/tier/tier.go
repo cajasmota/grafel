@@ -48,6 +48,7 @@ import (
 	"log/slog"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sort"
 	"strconv"
 	"strings"
@@ -307,9 +308,31 @@ type Manager struct {
 	// heapFn returns the current in-heap allocated bytes (HeapInuse from
 	// runtime.MemStats). Overridable in tests to simulate pressure.
 	heapFn func() uint64
+
+	// freeOSMemFn returns retained Go heap arena to the OS after a pressure-
+	// eviction batch (#5392). Defaults to runtime/debug.FreeOSMemory.
+	// Overridable in tests. runtime.GC() reclaims dead graph objects into the
+	// Go arena, but only FreeOSMemory scavenges that arena back to the OS;
+	// without it heap_mb / RSS stay high under sustained pressure because the
+	// scheduler's idle FreeOSMemory trigger never fires while indexing churns.
+	freeOSMemFn func()
+
+	// freeOSMemMu guards lastFreeOSMem so the scanner goroutine and any test
+	// driver observe a consistent rate-limit timestamp.
+	freeOSMemMu sync.Mutex
+	// lastFreeOSMem is the clock time of the most recent FreeOSMemory call
+	// triggered by pressure eviction. Used to rate-limit (freeOSMemMinInterval)
+	// so a pressure storm firing the scanner repeatedly does not thrash with
+	// back-to-back stop-the-world scavenges.
+	lastFreeOSMem time.Time
 }
 
 const defaultScanInterval = 30 * time.Second
+
+// freeOSMemMinInterval rate-limits the post-pressure-eviction FreeOSMemory
+// scavenge (#5392): at most one stop-the-world scavenge per this window even if
+// the scanner fires pressure eviction more frequently under a sustained storm.
+const freeOSMemMinInterval = 30 * time.Second
 
 // NewManager creates and starts a Manager. The scanner runs until ctx is
 // cancelled. onEvict and reload must not be nil. onDiskEvict may be nil
@@ -328,6 +351,7 @@ func NewManager(ctx context.Context, ttl TTLConfig, onEvict EvictionCallback, re
 		clock:       time.Now,
 		sysMemFn:    readSysMemBytes,
 		heapFn:      readHeapInuse,
+		freeOSMemFn: debug.FreeOSMemory,
 	}
 	go m.scanLoop(ctx, defaultScanInterval)
 	return m
@@ -338,14 +362,15 @@ func NewManager(ctx context.Context, ttl TTLConfig, onEvict EvictionCallback, re
 // onDiskEvict may be nil.
 func NewManagerForTest(ttl TTLConfig, clock func() time.Time, onEvict EvictionCallback, reload ReloadCallback) *Manager {
 	return &Manager{
-		slots:    make(map[SlotKey]*slot),
-		ttl:      ttl,
-		onEvict:  onEvict,
-		reload:   reload,
-		logger:   slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier"),
-		clock:    clock,
-		sysMemFn: readSysMemBytes,
-		heapFn:   readHeapInuse,
+		slots:       make(map[SlotKey]*slot),
+		ttl:         ttl,
+		onEvict:     onEvict,
+		reload:      reload,
+		logger:      slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier"),
+		clock:       clock,
+		sysMemFn:    readSysMemBytes,
+		heapFn:      readHeapInuse,
+		freeOSMemFn: func() {}, // tests must not trigger a real stop-the-world scavenge
 	}
 }
 
@@ -362,6 +387,7 @@ func NewManagerForTestWithDiskEvict(ttl TTLConfig, clock func() time.Time, onEvi
 		clock:       clock,
 		sysMemFn:    readSysMemBytes,
 		heapFn:      readHeapInuse,
+		freeOSMemFn: func() {},
 	}
 }
 
@@ -369,15 +395,26 @@ func NewManagerForTestWithDiskEvict(ttl TTLConfig, clock func() time.Time, onEvi
 // custom heap and system-memory probe functions for pressure-eviction tests (P0.3).
 func NewManagerForTestWithHeap(ttl TTLConfig, clock func() time.Time, onEvict EvictionCallback, reload ReloadCallback, heapFn func() uint64, sysMemFn func() uint64) *Manager {
 	return &Manager{
-		slots:    make(map[SlotKey]*slot),
-		ttl:      ttl,
-		onEvict:  onEvict,
-		reload:   reload,
-		logger:   slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier"),
-		clock:    clock,
-		sysMemFn: sysMemFn,
-		heapFn:   heapFn,
+		slots:       make(map[SlotKey]*slot),
+		ttl:         ttl,
+		onEvict:     onEvict,
+		reload:      reload,
+		logger:      slog.New(slog.NewTextHandler(os.Stderr, nil)).With("pkg", "tier"),
+		clock:       clock,
+		sysMemFn:    sysMemFn,
+		heapFn:      heapFn,
+		freeOSMemFn: func() {},
 	}
+}
+
+// SetFreeOSMemFn overrides the FreeOSMemory hook used after pressure-eviction
+// batches (#5392). Test-only: lets a test observe that the post-eviction
+// scavenge is invoked and rate-limited without triggering a real stop-the-world
+// scavenge.
+func (m *Manager) SetFreeOSMemFn(fn func()) {
+	m.freeOSMemMu.Lock()
+	defer m.freeOSMemMu.Unlock()
+	m.freeOSMemFn = fn
 }
 
 // SetWatcherHook wires a WatcherHook so that tier transitions also pause/resume
@@ -639,6 +676,19 @@ func (m *Manager) scan() {
 		runtime.GC() // nudge GC so released graph objects are reclaimed promptly
 	}
 
+	// #5392: after a PRESSURE-eviction batch, scavenge the retained Go heap
+	// arena back to the OS so heap_mb / RSS actually drop. runtime.GC() above
+	// reclaims dead graph objects into the arena, but only FreeOSMemory returns
+	// that arena to the OS — and the scheduler's idle FreeOSMemory trigger never
+	// fires under sustained indexing churn, which is exactly when pressure
+	// eviction runs. Rate-limited (freeOSMemMinInterval) so a pressure storm
+	// that fires the scanner repeatedly does not thrash with back-to-back
+	// stop-the-world scavenges. Routine TTL evictions do NOT trigger this (the
+	// idle path already covers the settled case); only pressure does.
+	if pressureEvicted > 0 {
+		m.maybeFreeOSMemory()
+	}
+
 	// PH6: perform disk eviction for newly expired slots.
 	// Only EXPIRED slots lose their fsnotify subscription — at that point the
 	// graph.fb has been deleted and there is nothing to reindex into.
@@ -729,6 +779,38 @@ func (m *Manager) scanPressureEvict() int {
 		m.onEvict(k)
 	}
 	return len(toEvict)
+}
+
+// maybeFreeOSMemory returns the retained Go heap arena to the OS after a
+// pressure-eviction batch, rate-limited to at most once per freeOSMemMinInterval
+// (#5392). It must be called only when pressure eviction actually dropped
+// graph references this scan; otherwise there is nothing newly freed to
+// scavenge. Returns true if it invoked the scavenge, false if rate-limited.
+//
+// Why this exists: runtime.GC() reclaims dead objects into the Go arena, but
+// only FreeOSMemory hands that arena back to the OS. The scheduler's idle
+// FreeOSMemory trigger never fires while indexing churns — which is precisely
+// when pressure eviction runs — so without this hook heap_mb / RSS stay high
+// and pressure eviction fires uselessly every few seconds.
+func (m *Manager) maybeFreeOSMemory() bool {
+	m.freeOSMemMu.Lock()
+	now := m.clock()
+	if !m.lastFreeOSMem.IsZero() && now.Sub(m.lastFreeOSMem) < freeOSMemMinInterval {
+		m.freeOSMemMu.Unlock()
+		return false
+	}
+	m.lastFreeOSMem = now
+	free := m.freeOSMemFn
+	m.freeOSMemMu.Unlock()
+
+	if free == nil {
+		return false
+	}
+	t0 := time.Now()
+	free()
+	m.logger.Info("tier: pressure-evict → FreeOSMemory (returned retained heap to OS)",
+		"took", time.Since(t0).Truncate(time.Millisecond))
+	return true
 }
 
 // ---------------------------------------------------------------------------

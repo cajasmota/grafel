@@ -288,3 +288,108 @@ func TestPressureEvictPinnedMainExempt(t *testing.T) {
 		t.Fatalf("pinned-main was pressure-evicted to COLD — must be exempt")
 	}
 }
+
+// TestPressureEvictReclaimsHeap (#5392) verifies that a pressure-eviction batch
+// (a) drops the evicted slots' references (they move to COLD so the evict
+// callback fires and the in-memory graph is releasable) and (b) schedules a
+// FreeOSMemory scavenge so the retained Go heap arena is returned to the OS.
+// runtime.GC() alone only reclaims into the arena; without FreeOSMemory the
+// heap stays high under sustained pressure and eviction fires uselessly.
+func TestPressureEvictReclaimsHeap(t *testing.T) {
+	clock, _ := makeClock()
+
+	var mu sync.Mutex
+	var evicted []tier.SlotKey
+	evictFn := func(k tier.SlotKey) {
+		mu.Lock()
+		evicted = append(evicted, k)
+		mu.Unlock()
+	}
+
+	// Heap pinned above threshold (700 MB vs 600 MB threshold = 60% of 1 GB).
+	sysBytes := uint64(1024 * 1024 * 1024)
+	ttl := tier.DefaultTTLConfig()
+	ttl.HeapMaxPct = 60
+	ttl.SystemMemoryBytes = sysBytes
+
+	m := tier.NewManagerForTestWithHeap(ttl, clock, evictFn, noopReload,
+		func() uint64 { return 700 * 1024 * 1024 },
+		func() uint64 { return sysBytes },
+	)
+
+	// Observe the FreeOSMemory scavenge without triggering a real one.
+	var freeCalls atomic.Int32
+	m.SetFreeOSMemFn(func() { freeCalls.Add(1) })
+
+	// Register 4 non-pinned HOT slots.
+	for i := 0; i < 4; i++ {
+		m.Register(tier.SlotKey{RepoPath: "/repo", Ref: string(rune('a' + i))}, false, tier.SlotKindBranchFeature)
+	}
+
+	m.Scan()
+
+	// (a) References dropped: half of 4 = 2 slots evicted to COLD.
+	mu.Lock()
+	gotEvicted := len(evicted)
+	mu.Unlock()
+	if gotEvicted == 0 {
+		t.Fatalf("pressure eviction dropped no references; want >0 evictions")
+	}
+
+	// (b) FreeOSMemory invoked exactly once for the batch.
+	if got := freeCalls.Load(); got != 1 {
+		t.Fatalf("want FreeOSMemory invoked once after pressure-eviction batch, got %d", got)
+	}
+}
+
+// TestPressureEvictFreeOSMemoryRateLimited (#5392) verifies the post-eviction
+// FreeOSMemory scavenge is rate-limited: repeated pressure scans within the
+// min-interval window invoke FreeOSMemory at most once, so a sustained pressure
+// storm does not thrash with back-to-back stop-the-world scavenges. Once the
+// interval elapses on the synthetic clock, a fresh pressure batch may scavenge
+// again.
+func TestPressureEvictFreeOSMemoryRateLimited(t *testing.T) {
+	clock, advance := makeClock()
+
+	sysBytes := uint64(1024 * 1024 * 1024)
+	ttl := tier.DefaultTTLConfig()
+	ttl.HeapMaxPct = 60
+	ttl.SystemMemoryBytes = sysBytes
+
+	m := tier.NewManagerForTestWithHeap(ttl, clock, noopEvict, noopReload,
+		func() uint64 { return 700 * 1024 * 1024 }, // always above threshold
+		func() uint64 { return sysBytes },
+	)
+
+	var freeCalls atomic.Int32
+	m.SetFreeOSMemFn(func() { freeCalls.Add(1) })
+
+	// Re-register HOT slots before each scan so every breaching scan finds a
+	// non-empty eviction batch (each scan evicts half the candidates to COLD).
+	register := func(n int) {
+		for i := 0; i < n; i++ {
+			m.Register(tier.SlotKey{RepoPath: "/repo", Ref: string(rune('a' + i))}, false, tier.SlotKindBranchFeature)
+		}
+	}
+
+	register(8)
+	m.Scan() // first pressure batch → FreeOSMemory fires
+	if got := freeCalls.Load(); got != 1 {
+		t.Fatalf("first pressure batch: want 1 FreeOSMemory call, got %d", got)
+	}
+
+	// Second scan immediately (no clock advance) — within the rate-limit window.
+	register(8) // re-arm HOT slots so this scan also evicts
+	m.Scan()
+	if got := freeCalls.Load(); got != 1 {
+		t.Fatalf("rate-limited: want FreeOSMemory still at 1 within min-interval, got %d", got)
+	}
+
+	// Advance past the min-interval (30s) and scan again — scavenge re-allowed.
+	advance(31 * time.Second)
+	register(8)
+	m.Scan()
+	if got := freeCalls.Load(); got != 2 {
+		t.Fatalf("after min-interval elapsed: want 2 FreeOSMemory calls, got %d", got)
+	}
+}
