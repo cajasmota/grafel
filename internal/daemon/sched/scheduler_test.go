@@ -107,8 +107,20 @@ func TestGroupAlgoCoalescesRepoReindexes(t *testing.T) {
 		s.Enqueue(r)
 	}
 
-	// Allow: index burst → link debounce(80ms)+run → group-algo debounce(80ms)+run.
-	time.Sleep(600 * time.Millisecond)
+	// Converge, then settle: poll until both coalesced passes have run (index
+	// burst → link debounce → group-algo debounce), then confirm the counts
+	// hold steady past two further debounce windows. Polling on the guarded
+	// counters (not a fixed sleep) removes the wall-clock straddle that made
+	// this flake under slow CI: a slow scheduler just delays convergence, it
+	// can never split the burst into a second pass.
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return linkCalls == 1 && groupAlgoCalls == 1
+	})
+	// Settle window: well past LinkDebounce+GroupAlgoDebounce (80+80ms) to
+	// catch any erroneous second pass.
+	time.Sleep(400 * time.Millisecond)
 
 	mu.Lock()
 	gotLinks, gotAlgo := linkCalls, groupAlgoCalls
@@ -153,6 +165,14 @@ func TestGroupAlgoReArmsOnNewLinkCompletion(t *testing.T) {
 	s.Start()
 	defer s.Stop()
 
+	// Timing here is structural, not wall-clock-fragile: the group-algo timer
+	// is *re-armed* (old timer cancelled) when /b's link pass completes, so the
+	// only way group-algo can fire is GroupAlgoDebounce (200ms) after the LAST
+	// link completion. The mid-window check below proves it did NOT fire early;
+	// the final check converges on the single eventual pass. The sleeps are
+	// kept SMALL relative to the 200ms debounce (re-arm happens at ~100ms, well
+	// before the first 200ms timer could elapse) so even a slow CI cannot make
+	// the first timer fire before the re-arm cancels it.
 	s.Enqueue("/a")
 	time.Sleep(100 * time.Millisecond) // first link pass done, group-algo armed (200ms)
 	s.Enqueue("/b")                    // second burst → re-arms the group-algo timer
@@ -163,7 +183,15 @@ func TestGroupAlgoReArmsOnNewLinkCompletion(t *testing.T) {
 	if mid != 0 {
 		t.Errorf("group-algo fired before the re-armed window settled, got %d", mid)
 	}
-	time.Sleep(400 * time.Millisecond)
+	// Converge on the single eventual pass with a generous deadline (slow CI
+	// just takes longer to reach the re-armed 200ms window), then settle to
+	// confirm no extra pass follows.
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return groupAlgoCalls == 1
+	})
+	time.Sleep(300 * time.Millisecond) // settle past another GroupAlgoDebounce
 	mu.Lock()
 	got := groupAlgoCalls
 	mu.Unlock()
@@ -206,7 +234,15 @@ func TestLinksDebouncePerGroup(t *testing.T) {
 
 	s.Enqueue("/a")
 	s.Enqueue("/b")
-	time.Sleep(400 * time.Millisecond)
+	// Converge on the single coalesced link pass, then settle to prove no
+	// second pass follows. Poll the guarded slice rather than asserting on a
+	// fixed sleep so slow CI can't straddle the 100ms LinkDebounce window.
+	waitFor(t, 5*time.Second, func() bool {
+		mu.Lock()
+		defer mu.Unlock()
+		return len(linkCalls) == 1
+	})
+	time.Sleep(300 * time.Millisecond) // settle: 3× LinkDebounce
 	mu.Lock()
 	got := append([]string(nil), linkCalls...)
 	mu.Unlock()

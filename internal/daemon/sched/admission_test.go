@@ -142,7 +142,12 @@ func TestAdmissionOversizeRunsSolo(t *testing.T) {
 	defer s.Stop()
 
 	s.Enqueue("/giant")
-	time.Sleep(200 * time.Millisecond)
+	// Converge on the single solo run (poll, not a fixed sleep, so a slow CI
+	// just waits longer to observe it), then settle to confirm it doesn't run
+	// twice. The single enqueue can never produce >1 admission, so this is a
+	// convergence assertion, not a tight-timing one.
+	waitFor(t, 5*time.Second, func() bool { return calls.Load() == 1 })
+	time.Sleep(100 * time.Millisecond)
 	if got := calls.Load(); got != 1 {
 		t.Errorf("expected oversize job to run solo, got %d", got)
 	}

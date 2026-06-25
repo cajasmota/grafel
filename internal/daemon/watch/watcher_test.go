@@ -124,7 +124,9 @@ func TestDebounceTwoBursts(t *testing.T) {
 		mu    sync.Mutex
 		calls int
 	)
-	w, err := newTestWatcher(100*time.Millisecond, func(string, bool) {
+	const debounce = 100 * time.Millisecond
+	fc := newManualClock()
+	w, err := newTestWatcher(debounce, func(string, bool) {
 		mu.Lock()
 		calls++
 		mu.Unlock()
@@ -132,6 +134,10 @@ func TestDebounceTwoBursts(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
+	// Inject the manual clock before subscribing so the two bursts are
+	// separated by a deterministic clock advance rather than a real sleep that
+	// slow CI could merge into a single window.
+	w.clk = fc
 	defer w.Stop()
 	if _, err := w.AddRepo(repo); err != nil {
 		t.Fatalf("add: %v", err)
@@ -144,10 +150,24 @@ func TestDebounceTwoBursts(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+
+	// Burst 1: write, wait until the debounce timer is armed, then advance past
+	// the window so its (single) coalesced sink call fires. Waiting on the
+	// armed-timer predicate (not an event count) is exact: it is the precise
+	// precondition for Advance to fire the sink, robust to a write surfacing as
+	// Create+Write+Chmod.
 	touch("a.go")
-	time.Sleep(300 * time.Millisecond) // exceed debounce window
+	waitForArmed5392(t, w, repo, 5*time.Second)
+	fc.Advance(debounce + time.Millisecond)
+	waitForCalls5392(t, &mu, &calls, 1, 5*time.Second)
+
+	// Burst 2: a fresh event arms a new debounce timer; advancing again fires
+	// the second coalesced call. The clock advance is the explicit boundary
+	// between the two windows, so the two bursts can never collapse into one.
 	touch("b.go")
-	time.Sleep(300 * time.Millisecond)
+	waitForArmed5392(t, w, repo, 5*time.Second)
+	fc.Advance(debounce + time.Millisecond)
+	waitForCalls5392(t, &mu, &calls, 2, 5*time.Second)
 
 	mu.Lock()
 	got := calls
@@ -155,6 +175,47 @@ func TestDebounceTwoBursts(t *testing.T) {
 	if got != 2 {
 		t.Errorf("two bursts should yield two sink calls, got %d", got)
 	}
+}
+
+// waitForArmed5392 blocks until the repo's debounce timer is armed (an event
+// has been recorded and a pending timer exists), or fails on timeout. This is
+// the exact precondition for advancing the manual clock to fire the sink.
+func waitForArmed5392(t *testing.T, w *Watcher, repo string, d time.Duration) {
+	t.Helper()
+	abs, _ := filepath.Abs(repo)
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		w.mu.Lock()
+		rs := w.repos[abs]
+		armed := rs != nil && rs.pending && rs.timer != nil
+		w.mu.Unlock()
+		if armed {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("debounce timer for %s never armed within %s", repo, d)
+}
+
+// waitForCalls5392 blocks until the guarded call counter reaches want, or fails
+// on timeout. The manual-clock callback fires on the Advance goroutine, so this
+// converges essentially immediately after Advance.
+func waitForCalls5392(t *testing.T, mu *sync.Mutex, calls *int, want int, d time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(d)
+	for time.Now().Before(deadline) {
+		mu.Lock()
+		got := *calls
+		mu.Unlock()
+		if got >= want {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	mu.Lock()
+	got := *calls
+	mu.Unlock()
+	t.Fatalf("sink calls = %d, want ≥ %d within %s", got, want, d)
 }
 
 // TestSkipDirRespected verifies that creating files inside a skipped
