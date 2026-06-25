@@ -342,6 +342,80 @@ func TestDiffReindex_CatchesInjectedMismatch(t *testing.T) {
 	t.Logf("validator correctly caught injected mismatch:\n%s", rep.String())
 }
 
+// ─────────────────────── flow-pass delta cases (#5309 layer 3) ──────────────
+//
+// The start-state corpus above (caller.go → target.go) is a 2-node chain, below
+// the process-flow MinSteps threshold, so it emits no Process entities — the
+// flow-pass parity is exercised trivially there. These cases use a deeper call
+// chain that DOES emit a Process flow, so the incremental flow pass
+// (engine.RunFlowsIncremental) is actually compared against a full rebuild's
+// Pass 7 / 7.5 output.
+
+// dvFlowCorpus writes a 4-deep call chain (Handler → StepB → StepC → StepD) that
+// the process-flow walker materialises into one Process entity (+ its
+// ENTRY_POINT_OF / STEP_IN_PROCESS edges) — plus a separate plain helper so a
+// docs-only/unrelated change has something inert to touch.
+func dvFlowCorpus(t *testing.T, repo string) {
+	dvWriteFile(t, repo, "chain.go", "package svc\n\n"+
+		"func Handler() int { return StepB() }\n"+
+		"func StepB() int { return StepC() }\n"+
+		"func StepC() int { return StepD() }\n"+
+		"func StepD() int { return 1 }\n")
+	dvWriteFile(t, repo, "README.md", "# svc\n\nInitial docs.\n")
+}
+
+// Case 5 — call-chain change ripples into the process flow. Lengthening the
+// chain (StepD now calls a new StepE) changes the Process entity's chain hash +
+// step edges. The incremental flow pass must strip the stale Process and re-emit
+// exactly the Process a full rebuild's Pass 7 computes for the new chain.
+func TestDiffReindex_FlowChainChange(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	dvFlowCorpus(t, repo)
+
+	dvFullRebuild(t, repo, stateDir)
+	dvSeedManifest(t, repo, stateDir)
+
+	// Extend the chain: StepD now calls a new StepE, lengthening the flow.
+	dvWriteFile(t, repo, "chain.go", "package svc\n\n"+
+		"func Handler() int { return StepB() }\n"+
+		"func StepB() int { return StepC() }\n"+
+		"func StepC() int { return StepD() }\n"+
+		"func StepD() int { return StepE() }\n"+
+		"func StepE() int { return 1 }\n")
+
+	b := dvIncremental(t, repo, stateDir)
+
+	endDir := t.TempDir()
+	c := dvFullRebuild(t, repo, endDir)
+
+	dvAssertParity(t, b, c)
+}
+
+// Case 6 — docs-only change with a live process flow. Editing README.md touches
+// no call structure, so the blast radius cannot affect the flow; the incremental
+// path keeps the prior Process verbatim. It must still match a full rebuild,
+// which recomputes the identical Process from the unchanged chain — proving the
+// "keep flows verbatim when unaffected" branch is byte-correct.
+func TestDiffReindex_FlowDocsOnlyChange(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+	dvFlowCorpus(t, repo)
+
+	dvFullRebuild(t, repo, stateDir)
+	dvSeedManifest(t, repo, stateDir)
+
+	// Docs-only edit — no call/HTTP/pub-sub structure changes.
+	dvWriteFile(t, repo, "README.md", "# svc\n\nUpdated docs — no code change.\n")
+
+	b := dvIncremental(t, repo, stateDir)
+
+	endDir := t.TempDir()
+	c := dvFullRebuild(t, repo, endDir)
+
+	dvAssertParity(t, b, c)
+}
+
 // Case 4 — new cross-file call edge. Add a brand-new caller file that calls into
 // the existing target. The new entity AND the new cross-file CALLS edge must
 // match a full rebuild — this exercises the scoped resolver's inbound-edge

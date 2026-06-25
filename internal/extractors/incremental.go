@@ -324,10 +324,15 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// (entity IDs are deterministic over kind/name/source_file, so re-extracting
 	// a file usually re-creates entities with the same ID — keeping inbound
 	// cross-file edges valid for free).
+	// Track removed relationships so the incremental flow pass (#5309 layer 3)
+	// can tell whether the blast radius touched a flow-input edge.
+	var removedRels []graph.Relationship
 	filteredRels := doc.Relationships[:0]
 	for _, r := range doc.Relationships {
 		if !removedEntityIDs[r.FromID] {
 			filteredRels = append(filteredRels, r)
+		} else {
+			removedRels = append(removedRels, r)
 		}
 	}
 	doc.Relationships = filteredRels
@@ -402,7 +407,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	prunedInbound := doc.Relationships[:0]
 	for _, r := range doc.Relationships {
 		if removedEntityIDs[r.ToID] && !reEmittedIDs[r.ToID] {
-			continue // truly removed → drop the dangling inbound edge
+			removedRels = append(removedRels, r) // truly removed → drop the dangling inbound edge
+			continue
 		}
 		prunedInbound = append(prunedInbound, r)
 	}
@@ -462,6 +468,26 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	doc.Entities = append(doc.Entities, newEntities...)
 	doc.Relationships = append(doc.Relationships, newRels...)
 
+	// --- Step 8·flows: incremental per-repo flow passes (#5309 layer 3) ───────
+	// The full path runs RunProcessFlow (Pass 7) + RunEventFlow (Pass 7.5) over
+	// the finalized graph, BEFORE module-aggregation (Pass 8). The incremental
+	// path previously skipped both, carrying the prior build's Process /
+	// EventFlow entities + their ENTRY_POINT_OF / STEP_IN_PROCESS /
+	// SEED_OF_EVENT_FLOW / STEP_IN_EVENT_FLOW edges forward — which a code change
+	// can staleify. engine.RunFlowsIncremental is blast-radius-scoped: when the
+	// change cannot touch a flow input (CALLS / FETCHES / HTTP-boundary / pub-sub
+	// edges or any flow-relevant entity — e.g. docs/comment-only changes) the
+	// prior flows are already byte-equivalent to a full rebuild and are kept
+	// verbatim; otherwise the stale flows are stripped and both walkers re-run
+	// over the finalized graph, reproducing exactly what a full rebuild emits.
+	//
+	// Run BEFORE module-aggregation so the ordering matches the full path: a full
+	// rebuild's Pass 8 sees the Process / EventFlow entities Pass 7 emitted and
+	// folds them into the module layer (a CONTAINS edge from the `_external`
+	// Module node for each). Capture the flow-emitted entities/edges and feed them
+	// into the affected-module set so that module layer is re-derived too.
+	flowsRecomputed, flowEntities, flowRels := engine.RunFlowsIncremental(doc, newEntities, removedEntityIDs, newRels, removedRels)
+
 	// --- Step 8a: incremental module-aggregation (#5309 layer 2) ─────────────
 	// The full path runs module.Aggregate (CONTAINS / DEPENDS_ON + Module nodes)
 	// as Pass 8 over the finalized graph. The incremental path carries the prior
@@ -471,8 +497,28 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// whose membership or cross-module dependencies changed — every other
 	// module's nodes/edges are preserved verbatim. The result is byte-equivalent
 	// to a full rebuild's module layer without re-aggregating the whole graph.
-	affectedModules := affectedModuleSet(doc, removedModuleKeys, newEntities, newRels)
+	//
+	// The freshly (re)emitted flow entities/edges (#5309 layer 3) join the
+	// affected set so their `_external` Module node + CONTAINS edges are
+	// (re-)derived exactly as a full rebuild's Pass 8 would, and so a flow strip
+	// that removed the last member of a module triggers that module's re-derive.
+	aggNewEnts := append(append([]graph.Entity(nil), newEntities...), flowEntities...)
+	aggNewRels := append(append([]graph.Relationship(nil), newRels...), flowRels...)
+	affectedModules := affectedModuleSet(doc, removedModuleKeys, aggNewEnts, aggNewRels)
 	module.AggregateIncremental(doc, affectedModules)
+
+	// --- Step 8a.9: lib-boundary re-stamp (#5309 layer 3) ────────────────────
+	// The full path's Pass 8.9 (engine.ApplyLibBoundary) classifies every
+	// DEPENDS_ON edge first_party/third_party from the locality/kind props the
+	// extractors already attached. It runs AFTER module-aggregation (the agg
+	// pass emits fresh Module→Module DEPENDS_ON edges carrying only a `weight`
+	// prop). The incremental path's module-agg likewise emits unstamped
+	// DEPENDS_ON edges, so the `boundary` property must be (re)applied here or
+	// the freshly (re)emitted edges diverge from a full rebuild — surfaced once
+	// the flow Process entities (Pass 7) introduce new `_external`→first-party
+	// DEPENDS_ON pairs. The pass is deterministic, idempotent and bounded by the
+	// DEPENDS_ON edge count (a pure function of the now-finalized edge set).
+	engine.ApplyLibBoundary(doc)
 
 	// --- Step 8a': structural coupling re-stamp (#5309 layer 2) ──────────────
 	// The full path's Pass 8.6 (engine.ApplyStructuralCoupling) annotates each
@@ -543,8 +589,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	}
 
 	dur := time.Since(t0)
-	logger.Printf("incremental: done changed=%d entities=%d rels=%d took=%s",
-		len(reallyChanged), len(newEntities), len(newRels), dur.Truncate(time.Millisecond))
+	logger.Printf("incremental: done changed=%d entities=%d rels=%d flows_recomputed=%t took=%s",
+		len(reallyChanged), len(newEntities), len(newRels), flowsRecomputed, dur.Truncate(time.Millisecond))
 
 	return Result{
 		Done:         true,
