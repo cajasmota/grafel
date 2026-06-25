@@ -106,6 +106,21 @@ jobs:
       # can run, masking the current PR's source changes (refs #2253).
       - run: go clean -cache -testcache
 
+      # Normalize XDG_CONFIG_HOME on macOS so config resolution matches the
+      # Linux/Windows runners (#5477). GitHub's ubuntu/windows runners export
+      # XDG_CONFIG_HOME=$HOME/.config, which registry.ConfigDir honors first, so
+      # an un-isolated config-writing test resolves a path UNDER $HOME and the
+      # #5443 fail-closed write-guard panics — catching the leak. The macOS
+      # runner leaves XDG_CONFIG_HOME unset, so config resolved elsewhere and the
+      # same leak slipped past on macOS-only runs, surfacing only on the two
+      # slower-billed OSes. Exporting it here makes all three runners resolve
+      # config identically, so the leak-detector catches un-isolated tests on
+      # every platform.
+      - name: Normalize XDG_CONFIG_HOME (macOS parity with Linux/Windows)
+        if: runner.os == 'macOS'
+        shell: bash
+        run: echo "XDG_CONFIG_HOME=$HOME/.config" >> "$GITHUB_ENV"
+
       # Race detector policy (#2406):
       #   - push to main → always race (post-merge sanity)
       #   - release event → always race

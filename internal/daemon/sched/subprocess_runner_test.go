@@ -44,6 +44,16 @@ func TestSubprocessIndexEnabledEnv(t *testing.T) {
 // error when the target binary does not exist (simulates a broken install).
 func TestRunSubprocessIndexMissingBinary(t *testing.T) {
 	t.Setenv("GRAFEL_SUBPROCESS_INDEXER", "1")
+	// #5474: isolate the daemon root AND home so the spawned `index-internal`
+	// child resolves its per-repo store path under a TempDir, never the real
+	// ~/.grafel/store. Without this the child indexes tmpDir and writes a stray
+	// `<slug>-<hash>/refs/_unknown/graph.fb` into the developer's default store
+	// — the load-induced store-leak the package-level leak-detector trips on.
+	// The child inherits these via os.Environ() at exec, so they must be set
+	// BEFORE RunSubprocessIndex spawns it.
+	isoRoot := t.TempDir()
+	t.Setenv("GRAFEL_DAEMON_ROOT", isoRoot)
+	t.Setenv("GRAFEL_HOME", isoRoot)
 
 	// Patch os.Executable to return a non-existent path. We do this by running
 	// a helper binary name that does not exist — we can't easily override
