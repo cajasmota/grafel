@@ -142,11 +142,25 @@ type Config struct {
 	Workers           int           // worker pool size; defaults to 2
 	LinkDebounce      time.Duration // group settling window; defaults to 10s
 	GroupAlgoDebounce time.Duration // group-algo settling window after a link pass; defaults to 30s
-	Index             IndexFn
-	Links             LinksFn
-	GroupAlgo         GroupAlgoFn
-	GroupsForRepo     GroupsForRepoFn
-	Logger            *slog.Logger
+
+	// GroupAlgoMaxWait bounds how long a group-algo pass may be deferred by
+	// continuous re-arming of GroupAlgoDebounce (#5450). The debounce coalesces
+	// a burst of reindexes into one pass, but on a busy daemon where members
+	// re-index back-to-back, every link completion re-arms the (long) debounce
+	// and the recompute can be starved for minutes — leaving the overlay stale
+	// right after a reindex. The max-wait is a ceiling on that starvation: once a
+	// group's debounce has been continuously armed for GroupAlgoMaxWait, the next
+	// (re-)arm fires PROMPTLY instead of resetting the full window. It coalesces
+	// (one pass per window, not N) and reuses the same CPU-capped path, so it
+	// cannot uncork an unbounded recompute. <=0 defaults to
+	// groupAlgoMaxWaitDefault; override with GRAFEL_GROUP_ALGO_MAX_WAIT.
+	GroupAlgoMaxWait time.Duration
+
+	Index         IndexFn
+	Links         LinksFn
+	GroupAlgo     GroupAlgoFn
+	GroupsForRepo GroupsForRepoFn
+	Logger        *slog.Logger
 
 	// StaleGroups, when non-nil together with a positive OverlaySweepInterval,
 	// enables the periodic overlay-freshness sweep (#5403). It returns the
@@ -333,8 +347,19 @@ type Scheduler struct {
 	groupAlgoTimers  map[string]*time.Timer
 	groupAlgoPending map[string]bool
 	groupAlgoCancel  map[string]context.CancelFunc
-	indexedRepos     map[string]repoStats
-	recentLog        []LogEntry
+	// groupAlgoArmedAt records when a group's debounce window FIRST started (and
+	// is NOT reset on subsequent re-arms while still pending). It bounds debounce
+	// starvation: once the window has been continuously armed for
+	// GroupAlgoMaxWait, scheduleGroupAlgo fires promptly instead of resetting the
+	// full debounce (#5450). Cleared when the pass fires or is cancelled. Guarded
+	// by mu.
+	groupAlgoArmedAt map[string]time.Time
+	// groupAlgoFireAt records the wall-clock time the currently-armed pass is
+	// scheduled to fire, so a re-arm never pushes a pending fire later (#5450).
+	// Guarded by mu.
+	groupAlgoFireAt map[string]time.Time
+	indexedRepos    map[string]repoStats
+	recentLog       []LogEntry
 
 	// deadManAt tracks when the pending queue became non-empty with no
 	// admitted jobs. The dead-man goroutine force-admits a job when this
@@ -417,6 +442,14 @@ func New(cfg Config) *Scheduler {
 	if cfg.GroupAlgoDebounce <= 0 {
 		cfg.GroupAlgoDebounce = groupAlgoDebounceFromEnv()
 	}
+	if cfg.GroupAlgoMaxWait <= 0 {
+		cfg.GroupAlgoMaxWait = groupAlgoMaxWaitFromEnv()
+	}
+	// The max-wait is the ceiling on debounce starvation; a value below the
+	// debounce would defeat the coalescing entirely, so clamp it up.
+	if cfg.GroupAlgoMaxWait < cfg.GroupAlgoDebounce {
+		cfg.GroupAlgoMaxWait = cfg.GroupAlgoDebounce
+	}
 	// Overlay-freshness sweep cadence (#5403). A caller leaving this at the
 	// zero value picks up GRAFEL_OVERLAY_SWEEP_INTERVAL (default 10m; "0"
 	// disables). A caller that explicitly set a positive interval keeps it.
@@ -451,6 +484,8 @@ func New(cfg Config) *Scheduler {
 		groupAlgoTimers:  map[string]*time.Timer{},
 		groupAlgoPending: map[string]bool{},
 		groupAlgoCancel:  map[string]context.CancelFunc{},
+		groupAlgoArmedAt: map[string]time.Time{},
+		groupAlgoFireAt:  map[string]time.Time{},
 		indexedRepos:     map[string]repoStats{},
 		shutdownCtx:      shutdownCtx,
 		shutdownCancel:   shutdownCancel,
@@ -1276,6 +1311,29 @@ func groupAlgoDebounceFromEnv() time.Duration {
 	return groupAlgoDebounceDefault
 }
 
+// groupAlgoMaxWaitDefault bounds how long a group-algo pass may be deferred by
+// continuous re-arming of the debounce (#5450). The 180s debounce coalesces
+// bursts, but a busy daemon whose members re-index back-to-back re-arms it
+// forever, starving the recompute and leaving the overlay stale right after a
+// reindex. The max-wait caps that starvation: after this long continuously
+// armed, the pass fires promptly. 5 min is ~1.7× the debounce — comfortably past
+// a normal burst so steady-state coalescing is unaffected, yet far below the 10m
+// settled-group sweep so a churning group is refreshed well before the sweep
+// would. Override with GRAFEL_GROUP_ALGO_MAX_WAIT.
+const groupAlgoMaxWaitDefault = 300 * time.Second
+
+// groupAlgoMaxWaitFromEnv resolves the group-algo max-wait, honoring
+// GRAFEL_GROUP_ALGO_MAX_WAIT (a Go duration string, e.g. "240s"). An unset or
+// unparseable value falls back to groupAlgoMaxWaitDefault.
+func groupAlgoMaxWaitFromEnv() time.Duration {
+	if v := strings.TrimSpace(os.Getenv("GRAFEL_GROUP_ALGO_MAX_WAIT")); v != "" {
+		if d, err := time.ParseDuration(v); err == nil && d > 0 {
+			return d
+		}
+	}
+	return groupAlgoMaxWaitDefault
+}
+
 // overlaySweepIntervalDefault is the cadence of the settled-group overlay
 // freshness sweep (#5403). A long-running daemon serving a SETTLED group (one
 // that is not being actively reindexed, so no link pass → no scheduleGroupAlgo
@@ -1311,18 +1369,67 @@ func overlaySweepIntervalFromEnv() time.Duration {
 // debounce window over. The pass runs once over the assembled group union and
 // writes the <group>-algo.json overlay (A2). It is the replacement for the old
 // per-repo scheduleAlgo: a single-repo group is the degenerate one-repo union.
+//
+// Max-wait (#5450): the debounce coalesces a burst of reindexes into one pass,
+// but on a busy daemon where members re-index back-to-back every link completion
+// re-arms the (long) debounce, so the recompute can be starved for minutes —
+// leaving the overlay stale right after a reindex. To bound that, the FIRST arm
+// in a window records groupAlgoArmedAt; subsequent re-arms keep that timestamp.
+// The pass is scheduled for the EARLIER of now+debounce and armedAt+maxWait;
+// since the armedAt+maxWait deadline does not move across re-arms, continuous
+// churn can push the fire out no later than that deadline. Still one pass per
+// window (coalesced) and still on the CPU-capped path — no unbounded recompute.
 func (s *Scheduler) scheduleGroupAlgo(group string) {
 	if s.cfg.GroupAlgo == nil {
 		return
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// Preserve the window-start timestamp across re-arms.
+	armedAt, hadWindow := s.groupAlgoArmedAt[group]
+	now := time.Now()
+	if !hadWindow {
+		armedAt = now
+	}
+
+	// The pass fires at the EARLIER of:
+	//   - now + debounce         (coalesce a burst — a fresh re-arm normally
+	//                             pushes this out, the existing contract), and
+	//   - armedAt + maxWait      (the hard ceiling on debounce starvation, #5450).
+	// The deadline does not move across re-arms (armedAt is preserved), so a busy
+	// daemon that re-arms on every link completion cannot push the pass out
+	// forever — it fires no later than armedAt+maxWait.
+	fireAt := now.Add(s.cfg.GroupAlgoDebounce)
+	if deadline := armedAt.Add(s.cfg.GroupAlgoMaxWait); deadline.Before(fireAt) {
+		fireAt = deadline
+	}
+
+	// If a pass is already pending at exactly this fire time, the deadline has
+	// PINNED it (the debounce can no longer push it out): leave the existing,
+	// about-to-fire timer alone instead of cancel+re-arm. Re-arming on a tight
+	// cadence would otherwise keep stopping the timer just before it fires,
+	// starving the pass forever — the exact bug this cap exists to prevent
+	// (#5450). When fireAt still moves (normal debounce), we fall through and
+	// re-arm as before.
+	if s.groupAlgoPending[group] && fireAt.Equal(s.groupAlgoFireAt[group]) {
+		return
+	}
+
+	delay := time.Until(fireAt)
+	if delay < 0 {
+		delay = 0
+	}
+
 	s.cancelGroupAlgoLocked(group)
+	s.groupAlgoArmedAt[group] = armedAt
+	s.groupAlgoFireAt[group] = fireAt
 	s.groupAlgoPending[group] = true
-	s.groupAlgoTimers[group] = time.AfterFunc(s.cfg.GroupAlgoDebounce, func() {
+	s.groupAlgoTimers[group] = time.AfterFunc(delay, func() {
 		s.mu.Lock()
 		s.groupAlgoPending[group] = false
 		delete(s.groupAlgoTimers, group)
+		delete(s.groupAlgoArmedAt, group) // window closed — next arm starts fresh
+		delete(s.groupAlgoFireAt, group)
 		// Derive the per-run cancel context from shutdownCtx (not
 		// context.Background()) so that on Stop() the in-flight group-algo pass
 		// — which may fork a subprocess — receives cancellation. Mirrors runIndex
@@ -1351,6 +1458,11 @@ func (s *Scheduler) cancelGroupAlgoLocked(group string) {
 		c()
 		delete(s.groupAlgoCancel, group)
 	}
+	// Clear the max-wait window (#5450). scheduleGroupAlgo snapshots and restores
+	// this for a re-arm of a still-open window; an explicit cancel (shutdown, or a
+	// superseding pass) ends the window so the next arm starts a fresh budget.
+	delete(s.groupAlgoArmedAt, group)
+	delete(s.groupAlgoFireAt, group)
 }
 
 func (s *Scheduler) runGroupAlgo(ctx context.Context, group string) {
