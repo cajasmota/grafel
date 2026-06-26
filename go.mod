@@ -21,7 +21,7 @@ require (
 	github.com/tree-sitter-grammars/tree-sitter-lua v0.3.0
 	github.com/tree-sitter-grammars/tree-sitter-toml v0.7.0
 	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2
-	github.com/tree-sitter/go-tree-sitter v0.24.0
+	github.com/tree-sitter/go-tree-sitter v0.25.0
 	github.com/tree-sitter/tree-sitter-bash v0.23.3
 	github.com/tree-sitter/tree-sitter-c v0.23.6
 	github.com/tree-sitter/tree-sitter-c-sharp v0.23.1
@@ -113,3 +113,9 @@ require (
 )
 
 replace github.com/tree-sitter/tree-sitter-elixir v0.3.4 => github.com/elixir-lang/tree-sitter-elixir v0.3.4
+
+// ABI-15 POC (#5473 Phase 2): route the TypeScript/TSX grammar import at a
+// locally vendored copy regenerated from grammar.js (v0.23.2) with tree-sitter
+// CLI 0.26.9 → LANGUAGE_VERSION 15. Same grammar.js as the upstream v0.23.2 pin,
+// so node-types are stable; only the parser tables move from ABI 14 to ABI 15.
+replace github.com/tree-sitter/tree-sitter-typescript v0.23.2 => ./third_party/tree-sitter-typescript
