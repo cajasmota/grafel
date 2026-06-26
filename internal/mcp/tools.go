@@ -186,28 +186,21 @@ func (s *Server) refForRequest(req mcpapi.CallToolRequest) string {
 
 // reposToConsider applies repo_filter to a group's repo set. Empty filter
 // returns all loaded repos. "*" is treated as "all".
+// reposToConsider resolves a repo_filter against lg's repos using the lenient
+// matcher (#5648): exact key/path, case-insensitive, basename/owner-prefix, and
+// a fuzzy fallback all resolve. It discards the diagnostic; callers that want a
+// self-correcting error on an empty result use reposToConsiderDiag.
 func reposToConsider(lg *LoadedGroup, filter []string) []*LoadedRepo {
-	if len(filter) == 0 || (len(filter) == 1 && filter[0] == "*") {
-		out := make([]*LoadedRepo, 0, len(lg.Repos))
-		names := make([]string, 0, len(lg.Repos))
-		for n := range lg.Repos {
-			names = append(names, n)
-		}
-		sort.Strings(names)
-		for _, n := range names {
-			if r := lg.Repos[n]; r != nil && r.Doc != nil {
-				out = append(out, r)
-			}
-		}
-		return out
-	}
-	out := []*LoadedRepo{}
-	for _, name := range filter {
-		if r, ok := lg.Repos[name]; ok && r.Doc != nil {
-			out = append(out, r)
-		}
-	}
-	return out
+	repos, _ := resolveRepoFilter(lg, filter)
+	return repos
+}
+
+// reposToConsiderDiag is reposToConsider plus the *repoFilterMiss describing
+// why an entry could not be resolved (nil when the result is non-empty or the
+// group simply has no indexed repos). Pass the miss to repoFilterError to build
+// a self-correcting hint.
+func reposToConsiderDiag(lg *LoadedGroup, filter []string) ([]*LoadedRepo, *repoFilterMiss) {
+	return resolveRepoFilter(lg, filter)
 }
 
 // jsonResult is a small helper to produce JSON tool output with a structured
@@ -631,9 +624,9 @@ func (s *Server) handleQueryGraph(ctx context.Context, req mcpapi.CallToolReques
 		// stays nil → reposToConsider returns all repos in the served group.
 	}
 
-	repos := reposToConsider(lg, repoFilter)
+	repos, miss := reposToConsiderDiag(lg, repoFilter)
 	if len(repos) == 0 {
-		return mcpapi.NewToolResultText("# no repos loaded for this group\n"), nil
+		return mcpapi.NewToolResultText(repoFilterError(lg, miss) + "\n"), nil
 	}
 
 	// Score across all repos in scope. BM25 runs unconditionally; the
