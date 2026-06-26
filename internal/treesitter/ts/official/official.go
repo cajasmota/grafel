@@ -15,6 +15,9 @@ package official
 
 import (
 	"errors"
+	"fmt"
+	"os"
+	"time"
 
 	tsofficial "github.com/tree-sitter/go-tree-sitter"
 
@@ -24,7 +27,39 @@ import (
 // adapterName is stamped on every Language this adapter produces.
 const adapterName = "official"
 
+// defaultParseTimeout bounds a single tree-sitter parse. Override per-process
+// with GRAFEL_PARSE_TIMEOUT (a Go duration, e.g. "20s", "500ms"); "0" disables
+// the watchdog entirely. A normal parse finishes in well under a second, so the
+// deadline only ever fires on a pathological/runaway parse.
+const defaultParseTimeout = 20 * time.Second
+
+// parseTimeoutEnv is the env var that tunes the per-parse watchdog deadline.
+const parseTimeoutEnv = "GRAFEL_PARSE_TIMEOUT"
+
+// ErrParseDeadlineExceeded is returned by Parse when the per-parse watchdog
+// halts a runaway tree-sitter parse before it completes (#5473). It is a
+// distinct sentinel so callers (and tests) can tell a watchdog kill from a
+// genuine empty/failed parse, and so the daemon logs a bounded error instead of
+// freezing. See parseTimeout / Parse for the mechanism.
+var ErrParseDeadlineExceeded = errors.New("treesitter/official: parse exceeded watchdog deadline")
+
 var errWrongAdapter = errors.New("treesitter/ts/official: language was not produced by the official adapter")
+
+// parseTimeout resolves the per-parse watchdog deadline from the environment,
+// falling back to defaultParseTimeout. A non-negative value is honoured (0 ==
+// disabled); a malformed or negative value falls back to the default rather
+// than silently disabling the safety net.
+func parseTimeout() time.Duration {
+	v := os.Getenv(parseTimeoutEnv)
+	if v == "" {
+		return defaultParseTimeout
+	}
+	d, err := time.ParseDuration(v)
+	if err != nil || d < 0 {
+		return defaultParseTimeout
+	}
+	return d
+}
 
 // Adapter implements ts.Adapter over tree-sitter/go-tree-sitter.
 type Adapter struct{}
@@ -70,11 +105,51 @@ type Parser struct {
 	p *tsofficial.Parser
 }
 
-// Parse implements ts.Parser. The official binding does not return an error;
-// a nil tree maps to (nil, nil).
+// Parse implements ts.Parser. It does a fresh parse (no oldTree reuse) bounded
+// by a per-parse wall-clock watchdog so a single pathological input can never
+// pin the daemon indefinitely (#5473).
+//
+// Why this matters. A runtime build was observed sitting ~26 min in one runaway
+// C parse (ts_parser_parse / ts_node_child hot). Because the factory holds a
+// process-wide parse mutex (issue #481) AND a parse slot across this call, that
+// one hung parse froze ALL in-process parsing and the daemon went silent. The
+// bare p.Parse(source, nil) is unbounded.
+//
+// Mechanism (v0.24-native). go-tree-sitter v0.24 exposes the C wall-clock
+// deadline ts_parser_set_timeout_micros: tree-sitter checks the elapsed budget
+// periodically from its main parse loop and, once exceeded, halts early and
+// returns a nil tree. That is exactly the cancellation path the v0.25 progress
+// callback would provide, without the goroutine/cancellation-flag plumbing. On
+// a halt we return ErrParseDeadlineExceeded so the factory converts the freeze
+// into a bounded, logged per-file failure and releases parseMu + the slot. A
+// genuine empty parse (no halt) still maps to (nil, nil). The parser is
+// single-use here (the factory closes it after this call), so no Reset of the
+// halted state is needed.
+//
+// Caveat: a true tight C loop that never reaches a deadline-check site would
+// still need an upstream fix; the observed runaway was in the main loop, which
+// does check.
 func (p *Parser) Parse(source []byte) (ts.Tree, error) {
+	timeout := parseTimeout()
+	// SetTimeoutMicros(0) is tree-sitter's "no deadline" default; a positive
+	// budget arms the watchdog.
+	p.p.SetTimeoutMicros(uint64(timeout.Microseconds()))
+
+	start := time.Now()
 	tree := p.p.Parse(source, nil)
 	if tree == nil {
+		// With a language set, the v0.24 binding returns a nil tree only when
+		// the parse halted early on the wall-clock deadline (a genuine parse —
+		// including of empty input — yields a real, possibly all-ERROR tree, not
+		// nil). So a nil tree under an armed watchdog IS the deadline firing; we
+		// report it directly rather than re-deriving it from elapsed wall-clock,
+		// which races the C clock and is flaky under load. When the watchdog is
+		// disabled (timeout == 0) there is no deadline to attribute a nil tree
+		// to, so it maps to (nil, nil) as the bare binding did.
+		if timeout > 0 {
+			return nil, fmt.Errorf("%w of %s after %s (%s; possible pathological/runaway parse, #5473)",
+				ErrParseDeadlineExceeded, timeout, time.Since(start).Round(time.Millisecond), parseTimeoutEnv)
+		}
 		return nil, nil
 	}
 	return &Tree{t: tree}, nil

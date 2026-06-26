@@ -183,18 +183,28 @@ func (f *ParserFactory) parseOfficial(span trace.Span, source []byte, language s
 	indexstate.AcquireParseSlot()
 	defer indexstate.ReleaseParseSlot()
 
-	// Issue #481 — serialise parse calls across goroutines (see ParserFactory
-	// godoc for the rationale).
-	parseMu.Lock()
+	// Parser construction/teardown operate on a per-call, independent parser
+	// instance (fresh ts_parser_new + SetLanguage; Close frees only that
+	// parser, and the produced tree outlives it). Issue #481's
+	// non-determinism is specific to the parse itself, so we keep those out of
+	// the critical section and serialise ONLY the parse below.
 	p, err := adapter.NewParser(lang)
 	if err != nil {
-		parseMu.Unlock()
 		return nil, fmt.Errorf("treesitter: parser init failed for language %s: %w", language, err)
 	}
+	defer p.Close()
+
+	// Issue #481 — serialise the parse across goroutines (see ParserFactory
+	// godoc for the rationale). The per-parse watchdog in official.Parse
+	// (GRAFEL_PARSE_TIMEOUT) bounds how long this critical section can be held:
+	// a runaway parse is halted at the deadline and returns an error instead of
+	// hanging, so a single pathological file can no longer pin parseMu — and
+	// thus ALL in-process parsing — indefinitely (was: ~26-min freeze, #5473).
+	parseMu.Lock()
 	tree, err := p.Parse(source)
-	p.Close()
 	parseMu.Unlock()
 	if err != nil {
+		span.RecordError(err)
 		return nil, fmt.Errorf("treesitter: parse failed for language %s: %w", language, err)
 	}
 	if tree == nil {
