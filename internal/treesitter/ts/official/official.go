@@ -15,6 +15,8 @@ package official
 
 import (
 	"errors"
+	"fmt"
+	"time"
 
 	tsofficial "github.com/tree-sitter/go-tree-sitter"
 
@@ -23,6 +25,24 @@ import (
 
 // adapterName is stamped on every Language this adapter produces.
 const adapterName = "official"
+
+// parseWatchdogTimeout bounds a single tree-sitter parse so a pathological
+// input can never pin the daemon indefinitely (#5473).
+//
+// Why this exists: go-tree-sitter v0.25 made Parser.Parse(text, oldTree) a thin
+// wrapper over ParseWithOptions(cb, oldTree, nil) — i.e. NO ParseOptions, hence
+// NO progress callback, so the parse is UNCANCELLABLE. v0.24's ParseCtx could
+// interrupt a parse by setting the cancellation flag; that flag path is
+// deprecated in v0.25 and the progress callback is now the only interrupt
+// mechanism. A v0.25 build was observed pinned ~26 min in pure C parsing
+// (ts_parser_parse / ts_node_child) on a single file, and because the factory
+// holds a process-wide parse mutex (issue #481) AND a parse slot across the
+// call, that one hung parse froze the whole in-process index pipeline. This
+// watchdog supplies a progress callback keyed off a wall-clock deadline: a
+// runaway parse is cancelled at the next callback tick, returning a nil tree
+// that the factory turns into a bounded, logged failure instead of an
+// unbounded hang. Defensive and worth keeping independent of the v0.25 bump.
+const parseWatchdogTimeout = 20 * time.Second
 
 var errWrongAdapter = errors.New("treesitter/ts/official: language was not produced by the official adapter")
 
@@ -70,11 +90,41 @@ type Parser struct {
 	p *tsofficial.Parser
 }
 
-// Parse implements ts.Parser. The official binding does not return an error;
-// a nil tree maps to (nil, nil).
+// Parse implements ts.Parser. It does a fresh parse (no oldTree reuse) bounded
+// by a wall-clock watchdog (see parseWatchdogTimeout): instead of the bare,
+// uncancellable p.Parse(source, nil), it calls ParseWithOptions with a progress
+// callback that cancels once the deadline passes. A cancelled or empty parse
+// yields a nil tree; a genuine empty parse maps to (nil, nil), while a
+// watchdog-cancelled parse returns a sentinel error so the caller logs a
+// bounded failure rather than the daemon silently hanging (#5473).
 func (p *Parser) Parse(source []byte) (ts.Tree, error) {
-	tree := p.p.Parse(source, nil)
+	deadline := time.Now().Add(parseWatchdogTimeout)
+	canceled := false
+	tree := p.p.ParseWithOptions(
+		func(offset int, _ tsofficial.Point) []byte {
+			if offset >= len(source) {
+				return nil
+			}
+			return source[offset:]
+		},
+		nil,
+		&tsofficial.ParseOptions{
+			// Returning true CANCELS the parse. tree-sitter invokes this
+			// periodically from its main parse loop, so a runaway parse is
+			// broken at the next tick instead of spinning forever.
+			ProgressCallback: func(tsofficial.ParseState) bool {
+				if time.Now().After(deadline) {
+					canceled = true
+					return true
+				}
+				return false
+			},
+		},
+	)
 	if tree == nil {
+		if canceled {
+			return nil, fmt.Errorf("treesitter/official: parse exceeded %s watchdog and was cancelled (possible pathological/v0.25 parse loop)", parseWatchdogTimeout)
+		}
 		return nil, nil
 	}
 	return &Tree{t: tree}, nil
