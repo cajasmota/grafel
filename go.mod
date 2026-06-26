@@ -16,26 +16,26 @@ require (
 	github.com/mark3labs/mcp-go v0.52.0
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/pflag v1.0.9
-	github.com/tree-sitter-grammars/tree-sitter-lua v0.5.0
+	github.com/tree-sitter-grammars/tree-sitter-lua v0.3.0
 	github.com/tree-sitter-grammars/tree-sitter-toml v0.7.0
 	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2
 	github.com/tree-sitter/go-tree-sitter v0.25.0
-	github.com/tree-sitter/tree-sitter-bash v0.25.1
-	github.com/tree-sitter/tree-sitter-c v0.24.2
-	github.com/tree-sitter/tree-sitter-c-sharp v0.23.5
+	github.com/tree-sitter/tree-sitter-bash v0.23.3
+	github.com/tree-sitter/tree-sitter-c v0.23.6
+	github.com/tree-sitter/tree-sitter-c-sharp v0.23.1
 	github.com/tree-sitter/tree-sitter-cpp v0.23.4
-	github.com/tree-sitter/tree-sitter-css v0.25.0
+	github.com/tree-sitter/tree-sitter-css v0.23.2
 	github.com/tree-sitter/tree-sitter-elixir v0.3.4
-	github.com/tree-sitter/tree-sitter-go v0.25.0
+	github.com/tree-sitter/tree-sitter-go v0.23.4
 	github.com/tree-sitter/tree-sitter-html v0.23.2
 	github.com/tree-sitter/tree-sitter-java v0.23.5
-	github.com/tree-sitter/tree-sitter-javascript v0.25.0
-	github.com/tree-sitter/tree-sitter-ocaml v0.25.0
-	github.com/tree-sitter/tree-sitter-php v0.24.2
-	github.com/tree-sitter/tree-sitter-python v0.25.0
+	github.com/tree-sitter/tree-sitter-javascript v0.23.1
+	github.com/tree-sitter/tree-sitter-ocaml v0.23.2
+	github.com/tree-sitter/tree-sitter-php v0.23.11
+	github.com/tree-sitter/tree-sitter-python v0.23.6
 	github.com/tree-sitter/tree-sitter-ruby v0.23.1
-	github.com/tree-sitter/tree-sitter-rust v0.24.2
-	github.com/tree-sitter/tree-sitter-scala v0.25.1
+	github.com/tree-sitter/tree-sitter-rust v0.23.2
+	github.com/tree-sitter/tree-sitter-scala v0.23.4
 	github.com/tree-sitter/tree-sitter-typescript v0.23.2
 	go.opentelemetry.io/otel v1.43.0
 	go.opentelemetry.io/otel/sdk v1.43.0
@@ -104,26 +104,47 @@ require (
 	k8s.io/klog/v2 v2.140.0 // indirect
 )
 
-// ABI-15 full rollout (#5473 Phase 2). The 9 "laggard" grammars below have no
-// upstream release tagged at ABI 15 for the version grafel pins, so each is
-// vendored locally: we regenerate src/parser.c with `tree-sitter generate --abi
-// 15 src/grammar.json` (CLI 0.26.9) at the EXACT pinned grammar version. Feeding
-// the already-resolved src/grammar.json isolates the ABI variable perfectly —
-// node-types.json is unchanged apart from metadata (extra/root annotations,
-// dropped anonymous-token listings), so every extractor stays intact; only the
-// parse tables move from ABI 14 to ABI 15. The other 12 grammars reach ABI 15
-// via plain upstream version bumps in the require block above. Runtime is pinned
-// at go-tree-sitter v0.25.0 (NOT v0.26 — it drops SetTimeoutMicros, which the
-// parse watchdog uses). The elixir replace also moves from the elixir-lang fork
-// to the local vendored copy (same module path, same v0.3.4 grammar).
+// ABI-15 full rollout (#5473 Phase 2). EVERY go-module grammar is vendored
+// locally and routed here via replace, regenerated with `tree-sitter generate
+// --abi 15 src/grammar.json` (CLI 0.26.9) at the EXACT version grafel pins in
+// the require block above. Feeding the already-resolved src/grammar.json
+// isolates the ABI variable perfectly: node-types.json is unchanged apart from
+// metadata (extra/root annotations, dropped anonymous-token listings), so every
+// extractor stays intact; only the parse tables move from ABI 14 to ABI 15.
+//
+// This is uniform across ALL grammars — NO upstream version bumps. An earlier
+// revision bumped the 12 "ready" grammars to newer ABI-15 upstream tags instead
+// of regenerating at the pinned version; the newer grammars shifted node
+// structures and broke extractors (e.g. the Rust generics extractor). Same-
+// version regen is the only approach that reaches ABI 15 without changing the
+// grammar, so it is applied everywhere.
+//
+// Runtime is pinned at go-tree-sitter v0.25.0 (NOT v0.26 — it drops
+// SetTimeoutMicros, which the parse watchdog uses). The elixir replace also
+// moves from the elixir-lang fork to the local vendored copy (same module path,
+// same v0.3.4 grammar). The 6 in-tree raw-C grammars (dockerfile, groovy, hcl,
+// kotlin, proto, sql) are regenerated in place under internal/treesitter/ts/
+// grammars/<lang>/, not here, because they have no upstream Go module.
 replace (
 	github.com/alex-pinkus/tree-sitter-swift v0.0.0-20260601004120-31d17fe7e818 => ./third_party/tree-sitter-swift
+	github.com/tree-sitter-grammars/tree-sitter-lua v0.3.0 => ./third_party/tree-sitter-lua
 	github.com/tree-sitter-grammars/tree-sitter-toml v0.7.0 => ./third_party/tree-sitter-toml
 	github.com/tree-sitter-grammars/tree-sitter-yaml v0.7.2 => ./third_party/tree-sitter-yaml
+	github.com/tree-sitter/tree-sitter-bash v0.23.3 => ./third_party/tree-sitter-bash
+	github.com/tree-sitter/tree-sitter-c v0.23.6 => ./third_party/tree-sitter-c
+	github.com/tree-sitter/tree-sitter-c-sharp v0.23.1 => ./third_party/tree-sitter-c-sharp
 	github.com/tree-sitter/tree-sitter-cpp v0.23.4 => ./third_party/tree-sitter-cpp
+	github.com/tree-sitter/tree-sitter-css v0.23.2 => ./third_party/tree-sitter-css
 	github.com/tree-sitter/tree-sitter-elixir v0.3.4 => ./third_party/tree-sitter-elixir
+	github.com/tree-sitter/tree-sitter-go v0.23.4 => ./third_party/tree-sitter-go
 	github.com/tree-sitter/tree-sitter-html v0.23.2 => ./third_party/tree-sitter-html
 	github.com/tree-sitter/tree-sitter-java v0.23.5 => ./third_party/tree-sitter-java
+	github.com/tree-sitter/tree-sitter-javascript v0.23.1 => ./third_party/tree-sitter-javascript
+	github.com/tree-sitter/tree-sitter-ocaml v0.23.2 => ./third_party/tree-sitter-ocaml
+	github.com/tree-sitter/tree-sitter-php v0.23.11 => ./third_party/tree-sitter-php
+	github.com/tree-sitter/tree-sitter-python v0.23.6 => ./third_party/tree-sitter-python
 	github.com/tree-sitter/tree-sitter-ruby v0.23.1 => ./third_party/tree-sitter-ruby
+	github.com/tree-sitter/tree-sitter-rust v0.23.2 => ./third_party/tree-sitter-rust
+	github.com/tree-sitter/tree-sitter-scala v0.23.4 => ./third_party/tree-sitter-scala
 	github.com/tree-sitter/tree-sitter-typescript v0.23.2 => ./third_party/tree-sitter-typescript
 )
