@@ -10,6 +10,47 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.7] — 2026-06-27
+
+**Daemon stability hardening.** This release makes the parser path
+fault-tolerant: a single pathological parse can no longer pin or freeze the
+daemon. It adds a per-parse watchdog with a bounded parse lock, a real-file
+parse canary as a regression guard, skips redundant periodic recompute when the
+graph is unchanged, and makes MCP repo filtering more resilient.
+
+### Added
+
+- **Per-parse watchdog + bounded parse lock (#5661):** every parse now runs
+  under a deadline (default 20s, configurable via `GRAFEL_PARSE_TIMEOUT`, `0`
+  disables). On deadline a parse returns a bounded, logged failure instead of
+  spinning indefinitely. The global parse mutex is narrowed to wrap only the
+  parse call, so one slow parse can no longer stall all other parsing —
+  structurally preventing a single runaway parse from pinning the daemon.
+- **Real-file parse canary (#5660):** a time-bounded test that parses real
+  fixtures and fails if any parse exceeds its budget — a regression guard
+  against grammar/runtime parse-loop classes.
+
+### Changed / Fixed
+
+- **Skip redundant periodic group-algo recompute (#5656):** the periodic overlay
+  sweep now gates on the community-input content hash instead of file mtimes, so
+  it skips recompute when the graph is genuinely unchanged (refreshing source
+  mtimes in place) — removing a recurring idle-CPU spike.
+- **Resilient MCP `repo_filter` matching + self-correcting hints (#5648):**
+  `repo_filter` tolerates path/name variations and returns self-correcting error
+  hints when a filter matches nothing, instead of a silent empty result.
+
+### Notes
+
+- An ABI-15 runtime/grammar migration was investigated during this cycle and
+  **deferred** — a correct migration must bump grammars to current upstream and
+  update each extractor to the new node structures (a per-grammar refactor) and
+  should not gate a stability release. The exploratory runtime bump landed and
+  was reverted within this cycle (net-zero here); the regenerated-grammar branch
+  is preserved for the future effort.
+
+---
+
 ## [0.1.6] — 2026-06-26
 
 **Self-healing indexing + incremental reindex + daemon stability.** This release
