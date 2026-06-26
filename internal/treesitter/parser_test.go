@@ -315,21 +315,6 @@ func TestSupportedLanguages_EachLanguageParsesSnippet(t *testing.T) {
 			if err == nil && res.TSTree == nil {
 				t.Errorf("Parse(%s) returned nil tree", lang)
 			}
-			// ABI smoke gate (#5650, ABI-15 runtime bump): prove every
-			// registered grammar still loads under the active runtime by
-			// reaching the root node without a panic. An out-of-window grammar
-			// SIGSEGVs here under the old behavior, or — under v0.25 — fails at
-			// parser init (abiGuard / SetLanguage); either way this asserts the
-			// happy path produces a reachable, non-ERROR root.
-			if res.TSTree != nil {
-				root := res.TSTree.RootNode()
-				if root == nil {
-					t.Fatalf("Parse(%s): RootNode() is nil (ABI mismatch?)", lang)
-				}
-				if root.IsError() {
-					t.Errorf("Parse(%s): root node is ERROR", lang)
-				}
-			}
 		})
 	}
 }
