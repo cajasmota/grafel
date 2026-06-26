@@ -57,6 +57,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/classifier"
 	"github.com/cajasmota/grafel/internal/coverage"
+	"github.com/cajasmota/grafel/internal/daemon/walk"
 	"github.com/cajasmota/grafel/internal/engine"
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/extractors/sresolver"
@@ -760,35 +761,28 @@ func fallback(t0 time.Time, reason string) Result {
 	}
 }
 
-// walkSourceFiles returns repo-relative forward-slash paths for all
-// source files under absRepo, excluding .git and common build artifacts.
-// This is a thin wrapper so the incremental path doesn't import internal/walk
-// directly (which would introduce a heavier dependency).
+// walkSourceFiles returns repo-relative forward-slash paths for all source
+// files under absRepo, using the SAME gitignore/.grafelignore-aware walker the
+// full indexer uses (walk.WalkRepo). This is deliberate: the incremental
+// change-detector and the full index must agree on which files exist.
+//
+// Previously this was a hand-rolled filepath.WalkDir with only a small
+// hardcoded directory denylist and NO .gitignore handling. The full index
+// (walk.WalkRepo) excluded gitignored build-artifact directories (e.g.
+// ios/Pods, android/**/.cxx), but this walker did not — so those gitignored
+// files entered the change manifest and, because build tooling constantly
+// regenerates/deletes them, were counted as "changed" on every poll. With the
+// HEAD static, that perpetually tripped the too-many-changed full-reindex
+// fallback (incremental.go ~line 233), pinning daemon CPU in an endless
+// reindex loop (#5665). Delegating to walk.WalkRepo makes both paths honor the
+// same ignore rules, so gitignored churn can no longer drive reindexing.
 func walkSourceFiles(absRepo string) ([]string, error) {
-	var paths []string
-	err := filepath.WalkDir(absRepo, func(path string, d os.DirEntry, err error) error {
-		if err != nil {
-			return nil // skip unreadable entries
-		}
-		name := d.Name()
-		if d.IsDir() {
-			switch name {
-			case ".git", "node_modules", "vendor", ".grafel",
-				"dist", "build", "__pycache__", ".mypy_cache":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		rel, relErr := filepath.Rel(absRepo, path)
-		if relErr != nil {
-			return nil
-		}
-		// Forward-slash always (diff manifest uses forward-slash keys).
-		rel = filepath.ToSlash(rel)
-		paths = append(paths, rel)
-		return nil
-	})
-	return paths, err
+	// Mirror the full indexer: probe sparse-checkout state so a partial
+	// working tree is walked consistently. ProbeRepo is best-effort and
+	// returns a zero-value (no sparse filtering) when the repo isn't sparse.
+	sparse := gitmeta.ProbeRepo(absRepo)
+	files, _, err := walk.WalkRepo(absRepo, &walk.Options{Sparse: &sparse})
+	return files, err
 }
 
 // entityRecordToGraphEntity converts a types.EntityRecord produced by an

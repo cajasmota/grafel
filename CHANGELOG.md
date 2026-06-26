@@ -10,6 +10,28 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.7.1] — 2026-06-27
+
+**Hotfix: incremental reindex loop on gitignored build artifacts.** The
+incremental change-detector now honors `.gitignore`/`.grafelignore` the same way
+the full indexer does, so churning gitignored build-output directories (e.g.
+`ios/Pods`, `android/**/.cxx`) can no longer be counted as "changed" and trip a
+perpetual full-reindex loop that pinned daemon CPU.
+
+### Fixed
+
+- **Incremental change-detector honors ignore rules (#5665):** `walkSourceFiles`
+  now delegates to the same gitignore-aware `walk.WalkRepo` the full index uses,
+  so incremental change-detection and full indexing agree on which files exist.
+  Previously the incremental walk used a partial hardcoded denylist with no
+  `.gitignore` handling — gitignored build artifacts that build tooling constantly
+  regenerates entered the change manifest and perpetually triggered the
+  too-many-changed full-reindex fallback (sustained high CPU with a static HEAD).
+  Self-healing: the first reindex after upgrade flushes the stale ignored entries
+  from the manifest, then the loop stops.
+
+---
+
 ## [0.1.7] — 2026-06-27
 
 **Daemon stability hardening.** This release makes the parser path
