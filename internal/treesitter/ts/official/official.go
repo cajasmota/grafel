@@ -84,6 +84,14 @@ func WrapLanguage(lang *tsofficial.Language) ts.Language { return Language{lang:
 // Adapter implements ts.Language.
 func (Language) Adapter() string { return adapterName }
 
+// AbiVersion reports the grammar's tree-sitter ABI (its parser.c
+// LANGUAGE_VERSION). The ABI-15 rollout (#5473 Phase 2) asserts this is 15 for
+// every registered grammar: a single grammar left at ABI 14 is exactly the
+// mixed-ABI pairing that produced the unbounded parse-error-recovery loop, so
+// the invariant is "all grammars on the same ABI as the v0.25 runtime, no
+// laggards".
+func (l Language) AbiVersion() int { return int(l.lang.AbiVersion()) }
+
 // NewParser implements ts.Adapter. It returns an error if lang came from a
 // different adapter, or if SetLanguage rejects the grammar (a detectable ABI
 // mismatch).

@@ -7,11 +7,19 @@
 // the official runtime is the clean path. See docs/treesitter-cutover-plan.md
 // §3/§4.
 //
-// ABI pin. The vendored parser.c emits LANGUAGE_VERSION 14, inside the v0.24.0
-// runtime's accepted 13–14 window (ADR 0023 §1), so it loads and parses without
+// ABI pin. The vendored parser.c emits LANGUAGE_VERSION 15, inside the v0.25.0
+// runtime's accepted 13–15 window (ADR 0023 §1), so it loads and parses without
 // regeneration. kotlin has an external scanner (scanner.c), compiled into this
 // package by cgo alongside parser.c.
 //
+// ABI-15 rollout (#5473 Phase 2). parser.c + tree_sitter/ headers were
+// REGENERATED at the same vendored source ref with `tree-sitter generate
+// --abi 15` (CLI 0.26.9; a minimal tree-sitter.json was added for the grammars
+// that lacked one, which the 0.26 CLI requires to emit ABI 15). node-types are
+// unchanged apart from metadata, so the extractor is intact; only the parse
+// tables move to LANGUAGE_VERSION 15, matching the rest of the registry under
+// the go-tree-sitter v0.25.0 runtime. The hand-written scanner.c is ABI-neutral
+// and unchanged.
 // Vendored source — license/attribution (license-audit gate):
 //
 //	source: github.com/fwcd/tree-sitter-kotlin
