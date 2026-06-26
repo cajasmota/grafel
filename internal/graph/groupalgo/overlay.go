@@ -27,6 +27,7 @@ package groupalgo
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
@@ -313,17 +314,38 @@ func IsOverlayStale(ov *Overlay, currentMtimes map[string]int64) bool {
 }
 
 // OverlayNeedsRecompute reports whether a group has an overlay on disk that has
-// gone STALE relative to the current per-repo graph.fb mtimes (#5403). It is the
+// gone STALE relative to the current per-repo graph.fb mtimes (#5403) AND whose
+// community-relevant input graph has actually CHANGED (#5655). It is the
 // settled-group freshness predicate the daemon's overlay sweep uses to decide
-// whether to proactively re-arm a group-algo pass.
+// whether to proactively re-arm a (heavy) group-algo pass.
+//
+// The mtime check is a cheap FIRST gate. But an mtime drift alone does NOT imply
+// the community-detection output would change: a docs-only / comment-only /
+// config-only push bumps a repo's graph.fb mtime while leaving the community
+// input graph (node-id set + weighted directed edge set) identical. Before
+// #5655 the sweep re-armed a full Louvain+PageRank+betweenness recompute on
+// every such mtime drift, so on an active group the periodic sweep fired a
+// ~½-core burst every interval even when the graph never changed (310 observed
+// recomputes since boot with no driving change).
+//
+// So when the mtime gate trips, this confirms with the deterministic content
+// gate (graph.CommunityInputHash, the same one RunGroupAlgorithmsIncremental
+// uses): if the freshly assembled union's hash still equals the overlay's stored
+// input_hash, a recompute would reproduce the existing overlay byte-for-byte —
+// there is nothing to recompute. In that case the overlay's source_mtimes are
+// refreshed IN PLACE (a cheap atomic rewrite, no algorithms) so the mtime gate
+// settles and does not re-trip next tick, and this returns false (the sweep
+// skips). A genuine input change (hash differs) returns true and the sweep arms
+// the full recompute as before.
 //
 // Crucially it returns false for an ABSENT overlay: a group that has never had a
 // group-algo pass should be left to the normal first-compute path (the link-pass
 // chain after its first reindex), NOT force-recomputed by the sweep. Only an
-// overlay that EXISTS and no longer matches the live graphs is "needs recompute".
-// A malformed/unreadable overlay also returns false (don't thrash on garbage;
-// the next reindex's pass rewrites it). Any error resolving the group or its
-// mtimes returns false — the sweep is best-effort and must never wedge.
+// overlay that EXISTS, no longer matches the live graphs, AND has a changed input
+// hash is "needs recompute". A malformed/unreadable overlay also returns false
+// (don't thrash on garbage; the next reindex's pass rewrites it). Any error
+// resolving the group or its mtimes returns false — the sweep is best-effort and
+// must never wedge.
 func OverlayNeedsRecompute(group string) bool {
 	path, err := OverlayPath(group)
 	if err != nil || path == "" {
@@ -342,5 +364,41 @@ func OverlayNeedsRecompute(group string) bool {
 	if err != nil {
 		return false
 	}
-	return IsOverlayStale(&ov, cur)
+	if !IsOverlayStale(&ov, cur) {
+		return false // mtimes match → fresh; cheapest path, no assembly needed.
+	}
+
+	// mtime drift detected. Confirm with the content gate before declaring a
+	// recompute necessary. An overlay with no recorded input_hash (written before
+	// the field existed) cannot be content-checked → fall back to the mtime
+	// verdict and recompute.
+	if ov.InputHash == "" {
+		return true
+	}
+	entities, rels, _, srcMtimes, aerr := AssembleGroupGraph(group)
+	if aerr != nil {
+		// Cannot assemble the union to hash-check → defer to the mtime verdict.
+		return true
+	}
+	if graph.CommunityInputHash(entities, rels) != ov.InputHash {
+		return true // community input genuinely changed → recompute.
+	}
+
+	// Unchanged community input despite an mtime drift (docs/comment/config push,
+	// or an idle re-stat): the existing overlay is exactly what a recompute would
+	// produce. Settle the mtime gate by refreshing source_mtimes in place — a
+	// cheap atomic rewrite, NO Louvain/PageRank/betweenness — so the sweep does
+	// not re-trip every interval. Preserve every other field verbatim.
+	ov.SourceMtimes = srcMtimes
+	if werr := WriteOverlayTo(path, &ov); werr != nil {
+		// Best-effort: if the settle write fails we simply re-evaluate next tick.
+		// Do NOT force a recompute on a write hiccup.
+		_ = werr
+	}
+	// Observable counterpart to the scheduler's "group-algo: starting": a sweep
+	// tick that found the group mtime-stale but content-identical skips the heavy
+	// pass entirely (#5655). This is the line an idle daemon should log every
+	// interval instead of re-running Louvain.
+	slog.Default().Info("group-algo: skipped (unchanged)", "group", group)
+	return false
 }
