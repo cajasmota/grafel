@@ -152,6 +152,17 @@ func StampFile(absPath string) (FileStamp, error) {
 	}, nil
 }
 
+// capDiagPaths returns up to 60 paths for diagnostic logging so a persistent
+// too-many-changed loop's offending files are visible without flooding the log
+// on a genuinely large changeset (#5668).
+func capDiagPaths(paths []string) []string {
+	const max = 60
+	if len(paths) <= max {
+		return paths
+	}
+	return paths[:max]
+}
+
 // TryIncremental attempts a file-level incremental reindex for repoPath.
 // stateDir is the on-disk directory where graph.fb and file-index.json live.
 // logger may be nil (falls back to stderr).
@@ -231,6 +242,11 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// config overrides the env-var / gitmeta path when non-nil.
 	limit := effectiveLimit(absRepo, cfg)
 	if totalChanged > limit {
+		// DIAG (#5668): surface the actual paths driving the fallback. A persistent
+		// too-many-changed loop is invisible when only the count is logged; this
+		// makes the offending files debuggable.
+		logger.Printf("incremental: too-many-changed DIAG repo=%s changed=%d deleted=%d changed_paths=%v deleted_paths=%v",
+			absRepo, len(changedFiles), len(deletedFiles), capDiagPaths(changedFiles), capDiagPaths(deletedFiles))
 		// Persist the manifest-GC deletions (applied above) BEFORE falling back,
 		// so now-absent files — e.g. build artifacts newly excluded by the
 		// gitignore-aware walk — don't recur as deletedFiles and re-trip this
@@ -278,6 +294,9 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	// Re-check trigger limit after whitespace filtering.
 	if len(reallyChanged) > limit {
+		// DIAG (#5668): surface the paths that survived the hash gate.
+		logger.Printf("incremental: too-many-changed-after-hash DIAG repo=%s reallyChanged=%d paths=%v",
+			absRepo, len(reallyChanged), capDiagPaths(reallyChanged))
 		// Persist the manifest-GC deletions before falling back (see #5667).
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		return fallback(t0, fmt.Sprintf("too-many-changed after-hash-gate files=%d limit=%d",

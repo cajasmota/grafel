@@ -10,6 +10,22 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.7.3] — 2026-06-27
+
+**Diagnostic logging for the incremental too-many-changed fallback.** Pure
+observability — no behavior change.
+
+### Changed
+
+- **Log changed/deleted paths at the too-many-changed fallback (#5668):** when
+  the incremental reindex falls back to a full reindex on `too-many-changed`, the
+  daemon now logs the actual changed and deleted file paths (capped at 60), at
+  both the pre- and post-hash-gate fallback sites — instead of only the count. A
+  *persistent* fallback (the reindex-loop class addressed in 0.1.7.1/0.1.7.2) is
+  now debuggable from the logs rather than invisible.
+
+---
+
 ## [0.1.7.2] — 2026-06-27
 
 **Hotfix: complete the 0.1.7.1 reindex-loop fix.** 0.1.7.1 made the incremental
