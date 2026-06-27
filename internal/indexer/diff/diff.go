@@ -210,6 +210,23 @@ func UpdateManifest(absRepo string, relPaths []string, m *Manifest) {
 		}(rel)
 	}
 	wg.Wait()
+
+	// Reconcile (#5667): drop entries for files no longer in the walked set so
+	// the manifest cannot retain stale records — e.g. a file that became
+	// gitignored (build artifacts now excluded by walk.WalkRepo). All callers
+	// pass the complete current walk, so membership in relPaths is
+	// authoritative. Without this prune an entry, once added, is immortal: a
+	// now-ignored file is reported as "deleted" on every pass, perpetually
+	// tripping the too-many-changed full-reindex fallback and pinning the daemon.
+	want := make(map[string]struct{}, len(relPaths))
+	for _, r := range relPaths {
+		want[r] = struct{}{}
+	}
+	for k := range m.Files {
+		if _, ok := want[k]; !ok {
+			delete(m.Files, k)
+		}
+	}
 }
 
 // GitChangedFiles uses `git diff --name-only HEAD` to return the set of

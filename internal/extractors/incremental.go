@@ -231,6 +231,12 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// config overrides the env-var / gitmeta path when non-nil.
 	limit := effectiveLimit(absRepo, cfg)
 	if totalChanged > limit {
+		// Persist the manifest-GC deletions (applied above) BEFORE falling back,
+		// so now-absent files — e.g. build artifacts newly excluded by the
+		// gitignore-aware walk — don't recur as deletedFiles and re-trip this
+		// fallback on every pass, looping the reindex forever (#5667). Without
+		// this save the GC is in-memory only and discarded on fallback.
+		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		return fallback(t0, fmt.Sprintf("too-many-changed files=%d limit=%d",
 			totalChanged, limit))
 	}
@@ -272,6 +278,8 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 
 	// Re-check trigger limit after whitespace filtering.
 	if len(reallyChanged) > limit {
+		// Persist the manifest-GC deletions before falling back (see #5667).
+		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		return fallback(t0, fmt.Sprintf("too-many-changed after-hash-gate files=%d limit=%d",
 			len(reallyChanged), limit))
 	}

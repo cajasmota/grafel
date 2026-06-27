@@ -10,6 +10,28 @@ PR numbers link to https://github.com/cajasmota/grafel/pull/<N>.
 
 ---
 
+## [0.1.7.2] — 2026-06-27
+
+**Hotfix: complete the 0.1.7.1 reindex-loop fix.** 0.1.7.1 made the incremental
+change-detector gitignore-aware, but the persisted file-index manifest still
+retained entries for the now-ignored files — so they were detected as *deleted*
+on every pass, re-tripping the `too-many-changed` full-reindex fallback and
+keeping the daemon CPU-pinned at a static HEAD. This release flushes those
+stale entries.
+
+### Fixed
+
+- **Persist the manifest GC on the `too-many-changed` fallback (#5667):** the
+  incremental fallback now saves the garbage-collected manifest before falling
+  back, so files that became absent/ignored don't recur as `deletedFiles` and
+  loop the reindex. In addition, `UpdateManifest` now *reconciles* to the walked
+  set (drops entries no longer present) instead of being add-only, so no
+  index path — incremental or full — can leave a stale entry immortal.
+  Self-healing: the first reindex after upgrade flushes the leftover entries,
+  then the daemon settles.
+
+---
+
 ## [0.1.7.1] — 2026-06-27
 
 **Hotfix: incremental reindex loop on gitignored build artifacts.** The
