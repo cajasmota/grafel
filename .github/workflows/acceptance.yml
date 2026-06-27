@@ -27,9 +27,10 @@ name: acceptance
 # ── #5227 trigger / cost strategy ────────────────────────────────────────────
 # The repo is public (Actions minutes are free) but we keep PR feedback fast and
 # stay cheap if it ever goes private:
-#   * FULL matrix (ubuntu + windows + macos) runs ONLY on release tags (v*) and
-#     manual workflow_dispatch. NEVER on pull_request — see the `matrix` job's
-#     `if` guard and the `on:` triggers below.
+#   * FULL matrix (ubuntu + windows + macos) runs ONLY after the `release`
+#     workflow finishes publishing assets (workflow_run) and on manual
+#     workflow_dispatch. NEVER on pull_request — see the `matrix` job's `if`
+#     guard and the `on:` triggers below.
 #   * PRs get a CHEAP Linux-only job (`pr-linux`) that builds + runs selftest,
 #     and only when install/release/daemon/cmd code actually changed (paths
 #     filter). No Windows/macOS is ever scheduled by a PR.
@@ -43,8 +44,16 @@ name: acceptance
 # happens on a physical Mac per the #5229 runbook.
 
 on:
-  push:
-    tags: ['v*']
+  # Release acceptance runs AFTER the `release` workflow finishes publishing the
+  # assets — NOT on the tag push directly (that races release.yml, which builds
+  # for ~10-12 min, so the assets aren't uploaded yet → "release asset not
+  # found", which failed on EVERY tag: v0.1.7, .1, .2, .3). We use workflow_run
+  # rather than `release: published` because release.yml publishes via the
+  # default GITHUB_TOKEN, and GitHub suppresses `release` events created by
+  # GITHUB_TOKEN (loop-prevention), so a `release:` trigger would never fire.
+  workflow_run:
+    workflows: ["release"]
+    types: [completed]
   workflow_dispatch:
   pull_request:
     # Cheap PR signal only — gated to install/release/daemon/cmd surface so docs
@@ -65,9 +74,9 @@ permissions:
   contents: read
 
 concurrency:
-  # One run per ref; a new push/tag cancels the previous in-flight run so we
-  # never burn minutes (2x on Windows/macOS) on a superseded commit.
-  group: acceptance-${{ github.ref }}
+  # One run per release tag (workflow_run) / ref otherwise; a superseded run is
+  # cancelled so we never burn minutes (2x on Windows/macOS) on a stale commit.
+  group: acceptance-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: true
 
 env:
@@ -101,11 +110,16 @@ jobs:
       - name: grafel selftest (acceptance ladder)
         run: /tmp/grafel selftest
 
-  # ── Full cross-OS acceptance matrix: release tags + manual dispatch ONLY ────
+  # ── Full cross-OS acceptance matrix: post-release + manual dispatch ONLY ────
   # GUARD: this job can never run on pull_request (see `if`), so no PR ever
-  # schedules Windows or macOS minutes.
+  # schedules Windows or macOS minutes. The release path runs only on a
+  # SUCCESSFUL `release` workflow_run for a tag push.
   acceptance:
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'workflow_run' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.conclusion == 'success')
     strategy:
       fail-fast: false
       matrix:
@@ -116,8 +130,11 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
+          # On a release workflow_run, check out the exact commit the release
+          # built from; on dispatch, fall back to the dispatched ref.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
 
-      # ── 1a. On a release tag: download the REAL artifact for this OS ────────
+      # ── 1a. After a release: download the REAL artifact for this OS ─────────
       # The release archive carries the binary + the bundled dashboard, so this
       # tests exactly what ships. Falls through to a local build on dispatch.
       - name: Resolve artifact arch label
@@ -130,28 +147,29 @@ jobs:
             windows-latest) echo "os=windows" >> "$GITHUB_OUTPUT"; echo "arch=x86_64" >> "$GITHUB_OUTPUT"; echo "ext=zip"    >> "$GITHUB_OUTPUT" ;;
           esac
 
-      - name: Download released archive (release tags only)
-        if: github.event_name == 'push'
+      - name: Download released archive (after release publishes)
+        if: github.event_name == 'workflow_run'
         shell: bash
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
         run: |
           set -euo pipefail
-          VERSION="${GITHUB_REF_NAME#v}"
+          VERSION="${TAG#v}"
           NAME="grafel_${VERSION}_${{ steps.arch.outputs.os }}_${{ steps.arch.outputs.arch }}.${{ steps.arch.outputs.ext }}"
           mkdir -p artifact
-          echo "Fetching release asset $NAME for tag ${GITHUB_REF_NAME}"
-          # The release.yml build job uploads workflow artifacts AND the release
-          # assets; on a tag push the release is created in the same run, so the
-          # asset may not be published the instant this matrix starts. Retry.
+          echo "Fetching release asset $NAME for tag ${TAG}"
+          # The `release` workflow has COMPLETED (this runs via workflow_run), so
+          # the assets are already published; a short retry only covers GitHub's
+          # brief asset-availability lag after a release is finalized.
           for i in 1 2 3 4 5 6; do
-            if gh release download "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" \
+            if gh release download "${TAG}" --repo "${GITHUB_REPOSITORY}" \
                  --pattern "$NAME" --dir artifact 2>/dev/null; then
               echo "downloaded $NAME"; break
             fi
             echo "asset not ready yet (attempt $i); sleeping 20s"; sleep 20
           done
-          test -f "artifact/$NAME" || { echo "FAIL: release asset $NAME not found"; exit 1; }
+          test -f "artifact/$NAME" || { echo "FAIL: release asset $NAME not found for tag ${TAG}"; exit 1; }
           # Same MSYS→pwsh handoff as the dispatch build step: this bash step is
           # MSYS on Windows so $PWD is /d/a/...; the pwsh "Install (windows)" step
           # needs a native D:\a\... path. Convert on Windows, leave unix as-is.
