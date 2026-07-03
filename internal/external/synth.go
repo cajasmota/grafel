@@ -1674,6 +1674,16 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 		return name, subtype, true
 	}
 
+	// #4704 — .NET/C# (nuget/BCL) external-package catch-all. Run before the
+	// generic dotted-root branch so C# using directives keep module+leaf
+	// identity (ext:System.Collections:Generic) instead of collapsing to
+	// ext:System, which the import-health audit treats as unqualified.
+	if lang == "csharp" && relKind == string(types.RelationshipKindImports) {
+		if pkg, ok := csharpExternalPackageRoot(stub, relProps, internal.csharp); ok {
+			return pkg, "package", true
+		}
+	}
+
 	// Dotted path → first segment is what we canonicalise to. Common
 	// shape for Python imports ("django.db.models" -> "django") or
 	// JS submodules ("lodash.debounce" -> "lodash").
@@ -1792,21 +1802,6 @@ func classifyExternal(stub, relKind, lang, fromFile string, fromImports map[stri
 	// lang==rust.
 	if lang == "rust" && relKind == string(types.RelationshipKindImports) {
 		if pkg, ok := rustExternalPackageRoot(stub, relProps, internal.rust); ok {
-			return pkg, "package", true
-		}
-	}
-
-	// #4704 — .NET/C# (nuget/BCL) external-package catch-all. A `using
-	// Namespace;` whose root namespace is NOT owned by this repo (root ∉
-	// internalCsharpRoots) AND either matches a known BCL/common-nuget root
-	// (System, Microsoft, Newtonsoft, …) or is otherwise a non-internal
-	// dotted namespace is an external dependency. C# is the hardest case (no
-	// import-vs-namespace marker), so this DELIBERATELY under-flags: when a
-	// root is neither known-BCL nor provably external, it falls through and
-	// keeps its bug disposition rather than masking a possibly-internal
-	// namespace. Internal roots STAY a bug. Gated to IMPORTS + lang==csharp.
-	if lang == "csharp" && relKind == string(types.RelationshipKindImports) {
-		if pkg, ok := csharpExternalPackageRoot(stub, relProps, internal.csharp); ok {
 			return pkg, "package", true
 		}
 	}
@@ -3275,9 +3270,10 @@ var csharpBclRoots = map[string]bool{
 	"npgsql":           true,
 	"restsharp":        true,
 	"grpc":             true,
+	"volo":             true, // Volo.Abp.*
 }
 
-// csharpExternalPackageRoot derives the canonical nuget/BCL root for a C#
+// csharpExternalPackageRoot derives the canonical nuget/BCL namespace for a C#
 // `using Namespace;` IMPORTS edge (#4704). The raw namespace is read from
 // relProps["import_path"] / relProps["source_module"] when present and falls
 // back to the dotted stub.
@@ -3287,11 +3283,14 @@ var csharpBclRoots = map[string]bool{
 //   - root segment ∈ internalCsharpRoots                        → reject
 //     (genuinely-internal namespace that failed to resolve — STILL a bug).
 //   - root ∈ csharpBclRoots                                     → external.
-//   - any other root                                            → reject
-//     (ambiguous; keep the bug rather than mask a possibly-internal namespace).
+//   - any other root                                            → reject.
 func csharpExternalPackageRoot(stub string, relProps map[string]string, internalCsharpRoots map[string]bool) (string, bool) {
 	spec := stub
+	sourceModule := ""
+	importedName := ""
 	if relProps != nil {
+		sourceModule = strings.TrimSpace(relProps["source_module"])
+		importedName = strings.TrimSpace(relProps["imported_name"])
 		for _, key := range []string{"import_path", "source_module"} {
 			if v := strings.TrimSpace(relProps[key]); v != "" {
 				spec = v
@@ -3329,12 +3328,22 @@ func csharpExternalPackageRoot(stub string, relProps map[string]string, internal
 			return "", false
 		}
 	}
-	// Only fire for a known BCL/nuget root. Everything else is ambiguous and
-	// deliberately left as a bug (under-flag, never mask).
-	if csharpBclRoots[lower] {
-		return lower, true
+	if !csharpBclRoots[lower] {
+		return "", false
 	}
-	return "", false
+	if sourceModule == "" || importedName == "" {
+		if dot := strings.LastIndexByte(spec, '.'); dot > 0 {
+			sourceModule = spec[:dot]
+			importedName = spec[dot+1:]
+		} else {
+			sourceModule = spec
+			importedName = root
+		}
+	}
+	if sourceModule == "" || importedName == "" {
+		return "", false
+	}
+	return sourceModule + ":" + importedName, true
 }
 
 // isCsharpNamespaceSegment reports whether s is a legal C# namespace segment

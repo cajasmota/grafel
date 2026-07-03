@@ -86,6 +86,8 @@ func is16Hex(s string) bool {
 }
 
 func runCSharpResolve(merged []types.EntityRecord) int {
+	importTbl := resolve.BuildImportTable(merged)
+	resolve.ResolveImports(merged, importTbl)
 	idx := resolve.BuildIndex(merged)
 	n := idx.ResolveCSharpCrossNamespaceCalls(merged)
 	resolve.ReferencesEmbedded(merged, idx)
@@ -119,6 +121,64 @@ func entID(merged []types.EntityRecord, srcFile, name string) string {
 		}
 	}
 	return ""
+}
+
+func importEdge(merged []types.EntityRecord, srcFile, target string) (string, map[string]string, bool) {
+	for k := range merged {
+		if merged[k].SourceFile != srcFile {
+			continue
+		}
+		for _, r := range merged[k].Relationships {
+			if r.Kind == "IMPORTS" && r.ToID == target {
+				return r.ToID, r.Properties, true
+			}
+		}
+	}
+	return "", nil, false
+}
+
+func TestCSharpImportsResolveViaNamespaceProperty(t *testing.T) {
+	files := map[string]string{
+		"src/Domain/Order.cs": "" +
+			"namespace Acme.Shop.Domain;\n" +
+			"public class Order {}\n",
+		"src/App/Handler.cs": "" +
+			"using Acme.Shop.Domain;\n" +
+			"namespace Acme.Shop.App;\n" +
+			"public class Handler {}\n",
+	}
+	merged := extractCSharpProjectForTest(t, files)
+	before, props, ok := importEdge(merged, "src/App/Handler.cs", "Acme.Shop.Domain")
+	if !ok {
+		t.Fatalf("missing C# IMPORTS edge before resolve")
+	}
+	if props["language"] != "csharp" {
+		t.Fatalf("C# IMPORTS edge missing language property: ToID=%q props=%v", before, props)
+	}
+
+	importTbl := resolve.BuildImportTable(merged)
+	stats := resolve.ResolveImports(merged, importTbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 C# IMPORTS rewrite, got %d/%d", stats.ImportsRewritten, stats.ImportsConsidered)
+	}
+	want := entID(merged, "src/Domain/Order.cs", "Order")
+	if want == "" {
+		t.Fatal("missing Order entity")
+	}
+	found := false
+	for _, e := range merged {
+		if e.SourceFile != "src/App/Handler.cs" {
+			continue
+		}
+		for _, r := range e.Relationships {
+			if r.Kind == "IMPORTS" && r.ToID == want {
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("C# IMPORTS edge was not rewritten to Order entity %q", want)
+	}
 }
 
 // colliding callee namespaces: App.Services.Orders.OrderService.Place AND

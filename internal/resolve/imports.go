@@ -329,6 +329,11 @@ func BuildImportTable(records []types.EntityRecord) ImportTable {
 		}
 
 		modules := modulesForFile(normalizePath(e.SourceFile))
+		if e.Language == "csharp" && e.Properties != nil {
+			if ns := strings.TrimSpace(e.Properties["csharp_namespace"]); ns != "" {
+				modules = append(modules, ns)
+			}
+		}
 
 		// Refs #44 — Python module-level IMPORTS resolution. When the
 		// extractor emits `from users import views` it produces an IMPORTS
@@ -1530,6 +1535,16 @@ func (t ImportTable) ResolvePythonModuleImport(dotted string) (string, bool) {
 	return id, true
 }
 
+func isCSharpImportSource(entityLang, callerFile string, props map[string]string) bool {
+	if props != nil && props["language"] == "csharp" {
+		return true
+	}
+	if entityLang == "csharp" {
+		return true
+	}
+	return strings.HasSuffix(strings.ToLower(callerFile), ".cs")
+}
+
 // ResolveDottedImportTargetForJS performs the same (module, leaf) lookup
 // as ResolveDottedImportTarget, plus a JS/TS-specific default-export
 // fallback (PLT #537). React / React Native source files commonly emit a
@@ -2139,6 +2154,9 @@ func ResolveImports(records []types.EntityRecord, tbl ImportTable) ImportResolve
 					id, ok = tbl.ResolveDottedImportTargetForJS(normalized)
 				} else {
 					id, ok = tbl.ResolveDottedImportTarget(normalized)
+					if !ok && isCSharpImportSource(e.Language, callerFile, rel.Properties) {
+						id, ok = tbl.resolveNamespaceTarget(normalized)
+					}
 					// Issue #778 — Java FQCN ambiguity tie-break.
 					// When the generic dotted-import lookup fails because
 					// (module, name) is ambiguous AND the edge carries explicit

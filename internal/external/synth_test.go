@@ -806,8 +806,8 @@ func TestSynthesize_RustKeywordStillBug(t *testing.T) {
 }
 
 // TestSynthesize_CsharpExternalPackages_Fixture is Fixture A for #4704: BCL /
-// nuget `using` directives (System.*, Microsoft.*, Newtonsoft.Json) must route
-// to ext:<root> and none may be a fidelity bug.
+// nuget `using` directives (System.*, Microsoft.*, Newtonsoft.Json, Volo.Abp)
+// must route to ext:<module>:<leaf> and none may be a fidelity bug.
 func TestSynthesize_CsharpExternalPackages_Fixture(t *testing.T) {
 	doc := &graph.Document{
 		Entities: []graph.Entity{
@@ -821,18 +821,22 @@ func TestSynthesize_CsharpExternalPackages_Fixture(t *testing.T) {
 				Properties: map[string]string{"language": "csharp", "import_path": "Microsoft.AspNetCore.Mvc"}},
 			{ID: "rel-3", FromID: "aaaaaaaaaaaaaaaa", ToID: "Newtonsoft.Json", Kind: "IMPORTS",
 				Properties: map[string]string{"language": "csharp", "import_path": "Newtonsoft.Json"}},
+			{ID: "rel-4", FromID: "aaaaaaaaaaaaaaaa", ToID: "Volo.Abp.Application.Dtos", Kind: "IMPORTS",
+				Properties: map[string]string{
+					"language":      "csharp",
+					"source_module": "Volo.Abp.Application",
+					"imported_name": "Dtos",
+				}},
 		},
 	}
 	Synthesize(doc)
-	// System / Microsoft are on the pre-existing static allowlist and are
-	// externalised verbatim (PascalCase) by the dotted-path branch before the
-	// #4704 catch-all. Newtonsoft is NOT on the static list — it is the real
-	// #4704 win, routed to a lowercased nuget placeholder by the catch-all.
-	// All three are external (not fidelity bugs), which is the issue's goal.
+	// C# IMPORTS preserve module + leaf so the quality audit classifies the
+	// external as ext_qualified instead of ext_bare.
 	want := map[string]string{
-		"rel-1": "ext:System",
-		"rel-2": "ext:Microsoft",
-		"rel-3": "ext:newtonsoft",
+		"rel-1": "ext:System.Collections:Generic",
+		"rel-2": "ext:Microsoft.AspNetCore:Mvc",
+		"rel-3": "ext:Newtonsoft:Json",
+		"rel-4": "ext:Volo.Abp.Application:Dtos",
 	}
 	for _, r := range doc.Relationships {
 		if exp, ok := want[r.ID]; ok && r.ToID != exp {

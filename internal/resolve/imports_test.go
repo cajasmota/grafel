@@ -423,6 +423,75 @@ func TestResolveImports_DottedImportEdgePackageInit(t *testing.T) {
 	}
 }
 
+func TestResolveImports_CSharpTypeImportUsesNamespaceProperty(t *testing.T) {
+	records := []types.EntityRecord{
+		importerRecord("src/App/Handler.cs", "Acme.Shop.Domain.Order", map[string]string{
+			"language":      "csharp",
+			"local_name":    "Order",
+			"source_module": "Acme.Shop.Domain",
+			"imported_name": "Order",
+		}),
+		{
+			ID:         "aaaaaaaaaaaaaaaa",
+			Name:       "Order",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Domain/Order.cs",
+			Language:   "csharp",
+			Properties: map[string]string{"csharp_namespace": "Acme.Shop.Domain"},
+		},
+	}
+
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 C# IMPORTS rewrite, got %d (considered=%d)", stats.ImportsRewritten, stats.ImportsConsidered)
+	}
+	if got := records[0].Relationships[0].ToID; got != "aaaaaaaaaaaaaaaa" {
+		t.Fatalf("expected C# IMPORTS ToID rewritten to class entity, got %q", got)
+	}
+}
+
+func TestResolveImports_CSharpNamespaceImportBindsRepresentativeEntity(t *testing.T) {
+	records := []types.EntityRecord{
+		{
+			ID:         "cccccccccccccccc",
+			Name:       "Acme.Shop.Domain",
+			Kind:       "SCOPE.Component",
+			SourceFile: "src/App/Handler.cs",
+			Language:   "csharp",
+			Relationships: []types.RelationshipRecord{{
+				FromID: "src/App/Handler.cs",
+				ToID:   "Acme.Shop.Domain",
+				Kind:   importRelKind,
+				Properties: map[string]string{
+					"local_name":    "Domain",
+					"source_module": "Acme.Shop",
+					"imported_name": "Domain",
+				},
+			}},
+		},
+		{
+			ID:         "bbbbbbbbbbbbbbbb",
+			Name:       "Order",
+			Kind:       "SCOPE.Component",
+			Subtype:    "class",
+			SourceFile: "src/Domain/Order.cs",
+			Language:   "csharp",
+			Properties: map[string]string{"csharp_namespace": "Acme.Shop.Domain"},
+		},
+	}
+
+	tbl := BuildImportTable(records)
+	stats := ResolveImports(records, tbl)
+	if stats.ImportsRewritten != 1 {
+		t.Fatalf("expected 1 C# namespace IMPORTS rewrite, got %d (considered=%d)", stats.ImportsRewritten, stats.ImportsConsidered)
+	}
+	if got := records[0].Relationships[0].ToID; got != "bbbbbbbbbbbbbbbb" {
+		t.Fatalf("expected C# namespace IMPORTS ToID rewritten to representative entity, got %q", got)
+	}
+}
+
 // TestResolveImports_DottedImportEdgeExternalLeftAlone covers
 // `from marshmallow import Schema` where marshmallow is NOT in the
 // corpus. The dotted ToID "marshmallow.Schema" must be left alone so

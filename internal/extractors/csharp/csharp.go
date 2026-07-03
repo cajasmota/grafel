@@ -75,7 +75,7 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	// aliases, `using static` types) used to bind qualified cross-namespace
 	// calls to a concrete (namespace, type, leaf) for the resolver.
 	cross := buildCrossCtx(root, file.Content)
-	walk(root, file, "", "", nil, imports, cross, &entities)
+	walk(root, file, "", fileScopedNamespace(root, file.Content), nil, imports, cross, &entities)
 	// Issue #3641 (epic #3625) — config-key consumption edges
 	// (Configuration["X"] / GetValue / GetConnectionString /
 	// Environment.GetEnvironmentVariable) → shared SCOPE.Config config_key nodes.
@@ -90,6 +90,22 @@ func (e *Extractor) Extract(_ context.Context, file extractor.FileInput) ([]type
 	extractor.TagRelationshipsLanguage(entities, "csharp")
 	extractor.TagEntitiesLanguage(entities, "csharp")
 	return entities, nil
+}
+
+func fileScopedNamespace(root ts.Node, src []byte) string {
+	if root == nil {
+		return ""
+	}
+	for i := range root.ChildCount() {
+		ch := root.Child(int(i))
+		if ch == nil || ch.Type() != "file_scoped_namespace_declaration" {
+			continue
+		}
+		if nf := ch.ChildByFieldName("name"); nf != nil {
+			return strings.TrimSpace(nodeText(nf, src))
+		}
+	}
+	return ""
 }
 
 // classCtx carries the resolution context for cross-file receiver
@@ -453,6 +469,7 @@ func buildImport(node ts.Node, file extractor.FileInput) (types.EntityRecord, bo
 		leaf = raw[dot+1:]
 		mod = raw[:dot]
 	}
+	props["language"] = "csharp"
 	props["source_module"] = mod
 	props["imported_name"] = leaf
 	if alias != "" {
