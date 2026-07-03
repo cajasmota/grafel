@@ -67,7 +67,7 @@ import { ApiError } from "@/lib/api";
 import type { RepoNesting, ScanInspectReply, WizardRepo } from "@/data/types";
 import {
   WIZARD_ACTIONS,
-  defaultActionFor,
+  reposForAction,
   type WizardAction,
 } from "@/lib/wizard-action";
 import {
@@ -104,39 +104,8 @@ function slugify(s: string): string {
 }
 
 /**
- * The per-repo list this index will register, as {@link WizardRepo}s — one per
- * selected child git repo, else one per selected monorepo package, else the
- * whole folder as a single repo. SINGLE source of truth shared by runIndex (the
- * from-scan payload) and the progress feed (seeding one row per repo, #5340), so
- * the seeded rows exactly match the repos the daemon will index.
- */
-function buildRepos(
-  scan: ScanInspectReply | null,
-  selectedChildren: Set<string>,
-  selectedPkgs: Set<string>,
-): WizardRepo[] {
-  if (!scan?.valid) return [];
-  const hasChildGitRepos = (scan.childGitRepos?.length ?? 0) > 0;
-  const isMonorepo = (scan.packages?.length ?? 0) > 0;
-  if (hasChildGitRepos) {
-    return [...selectedChildren].sort().map((child) => ({
-      path: `${scan.absPath}/${child}`,
-      slug: slugify(child),
-    }));
-  }
-  if (isMonorepo) {
-    return [...selectedPkgs].sort().map((pkg) => ({
-      path: `${scan.absPath}/${pkg}`,
-      slug: slugify(`${scan.suggestedSlug}-${pkg}`),
-      modules: [pkg],
-    }));
-  }
-  return [{ path: scan.absPath, slug: scan.suggestedSlug }];
-}
-
-/**
  * #47 phase 2 — the monorepo nesting descriptor for the progress feed. Each
- * selected package is registered as its OWN repo_slug (see buildRepos), so the
+ * selected package is registered as its OWN repo_slug, so the
  * feed nests those sibling package rows UNDER a synthesized monorepo parent
  * (mirroring the TUI). Only monorepo (package) layouts nest; child-git-repo and
  * single-repo layouts stay flat (empty descriptor). Keyed by child repo_slug so
@@ -162,7 +131,6 @@ function buildNesting(scan: ScanInspectReply | null, repos: WizardRepo[]): RepoN
   }
   return nesting;
 }
-
 export function ScanWizard(props: ScanWizardProps) {
   const { open, onOpenChange, mode, groupId, groupName, takenNames = [], existingPaths = [], onIndexed } = props;
 
@@ -230,23 +198,17 @@ export function ScanWizard(props: ScanWizardProps) {
   // them (which collapsed the feed to just the late group terminal → one row).
   const indexStarting = createFromScan.isPending || scanRepos.isPending;
   const progressActive = (step === "index" || indexStarting) && !!targetGroup;
-  // How many repos THIS index registered — the same selection the wizard uses
-  // to start indexing (see runIndex): one per selected child git repo, else one
-  // per selected monorepo package, else 1 for a single repo. Threading this into
-  // the feed lets feed-terminal wait for ALL repos instead of firing after the
-  // first one finishes while the rest are still streaming (#5326).
-  const expectedRepos = scan?.valid
-    ? (scan.childGitRepos?.length ?? 0) > 0
-      ? selectedChildren.size
-      : (scan.packages?.length ?? 0) > 0
-        ? selectedPkgs.size
-        : 1
-    : undefined;
+  const reposToIndex = reposForAction(scan, action, selectedChildren, selectedPkgs);
+  // How many repos THIS index registered — the same action-bound selection the
+  // wizard uses to start indexing (see runIndex). Threading this into the feed
+  // lets feed-terminal wait for ALL repos instead of firing after the first one
+  // finishes while the rest are still streaming (#5326).
+  const expectedRepos = scan?.valid ? reposToIndex.length : undefined;
   // The per-repo slugs this index will register — the SAME list runIndex POSTs.
   // Seeds one pending row per repo so ALL repos (backend + frontend) show up
   // front and survive any dropped early SSE events, instead of collapsing to a
   // single late group-terminal row (#5340).
-  const seedSlugs = buildRepos(scan, selectedChildren, selectedPkgs).map((r) => r.slug ?? "");
+  const seedSlugs = reposToIndex.map((r) => r.slug ?? "");
   // Finalize seeded rows to Done only on SUCCESSFUL completion. The job poller's
   // "done" is the success signal; a row frozen on its last intermediate phase
   // (final SSE events arrived after the rebuild RPC returned) is then advanced
@@ -282,7 +244,7 @@ export function ScanWizard(props: ScanWizardProps) {
   // Join the status-plane rows (enhancing / relationships / entities) onto the
   // SSE rows, then nest monorepo package rows under a synthesized parent.
   const joinedRows = joinIndexStatus(indexProgress.rows, indexStatus.data);
-  const nesting = buildNesting(scan, buildRepos(scan, selectedChildren, selectedPkgs));
+  const nesting = buildNesting(scan, reposToIndex);
   // Total entities across all repos, for the queryable banner — mirrors the TUI's
   // "Graph queryable (N entities)" line (indexview.go queryableBanner).
   const totalEntities = joinedRows.reduce((n, r) => n + (r.entitiesSoFar || 0), 0);
@@ -353,14 +315,9 @@ export function ScanWizard(props: ScanWizardProps) {
       const result = await inspect.mutateAsync(p);
       setScan(result);
       if (result.valid) {
-        // Reconcile the chosen action with what the shared classifier detected
-        // (#5336). In add-repo mode the action is pinned to "add-group". In
-        // create mode, if the detected smart default disagrees with the picked
-        // action, prefer the detection so the Detect step shows the right
-        // selection list (e.g. a container folder → group/child repos).
-        if (mode === "create") {
-          setAction(defaultActionFor(result));
-        }
+        // Keep the user-selected action authoritative. The detector still
+        // reports layout details, but it must not turn an explicit "single"
+        // choice into a monorepo payload.
         setName((prev) => prev || result.suggestedGroup);
         // Default to ALL detected packages checked (#1531). Empty for a single
         // repo — then runIndex registers the whole folder as one repo.
@@ -396,10 +353,11 @@ export function ScanWizard(props: ScanWizardProps) {
   // undefined preserves back-compat (register every detected tool / add-repo).
   async function runIndex(mcpToolsSel?: string[]) {
     if (!scan?.valid) return;
-    // Build the repo list based on what was detected (child git repos →
-    // monorepo packages → single repo). buildRepos is shared with the progress
-    // feed's row seeding so the seeded rows match the registered repos (#5340).
-    const repos = buildRepos(scan, selectedChildren, selectedPkgs);
+    // Build the repo list from the selected action. This is shared with the
+    // progress feed's row seeding so the seeded rows match the registered repos
+    // (#5340), and so "single" remains a single repo even if detection finds
+    // monorepo packages.
+    const repos = reposForAction(scan, action, selectedChildren, selectedPkgs);
     if (repos.length === 0) {
       toast.error("Select at least one repo to index.");
       return;
@@ -821,7 +779,7 @@ export function ScanWizard(props: ScanWizardProps) {
                     pattern — pick which child repos to index. Each selected child
                     dir is registered as its own repo. Only shown when childGitRepos
                     is non-empty (takes precedence over monorepo packages). */}
-                {(scan.childGitRepos?.length ?? 0) > 0 && (
+                {(action === "group" || action === "add-group") && (scan.childGitRepos?.length ?? 0) > 0 && (
                   <div data-testid="wizard-child-repos">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-text-2">
@@ -898,7 +856,7 @@ export function ScanWizard(props: ScanWizardProps) {
                 {/* Monorepo module selection (#1531): pick which package roots
                     to index. Default all-checked; only the SELECTED packages are
                     registered + indexed. */}
-                {scan.packages.length > 0 && (
+                {(action === "monorepo" || action === "add-group") && scan.packages.length > 0 && (
                   <div data-testid="wizard-modules">
                     <div className="flex items-center justify-between">
                       <span className="text-sm text-text-2">
@@ -999,8 +957,12 @@ export function ScanWizard(props: ScanWizardProps) {
                 disabled={
                   !scan.valid ||
                   indexing ||
-                  ((scan.childGitRepos?.length ?? 0) > 0 && selectedChildren.size === 0) ||
-                  (scan.packages.length > 0 && selectedPkgs.size === 0) ||
+                  ((action === "group" || action === "add-group") &&
+                    (scan.childGitRepos?.length ?? 0) > 0 &&
+                    selectedChildren.size === 0) ||
+                  ((action === "monorepo" || action === "add-group") &&
+                    scan.packages.length > 0 &&
+                    selectedPkgs.size === 0) ||
                   (mode === "create" && (!nameSlug || nameDuplicate))
                 }
                 onClick={() => (mode === "create" ? proceedFromDetect() : void runIndex())}

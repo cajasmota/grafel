@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 
-import { defaultActionFor, groupCandidatesFor } from "./wizard-action";
+import { defaultActionFor, groupCandidatesFor, reposForAction } from "./wizard-action";
 import type { ScanInspectReply } from "@/data/types";
 
 function reply(partial: Partial<ScanInspectReply>): ScanInspectReply {
@@ -56,9 +56,60 @@ describe("groupCandidatesFor", () => {
     expect(groupCandidatesFor(scan)).toEqual(["service-a", "service-b", "service-c"]);
   });
 
+  it("handles Windows sibling paths", () => {
+    const scan = reply({
+      absPath: "D:\\code\\service-a",
+      isGitRepo: true,
+      siblingGitRepos: ["D:\\code\\service-b"],
+      suggestedAction: "group",
+    });
+    expect(groupCandidatesFor(scan)).toEqual(["service-a", "service-b"]);
+  });
+
   it("returns empty for an invalid or non-repo folder", () => {
     expect(groupCandidatesFor(reply({ valid: false }))).toEqual([]);
     expect(groupCandidatesFor(reply({ isGitRepo: false, childGitRepos: [] }))).toEqual([]);
     expect(groupCandidatesFor(null)).toEqual([]);
+  });
+});
+
+describe("reposForAction", () => {
+  it("keeps single repository authoritative even when packages are detected", () => {
+    const scan = reply({
+      absPath: "/code/assessment",
+      suggestedSlug: "assessment",
+      packages: ["apps/admin", "apps/field", "src"],
+      monorepo: "pnpm",
+      suggestedAction: "monorepo",
+    });
+
+    expect(reposForAction(scan, "single", new Set(), new Set(scan.packages))).toEqual([
+      { path: "/code/assessment", slug: "assessment" },
+    ]);
+  });
+
+  it("indexes selected packages for the monorepo action", () => {
+    const scan = reply({
+      absPath: "/code/assessment",
+      suggestedSlug: "assessment",
+      packages: ["apps/admin", "src"],
+      monorepo: "pnpm",
+    });
+
+    expect(reposForAction(scan, "monorepo", new Set(), new Set(["src"]))).toEqual([
+      { path: "/code/assessment/src", slug: "assessment-src", modules: ["src"] },
+    ]);
+  });
+
+  it("indexes selected child repos for the group action", () => {
+    const scan = reply({
+      absPath: "/code/system",
+      childGitRepos: ["api", "web"],
+      childrenKind: "git-repos",
+    });
+
+    expect(reposForAction(scan, "group", new Set(["web"]), new Set())).toEqual([
+      { path: "/code/system/web", slug: "web" },
+    ]);
   });
 });

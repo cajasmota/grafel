@@ -13,7 +13,7 @@
  * dependency-free and unit-tested (the component itself isn't covered by the
  * src/lib vitest scope). */
 
-import type { ScanInspectReply } from "@/data/types";
+import type { ScanInspectReply, WizardRepo } from "@/data/types";
 
 export type WizardAction = "single" | "group" | "monorepo" | "add-group";
 
@@ -66,7 +66,67 @@ export function groupCandidatesFor(scan: ScanInspectReply | null): string[] {
   return [];
 }
 
+/**
+ * reposForAction builds the exact repo payload for the selected wizard action.
+ * The user's action is authoritative: choosing "single" indexes the selected
+ * folder as one repo even when detection finds monorepo packages.
+ */
+export function reposForAction(
+  scan: ScanInspectReply | null,
+  action: WizardAction,
+  selectedChildren: Set<string>,
+  selectedPkgs: Set<string>,
+): WizardRepo[] {
+  if (!scan?.valid) return [];
+
+  const single = [{ path: scan.absPath, slug: scan.suggestedSlug }];
+  const childRepos = (scan.childGitRepos ?? []).length > 0;
+  const packages = (scan.packages ?? []).length > 0;
+
+  switch (action) {
+    case "single":
+      return single;
+    case "group":
+      if (childRepos) return childRepoPayload(scan, selectedChildren);
+      if (scan.isGitRepo && (scan.siblingGitRepos ?? []).length > 0) {
+        return [scan.absPath, ...(scan.siblingGitRepos ?? [])].map((path) => ({
+          path,
+          slug: slugify(basename(path)),
+        }));
+      }
+      return single;
+    case "monorepo":
+      if (packages) return packagePayload(scan, selectedPkgs);
+      return single;
+    case "add-group":
+      if (childRepos) return childRepoPayload(scan, selectedChildren);
+      if (packages) return packagePayload(scan, selectedPkgs);
+      return single;
+    default:
+      return single;
+  }
+}
+
 function basename(p: string): string {
-  const parts = p.replace(/\/+$/, "").split("/");
+  const parts = p.replace(/[\\/]+$/, "").split(/[\\/]+/);
   return parts[parts.length - 1] || p;
+}
+
+function slugify(s: string): string {
+  return s.toLowerCase().trim().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+function childRepoPayload(scan: ScanInspectReply, selectedChildren: Set<string>): WizardRepo[] {
+  return [...selectedChildren].sort().map((child) => ({
+    path: `${scan.absPath}/${child}`,
+    slug: slugify(child),
+  }));
+}
+
+function packagePayload(scan: ScanInspectReply, selectedPkgs: Set<string>): WizardRepo[] {
+  return [...selectedPkgs].sort().map((pkg) => ({
+    path: `${scan.absPath}/${pkg}`,
+    slug: slugify(`${scan.suggestedSlug}-${pkg}`),
+    modules: [pkg],
+  }));
 }
