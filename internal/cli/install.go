@@ -371,7 +371,15 @@ func persistToolSelection(out io.Writer, ids []string) error {
 		return fmt.Errorf("read registry: %w", err)
 	}
 	if len(groups) == 0 {
-		fmt.Fprintf(out, "  tools:   %v (saved on first group registration)\n", ids)
+		// #5701 ordering footgun: no group exists yet, so there is nothing to
+		// write Tools into. Stash the selection so the next `wizard`/`group add`
+		// picks it up (consumePendingTools in applyGroupConfig) instead of
+		// silently dropping it and re-defaulting to all tools.
+		if err := savePendingTools(ids); err != nil {
+			fmt.Fprintf(out, "  ⚠ tools: could not stash selection: %v\n", err)
+			return nil
+		}
+		fmt.Fprintf(out, "  tools:   %v (stashed; applied on first group registration)\n", ids)
 		return nil
 	}
 	bin, _ := os.Executable()

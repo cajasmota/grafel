@@ -13,6 +13,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/install/detect"
+	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -42,6 +43,7 @@ func newGroupAddCmd() *cobra.Command {
 		runInst   bool
 		doIndex   bool
 		jsonOut   bool
+		toolsCSV  string
 	)
 
 	cmd := &cobra.Command{
@@ -84,6 +86,7 @@ Examples:
 				runInst:   runInst,
 				doIndex:   doIndex,
 				jsonOut:   jsonOut,
+				tools:     toolsCSV,
 			}
 			return runGroupAddImpl(cmd, args[0], gaFlags, "")
 		},
@@ -109,6 +112,8 @@ Examples:
 		"index the group via the daemon after registering (requires a running daemon)")
 	cmd.Flags().BoolVar(&jsonOut, "json", false,
 		"emit machine-readable JSON result")
+	cmd.Flags().StringVar(&toolsCSV, "tools", "",
+		"comma-separated AI coding tools whose rules files + MCP get scaffolded (e.g. claude,codex). When omitted, a pending selection from a prior `grafel install --tools` is adopted, else every supported tool is targeted. Run 'grafel tools list' for valid IDs")
 	return cmd
 }
 
@@ -123,6 +128,7 @@ type groupAddFlags struct {
 	runInst   bool
 	doIndex   bool
 	jsonOut   bool
+	tools     string // --tools CSV → GroupConfig.Tools (#5701)
 }
 
 type groupAddRepo struct {
@@ -161,6 +167,17 @@ func runGroupAddImpl(cmd *cobra.Command, group string, f groupAddFlags, socketPa
 	cfg := &registry.GroupConfig{Name: group, GroupDocs: f.groupDocs}
 	cfg.Features.Watchers = f.watchers
 	cfg.Features.GitHooks = f.gitHooks
+	// Per-tool selection (#5701): an explicit --tools value wins and is validated
+	// before any registration. When omitted, cfg.Tools is left empty so
+	// applyGroupConfig can adopt a pending selection stashed by an earlier
+	// `grafel install --tools`; absent that, the empty-means-all default applies.
+	if f.tools != "" {
+		ids, err := tooladapter.ParseToolsFlag(f.tools)
+		if err != nil {
+			return err
+		}
+		cfg.Tools = ids
+	}
 	for _, r := range repos {
 		cfg.Repos = append(cfg.Repos, registry.Repo{
 			Slug:  r.Slug,

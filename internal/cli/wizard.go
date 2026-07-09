@@ -15,6 +15,7 @@ import (
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/install/mcptools"
+	"github.com/cajasmota/grafel/internal/install/tooladapter"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -34,6 +35,7 @@ func newWizardCmd() *cobra.Command {
 		noIndex        bool
 		mcpToolsCSV    string
 		noMCP          bool
+		toolsCSV       string
 	)
 	cmd := &cobra.Command{
 		Use:   "wizard",
@@ -53,6 +55,7 @@ func newWizardCmd() *cobra.Command {
 				AgentHooks:     agentHooks,
 				RunInstall:     runInstall,
 				NoIndex:        noIndex,
+				Tools:          toolsCSV,
 				ErrOut:         cmd.ErrOrStderr(),
 			}
 			// Resolve the MCP-tools selection from flags (#5344). --no-mcp wins
@@ -83,6 +86,7 @@ func newWizardCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noIndex, "no-index", false, "skip indexing the group at the end (default: index with live progress; requires a running daemon)")
 	cmd.Flags().StringVar(&mcpToolsCSV, "mcp-tools", "", "comma-separated AI tool IDs to register the grafel MCP server in (e.g. claude,cursor); skips the interactive picker. Without this flag (and without --no-mcp), interactive runs prompt and non-interactive runs register every detected tool")
 	cmd.Flags().BoolVar(&noMCP, "no-mcp", false, "do not register the grafel MCP server in any AI tool")
+	cmd.Flags().StringVar(&toolsCSV, "tools", "", "comma-separated AI coding tools whose rules files + MCP get scaffolded (e.g. claude,codex); when set, selection is non-interactive. Without it, interactive runs prompt and non-interactive runs target every supported tool. Run 'grafel tools list' for valid IDs")
 	return cmd
 }
 
@@ -97,6 +101,12 @@ type wizardOptions struct {
 	AgentHooks          bool
 	RunInstall          bool
 	NoIndex             bool
+	// Tools is the raw --tools CSV: the AI coding tools whose install artifacts
+	// (rules files + MCP) get scaffolded, persisted into GroupConfig.Tools
+	// (#5701). Empty means "no explicit choice": interactive runs prompt, non-
+	// interactive runs leave Tools empty so the historical empty-means-all
+	// contract at the Apply boundary is preserved.
+	Tools string
 	// MCPTools, when non-nil, is the resolved selection of AI tool IDs to
 	// register the grafel MCP server in (#5344): nil = no explicit choice
 	// (prompt interactively, or all-detected non-interactively), empty = none,
@@ -119,6 +129,19 @@ func runWizard(out io.Writer, opts wizardOptions) error {
 	cfg.Features.GitHooks = opts.GitHooks
 	cfg.Features.AgentHooks = opts.AgentHooks
 	cfg.GroupDocs = opts.GroupDocs
+
+	// Per-tool selection (#5701): an explicit --tools value wins in every path
+	// (interactive TUI, huh fallback, or non-interactive) and is validated up
+	// front so a bad ID fails before anything is registered. When absent, the
+	// interactive huh fallback prompts (see finishWizard) and non-interactive
+	// runs leave Tools empty (empty-means-all back-compat at Apply).
+	if opts.Tools != "" {
+		ids, err := tooladapter.ParseToolsFlag(opts.Tools)
+		if err != nil {
+			return err
+		}
+		cfg.Tools = ids
+	}
 
 	// NON-INTERACTIVE path (--repos/--parent/--exclude): unchanged flag-driven
 	// discovery, for scripting. Requires --group up front.
@@ -235,6 +258,18 @@ func finishWizard(out io.Writer, cfg *registry.GroupConfig, opts wizardOptions) 
 		cfg.GroupDocs = opts.GroupDocs
 	}
 
+	// Step 4a — choose which AI coding tools get their install artifacts (rules
+	// files + MCP) scaffolded (#5701). Only prompt when no explicit --tools was
+	// given (cfg.Tools already set) and we are interactive; the non-interactive
+	// path leaves cfg.Tools empty so the empty-means-all contract is preserved.
+	if len(cfg.Tools) == 0 && !opts.NonInteractive {
+		ids, err := promptTools()
+		if err != nil {
+			return err
+		}
+		cfg.Tools = ids
+	}
+
 	// Step 4b — choose which AI tools get the grafel MCP server (#5344). Only
 	// prompt interactively when no explicit selection was passed via flags. The
 	// non-interactive path leaves opts.MCPTools as-is (nil → all detected).
@@ -304,6 +339,44 @@ func promptMCPTools() (*[]string, error) {
 	return &selected, nil
 }
 
+// promptTools runs the per-tool enablement picker (#5701), mirroring
+// runToolWizard: every supported adapter is offered as a checkbox, pre-checked
+// when DetectInstalled() flagged it, and the toggled set is normalized to
+// registry-order adapter IDs. Returning an empty slice (the user unchecked
+// everything) is treated as "no explicit choice" — so the empty-means-all
+// contract at the Apply boundary is preserved rather than scaffolding nothing.
+//
+// It is a package var so both the huh (non-TTY) fallback AND the alt-screen TUI
+// (which invokes it just before entering the full-screen program) drive the
+// SAME picker, and so tests can inject a selection without a real terminal.
+var promptTools = func() ([]string, error) {
+	choices := tooladapter.WizardChoices(nil)
+	opts := make([]huh.Option[string], 0, len(choices))
+	var preselected []string
+	for _, c := range choices {
+		label := c.DisplayName
+		if c.Detected {
+			label += " (detected)"
+		}
+		opts = append(opts, huh.NewOption(label, c.ID).Selected(c.PreChecked))
+		if c.PreChecked {
+			preselected = append(preselected, c.ID)
+		}
+	}
+	selected := append([]string{}, preselected...)
+	if err := huh.NewMultiSelect[string]().
+		Title("AI coding tools to target").
+		Description("Rules files + MCP are scaffolded only for the tools you check.\n" + navHintMulti).
+		Options(opts...).
+		Height(wizardListHeight(len(opts))).
+		Value(&selected).
+		WithTheme(wizardTheme()).
+		Run(); err != nil {
+		return nil, err
+	}
+	return tooladapter.NormalizeSelection(selected), nil
+}
+
 // maybeIndexGroup indexes group with live progress unless noIndex is set. A
 // daemon-not-running condition is downgraded to a warning so the wizard still
 // completes successfully (the group is already registered).
@@ -346,6 +419,17 @@ type groupApplyOptions struct {
 // report or serialize what was written. Idempotent: re-running updates the
 // registry entry in place and overwrites the config atomically.
 func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOptions) (*install.Result, error) {
+	// #5701 ordering footgun: if this group has no explicit tool selection yet,
+	// adopt any pending one stashed by an earlier `grafel install --tools` that
+	// ran before any group existed. Consumed once (the file is deleted on read),
+	// so it applies to exactly the first group registered afterwards.
+	if len(cfg.Tools) == 0 {
+		if pending := consumePendingTools(); len(pending) > 0 {
+			cfg.Tools = pending
+			fmt.Fprintf(out, "applied stashed tool selection: %v\n", pending)
+		}
+	}
+
 	cfgPath, err := registry.ConfigPathFor(cfg.Name)
 	if err != nil {
 		return nil, err
