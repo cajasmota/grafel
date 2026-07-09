@@ -3,8 +3,6 @@ package extract
 import (
 	"runtime"
 	"testing"
-
-	"github.com/cajasmota/grafel/internal/process"
 )
 
 // TestConcurrencyEnvOverride verifies the #3648 emergency throttle:
@@ -24,51 +22,44 @@ func TestConcurrencyEnvOverride(t *testing.T) {
 	// Garbage / non-positive values are ignored → fall back to auto-tune.
 	t.Setenv("GRAFEL_EXTRACT_CONCURRENCY", "not-a-number")
 	auto := (CoordinatorConfig{}).concurrency()
-	want := backgroundConcurrency(runtime.NumCPU(), process.TotalMemoryMB())
+	want := backgroundConcurrency(runtime.NumCPU())
 	if auto != want {
 		t.Fatalf("invalid env ignored: concurrency() = %d, want auto %d", auto, want)
 	}
 }
 
-// TestBackgroundConcurrencyFormula pins the #5692 background-fan-out formula:
-// scale with NumCPU (ceiling backgroundConcurrencyCeiling) but never exceed the
-// per-child RSS budget (totalMem / perSubprocessRSSBudgetMB). It is IDENTICAL to
-// the historical min(NumCPU/2, 4) for <=9-core hosts with ample RAM, only lifts
-// above 9 cores, and only tightens when memory is scarce.
-func TestBackgroundConcurrencyFormula(t *testing.T) {
-	const ampleMem = 65536 // 64 GB — memory clamp never binds
+// TestBackgroundConcurrencyCap pins the conservative background-fan-out default:
+// min(NumCPU/2, 4). This cap is INTENTIONALLY low — the daemon reindexes in the
+// background on the developer's own box while they work, and each child also
+// runs GOMAXPROCS=2, so the effective draw is ~concurrency × 2 threads. A low
+// cap leaves CPU headroom so background indexing never hangs the machine
+// (#3648). Index speed is not the priority; box responsiveness is. Power users
+// who want more cores opt in via GRAFEL_EXTRACT_CONCURRENCY (tested separately).
+//
+// #5692 briefly lifted this to a NumCPU/2 formula with a ceiling of 12 (only
+// memory-clamped); that saturated high-core dev boxes and was reverted. The cap
+// stays flat at 4 by default regardless of host core count.
+func TestBackgroundConcurrencyCap(t *testing.T) {
 	cases := []struct {
 		name   string
 		numCPU int
-		memMB  int64
 		want   int
 	}{
-		// Low-core hosts: unchanged from the historical formula.
-		{"1-core", 1, ampleMem, 1},
-		{"2-core", 2, ampleMem, 1},
-		{"4-core", 4, ampleMem, 2},
-		{"8-core", 8, ampleMem, 4}, // pre-#5692: min(4,4)=4 — unchanged
-		{"9-core", 9, ampleMem, 4}, // 9/2=4 — unchanged
-		// High-core hosts: the raised ceiling lets fan-out grow past the old 4.
-		{"10-core", 10, ampleMem, 5}, // was 4, now 5
-		{"16-core", 16, ampleMem, 8},
-		{"24-core-hits-ceiling", 24, ampleMem, backgroundConcurrencyCeiling},
-		{"64-core-ceiling", 64, ampleMem, backgroundConcurrencyCeiling},
-		// Memory clamp: high cores but scarce RAM tightens below the CPU target.
-		{"16-core-2GB", 16, 2048, 4},  // 2048/512=4 < cpuTarget 8
-		{"16-core-1GB", 16, 1024, 2},  // 1024/512=2
-		{"16-core-300MB", 16, 300, 1}, // floors at 1, never 0
-		// Unknown memory (<=0): skip the clamp, use the CPU target.
-		{"16-core-mem-unknown", 16, 0, 8},
-		{"16-core-mem-negative", 16, -1, 8},
-		// Degenerate core count clamps to 1.
-		{"zero-core", 0, ampleMem, 1},
+		{"1-core", 1, 1},
+		{"2-core", 2, 1},
+		{"4-core", 4, 2},
+		{"8-core", 8, 4},   // min(4, 4) = 4
+		{"9-core", 9, 4},   // 9/2 = 4
+		{"10-core", 10, 4}, // restored default: capped at 4, NOT 5 (#5692 lift reverted)
+		{"16-core", 16, 4}, // high-core host still capped at 4 by default
+		{"64-core", 64, 4}, // no ceiling-12 lift; stays conservative
+		{"zero-core", 0, 1},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			if got := backgroundConcurrency(tc.numCPU, tc.memMB); got != tc.want {
-				t.Fatalf("backgroundConcurrency(%d, %d) = %d, want %d",
-					tc.numCPU, tc.memMB, got, tc.want)
+			if got := backgroundConcurrency(tc.numCPU); got != tc.want {
+				t.Fatalf("backgroundConcurrency(%d) = %d, want %d",
+					tc.numCPU, got, tc.want)
 			}
 		})
 	}

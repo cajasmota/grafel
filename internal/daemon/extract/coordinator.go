@@ -22,18 +22,16 @@ import (
 	"github.com/cajasmota/grafel/internal/executil"
 	bazelextract "github.com/cajasmota/grafel/internal/extractors/bazel"
 	configextract "github.com/cajasmota/grafel/internal/extractors/config"
-	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/resolve"
 	"github.com/cajasmota/grafel/internal/treesitter"
 	"github.com/cajasmota/grafel/internal/types"
 )
 
-// CoordinatorConfig governs subprocess fan-out. Background defaults are tuned
-// to stay memory-safe on a typical laptop while using more of a high-core host:
+// CoordinatorConfig governs subprocess fan-out. Defaults are tuned to
+// stay under the 600MB Phase-F target on a typical laptop:
 //
-//	Concurrency = backgroundConcurrency(NumCPU, hostMem)  → NumCPU/2, ceiling 12,
-//	              clamped by hostMem / 512MB per child (#5692; was capped at 4)
-//	BatchSize   = 80 files                                → ~100MB peak per subprocess
+//	Concurrency = NumCPU / 2 capped at 4   → 4 × 150MB = 600MB worst-case
+//	BatchSize   = 80 files                  → ~100MB peak per subprocess
 //
 // All fields zero-valued fall back to defaults.
 type CoordinatorConfig struct {
@@ -141,63 +139,38 @@ func (c CoordinatorConfig) concurrency() int {
 		}
 		return n
 	}
-	return backgroundConcurrency(runtime.NumCPU(), process.TotalMemoryMB())
+	return backgroundConcurrency(runtime.NumCPU())
 }
 
-const (
-	// backgroundConcurrencyCeiling is the absolute upper bound on concurrent
-	// extract subprocesses for a BACKGROUND (watch/churn) reindex. Raised from
-	// the historical hard 4 (#3648) to 12 (#5692) so high-core/NVMe hosts stop
-	// idling most of their cores during cold indexing; the memory-budget clamp
-	// in backgroundConcurrency still bounds total RSS on memory-constrained hosts.
-	backgroundConcurrencyCeiling = 12
-
-	// perSubprocessRSSBudgetMB is the memory reservation per extract child used
-	// to derive the memory-safety concurrency clamp. A child peaks well under
-	// this during extract (~80-150MB typical; see subproc.go's memory profile),
-	// so 512MB is a deliberately conservative reservation that keeps N children
-	// comfortably within host RAM even on batches with a few large files.
-	perSubprocessRSSBudgetMB = 512
-)
-
 // backgroundConcurrency computes the default number of concurrent extract
-// subprocesses for a BACKGROUND (watch/churn) reindex from the host core count
-// and total physical memory (MB; <=0 means "unknown" and skips the memory
-// clamp). It is a pure function so the formula is unit-testable (#5692).
+// subprocesses for a BACKGROUND (watch/churn) reindex: min(NumCPU/2, 4).
 //
-// Formula:
+// This cap is INTENTIONALLY low. The daemon reindexes in the background on a
+// developer's own machine while they are actively working; the goal is to leave
+// CPU headroom so continuous background indexing never hangs the box. It is
+// deliberately NOT sized to "use all the cores" — index speed is not the
+// priority here, developer-box responsiveness is.
 //
-//	cpuTarget = clamp(numCPU/2, 1, backgroundConcurrencyCeiling)
-//	memCap    = max(1, totalMemMB / perSubprocessRSSBudgetMB)   [only if known]
-//	result    = min(cpuTarget, memCap)
+// The cap compounds with the per-subprocess GOMAXPROCS cap (extractGOMAXPROCS,
+// default 2): each of these children also runs its own Go runtime pinned to 2
+// cores, so the effective background CPU draw is ~concurrency × 2 threads.
+// Lifting this cap toward the host core count therefore saturates every core
+// (concurrency × 2 threads) and is exactly the #3648 runaway we guard against.
 //
-// Properties (the #5692 hard constraints):
-//   - IDENTICAL to the pre-#5692 min(NumCPU/2, 4) default for hosts with <= 9
-//     cores and ample RAM — the ceiling only lifts above 9 cores.
-//   - Only ever LOOSENS where both cores AND memory allow; the memory clamp can
-//     only ever tighten below the CPU target, preserving the #3648 memory-safety
-//     intent (never fan out past what host RAM can hold).
-//   - Foreground (Interactive) rebuilds are untouched — they resolve to NumCPU
-//     above and do not call this function.
-func backgroundConcurrency(numCPU int, totalMemMB int64) int {
-	if numCPU < 1 {
-		numCPU = 1
-	}
+// Power users who genuinely want more cores opt in explicitly via
+// GRAFEL_EXTRACT_CONCURRENCY (or cpu.json / an explicit Concurrency field),
+// which is checked before this default. Foreground (Interactive) rebuilds are
+// untouched — the user is waiting on those, so they resolve to NumCPU above and
+// never call this function.
+//
+// Kept as a small pure function so the cap stays unit-testable (#3648).
+func backgroundConcurrency(numCPU int) int {
 	n := numCPU / 2
 	if n < 1 {
 		n = 1
 	}
-	if n > backgroundConcurrencyCeiling {
-		n = backgroundConcurrencyCeiling
-	}
-	if totalMemMB > 0 {
-		memCap := int(totalMemMB / perSubprocessRSSBudgetMB)
-		if memCap < 1 {
-			memCap = 1
-		}
-		if n > memCap {
-			n = memCap
-		}
+	if n > 4 {
+		n = 4
 	}
 	return n
 }
