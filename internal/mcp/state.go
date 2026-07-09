@@ -528,6 +528,38 @@ type State struct {
 	// Exported so that the daemon server can call NotifyRefSwitch on receipt
 	// of a BranchSwitchEvent and integration tests can inspect cache state.
 	CrossLinkCache *CrossLinkCache
+
+	// warmingFn is the optional read-only scheduler warming accessor (#5690).
+	// Injected by cmd/grafel via SetWarmingSnapshot when the daemon has a live
+	// scheduler; nil on the stdio-native path (no daemon) or in tests, in which
+	// case Warming() reports "not warming / unknown" gracefully. Read-only — it
+	// never affects scheduling.
+	warmingFn func() daemon.WarmingSnapshot
+}
+
+// SetWarmingSnapshot wires a read-only scheduler warming accessor into the
+// State (#5690). Called from cmd/grafel once the daemon's scheduler is up so
+// grafel_whoami / grafel_status can distinguish a warming group (post-index
+// enrichment in flight) from a genuinely slow query. Passing nil clears it.
+func (s *State) SetWarmingSnapshot(fn func() daemon.WarmingSnapshot) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.warmingFn = fn
+}
+
+// Warming returns the current warming snapshot and whether a scheduler handle
+// is wired. When no handle is injected it returns the zero snapshot (not
+// warming) and false, so callers degrade gracefully to warming=false. The
+// accessor is invoked WITHOUT holding s.mu so the scheduler's own snapshot
+// lock never nests under the MCP state lock.
+func (s *State) Warming() (daemon.WarmingSnapshot, bool) {
+	s.mu.Lock()
+	fn := s.warmingFn
+	s.mu.Unlock()
+	if fn == nil {
+		return daemon.WarmingSnapshot{}, false
+	}
+	return fn(), true
 }
 
 // SetWorktreeLookup wires the PH3 ephemeral worktree registry.  Call from

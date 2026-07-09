@@ -683,6 +683,11 @@ func runDaemon(argv []string) error {
 		MCPListTools: daemonMCPListTools,
 		MCPCallTool:  daemonMCPCallTool,
 
+		// #5690: publish the scheduler's read-only warming accessor so the MCP
+		// surface (grafel_whoami / grafel_status) can report whether a group is
+		// still warming (post-index enrichment in flight) vs a slow query.
+		OnSchedulerReady: setDaemonWarmingFn,
+
 		// #2224: on every branch switch, invalidate stale CrossLinkCache
 		// entries in the MCP server so the next cross-repo query recomputes
 		// fresh candidates for the new ref rather than returning stale ones.

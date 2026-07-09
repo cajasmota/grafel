@@ -339,6 +339,21 @@ func (s *Server) handleWhoami(ctx context.Context, req mcpapi.CallToolRequest) (
 		resp["tier"] = "hot"
 	}
 
+	// #5690: surface the real warming/readiness signal from the daemon
+	// scheduler so agents can tell a warming group (post-index enrichment still
+	// in flight — queries are slow but the graph is incomplete) apart from a
+	// genuinely slow query. Additive fields; when no scheduler handle is wired
+	// (stdio-native path / tests) warming defaults to false and the counts to 0.
+	// A warming group overrides the cwd-derived tier with a real "warming" value.
+	warm, _ := s.State.Warming()
+	resp["warming"] = warm.Warming()
+	resp["indexing"] = warm.IndexInFlight
+	resp["pending_algo"] = warm.PendingAlgo
+	resp["pending_links"] = warm.PendingLinks
+	if warm.Warming() {
+		resp["tier"] = "warming"
+	}
+
 	// Nudge suppression: GRAFEL_WHOAMI_NUDGE=quiet disables doc-state fields.
 	if os.Getenv("GRAFEL_WHOAMI_NUDGE") == "quiet" {
 		return jsonResult(resp), nil

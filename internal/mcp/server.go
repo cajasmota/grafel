@@ -1826,6 +1826,15 @@ func (s *Server) handleStatus(ctx context.Context, req mcpapi.CallToolRequest) (
 		msg = fmt.Sprintf("Grafel: cwd %q is not under any registered group (registered: %v). cd into a registered repo or run `grafel install` here. Note: new groups registered mid-session are not reflected until restart (#1772).", cwd, known)
 	}
 
+	// #5690: append a compact warming hint when the daemon scheduler reports a
+	// post-index enrichment pass in flight. This lets an agent onboarding via
+	// grafel_status tell a warming graph (queries slow, results incomplete)
+	// apart from a slow query. Silent when not warming or no handle is wired.
+	if warm, ok := s.State.Warming(); ok && warm.Warming() {
+		msg += fmt.Sprintf(" [warming: post-index enrichment in flight (indexing=%t, pending_algo=%d, pending_links=%d) — results may be incomplete and queries slower until this completes]",
+			warm.IndexInFlight, warm.PendingAlgo, warm.PendingLinks)
+	}
+
 	// Append the MCP + grep pairing philosophy so agents onboarding via
 	// grafel_status understand how to use MCP alongside grep (#1836).
 	const pairingPhilosophy = "\n\n" +

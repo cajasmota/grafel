@@ -244,6 +244,16 @@ type Config struct {
 	// invalidation. nil leaves the on-disk delete to run without an explicit
 	// reader drop (the cache ages out on its own).
 	DeadRefDropReader func(repoPath, ref string)
+
+	// OnSchedulerReady, when non-nil, is invoked once the scheduler is started
+	// with a read-only warming-state accessor closing over the live scheduler
+	// (#5690). cmd/grafel wires the accessor into the MCP server's State so
+	// grafel_whoami / grafel_status can report whether a post-index enrichment
+	// pass is still in flight (a "warming" group) rather than leaving agents to
+	// mistake enrichment-induced slowness for a slow query. The accessor is
+	// read-only and has NO effect on scheduling. Not called for a watcher-less
+	// daemon (no scheduler is created).
+	OnSchedulerReady func(warming func() WarmingSnapshot)
 }
 
 // Run starts the daemon. It blocks until either:
@@ -421,6 +431,20 @@ func Run(ctx context.Context, cfg Config) error {
 		scheduler.Start()
 		svc.scheduler = scheduler
 		defer scheduler.Stop()
+
+		// #5690: hand a read-only warming accessor to the wiring layer so the
+		// MCP surface can report warming state. Closes over the live scheduler;
+		// no scheduling authority.
+		if cfg.OnSchedulerReady != nil {
+			cfg.OnSchedulerReady(func() WarmingSnapshot {
+				snap := scheduler.Snapshot()
+				return WarmingSnapshot{
+					IndexInFlight: len(snap.InFlight) > 0,
+					PendingAlgo:   len(snap.PendingAlgo),
+					PendingLinks:  len(snap.PendingLinks),
+				}
+			})
+		}
 
 		wcfg := cfg.WatcherConfig
 		watcher, werr := watch.NewWatcherConfig(wcfg, func(repo string, bulk bool) {
