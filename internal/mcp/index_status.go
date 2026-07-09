@@ -79,6 +79,17 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 	repoFilter := strings.TrimSpace(argString(req, "repo", ""))
 	groupFilter := strings.TrimSpace(argString(req, "group", ""))
 
+	// #5685: gate on group resolution exactly like grafel_orient. Route through
+	// the same resolveGroup cascade (explicit group= → cwd → registry → singleton)
+	// and surface its error VERBATIM. Without this, a call with no cwd and no
+	// group= silently fell through to an un-scoped scan that read as an empty /
+	// "nothing indexed" result instead of the actionable "pass `group=<name>`"
+	// message. When a group IS resolvable (explicit or from cwd/singleton) this
+	// returns nil and the existing snapshot logic below runs unchanged.
+	if _, _, err := resolveGroup(s.State, groupFilter, s.inferCWD(req)); err != nil {
+		return mcpapi.NewToolResultError(err.Error()), nil
+	}
+
 	// Build a repo-path → group index from the registry so each row can be
 	// attributed to its group. The scheduler keys on the same on-disk path the
 	// registry stores, so an exact-path match attaches the group.
