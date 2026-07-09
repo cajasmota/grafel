@@ -71,6 +71,28 @@ func TestGeneratePlist_KeepAlive(t *testing.T) {
 	}
 }
 
+// TestGeneratePlist_SoftResourceLimits verifies the plist sets a
+// SoftResourceLimits/NumberOfFiles fd limit (#5675) so a worktree indexing
+// storm cannot exhaust fds and crash-loop under KeepAlive.
+func TestGeneratePlist_SoftResourceLimits(t *testing.T) {
+	plist := renderPlist(t)
+	if !strings.Contains(plist, "<key>SoftResourceLimits</key>") {
+		t.Errorf("plist missing SoftResourceLimits:\n%s", plist)
+	}
+	if !strings.Contains(plist, "<key>NumberOfFiles</key>") {
+		t.Errorf("plist missing NumberOfFiles:\n%s", plist)
+	}
+	if !strings.Contains(plist, "<integer>65536</integer>") {
+		t.Errorf("plist missing NumberOfFiles value 65536:\n%s", plist)
+	}
+	// NumberOfFiles must appear inside the SoftResourceLimits dict.
+	softIdx := strings.Index(plist, "<key>SoftResourceLimits</key>")
+	nofIdx := strings.Index(plist, "<key>NumberOfFiles</key>")
+	if softIdx < 0 || nofIdx < softIdx {
+		t.Errorf("NumberOfFiles not nested under SoftResourceLimits:\n%s", plist)
+	}
+}
+
 // TestGeneratePlist_RunAtLoad verifies RunAtLoad=true so the daemon
 // starts automatically when the user logs in.
 func TestGeneratePlist_RunAtLoad(t *testing.T) {

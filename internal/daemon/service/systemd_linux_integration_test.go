@@ -97,6 +97,11 @@ func TestSystemdInstallUninstall(t *testing.T) {
 	if !strings.Contains(unit, "WantedBy=default.target") {
 		t.Errorf("rendered unit missing WantedBy=default.target:\n%s", unit)
 	}
+	// #5675: the [Service] section must set an fd limit so a worktree indexing
+	// storm cannot exhaust fds and crash-loop under Restart=on-failure.
+	if !strings.Contains(unit, "LimitNOFILE=65536") {
+		t.Errorf("rendered unit missing LimitNOFILE=65536:\n%s", unit)
+	}
 
 	// ── Write unit file and reload ────────────────────────────────────────
 	if err := os.MkdirAll(filepath.Dir(unitPath), 0o755); err != nil {

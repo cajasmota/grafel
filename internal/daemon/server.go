@@ -12,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -27,6 +28,24 @@ import (
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/gitmeta"
 )
+
+// defaultActivateConcurrency bounds how many worktree working-tree fsnotify
+// subscriptions (watcher.AddRepo) may be opening at once (#5675). Kept small:
+// activations are normally dispatched one-at-a-time by the reconciliation poll,
+// so this only ever engages under an abnormal burst.
+const defaultActivateConcurrency = 8
+
+// worktreeActivateConcurrency resolves the OnActivate fan-out bound. It honours
+// GRAFEL_WORKTREE_ACTIVATE_CONCURRENCY (strictly-positive integer) and falls
+// back to defaultActivateConcurrency otherwise.
+func worktreeActivateConcurrency() int {
+	if raw := strings.TrimSpace(os.Getenv("GRAFEL_WORKTREE_ACTIVATE_CONCURRENCY")); raw != "" {
+		if n, err := strconv.Atoi(raw); err == nil && n > 0 {
+			return n
+		}
+	}
+	return defaultActivateConcurrency
+}
 
 // Config configures Run. Fields are required unless documented otherwise.
 type Config struct {
@@ -492,6 +511,19 @@ func Run(ctx context.Context, cfg Config) error {
 				}
 				wtWatcher := worktree.NewWatcher(wtStore, cfg.WorktreeParents, logger)
 
+				// #5675: bound the fsnotify-subscription fan-out. Each
+				// watcher.AddRepo(child.Path) subscribes the worktree's ENTIRE
+				// working tree, costing ~1 fd per directory on Linux inotify —
+				// UNBOUNDED by the number of activated worktrees. A burst of
+				// activations could open a flood of fds at once and crash the
+				// daemon into a KeepAlive/Restart relaunch loop. This semaphore
+				// caps how many subscriptions can be opening concurrently. For
+				// the common case (activations are dispatched sequentially by
+				// poll, one at a time) the semaphore is always immediately
+				// available — zero behavior change. Overridable via
+				// GRAFEL_WORKTREE_ACTIVATE_CONCURRENCY.
+				activateSem := make(chan struct{}, worktreeActivateConcurrency())
+
 				// On activation, subscribe the worktree's WORKING TREE to the
 				// fsnotify watcher so uncommitted edits trigger a reactive
 				// reindex, and enqueue one immediate reindex of its ref tier.
@@ -499,7 +531,10 @@ func Run(ctx context.Context, cfg Config) error {
 				// RefCapture(worktreePath), so the graph lands in the correct
 				// per-ref dir keyed by the worktree path (multi-ref model).
 				wtWatcher.OnActivate = func(child *worktree.WorktreeChild) {
-					if _, aerr := watcher.AddRepo(child.Path); aerr != nil {
+					activateSem <- struct{}{}
+					_, aerr := watcher.AddRepo(child.Path)
+					<-activateSem
+					if aerr != nil {
 						logger.Warn("worktree: failed to watch working tree", "path", child.Path, "err", aerr)
 					}
 					scheduler.Enqueue(child.Path)

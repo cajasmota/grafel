@@ -5,6 +5,8 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -658,6 +660,57 @@ func TestWatcher_Sync_discovers_and_persists(t *testing.T) {
 	}
 	if len(store2.Active()) != 1 {
 		t.Fatalf("persisted store: want 1 active, got %d", len(store2.Active()))
+	}
+}
+
+// TestWatcher_poll_serialized verifies that two concurrent Poll() calls do NOT
+// run the reconciliation body at the same time (#5675). The ticker loop and the
+// debounced fsnotify goroutine both call poll(); overlapping passes would
+// multiply the OnActivate fsnotify-subscription fan-out and can exhaust fds.
+//
+// The parents() provider is called once at the very start of each poll body. We
+// instrument it to record the maximum observed concurrency: with the pollMu
+// guard it must never exceed 1.
+func TestWatcher_poll_serialized(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git not available")
+	}
+	tmp := t.TempDir()
+	repoDir := filepath.Join(tmp, "repo")
+	if err := os.MkdirAll(repoDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	initGitRepo(t, repoDir)
+	addWorktree(t, repoDir, filepath.Join(tmp, "wt1"), "feat/serial")
+
+	store := worktree.NewStore(filepath.Join(tmp, "wt.json"))
+
+	var inFlight int32
+	var maxSeen int32
+	parents := func() []worktree.ParentRepo {
+		n := atomic.AddInt32(&inFlight, 1)
+		for {
+			cur := atomic.LoadInt32(&maxSeen)
+			if n <= cur || atomic.CompareAndSwapInt32(&maxSeen, cur, n) {
+				break
+			}
+		}
+		// Hold long enough that a non-serialized second poll would overlap.
+		time.Sleep(60 * time.Millisecond)
+		atomic.AddInt32(&inFlight, -1)
+		return []worktree.ParentRepo{{GroupName: "g", Slug: "r", Path: repoDir}}
+	}
+	w := worktree.NewWatcher(store, parents, nil)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() { defer wg.Done(); w.Poll() }()
+	}
+	wg.Wait()
+
+	if got := atomic.LoadInt32(&maxSeen); got != 1 {
+		t.Fatalf("poll() ran with concurrency %d; want serialized (1)", got)
 	}
 }
 

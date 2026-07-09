@@ -37,6 +37,10 @@ ExecStart={{.BinPath}} daemon
 Restart=on-failure
 RestartSec=3s
 Environment=HOME={{.Home}}
+# #5675: give the daemon ample fd headroom. A worktree indexing storm
+# subscribes many working trees to inotify (~1 fd per directory); without this
+# the process can exhaust fds and crash-loop under Restart=on-failure.
+LimitNOFILE=65536
 
 [Install]
 WantedBy=default.target

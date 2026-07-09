@@ -26,6 +26,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/caps"
 	"github.com/cajasmota/grafel/internal/daemon/extract"
+	"github.com/cajasmota/grafel/internal/daemon/fdlimit"
 	"github.com/cajasmota/grafel/internal/daemon/mode"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
@@ -434,6 +435,22 @@ func runDaemon(argv []string) error {
 	parseCap := runtime.GOMAXPROCS(0)
 	indexstate.SetParseConcurrency(parseCap)
 	gcLog.Printf("cpu-tune: in-process parse concurrency cap=%d (#5630)", parseCap)
+
+	// #5675: raise RLIMIT_NOFILE toward the hard limit so a worktree indexing
+	// storm (each subscribed working tree costs ~1 fd per directory on Linux
+	// inotify) cannot exhaust fds and crash the daemon into a KeepAlive/Restart
+	// relaunch loop. Best-effort and NON-FATAL: never lowers an already-high
+	// limit; a failure to raise is logged and startup continues. Overridable
+	// via GRAFEL_DAEMON_FD_LIMIT.
+	fdTarget := fdlimit.DefaultTarget
+	if v := envPositiveInt2("GRAFEL_DAEMON_FD_LIMIT"); v > 0 {
+		fdTarget = uint64(v)
+	}
+	if oldFD, newFD, ferr := fdlimit.Raise(fdTarget); ferr != nil {
+		gcLog.Printf("fd-tune: WARN could not raise RLIMIT_NOFILE (target=%d, current=%d): %v", fdTarget, oldFD, ferr)
+	} else {
+		gcLog.Printf("fd-tune: RLIMIT_NOFILE soft limit %d -> %d (target=%d)", oldFD, newFD, fdTarget)
+	}
 
 	// Parse daemon-only flags. The root cobra command has flag parsing
 	// disabled for "daemon" so we own the argv. Unknown flags exit
