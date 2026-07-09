@@ -262,7 +262,7 @@ func TestDoctorRunsCleanly(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := &bytes.Buffer{}
-	if err := runDoctor(out); err != nil {
+	if err := runDoctor(out, false); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(out.String(), "Group: demo") {

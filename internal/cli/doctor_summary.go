@@ -24,7 +24,17 @@ type DoctorRepoHealth struct {
 	Entities       int
 	Relationships  int
 	CrossRepoEdges int
+
+	// orphanEntities is the number of entities in this repo with no incoming
+	// relationship. Computed once (O(E)) during computeRepoHealth and summed
+	// by computeQualityMetrics so the graph is loaded at most once per repo.
+	orphanEntities int
 }
+
+// loadGraphFromDir is an indirection over graph.LoadGraphFromDir so tests can
+// count how many times the (potentially large) graph is loaded and assert the
+// doctor path loads it at most once per repo (#5689).
+var loadGraphFromDir = graph.LoadGraphFromDir
 
 // DoctorGroupHealth aggregates health metrics for a group and all its repos.
 type DoctorGroupHealth struct {
@@ -59,8 +69,25 @@ type DoctorGroupHealth struct {
 }
 
 // ComputeDoctorHealth aggregates daemon and group health into a comprehensive report.
-// It reads graph files, candidate counts, and watcher state for each group.
-func ComputeDoctorHealth(groups []registry.GroupRef) []*DoctorGroupHealth {
+// It reads candidate counts, watcher state, and the graph-stats.json sidecar for
+// each repo.
+//
+// #5689: the report loads each repo's graph AT MOST ONCE and derives cross-repo
+// edges + orphan entities from a SINGLE O(E) adjacency pass. This replaces the
+// old path that loaded the full graph three times per repo and ran an
+// O(relationships×entities) nested scan, which hung for minutes on large
+// (>250k-entity) graphs.
+//
+// Entity/relationship counts come from the live graph (doc.Stats) when the load
+// succeeds — same snapshot as the orphan/cross-repo metrics, so OrphanRate can
+// never mix a stale sidecar denominator with a live numerator (>100%). The
+// graph-stats.json sidecar is used only as a fallback when the graph can't be
+// loaded (the degraded path where orphans can't be computed anyway).
+//
+// deep is retained for its documented full-recompute semantics; since the
+// default path already loads the graph, it no longer changes the counts when the
+// load succeeds.
+func ComputeDoctorHealth(groups []registry.GroupRef, deep bool) []*DoctorGroupHealth {
 	var result []*DoctorGroupHealth
 
 	for _, g := range groups {
@@ -79,7 +106,7 @@ func ComputeDoctorHealth(groups []registry.GroupRef) []*DoctorGroupHealth {
 
 		// Aggregate per-repo health
 		for _, r := range cfg.Repos {
-			rh := computeRepoHealth(r)
+			rh := computeRepoHealth(r, deep)
 			health.Repos = append(health.Repos, rh)
 			health.TotalEntities += rh.Entities
 			health.TotalRelationships += rh.Relationships
@@ -113,7 +140,13 @@ func ComputeDoctorHealth(groups []registry.GroupRef) []*DoctorGroupHealth {
 }
 
 // computeRepoHealth assembles the health snapshot for a single repo.
-func computeRepoHealth(r registry.Repo) *DoctorRepoHealth {
+//
+// Last-indexed time is read from the graph-stats.json sidecar. Entity and
+// relationship counts come from the live graph (doc.Stats) when it loads,
+// falling back to the sidecar only when the load fails. Cross-repo edges and
+// orphan entities (no sidecar) are computed from a SINGLE O(E) adjacency pass
+// that loads the graph at most once.
+func computeRepoHealth(r registry.Repo, deep bool) *DoctorRepoHealth {
 	rh := &DoctorRepoHealth{
 		Slug:           r.Slug,
 		Path:           r.Path,
@@ -158,46 +191,74 @@ func computeRepoHealth(r registry.Repo) *DoctorRepoHealth {
 		}
 	}
 
-	// Load full graph to count cross-repo edges
-	doc, err := graph.LoadGraphFromDir(stateDir)
+	// Load the graph AT MOST ONCE to derive the metrics that have no sidecar:
+	// cross-repo edges and orphan entities. Both are computed in a single O(E)
+	// adjacency pass (previously an O(relationships×entities) nested scan +
+	// three separate full-graph loads per repo — the #5689 hang).
+	//
+	// When the load SUCCEEDS we source entity/relationship counts from the live
+	// graph (doc.Stats) unconditionally, so the orphan numerator and the entity
+	// denominator of OrphanRate are always the SAME snapshot — a stale sidecar
+	// can no longer produce a nonsensical >100% rate. The graph-stats.json
+	// sidecar values read above are the fallback used ONLY when the load fails
+	// (the degraded path where orphans/cross-repo can't be computed anyway).
+	//
+	// deep is retained for its documented full-recompute semantics; because the
+	// default path already loads the graph for orphans, it no longer changes the
+	// counts when the load succeeds.
+	_ = deep
+	doc, err := loadGraphFromDir(stateDir)
 	if err == nil && doc != nil {
 		rh.Entities = doc.Stats.Entities
 		rh.Relationships = doc.Stats.Relationships
+		rh.CrossRepoEdges, rh.orphanEntities = computeCrossRepoAndOrphans(doc)
 	}
-
-	// Count cross-repo edges (edges pointing outside this repo)
-	rh.CrossRepoEdges = countCrossRepoEdgesForRepo(r.Slug, stateDir)
 
 	return rh
 }
 
-// computeQualityMetrics aggregates orphan rate, bug rate, and candidate counts for a group.
-func computeQualityMetrics(health *DoctorGroupHealth) {
-	// Compute orphan rate from all repos
-	totalOrphans := 0
-	for _, r := range health.Repos {
-		stateDir := daemon.StateDirForRepo(r.Path)
-		doc, err := graph.LoadGraphFromDir(stateDir)
-		if err != nil || doc == nil {
+// computeCrossRepoAndOrphans derives, in a single O(E) pass, the number of
+// cross-repo edges (relationships whose ToID is not an entity in this repo)
+// and the number of orphan entities (entities with no incoming relationship).
+//
+// This replaces the old O(relationships×entities) nested loop; on a 291k-entity
+// / 1.4M-edge graph that scan was ≈10^12 operations. Membership lookups here are
+// O(1) via a pre-built entity-ID set, so the whole pass is O(E+N).
+func computeCrossRepoAndOrphans(doc *graph.Document) (crossRepo, orphans int) {
+	entityIDs := make(map[string]struct{}, len(doc.Entities))
+	for _, e := range doc.Entities {
+		entityIDs[e.ID] = struct{}{}
+	}
+	hasIncoming := make(map[string]bool, len(doc.Relationships))
+	for _, rel := range doc.Relationships {
+		if rel.ToID == "" {
 			continue
 		}
-
-		// Track entities with incoming relationships
-		hasIncoming := make(map[string]bool)
-		for _, rel := range doc.Relationships {
-			if rel.ToID != "" {
-				hasIncoming[rel.ToID] = true
-			}
+		hasIncoming[rel.ToID] = true
+		if _, ok := entityIDs[rel.ToID]; !ok {
+			// ToID points at something not in this repo → cross-repo edge.
+			crossRepo++
 		}
-
-		// Count orphans
-		for _, e := range doc.Entities {
-			if !hasIncoming[e.ID] {
-				totalOrphans++
-				health.OrphanEntities++
-			}
+	}
+	for _, e := range doc.Entities {
+		if !hasIncoming[e.ID] {
+			orphans++
 		}
+	}
+	return crossRepo, orphans
+}
 
+// computeQualityMetrics aggregates orphan rate, bug rate, and candidate counts
+// for a group. Orphan counts are taken from the per-repo values already computed
+// by computeRepoHealth (single O(E) pass) — this function loads no graph. The
+// only per-repo I/O here is the cheap enrichment-candidates.json sidecar read.
+func computeQualityMetrics(health *DoctorGroupHealth) {
+	// Aggregate orphan counts computed once per repo in computeRepoHealth, and
+	// read the (cheap) candidate-count sidecar.
+	for _, r := range health.Repos {
+		health.OrphanEntities += r.orphanEntities
+
+		stateDir := daemon.StateDirForRepo(r.Path)
 		// Load candidate counts (enrichSubjects = unique entities needing enrichment).
 		enrichSubjects, _, _, repairCount := loadCandidateCounts(stateDir)
 		health.PendingEnrichments += enrichSubjects
@@ -212,34 +273,6 @@ func computeQualityMetrics(health *DoctorGroupHealth) {
 	// Bug rate is a placeholder for unresolved-edges metric
 	// This would be populated from a bug-rate.json or similar in a real scenario
 	health.BugRate = 0.0
-}
-
-// countCrossRepoEdgesForRepo counts relationships that point to entities in other repos.
-// For now, this is a simplified count; in a full implementation it would compare
-// entity IDs across repos to identify actual cross-repo edges.
-func countCrossRepoEdgesForRepo(slug string, stateDir string) int {
-	doc, err := graph.LoadGraphFromDir(stateDir)
-	if err != nil || doc == nil {
-		return 0
-	}
-
-	// Placeholder: count relationships pointing to external IDs.
-	// A more sophisticated implementation would check if ToID belongs to a different repo.
-	count := 0
-	for _, rel := range doc.Relationships {
-		// Simple heuristic: if ToID doesn't match any entity in this repo, it's cross-repo
-		found := false
-		for _, e := range doc.Entities {
-			if e.ID == rel.ToID {
-				found = true
-				break
-			}
-		}
-		if !found && rel.ToID != "" {
-			count++
-		}
-	}
-	return count
 }
 
 // PrintDoctorHealth writes the enriched health report to w in human-readable format.

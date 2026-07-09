@@ -27,7 +27,7 @@ func TestComputeRepoHealth(t *testing.T) {
 		Stack: registry.StackList{"go"},
 	}
 
-	health := computeRepoHealth(repo)
+	health := computeRepoHealth(repo, false)
 
 	// Verify basic fields
 	if health.Slug != "test-repo" {
@@ -52,7 +52,7 @@ func TestComputeRepoHealthMissing(t *testing.T) {
 		Stack: registry.StackList{"go"},
 	}
 
-	health := computeRepoHealth(repo)
+	health := computeRepoHealth(repo, false)
 
 	if health.Status != "MISSING" {
 		t.Errorf("health.Status = %q, want %q", health.Status, "MISSING")
@@ -61,7 +61,7 @@ func TestComputeRepoHealthMissing(t *testing.T) {
 
 // TestComputeDoctorHealthEmpty verifies handling of empty group list.
 func TestComputeDoctorHealthEmpty(t *testing.T) {
-	result := ComputeDoctorHealth([]registry.GroupRef{})
+	result := ComputeDoctorHealth([]registry.GroupRef{}, false)
 
 	if len(result) != 0 {
 		t.Errorf("ComputeDoctorHealth([]) returned %d groups, want 0", len(result))
@@ -191,6 +191,6 @@ func BenchmarkComputeRepoHealth(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		_ = computeRepoHealth(repo)
+		_ = computeRepoHealth(repo, false)
 	}
 }

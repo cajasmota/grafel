@@ -152,7 +152,11 @@ func (s *Server) handleDiagnostics(w http.ResponseWriter, r *http.Request) {
 	// ── Per-group section ───────────────────────────────────────────────────
 	groups, err := registry.Groups()
 	if err == nil {
-		healthReports := cli.ComputeDoctorHealth(groups)
+		// deep=false: the health path loads each repo graph at most once and
+		// runs a single O(E) pass — never the old multi-minute O(E×N) scan on
+		// large graphs (#5689). Counts come from the live graph (same snapshot
+		// as orphan/cross-repo metrics).
+		healthReports := cli.ComputeDoctorHealth(groups, false)
 		for _, gh := range healthReports {
 			reply.Groups = append(reply.Groups, convertGroupHealth(gh))
 		}

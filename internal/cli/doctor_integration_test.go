@@ -21,7 +21,7 @@ func TestDoctorHealthGroupAggregation(t *testing.T) {
 	// Test with empty group list
 	groups := []registry.GroupRef{}
 
-	health := ComputeDoctorHealth(groups)
+	health := ComputeDoctorHealth(groups, false)
 
 	if len(health) != 0 {
 		t.Errorf("expected 0 health reports for empty input, got %d", len(health))
@@ -57,7 +57,7 @@ func TestComputeRepoHealthStale(t *testing.T) {
 		Stack: registry.StackList{"go"},
 	}
 
-	health := computeRepoHealth(repo)
+	health := computeRepoHealth(repo, false)
 
 	if health.Status != "STALE" {
 		t.Errorf("expected status STALE, got %q", health.Status)

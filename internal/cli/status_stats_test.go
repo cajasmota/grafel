@@ -1,9 +1,11 @@
 package cli
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -460,5 +462,34 @@ func TestLoadCandidateCountsMissing(t *testing.T) {
 	}
 	if repair != 0 {
 		t.Errorf("expected 0 repair candidates when file missing, got %d", repair)
+	}
+}
+
+// TestPrintStatusSummary_EnrichmentWording asserts the #5693 relabel: the
+// optional-enrichment line must NOT read as a stuck/blocked daemon queue. The
+// old "Pending: N enrichment candidates" wording is gone; the new wording marks
+// the count as optional and explains nothing auto-drains it.
+func TestPrintStatusSummary_EnrichmentWording(t *testing.T) {
+	s := &StatusSummary{
+		GroupName:            "g",
+		RepoStats:            map[string]*RepoStatus{},
+		EnrichmentCandidates: 42,
+		RepairCandidates:     7,
+	}
+	var buf bytes.Buffer
+	PrintStatusSummary(&buf, s)
+	out := buf.String()
+
+	if strings.Contains(out, "Pending:") {
+		t.Errorf("output still uses stuck-queue wording %q:\n%s", "Pending:", out)
+	}
+	if !strings.Contains(out, "enrichment opportunities") {
+		t.Errorf("output missing 'enrichment opportunities' relabel:\n%s", out)
+	}
+	if !strings.Contains(out, "optional") || !strings.Contains(out, "nothing auto-drains") {
+		t.Errorf("output does not clarify the count is optional / not auto-drained:\n%s", out)
+	}
+	if !strings.Contains(out, "42") || !strings.Contains(out, "7") {
+		t.Errorf("output missing the counts (42 enrichment, 7 repair):\n%s", out)
 	}
 }

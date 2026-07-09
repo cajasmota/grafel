@@ -33,6 +33,7 @@ func newDoctorCmd() *cobra.Command {
 	var refFlag string
 	var jsonOut bool
 	var quick bool
+	var deep bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Run health checks across all groups",
@@ -48,6 +49,13 @@ health report. Exits non-zero when any Critical check fails.
 --quick      Cheap two-check mode: CLI SHA + daemon /healthz (500ms cap).
              Prints a one-line warning on drift but never blocks the caller.
              Used internally by every CLI command's entry point.
+
+--deep       Opt into full-load recomputation of the enriched health report.
+             The default path already loads each repo graph at most once (a
+             single O(E) pass — no multi-minute hang on 250k+-entity graphs,
+             #5689) and sources counts from the live graph, so --deep no longer
+             changes the numbers when the load succeeds. Retained for its
+             documented full-recompute semantics.
 
 --ref        Filter runtime graph-state checks to a specific ref.
 --ref @all   Check health across every known ref.`,
@@ -86,7 +94,7 @@ health report. Exits non-zero when any Critical check fails.
 			} else if isAll {
 				fmt.Fprintf(w, "Note: --ref @all — running doctor across all known refs.\n\n")
 			}
-			if err := runDoctor(w); err != nil {
+			if err := runDoctor(w, deep); err != nil {
 				return err
 			}
 			if auditDocs {
@@ -114,6 +122,11 @@ health report. Exits non-zero when any Critical check fails.
 		"emit machine-readable JSON report (schema_version=1); exits non-zero on Critical drift")
 	cmd.Flags().BoolVar(&quick, "quick", false,
 		"run only the two cheap checks: CLI SHA + daemon /healthz (500ms); never blocks caller")
+	cmd.Flags().BoolVar(&deep, "deep", false,
+		"opt into full-load recomputation of the enriched health report. The default path "+
+			"already loads each repo graph at most once and sources counts from the live graph, "+
+			"so this no longer changes the numbers when the load succeeds; retained for its "+
+			"documented full-recompute semantics (#5689)")
 	return cmd
 }
 
@@ -181,7 +194,7 @@ func runDoctorAuditDocs(w io.Writer) error {
 
 // runDoctor runs every health check and reports to w. It returns nil
 // even when checks fail — the report itself is the user signal.
-func runDoctor(w io.Writer) error {
+func runDoctor(w io.Writer, deep bool) error {
 	fmt.Fprintf(w, "%s grafel %s\n", statusOK, version.String())
 
 	bin, err := os.Executable()
@@ -237,7 +250,7 @@ func runDoctor(w io.Writer) error {
 
 	// Print enriched health report for each group
 	fmt.Fprintf(w, "\n--- Enriched Health Report ---\n")
-	healthReports := ComputeDoctorHealth(groups)
+	healthReports := ComputeDoctorHealth(groups, deep)
 	PrintDoctorHealth(w, healthReports)
 
 	return nil

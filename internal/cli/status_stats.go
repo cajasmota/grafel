@@ -309,9 +309,14 @@ func PrintStatusSummary(w io.Writer, s *StatusSummary) {
 		fmtInt(s.ProcessFlows),
 		fmtInt(s.HTTPEndpoints))
 
-	// Print pending candidates.
+	// Print available optional candidates.
+	//
+	// #5693: these are OPTIONAL LLM-enrichment/repair opportunities recomputed
+	// from the current graph — not a live daemon queue. Nothing auto-drains
+	// them (they cost tokens; the user runs enrichment to apply). The wording
+	// deliberately avoids "Pending", which reads as a stuck/blocked queue.
 	if s.EnrichmentCandidates > 0 || s.RepairCandidates > 0 {
-		fmt.Fprintf(w, "  Pending: %s enrichment candidates · %s repair candidates\n",
+		fmt.Fprintf(w, "  Available (optional; run enrichment to apply — nothing auto-drains): %s enrichment opportunities · %s repair candidates\n",
 			fmtInt(s.EnrichmentCandidates),
 			fmtInt(s.RepairCandidates))
 	}
