@@ -11699,18 +11699,55 @@ records:
           issues_implemented: ["2773"]
           verified_at: "2026-05-28"
       Routing:
+        endpoint_synthesis:
+          # ASP.NET Core attribute routes emit canonical http_endpoint_definition
+          # nodes via synthesizeASPNetCore. ABP conventional controllers expose
+          # *AppService methods without controller files; synthesizeABPConventionalControllers
+          # now emits the same endpoint shape for those implicit routes.
+          status: full
+          symbols:
+            - file: internal/engine/aspnet_core_routes.go
+              functions: [synthesizeASPNetCore]
+            - file: internal/engine/http_endpoint_csharp_abp.go
+              functions: [synthesizeABPConventionalControllers, abpRouteForMethod]
+          tests:
+            - file: internal/engine/aspnet_core_routes_test.go
+            - file: internal/engine/http_endpoint_csharp_abp_test.go
+          verified_at: "2026-07-20"
+        handler_attribution:
+          # Both attribute-routed ASP.NET Core actions and ABP conventional
+          # AppService endpoints carry source_handler=SCOPE.Operation:<Class>.<Method>,
+          # letting the shared endpoint resolver bridge the endpoint to the handler.
+          status: full
+          symbols:
+            - file: internal/engine/aspnet_core_routes.go
+              functions: [synthesizeASPNetCore]
+            - file: internal/engine/http_endpoint_csharp_abp.go
+              functions: [synthesizeABPConventionalControllers]
+          tests:
+            - file: internal/engine/aspnet_core_routes_test.go
+            - file: internal/engine/http_endpoint_csharp_abp_test.go
+          verified_at: "2026-07-20"
         route_extraction:
           # Minimal-API app.MapGet/Post/Put/Delete route path strings extracted via
           # reAspNetMinimalAPI; [HttpGet/Post/Put/Delete/Patch] action-method routes via
-          # reAspNetHTTPMethod; route_path property set on all emitted entities; issue #3261.
-          status: partial
+          # reAspNetHTTPMethod; route_path property set on all emitted entities.
+          # ABP conventional AppService routes are synthesized under /api/app/<service>
+          # with verb/action conventions.
+          status: full
           symbols:
             - file: internal/custom/csharp/aspnet_core.go
               functions: [Extract]
+            - file: internal/engine/aspnet_core_routes.go
+              functions: [synthesizeASPNetCore]
+            - file: internal/engine/http_endpoint_csharp_abp.go
+              functions: [synthesizeABPConventionalControllers, abpRouteForMethod]
           tests:
             - file: internal/custom/csharp/extractors_test.go
+            - file: internal/engine/aspnet_core_routes_test.go
+            - file: internal/engine/http_endpoint_csharp_abp_test.go
           issues_implemented: ["3261"]
-          verified_at: "2026-05-30"
+          verified_at: "2026-07-20"
         endpoint_deprecation_versioning:
           # #3628 (epic) — stamps api_version + deprecated / deprecated_since /
           # deprecated_replacement / deprecation_source onto the

@@ -12964,18 +12964,21 @@
           },
           "endpoint_synthesis": {
             "status": "full",
-            "cites": ["internal/engine/aspnet_core_routes.go","internal/engine/rules/csharp/frameworks/asp_net_core.yaml"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/aspnet_core_routes.go","internal/engine/http_endpoint_csharp_abp.go","internal/engine/http_endpoint_csharp_abp_test.go","internal/engine/http_endpoint_synthesis.go","internal/engine/rules/csharp/frameworks/asp_net_core.yaml"],
+            "notes": "ASP.NET Core attribute routing and YAML rule coverage remain full; ABP Framework conventional controllers are now synthesized from *AppService/ApplicationService/CrudAppService methods into canonical http_endpoint_definition entities.",
+            "verified_at": "2026-07-20"
           },
           "handler_attribution": {
             "status": "full",
-            "cites": ["internal/engine/aspnet_core_routes.go"],
-            "verified_at": "2026-05-28"
+            "cites": ["internal/engine/aspnet_core_routes.go","internal/engine/http_endpoint_csharp_abp.go","internal/engine/http_endpoint_csharp_abp_test.go"],
+            "notes": "ASP.NET endpoints carry source_handler attribution to SCOPE.Operation handlers; ABP conventional AppService endpoints attribute to \u003cAppService\u003e.\u003cMethod\u003e so the shared resolver can bridge endpoint to method.",
+            "verified_at": "2026-07-20"
           },
           "route_extraction": {
             "status": "full",
-            "cites": ["internal/custom/csharp/aspnet_core.go","internal/engine/aspnet_core_routes.go"],
-            "notes": "Minimal-API app.MapGet/Post/Put/Delete route path strings extracted via reAspNetMinimalAPI; attribute routes via reAspNetHTTPMethod; route_path property set on each emitted entity."
+            "cites": ["internal/custom/csharp/aspnet_core.go","internal/engine/aspnet_core_routes.go","internal/engine/http_endpoint_csharp_abp.go","internal/engine/http_endpoint_csharp_abp_test.go"],
+            "notes": "Minimal-API app.MapGet/Post/Put/Delete route path strings extracted via reAspNetMinimalAPI; attribute routes via reAspNetHTTPMethod; ABP conventional AppService routes synthesized under /api/app/\u003cservice\u003e with method-name verb/action conventions.",
+            "verified_at": "2026-07-20"
           },
           "websocket_route_extraction": {
             "status": "missing",

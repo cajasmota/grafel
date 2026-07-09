@@ -1281,6 +1281,10 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		synthesizeFastEndpoints(string(content), emit)
 		synthesizeNancy(string(content), emit)
 		synthesizeServiceStack(string(content), emit)
+		// Producer side: ABP Framework conventional controllers. These expose
+		// *AppService methods without explicit controller source files or route
+		// attributes, so synthesizeASPNetCore cannot see them.
+		synthesizeABPConventionalControllers(string(content), emit)
 		// Consumer side (#721 wave 2b): HttpClient, RestSharp, Refit, WebClient.
 		synthesizeCSharpClientWithRuntime(string(content), emitClientRuntime)
 	case "rust":
