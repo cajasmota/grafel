@@ -3,6 +3,7 @@ package mcp
 import (
 	"container/heap"
 	"math"
+	"sort"
 	"strconv"
 
 	"github.com/cajasmota/grafel/internal/graph"
@@ -164,6 +165,51 @@ func bfs(adj *adjacency, start string, depth int, contextFilter map[string]bool)
 	return visited
 }
 
+// bfsDir selects which adjacency directions a bounded BFS expands.
+type bfsDir int
+
+const (
+	bfsBoth bfsDir = iota // in+out (default neighbourhood walk)
+	bfsOut                // out-edges only (callees)
+	bfsIn                 // in-edges only (callers)
+)
+
+// bfsCandidate is a pending expansion target discovered while processing one
+// frontier level. depth is the target's hop distance (parent depth + 1).
+type bfsCandidate struct {
+	target string
+	depth  int
+}
+
+// bfsRanker customises bounded BFS for locality-aware truncation and hub
+// containment (#5691). Both hooks are optional; a nil *bfsRanker yields a plain
+// deterministic walk (candidates ordered by target id) with no hub guard.
+type bfsRanker struct {
+	// less orders same-level candidates; when a level is truncated the cap
+	// keeps the smallest under this ordering, so local structure survives while
+	// a hub's far-flung fan-out is dropped. Must be a strict weak ordering with
+	// a deterministic final tiebreak.
+	less func(a, b bfsCandidate) bool
+	// isHub reports whether expanding id would inherit a high-degree hub's
+	// fan-out. A hub node is still ADDED to the visited set (so the caller sees
+	// the boundary) but its neighbours are NOT expanded — the walk stops at it
+	// and the caller annotates the crossing. Never applied to the start node
+	// (the query target is always expanded).
+	isHub func(id string) bool
+}
+
+// rankCandidates orders a frontier level's candidates in place. With a ranker's
+// less hook it applies locality-first ordering; otherwise it falls back to a
+// stable order by target id. This replaces the old Go map-iteration order,
+// which made truncation non-deterministic (#5691).
+func rankCandidates(cands []bfsCandidate, ranker *bfsRanker) {
+	if ranker != nil && ranker.less != nil {
+		sort.SliceStable(cands, func(i, j int) bool { return ranker.less(cands[i], cands[j]) })
+		return
+	}
+	sort.SliceStable(cands, func(i, j int) bool { return cands[i].target < cands[j].target })
+}
+
 // bfsBounded is bfs with an optional node-count cap. When maxNodes > 0 and the
 // visited set reaches that many nodes, expansion stops early and truncated is
 // returned true. The cap bounds the pathological high-degree tail (a hub at
@@ -172,58 +218,85 @@ func bfs(adj *adjacency, start string, depth int, contextFilter map[string]bool)
 // (maxNodes<=0 disables the cap). Truncation is honest: callers surface a
 // marker rather than silently dropping nodes. (#3924)
 func bfsBounded(adj *adjacency, start string, depth int, contextFilter map[string]bool, maxNodes int) (map[string]int, bool) {
+	visited, truncated, _ := bfsBoundedRanked(adj, start, depth, contextFilter, maxNodes, nil, bfsBoth)
+	return visited, truncated
+}
+
+// bfsBoundedRanked is the ranked, hub-aware core behind bfsBounded (#5691).
+//
+// Each frontier level is processed atomically: all candidate targets are
+// gathered, ranked (locality-first via the ranker, else deterministically by
+// id), and only then added up to the cap. Ranking BEFORE the cap is what keeps
+// local structure alive under truncation — the old code stopped in arbitrary
+// map-iteration order, so a hub reached mid-walk dumped whatever iterated first.
+//
+// When nothing is truncated the visited SET is identical to the naive walk
+// (ranking only changes discovery order, and callers sort their output), so
+// small/normal graphs are unaffected.
+//
+// hubs holds the ids of hub nodes the walk declined to expand (stop-and-
+// annotate). dir selects in/out/both adjacency directions.
+func bfsBoundedRanked(adj *adjacency, start string, depth int, contextFilter map[string]bool, maxNodes int, ranker *bfsRanker, dir bfsDir) (map[string]int, bool, []string) {
 	visited := map[string]int{start: 0}
 	frontier := []string{start}
 	truncated := false
-	add := func(target string, d int) bool {
-		if _, seen := visited[target]; seen {
-			return true
+	var hubs []string
+	hubSeen := map[string]bool{}
+
+	consider := func(cands *[]bfsCandidate, candSeen map[string]bool, e edge, d int) {
+		if contextFilter != nil && !contextFilter[e.kind] {
+			return
 		}
-		if maxNodes > 0 && len(visited) >= maxNodes {
-			truncated = true
-			return false
+		if _, seen := visited[e.target]; seen {
+			return
 		}
-		visited[target] = d + 1
-		return true
+		if candSeen[e.target] {
+			return
+		}
+		candSeen[e.target] = true
+		*cands = append(*cands, bfsCandidate{target: e.target, depth: d + 1})
 	}
+
 	for d := 0; d < depth && !truncated; d++ {
-		next := []string{}
+		cands := make([]bfsCandidate, 0)
+		candSeen := map[string]bool{}
 		for _, n := range frontier {
-			for _, e := range adj.out[n] {
-				if contextFilter != nil && !contextFilter[e.kind] {
-					continue
+			// Hub-aware stop: don't inherit a hub's fan-out. The start node is
+			// exempt — it is the explicit query target and is always expanded.
+			if ranker != nil && ranker.isHub != nil && n != start && ranker.isHub(n) {
+				if !hubSeen[n] {
+					hubSeen[n] = true
+					hubs = append(hubs, n)
 				}
-				if _, seen := visited[e.target]; !seen {
-					if !add(e.target, d) {
-						break
-					}
-					next = append(next, e.target)
+				continue
+			}
+			if dir == bfsBoth || dir == bfsOut {
+				for _, e := range adj.out[n] {
+					consider(&cands, candSeen, e, d)
 				}
 			}
-			if truncated {
+			if dir == bfsBoth || dir == bfsIn {
+				for _, e := range adj.in[n] {
+					consider(&cands, candSeen, e, d)
+				}
+			}
+		}
+		rankCandidates(cands, ranker)
+		next := make([]string, 0, len(cands))
+		for _, c := range cands {
+			if maxNodes > 0 && len(visited) >= maxNodes {
+				truncated = true
 				break
 			}
-			for _, e := range adj.in[n] {
-				if contextFilter != nil && !contextFilter[e.kind] {
-					continue
-				}
-				if _, seen := visited[e.target]; !seen {
-					if !add(e.target, d) {
-						break
-					}
-					next = append(next, e.target)
-				}
-			}
-			if truncated {
-				break
-			}
+			visited[c.target] = c.depth
+			next = append(next, c.target)
 		}
 		frontier = next
 		if len(frontier) == 0 {
 			break
 		}
 	}
-	return visited, truncated
+	return visited, truncated, hubs
 }
 
 // pqItem is one entry in the dijkstra priority queue.

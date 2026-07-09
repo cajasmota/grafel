@@ -1377,6 +1377,98 @@ func buildRiskReason(e *graph.Entity, namedCallers, moduleNodes, total int, hasI
 // "truncated" flag + "truncation_note". Callers may raise it via max_nodes.
 const subgraphRawMaxNodes = 1500
 
+// subgraphHubDegree is the total-degree (in+out) cutoff above which a node is
+// treated as a hub for the stop-and-annotate guard (#5691). A node this
+// connected is a structural hub (e.g. a Module container aggregating an entire
+// package); crossing into it mid-walk would inherit its entire fan-out and
+// swamp the result with unrelated cross-module nodes. The bounded walk stops at
+// such a node and annotates the crossing rather than expanding it. IsGodNode
+// (precomputed centrality flag) also trips the guard. The cutoff is high enough
+// that ordinary well-referenced functions are never mistaken for hubs.
+const subgraphHubDegree = 1000
+
+// subgraphModulePrefix returns a cheap module/package proxy for a source path:
+// its directory portion. Used by the locality ranker to prefer same-module
+// neighbours when a frontier level must be truncated (#5691).
+func subgraphModulePrefix(path string) string {
+	if i := strings.LastIndexByte(path, '/'); i >= 0 {
+		return path[:i]
+	}
+	return ""
+}
+
+// newSubgraphRanker builds the locality-first, hub-aware ranker for a bounded
+// subgraph expansion rooted at `root` (#5691).
+//
+// Ordering (best first, so it survives truncation):
+//  1. non-hub targets before hub targets (never inherit a hub's fan-out),
+//  2. targets in the root's own source file,
+//  3. targets in the root's module/package,
+//  4. lower-degree targets (peripheral over central),
+//  5. deterministic id tiebreak.
+//
+// A target is a hub when its precomputed IsGodNode flag is set or its total
+// degree exceeds subgraphHubDegree.
+func newSubgraphRanker(adj *adjacency, byID map[string]*graph.Entity, root *graph.Entity) *bfsRanker {
+	degree := func(id string) int { return len(adj.Outgoing(id)) + len(adj.Incoming(id)) }
+	isHub := func(id string) bool {
+		if e := byID[id]; e != nil && e.IsGodNode {
+			return true
+		}
+		return degree(id) >= subgraphHubDegree
+	}
+	rootFile := ""
+	rootModule := ""
+	if root != nil {
+		rootFile = root.SourceFile
+		rootModule = subgraphModulePrefix(root.SourceFile)
+	}
+	return &bfsRanker{
+		isHub: isHub,
+		less: func(a, b bfsCandidate) bool {
+			ha, hb := isHub(a.target), isHub(b.target)
+			if ha != hb {
+				return !ha // non-hub first
+			}
+			ea, eb := byID[a.target], byID[b.target]
+			fa, fb := ea != nil && ea.SourceFile == rootFile, eb != nil && eb.SourceFile == rootFile
+			if fa != fb {
+				return fa // same file first
+			}
+			ma := ea != nil && subgraphModulePrefix(ea.SourceFile) == rootModule
+			mb := eb != nil && subgraphModulePrefix(eb.SourceFile) == rootModule
+			if ma != mb {
+				return ma // same module first
+			}
+			da, db := degree(a.target), degree(b.target)
+			if da != db {
+				return da < db // lower fan-out first
+			}
+			return a.target < b.target
+		},
+	}
+}
+
+// subgraphHubNote renders the hub-boundary annotation shared by the raw and
+// markdown subgraph paths (#5691): human names + degree for each hub the walk
+// stopped at, and the id->display map for structured output.
+func subgraphHubNote(hubIDs []string, byID map[string]*graph.Entity, adj *adjacency) []string {
+	if len(hubIDs) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(hubIDs))
+	for _, id := range hubIDs {
+		name := id
+		if e := byID[id]; e != nil && e.Name != "" {
+			name = e.Name
+		}
+		deg := len(adj.Outgoing(id)) + len(adj.Incoming(id))
+		names = append(names, fmt.Sprintf("%s (%d edges)", name, deg))
+	}
+	sort.Strings(names)
+	return names
+}
+
 // handleSubgraph is the unified handler for grafel_subgraph.
 // format="raw"      → JSON graph (nodes + edges), identical output to old get_subgraph.
 // format="markdown" → LLM-friendly Markdown summary, identical output to old summarize_subgraph.
@@ -1442,8 +1534,12 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 			continue
 		}
 		adj := r.getAdjacency()
-		visited, nodesTruncated := bfsBounded(adj, target, depth, nil, maxNodes)
 		byID2 := r.getByID()
+		// Locality-first, hub-aware bounded expansion (#5691): rank the frontier
+		// by locality so local structure survives truncation, and stop at
+		// high-degree hubs instead of inheriting their fan-out.
+		ranker := newSubgraphRanker(adj, byID2, byID[target])
+		visited, nodesTruncated, hubIDs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsBoth)
 		type nodeOut struct {
 			EntityID   string `json:"entity_id"`
 			Name       string `json:"name"`
@@ -1521,14 +1617,29 @@ func (s *Server) subgraphRaw(entityID string, req mcpapi.CallToolRequest) (*mcpa
 			"edges":      edges,
 			"node_count": len(nodes),
 			"edge_count": len(edges),
-			"truncated":  nodesTruncated,
+		}
+		// Hub boundaries: the walk stopped at these high-degree hubs rather than
+		// inheriting their fan-out. Surface them so the caller can narrow (#5691).
+		hubNames := subgraphHubNote(hubIDs, byID2, adj)
+		truncated := nodesTruncated || len(hubNames) > 0
+		out["truncated"] = truncated
+		var notes []string
+		if len(hubNames) > 0 {
+			out["hub_boundaries"] = hubNames
+			notes = append(notes, fmt.Sprintf(
+				"expanded into hub(s) [%s] and stopped there to avoid inheriting their fan-out; "+
+					"pass an entity_kind or module filter to narrow",
+				strings.Join(hubNames, ", ")))
 		}
 		if nodesTruncated {
-			out["truncation_note"] = fmt.Sprintf(
+			notes = append(notes, fmt.Sprintf(
 				"node expansion capped at max_nodes=%d to bound a high-degree subgraph; "+
 					"some nodes beyond the cap (and their edges) are omitted — narrow with a smaller "+
 					"depth, or pass a larger max_nodes for an explicit deeper pull",
-				maxNodes)
+				maxNodes))
+		}
+		if len(notes) > 0 {
+			out["truncation_note"] = strings.Join(notes, " ")
 		}
 		return jsonResult(out), nil
 	}
@@ -1548,6 +1659,13 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 	}
 	if depth > 4 {
 		depth = 4
+	}
+	// maxNodes bounds the markdown neighbourhood walk, matching the raw path
+	// (#5691). The former markdown walk was fully UNBOUNDED, so a node near a
+	// high-degree hub produced a Markdown list of the hub's entire fan-out.
+	maxNodes := argInt(req, "max_nodes", subgraphRawMaxNodes)
+	if maxNodes < 1 {
+		maxNodes = subgraphRawMaxNodes
 	}
 
 	repoHint, local := splitPrefixed(entityID)
@@ -1573,38 +1691,12 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		}
 
 		adj := r.getAdjacency()
-
-		// Gather inbound callers (depth hops).
-		inVisited := map[string]int{}
-		inFront := []string{target}
-		for d := 0; d < depth; d++ {
-			next := []string{}
-			for _, n := range inFront {
-				for _, e := range adj.in[n] {
-					if _, seen := inVisited[e.target]; !seen {
-						inVisited[e.target] = d + 1
-						next = append(next, e.target)
-					}
-				}
-			}
-			inFront = next
-		}
-
-		// Gather outbound callees (depth hops).
-		outVisited := map[string]int{}
-		outFront := []string{target}
-		for d := 0; d < depth; d++ {
-			next := []string{}
-			for _, n := range outFront {
-				for _, e := range adj.out[n] {
-					if _, seen := outVisited[e.target]; !seen {
-						outVisited[e.target] = d + 1
-						next = append(next, e.target)
-					}
-				}
-			}
-			outFront = next
-		}
+		// Locality-first, hub-aware, BOUNDED walk in each direction (#5691).
+		// bfsBoundedRanked includes the start node at depth 0; the caller lists
+		// exclude it below.
+		ranker := newSubgraphRanker(adj, byID, root)
+		inVisited, _, inHubs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsIn)
+		outVisited, _, outHubs := bfsBoundedRanked(adj, target, depth, nil, maxNodes, ranker, bfsOut)
 
 		// Build callers list (sorted by hop then name).
 		type neighbor struct {
@@ -1615,6 +1707,9 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 		}
 		var callers []neighbor
 		for id, d := range inVisited {
+			if id == target {
+				continue // bfsBoundedRanked includes the start node at depth 0
+			}
 			if e := byID[id]; e != nil {
 				callers = append(callers, neighbor{name: e.Name, kind: stripScopePrefix(e.Kind), file: e.SourceFile, hop: d})
 			}
@@ -1628,6 +1723,9 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 
 		var callees []neighbor
 		for id, d := range outVisited {
+			if id == target {
+				continue // bfsBoundedRanked includes the start node at depth 0
+			}
 			if e := byID[id]; e != nil {
 				callees = append(callees, neighbor{name: e.Name, kind: stripScopePrefix(e.Kind), file: e.SourceFile, hop: d})
 			}
@@ -1688,6 +1786,23 @@ func (s *Server) subgraphMarkdown(entityID string, req mcpapi.CallToolRequest) (
 			b.WriteString("\n")
 		} else {
 			b.WriteString("## Calls\n\n_No callees within the graph (leaf node or all edges unresolved)._\n\n")
+		}
+
+		// Hub boundaries: the walk stopped at these high-degree hubs rather than
+		// inheriting their fan-out (#5691). Surface them so the caller can narrow.
+		hubSeen := map[string]bool{}
+		var hubIDs []string
+		for _, id := range append(append([]string{}, inHubs...), outHubs...) {
+			if !hubSeen[id] {
+				hubSeen[id] = true
+				hubIDs = append(hubIDs, id)
+			}
+		}
+		if names := subgraphHubNote(hubIDs, byID, adj); len(names) > 0 {
+			b.WriteString(fmt.Sprintf(
+				"## Hub boundaries\n\n_Expanded into hub(s) [%s] and stopped there to avoid inheriting "+
+					"their fan-out. Pass an entity_kind or module filter to narrow._\n\n",
+				strings.Join(names, ", ")))
 		}
 
 		return mcpapi.NewToolResultText(b.String()), nil
