@@ -1476,10 +1476,9 @@ func attachCallContexts(entries []map[string]any, lr *LoadedRepo, e *graph.Entit
 	if start <= 0 {
 		return
 	}
-	abs := e.SourceFile
-	if !filepath.IsAbs(abs) && lr.Path != "" {
-		abs = filepath.Join(lr.Path, e.SourceFile)
-	}
+	// #5682: module-aware path resolution — recovers a nested-module-relative
+	// source_file via lr's precomputed suffix index.
+	abs := resolveEntitySourcePath(lr, e.SourceFile)
 	src, err := readRawSourceWindow(abs, start, end)
 	if err != nil || src == "" {
 		return
@@ -1562,10 +1561,8 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 		// and a resolvable source path.
 		ctx := ""
 		if lineNum > 0 && sourcePath != "" && lr.Path != "" {
-			abs := sourcePath
-			if !filepath.IsAbs(abs) {
-				abs = filepath.Join(lr.Path, sourcePath)
-			}
+			// #5682: module-aware path resolution (in-repo suffix index).
+			abs := resolveEntitySourcePath(lr, sourcePath)
 			lines, cached := lineCache[abs]
 			if !cached {
 				lines = readSourceLines(abs)
@@ -2585,10 +2582,9 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 					res.OwningClass, res.Member, res.DefiningClass,
 				)
 				e = res.DefiningEntity
-				abs := e.SourceFile
-				if !filepath.IsAbs(abs) && lr.Path != "" {
-					abs = filepath.Join(lr.Path, e.SourceFile)
-				}
+				// #5682: module-aware path resolution — recovers a
+				// nested-module-relative source_file via lr's suffix index.
+				abs := resolveEntitySourcePath(lr, e.SourceFile)
 				body, rerr := readInheritedBody(ctx, abs, e, contextLines)
 				if rerr != nil {
 					return mcpapi.NewToolResultError(rerr.Error()), nil
@@ -2598,10 +2594,10 @@ func (s *Server) handleGetNodeSource(ctx context.Context, req mcpapi.CallToolReq
 		}
 	}
 
-	abs := e.SourceFile
-	if !filepath.IsAbs(abs) && lr.Path != "" {
-		abs = filepath.Join(lr.Path, e.SourceFile)
-	}
+	// #5682: module-aware path resolution — happy path (file at the group root)
+	// is the same join plus a single os.Stat; a nested-module-relative
+	// source_file resolves via lr's precomputed in-repo suffix index.
+	abs := resolveEntitySourcePath(lr, e.SourceFile)
 
 	// #2828 / #1614 — bound the requested span and SIGNAL any truncation.
 	// computeSourceSpan clamps a degenerate span (synthetic/shadow/route
