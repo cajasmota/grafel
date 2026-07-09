@@ -1737,6 +1737,20 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 		}
 		doc.Stats.Entities = len(doc.Entities)
 		doc.Stats.Relationships = len(doc.Relationships)
+
+		// Pass 7.6 — async-trigger edge synthesis (#5686). Runs after the
+		// event-flow walk so DELIVERS_TO trigger edges (topic → handler) live
+		// alongside the pub/sub edges. Gives async/event-driven handlers an
+		// inbound trigger so find_callers / impact_radius / trace no longer
+		// dead-end at the async boundary. Append-only, idempotent, CALLS-clean.
+		atStats := engine.ApplyAsyncTriggerEdges(doc)
+		if verbose() || atStats.DeliversEdges > 0 {
+			fmt.Fprintf(os.Stderr,
+				"grafel: async-trigger topics=%d delivers_edges=%d\n",
+				atStats.Topics, atStats.DeliversEdges)
+		}
+		doc.Stats.Entities = len(doc.Entities)
+		doc.Stats.Relationships = len(doc.Relationships)
 	}
 
 	// Pass 8 — module-level aggregation (issue #1383 / EPIC #1380).

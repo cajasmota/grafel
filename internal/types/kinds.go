@@ -584,6 +584,29 @@ const (
 	RelationshipKindSubscribesTo RelationshipKind = "SUBSCRIBES_TO"
 	RelationshipKindTransforms   RelationshipKind = "TRANSFORMS"
 
+	// #5686: async-trigger delivery edge. Synthesised intra-repo by
+	// engine.ApplyAsyncTriggerEdges as the DIRECTIONAL INVERSE of a
+	// SUBSCRIBES_TO edge: for every consumer handler that SUBSCRIBES_TO a
+	// topic/queue, the pass emits DELIVERS_TO from the topic → handler.
+	//
+	//   PUBLISHES_TO  : producer  → topic     (extractor, unchanged)
+	//   SUBSCRIBES_TO : handler   → topic     (extractor, unchanged)
+	//   DELIVERS_TO   : topic     → handler   (synthesised inbound trigger)
+	//
+	// Purpose: async/event-driven handlers whose only trigger is a queue/topic
+	// subscription previously had ZERO inbound edges, so find_callers,
+	// impact_radius and trace all dead-ended at the async boundary (the handler
+	// looked like an orphan with no production callers). DELIVERS_TO gives the
+	// handler an inbound trigger edge and — combined with the existing inbound
+	// PUBLISHES_TO on the topic — completes the publisher → topic → handler
+	// chain for inbound/impact/trace traversal.
+	//
+	// It is deliberately a DISTINCT kind (not CALLS): the pure call graph
+	// (process-flow BFS, calls/called_by) must stay clean. DELIVERS_TO surfaces
+	// only in the inbound/impact/trace/semantic-edge facets that already accept
+	// non-CALLS semantic edges.
+	RelationshipKindDeliversTo RelationshipKind = "DELIVERS_TO"
+
 	// #727: Real-time event channel edges. Emitted by the engine-layer
 	// synthesizers in internal/engine/{websocket_edges,sse_edges,
 	// graphql_subscriptions}.go. All append-only — they never replace or

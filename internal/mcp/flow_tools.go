@@ -1760,6 +1760,11 @@ var inboundRefKinds = map[string]bool{
 	"STEP_IN_PROCESS": true,
 	"PRODUCES":        true,
 	"CONSUMES":        true,
+	// #5686: DELIVERS_TO (topic → handler) is the async-trigger inverse of
+	// SUBSCRIBES_TO. A handler with an inbound DELIVERS_TO is triggered by
+	// message delivery — a genuine inbound reference, so it must count as
+	// "used" (not dead code) and surface in the inbound reference walks.
+	"DELIVERS_TO": true,
 }
 
 // inboundNeighborStructuralKinds are edge kinds that carry NO predecessor /

@@ -342,6 +342,13 @@ func runPhantomEdgePass(group string, cfg *registry.GroupConfig, linksPath strin
 		// the Phase 3 companion-aware variant will swap in here.
 		_ = engine.RunEventFlow(doc, engine.DefaultEventFlowConfig())
 
+		// #5686 — re-synthesise async-trigger DELIVERS_TO edges. Idempotent:
+		// existing DELIVERS_TO edges survive stripProcessEntities, so this is a
+		// no-op unless a phantom-edge injection introduced a new same-repo
+		// subscription. Keeps the async inbound-trigger surface consistent with
+		// a full re-index.
+		_ = engine.ApplyAsyncTriggerEdges(doc)
+
 		// Update stats.
 		doc.Stats.Entities = len(doc.Entities)
 		doc.Stats.Relationships = len(doc.Relationships)

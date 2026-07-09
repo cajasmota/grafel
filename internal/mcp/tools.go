@@ -1527,7 +1527,15 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 	rels := lr.Doc.Relationships
 	byID := lr.getByID()
 	for _, ed := range lr.getAdjacency().Incoming(e.ID) {
-		if !strings.EqualFold(ed.kind, "CALLS") {
+		// #5686: besides direct CALLS callers, surface the async trigger of an
+		// event-driven handler. A DELIVERS_TO edge (topic → handler) is the
+		// synthesised inverse of SUBSCRIBES_TO; without it, an @SqsListener /
+		// Lambda-SQS / NATS handler shows ZERO callers in inspect. Rows carry
+		// trigger="async" so a consumer can tell a message-delivery trigger from
+		// a direct call.
+		isCall := strings.EqualFold(ed.kind, "CALLS")
+		isAsync := strings.EqualFold(ed.kind, string(types.RelationshipKindDeliversTo))
+		if !isCall && !isAsync {
 			continue
 		}
 		callerID := ed.target // Incoming: ed.target is the FromID (the caller)
@@ -1546,6 +1554,10 @@ func inspectInboundCalls(lr *LoadedRepo, e *graph.Entity, scopeIsOne bool) []map
 		entry := map[string]any{
 			"source":      sourceID,
 			"source_path": sourcePath,
+		}
+		if isAsync {
+			entry["trigger"] = "async"
+			entry["edge_kind"] = string(types.RelationshipKindDeliversTo)
 		}
 
 		lineNum := 0
@@ -1692,14 +1704,21 @@ var semanticEdgeKinds = map[string]struct{}{
 	string(types.RelationshipKindEnqueues):         {},
 	string(types.RelationshipKindPublishesTo):      {},
 	string(types.RelationshipKindSubscribesTo):     {},
-	string(types.RelationshipKindCaches):           {},
-	string(types.RelationshipKindInvalidates):      {},
-	string(types.RelationshipKindGatedBy):          {},
-	string(types.RelationshipKindHandlesCommand):   {},
-	string(types.RelationshipKindDataFlowsTo):      {},
-	string(types.RelationshipKindInjectedInto):     {},
-	string(types.RelationshipKindBinds):            {},
-	string(types.RelationshipKindDependsOnConfig):  {},
+	// #5686: async-trigger delivery edge (topic → handler), synthesised as the
+	// inverse of SUBSCRIBES_TO by engine.ApplyAsyncTriggerEdges. Projecting it
+	// here makes find_callers / neighbors(direction=in) surface the topic (and,
+	// transitively, the publisher) as an inbound trigger of an async handler
+	// that previously looked like an orphan. inspect lists it under
+	// semantic_edges and neighbors annotates rows with semantic_kind=DELIVERS_TO.
+	string(types.RelationshipKindDeliversTo):      {},
+	string(types.RelationshipKindCaches):          {},
+	string(types.RelationshipKindInvalidates):     {},
+	string(types.RelationshipKindGatedBy):         {},
+	string(types.RelationshipKindHandlesCommand):  {},
+	string(types.RelationshipKindDataFlowsTo):     {},
+	string(types.RelationshipKindInjectedInto):    {},
+	string(types.RelationshipKindBinds):           {},
+	string(types.RelationshipKindDependsOnConfig): {},
 	// #4307 (Layer 1 of epic #4294): the documentation-link edge emitted by the
 	// markdown ingest pass (SCOPE.Section --MENTIONS--> code entity). It is a
 	// genuine semantic relation ("this code is documented in that section"), not
