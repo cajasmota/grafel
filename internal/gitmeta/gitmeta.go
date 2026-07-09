@@ -10,10 +10,34 @@ import (
 	"context"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 )
+
+// HasGitDirInTree walks dir upward looking for a .git file or directory,
+// indicating an enclosing git repository. It returns true if .git is found
+// anywhere from dir up to the filesystem root, false otherwise. This is a fast,
+// subprocess-free check (no `git` invocation) that correctly recognises a
+// module subdirectory of a single-.git monorepo as being inside a git repo.
+func HasGitDirInTree(dir string) bool {
+	if dir == "" {
+		return false
+	}
+	cur := dir
+	for {
+		if _, err := os.Stat(filepath.Join(cur, ".git")); err == nil {
+			return true
+		}
+		parent := filepath.Dir(cur)
+		if parent == cur {
+			// Reached filesystem root.
+			return false
+		}
+		cur = parent
+	}
+}
 
 // EnvGitTimeout overrides the default external-git deadline (in seconds) used
 // by the bounded runners below. A value ≤ 0 disables the cap (not recommended).

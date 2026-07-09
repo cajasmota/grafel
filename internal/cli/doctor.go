@@ -13,6 +13,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/install"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/process"
@@ -391,8 +392,11 @@ func checkRepo(w io.Writer, r registry.Repo) {
 		fmt.Fprintf(w, "  %s repo %s (%s): %v\n", statusFail, r.Slug, r.Path, err)
 		return
 	}
-	gitDir := filepath.Join(r.Path, ".git")
-	if _, err := os.Stat(gitDir); err != nil {
+	// Resolve the enclosing git root (walk up) before deciding .git is missing.
+	// In a single-.git monorepo the only .git lives at the repo root, so a
+	// module subdir has no .git of its own — statting a literal .git in r.Path
+	// would falsely flag every module (#5675).
+	if !gitmeta.HasGitDirInTree(r.Path) {
 		fmt.Fprintf(w, "  %s repo %s: missing .git\n", statusWarn, r.Slug)
 	} else {
 		fmt.Fprintf(w, "  %s repo %s (%s)\n", statusOK, r.Slug, r.Stack.String())

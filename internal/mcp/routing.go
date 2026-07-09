@@ -227,22 +227,7 @@ func pathContains(ancestor, child string) bool {
 // it walks to the filesystem root without finding one. This is a fast check
 // to avoid subprocess calls to gitmeta.Capture for non-git directories (#2563).
 func hasGitDirInTree(dir string) bool {
-	if dir == "" {
-		return false
-	}
-	cur := dir
-	for {
-		gitPath := filepath.Join(cur, ".git")
-		if _, err := os.Stat(gitPath); err == nil {
-			return true
-		}
-		parent := filepath.Dir(cur)
-		if parent == cur {
-			// Reached filesystem root.
-			return false
-		}
-		cur = parent
-	}
+	return gitmeta.HasGitDirInTree(dir)
 }
 
 // groupFromCWD walks dir upward looking for .grafel/group.json which
