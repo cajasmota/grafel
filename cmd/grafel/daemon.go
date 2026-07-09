@@ -35,6 +35,7 @@ import (
 	"github.com/cajasmota/grafel/internal/docgen"
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/extractors"
+	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/jobs"
 	"github.com/cajasmota/grafel/internal/mcp"
@@ -795,6 +796,10 @@ func daemonWorktreeParents() []worktree.ParentRepo {
 		return nil
 	}
 	seen := map[string]bool{}
+	// Memoize git common-dir resolution within this call: a monorepo has many
+	// slugs whose paths resolve to the same root, and even distinct paths may
+	// repeat, so resolve each abs path at most once.
+	commonDir := map[string]string{}
 	var out []worktree.ParentRepo
 	for _, g := range groups {
 		cfg, err := registry.LoadGroupConfig(g.ConfigPath)
@@ -809,9 +814,26 @@ func daemonWorktreeParents() []worktree.ParentRepo {
 			if aerr != nil {
 				abs = r.Path
 			}
-			// Dedup on (group, path): a repo may legitimately appear in
-			// multiple groups, but within a group the path is unique.
-			key := g.Name + "\x00" + abs
+			// Dedup on (group, git common-dir), NOT (group, path). In a
+			// monorepo the N module slugs are N distinct subdir paths of ONE
+			// git root; they all share a single git common-dir and therefore
+			// report the SAME `git worktree list`. Keying on the common-dir
+			// collapses them to a single representative parent (the first slug
+			// seen) instead of N parents that each re-discover the same
+			// worktrees — the #5675 reindex storm. Independent repos have
+			// distinct common-dirs and so remain distinct parents.
+			root, ok := commonDir[abs]
+			if !ok {
+				root = gitmeta.ResolveCommonDir(abs)
+				commonDir[abs] = root
+			}
+			// Fall back to path-keyed dedup when common-dir resolution fails
+			// (path is not a git repo / git unavailable) so nothing is dropped.
+			keyBase := root
+			if keyBase == "" {
+				keyBase = abs
+			}
+			key := g.Name + "\x00" + keyBase
 			if seen[key] {
 				continue
 			}

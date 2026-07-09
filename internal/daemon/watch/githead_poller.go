@@ -208,29 +208,7 @@ func (p *GitHeadPoller) GroupCount() int {
 // (e.g. macOS /tmp → /private/tmp) so that the base repo and its linked
 // worktrees map to the same key. Returns "" if repoPath is not a git repo.
 func resolveCommonDir(repoPath string) string {
-	raw := gitmeta.RunGit(repoPath, "rev-parse", "--git-common-dir")
-	if raw == "" {
-		return ""
-	}
-	// --git-common-dir may return a relative path (e.g. ".git") for the base
-	// repo; resolve it relative to the repo root.
-	var abs string
-	if filepath.IsAbs(raw) {
-		abs = raw
-	} else {
-		var err error
-		abs, err = filepath.Abs(filepath.Join(repoPath, raw))
-		if err != nil {
-			return ""
-		}
-	}
-	// Resolve symlinks so macOS /tmp → /private/tmp and similar OS symlinks
-	// don't create spurious duplicate groups.
-	real, err := filepath.EvalSymlinks(abs)
-	if err != nil {
-		return filepath.Clean(abs) // fallback: clean without symlink resolution
-	}
-	return real
+	return gitmeta.ResolveCommonDir(repoPath)
 }
 
 // refFileForBranch returns the path to the ref file for a given branch name
