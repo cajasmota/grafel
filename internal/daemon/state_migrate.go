@@ -19,6 +19,7 @@ var graphArtifactNames = []string{
 	"graph.fb",
 	"graph.json",
 	"graph-stats.json",
+	"link-stats.json",
 	".metadata.json",
 	"file-index.json",
 	"repair.json",

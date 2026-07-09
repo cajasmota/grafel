@@ -590,12 +590,18 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 	// what those surfaces read. Best-effort: a sidecar write failure never
 	// fails the reindex (graph.fb is already written, and the fbreader-header
 	// fallback still recovers the counts on a sidecar miss).
+	// #5692 — persist the extraction phase wall-clock (extract_ms) so `grafel
+	// feedback` can report where incremental reindex time goes. t0 marks the
+	// start of this incremental pass; by here the re-extract + scoped resolve +
+	// merge are done. Cross-repo link timing lives in a separate link-stats.json
+	// owned by the link pass, so nothing is carried forward here.
 	side := &graph.GraphStatsSidecar{
 		Version:            1,
 		ComputedAt:         doc.GeneratedAt,
 		TotalFiles:         doc.Stats.Files,
 		TotalEntities:      doc.Stats.Entities,
 		TotalRelationships: doc.Stats.Relationships,
+		ExtractMS:          time.Since(t0).Milliseconds(),
 	}
 	if serr := graph.WriteSidecar(fbPath, side, false); serr != nil {
 		logger.Printf("incremental: sidecar write failed: %v (non-fatal)", serr)

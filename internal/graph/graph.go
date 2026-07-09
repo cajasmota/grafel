@@ -144,7 +144,30 @@ type GraphStatsSidecar struct {
 	Modularity         float64   `json:"modularity"`
 	GodNodes           int       `json:"god_nodes"`
 	ArticulationPoints int       `json:"articulation_points"`
-	RuntimeMS          int64     `json:"runtime_ms"`
+	// RuntimeMS is the wall-clock duration of the graph-algorithm pass
+	// (Pass 4: Louvain / PageRank / articulation). Its meaning is unchanged
+	// since it was introduced; the extract/link phase timings below are
+	// tracked separately.
+	RuntimeMS int64 `json:"runtime_ms"`
+
+	// ExtractMS is the wall-clock duration (milliseconds) of the extraction
+	// phase for the index pass that produced this sidecar (#5692). Recorded so
+	// `grafel feedback` and future tooling can report where indexing time goes.
+	// A zero value means "unknown": the phase was not measured, or this sidecar
+	// was written before the field existed (back-compat).
+	//
+	// The measured span differs slightly by write path: on the full-index path
+	// it is scoped to the extraction pipeline (idx.Run) only; on the
+	// incremental reindex path it is the whole incremental pass wall-clock
+	// (manifest load + re-extract + scoped resolve + graph.fb write). Both are
+	// written in-band by the same goroutine that writes this sidecar, so the
+	// value is always consistent with the counts alongside it.
+	//
+	// It is written IN-BAND (by the reindex writer, sole owner of this file);
+	// the cross-repo link timing lives in a SEPARATE link-stats.json (see
+	// LinkStatsSidecar) so an unserialized link goroutine never races the
+	// reindex writer on this file's count fields (#5692).
+	ExtractMS int64 `json:"extract_ms,omitempty"`
 
 	// ParseErrorCanary is the A4 per-language parse-error-node canary report
 	// (#5414, epic #5359): per-language aggregate ERROR-node rates plus a
@@ -167,7 +190,11 @@ func WriteSidecar(outPath string, side *GraphStatsSidecar, pretty bool) error {
 	if err := os.MkdirAll(dir, 0o755); err != nil {
 		return fmt.Errorf("graph: mkdir %s: %w", dir, err)
 	}
-	target := filepath.Join(dir, "graph-stats.json")
+	return writeJSONAtomic(filepath.Join(dir, "graph-stats.json"), side, pretty)
+}
+
+// writeJSONAtomic encodes v to target via a sibling .tmp + rename.
+func writeJSONAtomic(target string, v any, pretty bool) error {
 	tmp := target + ".tmp"
 	f, err := os.Create(tmp)
 	if err != nil {
@@ -177,7 +204,7 @@ func WriteSidecar(outPath string, side *GraphStatsSidecar, pretty bool) error {
 	if pretty {
 		enc.SetIndent("", "  ")
 	}
-	if err := enc.Encode(side); err != nil {
+	if err := enc.Encode(v); err != nil {
 		f.Close()
 		os.Remove(tmp)
 		return fmt.Errorf("graph: encode sidecar: %w", err)
@@ -187,6 +214,74 @@ func WriteSidecar(outPath string, side *GraphStatsSidecar, pretty bool) error {
 		return err
 	}
 	return os.Rename(tmp, target)
+}
+
+// SidecarPath returns the graph-stats.json path inside stateDir.
+func SidecarPath(stateDir string) string {
+	return filepath.Join(stateDir, "graph-stats.json")
+}
+
+// LoadSidecar reads and decodes the graph-stats.json sidecar in stateDir.
+// Returns an error if the sidecar is absent or malformed.
+func LoadSidecar(stateDir string) (*GraphStatsSidecar, error) {
+	data, err := os.ReadFile(SidecarPath(stateDir))
+	if err != nil {
+		return nil, err
+	}
+	var side GraphStatsSidecar
+	if err := json.Unmarshal(data, &side); err != nil {
+		return nil, fmt.Errorf("graph: decode sidecar %s: %w", stateDir, err)
+	}
+	return &side, nil
+}
+
+// LinkStatsSidecar is the per-repo cross-repo-link timing sidecar written to
+// <repo-state>/link-stats.json (#5692). It is kept SEPARATE from
+// graph-stats.json on purpose: the cross-repo link pass runs on its own
+// per-group goroutine (scheduler AfterFunc) which is NOT serialized against the
+// reindex worker pool. Were link timing stamped into graph-stats.json, a
+// read-modify-write from the link goroutine could land between a reindex's
+// ReadFile and Rename and clobber the freshly written entity/relationship
+// counts. Giving the link pass its own file makes it the SOLE writer here, so
+// there is no cross-writer lost-update: link passes for a single group are
+// themselves serialized by the scheduler's per-group debounce.
+type LinkStatsSidecar struct {
+	Version    int       `json:"version"`
+	ComputedAt time.Time `json:"computed_at"`
+	// LinkMS is the wall-clock duration (milliseconds) of the most recent
+	// cross-repo link pass for the group this repo belongs to. Zero (or an
+	// absent file) means "unknown".
+	LinkMS int64 `json:"link_ms"`
+}
+
+// LinkStatsPath returns the link-stats.json path inside stateDir.
+func LinkStatsPath(stateDir string) string {
+	return filepath.Join(stateDir, "link-stats.json")
+}
+
+// WriteLinkStats atomically writes the link-stats.json sidecar into stateDir.
+// The link pass is the sole writer of this file, so no read-modify-write /
+// field-preservation is needed. Minified to match the other sidecars.
+func WriteLinkStats(stateDir string, side *LinkStatsSidecar) error {
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		return fmt.Errorf("graph: mkdir %s: %w", stateDir, err)
+	}
+	return writeJSONAtomic(LinkStatsPath(stateDir), side, false)
+}
+
+// LoadLinkStats reads and decodes the link-stats.json sidecar in stateDir.
+// Returns an error if the file is absent (os.IsNotExist) or malformed;
+// callers treating absence as "link timing unknown" should check IsNotExist.
+func LoadLinkStats(stateDir string) (*LinkStatsSidecar, error) {
+	data, err := os.ReadFile(LinkStatsPath(stateDir))
+	if err != nil {
+		return nil, err
+	}
+	var side LinkStatsSidecar
+	if err := json.Unmarshal(data, &side); err != nil {
+		return nil, fmt.Errorf("graph: decode link-stats %s: %w", stateDir, err)
+	}
+	return &side, nil
 }
 
 // WriteAtomic marshals doc to JSON and writes it to outPath atomically by

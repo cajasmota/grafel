@@ -469,10 +469,15 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		idx.ingestDocs = true
 	}
 
+	// #5692: measure the extraction pipeline wall-clock so it can be persisted
+	// into the graph-stats.json sidecar (extract_ms) for index-timing
+	// observability. Pure measurement — no behaviour change to indexing.
+	extractStart := time.Now()
 	doc, err := idx.Run(context.Background(), absRepo)
 	if err != nil {
 		return err
 	}
+	extractMS := time.Since(extractStart).Milliseconds()
 
 	// Phase 0 git metadata (#2088). Capture HEAD ref + SHA + worktree flag
 	// and stamp them onto the document BEFORE the rename-detect pass so
@@ -619,6 +624,7 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 				GodNodes:           doc.AlgorithmStats.NumGodNodes,
 				ArticulationPoints: doc.AlgorithmStats.NumArticulationPts,
 				RuntimeMS:          doc.AlgorithmStats.RuntimeMS,
+				ExtractMS:          extractMS,
 				ParseErrorCanary:   canaryRaw,
 				ParseErrorSpike:    canarySpiked,
 			}
