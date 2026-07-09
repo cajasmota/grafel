@@ -12,3 +12,9 @@ func ParseWorktreeListForTest(s string) []RawWorktree {
 func (w *Watcher) IntervalForTest() time.Duration {
 	return w.interval
 }
+
+// MaxWorktreesForTest exposes the package-internal maxWorktrees resolver for
+// white-box unit tests in the _test package.
+func MaxWorktreesForTest() int {
+	return maxWorktrees()
+}
