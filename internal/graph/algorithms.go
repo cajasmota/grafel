@@ -633,6 +633,89 @@ func betweennessSampleThresholdValue() int {
 // group was large enough to trigger the sampled approximation.
 func BetweennessSampleThreshold() int { return betweennessSampleThresholdValue() }
 
+// betweennessPath names the betweenness computation strategy ComputeCentrality
+// selects for a graph of a given size. It exists as an explicit value so the
+// choice is unit-testable and loggable without timing the run.
+type betweennessPath int
+
+const (
+	// betweennessPathExactWeighted — FloydWarshall + weighted Betweenness.
+	// Most accurate, O(V^3); only viable on tiny graphs (<= betweennessExactCutoff).
+	betweennessPathExactWeighted betweennessPath = iota
+	// betweennessPathExactBrandes — gonum's unweighted Brandes, O(V·E). Exact
+	// but the enrichment-bound cost on large graphs; used for mid-size graphs
+	// (between the FloydWarshall cutoff and the sampling threshold) and whenever
+	// exact computation is forced via GRAFEL_BETWEENNESS_FORCE_EXACT.
+	betweennessPathExactBrandes
+	// betweennessPathSampled — deterministic K-source sampled approximation
+	// (sampledBetweenness); used above the sampling threshold to bound cost on
+	// very large graphs (#5692).
+	betweennessPathSampled
+)
+
+func (p betweennessPath) String() string {
+	switch p {
+	case betweennessPathExactWeighted:
+		return "exact-weighted"
+	case betweennessPathExactBrandes:
+		return "exact-brandes"
+	case betweennessPathSampled:
+		return "sampled"
+	default:
+		return "unknown"
+	}
+}
+
+// chooseBetweennessPath selects the betweenness strategy purely from sizes and
+// the force-exact flag, so the gate is testable in isolation (#5692).
+//
+//   - forceExact=true  -> never sample; pick exact-weighted (<= exactCutoff) or
+//     exact-brandes. This is the operator opt-out for large graphs that need
+//     exact centrality and accept the O(V·E) cost.
+//   - nodes > sampleThreshold (>0) -> sampled approximation.
+//   - nodes <= exactCutoff         -> exact-weighted (FloydWarshall).
+//   - otherwise                    -> exact-brandes.
+//
+// For nodes <= sampleThreshold the result is IDENTICAL to the pre-#5692 code,
+// preserving the hard "small graphs unchanged" constraint.
+func chooseBetweennessPath(nodes, exactCutoff, sampleThreshold int, forceExact bool) betweennessPath {
+	if !forceExact && sampleThreshold > 0 && nodes > sampleThreshold {
+		return betweennessPathSampled
+	}
+	if nodes <= exactCutoff {
+		return betweennessPathExactWeighted
+	}
+	return betweennessPathExactBrandes
+}
+
+// betweennessForceExact reports whether GRAFEL_BETWEENNESS_FORCE_EXACT requests
+// that betweenness always be computed exactly (the pre-sampling behaviour),
+// bypassing the node-count sampling gate (#5692 opt-out). Any of the usual
+// truthy spellings (1/true/yes/on) enable it.
+func betweennessForceExact() bool {
+	return envTruthy(os.Getenv("GRAFEL_BETWEENNESS_FORCE_EXACT"))
+}
+
+// envTruthy interprets an env-var value as a boolean without pulling strconv.
+func envTruthy(v string) bool {
+	switch v {
+	case "1", "t", "T", "true", "TRUE", "True", "yes", "YES", "Yes", "on", "ON", "On":
+		return true
+	}
+	return false
+}
+
+// logBetweennessPath emits a single stderr line recording which betweenness path
+// ran, so operators can confirm on large graphs whether the sampled
+// approximation (or a forced-exact override) was taken (#5692). It does not
+// affect on-disk output bytes — reproducible-build mode governs artifact
+// content, not process logs.
+func logBetweennessPath(p betweennessPath, nodes int) {
+	fmt.Fprintf(os.Stderr,
+		"grafel: betweenness path=%s nodes=%d sample_threshold=%d force_exact=%v\n",
+		p, nodes, betweennessSampleThresholdValue(), betweennessForceExact())
+}
+
 func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[string]float64, map[string]float64) {
 	betw := make(map[string]float64, idx.next)
 	pr := make(map[string]float64, idx.next)
@@ -645,13 +728,22 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 	}
 
 	// Betweenness — choose exact-weighted vs unweighted vs sampled by size.
+	// The selection is factored into chooseBetweennessPath so it is unit-testable
+	// and so operators can force exact computation via GRAFEL_BETWEENNESS_FORCE_EXACT
+	// (#5692 opt-out). Below the sampling threshold the behaviour is IDENTICAL to
+	// the pre-#5692 code; only very large graphs take the sampled path.
+	nodes := int(idx.next)
+	bpath := chooseBetweennessPath(nodes, betwennessNodeCount(idx), betweennessSampleThresholdValue(), betweennessForceExact())
+	logBetweennessPath(bpath, nodes)
+
 	var raw map[int64]float64
-	switch {
-	case int(idx.next) > betweennessSampleThresholdValue():
-		// Large group union (#5349 A4): exact Brandes is O(V·E) and scary on
-		// 28k+ nodes. Use the deterministic sampled-pivot approximation.
+	switch bpath {
+	case betweennessPathSampled:
+		// Large group union (#5349 A4 / #5692): exact Brandes is O(V·E) and the
+		// enrichment-bound cost (~240s on a 291k-node graph). Use the
+		// deterministic sampled-pivot approximation.
 		raw = sampledBetweenness(g, betweennessSampleSize, betweennessSampleSeed)
-	case int(idx.next) <= betwennessNodeCount(idx):
+	case betweennessPathExactWeighted:
 		// FloydWarshall is O(V^3) and precomputes all shortest paths; on
 		// graphs <= cutoff this is the most accurate option.
 		shortest, ok := path.FloydWarshall(g)
@@ -659,6 +751,8 @@ func ComputeCentrality(g *simple.WeightedDirectedGraph, idx *nodeIndex) (map[str
 			raw = network.BetweennessWeighted(g, shortest)
 		}
 	}
+	// betweennessPathExactBrandes (and any FloydWarshall failure above) falls
+	// through to the unweighted Brandes exact computation.
 	if raw == nil {
 		raw = network.Betweenness(g)
 	}
