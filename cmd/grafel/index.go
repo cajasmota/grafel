@@ -1480,6 +1480,21 @@ func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, err
 	}
 	i.stats.extSynth = extStats
 
+	// #5687 — data-layer lineage edges. Connect each SCOPE.DataAccess node to
+	// the EXISTING physical table entity it touches (SCOPE.Datastore/Schema),
+	// emitting READS_FROM (SELECT) / WRITES_TO (INSERT/UPDATE/DELETE/…) on an
+	// EXACT canonical table-name match. De-orphans the data-access/table layer so
+	// lineage queries can traverse function → DataAccess → table. Runs at Pass 4.5
+	// (before the Pass 4 graph algorithms) so the new edges participate in
+	// centrality/community. Append-only, deterministic, idempotent.
+	dlStats := external.SynthesizeDataLineageEdges(doc)
+	if verbose() || dlStats.EdgesAdded > 0 {
+		fmt.Fprintf(os.Stderr,
+			"data-lineage: data_access_seen=%d edges=%d reads_from=%d writes_to=%d ambiguous=%d unresolved=%d\n",
+			dlStats.DataAccessSeen, dlStats.EdgesAdded, dlStats.ReadsFrom,
+			dlStats.WritesTo, dlStats.Ambiguous, dlStats.Unresolved)
+	}
+
 	// #4480 — retarget THROWS / CATCHES edges from the synthetic
 	// SCOPE.ExceptionType convergence node to the REAL exception class entity
 	// (declared in-repo class, or the imported `ext:<Type>` placeholder just

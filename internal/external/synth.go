@@ -641,6 +641,321 @@ func SynthesizeDBEntities(doc *graph.Document) Stats {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Issue #5687 — data-layer lineage edges (DataAccess → physical table).
+// ---------------------------------------------------------------------------
+
+// DataLineageStats summarises a SynthesizeDataLineageEdges run.
+type DataLineageStats struct {
+	// DataAccessSeen is the number of SCOPE.DataAccess entities with a
+	// resolvable (non-UNKNOWN) table name.
+	DataAccessSeen int
+	// EdgesAdded is the number of NEW READS_FROM / WRITES_TO edges appended.
+	EdgesAdded int
+	// ReadsFrom / WritesTo break EdgesAdded down by verb.
+	ReadsFrom int
+	WritesTo  int
+	// Ambiguous is the number of DataAccess table references that matched >1
+	// candidate table entity (same canonical name) and were skipped to avoid a
+	// wrong data-lineage join.
+	Ambiguous int
+	// Unresolved is the number of DataAccess table references whose canonical
+	// name matched no existing Datastore/Schema table entity.
+	Unresolved int
+}
+
+// parseDataAccessOp extracts the SQL operation from a
+// scope:dataaccess:<file>#<orm>:<op>:<table> qualified name (parts[1]).
+// Returns "" when the form is invalid.
+func parseDataAccessOp(qn string) string {
+	const prefix = "scope:dataaccess:"
+	if !strings.HasPrefix(qn, prefix) {
+		return ""
+	}
+	rest := qn[len(prefix):]
+	hash := strings.IndexByte(rest, '#')
+	if hash < 0 {
+		return ""
+	}
+	parts := strings.SplitN(rest[hash+1:], ":", 3)
+	if len(parts) != 3 {
+		return ""
+	}
+	return parts[1]
+}
+
+// dataLineageWriteOps is the set of operations that MUTATE a table (→ WRITES_TO).
+// Anything else — SELECT, or an unknown/empty op — is treated as a read
+// (→ READS_FROM), which is the safe default (never fabricates a write).
+var dataLineageWriteOps = map[string]bool{
+	"insert": true, "update": true, "delete": true,
+	"upsert": true, "truncate": true, "merge": true,
+}
+
+// lineageVerb maps a parsed SQL operation to its lineage relationship kind.
+func lineageVerb(op string) string {
+	if dataLineageWriteOps[strings.ToLower(strings.TrimSpace(op))] {
+		return string(types.RelationshipKindWritesTo)
+	}
+	return string(types.RelationshipKindReadsFrom)
+}
+
+// canonicalTableName normalises a physical table identifier so the same table
+// resolves across dialects. Rules (issue #5687):
+//
+//   - trim + lowercase;
+//   - strip surrounding quoting/bracketing an ORM/dialect may leave on
+//     (backtick, double/single quote, [brackets]);
+//   - drop a schema/catalog qualifier: keep only the segment after the last
+//     "." (public.orders → orders, mydb.sales.orders → orders);
+//   - fold a naive plural to its singular stem so an ORM class name (Order)
+//     and a migration table (orders) converge (orders → order,
+//     companies → company, addresses → address).
+//
+// Returns "" for empty or "unknown" input (those never produce an edge).
+func canonicalTableName(t string) string {
+	s := strings.ToLower(strings.TrimSpace(t))
+	if s == "" || s == "unknown" {
+		return ""
+	}
+	// Drop a schema/catalog qualifier (last segment wins).
+	if i := strings.LastIndex(s, "."); i >= 0 && i+1 < len(s) {
+		s = s[i+1:]
+	}
+	// Strip surrounding quotes/backticks/brackets.
+	s = strings.Trim(s, "`\"'[]")
+	if s == "" {
+		return ""
+	}
+	return singularize(s)
+}
+
+// singularize folds a common English plural table name to a singular stem.
+// Conservative on purpose: only well-known suffix rules, so it never mangles a
+// genuinely-singular name (e.g. "address" stays "address"; "class"/"status"
+// are guarded by the "ss"/"us" cases).
+func singularize(s string) string {
+	switch {
+	case strings.HasSuffix(s, "ies") && len(s) > 3:
+		return s[:len(s)-3] + "y" // companies → company
+	case strings.HasSuffix(s, "sses"): // addresses → address
+		return s[:len(s)-2]
+	case strings.HasSuffix(s, "ches"), strings.HasSuffix(s, "shes"),
+		strings.HasSuffix(s, "xes"), strings.HasSuffix(s, "zes"):
+		return s[:len(s)-2]
+	case strings.HasSuffix(s, "ss"), strings.HasSuffix(s, "us"),
+		strings.HasSuffix(s, "is"):
+		return s // class, status, analysis — already singular-ish
+	case strings.HasSuffix(s, "s") && len(s) > 1:
+		return s[:len(s)-1] // orders → order, users → user
+	default:
+		return s
+	}
+}
+
+// Candidate table-entity tiers: a physical migration Datastore table outranks
+// an ORM-derived Schema when both resolve to one canonical name (issue #5687
+// deterministic tie-break).
+const (
+	lineageTierDatastore = 0
+	lineageTierSchema    = 1
+)
+
+// datastoreTableSubtypes / schemaTableSubtypes are the entity subtypes that
+// represent a WHOLE relation (a table/view), as opposed to a column/field
+// member. Only these are eligible lineage targets — joining a DataAccess to a
+// SCOPE.Schema/field column entity would be a wrong edge.
+var datastoreTableSubtypes = map[string]bool{
+	"table": true, "view": true,
+}
+var schemaTableSubtypes = map[string]bool{
+	"table": true, "view": true, "entity": true, "model": true, "schema": true,
+}
+
+// lineageCandidate is one resolvable table entity keyed by canonical name.
+type lineageCandidate struct {
+	id   string
+	tier int
+}
+
+// SynthesizeDataLineageEdges (issue #5687) connects every SCOPE.DataAccess node
+// to the EXISTING physical table entity it touches, so data-lineage queries can
+// traverse function → DataAccess → table.
+//
+// For each SCOPE.DataAccess entity it parses the (op, table) pair out of the
+// QualifiedName (scope:dataaccess:<file>#<orm>:<op>:<table>) and emits:
+//
+//	SCOPE.DataAccess --READS_FROM--> SCOPE.Datastore/SCOPE.Schema   (SELECT)
+//	SCOPE.DataAccess --WRITES_TO---> SCOPE.Datastore/SCOPE.Schema   (INSERT/UPDATE/DELETE/UPSERT/TRUNCATE/MERGE)
+//
+// The target is the EXISTING table entity (never a new ext:db.* node): a
+// byName index over SCOPE.Datastore(table|view) and table-representing
+// SCOPE.Schema entities, keyed by canonicalTableName. HARD CONSTRAINT — an edge
+// is emitted ONLY on an EXACT canonical-name match that resolves to exactly one
+// candidate in the winning tier (Datastore beats Schema). UNKNOWN/empty tables
+// are dropped; an ambiguous canonical name (≥2 candidates in the winning tier)
+// is skipped so the pass never fabricates a wrong lineage edge.
+//
+// This ADDS edges alongside the pre-existing SynthesizeDBEntities ext:db.*
+// IMPORTS behaviour; it does not remove it. Deterministic, append-only, and
+// idempotent (a second run mints no duplicate edge).
+//
+// DynamoDB / NoSQL access is out of scope for this pass: there is no
+// Datastore/Schema table entity to join, so no edge is honestly emittable.
+func SynthesizeDataLineageEdges(doc *graph.Document) DataLineageStats {
+	if doc == nil {
+		return DataLineageStats{}
+	}
+
+	// Build the canonical byName index over existing relation-level table
+	// entities. A Datastore(table|view) and a Schema can share one canonical
+	// name; keep both, tiered, so the Datastore wins deterministically.
+	byName := make(map[string][]lineageCandidate)
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		var tier int
+		switch {
+		case e.Kind == "SCOPE.Datastore" && datastoreTableSubtypes[e.Subtype]:
+			tier = lineageTierDatastore
+		case e.Kind == "SCOPE.Schema" && schemaTableSubtypes[e.Subtype]:
+			tier = lineageTierSchema
+		default:
+			continue
+		}
+		canon := canonicalTableName(e.Name)
+		if canon == "" {
+			continue
+		}
+		byName[canon] = append(byName[canon], lineageCandidate{id: e.ID, tier: tier})
+	}
+
+	// Pre-index existing READS_FROM / WRITES_TO edges for idempotency.
+	knownEdges := make(map[string]bool, len(doc.Relationships))
+	for k := range doc.Relationships {
+		r := &doc.Relationships[k]
+		if r.Kind == string(types.RelationshipKindReadsFrom) ||
+			r.Kind == string(types.RelationshipKindWritesTo) {
+			knownEdges[r.FromID+"|"+r.ToID+"|"+r.Kind] = true
+		}
+	}
+
+	// resolve returns the single winning candidate ID for a canonical name.
+	// Datastore tier is tried first; exactly one candidate in that tier wins
+	// even if Schema candidates also exist. Falls back to the Schema tier only
+	// when no Datastore candidate is present. Returns ambiguous=true when the
+	// winning tier has ≥2 candidates.
+	resolve := func(canon string) (id string, ok, ambiguous bool) {
+		cands := byName[canon]
+		if len(cands) == 0 {
+			return "", false, false
+		}
+		var ds, sc []string
+		for _, c := range cands {
+			if c.tier == lineageTierDatastore {
+				ds = append(ds, c.id)
+			} else {
+				sc = append(sc, c.id)
+			}
+		}
+		switch {
+		case len(ds) == 1:
+			return ds[0], true, false
+		case len(ds) > 1:
+			return "", false, true // ambiguous physical tables
+		case len(sc) == 1:
+			return sc[0], true, false
+		default:
+			return "", false, true // ≥2 schema candidates, no datastore
+		}
+	}
+
+	// Collect new edges first for a deterministic append order.
+	type lineageEdge struct {
+		fromID, toID, kind, table string
+	}
+	var newEdges []lineageEdge
+
+	var stats DataLineageStats
+	for k := range doc.Entities {
+		e := &doc.Entities[k]
+		if e.Kind != "SCOPE.DataAccess" {
+			continue
+		}
+		_, table, ok := parseDataAccessQN(e.QualifiedName)
+		if !ok {
+			// Fall back to the `table` property when the QN is not the stub form.
+			if e.Properties != nil {
+				table = e.Properties["table"]
+			}
+		}
+		canon := canonicalTableName(table)
+		if canon == "" {
+			continue // UNKNOWN / empty — dropped
+		}
+		stats.DataAccessSeen++
+
+		toID, resolved, ambiguous := resolve(canon)
+		if ambiguous {
+			stats.Ambiguous++
+			continue
+		}
+		if !resolved {
+			stats.Unresolved++
+			continue
+		}
+
+		op := parseDataAccessOp(e.QualifiedName)
+		if op == "" && e.Properties != nil {
+			op = e.Properties["operation"]
+		}
+		kind := lineageVerb(op)
+
+		key := e.ID + "|" + toID + "|" + kind
+		if knownEdges[key] {
+			continue
+		}
+		knownEdges[key] = true
+		newEdges = append(newEdges, lineageEdge{
+			fromID: e.ID, toID: toID, kind: kind, table: canon,
+		})
+	}
+
+	sort.Slice(newEdges, func(i, j int) bool {
+		if newEdges[i].fromID != newEdges[j].fromID {
+			return newEdges[i].fromID < newEdges[j].fromID
+		}
+		if newEdges[i].toID != newEdges[j].toID {
+			return newEdges[i].toID < newEdges[j].toID
+		}
+		return newEdges[i].kind < newEdges[j].kind
+	})
+
+	for _, e := range newEdges {
+		doc.Relationships = append(doc.Relationships, graph.Relationship{
+			ID:     graph.RelationshipID(e.fromID, e.toID, e.kind),
+			FromID: e.fromID,
+			ToID:   e.toID,
+			Kind:   e.kind,
+			Properties: map[string]string{
+				"table":      e.table,
+				"provenance": "DATA_LINEAGE_5687",
+				"generated":  "true",
+			},
+		})
+		stats.EdgesAdded++
+		if e.kind == string(types.RelationshipKindReadsFrom) {
+			stats.ReadsFrom++
+		} else {
+			stats.WritesTo++
+		}
+	}
+
+	if stats.EdgesAdded > 0 {
+		doc.Stats.Relationships = len(doc.Relationships)
+	}
+	return stats
+}
+
 // classifyExternal decides whether a stub-shaped ToID looks like an
 // external reference, and if so returns the canonical name we should
 // use for the placeholder entity.

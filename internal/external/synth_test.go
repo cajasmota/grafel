@@ -6670,3 +6670,211 @@ func TestSynthesize_NoPlaceholderForRubyStdlib(t *testing.T) {
 		}
 	}
 }
+
+// ---------------------------------------------------------------------
+// Issue #5687 — data-layer lineage edges.
+//
+// SynthesizeDataLineageEdges links each SCOPE.DataAccess node to the
+// EXISTING SCOPE.Datastore/SCOPE.Schema table entity it touches, choosing
+// READS_FROM (SELECT) or WRITES_TO (INSERT/UPDATE/DELETE/…) from the parsed
+// operation, gated on an EXACT canonical table-name match.
+// ---------------------------------------------------------------------
+
+// dataAccessEnt is a small helper building a SCOPE.DataAccess entity whose
+// QualifiedName encodes (file, orm, op, table) the way the dbmap extractor emits.
+func dataAccessEnt(id, file, orm, op, table string) graph.Entity {
+	return graph.Entity{
+		ID:            id,
+		Kind:          "SCOPE.DataAccess",
+		Name:          op + " " + table,
+		QualifiedName: "scope:dataaccess:" + file + "#" + orm + ":" + op + ":" + table,
+		SourceFile:    file,
+		Language:      "go",
+		Properties:    map[string]string{"operation": op, "table": table},
+	}
+}
+
+func datastoreTableEnt(id, name string) graph.Entity {
+	return graph.Entity{
+		ID:         id,
+		Kind:       "SCOPE.Datastore",
+		Subtype:    "table",
+		Name:       name,
+		SourceFile: "migrations/0001_init.sql",
+		Language:   "sql",
+	}
+}
+
+// hasLineageEdge reports whether doc has an edge fromID→toID of the given kind.
+func hasLineageEdge(doc *graph.Document, fromID, toID, kind string) bool {
+	for _, r := range doc.Relationships {
+		if r.FromID == fromID && r.ToID == toID && r.Kind == kind {
+			return true
+		}
+	}
+	return false
+}
+
+// TestSynthesizeDataLineageEdges_ReadsFrom is the primary red→green case: a
+// SELECT DataAccess on `orders` + a Datastore table `orders` must yield a
+// DataAccess --READS_FROM--> Datastore(orders) edge (orphan before, linked after).
+func TestSynthesizeDataLineageEdges_ReadsFrom(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000001", "internal/store/order.go", "gorm", "SELECT", "orders"),
+			datastoreTableEnt("ds00000000000001", "orders"),
+		},
+	}
+
+	// Before: DataAccess is orphan — no READS_FROM/WRITES_TO edge exists.
+	for _, r := range doc.Relationships {
+		if r.Kind == "READS_FROM" || r.Kind == "WRITES_TO" {
+			t.Fatalf("precondition violated: unexpected %s edge before pass", r.Kind)
+		}
+	}
+
+	stats := SynthesizeDataLineageEdges(doc)
+	if stats.EdgesAdded != 1 {
+		t.Fatalf("EdgesAdded=%d, want 1", stats.EdgesAdded)
+	}
+	if !hasLineageEdge(doc, "da00000000000001", "ds00000000000001", "READS_FROM") {
+		t.Fatalf("missing DataAccess --READS_FROM--> Datastore(orders) edge")
+	}
+}
+
+// TestSynthesizeDataLineageEdges_WritesTo covers the write verb (INSERT).
+func TestSynthesizeDataLineageEdges_WritesTo(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000002", "internal/store/order.go", "gorm", "INSERT", "orders"),
+			datastoreTableEnt("ds00000000000001", "orders"),
+		},
+	}
+	stats := SynthesizeDataLineageEdges(doc)
+	if stats.EdgesAdded != 1 {
+		t.Fatalf("EdgesAdded=%d, want 1", stats.EdgesAdded)
+	}
+	if !hasLineageEdge(doc, "da00000000000002", "ds00000000000001", "WRITES_TO") {
+		t.Fatalf("missing DataAccess --WRITES_TO--> Datastore(orders) edge")
+	}
+	if hasLineageEdge(doc, "da00000000000002", "ds00000000000001", "READS_FROM") {
+		t.Fatalf("INSERT must not emit READS_FROM")
+	}
+}
+
+// TestSynthesizeDataLineageEdges_Canonicalization checks that a schema-qualified
+// DataAccess table (`public.orders`) still resolves to the bare `orders` table.
+func TestSynthesizeDataLineageEdges_Canonicalization(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000003", "internal/store/order.go", "sql", "SELECT", "public.orders"),
+			datastoreTableEnt("ds00000000000001", "orders"),
+		},
+	}
+	stats := SynthesizeDataLineageEdges(doc)
+	if stats.EdgesAdded != 1 {
+		t.Fatalf("EdgesAdded=%d, want 1", stats.EdgesAdded)
+	}
+	if !hasLineageEdge(doc, "da00000000000003", "ds00000000000001", "READS_FROM") {
+		t.Fatalf("public.orders did not canonicalize to orders")
+	}
+}
+
+// TestSynthesizeDataLineageEdges_UnknownSkipped confirms UNKNOWN/empty tables
+// never produce an edge.
+func TestSynthesizeDataLineageEdges_UnknownSkipped(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000004", "internal/store/dyn.go", "sql", "SELECT", "UNKNOWN"),
+			datastoreTableEnt("ds00000000000001", "orders"),
+		},
+	}
+	stats := SynthesizeDataLineageEdges(doc)
+	if stats.EdgesAdded != 0 {
+		t.Fatalf("EdgesAdded=%d, want 0 (UNKNOWN skipped)", stats.EdgesAdded)
+	}
+}
+
+// TestSynthesizeDataLineageEdges_AmbiguousSkipped confirms that when two
+// distinct Datastore tables share one canonical name, no edge is emitted
+// (exact-match-only; no wrong fan-out).
+func TestSynthesizeDataLineageEdges_AmbiguousSkipped(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000005", "internal/store/order.go", "sql", "SELECT", "orders"),
+			datastoreTableEnt("ds00000000000001", "public.orders"),
+			datastoreTableEnt("ds00000000000002", "sales.orders"),
+		},
+	}
+	stats := SynthesizeDataLineageEdges(doc)
+	if stats.EdgesAdded != 0 {
+		t.Fatalf("EdgesAdded=%d, want 0 (ambiguous canonical name)", stats.EdgesAdded)
+	}
+	if stats.Ambiguous != 1 {
+		t.Fatalf("Ambiguous=%d, want 1", stats.Ambiguous)
+	}
+}
+
+// TestSynthesizeDataLineageEdges_DatastoreBeatsSchema confirms the deterministic
+// tie-break: when both a migration Datastore and an ORM Schema exist for one
+// canonical table, the Datastore node wins.
+func TestSynthesizeDataLineageEdges_DatastoreBeatsSchema(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000006", "internal/store/order.go", "gorm", "SELECT", "orders"),
+			datastoreTableEnt("ds00000000000001", "orders"),
+			{ID: "sc00000000000001", Kind: "SCOPE.Schema", Subtype: "table", Name: "orders", Language: "go"},
+		},
+	}
+	stats := SynthesizeDataLineageEdges(doc)
+	if stats.EdgesAdded != 1 {
+		t.Fatalf("EdgesAdded=%d, want 1", stats.EdgesAdded)
+	}
+	if !hasLineageEdge(doc, "da00000000000006", "ds00000000000001", "READS_FROM") {
+		t.Fatalf("Datastore should win over Schema for the lineage target")
+	}
+}
+
+// TestSynthesizeDataLineageEdges_SchemaFallback confirms that when ONLY an ORM
+// Schema table entity exists (no Datastore), the DataAccess still links to it.
+func TestSynthesizeDataLineageEdges_SchemaFallback(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000008", "internal/store/order.go", "gorm", "UPDATE", "orders"),
+			{ID: "sc00000000000002", Kind: "SCOPE.Schema", Subtype: "table", Name: "orders", Language: "go"},
+		},
+	}
+	stats := SynthesizeDataLineageEdges(doc)
+	if stats.EdgesAdded != 1 {
+		t.Fatalf("EdgesAdded=%d, want 1", stats.EdgesAdded)
+	}
+	if !hasLineageEdge(doc, "da00000000000008", "sc00000000000002", "WRITES_TO") {
+		t.Fatalf("missing DataAccess --WRITES_TO--> Schema(orders) fallback edge")
+	}
+}
+
+// TestSynthesizeDataLineageEdges_Idempotent confirms a second run adds nothing.
+func TestSynthesizeDataLineageEdges_Idempotent(t *testing.T) {
+	t.Parallel()
+	doc := &graph.Document{
+		Entities: []graph.Entity{
+			dataAccessEnt("da00000000000007", "internal/store/order.go", "gorm", "SELECT", "orders"),
+			datastoreTableEnt("ds00000000000001", "orders"),
+		},
+	}
+	first := SynthesizeDataLineageEdges(doc)
+	second := SynthesizeDataLineageEdges(doc)
+	if first.EdgesAdded != 1 {
+		t.Fatalf("first EdgesAdded=%d, want 1", first.EdgesAdded)
+	}
+	if second.EdgesAdded != 0 {
+		t.Fatalf("second EdgesAdded=%d, want 0 (idempotent)", second.EdgesAdded)
+	}
+}
