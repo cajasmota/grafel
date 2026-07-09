@@ -19,6 +19,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/enrichment"
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/resolve"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -157,43 +158,14 @@ func countEdgesForFidelity(r *LoadedRepo) (total, bugs int) {
 		// A relationship is "buggy" (unresolved) when its ToID still looks like
 		// a raw stub — it was not bound to a hex entity ID or ext:-qualified
 		// external. The resolver writes these as bug:* prefixes on failed
-		// resolution, or the ToID remains a bare name/qname string.
-		if isBugEdgeToID(rel.ToID) {
+		// resolution, or the ToID remains a bare name/qname string. The ToID-shape
+		// classification is shared with the feedback collector and grafel_stats
+		// via internal/resolve so the three call sites cannot drift apart.
+		if resolve.IsBugEdgeToID(rel.ToID) {
 			bugs++
 		}
 	}
 	return total, bugs
-}
-
-// isBugEdgeToID returns true for ToID values that represent unresolved stubs.
-// Mirrors the heuristic used by internal/resolve (DispositionBugExtractor):
-// a hex ID (16 chars) or an ext:-prefixed ID are both resolved; everything
-// else is unresolved.
-func isBugEdgeToID(toID string) bool {
-	if toID == "" {
-		return false
-	}
-	// Resolved: hex entity ID (16 lowercase hex chars).
-	if len(toID) == 16 && isHexString(toID) {
-		return false
-	}
-	// Resolved: ext:-qualified external.
-	if len(toID) > 4 && toID[:4] == "ext:" {
-		return false
-	}
-	// Everything else is a raw stub → unresolved → bug.
-	return true
-}
-
-// isHexString returns true if every byte in s is a lowercase hex digit.
-func isHexString(s string) bool {
-	for i := 0; i < len(s); i++ {
-		c := s[i]
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			return false
-		}
-	}
-	return true
 }
 
 // countEdgeRepairsFromCandidates returns the number of candidates that
@@ -363,7 +335,7 @@ func computeUnresolvedBreakdown(repos []*LoadedRepo, topN int) UnresolvedBreakdo
 			if rel.Kind != "IMPORTS" {
 				continue
 			}
-			if !isBugEdgeToID(rel.ToID) {
+			if !resolve.IsBugEdgeToID(rel.ToID) {
 				continue
 			}
 

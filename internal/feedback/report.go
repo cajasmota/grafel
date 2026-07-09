@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/resolve"
 )
 
 // minEntitiesForReport is the hard floor below which the report is suppressed
@@ -185,8 +186,13 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 				entityEdges[e.ID] = &edgeSummary{}
 			}
 
-			// Source-window completeness: start_line > 0 AND end_line > start_line.
-			if e.StartLine > 0 && e.EndLine > e.StartLine {
+			// Source-window completeness: start_line > 0 is the navigable-window
+			// anchor. The graph.fb schema has NO end-line slot — fbEntityToGraphEntity
+			// (internal/graph/load.go) populates StartLine from SourceLine() and
+			// leaves EndLine == 0 for every FB-loaded entity — so requiring
+			// EndLine > StartLine scored 0.0% against real production data. Start
+			// line alone is what get_source anchors on, so it is the correct signal.
+			if e.StartLine > 0 {
 				r.SourceWindow.TotalWithWindow++
 			}
 
@@ -197,8 +203,14 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 				r.FrameworkHits[e.Properties["framework"]]++
 			}
 
-			// Field extraction for Class/Model kinds.
-			if kind == "class" || kind == "struct" || kind == "model" {
+			// Field extraction for Class/Model kinds. Real FB-loaded entities carry
+			// canonical kinds — bare ("Model") or namespaced ("SCOPE.Class",
+			// "SCOPE.Schema") — never the lowercase "class"/"struct"/"model" that
+			// the in-memory unit fixtures used, which scored "No class or model
+			// entities found" against production data. Match case-insensitively on
+			// the namespace-stripped tail (see kindTail, mirroring
+			// internal/graph/coverage.go) and include schema.
+			if isClassLikeKind(kind) {
 				classCount++
 				// Fields are typically emitted as child entities; we use
 				// Properties["field_count"] when available.
@@ -229,20 +241,25 @@ func Generate(_ context.Context, docs []*graph.Document, opts Opts) (*Report, er
 				}
 			}
 
-			// Resolution disposition from Properties["resolution"] (PR #2503).
-			switch rel.Properties["resolution"] {
-			case "resolved":
-				resResolved++
-			case "external_known":
-				resExternalKnown++
-			case "external_unknown":
-				resExternalUnknown++
-			case "bug_extractor":
+			// Resolution disposition, derived STRUCTURALLY from the edge ToID shape
+			// — the same classification `orient view=stats` uses to compute import
+			// fidelity (internal/resolve.IsResolvedToID / IsBugEdgeToID). The
+			// pipeline never writes a Properties["resolution"] tag, so the previous
+			// property switch always reported "no resolution property found on
+			// edges". A 16-hex ToID is a bound entity ID (resolved); an ext:-prefixed
+			// ToID is a known external (external-known); any other non-empty ToID is
+			// an unresolved stub (bug-extractor). Empty ToIDs carry no disposition.
+			switch {
+			case rel.ToID == "":
+				// no disposition — nothing to resolve
+			case resolve.IsResolvedToID(rel.ToID):
+				if len(rel.ToID) > 4 && rel.ToID[:4] == "ext:" {
+					resExternalKnown++
+				} else {
+					resResolved++
+				}
+			default:
 				resBugExtractor++
-			case "bug_resolver":
-				resBugResolver++
-			case "dynamic":
-				resDynamic++
 			}
 		}
 	}
@@ -357,6 +374,35 @@ func (r *Report) IsSuppressed() bool { return r.suppressed }
 // containment rather than semantic connectivity.
 func isStructuralEdge(kind string) bool {
 	return kind == "CONTAINS" || kind == "DECLARES"
+}
+
+// kindTail returns the lower-cased, namespace-stripped kind for matching:
+// "SCOPE.Class" → "class", "Model" → "model". Mirrors the normalizer used by
+// internal/graph/coverage.go so raw and canonical SCOPE.* kinds are treated
+// identically and language-agnostically.
+func kindTail(kind string) string {
+	k := strings.ToLower(kind)
+	if i := strings.LastIndex(k, "."); i >= 0 {
+		k = k[i+1:]
+	}
+	return k
+}
+
+// classLikeKindTails is the set of namespace-stripped kind tails that carry
+// class/model/field-bearing semantics for the field-extraction metric. Real
+// FB-loaded graphs use canonical kinds (SCOPE.Class, SCOPE.Schema, SCOPE.Model,
+// bare Model) — never the lowercase literals the in-memory unit fixtures used.
+var classLikeKindTails = map[string]bool{
+	"class":  true,
+	"struct": true,
+	"model":  true,
+	"schema": true,
+}
+
+// isClassLikeKind reports whether kind is a class/model/schema-shaped entity
+// kind, matched case-insensitively on the namespace-stripped tail.
+func isClassLikeKind(kind string) bool {
+	return classLikeKindTails[kindTail(kind)]
 }
 
 // bucketCount maps a raw count to a privacy-preserving range bucket.

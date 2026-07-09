@@ -54,6 +54,8 @@ SCRATCH.md
 graph.json
 graph.fb
 graph-stats.json
+# Committed golden graph.fb fixture for the feedback collector regression test (#5683).
+!internal/feedback/testdata/golden/graph.fb
 
 # Exception: golden fixtures need committed group.json manifests for smoke tests
 !/internal/quality/golden/**/.grafel/group.json

@@ -10,8 +10,14 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 )
 
-// makeEntity is a test helper that builds a minimal graph.Entity.
-func makeEntity(id, name, kind, lang, srcFile string, startLine, endLine int) graph.Entity {
+// makeEntity is a test helper that builds a minimal graph.Entity that speaks
+// the SAME dialect as a real graph.fb-loaded entity: a canonical Kind
+// (SCOPE.Function / SCOPE.Class / Model …) and StartLine ONLY. It deliberately
+// does NOT set EndLine — the graph.fb schema has no end-line slot, so every
+// FB-loaded entity has EndLine == 0 (see internal/graph/load.go
+// fbEntityToGraphEntity). Pre-setting EndLine here was the fixture lie that let
+// the D1 source-window bug pass unit tests while scoring 0.0% in production.
+func makeEntity(id, name, kind, lang, srcFile string, startLine int) graph.Entity {
 	return graph.Entity{
 		ID:         id,
 		Name:       name,
@@ -19,7 +25,6 @@ func makeEntity(id, name, kind, lang, srcFile string, startLine, endLine int) gr
 		Language:   lang,
 		SourceFile: srcFile,
 		StartLine:  startLine,
-		EndLine:    endLine,
 		Properties: map[string]string{},
 	}
 }
@@ -48,7 +53,7 @@ func repeat(e graph.Entity, n int) []graph.Entity {
 
 func TestGenerate_SuppressedWhenTooFewEntities(t *testing.T) {
 	// 10 entities — below the 50 minimum.
-	entities := repeat(makeEntity("e1", "MyFunc", "function", "go", "main.go", 1, 10), 10)
+	entities := repeat(makeEntity("e1", "MyFunc", "SCOPE.Function", "go", "main.go", 1), 10)
 	doc := makeDoc(entities, nil)
 
 	r, err := Generate(context.Background(), []*graph.Document{doc}, Opts{GroupName: "test-group"})
@@ -61,7 +66,7 @@ func TestGenerate_SuppressedWhenTooFewEntities(t *testing.T) {
 }
 
 func TestGenerate_NotSuppressedAtThreshold(t *testing.T) {
-	entities := repeat(makeEntity("e1", "MyFunc", "function", "go", "main.go", 1, 10), 50)
+	entities := repeat(makeEntity("e1", "MyFunc", "SCOPE.Function", "go", "main.go", 1), 50)
 	doc := makeDoc(entities, nil)
 
 	r, err := Generate(context.Background(), []*graph.Document{doc}, Opts{GroupName: "test-group"})
@@ -76,8 +81,8 @@ func TestGenerate_NotSuppressedAtThreshold(t *testing.T) {
 func TestGenerate_LanguageCountsSuppressed(t *testing.T) {
 	// 5 Go entities + 50 Python entities. Go should be suppressed (< 10).
 	var entities []graph.Entity
-	entities = append(entities, repeat(makeEntity("g1", "GoFunc", "function", "go", "main.go", 1, 5), 5)...)
-	entities = append(entities, repeat(makeEntity("p1", "PyFunc", "function", "python", "main.py", 1, 5), 50)...)
+	entities = append(entities, repeat(makeEntity("g1", "GoFunc", "SCOPE.Function", "go", "main.go", 1), 5)...)
+	entities = append(entities, repeat(makeEntity("p1", "PyFunc", "SCOPE.Function", "python", "main.py", 1), 50)...)
 	doc := makeDoc(entities, nil)
 
 	r, err := Generate(context.Background(), []*graph.Document{doc}, Opts{})
@@ -94,16 +99,16 @@ func TestGenerate_LanguageCountsSuppressed(t *testing.T) {
 
 func TestGenerate_OrphanRateComputed(t *testing.T) {
 	// 20 function entities, no outgoing semantic edges → all orphan.
-	entities := repeat(makeEntity("f1", "DoWork", "function", "go", "a.go", 1, 10), 20)
+	entities := repeat(makeEntity("f1", "DoWork", "SCOPE.Function", "go", "a.go", 1), 20)
 	doc := makeDoc(entities, nil)
 
 	r, err := Generate(context.Background(), []*graph.Document{doc}, Opts{})
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	ks, ok := r.OrphanByKind["function"]
+	ks, ok := r.OrphanByKind["SCOPE.Function"]
 	if !ok {
-		t.Fatal("expected OrphanByKind[function]")
+		t.Fatal("expected OrphanByKind[SCOPE.Function]")
 	}
 	if ks.OrphanCount != 20 {
 		t.Errorf("expected 20 orphans, got %d", ks.OrphanCount)
@@ -114,7 +119,7 @@ func TestGenerate_OrphanRateComputed(t *testing.T) {
 }
 
 func TestGenerate_SemanticEdgeReducesOrphanRate(t *testing.T) {
-	entities := repeat(makeEntity("f1", "Caller", "function", "go", "a.go", 1, 10), 20)
+	entities := repeat(makeEntity("f1", "Caller", "SCOPE.Function", "go", "a.go", 1), 20)
 	// Give the first entity a semantic CALLS edge.
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "f1a", ToID: "f1b", Kind: "CALLS"},
@@ -125,9 +130,9 @@ func TestGenerate_SemanticEdgeReducesOrphanRate(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	ks, ok := r.OrphanByKind["function"]
+	ks, ok := r.OrphanByKind["SCOPE.Function"]
 	if !ok {
-		t.Fatal("expected OrphanByKind[function]")
+		t.Fatal("expected OrphanByKind[SCOPE.Function]")
 	}
 	// f1a has a CALLS edge so it is not an orphan; 19 are orphans.
 	if ks.OrphanCount != 19 {
@@ -136,7 +141,7 @@ func TestGenerate_SemanticEdgeReducesOrphanRate(t *testing.T) {
 }
 
 func TestGenerate_ContainsDeclaresDontReduceOrphan(t *testing.T) {
-	entities := repeat(makeEntity("e1", "Thing", "class", "java", "A.java", 1, 20), 15)
+	entities := repeat(makeEntity("e1", "Thing", "SCOPE.Class", "java", "A.java", 1), 15)
 	// CONTAINS and DECLARES edges should NOT count as semantic.
 	rels := []graph.Relationship{
 		{ID: "r1", FromID: "e1a", ToID: "e1b", Kind: "CONTAINS"},
@@ -148,7 +153,7 @@ func TestGenerate_ContainsDeclaresDontReduceOrphan(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Generate: %v", err)
 	}
-	ks := r.OrphanByKind["class"]
+	ks := r.OrphanByKind["SCOPE.Class"]
 	// All 15 are still orphans (CONTAINS/DECLARES don't reduce orphan count).
 	if ks.OrphanCount != 15 {
 		t.Errorf("expected 15 orphans (CONTAINS/DECLARES excluded), got %d", ks.OrphanCount)
@@ -156,12 +161,16 @@ func TestGenerate_ContainsDeclaresDontReduceOrphan(t *testing.T) {
 }
 
 func TestGenerate_ResolutionDisposition(t *testing.T) {
-	entities := repeat(makeEntity("e1", "X", "function", "go", "x.go", 1, 5), 50)
+	// Disposition is derived STRUCTURALLY from the ToID shape — the same
+	// classification orient/grafel_stats uses — NOT from a Properties["resolution"]
+	// tag the pipeline never writes. A 16-hex ToID is resolved, an ext:-prefixed
+	// ToID is external-known, any other non-empty ToID is an unresolved stub.
+	entities := repeat(makeEntity("e1", "X", "SCOPE.Function", "go", "x.go", 1), 50)
 	rels := []graph.Relationship{
-		{ID: "r1", FromID: "e1a", ToID: "e1b", Kind: "CALLS", Properties: map[string]string{"resolution": "resolved"}},
-		{ID: "r2", FromID: "e1c", ToID: "e1d", Kind: "CALLS", Properties: map[string]string{"resolution": "bug_extractor"}},
-		{ID: "r3", FromID: "e1e", ToID: "e1f", Kind: "CALLS", Properties: map[string]string{"resolution": "external_known"}},
-		{ID: "r4", FromID: "e1g", ToID: "e1h", Kind: "CALLS", Properties: map[string]string{"resolution": "dynamic"}},
+		{ID: "r1", FromID: "e1a", ToID: "aabb112233445566", Kind: "CALLS"}, // hex → resolved
+		{ID: "r2", FromID: "e1c", ToID: "ext:react", Kind: "IMPORTS"},      // ext → external-known
+		{ID: "r3", FromID: "e1e", ToID: "SomeBareStub", Kind: "CALLS"},     // stub → bug-extractor
+		{ID: "r4", FromID: "e1g", ToID: "pkg.Unresolved", Kind: "CALLS"},   // stub → bug-extractor
 	}
 	doc := makeDoc(entities, rels)
 
@@ -175,17 +184,25 @@ func TestGenerate_ResolutionDisposition(t *testing.T) {
 	if r.Resolution.ResolvedPct != 25.0 {
 		t.Errorf("expected resolved 25%%, got %.1f%%", r.Resolution.ResolvedPct)
 	}
+	if r.Resolution.ExternalKnownPct != 25.0 {
+		t.Errorf("expected external-known 25%%, got %.1f%%", r.Resolution.ExternalKnownPct)
+	}
+	if r.Resolution.BugExtractorPct != 50.0 {
+		t.Errorf("expected bug-extractor 50%%, got %.1f%%", r.Resolution.BugExtractorPct)
+	}
 }
 
 func TestGenerate_SourceWindowCompleteness(t *testing.T) {
+	// The navigable-window anchor is StartLine > 0 alone. FB-loaded entities
+	// never carry an EndLine (no schema slot), so the fixtures mirror that:
+	// only StartLine distinguishes a windowed entity from an unwindowed one.
 	entities := []graph.Entity{
-		makeEntity("e1", "Good", "function", "go", "a.go", 5, 15), // valid window
-		makeEntity("e2", "Bad", "function", "go", "a.go", 0, 0),   // no window
-		makeEntity("e3", "Bad2", "function", "go", "a.go", 5, 5),  // equal lines
+		makeEntity("e1", "Good", "SCOPE.Function", "go", "a.go", 5), // has start line → window
+		makeEntity("e2", "Bad", "SCOPE.Function", "go", "a.go", 0),  // no start line → no window
 	}
-	// Need at least 50 total — pad with valid-window entities.
-	for i := 3; i < 50; i++ {
-		e := makeEntity("pad", "Fn", "function", "go", "a.go", 1, 10)
+	// Need at least 50 total — pad with start-line-bearing entities.
+	for i := 2; i < 50; i++ {
+		e := makeEntity("pad", "Fn", "SCOPE.Function", "go", "a.go", 1)
 		e.ID = fmt.Sprintf("pad%d", i)
 		entities = append(entities, e)
 	}
@@ -198,15 +215,15 @@ func TestGenerate_SourceWindowCompleteness(t *testing.T) {
 	if r.SourceWindow.TotalEntities != 50 {
 		t.Errorf("expected 50 total entities, got %d", r.SourceWindow.TotalEntities)
 	}
-	// 1 good from the first three + 47 good from padding = 48 with valid windows.
-	if r.SourceWindow.TotalWithWindow != 48 {
-		t.Errorf("expected 48 entities with valid window, got %d", r.SourceWindow.TotalWithWindow)
+	// e1 + 48 padding entities have a start line; only e2 (start 0) does not.
+	if r.SourceWindow.TotalWithWindow != 49 {
+		t.Errorf("expected 49 entities with a source window, got %d", r.SourceWindow.TotalWithWindow)
 	}
 }
 
 func TestGenerate_MultipleDocsAggregated(t *testing.T) {
-	entities1 := repeat(makeEntity("e1", "GoFunc", "function", "go", "a.go", 1, 5), 30)
-	entities2 := repeat(makeEntity("e2", "PyFunc", "function", "python", "b.py", 1, 5), 30)
+	entities1 := repeat(makeEntity("e1", "GoFunc", "SCOPE.Function", "go", "a.go", 1), 30)
+	entities2 := repeat(makeEntity("e2", "PyFunc", "SCOPE.Function", "python", "b.py", 1), 30)
 	doc1 := makeDoc(entities1, nil)
 	doc2 := makeDoc(entities2, nil)
 
