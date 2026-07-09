@@ -169,13 +169,13 @@ func TestWriteAll_ReplacesOlderVersionBlock(t *testing.T) {
 func TestWriteAll_PreservesUnrelatedContent(t *testing.T) {
 	repo := t.TempDir()
 	original := "# My Project\n\nLocal notes that mention nothing relevant.\n"
-	if err := os.WriteFile(filepath.Join(repo, "CLAUDE.md"), []byte(original), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte(original), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
 	if _, err := WriteAll(repo, WriteOptions{GroupName: "demo"}); err != nil {
 		t.Fatalf("WriteAll: %v", err)
 	}
-	data, _ := os.ReadFile(filepath.Join(repo, "CLAUDE.md"))
+	data, _ := os.ReadFile(filepath.Join(repo, "AGENTS.md"))
 	if !bytes.Contains(data, []byte("# My Project")) {
 		t.Errorf("original content lost: %s", data)
 	}
@@ -257,10 +257,10 @@ func TestScan_StatusesAcrossFileShapes(t *testing.T) {
 		t.Fatalf("seed AGENTS.md: %v", err)
 	}
 
-	// CLAUDE.md → OUTDATED (older version).
+	// .cursorrules → OUTDATED (older version).
 	old := "<!-- grafel:mcp-usage:start v=0 -->\nbody\n<!-- grafel:mcp-usage:end -->\n"
-	if err := os.WriteFile(filepath.Join(repo, "CLAUDE.md"), []byte(old), 0o644); err != nil {
-		t.Fatalf("seed CLAUDE.md: %v", err)
+	if err := os.WriteFile(filepath.Join(repo, ".cursorrules"), []byte(old), 0o644); err != nil {
+		t.Fatalf("seed .cursorrules: %v", err)
 	}
 
 	// .windsurfrules → STALE (graphify content, no block).
@@ -269,7 +269,7 @@ func TestScan_StatusesAcrossFileShapes(t *testing.T) {
 		t.Fatalf("seed .windsurfrules: %v", err)
 	}
 
-	// .cursorrules, .codeium/instructions.md, .github/copilot-instructions.md → MISSING.
+	// .codeium/instructions.md, .github/copilot-instructions.md → MISSING.
 
 	statuses := Scan(repo)
 	byTarget := map[string]FileStatus{}
@@ -280,14 +280,11 @@ func TestScan_StatusesAcrossFileShapes(t *testing.T) {
 	if got := byTarget["AGENTS.md"].Status; got != StatusOK {
 		t.Errorf("AGENTS.md: expected OK, got %s", got)
 	}
-	if got := byTarget["CLAUDE.md"].Status; got != StatusOutdated {
-		t.Errorf("CLAUDE.md: expected OUTDATED, got %s", got)
+	if got := byTarget[".cursorrules"].Status; got != StatusOutdated {
+		t.Errorf(".cursorrules: expected OUTDATED, got %s", got)
 	}
 	if got := byTarget[".windsurfrules"].Status; got != StatusStale {
 		t.Errorf(".windsurfrules: expected STALE, got %s", got)
-	}
-	if got := byTarget[".cursorrules"].Status; got != StatusMissing {
-		t.Errorf(".cursorrules: expected MISSING, got %s", got)
 	}
 	if got := byTarget[".codeium/instructions.md"].Status; got != StatusMissing {
 		t.Errorf(".codeium/instructions.md: expected MISSING, got %s", got)
@@ -326,7 +323,7 @@ func TestIsPureStaleFile(t *testing.T) {
 func TestWriteAll_ReplacesLegacyArchigraphBlock(t *testing.T) {
 	repo := t.TempDir()
 	legacy := "# Notes\n\n<!-- archigraph:mcp-usage:start v=1 -->\n## archigraph MCP\nold guidance pointing at archigraph\n<!-- archigraph:mcp-usage:end -->\n"
-	path := filepath.Join(repo, "CLAUDE.md")
+	path := filepath.Join(repo, "AGENTS.md")
 	if err := os.WriteFile(path, []byte(legacy), 0o644); err != nil {
 		t.Fatalf("seed: %v", err)
 	}
@@ -402,12 +399,12 @@ func TestRemoveAll_StripsBlockPreservesProse(t *testing.T) {
 	repo := t.TempDir()
 
 	// File with prose + grafel block → block stripped, prose kept.
-	mixedPath := filepath.Join(repo, "CLAUDE.md")
+	mixedPath := filepath.Join(repo, "AGENTS.md")
 	prose := "# My Project\n\nImportant local instructions.\n"
 	if _, err := WriteAll(repo, WriteOptions{GroupName: "demo"}); err != nil {
 		t.Fatalf("WriteAll: %v", err)
 	}
-	// Overwrite CLAUDE.md with prose + block so we control the prose.
+	// Overwrite AGENTS.md with prose + block so we control the prose.
 	mixed := prose + "\n" + RenderBlock("demo") + "\n"
 	if err := os.WriteFile(mixedPath, []byte(mixed), 0o644); err != nil {
 		t.Fatalf("seed mixed: %v", err)
@@ -418,10 +415,10 @@ func TestRemoveAll_StripsBlockPreservesProse(t *testing.T) {
 		t.Fatalf("RemoveAll: %v", err)
 	}
 
-	// CLAUDE.md keeps prose, loses the block.
+	// AGENTS.md keeps prose, loses the block.
 	data, rerr := os.ReadFile(mixedPath)
 	if rerr != nil {
-		t.Fatalf("CLAUDE.md should still exist: %v", rerr)
+		t.Fatalf("AGENTS.md should still exist: %v", rerr)
 	}
 	if strings.Contains(string(data), "grafel:mcp-usage") {
 		t.Errorf("grafel block not stripped from mixed file:\n%s", data)
@@ -429,8 +426,8 @@ func TestRemoveAll_StripsBlockPreservesProse(t *testing.T) {
 	if !strings.Contains(string(data), "Important local instructions.") {
 		t.Errorf("user prose lost:\n%s", data)
 	}
-	if !contains(res.Stripped, "CLAUDE.md") {
-		t.Errorf("CLAUDE.md not reported stripped: %+v", res)
+	if !contains(res.Stripped, "AGENTS.md") {
+		t.Errorf("AGENTS.md not reported stripped: %+v", res)
 	}
 
 	// Files that were ONLY the grafel block (every other Target, since

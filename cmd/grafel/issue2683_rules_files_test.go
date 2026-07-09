@@ -182,15 +182,15 @@ func TestIssue2683_DoctorReportsAllStatuses(t *testing.T) {
 
 	// Mutate repo[0] so we get one of every status:
 	//   AGENTS.md            → OK (untouched)
-	//   CLAUDE.md            → OUTDATED (rewrite with v=0 marker)
+	//   .codeium/instructions.md → OUTDATED (rewrite with v=0 marker)
 	//   .windsurfrules       → STALE (replace with graphify content)
 	//   .cursorrules         → MISSING (delete)
 	if err := os.WriteFile(
-		filepath.Join(repos[0], "CLAUDE.md"),
+		filepath.Join(repos[0], ".codeium", "instructions.md"),
 		[]byte("<!-- grafel:mcp-usage:start v=0 -->\nold\n<!-- grafel:mcp-usage:end -->\n"),
 		0o644,
 	); err != nil {
-		t.Fatalf("seed CLAUDE.md: %v", err)
+		t.Fatalf("seed .codeium/instructions.md: %v", err)
 	}
 	if err := os.WriteFile(
 		filepath.Join(repos[0], ".windsurfrules"),
@@ -233,8 +233,8 @@ func TestIssue2683_DoctorReportsAllStatuses(t *testing.T) {
 		}
 		found = true
 		joined := strings.Join(c.Drift, "\n")
-		if !strings.Contains(joined, "CLAUDE.md [OUTDATED]") {
-			t.Errorf("CLAUDE.md OUTDATED not reported: %s", joined)
+		if !strings.Contains(joined, ".codeium/instructions.md [OUTDATED]") {
+			t.Errorf(".codeium/instructions.md OUTDATED not reported: %s", joined)
 		}
 		if !strings.Contains(joined, ".windsurfrules [STALE]") {
 			t.Errorf(".windsurfrules STALE not reported: %s", joined)

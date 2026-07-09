@@ -67,7 +67,8 @@ func TestRestrictedEnablement_OnlySubset(t *testing.T) {
 }
 
 // TestRestrictedEnablement_ClaudeOnly proves Claude-only keeps MCP + skills
-// + hook + CLAUDE.md and drops the other five rules files.
+// + hook and writes NO per-repo rules files: the Claude guidance now goes to
+// the personal ~/.claude/CLAUDE.md, not a committed repo file (#5702).
 func TestRestrictedEnablement_ClaudeOnly(t *testing.T) {
 	cfg := &registry.GroupConfig{Tools: []string{"claude"}}
 	ad := tooladapter.EnabledAdapters(cfg)
@@ -75,8 +76,8 @@ func TestRestrictedEnablement_ClaudeOnly(t *testing.T) {
 		t.Fatalf("expected only claude adapter, got %v", idsOf(ad))
 	}
 	a := ad[0]
-	if rt := unionRulesTargets(ad); !reflect.DeepEqual(rt, []string{"CLAUDE.md"}) {
-		t.Fatalf("claude rules targets = %v, want [CLAUDE.md]", rt)
+	if rt := unionRulesTargets(ad); len(rt) != 0 {
+		t.Fatalf("claude rules targets = %v, want none (guidance is personal ~/.claude/CLAUDE.md)", rt)
 	}
 	if !a.SupportsMCP() || a.MCPTool() != mcpreg.ClaudeCode {
 		t.Fatalf("claude must register ClaudeCode MCP")

@@ -56,6 +56,11 @@ type Options struct {
 	// The filter is by adapter ID, applied on top of the enabled-tools set, so
 	// a tool the group config doesn't enable is never registered even if named.
 	MCPTools *[]string
+	// ProjectGuidance, when true, ALSO writes the repo-specific (committed)
+	// grafel guidance block to <repo>/.claude/CLAUDE.md for every repo — for
+	// teams that all use grafel (#5702). Default OFF: only the personal
+	// ~/.claude/CLAUDE.md self-gating block is written. CLAUDE CODE ONLY.
+	ProjectGuidance bool
 }
 
 // Result reports what an Apply call did so the CLI can print a summary.
@@ -79,6 +84,18 @@ type Result struct {
 	// PreToolUse grep-interceptor hook (#4273). Empty unless agent hooks
 	// were enabled.
 	AgentHooksInstalled []string
+	// PersonalGuidancePath is the absolute path of the personal
+	// ~/.claude/CLAUDE.md the self-gating grafel guidance block was written
+	// to (#5702). Empty when no Claude adapter is enabled or rules are skipped.
+	PersonalGuidancePath string
+	// ProjectGuidanceFiles lists absolute <repo>/.claude/CLAUDE.md paths the
+	// repo-specific guidance block was written to under the opt-in
+	// --project-guidance mode. Empty by default.
+	ProjectGuidanceFiles []string
+	// MigratedGuidanceRepos lists repo paths where a legacy grafel guidance
+	// block was stripped from the repo-root CLAUDE.md (and/or
+	// <repo>/.claude/CLAUDE.md) to declutter the repo (#5702).
+	MigratedGuidanceRepos []string
 	// WatcherWarnings collects non-fatal watcher-activation failures. The
 	// group config is fully saved before watchers are activated, so a watcher
 	// that fails to load (e.g. a flaky launchctl error that survives the
@@ -136,6 +153,26 @@ func Apply(opts Options) (*Result, error) {
 		}
 	}
 
+	// Claude guidance (#5702) is Claude-only and lives outside the per-repo
+	// rules-file sweep. By default it is a self-gating GLOBAL block written
+	// ONCE to the personal ~/.claude/CLAUDE.md — grafel adoption is
+	// per-developer, so the guidance is personal/opt-in and never committed to
+	// a shared repo. The per-repo declutter + opt-in project block happen in
+	// the repo loop below.
+	claudeGuidance := !opts.SkipRulesFiles && anyAdapterIsClaude(adaptersForRepo)
+	if claudeGuidance {
+		personalPath, herr := personalGuidancePath()
+		if herr != nil {
+			return nil, fmt.Errorf("resolve personal guidance path: %w", herr)
+		}
+		if !opts.DryRun {
+			if werr := rulesfiles.UpsertGuidance(personalPath, rulesfiles.RenderPersonalBlock()); werr != nil {
+				return nil, fmt.Errorf("personal guidance %s: %w", personalPath, werr)
+			}
+		}
+		res.PersonalGuidancePath = personalPath
+	}
+
 	for _, r := range opts.Config.Repos {
 		repo := r.Path
 		if !filepath.IsAbs(repo) {
@@ -189,6 +226,35 @@ func Apply(opts Options) (*Result, error) {
 					}
 					res.RulesFiles[repo] = append([]string{}, targets...)
 				}
+			}
+		}
+		if claudeGuidance {
+			// Declutter (#5702): strip grafel's legacy marker-delimited block
+			// from the repo-root CLAUDE.md — and from <repo>/.claude/CLAUDE.md
+			// UNLESS we're about to (re)write it via --project-guidance. Only
+			// grafel's own block is removed; all surrounding user content is
+			// preserved, and a file is deleted only when grafel was its sole
+			// author.
+			migrateTargets := []string{"CLAUDE.md"}
+			if !opts.ProjectGuidance {
+				migrateTargets = append(migrateTargets, rulesfiles.ClaudeGuidanceRelPath)
+			}
+			if !opts.DryRun {
+				if rr, rerr := rulesfiles.RemoveTargets(repo, migrateTargets); rerr == nil && rr != nil &&
+					(len(rr.Stripped) > 0 || len(rr.Deleted) > 0) {
+					res.MigratedGuidanceRepos = append(res.MigratedGuidanceRepos, repo)
+				}
+			}
+			// Opt-in: teams that all use grafel commit a repo-specific block to
+			// <repo>/.claude/CLAUDE.md.
+			if opts.ProjectGuidance {
+				projPath := filepath.Join(repo, rulesfiles.ClaudeGuidanceRelPath)
+				if !opts.DryRun {
+					if werr := rulesfiles.UpsertGuidance(projPath, rulesfiles.RenderBlock(opts.Group)); werr != nil {
+						return nil, fmt.Errorf("project guidance for %s: %w", repo, werr)
+					}
+				}
+				res.ProjectGuidanceFiles = append(res.ProjectGuidanceFiles, projPath)
 			}
 		}
 		// The opt-in PreToolUse agent hook is Claude-only. Install it only
@@ -348,6 +414,27 @@ func anyAdapterSupportsAgentHook(adapters []tooladapter.Adapter) bool {
 	return false
 }
 
+// anyAdapterIsClaude reports whether the Claude Code adapter is enabled, which
+// gates the personal/project Claude guidance writes (#5702).
+func anyAdapterIsClaude(adapters []tooladapter.Adapter) bool {
+	for _, a := range adapters {
+		if a.ID() == "claude" {
+			return true
+		}
+	}
+	return false
+}
+
+// personalGuidancePath resolves ~/.claude/CLAUDE.md, honouring HOME so tests
+// can redirect it (reuses userHomeDir, the same resolver used for ~/.grafel).
+func personalGuidancePath() (string, error) {
+	home, err := userHomeDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(home, rulesfiles.ClaudeGuidanceRelPath), nil
+}
+
 // Uninstall reverses Apply for a single group: removes hooks/watchers
 // and (optionally with purge) deletes per-group state.
 func Uninstall(group string, purge bool) error {
@@ -382,6 +469,12 @@ func Uninstall(group string, purge bool) error {
 			// author (#5274). Best-effort: I/O errors are ignored so a
 			// single unwritable file never blocks the rest of uninstall.
 			_, _ = rulesfiles.RemoveAll(r.Path)
+			// Also strip any grafel Claude guidance block from the repo-root
+			// CLAUDE.md and <repo>/.claude/CLAUDE.md — the legacy location and
+			// the opt-in --project-guidance location (#5702). Only grafel's own
+			// marker-delimited block is removed. The personal ~/.claude/CLAUDE.md
+			// is global (shared across groups) and is intentionally left intact.
+			_, _ = rulesfiles.RemoveTargets(r.Path, rulesfiles.LegacyClaudeGuidanceTargets)
 			u := watchers.Unit{Group: group, Repo: r.Path, BinPath: bin}
 			// Deregister from the OS scheduler before removing the unit file so
 			// that the OS does not attempt to launch a missing binary.

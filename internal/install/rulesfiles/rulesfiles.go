@@ -96,15 +96,37 @@ var PredecessorTokens = []string{
 //
 // The order is also the order in which doctor reports them, so the user
 // sees a consistent grouping per repo.
+// NOTE(#5702): the project-root CLAUDE.md is deliberately NOT in this list.
+// grafel's Claude guidance is now a self-gating block written to the PERSONAL
+// ~/.claude/CLAUDE.md by default (adoption is per-developer, not per-team, so
+// it should not be committed to a shared repo). The opt-in `--project-guidance`
+// path writes a repo-specific block to <repo>/.claude/CLAUDE.md instead — both
+// handled via UpsertGuidance, not this per-repo Targets sweep. Legacy repo-root
+// CLAUDE.md blocks are migrated away (stripped) on install.
 var Targets = []string{
 	"AGENTS.md",
-	"CLAUDE.md",
 	".windsurfrules",
 	".cursorrules",
 	".codeium/instructions.md",
 	".github/copilot-instructions.md",
 	".kiro/steering/grafel.md",
 	".agent/rules/grafel.md",
+}
+
+// ClaudeGuidanceRelPath is the relative path of the Claude Code guidance
+// file, ".claude/CLAUDE.md". It is joined with the user's HOME for the
+// PERSONAL guidance (default, #5702) and with a repo root for the opt-in
+// PROJECT guidance (`--project-guidance`). Both are written via
+// UpsertGuidance rather than the per-repo Targets sweep.
+var ClaudeGuidanceRelPath = filepath.Join(".claude", "CLAUDE.md")
+
+// LegacyClaudeGuidanceTargets are the per-repo paths that older grafel
+// versions wrote the guidance block into. On install grafel strips its own
+// marker-delimited block from these to declutter the repo (#5702). Only the
+// grafel block is removed; all surrounding user content is preserved.
+var LegacyClaudeGuidanceTargets = []string{
+	"CLAUDE.md",
+	filepath.Join(".claude", "CLAUDE.md"),
 }
 
 // Status is the per-file state reported by Scan / doctor.
@@ -358,7 +380,90 @@ func RenderBlock(groupName string) string {
 	return b.String()
 }
 
+// RenderPersonalBlock returns the marker-wrapped, self-gating GLOBAL Claude
+// guidance block for the personal ~/.claude/CLAUDE.md (#5702). Because it is
+// written once per developer (not per repo) it carries NO group name and is
+// intentionally generic: it tells the agent to first check that a grafel MCP
+// server is connected AND the cwd is an indexed repo, and to ignore the whole
+// section otherwise. The full guide still arrives via the MCP `instructions`
+// handshake when connected, so this block stays deliberately short.
+//
+// It uses the SAME StartMarker/EndMarker as RenderBlock so a re-install
+// replaces it in place (never duplicates) and doctor/uninstall can find it.
+func RenderPersonalBlock() string {
+	var b strings.Builder
+	fmt.Fprintln(&b, StartMarker)
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "## grafel — architecture knowledge graph (conditional; self-gating)")
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "Before applying this section, check BOTH: (1) a `grafel` MCP server is connected (its tools are available); (2) your cwd is inside a grafel-indexed repo — verify with `grafel_orient` / `grafel_index_status` (non-empty = indexed).")
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "If BOTH true → prefer grafel MCP over grep/manual reading for STRUCTURAL questions (where is X / who calls X / end-to-end flow → `grafel_find` / `grafel_expand` / `grafel_traces`); raw enumeration (every TODO, every `if err != nil`) → still grep.")
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "If grafel is NOT connected or the repo is NOT indexed → ignore this section entirely.")
+	fmt.Fprintln(&b)
+	fmt.Fprintln(&b, "_Do not edit between the markers — this block is auto-updated by `grafel install`._")
+	fmt.Fprintln(&b)
+	fmt.Fprint(&b, EndMarker)
+	return b.String()
+}
+
+// UpsertGuidance writes a marker-wrapped guidance block into an arbitrary
+// absolute path — the personal ~/.claude/CLAUDE.md or an opt-in
+// <repo>/.claude/CLAUDE.md — idempotently and in place between the shared
+// markers (#5702).
+//
+// Unlike WriteTargets it applies NO predecessor / stale-file heuristics: the
+// surrounding content is arbitrary user prose that must be preserved verbatim.
+// It only creates the file when absent, replaces an existing grafel block in
+// place (covering re-install and older-version blocks), or appends the block
+// after a blank-line separator when the file exists with unrelated content.
+//
+// It reuses the same block regex and atomic writer as WriteTargets, so
+// idempotency and marker handling are identical.
+func UpsertGuidance(path, block string) error {
+	_, err := upsertPlain(path, block)
+	return err
+}
+
 // ── internal helpers ─────────────────────────────────────────────────
+
+// upsertPlain is upsert without the predecessor/stale-file branch: create /
+// replace-in-place / append only. Used by UpsertGuidance for the personal and
+// opt-in project Claude guidance files.
+func upsertPlain(path, block string) (action, error) {
+	existing, err := os.ReadFile(path)
+	switch {
+	case err != nil && !os.IsNotExist(err):
+		return actionUnknown, fmt.Errorf("read %s: %w", path, err)
+
+	case os.IsNotExist(err) || len(existing) == 0:
+		if err := atomicWrite(path, []byte(block)); err != nil {
+			return actionUnknown, err
+		}
+		return actionWroteFresh, nil
+
+	case blockRegexAnyVersion.Match(existing):
+		out := blockRegexAnyVersion.ReplaceAll(existing, []byte(strings.TrimRight(block, "\n")))
+		if err := atomicWrite(path, out); err != nil {
+			return actionUnknown, err
+		}
+		return actionReplacedBlock, nil
+
+	default:
+		buf := make([]byte, 0, len(existing)+len(block)+2)
+		buf = append(buf, existing...)
+		if existing[len(existing)-1] != '\n' {
+			buf = append(buf, '\n')
+		}
+		buf = append(buf, '\n')
+		buf = append(buf, []byte(block)...)
+		if err := atomicWrite(path, buf); err != nil {
+			return actionUnknown, err
+		}
+		return actionAppended, nil
+	}
+}
 
 // action codes returned by upsert; surfaced to WriteAll so callers can
 // log per-file decisions.

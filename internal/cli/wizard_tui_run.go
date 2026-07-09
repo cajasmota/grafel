@@ -294,7 +294,7 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 			// New-group path: assemble config (with the enablement set captured
 			// by resolveInteractiveTools), apply (register + install).
 			cfg := newGroupConfigFromResult(r, repos, opts.AgentHooks, toolIDs)
-			res, err := applyGroupConfig(&sink, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel})
+			res, err := applyGroupConfig(&sink, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel, ProjectGuidance: opts.ProjectGuidance})
 			if err != nil {
 				outCh <- wiztui.IndexOutcome{Err: err}
 				return
@@ -515,7 +515,7 @@ func addReposToExistingGroupNoIndex(out io.Writer, group string, repos []registr
 	if added == 0 {
 		return errors.New("all selected repos are already in the group")
 	}
-	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel}); err != nil {
+	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: mcpSel, ProjectGuidance: opts.ProjectGuidance}); err != nil {
 		return err
 	}
 	fmt.Fprintf(out, "added %d repo(s) to group %q\n", added, group)

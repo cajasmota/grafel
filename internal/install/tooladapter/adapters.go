@@ -12,7 +12,6 @@ import (
 // order of rulesfiles.Targets changes.
 const (
 	rulesAGENTS   = "AGENTS.md"
-	rulesCLAUDE   = "CLAUDE.md"
 	rulesWindsurf = ".windsurfrules"
 	rulesCursor   = ".cursorrules"
 	rulesCodeium  = ".codeium/instructions.md"
@@ -40,18 +39,22 @@ func hasMCPHost(tool mcpreg.Tool) bool {
 
 // ── claude ───────────────────────────────────────────────────────────
 //
-// The flagship: MCP (.claude.json) + skills (~/.claude/skills/) + rules
-// (CLAUDE.md) + the opt-in PreToolUse agent hook. Skills and the agent
-// hook stay Claude-only. CLAUDE.md is written here; AGENTS.md is owned by
-// the codex adapter (Claude Code also reads AGENTS.md, but to avoid two
-// adapters writing the same file the canonical owner is codex — see
-// rulesfiles package doc).
+// The flagship: MCP (.claude.json) + skills (~/.claude/skills/) + the opt-in
+// PreToolUse agent hook. Skills and the agent hook stay Claude-only.
+//
+// NOTE(#5702): Claude Code guidance is NO LONGER written as a per-repo
+// CLAUDE.md via this adapter's RulesFileTargets. It now goes to the PERSONAL
+// ~/.claude/CLAUDE.md (self-gating, opt-in per developer) — and, only with
+// `--project-guidance`, to <repo>/.claude/CLAUDE.md — both handled directly in
+// install.Apply via rulesfiles.UpsertGuidance. So this adapter returns NO
+// per-repo rules targets. AGENTS.md, which Claude Code also reads, remains
+// owned by the codex adapter.
 type claudeAdapter struct{}
 
 func (claudeAdapter) ID() string                 { return "claude" }
 func (claudeAdapter) DisplayName() string        { return "Claude Code" }
 func (claudeAdapter) DetectInstalled() bool      { return hasMCPHost(mcpreg.ClaudeCode) }
-func (claudeAdapter) RulesFileTargets() []string { return []string{rulesCLAUDE} }
+func (claudeAdapter) RulesFileTargets() []string { return nil }
 func (claudeAdapter) SupportsMCP() bool          { return true }
 func (claudeAdapter) MCPTool() mcpreg.Tool       { return mcpreg.ClaudeCode }
 func (claudeAdapter) SupportsSkills() bool       { return true }

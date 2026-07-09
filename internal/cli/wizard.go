@@ -36,6 +36,7 @@ func newWizardCmd() *cobra.Command {
 		mcpToolsCSV    string
 		noMCP          bool
 		toolsCSV       string
+		projGuide      bool
 	)
 	cmd := &cobra.Command{
 		Use:   "wizard",
@@ -43,20 +44,21 @@ func newWizardCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			out := cmd.OutOrStdout()
 			opts := wizardOptions{
-				NonInteractive: nonInteractive,
-				GroupName:      groupName,
-				ParentDir:      parentDir,
-				ReposCSV:       reposCSV,
-				Repos:          repoPaths,
-				Excludes:       excludes,
-				GroupDocs:      groupDocs,
-				Watchers:       watchers,
-				GitHooks:       gitHooks,
-				AgentHooks:     agentHooks,
-				RunInstall:     runInstall,
-				NoIndex:        noIndex,
-				Tools:          toolsCSV,
-				ErrOut:         cmd.ErrOrStderr(),
+				NonInteractive:  nonInteractive,
+				GroupName:       groupName,
+				ParentDir:       parentDir,
+				ReposCSV:        reposCSV,
+				Repos:           repoPaths,
+				Excludes:        excludes,
+				GroupDocs:       groupDocs,
+				Watchers:        watchers,
+				GitHooks:        gitHooks,
+				AgentHooks:      agentHooks,
+				RunInstall:      runInstall,
+				NoIndex:         noIndex,
+				Tools:           toolsCSV,
+				ProjectGuidance: projGuide,
+				ErrOut:          cmd.ErrOrStderr(),
 			}
 			// Resolve the MCP-tools selection from flags (#5344). --no-mcp wins
 			// and registers none; --mcp-tools=a,b registers exactly those; with
@@ -87,6 +89,7 @@ func newWizardCmd() *cobra.Command {
 	cmd.Flags().StringVar(&mcpToolsCSV, "mcp-tools", "", "comma-separated AI tool IDs to register the grafel MCP server in (e.g. claude,cursor); skips the interactive picker. Without this flag (and without --no-mcp), interactive runs prompt and non-interactive runs register every detected tool")
 	cmd.Flags().BoolVar(&noMCP, "no-mcp", false, "do not register the grafel MCP server in any AI tool")
 	cmd.Flags().StringVar(&toolsCSV, "tools", "", "comma-separated AI coding tools whose rules files + MCP get scaffolded (e.g. claude,codex); when set, selection is non-interactive. Without it, interactive runs prompt and non-interactive runs target every supported tool. Run 'grafel tools list' for valid IDs")
+	cmd.Flags().BoolVar(&projGuide, "project-guidance", false, "also commit the grafel Claude guidance block to each <repo>/.claude/CLAUDE.md (for teams that all use grafel); default off — personal ~/.claude/CLAUDE.md only")
 	return cmd
 }
 
@@ -112,7 +115,11 @@ type wizardOptions struct {
 	// (prompt interactively, or all-detected non-interactively), empty = none,
 	// [ids] = exactly those. Set from --mcp-tools / --no-mcp.
 	MCPTools *[]string
-	ErrOut   io.Writer // stderr sink for warnings; nil → os.Stderr
+	// ProjectGuidance opts in to committing the grafel Claude guidance block to
+	// each <repo>/.claude/CLAUDE.md (for teams). Default off: personal
+	// ~/.claude/CLAUDE.md only (#5702). Set from --project-guidance.
+	ProjectGuidance bool
+	ErrOut          io.Writer // stderr sink for warnings; nil → os.Stderr
 }
 
 // errWriter returns the configured stderr sink, defaulting to os.Stderr.
@@ -283,7 +290,7 @@ func finishWizard(out io.Writer, cfg *registry.GroupConfig, opts wizardOptions) 
 
 	// Steps 5-7 — persist + register + manifests + install. Shared with the
 	// non-interactive `group add` command via applyGroupConfig.
-	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: opts.MCPTools}); err != nil {
+	if _, err := applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, MCPTools: opts.MCPTools, ProjectGuidance: opts.ProjectGuidance}); err != nil {
 		return err
 	}
 
@@ -409,6 +416,11 @@ type groupApplyOptions struct {
 	// selection (#5344). nil preserves today's behaviour (all enabled tools);
 	// an empty slice registers none. Threaded straight into install.Options.
 	MCPTools *[]string
+	// ProjectGuidance opts in to ALSO writing the repo-specific grafel Claude
+	// guidance block to <repo>/.claude/CLAUDE.md (committed; for teams). Default
+	// OFF — only the personal ~/.claude/CLAUDE.md self-gating block is written
+	// (#5702).
+	ProjectGuidance bool
 }
 
 // applyGroupConfig persists the group config, registers it in the global
@@ -451,14 +463,15 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 	}
 	bin, _ := os.Executable()
 	res, err := install.Apply(install.Options{
-		Group:          cfg.Name,
-		Config:         cfg,
-		BinPath:        bin,
-		SkipHooks:      ga.SkipHooks,
-		SkipWatchers:   ga.SkipWatchers,
-		SkipMCP:        ga.SkipMCP,
-		SkipRulesFiles: ga.SkipRules,
-		MCPTools:       ga.MCPTools,
+		Group:           cfg.Name,
+		Config:          cfg,
+		BinPath:         bin,
+		SkipHooks:       ga.SkipHooks,
+		SkipWatchers:    ga.SkipWatchers,
+		SkipMCP:         ga.SkipMCP,
+		SkipRulesFiles:  ga.SkipRules,
+		MCPTools:        ga.MCPTools,
+		ProjectGuidance: ga.ProjectGuidance,
 	})
 	if err != nil {
 		return nil, err
@@ -473,10 +486,31 @@ func applyGroupConfig(out io.Writer, cfg *registry.GroupConfig, ga groupApplyOpt
 	}
 	fmt.Fprintf(out, "installed %d hooks, %d watchers, %d MCP entries\n",
 		len(res.HooksInstalled), len(res.WatcherUnits), len(res.MCPSettings))
+	reportGuidance(out, res)
 	for _, warn := range res.WatcherWarnings {
 		fmt.Fprintf(out, "warning: %s\n", warn)
 	}
 	return res, nil
+}
+
+// reportGuidance prints WHERE the grafel Claude guidance was written — the
+// personal ~/.claude/CLAUDE.md by default, plus any opt-in per-repo project
+// files and repos where a legacy committed block was decluttered (#5702).
+func reportGuidance(out io.Writer, res *install.Result) {
+	if res == nil {
+		return
+	}
+	if res.PersonalGuidancePath != "" {
+		fmt.Fprintf(out, "Claude guidance: wrote self-gating block to your PERSONAL %s\n", res.PersonalGuidancePath)
+	}
+	if len(res.ProjectGuidanceFiles) > 0 {
+		fmt.Fprintf(out, "Claude guidance: wrote PROJECT block to %d repo file(s) (committed): %s\n",
+			len(res.ProjectGuidanceFiles), strings.Join(res.ProjectGuidanceFiles, ", "))
+	}
+	if len(res.MigratedGuidanceRepos) > 0 {
+		fmt.Fprintf(out, "Claude guidance: removed legacy committed block from %d repo(s)\n",
+			len(res.MigratedGuidanceRepos))
+	}
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -820,7 +854,7 @@ func addReposToExistingGroup(out io.Writer, group string, repos []registry.Repo,
 	if added == 0 {
 		return errors.New("all selected repos are already in the group")
 	}
-	_, err = applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall})
+	_, err = applyGroupConfig(out, cfg, groupApplyOptions{RunInstall: opts.RunInstall, ProjectGuidance: opts.ProjectGuidance})
 	if err != nil {
 		return err
 	}
