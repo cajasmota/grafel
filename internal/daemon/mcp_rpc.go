@@ -23,6 +23,7 @@ package daemon
 import (
 	"encoding/json"
 	"fmt"
+	"runtime/debug"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/perf"
@@ -274,7 +275,7 @@ func (s *Service) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) er
 	}
 
 	start := time.Now()
-	result, err := s.mcpCallTool(args.Name, args.Arguments, args.CWD)
+	result, err := s.callToolRecovered(args.Name, args.Arguments, args.CWD)
 	elapsed := time.Since(start)
 
 	// Debug log: tool=name elapsed_ms=X repo=Y (from CWD when available).
@@ -306,4 +307,45 @@ func (s *Service) MCPToolCall(args *MCPToolCallArgs, reply *MCPToolCallReply) er
 		reply.Content = []map[string]any{}
 	}
 	return nil
+}
+
+// callToolRecovered invokes s.mcpCallTool with panic recovery (#5717).
+//
+// s.mcpCallTool is dispatched in-process inside the daemon, and this method
+// runs on a per-request goroutine spawned by net/rpc's ServeCodec. net/rpc
+// does NOT recover panics raised by service methods, and Go's runtime
+// terminates the entire process on an unrecovered panic in any goroutine —
+// so a single nil-deref (or any other bug) in ONE tool handler would crash
+// the whole daemon and sever every MCP bridge connection currently attached
+// to it (#5717). *mcp.Server's wrap() middleware is also hardened with its
+// own recover as defense in depth, but this is the last line of defense for
+// the daemon-hosted dispatch path: it converts a panicking handler into a
+// well-formed error result instead of taking down the process.
+//
+// The panic message and a (best-effort, size-capped) stack trace are logged
+// server-side for diagnosis; only a sanitized, generic message is returned
+// to the caller so internal details are not leaked over the wire.
+func (s *Service) callToolRecovered(name string, args map[string]any, cwd string) (result MCPCallResult, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			if s.logger != nil {
+				s.logger.Error(LogEventMCPRPC,
+					LogFieldPhase, "panic",
+					LogFieldTool, name,
+					LogFieldRepo, cwd,
+					"panic", fmt.Sprintf("%v", r),
+					"stack", string(debug.Stack()),
+				)
+			}
+			result = MCPCallResult{
+				IsError: true,
+				Content: []map[string]any{
+					{"type": "text", "text": fmt.Sprintf(
+						"grafel daemon: tool %q panicked and was recovered — see daemon log for details", name)},
+				},
+			}
+			err = nil
+		}
+	}()
+	return s.mcpCallTool(name, args, cwd)
 }

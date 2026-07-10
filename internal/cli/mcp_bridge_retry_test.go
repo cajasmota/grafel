@@ -20,8 +20,71 @@ import (
 )
 
 func init() {
-	// Keep reconnect backoff tiny so retry tests stay fast.
+	// Keep reconnect backoff tiny so retry tests stay fast, regardless of how
+	// large bridgeMaxRetries / bridgeRetryMaxBackoff are in production (#5717).
 	bridgeRetryBackoff = 1 * time.Millisecond
+	bridgeRetryMaxBackoff = 5 * time.Millisecond
+}
+
+// TestBridgeRetryBudget_WidenedPast450ms is a regression guard for #5717: the
+// pre-fix budget was bridgeMaxRetries=3 * bridgeRetryBackoff=150ms (flat) =
+// ~450ms total — far too short to ride out a daemon restart + reindex, which
+// takes seconds to minutes. The fix must widen the budget substantially.
+func TestBridgeRetryBudget_WidenedPast450ms(t *testing.T) {
+	if bridgeMaxRetries <= 3 {
+		t.Fatalf("bridgeMaxRetries = %d, want > 3 (#5717 widens the retry budget)", bridgeMaxRetries)
+	}
+}
+
+// TestBridgeBackoffForAttempt_Exponential verifies the reconnect backoff
+// doubles with each attempt and is capped at bridgeRetryMaxBackoff (#5717).
+// Uses fixed local values (not the package vars, which tests shrink for
+// speed) so the exponential/cap shape is verified independent of scale.
+func TestBridgeBackoffForAttempt_Exponential(t *testing.T) {
+	saved, savedMax := bridgeRetryBackoff, bridgeRetryMaxBackoff
+	defer func() { bridgeRetryBackoff, bridgeRetryMaxBackoff = saved, savedMax }()
+	bridgeRetryBackoff = 100 * time.Millisecond
+	bridgeRetryMaxBackoff = 800 * time.Millisecond
+
+	want := []time.Duration{
+		100 * time.Millisecond, // attempt 1
+		200 * time.Millisecond, // attempt 2
+		400 * time.Millisecond, // attempt 3
+		800 * time.Millisecond, // attempt 4 (would be 800, at cap)
+		800 * time.Millisecond, // attempt 5 (would be 1600, capped)
+		800 * time.Millisecond, // attempt 6 (still capped)
+	}
+	for i, w := range want {
+		attempt := i + 1
+		if got := bridgeBackoffForAttempt(attempt); got != w {
+			t.Errorf("bridgeBackoffForAttempt(%d) = %v, want %v", attempt, got, w)
+		}
+	}
+}
+
+// TestBridgeRetryBudget_SurvivalWindow asserts the total worst-case retry
+// window (sum of backoffs across bridgeMaxRetries attempts, using the real
+// production bridgeRetryBackoff/bridgeRetryMaxBackoff defaults) lands in the
+// ~30-60s range the issue calls for — long enough to ride out a daemon
+// restart + reindex, not so long that a genuinely dead daemon hangs the MCP
+// client forever.
+func TestBridgeRetryBudget_SurvivalWindow(t *testing.T) {
+	const (
+		prodInitial = 150 * time.Millisecond
+		prodCap     = 3 * time.Second
+	)
+	saved, savedMax := bridgeRetryBackoff, bridgeRetryMaxBackoff
+	defer func() { bridgeRetryBackoff, bridgeRetryMaxBackoff = saved, savedMax }()
+	bridgeRetryBackoff = prodInitial
+	bridgeRetryMaxBackoff = prodCap
+
+	var total time.Duration
+	for attempt := 1; attempt <= bridgeMaxRetries; attempt++ {
+		total += bridgeBackoffForAttempt(attempt)
+	}
+	if total < 20*time.Second || total > 90*time.Second {
+		t.Fatalf("total retry survival window = %v, want roughly 20s-90s (target ~30-60s)", total)
+	}
 }
 
 // TestIsRetryableRPCErr covers the classifier that decides whether the bridge

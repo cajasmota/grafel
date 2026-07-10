@@ -219,16 +219,58 @@ func (b *bridge) resetRPCClient() {
 }
 
 // bridgeMaxRetries is the number of additional attempts the bridge makes for a
-// single daemon RPC after a transient connection-shutdown (#5633). A daemon
-// restart drops the socket mid-call; the bridge reconnects to the replacement
-// daemon and retries rather than surfacing the failure to the MCP client. All
-// grafel MCP tools are read-mostly graph queries, so retrying is safe — there
-// is no non-idempotent call to special-case.
-const bridgeMaxRetries = 3
+// single daemon RPC after a transient connection-shutdown (#5633, widened
+// #5717). A daemon restart drops the socket mid-call; the bridge reconnects
+// to the replacement daemon and retries rather than surfacing the failure to
+// the MCP client. All grafel MCP tools are read-mostly graph queries, so
+// retrying is safe — there is no non-idempotent call to special-case.
+//
+// #5717: the original budget was 3 retries * a flat 150ms = ~450ms total —
+// nowhere near enough to ride out a real daemon restart, which drops every
+// attached MCP bridge (mcp_rpc.go has no panic recovery pre-#5717, so any
+// panicking tool handler took the whole daemon down) and can take
+// seconds-to-minutes to come back up (rebind socket, reload the registry,
+// possibly a reindex). Combined with the exponential backoff below (capped at
+// bridgeRetryMaxBackoff), this budget rides out roughly 30-60s of daemon
+// unavailability — see TestBridgeRetryBudget_SurvivalWindow — before giving
+// up and surfacing a structured tool error to the MCP client.
+const bridgeMaxRetries = 20
 
-// bridgeRetryBackoff is the pause between reconnect attempts, giving the
-// replacement daemon a brief window to (re)bind its socket after a restart.
+// bridgeRetryBackoff is the pause before the FIRST reconnect attempt after a
+// transient failure. Each subsequent attempt doubles the previous pause
+// (exponential backoff — see bridgeBackoffForAttempt), capped at
+// bridgeRetryMaxBackoff, giving the replacement daemon progressively more
+// room to (re)bind its socket and finish reloading after a restart without
+// hammering it with sub-second retries for the entire retry window (#5717).
 var bridgeRetryBackoff = 150 * time.Millisecond
+
+// bridgeRetryMaxBackoff is the ceiling on the exponential backoff between
+// reconnect attempts (#5717). Without a cap, bridgeMaxRetries=20 doublings
+// starting from 150ms would reach minutes-long individual pauses long before
+// the retry budget was exhausted, which would make a genuinely-dead daemon
+// hang the MCP client far longer than useful.
+var bridgeRetryMaxBackoff = 3 * time.Second
+
+// bridgeBackoffForAttempt returns the pause before retry attempt n (1-indexed:
+// n=1 is the first retry, after the initial failed attempt). The sequence is
+// bridgeRetryBackoff * 2^(n-1), capped at bridgeRetryMaxBackoff (#5717). n<1
+// returns 0 (no pause before the first, non-retry attempt).
+func bridgeBackoffForAttempt(n int) time.Duration {
+	if n < 1 {
+		return 0
+	}
+	d := bridgeRetryBackoff
+	for i := 1; i < n; i++ {
+		if d >= bridgeRetryMaxBackoff {
+			return bridgeRetryMaxBackoff
+		}
+		d *= 2
+	}
+	if d > bridgeRetryMaxBackoff {
+		d = bridgeRetryMaxBackoff
+	}
+	return d
+}
 
 // isRetryableRPCErr reports whether a daemon RPC error is a transient
 // connection-shutdown / restart condition the bridge should reconnect+retry on,
@@ -252,8 +294,9 @@ func isRetryableRPCErr(err error) bool {
 
 // callDaemon invokes a daemon RPC method with reconnect+retry on transient
 // connection-shutdown (#5633). On a retryable error it drops the dead client,
-// backs off briefly, reconnects, and retries up to bridgeMaxRetries times. A
-// non-retryable error (a real tool/protocol failure) is returned immediately.
+// backs off (exponentially, capped — #5717), reconnects, and retries up to
+// bridgeMaxRetries times. A non-retryable error (a real tool/protocol
+// failure) is returned immediately — the retry loop never fires for those.
 // The final error after exhausting retries is returned to the caller, which
 // renders it as a structured MCP error.
 //
@@ -264,12 +307,14 @@ func (b *bridge) callDaemon(method string, args, reply any) error {
 	for attempt := 0; attempt <= bridgeMaxRetries; attempt++ {
 		if attempt > 0 {
 			// Transient failure on the previous attempt: drop the dead client
-			// so getRPCClient redials, and pause so a restarting daemon has a
-			// moment to rebind its socket.
+			// so getRPCClient redials, and pause (exponential backoff, capped —
+			// #5717) so a restarting daemon has a growing window to rebind its
+			// socket and finish reloading.
 			b.resetRPCClient()
-			time.Sleep(bridgeRetryBackoff)
-			b.log("retrying %s after transient error (attempt %d/%d): %v",
-				method, attempt, bridgeMaxRetries, lastErr)
+			backoff := bridgeBackoffForAttempt(attempt)
+			time.Sleep(backoff)
+			b.log("retrying %s after transient error (attempt %d/%d, backoff %s): %v",
+				method, attempt, bridgeMaxRetries, backoff, lastErr)
 		}
 		rpcClient, err := b.getRPCClient()
 		if err != nil {

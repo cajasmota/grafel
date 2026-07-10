@@ -200,6 +200,44 @@ func TestMCPToolCall_HandlerError_ReturnsErrorBlock(t *testing.T) {
 	}
 }
 
+// TestMCPToolCall_HandlerPanic_RecoversAndSurvives is the RED/GREEN test for
+// #5717: a tool handler that panics (e.g. a nil-deref bug in one grafel_*
+// handler) must not crash the whole daemon and sever every MCP bridge
+// connection. Before the fix, s.mcpCallTool(...) had no defer/recover, so an
+// unrecovered panic here would propagate out of MCPToolCall, out of the
+// net/rpc dispatch goroutine, and terminate the process — this test would
+// crash `go test` itself rather than fail an assertion.
+func TestMCPToolCall_HandlerPanic_RecoversAndSurvives(t *testing.T) {
+	svc := testService(nil, func(name string, _ map[string]any, _ string) (MCPCallResult, error) {
+		if name == "grafel_boom" {
+			var p *int
+			_ = *p // nil-deref panic, simulating a buggy tool handler
+		}
+		return MCPCallResult{Content: []map[string]any{{"type": "text", "text": "ok"}}}, nil
+	})
+
+	var reply MCPToolCallReply
+	err := svc.MCPToolCall(&MCPToolCallArgs{Name: "grafel_boom"}, &reply)
+	if err != nil {
+		t.Fatalf("unexpected protocol error surfaced from recovered panic: %v", err)
+	}
+	if !reply.IsError {
+		t.Fatal("expected IsError=true for a panicking tool handler")
+	}
+	if len(reply.Content) == 0 {
+		t.Fatal("expected an error content block describing the panic")
+	}
+
+	// The dispatch loop must survive: a subsequent, unrelated call still works.
+	var reply2 MCPToolCallReply
+	if err := svc.MCPToolCall(&MCPToolCallArgs{Name: "grafel_stats"}, &reply2); err != nil {
+		t.Fatalf("unexpected error on call after recovered panic: %v", err)
+	}
+	if reply2.IsError {
+		t.Fatal("expected IsError=false for the healthy call after a recovered panic")
+	}
+}
+
 func TestMCPToolCall_EmptyContent_NormalisedToEmptySlice(t *testing.T) {
 	svc := testService(nil, func(_ string, _ map[string]any, _ string) (MCPCallResult, error) {
 		return MCPCallResult{Content: nil}, nil
