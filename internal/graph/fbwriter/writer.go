@@ -38,6 +38,11 @@ func WriteAtomic(outPath string, doc *graph.Document) error {
 	if err := os.MkdirAll(filepath.Dir(outPath), 0o755); err != nil {
 		return fmt.Errorf("fbwriter: mkdir %s: %w", filepath.Dir(outPath), err)
 	}
+	// Issue #5726 — last-good preservation. Marshal runs to completion (and now
+	// fail-softs an oversized-graph panic into an error, see streamingMarshal)
+	// BEFORE we touch the filesystem. On a marshal error we return here without
+	// ever creating the sibling .tmp or performing the rename, so a previously
+	// written graph.fb stays byte-identical and fully intact.
 	buf, err := Marshal(doc)
 	if err != nil {
 		return fmt.Errorf("fbwriter: marshal: %w", err)

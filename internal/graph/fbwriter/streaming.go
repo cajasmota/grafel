@@ -153,13 +153,22 @@ func (sw *StreamingWriter) WriteRelationship(r *graph.Relationship) error {
 // via streaming because they are assembled at the end of the index pass by
 // the graph-algo engine — a separate call site from the per-entity extraction
 // loop.
-func (sw *StreamingWriter) Close(meta GraphMetadata) error {
+func (sw *StreamingWriter) Close(meta GraphMetadata) (err error) {
 	if sw.closed {
 		return fmt.Errorf("fbwriter.StreamingWriter: already closed")
 	}
 	sw.closed = true
 
-	buf := sw.finalize(meta)
+	// Issue #5726 — fail-soft on oversized graphs. finalize() drives the same
+	// flatbuffers builder that panics past 2 GiB. Recover here so the streaming
+	// full-index path degrades to a returned error too, and make sure we never
+	// leave a half-written .tmp (or perform the rename) when serialization
+	// blew up — the previously-good graph.fb must stay intact.
+	buf, err := sw.finalizeSafe(meta)
+	if err != nil {
+		os.Remove(sw.outPath + ".tmp")
+		return err
+	}
 
 	// In-memory mode (outPath == "") — nothing to write.
 	if sw.outPath == "" {
@@ -175,6 +184,18 @@ func (sw *StreamingWriter) Close(meta GraphMetadata) error {
 		return fmt.Errorf("fbwriter.StreamingWriter: rename: %w", err)
 	}
 	return nil
+}
+
+// finalizeSafe wraps finalize with a recover so a flatbuffers 2-GiB builder
+// panic (#5726) is surfaced as a normal error instead of aborting the daemon.
+func (sw *StreamingWriter) finalizeSafe(meta GraphMetadata) (buf []byte, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			buf = nil
+			err = fmt.Errorf("fbwriter: graph too large to serialize: %v", r)
+		}
+	}()
+	return sw.finalize(meta), nil
 }
 
 // finalize builds the top-level Graph table and returns the finished bytes.
@@ -276,9 +297,37 @@ func (sw *StreamingWriter) RelationshipCount() int { return len(sw.relOffsets) }
 // through an in-memory StreamingWriter (no filesystem I/O). This ensures
 // WriteAtomic and the streaming pipeline share identical serialization code.
 
-func streamingMarshal(doc *graph.Document) ([]byte, error) {
+// marshalPanicHook is a test-only seam. When non-nil it is invoked inside the
+// serialization body of streamingMarshal so a unit test can simulate the
+// flatbuffers library's hard-2-GiB "cannot grow buffer beyond 2 gigabytes"
+// panic (issue #5726) without actually allocating 2 GiB. It is always nil in
+// production builds.
+var marshalPanicHook func()
+
+func streamingMarshal(doc *graph.Document) (out []byte, err error) {
+	// Issue #5726 — fail-soft on oversized graphs. The flatbuffers builder
+	// panics with "cannot grow buffer beyond 2 gigabytes" once serialization
+	// crosses the library's hard 2-GiB cap. That panic originates in the
+	// vendored flatbuffers library, so recover() at this boundary is the only
+	// way to keep it from unwinding through the daemon's index worker and
+	// aborting the whole process. We surface it as a normal error the caller
+	// can handle — WriteAtomic then leaves the previous graph.fb untouched and
+	// the scheduler logs a degraded state instead of crashing.
+	defer func() {
+		if r := recover(); r != nil {
+			out = nil
+			err = fmt.Errorf("fbwriter: graph too large to serialize: %v", r)
+		}
+	}()
+
 	if doc == nil {
 		return nil, fmt.Errorf("nil document")
+	}
+
+	// Test seam (#5726): simulate the flatbuffers 2-GiB builder panic that
+	// occurs mid-serialization on very large graphs.
+	if marshalPanicHook != nil {
+		marshalPanicHook()
 	}
 
 	// In-memory mode: outPath == "" skips the filesystem write in Close.

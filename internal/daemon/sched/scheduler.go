@@ -1153,22 +1153,41 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 	var err error
 	incrementalDone := false
-	if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
-		res := s.cfg.Incremental(jobCtx, repoPath, tok.ref)
-		if res.Done {
-			incrementalDone = true
-			s.logEvent("incremental_ok", repoPath,
-				"changed_files="+itoa(int64(res.ChangedFiles)))
-		} else {
-			s.logEvent("incremental_fallback", repoPath,
-				"reason="+res.FallbackReason)
-			s.logger.Info("sched: incremental fallback", "repo", repoPath, "reason", res.FallbackReason)
-		}
-	}
+	// Issue #5726 / epic #5729 — defense in depth. An index can panic for
+	// reasons the fbwriter fail-soft doesn't catch (e.g. a flatbuffers 2-GiB
+	// abort raised inside the streaming WriteEntity path, or any other bug in
+	// an extractor). A panic here would unwind through the worker goroutine and
+	// abort the ENTIRE daemon (launchd relaunches it → 60–90s reindex outage,
+	// every MCP bridge severed). Recover so ANY index panic becomes a normal
+	// error: the worker keeps serving, the reserved budget is released via the
+	// existing err path below, and we log a clear degraded-state message.
+	func() {
+		defer func() {
+			if r := recover(); r != nil {
+				err = fmt.Errorf("index panicked (recovered): %v", r)
+				s.logEvent("index_panic", repoPath, fmt.Sprintf("recovered panic during index: %v", r))
+				s.logger.Error("sched: index panicked — recovered; daemon continues in degraded state (repo left at last-good graph)",
+					"repo", repoPath, "ref", tok.ref, "panic", r, "stack", string(debug.Stack()))
+			}
+		}()
 
-	if !incrementalDone && s.cfg.Index != nil {
-		err = s.cfg.Index(jobCtx, repoPath, tok.ref)
-	}
+		if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
+			res := s.cfg.Incremental(jobCtx, repoPath, tok.ref)
+			if res.Done {
+				incrementalDone = true
+				s.logEvent("incremental_ok", repoPath,
+					"changed_files="+itoa(int64(res.ChangedFiles)))
+			} else {
+				s.logEvent("incremental_fallback", repoPath,
+					"reason="+res.FallbackReason)
+				s.logger.Info("sched: incremental fallback", "repo", repoPath, "reason", res.FallbackReason)
+			}
+		}
+
+		if !incrementalDone && s.cfg.Index != nil {
+			err = s.cfg.Index(jobCtx, repoPath, tok.ref)
+		}
+	}()
 
 	close(sampleStop)
 	sampleWG.Wait()
