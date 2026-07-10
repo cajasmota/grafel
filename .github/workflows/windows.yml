@@ -15,9 +15,12 @@ name: Windows CI
 # run lands in a few minutes rather than the full suite's 8-10.
 
 on:
-  pull_request:
-  push:
-    branches: [main]
+  # Gated to manual dispatch only to conserve free-tier minutes: this workflow
+  # is a pure PR/branch compile-and-test tripwire — it does not build or
+  # validate a release artifact (release.yml + test.yml's tag trigger already
+  # cover Windows on a release tag). Formerly ran on every `pull_request`
+  # (no path filter) and every push to main, which was the single largest
+  # Windows (2x-billed) minute sink in this repo.
   workflow_dispatch:
 
 permissions:

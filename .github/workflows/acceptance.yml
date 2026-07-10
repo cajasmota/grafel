@@ -55,20 +55,13 @@ on:
     workflows: ["release"]
     types: [completed]
   workflow_dispatch:
-  pull_request:
-    # Cheap PR signal only — gated to install/release/daemon/cmd surface so docs
-    # and unrelated changes don't spend minutes. This NEVER schedules the full
-    # matrix (the matrix job is guarded to release/dispatch only).
-    paths:
-      - 'install.sh'
-      - 'install.ps1'
-      - '.github/workflows/release.yml'
-      - '.github/workflows/acceptance.yml'
-      - 'cmd/grafel/**'
-      - 'internal/daemon/**'
-      - 'internal/install/**'
-      - 'go.mod'
-      - 'go.sum'
+  # `pull_request` trigger (formerly here, path-gated to install/release/daemon/
+  # cmd surface) removed: gated to releases + manual dispatch to conserve
+  # free-tier minutes. The `pr-linux` job below is now dormant (its `if:
+  # github.event_name == 'pull_request'` guard never matches) until re-enabled
+  # via workflow_dispatch or a future re-add of this trigger. The full
+  # cross-OS matrix already only runs post-release (workflow_run) or on
+  # workflow_dispatch — unaffected by this change.
 
 permissions:
   contents: read
