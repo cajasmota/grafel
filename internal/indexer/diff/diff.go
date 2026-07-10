@@ -229,6 +229,51 @@ func UpdateManifest(absRepo string, relPaths []string, m *Manifest) {
 	}
 }
 
+// GitChangedFilesSince uses `git diff --name-only fromCommit..HEAD` to return
+// the set of repo-relative paths that differ between fromCommit and the
+// current HEAD. This is the commit-RANGE counterpart to GitChangedFiles
+// (which only sees working-tree-vs-HEAD): it is what detects a HEAD advance
+// (fetch+reset / checkout / pull) that leaves a clean working tree against
+// the new HEAD, where `git diff --name-only HEAD` reports nothing even
+// though the indexed graph is still pinned at fromCommit (#5710).
+//
+// Returns an error when the diff cannot be computed (e.g. fromCommit is no
+// longer reachable — shallow clone, rebase, gc) so the caller can treat the
+// range as UNCONFIRMED rather than silently assuming nothing changed.
+func GitChangedFilesSince(repoPath, fromCommit string) (map[string]bool, error) {
+	if fromCommit == "" {
+		return nil, fmt.Errorf("git diff range: empty fromCommit")
+	}
+	if _, ok := gitmeta.RunGitBoundedC(repoPath, "rev-parse", "--is-inside-work-tree"); !ok {
+		return nil, nil // not a git repo (or git wedged) — not an error
+	}
+
+	rangeSpec := fromCommit + "..HEAD"
+	diffOut, ok := gitmeta.RunGitBoundedC(repoPath, "diff", "--name-only", rangeSpec)
+	if !ok {
+		return nil, fmt.Errorf("git diff %s: bounded git failed (timeout, unreachable commit, or no HEAD)", rangeSpec)
+	}
+
+	changed := make(map[string]bool)
+	sc := bufio.NewScanner(bytes.NewReader(diffOut))
+	for sc.Scan() {
+		line := strings.TrimSpace(sc.Text())
+		if line != "" {
+			changed[line] = true
+		}
+	}
+	return changed, nil
+}
+
+// HeadCommit returns the short HEAD commit hash for the repo at repoPath, or
+// empty string if git is unavailable or this is not a git repo. Exported
+// wrapper around headCommit for callers outside this package (e.g. the
+// incremental extractor's HEAD-advance detection, #5710) that need to compare
+// the manifest's last-indexed commit against the repo's current HEAD.
+func HeadCommit(repoPath string) string {
+	return headCommit(repoPath)
+}
+
 // GitChangedFiles uses `git diff --name-only HEAD` to return the set of
 // repo-relative paths changed since the last HEAD commit. Returns nil when
 // the repo is not a git repository or git is not available.

@@ -213,6 +213,57 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 		}
 	}
 
+	// --- #5710: HEAD-advance detection ---
+	// diff.FilterWithGit / diff.GitChangedFiles only ever compute
+	// `git diff --name-only HEAD` — working-tree vs the CURRENT HEAD. After a
+	// fetch+reset / checkout / pull the working tree already matches the new
+	// HEAD, so that diff is empty even though the indexed graph is still
+	// pinned at manifest.GitCommit (the commit we last actually indexed).
+	// Compare the persisted manifest commit against the repo's current HEAD
+	// and, when they differ, union in the commit-RANGE diff so those files
+	// enter the changed-file set and flow through the normal trigger-limit /
+	// AST-hash-gate machinery below (a large advance correctly trips the
+	// too-many-changed full-reindex fallback).
+	//
+	// headAdvanceUnconfirmed is set when HEAD moved but we could NOT compute
+	// the range diff (e.g. manifest.GitCommit is no longer reachable — gc,
+	// shallow clone, history rewrite). In that case we must not trust a
+	// totalChanged==0 result below: report unresolved-range-diff as an
+	// explicit fallback so a full reindex reconciles the graph rather than
+	// silently no-op'ing.
+	headAdvanceUnconfirmed := false
+	currentHead := diff.HeadCommit(absRepo)
+	if manifest.GitCommit != "" && currentHead != "" && manifest.GitCommit != currentHead {
+		rangeChanged, rErr := diff.GitChangedFilesSince(absRepo, manifest.GitCommit)
+		if rErr != nil {
+			headAdvanceUnconfirmed = true
+			logger.Printf("incremental: head-advance range-diff unconfirmed old=%s new=%s err=%v",
+				manifest.GitCommit, currentHead, rErr)
+		} else if len(rangeChanged) > 0 {
+			seen := make(map[string]bool, len(changedFiles))
+			for _, f := range changedFiles {
+				seen[f] = true
+			}
+			for f := range rangeChanged {
+				if allFilesSet[f] && !seen[f] {
+					changedFiles = append(changedFiles, f)
+					seen[f] = true
+				}
+			}
+		}
+	}
+	if headAdvanceUnconfirmed {
+		// We cannot trust the changed-file accounting when the commit-range
+		// diff itself failed to confirm what moved between manifest.GitCommit
+		// and currentHead. Force a full-reindex fallback WITHOUT touching the
+		// manifest — advancing manifest.GitCommit here (as the pre-fix
+		// totalChanged==0/too-many-changed paths unconditionally did) would
+		// reproduce the exact #5710 self-conceal bug: the manifest would
+		// claim "indexed to HEAD" while the graph never actually caught up,
+		// and every subsequent poll would see 0 changes forever.
+		return fallback(t0, fmt.Sprintf("head-advance-unconfirmed old=%s new=%s", manifest.GitCommit, currentHead))
+	}
+
 	// --- Manifest GC (#2170): eagerly remove entries for deleted files ---
 	// Remove them from the manifest NOW so that if we fall back to full reindex
 	// or succeed incrementally, the manifest saved at the end does not contain
