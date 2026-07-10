@@ -74,6 +74,14 @@ func Kill(pid int) error {
 	return nil
 }
 
+// ForceKill terminates the given PID. On Windows there is no softer
+// "SIGKILL vs SIGTERM" distinction — TerminateProcess is already
+// unconditional — so this is an alias for Kill, kept for API symmetry with
+// the unix implementations (#5710 pidfile reclaim).
+func ForceKill(pid int) error {
+	return Kill(pid)
+}
+
 // CPUPercent is not implemented on Windows.
 func CPUPercent(_ int) (float64, error) {
 	return 0, fmt.Errorf("process.CPUPercent: unsupported platform windows")

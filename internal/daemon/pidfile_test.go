@@ -5,8 +5,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"testing"
+	"time"
 )
 
 // reapedChildPID starts and reaps a trivial child so we hold a PID that is
@@ -39,7 +41,7 @@ func TestAcquirePIDFile_StaleDeadPID_Proceeds(t *testing.T) {
 	dead := reapedChildPID(t)
 	writePIDFile(t, path, dead)
 
-	release, err := AcquirePIDFile(path)
+	release, err := AcquirePIDFile(path, "")
 	if err != nil {
 		t.Fatalf("expected stale dead-pid pidfile to be overwritten, got error: %v", err)
 	}
@@ -64,7 +66,7 @@ func TestAcquirePIDFile_LiveNonGrafelPID_TreatedStale(t *testing.T) {
 	// os.Getpid() here is the test binary ("daemon.test"), not "grafel".
 	writePIDFile(t, path, os.Getpid())
 
-	release, err := AcquirePIDFile(path)
+	release, err := AcquirePIDFile(path, "")
 	if err != nil {
 		t.Fatalf("expected live non-grafel pid to be treated as stale, got: %v", err)
 	}
@@ -81,7 +83,7 @@ func TestAcquirePIDFile_NoExistingFile_Succeeds(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.pid")
 
-	release, err := AcquirePIDFile(path)
+	release, err := AcquirePIDFile(path, "")
 	if err != nil {
 		t.Fatalf("AcquirePIDFile on empty dir: %v", err)
 	}
@@ -95,7 +97,7 @@ func TestAcquirePIDFile_NoExistingFile_Succeeds(t *testing.T) {
 func TestAcquirePIDFile_ReleaseRemovesFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "daemon.pid")
-	release, err := AcquirePIDFile(path)
+	release, err := AcquirePIDFile(path, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -127,5 +129,120 @@ func TestPidIsLiveDaemon(t *testing.T) {
 	// The test binary is live but is not "grafel".
 	if pidIsLiveDaemon(os.Getpid()) {
 		t.Fatal("live non-grafel pid must not be treated as the daemon owner")
+	}
+}
+
+// spawnLiveChild starts a disposable, long-lived child process and returns
+// its pid plus a cleanup that force-kills it (idempotent — safe to call even
+// if the test already killed it via forceKillFunc/AcquirePIDFile's reclaim
+// path). Used to stand in for "a live grafel daemon" pid: we cannot spawn a
+// real grafel binary in a unit test, so #5710 reclaim tests fake the
+// name-match decision via pidIsLiveDaemonFunc and only need a genuinely
+// live, killable pid underneath it.
+func spawnLiveChild(t *testing.T) (pid int, cleanup func()) {
+	t.Helper()
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("cmd", "/C", "ping -n 31 127.0.0.1 >NUL")
+	} else {
+		cmd = exec.Command("sleep", "30")
+	}
+	if err := cmd.Start(); err != nil {
+		t.Fatalf("spawn live child: %v", err)
+	}
+	done := make(chan struct{})
+	go func() { _ = cmd.Wait(); close(done) }()
+	return cmd.Process.Pid, func() {
+		_ = cmd.Process.Kill()
+		select {
+		case <-done:
+		case <-time.After(2 * time.Second):
+		}
+	}
+}
+
+// withFakePidIsLiveDaemon overrides pidIsLiveDaemonFunc for the duration of
+// the test so AcquirePIDFile treats pid as "a live grafel daemon" without
+// requiring a real grafel binary.
+func withFakePidIsLiveDaemon(t *testing.T, wantPID int) {
+	t.Helper()
+	orig := pidIsLiveDaemonFunc
+	pidIsLiveDaemonFunc = func(pid int) bool { return pid == wantPID }
+	t.Cleanup(func() { pidIsLiveDaemonFunc = orig })
+}
+
+// withFakeSocketHealth overrides socketHealthProbe for the duration of the
+// test so AcquirePIDFile's reclaim decision doesn't need a real daemon
+// listening on socketPath.
+func withFakeSocketHealth(t *testing.T, healthy bool) {
+	t.Helper()
+	orig := socketHealthProbe
+	socketHealthProbe = func(string, time.Duration) bool { return healthy }
+	t.Cleanup(func() { socketHealthProbe = orig })
+}
+
+// #5710: a pidfile naming a live, grafel-named process whose socket does NOT
+// answer Ping (the wedged-daemon scenario — stuck in graceful shutdown behind
+// a stalled Rebuild RPC) must be RECLAIMED, not refused. AcquirePIDFile
+// should force-kill the old pid and overwrite the pidfile with our own.
+func TestAcquirePIDFile_LiveGrafelPID_UnhealthySocket_Reclaims(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.pid")
+
+	oldPID, cleanupChild := spawnLiveChild(t)
+	defer cleanupChild()
+	writePIDFile(t, path, oldPID)
+
+	withFakePidIsLiveDaemon(t, oldPID)
+	withFakeSocketHealth(t, false)
+
+	release, err := AcquirePIDFile(path, "/nonexistent/socket/for/probe")
+	if err != nil {
+		t.Fatalf("expected unhealthy-socket pidfile to be reclaimed, got error: %v", err)
+	}
+	defer release()
+
+	if got := ReadPIDFile(path); got != os.Getpid() {
+		t.Fatalf("pidfile = %d after reclaim, want current pid %d", got, os.Getpid())
+	}
+
+	// The old, wedged pid must actually be gone — otherwise the reclaim is a
+	// pidfile-only fiction and the real wedged process leaks.
+	deadline := time.Now().Add(2 * time.Second)
+	for pidAlive(oldPID) && time.Now().Before(deadline) {
+		time.Sleep(20 * time.Millisecond)
+	}
+	if pidAlive(oldPID) {
+		t.Fatalf("old pid %d still alive after reclaim; expected it to be force-killed", oldPID)
+	}
+}
+
+// #5710 false-positive guard: a pidfile naming a live, grafel-named process
+// whose socket DOES answer Ping must be refused as ErrAlreadyRunning — a
+// healthy daemon must never be force-killed just because it exists.
+func TestAcquirePIDFile_LiveGrafelPID_HealthySocket_RefusesNoReclaim(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "daemon.pid")
+
+	oldPID, cleanupChild := spawnLiveChild(t)
+	defer cleanupChild()
+	writePIDFile(t, path, oldPID)
+
+	withFakePidIsLiveDaemon(t, oldPID)
+	withFakeSocketHealth(t, true)
+
+	_, err := AcquirePIDFile(path, "/nonexistent/socket/for/probe")
+	if !errors.Is(err, ErrAlreadyRunning) {
+		t.Fatalf("expected ErrAlreadyRunning for a healthy daemon, got: %v", err)
+	}
+
+	// The healthy "daemon" must NOT have been killed.
+	if !pidAlive(oldPID) {
+		t.Fatalf("healthy pid %d was killed — false-positive reclaim", oldPID)
+	}
+
+	// The pidfile must still name the original (healthy) owner, not us.
+	if got := ReadPIDFile(path); got != oldPID {
+		t.Fatalf("pidfile = %d after refused acquire, want unchanged original pid %d", got, oldPID)
 	}
 }

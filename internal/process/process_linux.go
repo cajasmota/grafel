@@ -54,6 +54,22 @@ func Kill(pid int) error {
 	return nil
 }
 
+// ForceKill sends SIGKILL to the process with the given PID. Unlike Kill
+// (SIGTERM), a process cannot ignore or handle this — used for #5710
+// pidfile reclaim, where the target daemon is alive but not responding on
+// its socket (e.g. wedged inside a stalled RPC) and a graceful SIGTERM
+// cannot be trusted to take effect promptly.
+func ForceKill(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("FindProcess(%d): %w", pid, err)
+	}
+	if err := proc.Signal(syscall.SIGKILL); err != nil {
+		return fmt.Errorf("signal(%d, SIGKILL): %w", pid, err)
+	}
+	return nil
+}
+
 // CPUPercent returns the instantaneous CPU usage of pid as a percentage
 // by reading /proc/<pid>/stat and computing user+sys ticks / clock ticks.
 // On Linux this is derived from two samples; for a single-shot reading it

@@ -21,6 +21,11 @@ func Kill(pid int) error {
 	return fmt.Errorf("process.Kill: unsupported platform %s", runtime.GOOS)
 }
 
+// ForceKill sends an unconditional termination signal to the given PID.
+func ForceKill(pid int) error {
+	return fmt.Errorf("process.ForceKill: unsupported platform %s", runtime.GOOS)
+}
+
 // CPUPercent is not implemented on this platform.
 func CPUPercent(_ int) (float64, error) {
 	return 0, fmt.Errorf("process.CPUPercent: unsupported platform %s", runtime.GOOS)

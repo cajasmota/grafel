@@ -3,10 +3,14 @@ package daemon
 import (
 	"errors"
 	"fmt"
+	"net/rpc/jsonrpc"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/daemon/transport"
 	"github.com/cajasmota/grafel/internal/process"
 )
 
@@ -15,27 +19,98 @@ import (
 // the wrapped error message so callers can surface it directly.
 var ErrAlreadyRunning = errors.New("daemon already running")
 
-// AcquirePIDFile writes the current pid to path, returning a release
-// closure. If path already contains a pid for a running process, the
-// call returns ErrAlreadyRunning. Stale pid files (the named process is
-// gone) are overwritten silently — a crash should never wedge startup.
+// socketHealthProbeTimeout bounds a single dial+Ping attempt when deciding
+// whether a live, correctly-named pidfile owner is actually serving (#5710).
+// Kept short — this runs synchronously on the `grafel start` path — but long
+// enough that a momentarily-busy daemon (e.g. mid-GC) is not misjudged.
+const socketHealthProbeTimeout = 300 * time.Millisecond
+
+// socketHealthProbeRetries is the number of retries (beyond the first
+// attempt) before a live grafel pid whose socket won't answer Ping is
+// treated as reclaimable. Guards against a false-positive reclaim of a
+// healthy daemon that is merely slow to respond to one probe.
+const socketHealthProbeRetries = 2
+
+// socketHealthProbe reports whether the daemon behind socketPath answers a
+// Ping RPC. It is a package variable (rather than a hardcoded call) so tests
+// can substitute a fake without standing up a real daemon + listener for
+// every pidfile-reclaim case; production code uses dialAndPing.
+var socketHealthProbe = dialAndPing
+
+// dialAndPing is the real health probe: dial the daemon's IPC transport and
+// issue a single Ping RPC, both bounded by timeout. transport/proto are leaf
+// packages that do not import package daemon (nor does this function import
+// internal/daemon/client, which itself imports package daemon — importing
+// client here would create an import cycle; see #5710).
+func dialAndPing(socketPath string, timeout time.Duration) bool {
+	conn, err := transport.DialTimeout(socketPath, timeout)
+	if err != nil {
+		return false
+	}
+	defer conn.Close()
+	_ = conn.SetDeadline(time.Now().Add(timeout))
+	rpcClient := jsonrpc.NewClient(conn)
+	defer rpcClient.Close()
+	var reply proto.PingReply
+	err = rpcClient.Call(proto.ServiceName+".Ping", proto.PingArgs{}, &reply)
+	return err == nil
+}
+
+// socketIsHealthy retries socketHealthProbe up to socketHealthProbeRetries
+// times (with a short pause between attempts) before declaring the socket
+// unhealthy. A single failed probe is not enough to condemn a live daemon —
+// only sustained unreachability across every attempt does.
+func socketIsHealthy(socketPath string) bool {
+	for attempt := 0; attempt <= socketHealthProbeRetries; attempt++ {
+		if socketHealthProbe(socketPath, socketHealthProbeTimeout) {
+			return true
+		}
+		if attempt < socketHealthProbeRetries {
+			time.Sleep(50 * time.Millisecond)
+		}
+	}
+	return false
+}
+
+// AcquirePIDFile writes the current pid to pidPath, returning a release
+// closure. If pidPath already contains a pid for a running grafel process,
+// AcquirePIDFile probes that daemon's socketPath with a Ping RPC:
+//
+//   - If the daemon answers, it is genuinely alive and serving — the call
+//     returns ErrAlreadyRunning, as before.
+//   - If the daemon does NOT answer within socketHealthProbeRetries+1
+//     attempts, it is treated as wedged (#5710 — e.g. blocked forever in
+//     graceful shutdown behind a stalled RPC) rather than "running": the old
+//     process is force-killed and the pidfile is reclaimed so `grafel start`
+//     is not permanently refused by a daemon that can never again serve a
+//     request.
+//
+// Stale pid files (the named process is gone entirely) are overwritten
+// silently, as before — a crash should never wedge startup.
 //
 // We deliberately do NOT use flock here: the goal is to detect another
 // daemon, and pid+syscall.Kill(pid,0) is portable across darwin/linux
 // without a new dependency.
-func AcquirePIDFile(path string) (release func(), err error) {
-	if existing, ok := readPID(path); ok && pidIsLiveDaemon(existing) {
-		return nil, fmt.Errorf("%w (pid %d)", ErrAlreadyRunning, existing)
+func AcquirePIDFile(pidPath, socketPath string) (release func(), err error) {
+	if existing, ok := readPID(pidPath); ok && pidIsLiveDaemonFunc(existing) {
+		if socketIsHealthy(socketPath) {
+			return nil, fmt.Errorf("%w (pid %d)", ErrAlreadyRunning, existing)
+		}
+		// The pid is alive and is a grafel process, but its socket will not
+		// answer a Ping within the bounded retry window — the daemon is wedged
+		// (e.g. stuck in graceful shutdown behind a stalled Rebuild RPC, #5710)
+		// and can never again serve a request. Reclaim rather than refuse.
+		_ = forceKillFunc(existing)
 	}
 	pid := os.Getpid()
-	if err := os.WriteFile(path, []byte(strconv.Itoa(pid)+"\n"), 0o600); err != nil {
-		return nil, fmt.Errorf("write pid file %s: %w", path, err)
+	if err := os.WriteFile(pidPath, []byte(strconv.Itoa(pid)+"\n"), 0o600); err != nil {
+		return nil, fmt.Errorf("write pid file %s: %w", pidPath, err)
 	}
 	return func() {
 		// Best-effort cleanup. Errors here are not actionable — if we
 		// can't remove our own pid file, the next startup will see a
 		// stale entry and overwrite it.
-		_ = os.Remove(path)
+		_ = os.Remove(pidPath)
 	}, nil
 }
 
@@ -94,6 +169,17 @@ func pidIsLiveDaemon(pid int) bool {
 	}
 	return isGrafel
 }
+
+// pidIsLiveDaemonFunc indirects pidIsLiveDaemon so tests can simulate "the
+// pidfile names a live grafel process" without spawning a real grafel
+// binary (process.PidIsGrafel matches on executable name, which a unit test
+// binary can never satisfy). Production code always uses pidIsLiveDaemon.
+var pidIsLiveDaemonFunc = pidIsLiveDaemon
+
+// forceKillFunc indirects process.ForceKill so the #5710 pidfile-reclaim
+// tests can observe/stub the kill without actually depending on
+// process.ForceKill's platform-specific signal delivery semantics.
+var forceKillFunc = process.ForceKill
 
 // pidAlive returns true when a process with the given pid exists. The
 // platform-specific liveness probe lives in internal/process: signal 0

@@ -332,7 +332,7 @@ func Run(ctx context.Context, cfg Config) error {
 	// wedged startup step (the isolated selftest daemon hangs here). Cheap +
 	// helps all platforms; does NOT change startup order/behavior.
 	logger.Info("startup: pidfile-acquire begin")
-	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath)
+	releasePID, err := AcquirePIDFile(cfg.Layout.PIDPath, cfg.Layout.SocketPath)
 	if err != nil {
 		return err
 	}
@@ -756,6 +756,21 @@ func Run(ctx context.Context, cfg Config) error {
 		return errors.New("listener closed")
 	}
 
+	// #5710: hard-exit watchdog. mcpDrainTimeout below bounds ONLY the MCP
+	// drain — it has no effect on connWG.Wait() near the end of this
+	// function, which joins every accepted connection including ones blocked
+	// inside a non-MCP RPC handler (e.g. Service.Rebuild, whose own timeout
+	// is rebuildRPCTimeout = 2h and which never observes shutdown). Without a
+	// backstop, a single stalled Rebuild call wedges Run() forever: it never
+	// returns, the deferred releasePID() never runs, and the pidfile is left
+	// pointing at a process that is alive but can never again serve a
+	// request. watchdogCtx bounds the ENTIRE graceful tail from here to the
+	// `return nil` below (not just connWG.Wait()) so it also covers a slow
+	// MCP drain; if it fires before the tail completes, force-exit rather
+	// than hang past launchd/systemd's SIGTERM→SIGKILL grace window.
+	watchdogCtx, watchdogCancel := context.WithTimeout(context.Background(), shutdownWatchdogTimeout())
+	defer watchdogCancel()
+
 	// #5633: graceful MCP drain. Mark the service as draining so any MCP RPC
 	// that arrives from here on gets a clean retryable error (the bridge
 	// reconnects to the replacement daemon) instead of being half-served and
@@ -778,12 +793,62 @@ func Run(ctx context.Context, cfg Config) error {
 		cfg.ShutdownCleanup()
 	}
 
-	// Stop accepting new connections, then wait for in-flight ones.
+	// Stop accepting new connections, then wait for in-flight ones — bounded
+	// by watchdogCtx (#5710). This is exactly the step that used to hang
+	// forever behind a stalled Rebuild RPC: connWG.Wait() blocks until every
+	// accepted connection's handler returns, and Rebuild has no shutdown/
+	// ctx.Done case in its own select.
 	_ = listener.Close()
 	<-acceptDone
-	connWG.Wait()
-	logger.Info("graceful shutdown complete")
-	return nil
+	connDone := make(chan struct{})
+	go func() {
+		connWG.Wait()
+		close(connDone)
+	}()
+	select {
+	case <-connDone:
+		logger.Info("graceful shutdown complete")
+		return nil
+	case <-watchdogCtx.Done():
+		// os.Exit skips every deferred cleanup in this function (releasePID,
+		// socket unlink), so we repeat the pidfile/socket removal explicitly
+		// before exiting — otherwise the force-killed process would leave
+		// the exact stale-pidfile wedge this change exists to prevent.
+		logger.Error("force-exit: graceful shutdown exceeded watchdog timeout",
+			"timeout", shutdownWatchdogTimeout())
+		releasePID()
+		_ = os.Remove(cfg.Layout.SocketPath)
+		osExit(1)
+		// Reached only when osExit has been overridden (tests): production
+		// os.Exit never returns, so this line only runs when a test stub
+		// swapped osExit for a no-op — proving Run() unblocks from the
+		// stalled connWG.Wait() instead of hanging forever (#5710).
+		return errors.New("graceful shutdown watchdog exceeded; force-exited")
+	}
+}
+
+// osExit is os.Exit, indirected through a package variable so the #5710
+// hard-exit watchdog is testable in-process: production always force-exits
+// the whole process, but tests substitute a no-op and assert Run() still
+// returns (via the fallback return just below the osExit call) instead of
+// hanging on connWG.Wait() forever — without killing the test binary itself.
+var osExit = os.Exit
+
+// SetShutdownExitFuncForTest overrides the #5710 hard-exit watchdog's exit
+// function for the duration of a test and returns a restore closure. Tests
+// live in package daemon_test (external), so this exported hook is the only
+// way to reach the unexported osExit var without creating an import cycle
+// (internal/daemon/client, needed to drive the daemon from a test, itself
+// imports package daemon).
+//
+// Production code must never call this. The suffix is dead-stripped by
+// nothing at build time — it is an ordinary exported function — but the name
+// mirrors this repo's established ForTest convention (see internal/docgen)
+// for hooks that exist solely to let tests reach otherwise-unexported state.
+func SetShutdownExitFuncForTest(f func(int)) (restore func()) {
+	prev := osExit
+	osExit = f
+	return func() { osExit = prev }
 }
 
 // mcpDrainTimeout bounds how long graceful shutdown waits for in-flight MCP
@@ -793,6 +858,32 @@ func Run(ctx context.Context, cfg Config) error {
 // (launchd's default SIGTERM→SIGKILL window and systemd's TimeoutStopSec are
 // both ~5 s+; we deliberately stay under that).
 const mcpDrainTimeout = 3 * time.Second
+
+// defaultShutdownWatchdog bounds the ENTIRE graceful-shutdown tail — from the
+// moment a shutdown trigger fires to Run() returning — not just the MCP
+// drain. #5710: a stalled Service.Rebuild RPC holds its connection open
+// indefinitely (rebuildRPCTimeout is 2h and has no shutdown/ctx.Done case),
+// so connWG.Wait() can block forever with no MCP-drain-timeout in the world
+// that would ever unblock it. 5s keeps the watchdog under launchd's default
+// SIGTERM→SIGKILL grace window (and systemd's TimeoutStopSec), matching the
+// same target mcpDrainTimeout above already stays under.
+const defaultShutdownWatchdog = 5 * time.Second
+
+// shutdownWatchdogEnv overrides defaultShutdownWatchdog with a Go duration
+// string (e.g. "200ms"), primarily so tests can exercise the force-exit path
+// without a real 5s wait.
+const shutdownWatchdogEnv = "GRAFEL_SHUTDOWN_WATCHDOG"
+
+// shutdownWatchdogTimeout resolves the watchdog bound: shutdownWatchdogEnv if
+// set to a valid positive duration, else defaultShutdownWatchdog.
+func shutdownWatchdogTimeout() time.Duration {
+	if raw := strings.TrimSpace(os.Getenv(shutdownWatchdogEnv)); raw != "" {
+		if d, err := time.ParseDuration(raw); err == nil && d > 0 {
+			return d
+		}
+	}
+	return defaultShutdownWatchdog
+}
 
 // acceptLoop pulls connections off the listener and hands each to
 // jsonrpc.ServeConn under the registered server. The waitgroup tracks
