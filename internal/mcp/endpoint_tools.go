@@ -1473,14 +1473,32 @@ func (s *Server) handleEndpointStats(_ context.Context, req mcpapi.CallToolReque
 		extractionNote = "regex-based detectors in use; cross-check any framework count that looks off (see by_framework.*.confidence)"
 	}
 
+	// #5680: orphan_calls / cross_repo_resolved are counted from DISTINCT
+	// FETCHES-edge caller entities (any entity kind), while
+	// definitions/calls/legacy_kind are counted from http_endpoint* KIND
+	// entities — two different populations. Comparing orphan_calls directly
+	// against calls is dishonest (orphan_calls can legitimately exceed
+	// calls, e.g. when plain Function entities participate in FETCHES edges
+	// without themselves being classified as call-kind entities). call_sites
+	// is the correct, SAME-population denominator for the orphan rate:
+	// every FETCHES-edge caller this pass actually classified, resolved or
+	// not. no_server_definitions flags the degenerate case where the group
+	// produced zero endpoint definitions at all, so a near-100% orphan rate
+	// reads as "nothing to join against" rather than "everything failed to
+	// match".
+	totalCallSites := totalOrphans + totalCross
+	noServerDefinitions := totalDefs == 0
+
 	return jsonResult(map[string]any{
 		"totals": map[string]any{
-			"definitions":         totalDefs,
-			"calls":               totalCalls,
-			"legacy_kind":         totalLegacy,
-			"orphan_calls":        totalOrphans,
-			"cross_repo_resolved": totalCross,
-			"cross_repo_links":    len(lg.Links),
+			"definitions":           totalDefs,
+			"calls":                 totalCalls,
+			"legacy_kind":           totalLegacy,
+			"orphan_calls":          totalOrphans,
+			"cross_repo_resolved":   totalCross,
+			"cross_repo_links":      len(lg.Links),
+			"call_sites":            totalCallSites,
+			"no_server_definitions": noServerDefinitions,
 		},
 		"per_repo":     perRepo,
 		"by_framework": byFrameworkOut,

@@ -3562,8 +3562,16 @@ func TestClassifyOrphanReason(t *testing.T) {
 		{"", "no_endpoint_match"},
 		{"/{x}", "dynamic_baseurl"}, // entire path is one template segment
 	}
+	// A non-empty, unrelated producer population so these cases exercise the
+	// pre-existing dynamic_baseurl / no_endpoint_match classification rather
+	// than the new #5680 no_server_definition bucket (which only fires when
+	// the group has ZERO producer hits at all — see
+	// TestClassifyOrphanReason_NoServerDefinition below).
+	unrelatedProducers := []*httpEndpointHit{
+		{canonicalPath: "/completely/unrelated/path", side: sideProducer, repo: "backend"},
+	}
 	for _, tc := range cases {
-		got := classifyOrphanReason(tc.path)
+		got := classifyOrphanReason(tc.path, unrelatedProducers)
 		if got != tc.want {
 			t.Errorf("classifyOrphanReason(%q) = %q, want %q", tc.path, got, tc.want)
 		}
@@ -4181,5 +4189,327 @@ func TestHTTPPass_RuntimeEnumExpansion_NoFalseLinks(t *testing.T) {
 		case "frontend::fnNoAnchor":
 			t.Errorf("#4315: anchor-less /{*}/{*} must stay orphan, got %+v", l)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// #5688 / #5680 — version/prefix-aware HTTP joins + honest orphan metric
+// ---------------------------------------------------------------------------
+
+// TestHTTPPass_CrossRepo_BareVersionPrefix_Symmetric verifies that a bare
+// consumer path (`GET /orders`, no prefix at all) joins a producer mounted at
+// a BARE version prefix (`GET /v2/orders`, no `/api` segment). Before #5688,
+// crossRepoPrefixCandidates (the prefix-injection retry vocabulary) was
+// missing bare "/v2" — its sibling pathNormPrefixSegments had it — so this
+// pairing depended entirely on the generic apiPrefixRe byPath alias. This
+// test pins the behaviour directly against the fast repoGraph-level entry
+// point (loadAllGraphs + runHTTPPass), independent of which internal
+// strategy resolves it.
+func TestHTTPPass_CrossRepo_BareVersionPrefix_Symmetric(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "OrdersView", "kind": "Controller", "source_file": "app/views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/v2/orders", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/v2/orders",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "fetchOrders", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/orders", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/orders",
+					"framework": "fetch", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchOrders",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g5688-bare-v2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := runHTTPPass(graphs, paths, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(paths.Links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("#5688: expected cross-repo link frontend::fn1 -> backend::h1 for /orders -> /v2/orders (bare version prefix); got links=%+v orphan=%d", doc.Links, res.OrphanCalls)
+	}
+}
+
+// TestHTTPPass_CrossRepo_VersionedAPIPrefix_Symmetric is the sibling case:
+// a consumer `GET /orders` must join a producer mounted at the versioned
+// `/api/v2/orders` form. Pinned alongside the bare-v2 case so a regression
+// in either the generic prefix strip or the injection retry surfaces here.
+func TestHTTPPass_CrossRepo_VersionedAPIPrefix_Symmetric(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "OrdersView", "kind": "Controller", "source_file": "app/views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/api/v2/orders", "kind": "http_endpoint",
+				"source_file": "app/views.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/api/v2/orders",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "fetchOrders", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/orders", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/orders",
+					"framework": "fetch", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchOrders",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g5688-versioned-v2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runHTTPPass(graphs, paths, nil); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(paths.Links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var found bool
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" && l.Target == "backend::h1" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("#5688: expected cross-repo link frontend::fn1 -> backend::h1 for /orders -> /api/v2/orders (versioned prefix); got %+v", doc.Links)
+	}
+}
+
+// TestHTTPPass_CrossRepo_AmbiguousVersionPrefix_NoFalseLink verifies the
+// ambiguity guard: when TWO distinct producers in the same target repo would
+// both match a bare consumer path once the standard version prefix is
+// stripped (e.g. `/v1/orders` AND `/v2/orders` both collapse to `/orders`),
+// the symmetric matcher must NOT guess — no link is emitted for either.
+func TestHTTPPass_CrossRepo_AmbiguousVersionPrefix_NoFalseLink(t *testing.T) {
+	root := fixtureRoot(t)
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "OrdersViewV1", "kind": "Controller", "source_file": "app/v1_views.py"},
+			{
+				"id": "ep1", "name": "http:GET:/v1/orders", "kind": "http_endpoint",
+				"source_file": "app/v1_views.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/v1/orders",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+			{"id": "h2", "name": "OrdersViewV2", "kind": "Controller", "source_file": "app/v2_views.py"},
+			{
+				"id": "ep2", "name": "http:GET:/v2/orders", "kind": "http_endpoint",
+				"source_file": "app/v2_views.py",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/v2/orders",
+					"framework": "django", "pattern_type": "http_endpoint_synthesis",
+				},
+			},
+		},
+		Edges: []map[string]string{
+			{"from_id": "h1", "to_id": "ep1", "kind": "IMPLEMENTS"},
+			{"from_id": "h2", "to_id": "ep2", "kind": "IMPLEMENTS"},
+		},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "fetchOrders", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep3", "name": "http:GET:/orders", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/orders",
+					"framework": "fetch", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchOrders",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g5688-ambiguous")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := runHTTPPass(graphs, paths, nil); err != nil {
+		t.Fatal(err)
+	}
+	doc, err := readDoc(paths.Links)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, l := range doc.Links {
+		if l.Method == MethodHTTP && l.Source == "frontend::fn1" {
+			t.Errorf("#5688: ambiguous /orders (matches both /v1/orders and /v2/orders) must NOT link; got %+v", l)
+		}
+	}
+}
+
+// TestHTTPPass_OrphanMetric_NoServerDefinition verifies #5680's metric
+// de-conflation: when the group's producer repo has ZERO endpoint
+// DEFINITIONS at all (no http_endpoint_synthesis producer hits anywhere),
+// every unresolved consumer call must be classified "no_server_definition"
+// (there is nothing to join against) rather than the generic
+// "no_endpoint_match" (which implies a producer population exists but
+// nothing shaped like this specific path was found in it). It also pins the
+// orphan_calls <= calls invariant at the http_pass level.
+func TestHTTPPass_OrphanMetric_NoServerDefinition(t *testing.T) {
+	root := fixtureRoot(t)
+	// "backend" repo exists in the group but defines NO http endpoints at all.
+	writeFixture(t, root, fixtureGraph{
+		Repo: "backend",
+		Entities: []map[string]any{
+			{"id": "h1", "name": "SomeHelper", "kind": "Function", "source_file": "app/helpers.py"},
+		},
+		Edges: []map[string]string{},
+	})
+	writeFixture(t, root, fixtureGraph{
+		Repo: "frontend",
+		Entities: []map[string]any{
+			{"id": "fn1", "name": "fetchOrders", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep2", "name": "http:GET:/orders", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/orders",
+					"framework": "fetch", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchOrders",
+				},
+			},
+			{"id": "fn2", "name": "fetchUsers", "kind": "Function", "source_file": "src/api.ts"},
+			{
+				"id": "ep3", "name": "http:GET:/users", "kind": "http_endpoint",
+				"source_file": "src/api.ts",
+				"properties": map[string]any{
+					"verb": "GET", "path": "/users",
+					"framework": "fetch", "pattern_type": "http_endpoint_client_synthesis",
+					"source_caller": "Function:fetchUsers",
+				},
+			},
+		},
+		Edges: []map[string]string{},
+	})
+	home := filepath.Join(root, "ag-home")
+	graphs, err := loadAllGraphs(root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	paths, err := PathsFor(home, "g5680-no-server-def")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := runHTTPPass(graphs, paths, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Invariant: orphan_calls must never exceed the total consumer population
+	// counted at this level.
+	totalConsumers := res.CrossRepoResolved + res.OrphanCalls
+	if res.OrphanCalls > totalConsumers {
+		t.Errorf("#5680: orphan_calls (%d) must not exceed total calls (%d)", res.OrphanCalls, totalConsumers)
+	}
+	if res.OrphanCalls != 2 {
+		t.Errorf("#5680: expected both consumer calls to be orphaned (no producer anywhere), got OrphanCalls=%d", res.OrphanCalls)
+	}
+
+	got := res.CrossRepoResolveMissesByReason["no_server_definition"]
+	if got != 2 {
+		t.Errorf("#5680: expected 2 misses classified no_server_definition (zero producer definitions in group), got %d; full breakdown=%+v", got, res.CrossRepoResolveMissesByReason)
+	}
+	if n := res.CrossRepoResolveMissesByReason["no_endpoint_match"]; n != 0 {
+		t.Errorf("#5680: expected 0 misses classified no_endpoint_match when the group has zero server definitions (should be no_server_definition instead), got %d", n)
+	}
+}
+
+// TestClassifyOrphanReason_NoServerDefinition unit-tests classifyOrphanReason
+// directly: when the producer population passed in is empty, the reason must
+// be "no_server_definition" regardless of path shape (even for a well-formed
+// static path that would otherwise be "no_endpoint_match").
+func TestClassifyOrphanReason_NoServerDefinition(t *testing.T) {
+	if got := classifyOrphanReason("/orders", nil); got != "no_server_definition" {
+		t.Errorf("classifyOrphanReason with zero producers: want no_server_definition, got %q", got)
+	}
+}
+
+// TestClassifyOrphanReason_PrefixVersionMismatch unit-tests the new
+// prefix_version_mismatch bucket: a consumer path that collapses to the same
+// standard-prefix-stripped key as an existing producer (but wasn't linked —
+// e.g. due to the ambiguity guard) must be classified distinctly from a
+// wholly-unrelated miss.
+func TestClassifyOrphanReason_PrefixVersionMismatch(t *testing.T) {
+	producers := []*httpEndpointHit{
+		{canonicalPath: "/v1/orders", side: sideProducer, repo: "backend"},
+		{canonicalPath: "/v2/orders", side: sideProducer, repo: "backend"},
+	}
+	if got := classifyOrphanReason("/orders", producers); got != "prefix_version_mismatch" {
+		t.Errorf("classifyOrphanReason for ambiguous version-prefixed producers: want prefix_version_mismatch, got %q", got)
+	}
+	// Sanity: a path with no structural relationship to any producer still
+	// falls back to the generic bucket.
+	if got := classifyOrphanReason("/completely-unrelated", producers); got != "no_endpoint_match" {
+		t.Errorf("classifyOrphanReason for unrelated path: want no_endpoint_match, got %q", got)
 	}
 }

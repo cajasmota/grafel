@@ -213,6 +213,23 @@ func applyURLPatternNorm(consumerPath, producerPath string) (confidence float64,
 // difference is an implementation detail, not an architectural ambiguity.
 const urlPatternNormConfidence = 0.95
 
+// standardAPIPrefixCandidates is the single, ordered source-of-truth list of
+// well-known API/version mount prefixes shared by every prefix-aware HTTP
+// join strategy in this file. It backs both crossRepoPrefixCandidates (the
+// consumer-side injection retry, #2569) and pathNormPrefixSegments (the
+// path_normalized strategy, #3752).
+//
+// #5688: these two lists drifted — crossRepoPrefixCandidates was missing the
+// bare "/v2" form that pathNormPrefixSegments carried, so a consumer with no
+// prefix (`GET /orders`) could join a versioned producer (`/api/v2/orders`)
+// but NOT a bare-version producer (`/v2/orders`), because the injection retry
+// never tried prepending "/v2". Reconciled to one list so the vocabularies
+// can never diverge again.
+//
+// Order matters: more-specific (longer) prefixes are tried first so
+// `/api/v1` is preferred over `/api` when both would match.
+var standardAPIPrefixCandidates = []string{"/api/v1", "/api/v2", "/api", "/v1", "/v2"}
+
 // crossRepoPrefixCandidates is the ordered list of well-known API mount
 // prefixes tried when a consumer path has no prefix of its own and the
 // standard byPath probing misses (#2569). This mirrors prefixCandidates in
@@ -220,10 +237,7 @@ const urlPatternNormConfidence = 0.95
 // cross-repo linking level so that a frontend consumer emitting a raw path
 // such as `/searchBuildings` can be matched to a backend producer mounted
 // at `/api/v1/searchBuildings`.
-//
-// Order matters: more-specific (longer) prefixes are tried first so
-// `/api/v1` is preferred over `/api` when both would match.
-var crossRepoPrefixCandidates = []string{"/api/v1", "/api/v2", "/api", "/v1"}
+var crossRepoPrefixCandidates = standardAPIPrefixCandidates
 
 // caseNormalizePathSegments produces a canonical form of a path for the
 // case_style_normalized cross-repo matching strategy (#2703, broadened in
@@ -499,11 +513,12 @@ func literalFillsParamSlot(consumerPath, producerPath string) bool {
 // it is the leading segment group.
 //
 // This is intentionally identical in spirit to apiPrefixRe / stripAPIPrefix but
-// kept as an explicit, ordered, configurable list so the path_normalized
-// strategy's prefix vocabulary is self-documenting and tunable independently of
-// the byPath generic-strip alias. Longer (more specific) prefixes come first so
-// `/api/v1` is preferred over `/api`.
-var pathNormPrefixSegments = []string{"/api/v1", "/api/v2", "/api", "/v1", "/v2"}
+// kept as an explicit, ordered list so the path_normalized strategy's prefix
+// vocabulary is self-documenting. #5688: backed by the same
+// standardAPIPrefixCandidates source of truth as crossRepoPrefixCandidates so
+// the two vocabularies cannot drift apart again. Longer (more specific)
+// prefixes come first so `/api/v1` is preferred over `/api`.
+var pathNormPrefixSegments = standardAPIPrefixCandidates
 
 // pathNormalizeForMatch produces the canonical comparison key used by the
 // path_normalized cross-repo strategy (#3752). It is deliberately a SEPARATE,
@@ -620,6 +635,38 @@ func distinctEndpointCount(cands []*httpEndpointHit) int {
 		}
 		key := strings.ToUpper(p.verb) + " " + path
 		seen[key] = true
+	}
+	return len(seen)
+}
+
+// distinctEndpointPathCount reports how many DISTINCT server endpoint PATHS
+// (verb-agnostic) a candidate set represents. This backs the #5688
+// ambiguity guards added to the main cross-repo join loop and its prefix /
+// case-style / url-pattern / literal-fill retry sweeps.
+//
+// Unlike distinctEndpointCount (which keys on (verb, path) for the #3752
+// path_normalized strategy, where candidates are ALREADY pre-filtered to a
+// single exact verb before the guard runs), these #5688 guard sites see
+// candidate sets that legitimately span MULTIPLE verbs for the SAME path
+// (e.g. GET /api/v1/buildings and POST /api/v1/buildings both surviving a
+// prefix-strip or case-normalize alias lookup) — that is not ambiguity, it is
+// exactly the shape pickProducerForConsumer's verb-tiering is designed to
+// resolve (exact-verb match wins; ANY-verb is only a fallback). Keying on
+// verb+path there would misclassify same-path/different-verb candidate sets
+// as ambiguous and wrongly refuse to link them. Counting DISTINCT PATHS ONLY
+// (ignoring verb) is the correct ambiguity axis for those call sites: it is
+// ambiguous only when the candidates disagree about WHICH ROUTE (path) the
+// consumer means, not about which verb it uses on that route.
+func distinctEndpointPathCount(cands []*httpEndpointHit) int {
+	seen := map[string]bool{}
+	for _, p := range cands {
+		path := p.canonicalPath
+		if path == "" {
+			if _, pp, ok := parseHTTPName(p.name); ok {
+				path = pp
+			}
+		}
+		seen[path] = true
 	}
 	return len(seen)
 }
@@ -1465,6 +1512,38 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// deterministic.
 					p, quality := pickProducerForConsumer(c, producersByRepo[pRepo])
 
+					// #5688 — ambiguity guard. producersByRepo[pRepo] can
+					// contain MULTIPLE DISTINCT canonical producer paths when
+					// the verb-wildcarding / mount-prefix wildcarding steps
+					// above pulled in several routes that only look alike
+					// after the generic API/version-prefix strip (e.g. a
+					// bare consumer `/orders` pulling in BOTH `/v1/orders`
+					// AND `/v2/orders`, which both alias to the same
+					// generic-stripped bucket). Picking either one would be
+					// a guess masquerading as a resolved link. Reuse the
+					// same distinctEndpointPathCount ambiguity guard the
+					// path_normalized strategy (#3752) already relies on;
+					// when it fires here, blank out the pick so every later
+					// per-consumer retry stage below (all gated on p == nil)
+					// is skipped too, and the consumer is classified
+					// "prefix_version_mismatch" rather than silently linked.
+					//
+					// EXEMPTION (#1496 GraphQL root): a GraphQL service
+					// intentionally multiplexes many distinct resolver-field
+					// paths (`/graphql/Query/searchProducts`,
+					// `/graphql/Query/order`, ...) under one physical
+					// `/graphql` transport root, and every field producer is
+					// deliberately aliased there so a client that only knows
+					// the root can match the service. That fan-out is NOT the
+					// same-looking-different-endpoints ambiguity this guard
+					// targets — it is one endpoint (one HTTP route) serving
+					// many GraphQL operations — so it must not trip the guard.
+					ambiguousProducers := !strings.EqualFold(c.verb, "GRAPHQL") &&
+						distinctEndpointPathCount(producersByRepo[pRepo]) > 1
+					if ambiguousProducers {
+						p, quality = nil, ""
+					}
+
 					// #2702 — mount-prefix attribution. The wildcarding step
 					// above this loop can pull a producer into producersByRepo
 					// via a discovered url_mount_point prefix; when that
@@ -1492,11 +1571,19 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// path (e.g. `/searchBuildings`) while the backend mounts the
 					// route at `/api/v1/searchBuildings`.
 					//
-					// First match wins; edge is stamped with
+					// #5688: the retry now collects the UNION of candidates
+					// across every standard-prefix candidate BEFORE deciding,
+					// rather than breaking on the first prefix that happens to
+					// match. Breaking early silently preferred one version
+					// over another when the consumer path was genuinely
+					// ambiguous (e.g. both `/v1/orders` and `/v2/orders` exist
+					// and the bare consumer `/orders` could mean either) — the
+					// same class of false-positive distinctEndpointPathCount
+					// already guards against elsewhere. Edge is stamped with
 					// Properties["prefix_normalized"] (e.g. "api/v1") so the
 					// resolution is traceable in the graph.
 					var prefixNormalized string
-					if p == nil {
+					if p == nil && !ambiguousProducers {
 						consumerPath := c.canonicalPath
 						if consumerPath == "" {
 							if _, parsed, ok := parseHTTPName(c.name); ok {
@@ -1507,20 +1594,33 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						// Only attempt when the consumer path has no API/version
 						// prefix itself — a double-prefixed path would be invalid.
 						if _, hasPrefix := stripAPIPrefix(normConsumerPath); !hasPrefix && normConsumerPath != "" {
-							for _, pfx := range crossRepoPrefixCandidates {
+							allPfxCandidates := make([]*httpEndpointHit, 0)
+							pfxByStampedID := map[string]string{}
+							for _, pfx := range standardAPIPrefixCandidates {
 								prefixedKey := pfx + normConsumerPath
-								pfxCandidates := make([]*httpEndpointHit, 0)
 								for _, h := range byPath[prefixedKey] {
 									if h.repo == pRepo && h.side == sideProducer {
-										pfxCandidates = appendUnique(pfxCandidates, h)
+										before := len(allPfxCandidates)
+										allPfxCandidates = appendUnique(allPfxCandidates, h)
+										if len(allPfxCandidates) > before {
+											pfxByStampedID[h.stampedID] = pfx
+										}
 									}
 								}
-								if len(pfxCandidates) > 0 {
-									sort.SliceStable(pfxCandidates, func(i, j int) bool { return less(pfxCandidates[i], pfxCandidates[j]) })
-									p, quality = pickProducerForConsumer(c, pfxCandidates)
+							}
+							if len(allPfxCandidates) > 0 {
+								if distinctEndpointPathCount(allPfxCandidates) > 1 {
+									// Ambiguous: multiple distinct producer routes
+									// (typically differing only by version) all
+									// match the bare consumer path. Refuse rather
+									// than guess, and block every later retry
+									// stage below too.
+									ambiguousProducers = true
+								} else {
+									sort.SliceStable(allPfxCandidates, func(i, j int) bool { return less(allPfxCandidates[i], allPfxCandidates[j]) })
+									p, quality = pickProducerForConsumer(c, allPfxCandidates)
 									if p != nil {
-										prefixNormalized = strings.TrimPrefix(pfx, "/")
-										break
+										prefixNormalized = strings.TrimPrefix(pfxByStampedID[p.stampedID], "/")
 									}
 								}
 							}
@@ -1542,7 +1642,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// traceable in the graph, mirroring the prefix_normalized
 					// annotation used by the older retry.
 					appliedMountPrefix := preselectedMountPrefix
-					if p == nil {
+					if p == nil && !ambiguousProducers {
 						consumerPath := c.canonicalPath
 						if consumerPath == "" {
 							if _, parsed, ok := parseHTTPName(c.name); ok {
@@ -1603,7 +1703,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// First match wins; edge is stamped with
 					// Properties["resolve_strategy"] = "case_style_normalized".
 					var caseNormalized bool
-					if p == nil {
+					if p == nil && !ambiguousProducers {
 						consumerPath := c.canonicalPath
 						if consumerPath == "" {
 							if _, parsed, ok := parseHTTPName(c.name); ok {
@@ -1664,7 +1764,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// is set to "url_pattern" so the resolution is traceable.
 					var urlPatternNormAnnotation string
 					var urlPatternNormConfidenceVal float64
-					if p == nil {
+					if p == nil && !ambiguousProducers {
 						consumerPath := c.canonicalPath
 						if consumerPath == "" {
 							if _, parsed, ok := parseHTTPName(c.name); ok {
@@ -1707,7 +1807,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 					// `/recents/buildings` producer would have matched in an
 					// earlier stage and left p non-nil here.
 					var literalParamFilled bool
-					if p == nil {
+					if p == nil && !ambiguousProducers {
 						consumerPath := c.canonicalPath
 						if consumerPath == "" {
 							if _, parsed, ok := parseHTTPName(c.name); ok {
@@ -1991,6 +2091,14 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				sort.Strings(pRepoNamesCN)
 				allConsumers[cKey] = true
 				for _, pRepo := range pRepoNamesCN {
+					// #5688 — same ambiguity guard as the main loop: the
+					// prefix-stripped byCaseNorm alias can pull in MULTIPLE
+					// distinct producer routes (e.g. /v1/orders and
+					// /v2/orders both alias to /orders) for a bare consumer.
+					// Refuse rather than guess.
+					if distinctEndpointPathCount(producersByRepoCN[pRepo]) > 1 {
+						continue
+					}
 					p, quality := pickProducerForConsumer(c, producersByRepoCN[pRepo])
 					if p == nil {
 						continue
@@ -2103,6 +2211,13 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				sort.Strings(pRepoNames2)
 				allConsumers[cKey] = true
 				for _, pRepo := range pRepoNames2 {
+					// #5688 — ambiguity guard, mirroring the main loop and the
+					// case_style_normalized sweep: refuse rather than guess
+					// when multiple distinct producer routes collapse to the
+					// same normalized-pattern key.
+					if distinctEndpointPathCount(producersByRepo2[pRepo]) > 1 {
+						continue
+					}
 					p, _ := pickProducerForConsumer(c, producersByRepo2[pRepo])
 					if p == nil {
 						continue
@@ -2230,6 +2345,13 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 				sort.Strings(pRepoNamesLF)
 				allConsumers[cKey] = true
 				for _, pRepo := range pRepoNamesLF {
+					// #5688 — ambiguity guard, mirroring the main loop and the
+					// case_style_normalized sweep: refuse rather than guess
+					// when multiple distinct producer routes are eligible
+					// literal-fill targets for the same consumer.
+					if distinctEndpointPathCount(producersByRepoLF[pRepo]) > 1 {
+						continue
+					}
 					p, quality := pickProducerForConsumer(c, producersByRepoLF[pRepo])
 					if p == nil {
 						continue
@@ -2773,7 +2895,7 @@ func runHTTPPass(graphs []repoGraph, paths Paths, rejects map[string]bool) (Pass
 						consumerPath = p
 					}
 				}
-				missesByReason[classifyOrphanReason(consumerPath)]++
+				missesByReason[classifyOrphanReason(consumerPath, allProducers)]++
 			}
 		}
 	}
@@ -2985,23 +3107,49 @@ func pickProducerForConsumer(c *httpEndpointHit, candidates []*httpEndpointHit) 
 var dynamicBaseURLRe = regexp.MustCompile(`^/\{[^}]*\}(?:/|$)`)
 
 // classifyOrphanReason returns the stable miss-reason taxonomy key for a
-// consumer path that the HTTP pass could not resolve. Two buckets are
-// recognised today:
+// consumer path that the HTTP pass could not resolve. Four buckets are
+// recognised (expanded in #5680 from the original two — see below):
 //
-//   - "dynamic_baseurl"  — first segment is a `{template}` expression
+//   - "dynamic_baseurl"        — first segment is a `{template}` expression
 //     (e.g. `/{apiUrl}/things`, `/{base_url.rstrip(`)
 //     or the path is otherwise malformed by a partial
 //     string-template extraction.
-//   - "no_endpoint_match" — the path looks well-formed but no producer in
-//     any other repo serves it. The dominant case for
-//     acme is calls to external services (third-
-//     party APIs, Cognito JWKS, NYC OpenData, etc.).
+//   - "no_server_definition"   — the group produced ZERO producer-side HTTP
+//     endpoint hits at all (allProducers is empty). There
+//     is nothing anywhere to join against, so the miss says
+//     nothing about this specific path's shape — it is an
+//     indexing/coverage gap (the server repo hasn't been
+//     extracted, or genuinely defines no HTTP surface), not
+//     a matching failure. Checked FIRST because it dominates:
+//     when it applies, every other bucket would be equally
+//     true and misleadingly specific.
+//   - "prefix_version_mismatch" — a producer population exists and at least
+//     one producer's standard-prefix-stripped path equals
+//     this consumer's own standard-prefix-stripped path
+//     (they are the SAME logical route once version/API
+//     prefixes are normalized away), yet the pair did not
+//     resolve — almost always because #5688's ambiguity
+//     guard refused a genuinely ambiguous version fan-out
+//     (e.g. both `/v1/orders` and `/v2/orders` exist for a
+//     bare `/orders` consumer). Distinct from a real
+//     structural miss: an operator can act on this by
+//     pinning a version or consolidating routes.
+//   - "no_endpoint_match"      — the path looks well-formed, a producer
+//     population exists, but no producer anywhere is even
+//     structurally related to it. The dominant case for
+//     acme is calls to external services (third-party APIs,
+//     Cognito JWKS, NYC OpenData, etc.).
 //
-// The classification is deliberately conservative: anything ambiguous falls
-// into "no_endpoint_match" so the bucket reflects what an operator can act
-// on (add the producer, fix the prefix) versus what's structurally outside
-// the group's resolution domain.
-func classifyOrphanReason(consumerPath string) string {
+// The classification is deliberately conservative: anything not positively
+// identified as one of the first three falls into "no_endpoint_match" so the
+// bucket reflects what an operator can act on (add the producer, fix the
+// prefix) versus what's structurally outside the group's resolution domain.
+func classifyOrphanReason(consumerPath string, allProducers []*httpEndpointHit) string {
+	// #5680: a group with zero producer-side hits can never resolve ANY
+	// consumer call — the miss is about coverage, not this path's shape.
+	if len(allProducers) == 0 {
+		return "no_server_definition"
+	}
 	if consumerPath == "" {
 		return "no_endpoint_match"
 	}
@@ -3013,6 +3161,33 @@ func classifyOrphanReason(consumerPath string) string {
 	}
 	if dynamicBaseURLRe.MatchString(consumerPath) {
 		return "dynamic_baseurl"
+	}
+	// #5680: prefix/version-related near-miss. If stripping the standard
+	// API/version prefix from the consumer path yields the SAME key as
+	// stripping it from at least one producer path, this is structurally the
+	// same route under a different version/mount — the residual miss (if any)
+	// is a version-fan-out ambiguity, not a genuine "no such route" case.
+	consumerStripped := normalizePathForIndex(consumerPath)
+	if stripped, ok := stripAPIPrefix(consumerStripped); ok {
+		consumerStripped = stripped
+	}
+	for _, p := range allProducers {
+		producerPath := p.canonicalPath
+		if producerPath == "" {
+			if _, pp, ok := parseHTTPName(p.name); ok {
+				producerPath = pp
+			}
+		}
+		if producerPath == "" {
+			continue
+		}
+		producerStripped := normalizePathForIndex(producerPath)
+		if stripped, ok := stripAPIPrefix(producerStripped); ok {
+			producerStripped = stripped
+		}
+		if consumerStripped != "" && consumerStripped == producerStripped {
+			return "prefix_version_mismatch"
+		}
 	}
 	return "no_endpoint_match"
 }

@@ -1562,3 +1562,85 @@ func TestEndpointResolution_OrphanOnlyPopulatesLinkedTargets(t *testing.T) {
 		t.Error("orphanOnly=true: linkedTargets must contain the link target")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// #5680 — orphan-metric de-conflation / mis-scaling fix
+// ---------------------------------------------------------------------------
+
+// buildNoServerDefDoc returns a document with ZERO http_endpoint* definitions
+// but several plain Function entities that FETCH unresolved targets. Before
+// #5680, `orphan_calls` (derived from unique FETCHES FromIDs, ANY entity
+// kind) and `calls` (derived strictly from http_endpoint_call /
+// client-synthesis KIND entities) were computed over different populations:
+// a caller can participate in a FETCHES edge without itself being counted as
+// a "call" entity. This fixture reproduces exactly that: 3 distinct Function
+// callers fetch unresolved targets, so orphan_calls=3 while calls=0 —
+// orphan_calls > calls.
+func buildNoServerDefDoc() *graph.Document {
+	return &graph.Document{
+		Entities: []graph.Entity{
+			{ID: "fn_a", Name: "callA", Kind: "Function", SourceFile: "a.go", StartLine: 1},
+			{ID: "fn_b", Name: "callB", Kind: "Function", SourceFile: "b.go", StartLine: 1},
+			{ID: "fn_c", Name: "callC", Kind: "Function", SourceFile: "c.go", StartLine: 1},
+		},
+		Relationships: []graph.Relationship{
+			{FromID: "fn_a", ToID: "orphan_1", Kind: "FETCHES"},
+			{FromID: "fn_b", ToID: "orphan_2", Kind: "FETCHES"},
+			{FromID: "fn_c", ToID: "orphan_3", Kind: "FETCHES"},
+		},
+	}
+}
+
+// TestEndpointStats_OrphanCallsNeverExceedsCallSites pins the #5680 fix: the
+// response must expose an honest, SAME-population denominator for the
+// orphan rate (call_sites = orphan_calls + cross_repo_resolved) rather than
+// implying orphan_calls is a fraction of the differently-scoped `calls`
+// entity count. orphan_calls must never exceed call_sites.
+func TestEndpointStats_OrphanCallsNeverExceedsCallSites(t *testing.T) {
+	srv := newTestServer(t, buildNoServerDefDoc())
+	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
+	totals := res["totals"].(map[string]any)
+
+	orphans := getFloat(t, totals, "orphan_calls")
+	if orphans != 3 {
+		t.Fatalf("orphan_calls: want 3, got %v", orphans)
+	}
+	callSites := getFloat(t, totals, "call_sites")
+	if callSites != 3 {
+		t.Errorf("call_sites: want 3 (orphan_calls + cross_repo_resolved), got %v", callSites)
+	}
+	if orphans > callSites {
+		t.Errorf("#5680: orphan_calls (%v) must not exceed call_sites (%v)", orphans, callSites)
+	}
+
+	// This group produced ZERO endpoint definitions at all — the metric must
+	// say so honestly rather than silently reporting a ~100% orphan rate
+	// that looks like a matching failure.
+	if defs := getFloat(t, totals, "definitions"); defs != 0 {
+		t.Fatalf("sanity: definitions want 0, got %v", defs)
+	}
+	noServerDef, ok := totals["no_server_definitions"].(bool)
+	if !ok || !noServerDef {
+		t.Errorf("#5680: expected totals.no_server_definitions=true when definitions=0, got %v", totals["no_server_definitions"])
+	}
+}
+
+// TestEndpointStats_CallSitesConsistentWithNormalGroup verifies the new
+// call_sites/orphan_rate fields behave sanely on the existing mixed fixture
+// (buildEndpointDoc) too, and that no_server_definitions is false when
+// definitions are present.
+func TestEndpointStats_CallSitesConsistentWithNormalGroup(t *testing.T) {
+	srv := newEndpointServer(t)
+	res := callEndpointTool(t, srv.handleEndpointStats, map[string]any{"group": "test"})
+	totals := res["totals"].(map[string]any)
+
+	orphans := getFloat(t, totals, "orphan_calls")
+	cross := getFloat(t, totals, "cross_repo_resolved")
+	callSites := getFloat(t, totals, "call_sites")
+	if callSites != orphans+cross {
+		t.Errorf("call_sites: want orphan_calls+cross_repo_resolved=%v, got %v", orphans+cross, callSites)
+	}
+	if noServerDef, ok := totals["no_server_definitions"].(bool); !ok || noServerDef {
+		t.Errorf("expected no_server_definitions=false when definitions>0, got %v", totals["no_server_definitions"])
+	}
+}
