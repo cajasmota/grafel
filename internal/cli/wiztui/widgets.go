@@ -317,10 +317,15 @@ func newInputModel(title, description, value string, optional bool) inputModel {
 	ti.Prompt = g.Cursor
 	ti.PromptStyle = cursorStyle
 	ti.Width = 50
+	// Focus immediately on the constructed value so the stored inputModel
+	// (copied into Model.nameInput / Model.docsInput by the caller) is
+	// already focused. A method that focused m.ti via a value receiver would
+	// only mutate a throwaway copy — textinput.Model.Focus() sets its focus
+	// flag directly on the receiver rather than through the returned Cmd, so
+	// that mutation would never reach the caller's copy (the bug this fixes).
+	ti.Focus()
 	return inputModel{title: title, description: description, ti: ti, optional: optional}
 }
-
-func (m inputModel) focusCmd() tea.Cmd { return m.ti.Focus() }
 
 func (m inputModel) value() string { return m.ti.Value() }
 

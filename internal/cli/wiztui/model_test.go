@@ -35,6 +35,8 @@ func key(s string) tea.KeyMsg {
 		return tea.KeyMsg{Type: tea.KeyCtrlC}
 	case "esc":
 		return tea.KeyMsg{Type: tea.KeyEsc}
+	case "backspace":
+		return tea.KeyMsg{Type: tea.KeyBackspace}
 	default:
 		return tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune(s)}
 	}
@@ -262,6 +264,56 @@ func TestMCPScreenSkippedWhenSingleTool(t *testing.T) {
 	}
 	if m.res.MCPTools == nil || len(*m.res.MCPTools) != 1 || (*m.res.MCPTools)[0] != "claude" {
 		t.Errorf("MCPTools = %v, want [claude] auto-selected", m.res.MCPTools)
+	}
+}
+
+// TestNameInputAcceptsKeystrokes: the Name screen's text input must actually
+// be focused so runes and backspace edit the field (regression for the
+// value-receiver focusCmd bug where m.ti.Focus() mutated a throwaway copy of
+// the stored inputModel, leaving m.focus permanently false and every
+// tea.KeyMsg silently dropped by textinput.Model.Update).
+func TestNameInputAcceptsKeystrokes(t *testing.T) {
+	d := fakeDriver{suggested: ActionGroup, cands: []Candidate{
+		{Label: "/a", Value: "/a", Selected: true},
+		{Label: "/b", Value: "/b", Selected: true},
+	}}
+	m := newTestModel(d, nilIndex)
+	m = m.update(key("enter")) // action → select (both pre-selected)
+	m = m.update(key("enter")) // confirm selection → name
+	if m.scr != scrName {
+		t.Fatalf("scr = %v, want scrName", m.scr)
+	}
+	before := m.nameInput.value()
+	m = m.update(key("x"))
+	if m.nameInput.value() != before+"x" {
+		t.Fatalf("nameInput.value() = %q after typing 'x', want %q (input is not focused/editable)", m.nameInput.value(), before+"x")
+	}
+	m = m.update(key("backspace"))
+	if m.nameInput.value() != before {
+		t.Fatalf("nameInput.value() = %q after backspace, want %q", m.nameInput.value(), before)
+	}
+}
+
+// TestDocsInputAcceptsKeystrokes: same regression, for the Docs screen input.
+func TestDocsInputAcceptsKeystrokes(t *testing.T) {
+	d := fakeDriver{suggested: ActionGroup, cands: []Candidate{
+		{Label: "/a", Value: "/a", Selected: true},
+		{Label: "/b", Value: "/b", Selected: true},
+	}}
+	m := newTestModel(d, nilIndex)
+	m = m.update(key("enter")) // action → select
+	m = m.update(key("enter")) // select → name
+	m = m.update(key("enter")) // accept default name → docs
+	if m.scr != scrDocs {
+		t.Fatalf("scr = %v, want scrDocs", m.scr)
+	}
+	m = m.update(key("y"))
+	if m.docsInput.value() != "y" {
+		t.Fatalf("docsInput.value() = %q after typing 'y', want %q (input is not focused/editable)", m.docsInput.value(), "y")
+	}
+	m = m.update(key("backspace"))
+	if m.docsInput.value() != "" {
+		t.Fatalf("docsInput.value() = %q after backspace, want empty", m.docsInput.value())
 	}
 }
 

@@ -3,6 +3,7 @@ package wiztui
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 
 	prog "github.com/cajasmota/grafel/internal/progress"
@@ -408,7 +409,8 @@ func (m Model) enterName() (tea.Model, tea.Cmd) {
 	m.nameInput = newInputModel("Group name", desc, def, false)
 	m.scr = scrName
 	m.step = StepName
-	return m, m.nameInput.focusCmd()
+	// newInputModel already focuses the input; kick off the cursor blink.
+	return m, textinput.Blink
 }
 
 // repoNames renders a short, comma-joined list of repo basenames for the Name
@@ -445,7 +447,8 @@ func (m Model) updateName(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.docsInput = newInputModel("Path to shared group docs",
 			"A folder of shared markdown docs surfaced in the graph. Optional — press enter to skip.", "", true)
 		m.scr = scrDocs
-		return m, m.docsInput.focusCmd()
+		// newInputModel already focuses the input; kick off the cursor blink.
+		return m, textinput.Blink
 	}
 	return m, cmd
 }
@@ -497,7 +500,8 @@ func (m Model) updateMCP(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			"A folder of shared markdown docs surfaced in the graph. Optional — press enter to skip.", m.res.GroupDocs, true)
 		m.scr = scrDocs
 		m.step = StepName
-		return m, m.docsInput.focusCmd()
+		// newInputModel already focuses the input; kick off the cursor blink.
+		return m, textinput.Blink
 	}
 	var cmd tea.Cmd
 	m.mcpList, cmd = m.mcpList.Update(msg)
