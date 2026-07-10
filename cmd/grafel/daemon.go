@@ -642,10 +642,12 @@ func runDaemon(argv []string) error {
 		// Issue #2406: capture extractorCfg at construction time so the closure
 		// owns an immutable pointer — no package-level singleton needed.
 		SchedulerIncremental: func(ctx context.Context, repoPath string, ref string) sched.IncrementalResult {
-			stateDir := daemon.StateDirForRepoRef(repoPath, ref)
-			if stateDir == "" {
-				stateDir = daemon.StateDirForRepo(repoPath)
-			}
+			// Issue #5719: ref can be "" (unknown at enqueue time). Resolve it
+			// to HEAD via ResolveIncrementalStateDir instead of encoding the
+			// empty ref as the "refs/_unknown/" sentinel — otherwise the
+			// incremental pass can never find the real graph and falls back
+			// forever.
+			stateDir := daemon.ResolveIncrementalStateDir(repoPath, ref)
 			// Use the caller-supplied ctx (the scheduler's shutdownCtx) so that
 			// daemon SIGTERM cancels any in-flight incremental subprocess —
 			// matching the fix applied to runIndex in issue #2176/#2491.

@@ -407,6 +407,35 @@ func StateDirForRepo(repoPath string) string {
 	return StateDirForRepoRef(repoPath, meta.Ref)
 }
 
+// ResolveIncrementalStateDir resolves the per-ref state directory to use for
+// an incremental-extract pass, given a repoPath and a possibly-EMPTY ref.
+//
+// Issue #5719: SchedulerIncremental is invoked by the scheduler with ref=""
+// whenever the ref was unknown at enqueue time (a legitimate, expected value
+// — see sched.Scheduler). Naively calling StateDirForRepoRef(repoPath, "")
+// in that case resolves to the "refs/_unknown/" sentinel directory instead
+// of the repo's real current-HEAD state directory (typically "refs/main/"),
+// so the incremental pass can never find the existing graph and falls back
+// forever ("incremental_fallback" dashboard spinner).
+//
+// This mirrors the resolution already used by StateDirForRepo and by the
+// dashboard's own loader (GraphCache.loadGroupForRef): when ref is empty,
+// resolve it via gitmeta.Capture (StateDirForRepo) instead of encoding the
+// empty string as "_unknown". A known, non-empty ref is routed through
+// StateDirForRepoRef unchanged.
+func ResolveIncrementalStateDir(repoPath, ref string) string {
+	var stateDir string
+	if ref == "" {
+		stateDir = StateDirForRepo(repoPath)
+	} else {
+		stateDir = StateDirForRepoRef(repoPath, ref)
+	}
+	if stateDir == "" {
+		stateDir = StateDirForRepo(repoPath)
+	}
+	return stateDir
+}
+
 // LegacyInRepoStateDir returns the historical co-located state directory
 // `<repo>/.grafel/`. Used only by the migration path to find and
 // relocate pre-#1626 artifacts. New code MUST use StateDirForRepo.
