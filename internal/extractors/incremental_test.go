@@ -939,13 +939,14 @@ func TestIncremental_HeadUnchanged_CleanTree_StillNoOps(t *testing.T) {
 // success over an empty graph.
 // ─────────────────────────────────────────────────────────────────────────────
 
-// TestIncremental_EmptyGraphNonEmptyTree_ForcesFullParse is the RED test for
-// the follow-up. The prior graph has 0 entities and the manifest is fully in
-// sync (GitCommit == HEAD, every file stamped) so nothing "changed", yet the
+// TestIncremental_AbsentGraphNonEmptyTree_ForcesFullParse is the RED test for
+// the follow-up. It reproduces the real store-recreation case: the ref pin
+// survives but the NEW store has NO graph.fb, while the manifest is fully in
+// sync (GitCommit == HEAD, every file stamped) so nothing "changed" and the
 // working tree contains indexable source. TryIncremental must NOT silently
 // no-op — it must force a full reindex (Done:false) rather than reporting
-// success over the empty graph.
-func TestIncremental_EmptyGraphNonEmptyTree_ForcesFullParse(t *testing.T) {
+// success over the absent graph.
+func TestIncremental_AbsentGraphNonEmptyTree_ForcesFullParse(t *testing.T) {
 	repo := t.TempDir()
 	stateDir := t.TempDir()
 
@@ -953,30 +954,32 @@ func TestIncremental_EmptyGraphNonEmptyTree_ForcesFullParse(t *testing.T) {
 	writeFile(t, repo, "core.go", "package core\n\nfunc Alpha() {}\n")
 	gitCommitAll(t, repo, "commit A")
 
-	// Simulate the relocated/recreated store: a materialized-but-EMPTY graph
-	// (0 entities) pinned for this ref, plus a manifest that is fully in sync
-	// with the working tree (so the change-set is empty).
-	buildMinimalGraph(t, stateDir, nil, nil) // 0 entities
+	// Simulate the relocated/recreated store: the manifest is fully in sync
+	// with the working tree (so the change-set is empty), but there is NO
+	// materialized graph.fb in the fresh store.
 	seedManifest(t, repo, stateDir)
+	if _, err := os.Stat(filepath.Join(stateDir, "graph.fb")); !os.IsNotExist(err) {
+		t.Fatalf("sanity: expected no graph.fb in fresh store, stat err=%v", err)
+	}
 
 	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
 
 	if res.Done && res.ChangedFiles == 0 {
-		t.Fatalf("#5710 empty-graph regression: TryIncremental silently no-op'd over a 0-entity graph " +
-			"with a non-empty indexable working tree: Done=true ChangedFiles=0 (should force full reindex)")
+		t.Fatalf("#5710 absent-graph regression: TryIncremental silently no-op'd with an absent graph.fb " +
+			"and a non-empty indexable working tree: Done=true ChangedFiles=0 (should force full reindex)")
 	}
 	if res.Done {
-		t.Fatalf("#5710 empty-graph: expected a forced full-reindex fallback, got Done=true ChangedFiles=%d", res.ChangedFiles)
+		t.Fatalf("#5710 absent-graph: expected a forced full-reindex fallback, got Done=true ChangedFiles=%d", res.ChangedFiles)
 	}
 	if res.FallbackReason == "" {
-		t.Errorf("expected a non-empty FallbackReason on the empty-graph forced fallback")
+		t.Errorf("expected a non-empty FallbackReason on the absent-graph forced fallback")
 	}
 	t.Logf("forced-fallback reason: %s", res.FallbackReason)
 }
 
 // TestIncremental_EmptyGraphEmptyTree_StillNoOps is the negative guard: a
-// genuinely-empty repo (no indexable files in the working tree) with an empty
-// graph must still no-op cleanly. The empty-graph guard must not force a
+// genuinely-empty repo (no indexable files in the working tree) with a present
+// empty graph must still no-op cleanly. The absent-graph guard must not force a
 // pointless full parse of an actually-empty tree.
 func TestIncremental_EmptyGraphEmptyTree_StillNoOps(t *testing.T) {
 	repo := t.TempDir()
@@ -986,7 +989,7 @@ func TestIncremental_EmptyGraphEmptyTree_StillNoOps(t *testing.T) {
 	// No source files — an empty tree. Commit --allow-empty so HEAD exists.
 	runGit(t, repo, "commit", "-q", "--allow-empty", "-m", "empty")
 
-	buildMinimalGraph(t, stateDir, nil, nil) // 0 entities — legitimately empty
+	buildMinimalGraph(t, stateDir, nil, nil) // present, 0 entities — legitimately empty
 	seedManifest(t, repo, stateDir)          // stamps nothing (no files)
 
 	res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
@@ -995,6 +998,40 @@ func TestIncremental_EmptyGraphEmptyTree_StillNoOps(t *testing.T) {
 	}
 	if res.ChangedFiles != 0 {
 		t.Errorf("ChangedFiles should be 0 on a genuinely-empty repo, got %d", res.ChangedFiles)
+	}
+}
+
+// TestIncremental_CodelessRepo_PresentZeroEntityGraph_NoLoop is the reviewer's
+// loop-regression guard. A repo whose walked files are all non-extractable
+// (e.g. only notes.txt / LICENSE — no registered extractor) legitimately
+// produces a PRESENT graph.fb with 0 entities. The absent-graph guard must
+// treat this as a clean no-op, NOT force a reindex — otherwise the hot
+// reactive path loops a full reindex forever (~9min each cycle). Run two
+// cycles to prove it converges (does not loop).
+func TestIncremental_CodelessRepo_PresentZeroEntityGraph_NoLoop(t *testing.T) {
+	repo := t.TempDir()
+	stateDir := t.TempDir()
+
+	initGitRepo(t, repo)
+	// Non-extractable content only: a plain-text note and a LICENSE. walk.WalkRepo
+	// surfaces these, but no registered extractor handles them → 0 entities.
+	writeFile(t, repo, "notes.txt", "just some notes, not code\n")
+	writeFile(t, repo, "LICENSE", "MIT License\n\nCopyright ...\n")
+	gitCommitAll(t, repo, "docs only")
+
+	// A full index of this repo produces a present-but-0-entity graph.fb.
+	buildMinimalGraph(t, stateDir, nil, nil) // present, 0 entities
+	seedManifest(t, repo, stateDir)
+
+	for cycle := 1; cycle <= 2; cycle++ {
+		res := extractors.TryIncremental(context.Background(), repo, stateDir, nil, nil)
+		if !res.Done {
+			t.Fatalf("cycle %d: codeless repo must no-op (present 0-entity graph), got fallback reason=%q — "+
+				"the absent-graph guard is looping on a present-but-empty graph", cycle, res.FallbackReason)
+		}
+		if res.ChangedFiles != 0 {
+			t.Errorf("cycle %d: ChangedFiles should be 0 for a codeless repo, got %d", cycle, res.ChangedFiles)
+		}
 	}
 }
 

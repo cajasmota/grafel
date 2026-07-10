@@ -299,34 +299,41 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			totalChanged, limit))
 	}
 	if totalChanged == 0 {
-		// --- #5710 (follow-up): empty-graph guard ---
-		// A no-op is only SAFE when the graph the ref pin resolves to is a
-		// materialized, non-empty graph. After a store relocation/recreation
-		// (repo moved → new path-keyed store, store hash changed) the ref→graph
-		// pin can survive while the backing graph in the NEW store is empty
-		// (0 entities / no graph.fb). HEAD still equals manifest.GitCommit, so
-		// the HEAD-advance guard above sees no advance — and the pre-fix code
-		// happily reported success (Done:true) over that empty graph while the
-		// working tree was full of indexable source. That is silent success
-		// over an empty graph: `grafel index --async` "completes" fast + cheap
-		// and leaves 0 entities.
+		// --- #5710 (follow-up): absent-graph guard ---
+		// A no-op is only SAFE when the ref pin resolves to a MATERIALIZED
+		// graph.fb. After a store relocation/recreation (repo moved → new
+		// path-keyed store, store hash changed) the ref→graph pin can survive
+		// while the NEW store has NO graph.fb at all. HEAD still equals
+		// manifest.GitCommit, so the HEAD-advance guard above sees no advance —
+		// and the pre-fix code reported success (Done:true) over that absent
+		// graph while the working tree was full of source. That is silent
+		// success over an empty graph: `grafel index --async` "completes" fast
+		// + cheap and leaves 0 entities.
+		//
+		// The guard fires on ABSENCE only (graph.fb missing), NOT on a
+		// present-but-0-entity graph. This is deliberate and loop-proof:
+		//   - The real reported case starts with an absent graph.fb in the
+		//     fresh store, so !ok still catches it and forces the reindex.
+		//   - A forced reindex WRITES a graph.fb (present, even if 0 entities),
+		//     so the next cycle sees ok=true → clean no-op. No infinite loop.
+		//   - A genuinely codeless repo whose walked files (e.g. .txt / LICENSE
+		//     / extensionless — no registered extractor) yield 0 entities keeps
+		//     a present-0-entity graph and correctly no-ops. Firing on
+		//     0-entities would re-index it every cycle forever (~9min each) on
+		//     the hot reactive path — the loop the reviewer reproduced.
 		//
 		// PersistedStatsFromDir reads the graph.fb header cheaply (no entity
-		// materialization) and reports ok=false when graph.fb is absent. Treat
-		// "no materialized graph" OR "0 entities" as empty. When the graph is
-		// empty but the walked working-tree set is NON-empty (indexable files
-		// exist), do NOT no-op and do NOT advance the manifest (which would
-		// self-conceal the emptiness on every later poll) — force a full
-		// reindex via the same fallback signal the too-many-changed path emits.
-		ps, ok := graph.PersistedStatsFromDir(stateDir)
-		graphEmpty := !ok || ps.Entities == 0
-		if graphEmpty && len(allFiles) > 0 {
-			logger.Printf("incremental: empty-graph-nonempty-tree files=%d entities=0 (materialized=%t) → force full reindex",
-				len(allFiles), ok)
-			return fallback(t0, fmt.Sprintf("empty-graph-nonempty-tree files=%d", len(allFiles)))
+		// materialization) and reports ok=false only when graph.fb is absent
+		// or unreadable. When absent AND the walked working-tree set is
+		// non-empty, do NOT no-op and do NOT advance the manifest (which would
+		// self-conceal the absence on every later poll) — force a full reindex
+		// via the same fallback signal the too-many-changed path emits.
+		if _, ok := graph.PersistedStatsFromDir(stateDir); !ok && len(allFiles) > 0 {
+			logger.Printf("incremental: absent-graph-nonempty-tree files=%d → force full reindex", len(allFiles))
+			return fallback(t0, fmt.Sprintf("absent-graph-nonempty-tree files=%d", len(allFiles)))
 		}
 		// Nothing to do — manifest is already up-to-date and the graph is a
-		// genuine reflection of the (possibly empty) tree.
+		// genuine reflection of the (possibly empty / codeless) tree.
 		diff.UpdateManifest(absRepo, allFiles, manifest)
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		return Result{Done: true, Duration: time.Since(t0)}
