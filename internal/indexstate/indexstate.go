@@ -152,7 +152,27 @@ type RepoState struct {
 var (
 	repoStatesMu sync.RWMutex
 	repoStates   []RepoState
+
+	// onChangeMu guards onChange (#5729-W1 status plane). A single hook, not
+	// a list — today's sole consumer is the daemon's status-file writer,
+	// registered once at startup.
+	onChangeMu sync.Mutex
+	onChange   func()
 )
+
+// SetOnRepoStatesChanged registers fn to be called (in its own goroutine,
+// never blocking the caller of SetRepoStates) every time the per-repo
+// index-state snapshot changes. Used by the daemon to trigger an
+// on-state-change refresh of the poll-safe status file (internal/statusfile)
+// in addition to its periodic heartbeat, so a consumer sees "indexing
+// started/completed" promptly rather than only at the next heartbeat tick
+// (#5725/#5729-W1). Pass nil to unregister. Safe to call from any goroutine;
+// intended to be called once at daemon startup, before the scheduler runs.
+func SetOnRepoStatesChanged(fn func()) {
+	onChangeMu.Lock()
+	onChange = fn
+	onChangeMu.Unlock()
+}
 
 // SetRepoStates replaces the published per-repo index-state snapshot. The
 // scheduler calls this under its own lock immediately after publishing the
@@ -165,6 +185,16 @@ func SetRepoStates(states []RepoState) {
 	repoStatesMu.Lock()
 	repoStates = cp
 	repoStatesMu.Unlock()
+
+	onChangeMu.Lock()
+	fn := onChange
+	onChangeMu.Unlock()
+	if fn != nil {
+		// Never let a slow/blocking hook (e.g. one that stats graph.fb files)
+		// stall the scheduler's own lock-protected state transition — this
+		// call site runs with the scheduler's mu held by the caller.
+		go fn()
+	}
 }
 
 // RepoStates returns a copy of the current per-repo index-state snapshot,

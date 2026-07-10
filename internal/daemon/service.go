@@ -388,6 +388,11 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 				LastPeakMB:  r.LastPeakMB,
 				PredictedMB: r.PredictedMB,
 			}
+			// #5727/#5729-W1: surface the exact indexed commit + freshness.
+			ci := IndexedCommitForRepo(r.Path)
+			ir.IndexedCommit = ci.Commit
+			ir.IndexedCommitShort = ci.CommitShort
+			ir.AtHead = ci.AtHead
 			if !r.LastIndex.IsZero() {
 				ir.LastIndex = r.LastIndex.UTC().Format(time.RFC3339)
 			}

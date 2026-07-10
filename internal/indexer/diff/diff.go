@@ -70,10 +70,17 @@ type FileEntry struct {
 
 // Manifest is the on-disk representation of the per-repo file index.
 type Manifest struct {
-	Version   int                  `json:"version"`
-	IndexedAt time.Time            `json:"indexed_at"`
-	GitCommit string               `json:"git_commit,omitempty"`
-	Files     map[string]FileEntry `json:"files"`
+	Version   int       `json:"version"`
+	IndexedAt time.Time `json:"indexed_at"`
+	GitCommit string    `json:"git_commit,omitempty"`
+	// GitCommitFull is the FULL 40-char HEAD commit SHA at the time this
+	// manifest was saved (#5727/#5729-W1). GitCommit above is the abbreviated
+	// (short) form used by the incremental diff range-check; GitCommitFull is
+	// surfaced by grafel_index_status / `grafel status` as an unambiguous
+	// indexed_commit so a caller never has to disambiguate a short-SHA prefix
+	// collision. Empty when not a git repo or the git call fails/times out.
+	GitCommitFull string               `json:"git_commit_full,omitempty"`
+	Files         map[string]FileEntry `json:"files"`
 }
 
 // LoadManifest reads the manifest from stateDir. Returns an empty manifest
@@ -100,6 +107,7 @@ func LoadManifest(stateDir string) *Manifest {
 func SaveManifest(stateDir, repoPath string, m *Manifest) error {
 	m.IndexedAt = time.Now().UTC()
 	m.GitCommit = headCommit(repoPath)
+	m.GitCommitFull = headCommitFull(repoPath)
 
 	data, err := json.Marshal(m)
 	if err != nil {
@@ -451,6 +459,18 @@ func moduleBase(relPath string) string {
 func headCommit(repoPath string) string {
 	// Bounded (#5286): never let a stuck git child hang the index worker.
 	out, ok := gitmeta.RunGitBoundedC(repoPath, "rev-parse", "--short", "HEAD")
+	if !ok {
+		return ""
+	}
+	return strings.TrimSpace(string(out))
+}
+
+// headCommitFull returns the FULL (40-char) HEAD commit hash for the repo at
+// repoPath, or empty string if git is unavailable or this is not a git repo.
+// Companion to headCommit (short); both are captured in the same SaveManifest
+// call so they always agree on which commit they describe (#5727/#5729-W1).
+func headCommitFull(repoPath string) string {
+	out, ok := gitmeta.RunGitBoundedC(repoPath, "rev-parse", "HEAD")
 	if !ok {
 		return ""
 	}

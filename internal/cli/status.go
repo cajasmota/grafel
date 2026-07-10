@@ -24,6 +24,7 @@ import (
 // running" and continue with the registry view, rather than erroring.
 func newStatusCmd() *cobra.Command {
 	var refFlag string
+	var jsonFlag bool
 	cmd := &cobra.Command{
 		Use:   "status [group]",
 		Short: "Show daemon + index status",
@@ -31,8 +32,22 @@ func newStatusCmd() *cobra.Command {
 
 When --ref is supplied the registry view is filtered to repos that have a
 graph stored for that ref.  Use --ref @all to show state across every known
-ref (implies a per-ref breakdown in the output).`,
+ref (implies a per-ref breakdown in the output).
+
+--json switches to the poll-safe status-plane read (#5725/#5729-W1): it
+resolves the current directory to its registered repo and prints the
+on-disk status/heartbeat sidecar as JSON, WITHOUT dialing the daemon. It
+always returns promptly — even while the daemon is mid-index for this
+repo — falling back to {"status":"unknown"} rather than hanging or erroring
+when no engine has ever written a status file for this repo.`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if jsonFlag {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return err
+				}
+				return runStatusJSON(cmd.OutOrStdout(), cwd)
+			}
 			filterGroup := ""
 			if len(args) == 1 {
 				filterGroup = args[0]
@@ -46,6 +61,8 @@ ref (implies a per-ref breakdown in the output).`,
 	}
 	cmd.Flags().StringVar(&refFlag, "ref", "",
 		refFlagUsage)
+	cmd.Flags().BoolVar(&jsonFlag, "json", false,
+		"poll-safe, cwd-scoped status-plane read: prints the on-disk status file for the current repo without dialing the daemon")
 	return cmd
 }
 
@@ -177,6 +194,11 @@ func runStatus(w io.Writer, filter string, ref string, showAll bool) error {
 						r.Path, last, r.IndexCount, r.AlgoCount)
 					if r.LastErr != "" {
 						fmt.Fprintf(w, "  err=%s", r.LastErr)
+					}
+					// #5727/#5729-W1: show the exact indexed commit + whether
+					// the on-disk graph still matches HEAD.
+					if r.IndexedCommitShort != "" {
+						fmt.Fprintf(w, "  commit=%s at_head=%v", r.IndexedCommitShort, r.AtHead)
 					}
 					fmt.Fprintln(w)
 				}

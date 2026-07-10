@@ -27,6 +27,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/worktree"
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/gitmeta"
+	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
 // defaultActivateConcurrency bounds how many worktree working-tree fsnotify
@@ -439,6 +440,28 @@ func Run(ctx context.Context, cfg Config) error {
 		scheduler.Start()
 		svc.scheduler = scheduler
 		defer scheduler.Stop()
+
+		// #5725/#5729-W1: status-plane heartbeat file. registerStatusFileHook
+		// refreshes every known repo's on-disk status sidecar (internal/statusfile)
+		// immediately on each scheduler state transition (index start/complete/
+		// dirty); the ticker below additionally refreshes it periodically so a
+		// reader can detect a wedged/crashed engine via a stale heartbeat rather
+		// than trusting indefinitely-old data. Both defer-unwind in reverse
+		// registration order alongside scheduler.Stop() above.
+		//
+		// Deliberately NOT cfg.ReposToWatch: that callback is invoked exactly
+		// once by the boot-path watcher-subscription goroutine below, and some
+		// callers (e.g. TestBoot_WatcherSubscriptionDoesNotBlockBind) construct
+		// it with one-shot side effects. knownRepoPathsForStatus is a
+		// side-effect-free repo lister safe to call on every tick/hook fire.
+		statusRepos := func() []string { return knownRepoPathsForStatus(logger) }
+		registerStatusFileHook(statusRepos, logger)
+		stopStatusHeartbeat := make(chan struct{})
+		go runStatusHeartbeat(statusRepos, statusHeartbeatInterval(), stopStatusHeartbeat, logger)
+		defer func() {
+			close(stopStatusHeartbeat)
+			indexstate.SetOnRepoStatesChanged(nil)
+		}()
 
 		// #5690: hand a read-only warming accessor to the wiring layer so the
 		// MCP surface can report warming state. Closes over the live scheduler;

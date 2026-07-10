@@ -30,6 +30,14 @@ type indexStatusRepo struct {
 	IndexedRef string `json:"indexed_ref,omitempty"`
 	HeadRef    string `json:"head_ref,omitempty"`
 	Dirty      bool   `json:"dirty"`
+
+	// #5727/#5729-W1: the exact commit the on-disk graph was indexed at, plus
+	// whether it still matches HEAD. Sourced from daemon.IndexedCommitForRepo
+	// (diff-manifest sidecar, falling back to the graph.fb header). Empty/false
+	// when never indexed or the graph predates this field.
+	IndexedCommit      string `json:"indexed_commit,omitempty"`
+	IndexedCommitShort string `json:"indexed_commit_short,omitempty"`
+	AtHead             bool   `json:"at_head,omitempty"`
 }
 
 // indexStatusReply is the grafel_index_status response envelope.
@@ -119,6 +127,10 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 			HeadRef:    st.HeadRef,
 			Dirty:      st.Dirty,
 		}
+		ci := daemon.IndexedCommitForRepo(st.Path)
+		row.IndexedCommit = ci.Commit
+		row.IndexedCommitShort = ci.CommitShort
+		row.AtHead = ci.AtHead
 		out.Repos = append(out.Repos, row)
 		if st.State == indexstate.StateIndexing || st.State == indexstate.StateDirty {
 			out.AnyIndexing = true
@@ -213,6 +225,13 @@ func diskFallbackRow(repoPath, group string) (indexStatusRepo, bool) {
 			row.HeadRef = meta.IndexedRef
 		}
 	}
+	// #5727/#5729-W1: attach the indexed commit + freshness for a disk-only
+	// row too, so a repo indexed via `grafel rebuild` (bypassing the
+	// scheduler) still reports indexed_commit/at_head.
+	ci := daemon.IndexedCommitForRepo(repoPath)
+	row.IndexedCommit = ci.Commit
+	row.IndexedCommitShort = ci.CommitShort
+	row.AtHead = ci.AtHead
 	return row, true
 }
 

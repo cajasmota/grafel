@@ -89,6 +89,15 @@ type PersistedStats struct {
 	// (the same value the sidecar's computed_at would carry). Zero when the
 	// header carries no/unparseable timestamp.
 	ComputedAt time.Time
+	// IndexedRef is the git ref name (branch/tag) at index time, read
+	// directly off the graph.fb header (#5729-W1 status plane). Empty for
+	// legacy graphs written before Phase 0 git metadata (#2088) or a
+	// detached HEAD / non-git repo.
+	IndexedRef string
+	// IndexedSHA is the abbreviated (short) HEAD commit hash at index time,
+	// read directly off the graph.fb header. Empty under the same
+	// conditions as IndexedRef.
+	IndexedSHA string
 }
 
 // PersistedStatsFromDir reads cheap persisted stats from <dir>/graph.fb.
@@ -111,9 +120,12 @@ func PersistedStatsFromDir(dir string) (PersistedStats, bool) {
 		Entities:      r.EntityCount(),
 		Relationships: r.RelationshipCount(),
 	}
-	if t, perr := time.Parse(time.RFC3339, r.LoadGraphMeta().ComputedAt); perr == nil {
+	meta := r.LoadGraphMeta()
+	if t, perr := time.Parse(time.RFC3339, meta.ComputedAt); perr == nil {
 		ps.ComputedAt = t
 	}
+	ps.IndexedRef = meta.IndexedRef
+	ps.IndexedSHA = meta.IndexedSHA
 	return ps, true
 }
 

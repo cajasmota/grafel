@@ -143,6 +143,14 @@ type IndexedRepoState struct {
 	LastErr     string `json:"last_err,omitempty"`
 	LastPeakMB  int64  `json:"last_peak_mb,omitempty"`
 	PredictedMB int64  `json:"predicted_mb,omitempty"`
+
+	// #5727/#5729-W1 — the exact commit the on-disk graph was indexed at,
+	// and whether it still matches HEAD. Sourced from daemon.IndexedCommitForRepo
+	// (diff-manifest sidecar, falling back to the graph.fb header). Empty/false
+	// for a repo that has never been indexed, or a graph predating this field.
+	IndexedCommit      string `json:"indexed_commit,omitempty"`
+	IndexedCommitShort string `json:"indexed_commit_short,omitempty"`
+	AtHead             bool   `json:"at_head,omitempty"`
 }
 
 // SchedLogEntry is the wire form of a scheduler log entry.
