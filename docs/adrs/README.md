@@ -29,6 +29,7 @@ decision itself, and the consequences we accepted.
 | [0021](0021-engine-custom-extractors-rescue-remove-extend.md) | Accepted | Engine custom extractors — rescue / remove / extend |
 | [0022](0022-http-mcp-transport.md) | Proposed | Authenticated shared HTTP MCP transport for team deployments |
 | [0023](0023-migrate-to-official-tree-sitter-binding-per-language-modules.md) | Proposed | Migrate to official tree-sitter binding + per-language grammar modules (B2 assessment) |
+| [0024](0024-decouple-mcp-serving-from-engine.md) | Accepted | Decouple MCP serving from the engine (serve/engine process split) |
 
 Numbers are append-only.
 
