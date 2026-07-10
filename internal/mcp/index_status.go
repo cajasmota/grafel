@@ -18,7 +18,7 @@ import (
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/cajasmota/grafel/internal/daemon"
-	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
@@ -172,12 +172,18 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 }
 
 // diskFallbackRow synthesizes a `current` grafel_index_status row for
-// repoPath by reading the on-disk materialized graph directly — the SAME
-// disk-read primitives the CLI's `grafel status` uses (daemon.FindGraphFile /
-// daemon.StateDirForRepo + graph.LoadGraphFromDir), rather than importing
-// internal/cli's ComputeStatusSummary, which would pull the full CLI command
-// surface (cobra flags, printing, etc.) into the MCP server for one field
-// lookup (#5710).
+// repoPath by reading the on-disk graph's HEADER only — NEVER a full decode.
+// grafel_index_status is a frequent, must-be-fast status probe; on a large
+// repo (hundreds of thousands of entities) a full graph.LoadGraphFromDir
+// would O(N)-decode+alloc every entity and relationship just to read one
+// header string, discarded immediately. Instead this uses the same cheap
+// header path as graph.PersistedStatsFromDir: fbreader.Open + LoadGraphMeta,
+// which reads header fields off the mmap WITHOUT touching any vector.
+//
+// Note this is NOT the CLI's `grafel status` code path — that
+// (ComputeStatusSummary → graph-stats.json sidecar, falling back to
+// graph.PersistedStatsFromDir) is likewise header/sidecar-only; we agree with
+// it on the answer while avoiding any full-graph decode.
 //
 // Returns ok=false when neither graph.fb nor graph.json exists for repoPath
 // — i.e. the repo is genuinely never-indexed, so no row should be fabricated.
@@ -191,14 +197,21 @@ func diskFallbackRow(repoPath, group string) (indexStatusRepo, bool) {
 		Group: group,
 		State: indexstate.StateCurrent,
 	}
-	// Best-effort: attach the indexed ref/sha if the graph carries Phase 0
-	// git metadata (#2088). Absent for older graphs or non-git repos — the
-	// row is still valid without it. A disk-only row has no in-flight work,
-	// so head_ref mirrors indexed_ref (nothing pending beyond what's indexed).
-	stateDir := daemon.StateDirForRepo(repoPath)
-	if doc, err := graph.LoadGraphFromDir(stateDir); err == nil && doc != nil {
-		row.IndexedRef = doc.IndexedRef
-		row.HeadRef = doc.IndexedRef
+	// Best-effort: attach the indexed ref if the graph.fb header carries Phase
+	// 0 git metadata (#2088). Read via the cheap header path — no entity or
+	// relationship is decoded. Only attempted for an actual graph.fb file:
+	// fbreader.Open interprets the bytes as FlatBuffers and PANICS on a
+	// graph.json (or otherwise non-fb) file, so a json-only repo is skipped
+	// here — the row is still valid without the ref. A disk-only row has no
+	// in-flight work, so head_ref mirrors indexed_ref (nothing pending beyond
+	// what's indexed).
+	if strings.HasSuffix(graphPath, ".fb") {
+		if r, err := fbreader.Open(graphPath); err == nil {
+			meta := r.LoadGraphMeta()
+			r.Close()
+			row.IndexedRef = meta.IndexedRef
+			row.HeadRef = meta.IndexedRef
+		}
 	}
 	return row, true
 }

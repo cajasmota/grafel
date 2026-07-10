@@ -34,8 +34,13 @@ func TestIndexStatusDiskFallback(t *testing.T) {
 	_ = os.MkdirAll(rGamma, 0o755)
 
 	// alpha and beta both have a materialized graph on disk. gamma does not.
+	// beta is written as graph.fb carrying an IndexedRef in its header so the
+	// test asserts the disk fallback reads that ref via the CHEAP header path
+	// (fbreader.LoadGraphMeta) — no full entity/relationship decode (#5710).
 	writeGraph(t, rAlpha, fixtureDoc("alpha"))
-	writeGraph(t, rBeta, fixtureDoc("beta"))
+	betaDoc := fixtureDoc("beta")
+	betaDoc.IndexedRef = "main"
+	writeGraphFB(t, rBeta, betaDoc)
 
 	regPath := makeRegistry(t, dir, map[string]map[string]string{
 		"g": {"alpha": rAlpha, "beta": rBeta, "gamma": rGamma},
@@ -87,6 +92,10 @@ func TestIndexStatusDiskFallback(t *testing.T) {
 	}
 	if bRow["state"] != indexstate.StateCurrent {
 		t.Errorf("beta state = %v, want current", bRow["state"])
+	}
+	// The IndexedRef must be read from the graph.fb header via the cheap path.
+	if bRow["indexed_ref"] != "main" {
+		t.Errorf("beta indexed_ref = %v, want main (from fb header, cheap read)", bRow["indexed_ref"])
 	}
 
 	// gamma: no live entry AND nothing on disk → must remain absent.
