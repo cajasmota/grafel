@@ -32,6 +32,11 @@ func TestEnrichmentCandidates_DjangoFixture(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	// #5720 — Pass 6 candidate emission is no longer part of Run(); Index()
+	// schedules it AFTER graph.fb is written (inline for small graphs, on
+	// the background worker for large ones). Tests exercising Run() directly
+	// invoke the same inline entry point Index() uses for small graphs.
+	idx.runPass6EmitEnrichmentCandidates(doc, tmp)
 	// runPass6 writes into the per-repo store state dir.
 	candPath := filepath.Join(daemon.StateDirForRepo(tmp), "enrichment-candidates.json")
 	data, err := os.ReadFile(candPath)
@@ -83,6 +88,7 @@ func TestEnrichmentResolutions_MergeBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run: %v", err)
 	}
+	idx.runPass6EmitEnrichmentCandidates(doc, tmp)
 	if len(doc.Entities) == 0 {
 		t.Fatalf("no entities extracted")
 	}
@@ -111,6 +117,7 @@ func TestEnrichmentResolutions_MergeBack(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run 2: %v", err)
 	}
+	idx2.runPass6EmitEnrichmentCandidates(doc2, tmp)
 	var got *string
 	for i := range doc2.Entities {
 		if doc2.Entities[i].ID == subject {
