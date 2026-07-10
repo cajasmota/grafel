@@ -16,7 +16,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"path/filepath"
 	"sort"
 	"time"
 
@@ -146,22 +145,13 @@ func (d wizardDriver) DefaultGroupName(repos []string) string {
 }
 
 // reposForResult maps the TUI result's chosen paths to registry.Repo records,
-// matching the per-action mapping the huh flow uses (monorepo packages get a
-// module label and a composite slug).
+// matching the per-action mapping the huh flow uses. A monorepo action maps
+// to EXACTLY ONE registry.Repo rooted at the monorepo path, with the chosen
+// packages recorded as Modules (see monorepoRepoForChosen) — never one
+// flattened repo per package (D2/D3).
 func reposForResult(class detect.Classification, r wiztui.Result) []registry.Repo {
 	if r.Action == wiztui.ActionMonorepo {
-		base := filepath.Base(class.AbsPath)
-		out := make([]registry.Repo, 0, len(r.Repos))
-		for _, pkg := range r.Repos {
-			abs := filepath.Join(class.AbsPath, filepath.FromSlash(pkg))
-			out = append(out, registry.Repo{
-				Slug:    base + "-" + filepath.Base(pkg),
-				Path:    abs,
-				Stack:   registry.StackList{detect.Stack(abs)},
-				Modules: []string{pkg},
-			})
-		}
-		return out
+		return []registry.Repo{monorepoRepoForChosen(class, r.Repos)}
 	}
 	return reposFromPaths(r.Repos)
 }

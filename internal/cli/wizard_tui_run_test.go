@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"reflect"
+	"sort"
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
@@ -43,22 +45,33 @@ func TestWizardUseTUI_OptOutEnv(t *testing.T) {
 	}
 }
 
-// TestReposForResult_Monorepo: monorepo packages map to composite slugs with a
-// recorded module, matching the huh flow.
+// TestReposForResult_Monorepo: a monorepo action must map to EXACTLY ONE
+// registry.Repo rooted at the monorepo path, with the chosen packages
+// recorded as Modules — NOT one flattened repo per package (D2/D3: flattening
+// breaks the graph model and makes hooksDir stat a non-existent <pkg>/.git).
+// This mirrors `monorepo add`, which appends packages into r.Modules on a
+// single Repo (internal/cli/monorepo.go newMonorepoAddCmd).
 func TestReposForResult_Monorepo(t *testing.T) {
 	root := t.TempDir()
 	class := mustClassify(root)
-	// Force a monorepo-style result.
+	// Force a monorepo-style result with multiple chosen packages.
 	r := wiztui.Result{Action: wiztui.ActionMonorepo, Repos: []string{"services/auth", "packages/ui"}}
 	repos := reposForResult(class, r)
-	if len(repos) != 2 {
-		t.Fatalf("got %d repos, want 2", len(repos))
+	if len(repos) != 1 {
+		t.Fatalf("got %d repos, want 1 (single repo with Modules, not one per package)", len(repos))
+	}
+	got := repos[0]
+	if got.Path != class.AbsPath {
+		t.Errorf("path = %q, want monorepo root %q", got.Path, class.AbsPath)
 	}
 	base := filepath.Base(class.AbsPath)
-	if repos[0].Slug != base+"-auth" {
-		t.Errorf("slug = %q, want %q", repos[0].Slug, base+"-auth")
+	if got.Slug != base {
+		t.Errorf("slug = %q, want root-based slug %q", got.Slug, base)
 	}
-	if len(repos[0].Modules) != 1 || repos[0].Modules[0] != "services/auth" {
-		t.Errorf("modules = %v, want [services/auth]", repos[0].Modules)
+	wantModules := []string{"packages/ui", "services/auth"}
+	gotModules := append([]string(nil), got.Modules...)
+	sort.Strings(gotModules)
+	if !reflect.DeepEqual(gotModules, wantModules) {
+		t.Errorf("modules = %v, want %v", gotModules, wantModules)
 	}
 }

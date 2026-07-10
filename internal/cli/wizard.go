@@ -715,9 +715,27 @@ func groupCandidates(class detect.Classification) []string {
 	return nil
 }
 
+// monorepoRepoForChosen builds the SINGLE registry.Repo for a monorepo action
+// given the chosen package sub-paths, mirroring `monorepo add`
+// (internal/cli/monorepo.go newMonorepoAddCmd): one Repo rooted at the
+// monorepo path with the chosen packages recorded as Modules — never one
+// flattened repo per package (D2: wrong graph model; D3: hooksDir then stats
+// a non-existent <pkg>/.git since only the root has a .git).
+func monorepoRepoForChosen(class detect.Classification, chosen []string) registry.Repo {
+	modules := append([]string(nil), chosen...)
+	sort.Strings(modules)
+	return registry.Repo{
+		Slug:    filepath.Base(class.AbsPath),
+		Path:    class.AbsPath,
+		Stack:   registry.StackList{detect.Stack(class.AbsPath)},
+		Modules: modules,
+	}
+}
+
 // resolveMonorepo detects packages via the shared classifier and presents a
-// [ ]/[✓] multiselect of package roots. Each selected package is registered as
-// its own repo (its absolute sub-path) with the module recorded.
+// [ ]/[✓] multiselect of package roots. The chosen packages are registered as
+// Modules on a single Repo rooted at the monorepo path (see
+// monorepoRepoForChosen) — not as one repo per package.
 func resolveMonorepoAction(out io.Writer, class detect.Classification) ([]registry.Repo, error) {
 	if class.Monorepo == detect.KindNone || len(class.Packages) == 0 {
 		// cwd isn't a monorepo — let the user point at one.
@@ -749,18 +767,7 @@ func resolveMonorepoAction(out io.Writer, class detect.Classification) ([]regist
 	if len(chosen) == 0 {
 		return nil, errors.New("no packages selected")
 	}
-	base := filepath.Base(class.AbsPath)
-	repos := make([]registry.Repo, 0, len(chosen))
-	for _, pkg := range chosen {
-		abs := filepath.Join(class.AbsPath, filepath.FromSlash(pkg))
-		repos = append(repos, registry.Repo{
-			Slug:    base + "-" + filepath.Base(pkg),
-			Path:    abs,
-			Stack:   registry.StackList{detect.Stack(abs)},
-			Modules: []string{pkg},
-		})
-	}
-	return repos, nil
+	return []registry.Repo{monorepoRepoForChosen(class, chosen)}, nil
 }
 
 // resolveAddToGroup lists existing groups, lets the user pick one, then multi-add
