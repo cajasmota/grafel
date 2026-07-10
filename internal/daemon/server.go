@@ -101,6 +101,12 @@ type Config struct {
 	// the incremental path is never tried (default: full reindex always).
 	SchedulerIncremental func(ctx context.Context, repo string, ref string) sched.IncrementalResult
 
+	// SchedulerEntityCount, when non-nil, returns the entity count of the
+	// materialized graph for (repo, ref). Wired into the scheduler so the
+	// "indexer: completed" log carries entities=N, making a silent 0-entity
+	// completion visible (#5710 follow-up). nil → entities omitted.
+	SchedulerEntityCount func(repo string, ref string) int
+
 	// ExtractorConfig, when non-nil, is passed to the scheduler so it can
 	// consult IsIncrementalEnabled() instead of reading
 	// GRAFEL_INCREMENTAL_REINDEX from the process env directly (issue
@@ -420,6 +426,8 @@ func Run(ctx context.Context, cfg Config) error {
 			// S3 incremental file-level reindex (issue #2153). When nil
 			// the scheduler falls through to full reindex on every tick.
 			Incremental: cfg.SchedulerIncremental,
+			// #5710 follow-up: entities=N on the completion log.
+			EntityCount: cfg.SchedulerEntityCount,
 			// Issue #2397: single source of truth for the incremental toggle.
 			// The scheduler calls ExtractorConfig.IsIncrementalEnabled()
 			// rather than reading the env var directly.

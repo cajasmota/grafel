@@ -661,6 +661,20 @@ func runDaemon(argv []string) error {
 				ChangedFiles:   res.ChangedFiles,
 			}
 		},
+		// #5710 follow-up: cheap entity count for the "indexer: completed" log so
+		// a silent 0-entity completion (empty-graph store recreation) is visible.
+		// Reads the graph.fb header (no entity materialization); -1 when the
+		// materialized graph is absent/unreadable.
+		SchedulerEntityCount: func(repoPath string, ref string) int {
+			stateDir := daemon.StateDirForRepoRef(repoPath, ref)
+			if stateDir == "" {
+				stateDir = daemon.StateDirForRepo(repoPath)
+			}
+			if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+				return ps.Entities
+			}
+			return -1
+		},
 		// Single source of truth for the incremental toggle (issue #2397).
 		ExtractorConfig: &extractorCfg,
 

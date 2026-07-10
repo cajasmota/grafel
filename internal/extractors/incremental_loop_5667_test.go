@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractors"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 )
 
@@ -29,6 +30,17 @@ func TestTryIncremental_FlushesStaleManifest_NoLoop(t *testing.T) {
 	stateDir := t.TempDir()
 	writeFile(t, repo, "a.go", "package p\n\nfunc A() {}\n")
 	writeFile(t, repo, "b.go", "package p\n\nfunc B() {}\n")
+
+	// A non-empty graph must already be materialized: cycle 2's terminal no-op
+	// is only a legitimate success when the pin resolves to a real graph. In
+	// production the cycle-1 too-many-changed fallback triggers a full index
+	// that writes this graph.fb; the unit test materializes it up front (a prior
+	// index left it) so the #5710 empty-graph guard does not (correctly) force a
+	// fallback over a 0-entity graph.
+	buildMinimalGraph(t, stateDir, []graph.Entity{
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "A", "a.go"),
+			Name: "A", Kind: "SCOPE.Operation", SourceFile: "a.go", Language: "go"},
+	}, nil)
 
 	// Seed a manifest with correct hashes for the two real files plus 60 stale
 	// entries for files that are NOT on disk (above even the main-branch limit

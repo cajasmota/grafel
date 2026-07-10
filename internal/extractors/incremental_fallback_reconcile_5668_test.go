@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/cajasmota/grafel/internal/extractors"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 )
 
@@ -35,6 +36,16 @@ func TestIncremental_FallbackRefreshesStampsAndReconciles(t *testing.T) {
 	for i, rel := range files {
 		writeFile(t, repo, rel, fmt.Sprintf("package p\n\nfunc F%d() {}\n", i))
 	}
+
+	// A non-empty graph must already be materialized so pass 2's terminal no-op
+	// resolves to a real graph (in production the pass-1 fallback's full index
+	// writes it). Without this, the #5710 empty-graph guard would (correctly)
+	// force a fallback over a 0-entity graph. See incremental.go's empty-graph
+	// guard.
+	buildMinimalGraph(t, stateDir, []graph.Entity{
+		{ID: graph.EntityID("test-repo", "SCOPE.Operation", "F0", "a.go"),
+			Name: "F0", Kind: "SCOPE.Operation", SourceFile: "a.go", Language: "go"},
+	}, nil)
 
 	// Seed a manifest with deliberately WRONG stamps for every on-disk file, so
 	// the change-detector reports all 5 as changed (5 > limit 2 → fallback).

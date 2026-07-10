@@ -299,7 +299,34 @@ func TryIncremental(ctx context.Context, repoPath, stateDir string, logger *log.
 			totalChanged, limit))
 	}
 	if totalChanged == 0 {
-		// Nothing to do — manifest is already up-to-date.
+		// --- #5710 (follow-up): empty-graph guard ---
+		// A no-op is only SAFE when the graph the ref pin resolves to is a
+		// materialized, non-empty graph. After a store relocation/recreation
+		// (repo moved → new path-keyed store, store hash changed) the ref→graph
+		// pin can survive while the backing graph in the NEW store is empty
+		// (0 entities / no graph.fb). HEAD still equals manifest.GitCommit, so
+		// the HEAD-advance guard above sees no advance — and the pre-fix code
+		// happily reported success (Done:true) over that empty graph while the
+		// working tree was full of indexable source. That is silent success
+		// over an empty graph: `grafel index --async` "completes" fast + cheap
+		// and leaves 0 entities.
+		//
+		// PersistedStatsFromDir reads the graph.fb header cheaply (no entity
+		// materialization) and reports ok=false when graph.fb is absent. Treat
+		// "no materialized graph" OR "0 entities" as empty. When the graph is
+		// empty but the walked working-tree set is NON-empty (indexable files
+		// exist), do NOT no-op and do NOT advance the manifest (which would
+		// self-conceal the emptiness on every later poll) — force a full
+		// reindex via the same fallback signal the too-many-changed path emits.
+		ps, ok := graph.PersistedStatsFromDir(stateDir)
+		graphEmpty := !ok || ps.Entities == 0
+		if graphEmpty && len(allFiles) > 0 {
+			logger.Printf("incremental: empty-graph-nonempty-tree files=%d entities=0 (materialized=%t) → force full reindex",
+				len(allFiles), ok)
+			return fallback(t0, fmt.Sprintf("empty-graph-nonempty-tree files=%d", len(allFiles)))
+		}
+		// Nothing to do — manifest is already up-to-date and the graph is a
+		// genuine reflection of the (possibly empty) tree.
 		diff.UpdateManifest(absRepo, allFiles, manifest)
 		_ = diff.SaveManifest(stateDir, absRepo, manifest)
 		return Result{Done: true, Duration: time.Since(t0)}

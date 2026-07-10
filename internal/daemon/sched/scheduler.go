@@ -136,6 +136,15 @@ type IncrementalResult struct {
 // to fall through to IndexFn (full reindex fallback).
 type IncrementalFn func(ctx context.Context, repoPath string, ref string) IncrementalResult
 
+// EntityCountFn returns the number of entities in the materialized graph for
+// (repoPath, ref), or -1 when it cannot be determined cheaply. Injected so the
+// completion log can surface entities=N without the scheduler importing the
+// daemon store-layout / graph packages (avoids an import cycle). Used purely
+// for observability (#5710 follow-up): a 0-entity completion is a silent-empty
+// signal that must be visible at a glance. nil → entities is omitted from the
+// log.
+type EntityCountFn func(repoPath string, ref string) int
+
 // Config wires the scheduler. All function fields are required; nil
 // causes Enqueue to short-circuit with a logged warning.
 type Config struct {
@@ -230,6 +239,13 @@ type Config struct {
 	// Default (nil): incremental path is never tried; behaviour is identical
 	// to before this field was added.
 	Incremental IncrementalFn
+
+	// EntityCount, when non-nil, returns the entity count of the materialized
+	// graph for a (repoPath, ref) after an index completes. It is used only to
+	// annotate the "indexer: completed" log with entities=N so a silent 0-entity
+	// completion (e.g. an empty-graph store recreation, #5710) is visible.
+	// nil → the entities field is omitted.
+	EntityCount EntityCountFn
 
 	// ExtractorConfig, when non-nil, is consulted by the scheduler to
 	// determine whether the incremental reindex path is active (issue #2397).
@@ -1226,7 +1242,13 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	allocDiff := observedPeakMB - tok.predictedMB
 	s.logEvent("index_ok", repoPath,
 		dur.String()+" peak="+formatMB(observedPeakMB))
-	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur, "peak_heap_mb", observedPeakMB, "alloc_diff_mb", allocDiff)
+	// #5710 follow-up: stamp entities=N so a silent 0-entity completion (e.g. an
+	// empty-graph store recreation) is visible at a glance. -1 means "unknown".
+	ents := -1
+	if s.cfg.EntityCount != nil {
+		ents = s.cfg.EntityCount(repoPath, tok.ref)
+	}
+	s.logger.Info("indexer: completed", "repo", repoPath, "took", dur, "peak_heap_mb", observedPeakMB, "alloc_diff_mb", allocDiff, "entities", ents)
 
 	// Schedule the downstream cross-repo link pass for each group this repo
 	// belongs to. The group-scope algorithm pass is NOT scheduled here — it is
