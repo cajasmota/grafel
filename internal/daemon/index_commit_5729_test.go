@@ -3,10 +3,14 @@ package daemon_test
 import (
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/graph/fbwriter"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 )
 
@@ -102,6 +106,56 @@ func TestIndexedCommitForRepo_NeverIndexed(t *testing.T) {
 	}
 	if info.AtHead {
 		t.Error("AtHead must be false when nothing has been indexed")
+	}
+}
+
+// TestIndexedCommitForRepo_GraphFBFallback_AtHead is the regression test for
+// review #5734 non-blocking #4: for a manifest-less graph, IndexedCommitForRepo
+// falls back to the graph.fb header's IndexedSHA, which gitmeta records with
+// `--short=12` (12 chars). The old code compared that 12-char short against
+// `git rev-parse --short HEAD` (git's default ~7 chars) → never equal → AtHead
+// always false. Comparing against the FULL HEAD SHA via prefix fixes it.
+func TestIndexedCommitForRepo_GraphFBFallback_AtHead(t *testing.T) {
+	t.Setenv("GRAFEL_DAEMON_ROOT", t.TempDir())
+
+	repo := t.TempDir()
+	initGitRepoIC(t, repo)
+	if err := writeAndCommit(repo, "main.go", "package main\nfunc main(){}\n"); err != nil {
+		t.Fatalf("seed commit: %v", err)
+	}
+	// gitmeta captures IndexedSHA as --short=12; mirror that exactly.
+	short12 := runGitIC(t, repo, "rev-parse", "--short=12", "HEAD")
+
+	// Write a graph.fb (NO diff manifest) into the repo's state dir carrying
+	// that 12-char short SHA in its header, simulating a graph produced by a
+	// path that never wrote the diff manifest.
+	stateDir := daemon.StateDirForRepo(repo)
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatalf("mkdir stateDir: %v", err)
+	}
+	sw, err := fbwriter.NewStreamingWriter(filepath.Join(stateDir, "graph.fb"))
+	if err != nil {
+		t.Fatalf("NewStreamingWriter: %v", err)
+	}
+	e := graph.Entity{ID: "ent0000000000000a", Name: "foo", Kind: "function", SourceFile: "main.go"}
+	if err := sw.WriteEntity(&e); err != nil {
+		t.Fatalf("WriteEntity: %v", err)
+	}
+	if err := sw.Close(fbwriter.GraphMetadata{
+		Repo:        "fallback-repo",
+		GeneratedAt: time.Now().UTC(),
+		IndexedRef:  "main",
+		IndexedSHA:  short12,
+	}); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	info := daemon.IndexedCommitForRepo(repo)
+	if info.CommitShort != short12 {
+		t.Errorf("CommitShort = %q, want graph.fb short %q", info.CommitShort, short12)
+	}
+	if !info.AtHead {
+		t.Errorf("AtHead should be true: graph.fb 12-char short %q is a prefix of current HEAD", short12)
 	}
 }
 

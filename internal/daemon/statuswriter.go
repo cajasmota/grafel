@@ -6,6 +6,8 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/indexer/diff"
 	"github.com/cajasmota/grafel/internal/indexstate"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
@@ -18,14 +20,21 @@ import (
 // process per ADR-0024) reads it directly off disk, never over the RPC
 // socket, so it can never block behind an in-flight index.
 //
-// Two triggers keep the file fresh:
-//  1. registerStatusFileHook wires indexstate.SetOnRepoStatesChanged so every
-//     scheduler state transition (index start/complete/dirty) refreshes the
-//     file promptly.
-//  2. runStatusHeartbeat is a periodic ticker (default every
-//     defaultStatusHeartbeatInterval) that refreshes it even when nothing
-//     changed, so a reader can detect a wedged/crashed engine via a stale
-//     HeartbeatAt rather than trusting indefinitely-old data.
+// ALL writes go through a SINGLE serialized statusWriter goroutine (see
+// statusWriter.run). Two triggers feed it, both via a coalescing channel:
+//  1. indexstate.SetOnRepoStatesChanged (wired to statusWriter.notify) — every
+//     scheduler state transition (index start/complete/dirty) requests a
+//     refresh promptly.
+//  2. a periodic heartbeat tick (default every defaultStatusHeartbeatInterval)
+//     so a reader can detect a wedged/crashed engine via a stale HeartbeatAt
+//     rather than trusting indefinitely-old data.
+//
+// Serializing through one goroutine is what kills review #5734's BLOCKING
+// finding: it makes concurrent same-repo writes impossible from the daemon's
+// side (no tmp-file collision), and — combined with the coalescing channel —
+// collapses a burst of transitions into a bounded number of write passes
+// instead of spawning one all-repos-iterating, git-shelling goroutine per
+// transition (review #5734 non-blocking #2).
 
 // defaultStatusHeartbeatInterval is how often the periodic heartbeat rewrites
 // every known repo's status file absent any state change.
@@ -45,11 +54,34 @@ func statusHeartbeatInterval() time.Duration {
 	return defaultStatusHeartbeatInterval
 }
 
+// indexedCommitShortNoGit reads the short indexed-commit SHA for repoPath
+// WITHOUT shelling out to git. It is the write-path counterpart to
+// IndexedCommitForRepo (which additionally computes AtHead via a git subprocess
+// — wasteful here, review #5734 non-blocking #3, since the status file only
+// carries the short SHA). Resolution order mirrors IndexedCommitForRepo:
+// diff-manifest sidecar first, then the graph.fb header's IndexedSHA.
+func indexedCommitShortNoGit(repoPath string) string {
+	stateDir := StateDirForRepo(repoPath)
+	if stateDir == "" {
+		return ""
+	}
+	if m := diff.LoadManifest(stateDir); m.GitCommit != "" {
+		return m.GitCommit
+	}
+	if ps, ok := graph.PersistedStatsFromDir(stateDir); ok {
+		return ps.IndexedSHA
+	}
+	return ""
+}
+
 // writeRepoStatusFile computes and atomically writes repoPath's current
 // status-plane sidecar. logger may be nil (tests). Failures are logged (when
 // a logger is available) and otherwise swallowed — the status file is a
 // best-effort observability aid, never load-bearing for indexing itself, so
 // a write failure must never propagate into the scheduler/RPC hot path.
+//
+// This is only ever called from the single statusWriter goroutine (or directly
+// from tests), so it never races another writer for the same repo.
 func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 	f := &statusfile.File{
 		EnginePID:   os.Getpid(),
@@ -81,38 +113,19 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 		}
 	}
 
-	ci := IndexedCommitForRepo(repoPath)
-	f.IndexedCommit = ci.CommitShort
+	// Write path is git-free: read the short SHA off disk, never shell out
+	// (review #5734 non-blocking #3).
+	f.IndexedCommit = indexedCommitShortNoGit(repoPath)
 
 	if err := statusfile.Write(repoPath, f); err != nil && logger != nil {
 		logger.Warn("statusfile: write failed", "repo", repoPath, "err", err)
 	}
 }
 
-// writeAllRepoStatusFiles refreshes the status file for every repo reposFn
-// returns. reposFn is called fresh each time so newly-registered repos are
-// picked up without a daemon restart.
-//
-// IMPORTANT: callers must NOT pass cfg.ReposToWatch here. That callback is
-// documented (see server.go's boot-path watcher-subscription goroutine) as
-// safe to invoke only from that one call site for some configurations (e.g.
-// tests that simulate a slow/stalled filesystem walk with a func that has a
-// one-shot side effect). The status-plane writer instead uses
-// knownRepoPathsForStatus, a side-effect-free, independently-callable-any-
-// number-of-times repo lister built directly off the registry.
-func writeAllRepoStatusFiles(reposFn func() []string, logger *slog.Logger) {
-	if reposFn == nil {
-		return
-	}
-	for _, repo := range reposFn() {
-		writeRepoStatusFile(repo, logger)
-	}
-}
-
 // knownRepoPathsForStatus returns every repo from every registered fleet
 // group (deduped, resolved to absolute paths), independent of cfg.ReposToWatch.
 // It is side-effect-free and safe to call repeatedly — every heartbeat tick
-// and every scheduler state-change hook fire calls it fresh — unlike
+// and every coalesced state-change refresh calls it fresh — unlike
 // cfg.ReposToWatch, which some callers (notably
 // TestBoot_WatcherSubscriptionDoesNotBlockBind) construct with one-shot side
 // effects and an implicit "call at most once" expectation.
@@ -144,33 +157,103 @@ func knownRepoPathsForStatus(logger *slog.Logger) []string {
 	return out
 }
 
-// registerStatusFileHook wires indexstate's on-change hook so a scheduler
-// state transition (index start/complete/dirty) triggers an immediate
-// status-file refresh across all known repos, rather than waiting for the
-// next periodic heartbeat tick. Call once at daemon startup, after
-// scheduler.Start(); pass nil to indexstate.SetOnRepoStatesChanged to
-// unregister (e.g. in tests, or on daemon shutdown).
-func registerStatusFileHook(reposFn func() []string, logger *slog.Logger) {
-	indexstate.SetOnRepoStatesChanged(func() {
-		writeAllRepoStatusFiles(reposFn, logger)
-	})
+// statusWriter owns the single goroutine that writes every repo's status-plane
+// sidecar. All writes are serialized through run(), so no two writes ever race
+// for the same repo file (review #5734 BLOCKING fix). Refresh requests arrive
+// via notify(), which is non-blocking and COALESCING: a burst of scheduler
+// transitions collapses into at most one extra write pass, bounding both
+// goroutine count and the number of graph.fb stats reads per burst (review
+// #5734 non-blocking #2).
+type statusWriter struct {
+	reposFn func() []string
+	logger  *slog.Logger
+
+	// trigger is buffered size 1. notify() does a non-blocking send, so when a
+	// pass is already pending the extra request is dropped — the pending pass
+	// will read the latest state when it runs. This is the coalescing seam.
+	trigger chan struct{}
+	stop    chan struct{}
+	done    chan struct{}
 }
 
-// runStatusHeartbeat periodically refreshes every known repo's status file
-// until stop is closed. Intended to run in its own goroutine for the
-// lifetime of the daemon (see server.go Run).
-func runStatusHeartbeat(reposFn func() []string, interval time.Duration, stop <-chan struct{}, logger *slog.Logger) {
+// newStatusWriter constructs a statusWriter. reposFn must be side-effect-free
+// and safe to call repeatedly (see knownRepoPathsForStatus).
+func newStatusWriter(reposFn func() []string, logger *slog.Logger) *statusWriter {
+	return &statusWriter{
+		reposFn: reposFn,
+		logger:  logger,
+		trigger: make(chan struct{}, 1),
+		stop:    make(chan struct{}),
+		done:    make(chan struct{}),
+	}
+}
+
+// notify requests a status-file refresh. Non-blocking and coalescing: if a
+// refresh is already queued this is a no-op. Safe to call from any goroutine,
+// including indexstate's on-change hook (fired under the scheduler lock).
+func (w *statusWriter) notify() {
+	select {
+	case w.trigger <- struct{}{}:
+	default:
+	}
+}
+
+// run is the single serialized writer loop. It writes once immediately (so a
+// reader sees state promptly at startup), then refreshes on each coalesced
+// notify() and each heartbeat tick until shutdown. Intended to run in its own
+// goroutine for the daemon's lifetime.
+func (w *statusWriter) run(interval time.Duration) {
+	defer close(w.done)
 	if interval <= 0 {
 		interval = defaultStatusHeartbeatInterval
 	}
 	ticker := time.NewTicker(interval)
 	defer ticker.Stop()
+
+	w.writeAll()
 	for {
 		select {
-		case <-stop:
+		case <-w.stop:
 			return
 		case <-ticker.C:
-			writeAllRepoStatusFiles(reposFn, logger)
+			w.writeAll()
+		case <-w.trigger:
+			w.writeAll()
 		}
+	}
+}
+
+// writeAll refreshes every known repo's status file. Only ever called from
+// run()'s single goroutine, so writes stay serialized.
+func (w *statusWriter) writeAll() {
+	if w.reposFn == nil {
+		return
+	}
+	for _, repo := range w.reposFn() {
+		writeRepoStatusFile(repo, w.logger)
+	}
+}
+
+// shutdown stops the writer goroutine and waits for it to exit. Idempotent is
+// NOT guaranteed — call exactly once, from the daemon's Run defer.
+func (w *statusWriter) shutdown() {
+	close(w.stop)
+	<-w.done
+}
+
+// startStatusWriter wires and starts the status-plane writer: it registers the
+// coalescing notify hook with indexstate and launches the single writer
+// goroutine. The returned func unregisters the hook and stops the goroutine;
+// call it from the daemon's Run defer. reposFn must be side-effect-free (see
+// knownRepoPathsForStatus).
+func startStatusWriter(reposFn func() []string, interval time.Duration, logger *slog.Logger) (stop func()) {
+	w := newStatusWriter(reposFn, logger)
+	indexstate.SetOnRepoStatesChanged(w.notify)
+	go w.run(interval)
+	return func() {
+		// Unregister the hook first so no new notify() races shutdown, then
+		// stop and join the goroutine.
+		indexstate.SetOnRepoStatesChanged(nil)
+		w.shutdown()
 	}
 }

@@ -126,12 +126,39 @@ func Write(repoPath string, f *File) error {
 	// then rename over the final path. A concurrent Read always sees either
 	// the previous complete file or the new complete file, never a partial
 	// write — this is the guarantee a poll-safe reader depends on.
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o600); err != nil {
+	//
+	// The temp file MUST have a unique name (os.CreateTemp's random suffix),
+	// NOT a fixed path+".tmp": two concurrent Writes to the same repo would
+	// otherwise both O_TRUNC and interleave into the SAME tmp inode, then each
+	// rename a torn/garbled file into place. Rename is atomic, but it would be
+	// publishing corruption. The daemon serializes its own writes via the
+	// single coalescing statusWriter goroutine (see internal/daemon), but a
+	// unique tmp name makes Write correct under concurrency regardless of who
+	// calls it — belt and suspenders (review #5734).
+	tmpf, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
+		return fmt.Errorf("statusfile: create tmp: %w", err)
+	}
+	tmp := tmpf.Name()
+	// On any failure past this point, remove the orphan tmp so a crashed/
+	// racing writer never litters the status dir.
+	cleanup := func() { _ = os.Remove(tmp) }
+	if _, err := tmpf.Write(data); err != nil {
+		_ = tmpf.Close()
+		cleanup()
 		return fmt.Errorf("statusfile: write tmp: %w", err)
 	}
+	if err := tmpf.Chmod(0o600); err != nil {
+		_ = tmpf.Close()
+		cleanup()
+		return fmt.Errorf("statusfile: chmod tmp: %w", err)
+	}
+	if err := tmpf.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("statusfile: close tmp: %w", err)
+	}
 	if err := os.Rename(tmp, path); err != nil {
-		_ = os.Remove(tmp)
+		cleanup()
 		return fmt.Errorf("statusfile: rename: %w", err)
 	}
 	return nil

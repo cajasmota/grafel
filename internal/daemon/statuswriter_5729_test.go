@@ -52,25 +52,41 @@ func TestWriteRepoStatusFile_WritesReadableSchema(t *testing.T) {
 	}
 }
 
-// TestOnRepoStatesChanged_TriggersStatusFileRefresh proves the daemon wires
+// TestOnRepoStatesChanged_TriggersStatusFileRefresh proves the daemon's single
+// serialized statusWriter (startStatusWriter) wires
 // indexstate.SetOnRepoStatesChanged so a scheduler state transition (index
-// start/complete) refreshes the status file promptly, not just on the next
-// periodic heartbeat tick.
+// start/complete) refreshes the status file promptly via the coalescing notify
+// hook, not just on the next periodic heartbeat tick. A very long heartbeat
+// interval ensures the file can only appear because of the state-change
+// trigger, not the ticker.
 func TestOnRepoStatesChanged_TriggersStatusFileRefresh(t *testing.T) {
 	t.Setenv("GRAFEL_HOME", t.TempDir())
 	t.Setenv("GRAFEL_DAEMON_ROOT", t.TempDir())
 
 	repo := t.TempDir()
-	registerStatusFileHook(func() []string { return []string{repo} }, nil)
-	t.Cleanup(func() { indexstate.SetOnRepoStatesChanged(nil) })
+	stop := startStatusWriter(func() []string { return []string{repo} }, time.Hour, nil)
+	t.Cleanup(stop)
+
+	// startStatusWriter writes once immediately at startup; clear that file so
+	// the assertion below can only pass because of the state-change trigger.
+	if p, err := statusfile.PathFor(repo); err == nil {
+		// Poll briefly for the startup write, then remove it.
+		for i := 0; i < 100; i++ {
+			if _, rerr := statusfile.Read(repo); rerr == nil {
+				break
+			}
+			time.Sleep(5 * time.Millisecond)
+		}
+		_ = os.Remove(p)
+	}
 
 	indexstate.SetRepoStates([]indexstate.RepoState{
 		{Path: repo, State: indexstate.StateIndexing},
 	})
 	t.Cleanup(func() { indexstate.SetRepoStates(nil) })
 
-	// The hook fires in its own goroutine (see indexstate.SetRepoStates) —
-	// poll briefly for the file to land rather than sleeping a fixed amount.
+	// The notify hook fires in its own goroutine (see indexstate.SetRepoStates)
+	// and coalesces into the writer — poll briefly for the file to reappear.
 	deadline := time.Now().Add(2 * time.Second)
 	var lastErr error
 	for time.Now().Before(deadline) {
