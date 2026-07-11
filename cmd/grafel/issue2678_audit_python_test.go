@@ -85,12 +85,14 @@ func TestPythonEndpointAttribution_FastAPI(t *testing.T) {
 
 	// `def health` is on L16, `async def create_item` on L21, `def
 	// delete_user` on L26. Keep these in sync with the fixture file.
+	// create_item is registered on `router = APIRouter(prefix="/v1")`, so
+	// its route path is folded to /v1/items (see #5688).
 	cases := []struct {
 		id       string
 		wantLine int
 	}{
 		{"http:GET:/health", 16},
-		{"http:POST:/items", 21},
+		{"http:POST:/v1/items", 21},
 		{"http:DELETE:/users/{user_id}", 26},
 	}
 	for _, tc := range cases {

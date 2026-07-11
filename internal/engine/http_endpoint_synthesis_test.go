@@ -131,10 +131,11 @@ def delete_user(user_id: int):
     return None
 `
 	got, _ := runDetect(t, "python", "main.py", src)
+	// #5688 — router's `prefix="/v1"` folds into its own route.
 	want := []string{
 		"http:DELETE:/users/{user_id}",
 		"http:GET:/users/{user_id}",
-		"http:POST:/items",
+		"http:POST:/v1/items",
 	}
 	requireContains(t, got, want, "FastAPI")
 }
@@ -822,12 +823,13 @@ def update_user(user_id: int):
 	got, res := runDetect(t, "python", "main.py", src)
 
 	// All of these must be present — and with the specific verb.
+	// #5688 — router's `prefix="/v1"` folds into its own route.
 	want := []string{
 		"http:DELETE:/users/{user_id}",
 		"http:GET:/users",
 		"http:GET:/users/{user_id}",
 		"http:PATCH:/users/{user_id}",
-		"http:POST:/items",
+		"http:POST:/v1/items",
 	}
 	requireContains(t, got, want, "FastAPI verb-specific")
 
@@ -836,7 +838,7 @@ def update_user(user_id: int):
 	anyVerbPaths := []string{
 		"http:ANY:/users",
 		"http:ANY:/users/{user_id}",
-		"http:ANY:/items",
+		"http:ANY:/v1/items",
 	}
 	for _, forbidden := range anyVerbPaths {
 		for _, id := range got {
@@ -890,10 +892,12 @@ async def get_user(user_id: int):
     return {}
 `
 	got, _ := runDetect(t, "python", "routers/items.py", src)
+	// #5688 — same-file APIRouter(prefix=...) mount-prefix fold: each
+	// router's prefix is folded into its own routes before canonicalisation.
 	want := []string{
-		"http:GET:/",
-		"http:POST:/",
-		"http:GET:/{user_id}",
+		"http:GET:/items",
+		"http:POST:/items",
+		"http:GET:/users/{user_id}",
 	}
 	requireContains(t, got, want, "FastAPI named router verb-specific")
 
@@ -903,6 +907,168 @@ async def get_user(user_id: int):
 			t.Errorf("unexpected ANY-verb entity %q from FastAPI named router (#748)", id)
 		}
 	}
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_Basic is the base RED->GREEN case for
+// #5688: a single `APIRouter(prefix="/users")` folds into every route
+// registered on that router, including a canonicalised path parameter.
+func TestSynth_FastAPI_RouterPrefixFold_Basic(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+router = APIRouter(prefix="/users")
+
+@router.get("/{id}")
+async def get_user(id: int):
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/users.py", src)
+	want := []string{"http:GET:/users/{id}"}
+	requireContains(t, got, want, "FastAPI APIRouter prefix fold — basic")
+	requireNotContains(t, got, []string{"http:GET:/{id}"}, "FastAPI APIRouter prefix fold — basic (unfolded regression)")
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_MultipleRouters verifies that each of
+// several same-file routers folds ONLY its own prefix into its own routes
+// (#5688) — no cross-contamination between router variables.
+func TestSynth_FastAPI_RouterPrefixFold_MultipleRouters(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+users_router = APIRouter(prefix="/users")
+orders_router = APIRouter(prefix="/orders")
+
+@users_router.get("/{id}")
+async def get_user(id: int):
+    return {}
+
+@orders_router.post("/{id}/cancel")
+async def cancel_order(id: int):
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/multi.py", src)
+	want := []string{
+		"http:GET:/users/{id}",
+		"http:POST:/orders/{id}/cancel",
+	}
+	requireContains(t, got, want, "FastAPI APIRouter prefix fold — multiple routers")
+	requireNotContains(t, got, []string{
+		"http:GET:/orders/{id}",
+		"http:POST:/users/{id}/cancel",
+	}, "FastAPI APIRouter prefix fold — multiple routers (cross-contamination)")
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_NoPrefixRegression is the regression
+// guard for #5688: a router constructed WITHOUT a `prefix=` kwarg behaves
+// exactly as before — its routes emit the bare in-router path, unchanged.
+func TestSynth_FastAPI_RouterPrefixFold_NoPrefixRegression(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+router = APIRouter()
+
+@router.get("/items")
+async def list_items():
+    return []
+`
+	got, _ := runDetect(t, "python", "routers/items.py", src)
+	want := []string{"http:GET:/items"}
+	requireContains(t, got, want, "FastAPI APIRouter no-prefix regression")
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_AppDirectUnchanged verifies that routes
+// registered directly on the `app` object (no router, no prefix) are
+// unaffected by the #5688 fold.
+func TestSynth_FastAPI_RouterPrefixFold_AppDirectUnchanged(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+router = APIRouter(prefix="/users")
+
+@app.get("/health")
+async def health():
+    return "ok"
+
+@router.get("/{id}")
+async def get_user(id: int):
+    return {}
+`
+	got, _ := runDetect(t, "python", "main.py", src)
+	want := []string{
+		"http:GET:/health",
+		"http:GET:/users/{id}",
+	}
+	requireContains(t, got, want, "FastAPI APIRouter app-direct unchanged")
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_QuoteStylesAndKwargOrder covers (#5688):
+//   - a single-quoted `prefix='/v2'` kwarg
+//   - `prefix=` appearing AFTER other kwargs (tags=[...]) in the constructor
+func TestSynth_FastAPI_RouterPrefixFold_QuoteStylesAndKwargOrder(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+single_quoted = APIRouter(prefix='/v2')
+after_kwargs = APIRouter(tags=["items"], prefix="/items", dependencies=[])
+
+@single_quoted.get("/ping")
+async def ping():
+    return "pong"
+
+@after_kwargs.get("/{id}")
+async def get_item(id: int):
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/mixed.py", src)
+	want := []string{
+		"http:GET:/v2/ping",
+		"http:GET:/items/{id}",
+	}
+	requireContains(t, got, want, "FastAPI APIRouter quote styles + kwarg ordering")
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_NoDoubleSlashOnRoot ensures a router
+// prefix composed with a bare-root sub-route ("/") never produces a
+// double-slash `/users//` and instead composes to a clean `/users` (#5688).
+func TestSynth_FastAPI_RouterPrefixFold_NoDoubleSlashOnRoot(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+router = APIRouter(prefix="/users")
+
+@router.get("/")
+async def list_users():
+    return []
+`
+	got, _ := runDetect(t, "python", "routers/users.py", src)
+	for _, id := range got {
+		if strings.Contains(id, "//") {
+			t.Errorf("FastAPI APIRouter prefix fold produced a double-slash path: %q", id)
+		}
+	}
+	want := []string{"http:GET:/users"}
+	requireContains(t, got, want, "FastAPI APIRouter prefix fold — no double slash on root")
+}
+
+// TestSynth_FastAPI_RouterPrefixFold_ApiRouteDecorator covers the generic
+// `@router.api_route("/path", methods=[...])` decorator form composing the
+// same-file router prefix (#5688).
+func TestSynth_FastAPI_RouterPrefixFold_ApiRouteDecorator(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+router = APIRouter(prefix="/items")
+
+@router.api_route("/{id}", methods=["GET", "PUT"])
+async def item(id: int):
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/items.py", src)
+	want := []string{
+		"http:GET:/items/{id}",
+		"http:PUT:/items/{id}",
+	}
+	requireContains(t, got, want, "FastAPI APIRouter prefix fold — api_route decorator")
 }
 
 // TestSynth_FastAPI_YamlDrivenRouteNotSynthesized_Unit is a direct unit test
