@@ -163,25 +163,48 @@ $app->any('/webhook', function () {});
 // ---------------------------------------------------------------------------
 
 func TestSynthSlim_GroupNotEmitted(t *testing.T) {
+	// A genuine verb route ($app->get) sits alongside the $app->group call so
+	// phpHasAnySlimRoute trips and synthesizeSlim actually reaches
+	// slimRouteVerbRe — otherwise the fast-path gate would short-circuit and
+	// this would be a trivially-passing duplicate of the no-routes test.
 	src := `<?php
+$app->get('/real', function () {});
 $app->group('/admin', function () {
     $this->get('/users', function () {});
 });
 `
 	ids := collectSlimSynthetics(src)
-	if len(ids) != 0 {
-		t.Errorf("expected $app->group(...) to yield 0 http_endpoint_definition synthetics, got %v", ids)
+	want := []string{"http:GET:/real"}
+	if !equalStringSlices(ids, want) {
+		t.Errorf("expected exactly the /real verb route emitted and NO synthetic for the group path, got %v", ids)
 	}
 }
 
 func TestSynthSlim_MapNotEmitted(t *testing.T) {
+	// See TestSynthSlim_GroupNotEmitted: the $app->get('/real', ...) is what
+	// gets synthesizeSlim past the fast-path gate so slimRouteVerbRe runs and
+	// the $app->map exclusion is genuinely exercised.
 	src := `<?php
+$app->get('/real', function () {});
 $app->map(['GET', 'POST'], '/both', function () {});
 `
 	ids := collectSlimSynthetics(src)
-	if len(ids) != 0 {
-		t.Errorf("expected $app->map(...) to yield 0 http_endpoint_definition synthetics, got %v", ids)
+	want := []string{"http:GET:/real"}
+	if !equalStringSlices(ids, want) {
+		t.Errorf("expected exactly the /real verb route emitted and NO synthetic for the map path, got %v", ids)
 	}
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // ---------------------------------------------------------------------------
