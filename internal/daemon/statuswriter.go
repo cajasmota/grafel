@@ -3,6 +3,7 @@ package daemon
 import (
 	"log/slog"
 	"os"
+	"path/filepath"
 	"strconv"
 	"time"
 
@@ -155,6 +156,65 @@ func knownRepoPathsForStatus(logger *slog.Logger) []string {
 		out = append(out, abs)
 	}
 	return out
+}
+
+// engineLivenessStatusKey returns the statusfile key for the engine-global
+// liveness heartbeat (ADR-0024 / #5729 PR2). It is an ABSOLUTE path under the
+// daemon root (so statusfile.PathFor's filepath.Abs is idempotent and both the
+// engine writer and the serve-side supervisor reader compute the same hash
+// regardless of cwd). No file is created at this path — statusfile hashes it
+// into GRAFEL_HOME/status/<hash>.json. It intentionally does NOT collide with
+// any real repo's per-repo status file.
+//
+// Unlike the per-repo status files (which only exist for registered fleet
+// repos), this engine-global file is written unconditionally by RunEngine, so
+// serve's health gate has a liveness signal even on a machine with no repos
+// registered yet.
+func engineLivenessStatusKey(root string) string {
+	return filepath.Join(root, ".engine-liveness")
+}
+
+// startEngineLivenessHeartbeat launches a goroutine that stamps the
+// engine-global liveness statusfile (EnginePID + a fresh HeartbeatAt) once
+// immediately and then every interval, until the returned stop func is called
+// (which joins the goroutine). It is the engine → serve liveness contract the
+// supervisor's health gate reads (ADR-0024, epic #5729 PR2).
+func startEngineLivenessHeartbeat(root string, interval time.Duration, logger *slog.Logger) (stop func()) {
+	if interval <= 0 {
+		interval = defaultStatusHeartbeatInterval
+	}
+	key := engineLivenessStatusKey(root)
+	stopCh := make(chan struct{})
+	doneCh := make(chan struct{})
+	writeOnce := func() {
+		f := &statusfile.File{
+			EnginePID:   os.Getpid(),
+			HeartbeatAt: time.Now().UTC(),
+			Version:     version.String(),
+			RepoPath:    key,
+		}
+		if err := statusfile.Write(key, f); err != nil && logger != nil {
+			logger.Warn("engine liveness: statusfile write failed", "err", err)
+		}
+	}
+	go func() {
+		defer close(doneCh)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		writeOnce()
+		for {
+			select {
+			case <-stopCh:
+				return
+			case <-ticker.C:
+				writeOnce()
+			}
+		}
+	}()
+	return func() {
+		close(stopCh)
+		<-doneCh
+	}
 }
 
 // statusWriter owns the single goroutine that writes every repo's status-plane

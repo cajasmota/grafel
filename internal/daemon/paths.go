@@ -35,6 +35,15 @@ type Layout struct {
 // freshly-built daemon at a tempdir without touching the real ~/.grafel.
 const EnvRoot = "GRAFEL_DAEMON_ROOT"
 
+// EnginePIDPath returns the split-mode engine child's pidfile path
+// (<root>/engine.pid), distinct from serve's daemon.pid so the two planes can
+// coexist under one daemon root without contending for a single pidfile
+// (ADR-0024, epic #5729). The supervising serve process owns daemon.pid; the
+// engine child writes engine.pid.
+func EnginePIDPath(root string) string {
+	return filepath.Join(root, "engine.pid")
+}
+
 // EnsureLayout creates the directories the daemon writes to. The socket
 // path itself is not created here — the listener does that. Permissions
 // are 0700/0600 because the daemon shares state across nothing and the

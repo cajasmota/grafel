@@ -2,6 +2,7 @@ package daemon_test
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -54,18 +55,29 @@ func TestRunServe_MatchesDaemonInProcessWiring(t *testing.T) {
 	}
 }
 
-// TestRunEngine_StandaloneNotYetImplemented documents the deliberate Phase 1
-// scope boundary: `grafel engine` is wired as a hidden cobra subcommand and
-// EngineConfig exists, but daemon.RunEngine does not yet run a serve-free
-// engine-only process — that lands with PR2's actual process split. This
-// pins the current, honest behavior (a clear error, not a silent duplicate
-// daemon) so a future change to it is a deliberate, reviewed decision.
-func TestRunEngine_StandaloneNotYetImplemented(t *testing.T) {
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	err := daemon.RunEngine(ctx, daemon.EngineConfig{})
-	if err == nil {
-		t.Fatal("expected RunEngine to report standalone-not-yet-implemented, got nil error")
+// TestRunServe_FlagOff_SpawnsNoEngineChild is the ADR-0024 PR2 flag-OFF
+// regression (epic #5729): with GRAFEL_SPLIT_MODE unset (the default), RunServe
+// must run the whole daemon in-process and spawn NO engine child — so it must
+// never write engine.pid. This pins the critical invariant that split-mode is
+// strictly opt-in and the default running daemon is unchanged.
+func TestRunServe_FlagOff_SpawnsNoEngineChild(t *testing.T) {
+	layout := runServeForTest(t, func(args proto.IndexArgs) (string, string, error) {
+		return args.RepoPath + "/.grafel/graph.json", `{"ok":true}`, nil
+	}, nil)
+
+	// A fully-booted monolith serve answers RPC…
+	c, err := client.DialPath(layout.SocketPath)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer c.Close()
+	if _, err := c.Ping(); err != nil {
+		t.Fatalf("ping: %v", err)
+	}
+
+	// …and never spawned an engine child, so engine.pid must not exist.
+	if _, err := os.Stat(daemon.EnginePIDPath(layout.Root)); !os.IsNotExist(err) {
+		t.Fatalf("engine.pid exists in flag-OFF mode (err=%v) — an engine child was spawned; split-mode must be opt-in", err)
 	}
 }
 
