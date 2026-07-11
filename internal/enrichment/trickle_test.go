@@ -235,6 +235,50 @@ func TestCandidateAppender_Abort(t *testing.T) {
 	}
 }
 
+// TestCandidateAppender_UniqueTmpPath is the RED-before-fix test for the
+// #5736 review follow-up: two CandidateAppenders opened concurrently for the
+// SAME repo (e.g. the daemon's background worker plus a manually-triggered
+// `grafel index`/`rebuild` on that repo) must not collide on the same fixed
+// tmp filename — each must get its own unique tmp path so one process's
+// writes/aborts can never truncate or delete the other's in-progress file.
+func TestCandidateAppender_UniqueTmpPath(t *testing.T) {
+	dir := t.TempDir()
+
+	a1, err := NewCandidateAppender(dir)
+	if err != nil {
+		t.Fatalf("NewCandidateAppender (a1): %v", err)
+	}
+	defer a1.Abort()
+
+	a2, err := NewCandidateAppender(dir)
+	if err != nil {
+		t.Fatalf("NewCandidateAppender (a2): %v", err)
+	}
+	defer a2.Abort()
+
+	if a1.tmpPath == a2.tmpPath {
+		t.Fatalf("expected unique tmp paths per appender, both got %q — concurrent appenders for the same repo would clobber each other", a1.tmpPath)
+	}
+	if _, err := os.Stat(a1.tmpPath); err != nil {
+		t.Fatalf("a1 tmp file missing: %v", err)
+	}
+	if _, err := os.Stat(a2.tmpPath); err != nil {
+		t.Fatalf("a2 tmp file missing: %v", err)
+	}
+
+	if err := a1.AppendChunk([]Candidate{{ID: "one", Kind: "describe_entity", SubjectID: "e1"}}); err != nil {
+		t.Fatalf("a1 AppendChunk: %v", err)
+	}
+	if err := a1.Close(); err != nil {
+		t.Fatalf("a1 Close: %v", err)
+	}
+
+	// a2 must be unaffected by a1's Close (independent files).
+	if err := a2.AppendChunk([]Candidate{{ID: "two", Kind: "describe_entity", SubjectID: "e2"}}); err != nil {
+		t.Fatalf("a2 AppendChunk after a1 Close: %v", err)
+	}
+}
+
 // bytesReader avoids importing bytes just for a one-liner in test files that
 // otherwise don't need it.
 func bytesReader(b []byte) io.Reader {

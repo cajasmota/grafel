@@ -26,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 )
 
 // discoveredAtOnly is the minimal shape decoded from the prior on-disk
@@ -146,11 +147,15 @@ func NewCandidateAppender(grafelDir string) (*CandidateAppender, error) {
 	path := candidatesPath(grafelDir)
 	priorAt := loadDiscoveredAtIndex(path)
 
-	tmp := path + ".trickle.tmp"
-	f, err := os.Create(tmp)
+	// os.CreateTemp (not a fixed name) so two appenders for the SAME repo
+	// opened concurrently — e.g. the background worker plus a manually
+	// triggered `grafel index`/`rebuild` on that repo — never collide on
+	// the same tmp path and clobber/truncate each other's in-progress file.
+	f, err := os.CreateTemp(filepath.Dir(path), filepath.Base(path)+".trickle.tmp-*")
 	if err != nil {
 		return nil, fmt.Errorf("enrichment: create tmp: %w", err)
 	}
+	tmp := f.Name()
 	if _, err := f.WriteString(fmt.Sprintf(`{"version":%d,"candidates":[`, CandidatesSchemaVersion)); err != nil {
 		f.Close()
 		os.Remove(tmp)

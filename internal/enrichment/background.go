@@ -19,6 +19,8 @@ package enrichment
 
 import (
 	"context"
+	"log/slog"
+	"runtime/debug"
 	"sync"
 )
 
@@ -98,7 +100,16 @@ func (s *Scheduler) Schedule(repoKey string, run func(ctx context.Context)) {
 			// Wait for the superseded run to fully stop before this one does
 			// anything — including acquiring the single worker slot — so a
 			// stale run can never write after (and clobber) a fresh one.
-			<-prevDone
+			// ctx-guarded: if THIS job itself gets superseded while still
+			// parked here (a rapid edit-reindex-reindex loop), bail out
+			// immediately instead of blocking on an already-stale
+			// predecessor — the job that superseded us will do its own
+			// prevDone wait against our `done`, which we close right away.
+			select {
+			case <-prevDone:
+			case <-ctx.Done():
+				return
+			}
 		}
 		// Acquire the system-wide single-worker slot. Blocks (silently, in
 		// the background) if another repo's enrichment is currently
@@ -109,6 +120,22 @@ func (s *Scheduler) Schedule(repoKey string, run func(ctx context.Context)) {
 			return
 		}
 		defer func() { <-s.sem }()
+
+		// Recover any panic raised by run (e.g. an emitter panicking on a
+		// pathological/large graph) so it can never crash the daemon
+		// asynchronously. This must be deferred AFTER the semaphore-acquire
+		// defer and BEFORE calling run, so that on panic: this recover runs
+		// first (stopping the unwind), then the semaphore-release defer
+		// still runs, then close(done) still runs — the daemon survives,
+		// the single worker slot is freed for the next job, and a
+		// superseded successor parked on this job's `done` is never stuck.
+		defer func() {
+			if r := recover(); r != nil {
+				slog.Default().Error(
+					"enrichment: background worker panicked — recovered; daemon continues in degraded state (this run's candidates trickle was abandoned)",
+					"repo", repoKey, "panic", r, "stack", string(debug.Stack()))
+			}
+		}()
 
 		run(ctx)
 	}()

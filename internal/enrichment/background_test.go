@@ -102,6 +102,122 @@ func repoKeyForTest(i int) string {
 	return "repo-" + itoa(i)
 }
 
+// TestScheduler_RecoversPanicInRunFunc is the RED-before-fix test for the
+// #5736 review follow-up: an emitter panic inside a background-worker run
+// func must NOT crash the daemon. Before the fix, the goroutine started by
+// Schedule has no recover, so an unrecovered panic in a goroutine terminates
+// the whole process — this test (run against the unfixed code) crashes the
+// test binary instead of failing normally, which IS the RED signal. After
+// the fix, the panic is recovered, the single-worker semaphore is released,
+// and done is closed so Wait() returns promptly.
+func TestScheduler_RecoversPanicInRunFunc(t *testing.T) {
+	s := NewScheduler()
+
+	panicRan := make(chan struct{})
+	s.Schedule("repoPanic", func(ctx context.Context) {
+		defer close(panicRan)
+		panic("boom: simulated emitter panic (#5736 review follow-up)")
+	})
+
+	select {
+	case <-panicRan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("panicking job's run func never executed")
+	}
+
+	// done must be closed even though run panicked, so Wait returns
+	// promptly instead of blocking forever.
+	waitDone := make(chan struct{})
+	go func() {
+		s.Wait("repoPanic")
+		close(waitDone)
+	}()
+	select {
+	case <-waitDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("Wait never returned after panicking job — done channel was not closed on panic")
+	}
+
+	// The single-worker semaphore must have been released despite the
+	// panic, so a subsequent job (any repo) can acquire it and run.
+	nextRan := make(chan struct{})
+	s.Schedule("repoAfterPanic", func(ctx context.Context) {
+		close(nextRan)
+	})
+	select {
+	case <-nextRan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("subsequent job never ran — semaphore appears leaked after panic")
+	}
+}
+
+// TestScheduler_SupersededWhileParkedOnPrevDone_ReturnsPromptly is the
+// RED-before-fix test for the ctx-guard fix on the `<-prevDone` wait: a
+// job that is itself superseded WHILE still parked waiting for the run it
+// superseded must bail out immediately via ctx.Done(), rather than blocking
+// until the original (now doubly-stale) predecessor eventually finishes.
+func TestScheduler_SupersededWhileParkedOnPrevDone_ReturnsPromptly(t *testing.T) {
+	s := NewScheduler()
+
+	firstStarted := make(chan struct{})
+	firstRelease := make(chan struct{})
+	s.Schedule("repoX", func(ctx context.Context) {
+		close(firstStarted)
+		<-firstRelease
+	})
+	<-firstStarted
+
+	// Second job supersedes first, and (since first is still running) its
+	// goroutine parks on <-prevDone before it can even try to acquire sem.
+	secondRan := make(chan struct{})
+	s.Schedule("repoX", func(ctx context.Context) {
+		close(secondRan)
+	})
+
+	// White-box (same package): grab a handle on second's own done channel
+	// so we can assert it closes promptly once superseded, independent of
+	// whether first (which still holds the single-worker sem) has finished
+	// — third can't actually RUN until first releases the sem, but second
+	// bailing out of its stale <-prevDone wait must not depend on that.
+	s.mu.Lock()
+	secondDone := s.jobs["repoX"].done
+	s.mu.Unlock()
+
+	// Give the second job's goroutine a moment to reach the prevDone wait.
+	time.Sleep(50 * time.Millisecond)
+
+	// Third job supersedes second WHILE second is still parked on
+	// prevDone (first hasn't finished — firstRelease not yet closed).
+	// Ctx-guarded, second must return immediately without ever running.
+	thirdRan := make(chan struct{})
+	s.Schedule("repoX", func(ctx context.Context) {
+		close(thirdRan)
+	})
+
+	select {
+	case <-secondDone:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second job's done channel never closed — it appears stuck blocking on the stale <-prevDone wait instead of bailing out via ctx.Done()")
+	}
+
+	select {
+	case <-secondRan:
+		t.Fatal("second job's run func should never execute — it was superseded while still parked on prevDone")
+	default:
+	}
+
+	// Unblock first so the single-worker sem is released and third (which
+	// needs it) can actually run.
+	close(firstRelease)
+
+	select {
+	case <-thirdRan:
+	case <-time.After(2 * time.Second):
+		t.Fatal("third job never ran")
+	}
+	s.Wait("repoX")
+}
+
 // TestScheduler_AbortLeavesNoPublishedFile confirms that a run cancelled
 // before Close() (the pattern the real worker follows on ctx cancellation —
 // see runPass6EmitEnrichmentCandidatesBG in cmd/grafel) never publishes a
