@@ -962,7 +962,26 @@ func (s *State) refreshGroupAlgoOverlayLocked(grp *LoadedGroup) {
 	// Only re-apply when the file genuinely advanced. grp.algoApplied false with a
 	// present file (overlay appeared after a load that saw none) also re-applies.
 	if grp.algoApplied && !fi.ModTime().After(grp.algoMt) {
-		return
+		// #5401 residual (#5729): the overlay FILE is unchanged, but a repo may
+		// have been reparsed since its last stamp (lr.mtime advanced past
+		// lr.algoStampedMt) WITHOUT going through a full Reload — e.g. some other
+		// code path swapped a sub-repo's Doc/mtime in memory. Reload always calls
+		// applyGroupAlgoOverlay unconditionally and its PER-REPO memo (#5400/#5401)
+		// catches this; this read-path early-return did not, so a reparsed repo's
+		// entities stayed pinned at the per-repo sentinel (e.g. community_id:-1)
+		// until the next full Reload. Fall through to the per-repo-memoized
+		// applyGroupAlgoOverlay ONLY when some repo is actually stale, so the
+		// steady-state (nothing changed) stays a cheap no-op.
+		stale := false
+		for _, lr := range grp.Repos {
+			if lr != nil && lr.Doc != nil && !lr.mtime.Equal(lr.algoStampedMt) {
+				stale = true
+				break
+			}
+		}
+		if !stale {
+			return
+		}
 	}
 	applyGroupAlgoOverlay(grp)
 }
