@@ -298,6 +298,42 @@ const memReleaseDebounceDefault = 30 * time.Second
 // is fine; the actual FreeOSMemory call is gated by the debounce above.
 const memReleaseTick = 5 * time.Second
 
+// reindexFailBackoffBase and reindexFailBackoffMax bound the #5726/#5729
+// per-repo reindex circuit breaker. A repo genuinely over the FlatBuffers
+// 2-GiB builder cap fails the SAME way on every attempt at the SAME commit
+// (the fbwriter fail-soft path — internal/graph/fbwriter/streaming.go —
+// recovers the marshal panic and leaves last-good graph.fb intact, but the
+// trigger conditions (watcher fs events, git-HEAD poll) are input-driven and
+// unaware of the failure: any further churn at the same commit re-fires a
+// doomed reindex immediately, hot-looping the marshal attempt forever
+// (observed as the panic logged 74x in daemon.err in #5726). The breaker
+// skips same-ref re-attempts with exponential backoff instead, and resets the
+// moment the target ref changes (a new commit deserves a real try).
+const (
+	reindexFailBackoffBase = 30 * time.Second
+	reindexFailBackoffMax  = 5 * time.Minute
+)
+
+// reindexFailBackoff returns the backoff duration for the nth consecutive
+// same-ref index failure (n=1 is the first failure). Doubles each additional
+// failure, capped at reindexFailBackoffMax.
+func reindexFailBackoff(n int) time.Duration {
+	if n < 1 {
+		n = 1
+	}
+	d := reindexFailBackoffBase
+	for i := 1; i < n; i++ {
+		d *= 2
+		if d >= reindexFailBackoffMax {
+			return reindexFailBackoffMax
+		}
+	}
+	if d > reindexFailBackoffMax {
+		return reindexFailBackoffMax
+	}
+	return d
+}
+
 // enqueueRequest carries a repo path plus the ref snapshot taken at
 // Enqueue time. This is the unit flowing from public Enqueue → dedupLoop →
 // admitLoop → workerLoop.
@@ -418,6 +454,19 @@ type repoStats struct {
 	// than the process-global is_indexing flag. Empty until a first index
 	// completes in this daemon's lifetime.
 	LastIndexedRef string
+
+	// FailRef/FailCount/FailBackoffUntil/FailLoggedAt implement the
+	// #5726/#5729 reindex circuit breaker. FailRef is the ref a same-target
+	// reindex attempt most recently failed at; FailCount counts consecutive
+	// failures at that ref (drives exponential backoff via
+	// reindexFailBackoff); FailBackoffUntil is when the breaker next allows a
+	// real attempt at FailRef; FailLoggedAt debounces the skip-log line to at
+	// most once per backoff window. A successful index, or a trigger for a
+	// DIFFERENT ref, resets all four fields.
+	FailRef          string
+	FailCount        int
+	FailBackoffUntil time.Time
+	FailLoggedAt     time.Time
 }
 
 // LogEntry is a single structured event captured for /status. Kept in
@@ -1101,112 +1150,167 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	// it AFTER the run instead would race: a change landing between the
 	// snapshot and the clear would be silently dropped.
 	delete(s.dirty, repoPath)
+
+	// #5726/#5729 circuit breaker: a repo genuinely over the FlatBuffers
+	// 2-GiB cap fails the SAME way on every attempt at the SAME target ref —
+	// the fbwriter fail-soft path recovers the marshal panic but leaves the
+	// input state (watcher fs events, git-HEAD poll) unaware of the failure,
+	// so any further churn at the same commit re-fires a doomed reindex
+	// immediately. If the breaker is open for this exact ref, skip the real
+	// attempt (serve last-good graph.fb) instead of re-marshaling.
+	breakerStats := s.indexedRepos[repoPath]
+	now := time.Now()
+	skip := tok.ref != "" && breakerStats.FailRef == tok.ref && now.Before(breakerStats.FailBackoffUntil)
+	shouldLogSkip := false
+	if skip {
+		shouldLogSkip = breakerStats.FailLoggedAt.IsZero() || now.Sub(breakerStats.FailLoggedAt) >= reindexFailBackoffBase
+		if shouldLogSkip {
+			breakerStats.FailLoggedAt = now
+			s.indexedRepos[repoPath] = breakerStats
+		}
+	}
 	s.mu.Unlock()
 
 	t0 := time.Now()
-	s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB)+" ref="+tok.ref)
-	// Observability: log goroutine identity + ref so concurrent-indexer
-	// regressions are diagnosable without a pprof trace (#2141).
-	s.logger.Info("indexer: starting", "repo", repoPath, "ref", tok.ref, "goroutine_id", goroutineID())
-
-	// Spawn RSS sampler so we capture the peak the daemon hit during
-	// this job. Records into history on completion.
-	sampleStop := make(chan struct{})
-	var sampleWG sync.WaitGroup
-	var observedPeakMB int64
-	sampleWG.Add(1)
-	go func() {
-		defer sampleWG.Done()
-		t := time.NewTicker(5 * time.Second)
-		defer t.Stop()
-		baseline := currentProcessRSSMB()
-		for {
-			select {
-			case <-sampleStop:
-				return
-			case <-t.C:
-				now := currentProcessRSSMB()
-				delta := now - baseline
-				if delta > observedPeakMB {
-					observedPeakMB = delta
-				}
-			}
-		}
-	}()
-
-	// S3: attempt incremental file-level reindex before the full index.
-	// Only tried when the Incremental callback is configured AND the
-	// incremental toggle is active.
-	//
-	// Issue #2397: consult s.cfg.ExtractorConfig.IsIncrementalEnabled()
-	// (single source of truth) instead of the private incrementalEnabled()
-	// helper that read GRAFEL_INCREMENTAL_REINDEX directly. The nil-
-	// receiver method falls through to the env-var for backward compat.
-	//
-	// On success (res.Done=true) we skip the full reindex.
-	// On fallback (res.Done=false) we log the reason and fall through normally.
-	// Use shutdownCtx for all child-process-spawning calls so that when
-	// Stop() is called (daemon SIGTERM/SIGINT/Stop-RPC), any in-flight
-	// subprocess indexer receives SIGTERM via exec.CommandContext and the
-	// daemon can exit cleanly without leaving zombie processes (issue #2176).
-	jobCtx := s.shutdownCtx
 
 	var err error
-	incrementalDone := false
-	// Issue #5726 / epic #5729 — defense in depth. An index can panic for
-	// reasons the fbwriter fail-soft doesn't catch (e.g. a flatbuffers 2-GiB
-	// abort raised inside the streaming WriteEntity path, or any other bug in
-	// an extractor). A panic here would unwind through the worker goroutine and
-	// abort the ENTIRE daemon (launchd relaunches it → 60–90s reindex outage,
-	// every MCP bridge severed). Recover so ANY index panic becomes a normal
-	// error: the worker keeps serving, the reserved budget is released via the
-	// existing err path below, and we log a clear degraded-state message.
-	func() {
-		defer func() {
-			if r := recover(); r != nil {
-				err = fmt.Errorf("index panicked (recovered): %v", r)
-				s.logEvent("index_panic", repoPath, fmt.Sprintf("recovered panic during index: %v", r))
-				s.logger.Error("sched: index panicked — recovered; daemon continues in degraded state (repo left at last-good graph)",
-					"repo", repoPath, "ref", tok.ref, "panic", r, "stack", string(debug.Stack()))
+	var observedPeakMB int64
+
+	if skip {
+		err = fmt.Errorf("reindex circuit open: %d consecutive failure(s) at ref %q, retrying after backoff (#5726/#5729)", breakerStats.FailCount, tok.ref)
+		if shouldLogSkip {
+			s.logEvent("index_circuit_skip", repoPath,
+				fmt.Sprintf("skipping reindex — %d consecutive failures at ref=%s, serving last-good graph, backoff until %s (#5726/#5729)",
+					breakerStats.FailCount, tok.ref, breakerStats.FailBackoffUntil.Format(time.RFC3339)))
+			s.logger.Warn("sched: reindex circuit open — skipping repeated-failure reindex, serving last-good graph",
+				"repo", repoPath, "ref", tok.ref, "fail_count", breakerStats.FailCount,
+				"backoff_until", breakerStats.FailBackoffUntil)
+		}
+	} else {
+		s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB)+" ref="+tok.ref)
+		// Observability: log goroutine identity + ref so concurrent-indexer
+		// regressions are diagnosable without a pprof trace (#2141).
+		s.logger.Info("indexer: starting", "repo", repoPath, "ref", tok.ref, "goroutine_id", goroutineID())
+
+		// Spawn RSS sampler so we capture the peak the daemon hit during
+		// this job. Records into history on completion.
+		sampleStop := make(chan struct{})
+		var sampleWG sync.WaitGroup
+		sampleWG.Add(1)
+		go func() {
+			defer sampleWG.Done()
+			t := time.NewTicker(5 * time.Second)
+			defer t.Stop()
+			baseline := currentProcessRSSMB()
+			for {
+				select {
+				case <-sampleStop:
+					return
+				case <-t.C:
+					now := currentProcessRSSMB()
+					delta := now - baseline
+					if delta > observedPeakMB {
+						observedPeakMB = delta
+					}
+				}
 			}
 		}()
 
-		if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
-			res := s.cfg.Incremental(jobCtx, repoPath, tok.ref)
-			if res.Done {
-				incrementalDone = true
-				s.logEvent("incremental_ok", repoPath,
-					"changed_files="+itoa(int64(res.ChangedFiles)))
-			} else {
-				s.logEvent("incremental_fallback", repoPath,
-					"reason="+res.FallbackReason)
-				s.logger.Info("sched: incremental fallback", "repo", repoPath, "reason", res.FallbackReason)
+		// S3: attempt incremental file-level reindex before the full index.
+		// Only tried when the Incremental callback is configured AND the
+		// incremental toggle is active.
+		//
+		// Issue #2397: consult s.cfg.ExtractorConfig.IsIncrementalEnabled()
+		// (single source of truth) instead of the private incrementalEnabled()
+		// helper that read GRAFEL_INCREMENTAL_REINDEX directly. The nil-
+		// receiver method falls through to the env-var for backward compat.
+		//
+		// On success (res.Done=true) we skip the full reindex.
+		// On fallback (res.Done=false) we log the reason and fall through normally.
+		// Use shutdownCtx for all child-process-spawning calls so that when
+		// Stop() is called (daemon SIGTERM/SIGINT/Stop-RPC), any in-flight
+		// subprocess indexer receives SIGTERM via exec.CommandContext and the
+		// daemon can exit cleanly without leaving zombie processes (issue #2176).
+		jobCtx := s.shutdownCtx
+
+		incrementalDone := false
+		// Issue #5726 / epic #5729 — defense in depth. An index can panic for
+		// reasons the fbwriter fail-soft doesn't catch (e.g. a flatbuffers 2-GiB
+		// abort raised inside the streaming WriteEntity path, or any other bug in
+		// an extractor). A panic here would unwind through the worker goroutine and
+		// abort the ENTIRE daemon (launchd relaunches it → 60–90s reindex outage,
+		// every MCP bridge severed). Recover so ANY index panic becomes a normal
+		// error: the worker keeps serving, the reserved budget is released via the
+		// existing err path below, and we log a clear degraded-state message.
+		func() {
+			defer func() {
+				if r := recover(); r != nil {
+					err = fmt.Errorf("index panicked (recovered): %v", r)
+					s.logEvent("index_panic", repoPath, fmt.Sprintf("recovered panic during index: %v", r))
+					s.logger.Error("sched: index panicked — recovered; daemon continues in degraded state (repo left at last-good graph)",
+						"repo", repoPath, "ref", tok.ref, "panic", r, "stack", string(debug.Stack()))
+				}
+			}()
+
+			if s.cfg.Incremental != nil && s.cfg.ExtractorConfig.IsIncrementalEnabled() {
+				res := s.cfg.Incremental(jobCtx, repoPath, tok.ref)
+				if res.Done {
+					incrementalDone = true
+					s.logEvent("incremental_ok", repoPath,
+						"changed_files="+itoa(int64(res.ChangedFiles)))
+				} else {
+					s.logEvent("incremental_fallback", repoPath,
+						"reason="+res.FallbackReason)
+					s.logger.Info("sched: incremental fallback", "repo", repoPath, "reason", res.FallbackReason)
+				}
 			}
-		}
 
-		if !incrementalDone && s.cfg.Index != nil {
-			err = s.cfg.Index(jobCtx, repoPath, tok.ref)
-		}
-	}()
+			if !incrementalDone && s.cfg.Index != nil {
+				err = s.cfg.Index(jobCtx, repoPath, tok.ref)
+			}
+		}()
 
-	close(sampleStop)
-	sampleWG.Wait()
+		close(sampleStop)
+		sampleWG.Wait()
+	}
 
 	s.mu.Lock()
 	stats := s.indexedRepos[repoPath]
-	stats.LastIndex = time.Now()
-	stats.IndexCount++
-	stats.PredictedMB = tok.predictedMB
-	// #5433: record the ref this completed index ran against so
-	// grafel_index_status can report indexed_ref per repo.
-	stats.LastIndexedRef = tok.ref
-	if observedPeakMB > 0 {
-		stats.LastPeakMB = observedPeakMB
+	if !skip {
+		stats.LastIndex = time.Now()
+		stats.IndexCount++
+		stats.PredictedMB = tok.predictedMB
+		// #5433: record the ref this completed index ran against so
+		// grafel_index_status can report indexed_ref per repo.
+		stats.LastIndexedRef = tok.ref
+		if observedPeakMB > 0 {
+			stats.LastPeakMB = observedPeakMB
+		}
 	}
 	if err != nil {
 		stats.LastErr = err.Error()
+		if !skip {
+			// A real attempt failed: bump (or start) the breaker for this
+			// ref and arm exponential backoff. A skip does not re-bump —
+			// the failure it reflects was already recorded.
+			if stats.FailRef == tok.ref {
+				stats.FailCount++
+			} else {
+				stats.FailRef = tok.ref
+				stats.FailCount = 1
+				stats.FailLoggedAt = time.Time{}
+			}
+			stats.FailBackoffUntil = time.Now().Add(reindexFailBackoff(stats.FailCount))
+		}
 	} else {
 		stats.LastErr = ""
+		// Success resets the breaker entirely — including for a DIFFERENT
+		// ref than FailRef, which is already implied since a fresh ref
+		// never matched the open breaker in the first place.
+		stats.FailRef = ""
+		stats.FailCount = 0
+		stats.FailBackoffUntil = time.Time{}
+		stats.FailLoggedAt = time.Time{}
 	}
 	s.indexedRepos[repoPath] = stats
 	delete(s.inflight, repoPath)
@@ -1253,8 +1357,13 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	s.poke()
 
 	if err != nil {
-		s.logEvent("index_err", repoPath, err.Error())
-		s.logger.Error("sched: index failed", "repo", repoPath, "err", err, "took", time.Since(t0))
+		// A skip already logged its own (rate-limited) index_circuit_skip
+		// event above; logging index_err/"index failed" here too would
+		// reproduce the exact 74x-log storm the breaker exists to prevent.
+		if !skip {
+			s.logEvent("index_err", repoPath, err.Error())
+			s.logger.Error("sched: index failed", "repo", repoPath, "err", err, "took", time.Since(t0))
+		}
 		return
 	}
 	dur := time.Since(t0).Truncate(time.Millisecond)
