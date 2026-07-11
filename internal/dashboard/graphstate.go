@@ -340,6 +340,16 @@ func (c *GraphCache) LastWarmError(groupName, ref string) (error, bool) {
 //
 // S8 (#2159): mmap readers held by DashRepo entries are closed so the OS
 // can reclaim file descriptors and page-cache pages for the old graph.fb.
+//
+// #5722 follow-up: a re-index/invalidate means the underlying condition that
+// may have caused a PRIOR warm failure has presumably changed, so any
+// recorded warmErrs entry for group (and its per-ref variants) is dropped
+// here too. Without this, LastWarmError would keep surfacing the stale
+// failure to a connected dashboard client until some unrelated caller
+// happened to trigger another load attempt for that exact group/ref. A
+// genuinely still-broken source will simply re-record the error on the next
+// load attempt (kicked off in the background by GetGroupCachedForRef) — this
+// only clears the stale signal, it never suppresses a real recurring one.
 func (c *GraphCache) Invalidate(group string) {
 	prefix := group + "@"
 	c.mu.Lock()
@@ -354,18 +364,32 @@ func (c *GraphCache) Invalidate(group string) {
 			delete(c.entries, k)
 		}
 	}
+	// Clear any recorded warm-load failure for group and its per-ref variants
+	// (#5722 follow-up) so a stale error does not keep being surfaced after a
+	// re-index resolves the underlying problem.
+	delete(c.warmErrs, group)
+	for k := range c.warmErrs {
+		if strings.HasPrefix(k, prefix) {
+			delete(c.warmErrs, k)
+		}
+	}
 	c.mu.Unlock()
 	c.Payloads.InvalidateGroup(group)
 }
 
 // InvalidateAll drops every cached entry and every pre-serialised payload.
 // S8 (#2159): mmap readers are closed before clearing the map.
+//
+// #5722 follow-up: every recorded warmErrs entry is cleared too, for the
+// same reason as Invalidate — a global re-index/invalidation should not
+// leave stale warm-failure signals behind for callers to keep surfacing.
 func (c *GraphCache) InvalidateAll() {
 	c.mu.Lock()
 	for _, ent := range c.entries {
 		closeDashGroupReaders(ent.group)
 	}
 	c.entries = map[string]*cacheEntry{}
+	c.warmErrs = map[string]error{}
 	c.mu.Unlock()
 	c.Payloads.InvalidateAll()
 }
