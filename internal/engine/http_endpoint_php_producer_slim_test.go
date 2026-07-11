@@ -152,3 +152,79 @@ $app->any('/webhook', function () {});
 		t.Fatalf("expected 1 ANY match, got %+v", matches)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// group()/map() exclusion (#5739 item c, refs #5738 review): slimRouteVerbRe
+// intentionally excludes group/map — they register a route SET or dispatch by
+// method-list, they are not themselves an HTTP-verb route — but that was only
+// ever asserted implicitly via the compiled verb alternation. Pin it down
+// explicitly so a future edit to the verb list can't silently reintroduce
+// group/map as if they were routes.
+// ---------------------------------------------------------------------------
+
+func TestSynthSlim_GroupNotEmitted(t *testing.T) {
+	src := `<?php
+$app->group('/admin', function () {
+    $this->get('/users', function () {});
+});
+`
+	ids := collectSlimSynthetics(src)
+	if len(ids) != 0 {
+		t.Errorf("expected $app->group(...) to yield 0 http_endpoint_definition synthetics, got %v", ids)
+	}
+}
+
+func TestSynthSlim_MapNotEmitted(t *testing.T) {
+	src := `<?php
+$app->map(['GET', 'POST'], '/both', function () {});
+`
+	ids := collectSlimSynthetics(src)
+	if len(ids) != 0 {
+		t.Errorf("expected $app->map(...) to yield 0 http_endpoint_definition synthetics, got %v", ids)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Lumen vs Slim framework attribution (#5739 item b, refs #5738 review):
+// Lumen's $app->verb(...) idiom is identical to Slim's, so synthesizeSlim
+// used to stamp every Lumen endpoint framework="slim". A Lumen marker in the
+// source now relabels those endpoints framework="lumen"; a genuine Slim
+// source is unaffected.
+// ---------------------------------------------------------------------------
+
+func TestSynthSlim_LumenSourceLabeledLumen(t *testing.T) {
+	src := `<?php
+// bootstrap/app.php
+$app = new Laravel\Lumen\Application(
+    dirname(__DIR__)
+);
+
+$app->get('/users', function () {});
+$app->post('/users', 'UserController@store');
+`
+	matches := collectSlimMatches(src)
+	if len(matches) != 2 {
+		t.Fatalf("expected 2 matches, got %d: %+v", len(matches), matches)
+	}
+	for _, m := range matches {
+		if m.framework != "lumen" {
+			t.Errorf("expected framework=lumen for Lumen-marked source, got %q for %+v", m.framework, m)
+		}
+	}
+}
+
+func TestSynthSlim_SlimSourceStillLabeledSlim(t *testing.T) {
+	src := `<?php
+use Slim\Factory\AppFactory;
+
+$app = AppFactory::create();
+$app->get('/users', function () {});
+`
+	matches := collectSlimMatches(src)
+	if len(matches) != 1 {
+		t.Fatalf("expected 1 match, got %d: %+v", len(matches), matches)
+	}
+	if matches[0].framework != "slim" {
+		t.Errorf("expected framework=slim, got %q", matches[0].framework)
+	}
+}

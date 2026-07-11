@@ -235,6 +235,45 @@ func TestCandidateAppender_Abort(t *testing.T) {
 	}
 }
 
+// TestCandidateAppender_AbortAfterCloseIsNoop pins down the invariant the
+// cmd/grafel background enrichment worker relies on for its "always defer
+// appender.Abort() as a panic safety net" fix (#5739 item d): once Close()
+// has already committed the rename, a subsequent Abort() (e.g. from a
+// deferred call that runs on every return path, success included) must be a
+// harmless no-op — it must NOT remove the just-published candidates file or
+// otherwise disturb it.
+func TestCandidateAppender_AbortAfterCloseIsNoop(t *testing.T) {
+	dir := t.TempDir()
+
+	appender, err := NewCandidateAppender(dir)
+	if err != nil {
+		t.Fatalf("NewCandidateAppender: %v", err)
+	}
+	if err := appender.AppendChunk([]Candidate{{ID: "one", Kind: "describe_entity", SubjectID: "e1"}}); err != nil {
+		t.Fatalf("AppendChunk: %v", err)
+	}
+	if err := appender.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	published, err := os.ReadFile(candidatesPath(dir))
+	if err != nil {
+		t.Fatalf("read published file after Close: %v", err)
+	}
+
+	// Simulate the deferred safety-net call that now always runs, even on the
+	// success path, after Close() already committed.
+	appender.Abort()
+
+	after, err := os.ReadFile(candidatesPath(dir))
+	if err != nil {
+		t.Fatalf("read published file after post-Close Abort: %v", err)
+	}
+	if string(after) != string(published) {
+		t.Fatalf("expected Abort-after-Close to be a no-op, published file changed:\nbefore=%s\nafter=%s", published, after)
+	}
+}
+
 // TestCandidateAppender_UniqueTmpPath is the RED-before-fix test for the
 // #5736 review follow-up: two CandidateAppenders opened concurrently for the
 // SAME repo (e.g. the daemon's background worker plus a manually-triggered

@@ -406,6 +406,13 @@ type indexerStats struct {
 // restore it afterward.
 var enrichmentOrderHook = func(stage string) {}
 
+// enrichmentEmittersForBG returns the CandidateEmitter set used by
+// runPass6EmitEnrichmentCandidatesBG. Test-only override seam (defaults to
+// enrichment.DefaultEmitters): tests can swap this to inject a panicking
+// emitter and assert the background trickle path cleans up its temp file
+// even when it never reaches Close() (#5739 item d).
+var enrichmentEmittersForBG = enrichment.DefaultEmitters
+
 func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, jsonStats bool, opts ...IndexOption) error {
 	absRepo, err := filepath.Abs(repoPath)
 	if err != nil {
@@ -2864,9 +2871,18 @@ func (i *Indexer) runPass6EmitEnrichmentCandidatesBG(ctx context.Context, doc *g
 		fmt.Fprintf(os.Stderr, "grafel: enrichment (bg) appender init failed: %v\n", err)
 		return
 	}
+	// Safety net for a panic mid-trickle (#5739 item d, refs #5736 review):
+	// the explicit Abort() calls below cover every known error/cancellation
+	// path, but a panic unwinds past all of them and would otherwise leave an
+	// orphaned enrichment-candidates.json.trickle.tmp-* in the state dir with
+	// no sweep to reclaim it. Abort() is idempotent with Close() (both set
+	// a.closed and no-op if already set), so on the normal success path below
+	// — where Close() already committed the rename — this deferred Abort() is
+	// a harmless no-op, not a second write.
+	defer appender.Abort()
 
 	rej := enrichment.ReadRejections(grafelDir)
-	err = enrichment.CollectAndAppendTrickle(ctx, doc, enrichment.DefaultEmitters(), rej, appender, enrichment.TrickleOptions{})
+	err = enrichment.CollectAndAppendTrickle(ctx, doc, enrichmentEmittersForBG(), rej, appender, enrichment.TrickleOptions{})
 	if err != nil {
 		// Cancelled (superseded) or failed mid-stream — never publish a
 		// partial file over whatever was there before.

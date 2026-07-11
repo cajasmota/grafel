@@ -622,8 +622,13 @@ var slimRouteVerbRe = regexp.MustCompile(
 		`(?:"([^"]{1,500})"|'([^']{1,500})')`,
 )
 
-// phpHasAnySlimRoute is the fast-path gate mirroring phpHasAnyLaravelRoute:
-// no-op on any PHP file that isn't wiring up Slim routes.
+// phpHasAnySlimRoute is the fast-path gate mirroring phpHasAnyLaravelRoute.
+// NOTE: despite the name, this is NOT a no-op on non-Slim PHP files — the
+// $app->verb('/path', ...) idiom it matches is IDENTICAL to the one Lumen
+// uses (see reLumenRoute in internal/custom/php/frameworks.go), so a Lumen
+// app trips this gate too. synthesizeSlim below still emits endpoints for
+// both (that's a net gain either way); phpIsLumenSource is what tells the
+// two apart for the "framework" attribute.
 func phpHasAnySlimRoute(content string) bool {
 	return strings.Contains(content, "$app->get(") ||
 		strings.Contains(content, "$app->post(") ||
@@ -632,6 +637,21 @@ func phpHasAnySlimRoute(content string) bool {
 		strings.Contains(content, "$app->delete(") ||
 		strings.Contains(content, "$app->options(") ||
 		strings.Contains(content, "$app->any(")
+}
+
+// phpLumenMarkerRe matches source-level markers that identify a file as part
+// of a Lumen application rather than a Slim one — the composer package name
+// or the framework's root namespace. Lumen's own extractor (frameworks.go)
+// recognizes the identical $app->verb(...) idiom as Slim's, so without a
+// marker check the two frameworks are textually indistinguishable at the
+// route-call level.
+var phpLumenMarkerRe = regexp.MustCompile(`Laravel\\Lumen|laravel/lumen`)
+
+// phpIsLumenSource reports whether content carries an explicit Lumen
+// framework marker (refs #5739 item b, follow-up to #5738 review: a Lumen
+// app's $app->get(...) routes were being mislabeled framework="slim").
+func phpIsLumenSource(content string) bool {
+	return phpLumenMarkerRe.MatchString(content)
 }
 
 // synthesizeSlim scans a PHP source file for Slim route registrations
@@ -650,9 +670,18 @@ func phpHasAnySlimRoute(content string) bool {
 // convention — there is no reliable static handler reference to forward.
 // This mirrors the closure-handler case in synthesizeLaravel (empty
 // handlerKind/handlerName).
+//
+// framework attribution: the $app->verb(...) idiom matched here is shared
+// verbatim with Lumen (refs #5739 item b). A file carrying a Lumen marker
+// (phpIsLumenSource) is stamped framework="lumen" instead of "slim" — the
+// endpoints are still emitted either way, only the attribute changes.
 func synthesizeSlim(content string, emit emitFn) {
 	if !phpHasAnySlimRoute(content) {
 		return
+	}
+	framework := "slim"
+	if phpIsLumenSource(content) {
+		framework = "lumen"
 	}
 	for _, m := range slimRouteVerbRe.FindAllStringSubmatchIndex(content, -1) {
 		if len(m) < 4 {
@@ -671,6 +700,6 @@ func synthesizeSlim(content string, emit emitFn) {
 		}
 
 		canonical := httproutes.Canonicalize(httproutes.FrameworkExpress, raw)
-		emit(verb, canonical, "slim", "", "")
+		emit(verb, canonical, framework, "", "")
 	}
 }

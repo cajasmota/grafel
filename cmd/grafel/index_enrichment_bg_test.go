@@ -18,6 +18,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/enrichment"
+	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 )
 
@@ -140,6 +141,65 @@ func TestIndex_LargeGraphDefersEnrichmentToBackground(t *testing.T) {
 	candPath := filepath.Join(daemon.StateDirForRepo(absRepo), "enrichment-candidates.json")
 	if _, err := os.Stat(candPath); err != nil {
 		t.Fatalf("expected enrichment-candidates.json to eventually appear after the background worker completes: %v", err)
+	}
+}
+
+// panickyEmitter is a CandidateEmitter that panics on the first entity it
+// sees — used to simulate a bug in a real emitter panicking mid-trickle.
+type panickyEmitter struct{}
+
+func (panickyEmitter) Name() string { return "panicky_test_emitter" }
+func (panickyEmitter) EmitFor(entity *graph.Entity, doc *graph.Document) []enrichment.Candidate {
+	panic("boom: simulated emitter panic mid-trickle")
+}
+
+// TestRunPass6EmitEnrichmentCandidatesBG_PanicLeavesNoOrphanTemp is the
+// RED-before-fix test for #5739 item d (refs #5736 review): before the fix,
+// a panic raised by CollectAndAppendTrickle (e.g. a pathological emitter)
+// unwound past every explicit appender.Abort() call in
+// runPass6EmitEnrichmentCandidatesBG, leaving an orphaned
+// enrichment-candidates.json.trickle.tmp-* file in the state dir with no
+// glob sweep to reclaim it. The fix adds `defer appender.Abort()` right
+// after the appender is created, so a panic still removes the temp file.
+func TestRunPass6EmitEnrichmentCandidatesBG_PanicLeavesNoOrphanTemp(t *testing.T) {
+	t.Setenv("GRAFEL_DAEMON_ROOT", t.TempDir())
+
+	prevEmitters := enrichmentEmittersForBG
+	enrichmentEmittersForBG = func() []enrichment.CandidateEmitter {
+		return []enrichment.CandidateEmitter{panickyEmitter{}}
+	}
+	defer func() { enrichmentEmittersForBG = prevEmitters }()
+
+	absRepo, err := filepath.Abs(filepath.Join(t.TempDir(), "panic-repo"))
+	if err != nil {
+		t.Fatalf("abs: %v", err)
+	}
+	grafelDir := daemon.StateDirForRepo(absRepo)
+
+	doc := &graph.Document{
+		Entities: []graph.Entity{{ID: "e1", Kind: "SCOPE.Operation", Name: "f", SourceFile: "f.go"}},
+	}
+
+	idx := &Indexer{skipPasses: map[string]bool{}}
+
+	func() {
+		defer func() {
+			if r := recover(); r == nil {
+				t.Fatalf("expected runPass6EmitEnrichmentCandidatesBG to panic (via the injected emitter) — test setup is wrong")
+			}
+		}()
+		idx.runPass6EmitEnrichmentCandidatesBG(context.Background(), doc, absRepo)
+	}()
+
+	matches, err := filepath.Glob(filepath.Join(grafelDir, "enrichment-candidates.json.trickle.tmp-*"))
+	if err != nil {
+		t.Fatalf("glob: %v", err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("expected no orphaned trickle temp files after a panic, found: %v", matches)
+	}
+	if _, err := os.Stat(filepath.Join(grafelDir, "enrichment-candidates.json")); !os.IsNotExist(err) {
+		t.Fatalf("expected no published candidates file after an aborted (panicked) run, stat err=%v", err)
 	}
 }
 
