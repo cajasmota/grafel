@@ -87,20 +87,26 @@ func TestGenerateTaskXML_BinPath(t *testing.T) {
 	}
 }
 
-// TestGenerateTaskXML_DaemonArgument verifies the task passes "daemon" as
-// the argument to the binary — not "start" or "run". Task Scheduler owns
-// the process lifecycle so we invoke grafel daemon directly.
-func TestGenerateTaskXML_DaemonArgument(t *testing.T) {
+// TestGenerateTaskXML_ServeArgument verifies the task passes "serve" as
+// the argument to the binary — not "daemon", "start", or "run". PR5
+// (ADR-0024, epic #5729) retargets the OS unit from the back-compat `daemon`
+// shim to `serve` directly. Task Scheduler owns the process lifecycle so we
+// invoke grafel serve directly.
+func TestGenerateTaskXML_ServeArgument(t *testing.T) {
 	xml, err := service.GenerateTaskXML(windowsOpts())
 	if err != nil {
 		t.Fatalf("GenerateTaskXML: %v", err)
 	}
 	s := string(xml)
-	if !strings.Contains(s, "<Arguments>daemon</Arguments>") {
-		t.Errorf("task XML missing <Arguments>daemon</Arguments>:\n%s", s)
+	if !strings.Contains(s, "<Arguments>serve</Arguments>") {
+		t.Errorf("task XML missing <Arguments>serve</Arguments>:\n%s", s)
 	}
-	// Must NOT contain "start" as an argument — that would fork a separate
+	// Must NOT contain "daemon" or "start" as an argument — "daemon" is the
+	// legacy back-compat shim entrypoint, and "start" would fork a separate
 	// process and shadow the scheduler-managed instance.
+	if strings.Contains(s, "<Arguments>daemon</Arguments>") {
+		t.Errorf("task XML must not use 'daemon' argument (retargeted to 'serve'):\n%s", s)
+	}
 	if strings.Contains(s, "<Arguments>start</Arguments>") {
 		t.Errorf("task XML must not use 'start' argument:\n%s", s)
 	}

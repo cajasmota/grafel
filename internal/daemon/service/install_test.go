@@ -39,19 +39,24 @@ func TestGeneratePlist_BinPath(t *testing.T) {
 	}
 }
 
-// TestGeneratePlist_DaemonSubcmd verifies the plist invokes
-// `grafel daemon` — the hidden long-running mode. launchd owns
-// the process lifecycle, so no `start` sub-subcommand is needed.
-func TestGeneratePlist_DaemonSubcmd(t *testing.T) {
+// TestGeneratePlist_ServeSubcmd verifies the plist invokes
+// `grafel serve` — the hidden long-running mode. PR5 (ADR-0024, epic #5729)
+// retargets the OS unit from the back-compat `daemon` shim to `serve`
+// directly. launchd owns the process lifecycle, so no `start`
+// sub-subcommand is needed.
+func TestGeneratePlist_ServeSubcmd(t *testing.T) {
 	plist := renderPlist(t)
-	if !strings.Contains(plist, "<string>daemon</string>") {
-		t.Errorf("plist missing daemon subcommand:\n%s", plist)
+	if !strings.Contains(plist, "<string>serve</string>") {
+		t.Errorf("plist missing serve subcommand:\n%s", plist)
 	}
-	// Plist must NOT contain a 'start' argument — the old
-	// watcher_ctl start command forks the binary with its own
-	// already-running check that would exit 0 under launchd.
+	// Plist must NOT contain the legacy 'daemon' argument or a 'start'
+	// argument — the old watcher_ctl start command forks the binary with its
+	// own already-running check that would exit 0 under launchd.
+	if strings.Contains(plist, "<string>daemon</string>") {
+		t.Errorf("plist must not contain 'daemon' argument (retargeted to 'serve'):\n%s", plist)
+	}
 	if strings.Contains(plist, "<string>start</string>") {
-		t.Errorf("plist must not contain 'start' argument (use 'grafel daemon' directly):\n%s", plist)
+		t.Errorf("plist must not contain 'start' argument (use 'grafel serve' directly):\n%s", plist)
 	}
 }
 
@@ -134,12 +139,17 @@ func TestGeneratePlist_ValidXML(t *testing.T) {
 // --- Linux systemd unit tests --------------------------------------------
 
 // TestGenerateUnit_ExecStart verifies the ExecStart line invokes
-// `grafel daemon` — the hidden long-running mode. systemd owns
-// the process lifecycle; no sub-subcommand is required.
+// `grafel serve` — the hidden long-running mode. PR5 (ADR-0024, epic #5729)
+// retargets the OS unit from the back-compat `daemon` shim to `serve`
+// directly. systemd owns the process lifecycle; no sub-subcommand is
+// required.
 func TestGenerateUnit_ExecStart(t *testing.T) {
 	unit := renderUnit(t)
-	if !strings.Contains(unit, "ExecStart=/usr/local/bin/grafel daemon") {
+	if !strings.Contains(unit, "ExecStart=/usr/local/bin/grafel serve") {
 		t.Errorf("unit missing ExecStart:\n%s", unit)
+	}
+	if strings.Contains(unit, "ExecStart=/usr/local/bin/grafel daemon") {
+		t.Errorf("unit must not exec the legacy 'daemon' shim (retargeted to 'serve'):\n%s", unit)
 	}
 }
 

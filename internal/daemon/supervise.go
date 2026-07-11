@@ -182,6 +182,16 @@ func (s *engineSupervisor) healthy() (bool, string) {
 	return true, ""
 }
 
+// EngineHeartbeatStaleAfter returns the max age a liveness heartbeat may be
+// before it is considered stale — the SAME threshold engineSupervisor.healthy
+// uses (engineHealthStaleMultiplier heartbeat intervals). Exported for
+// external readers (`grafel doctor`'s engine-liveness check, ADR-0024 PR5,
+// epic #5729) that need the identical staleness definition without
+// duplicating the constant.
+func EngineHeartbeatStaleAfter() time.Duration {
+	return time.Duration(engineHealthStaleMultiplier) * statusHeartbeatInterval()
+}
+
 // run is the supervision loop: spawn, wait, relaunch-with-backoff, and finally
 // drain on stop/ctx-cancel.
 func (s *engineSupervisor) run(ctx context.Context) {

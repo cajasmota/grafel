@@ -33,7 +33,7 @@ After=network.target
 
 [Service]
 Type=simple
-ExecStart={{.BinPath}} daemon
+ExecStart={{.BinPath}} serve
 Restart=on-failure
 RestartSec=3s
 Environment=HOME={{.Home}}

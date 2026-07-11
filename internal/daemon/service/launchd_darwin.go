@@ -36,7 +36,7 @@ const plistTemplate = `<?xml version="1.0" encoding="UTF-8"?>
     <key>ProgramArguments</key>
     <array>
         <string>{{.BinPath}}</string>
-        <string>daemon</string>
+        <string>serve</string>
     </array>
 
     <key>RunAtLoad</key>

@@ -68,7 +68,7 @@ const daemonTaskXMLTemplate = `<?xml version="1.0" encoding="UTF-16"?>
   <Actions>
     <Exec>
       <Command>{{.BinPath}}</Command>
-      <Arguments>daemon</Arguments>
+      <Arguments>serve</Arguments>
     </Exec>
   </Actions>
 </Task>

@@ -18,9 +18,13 @@ import (
 	"net/rpc"
 	"net/rpc/jsonrpc"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/daemon/transport"
+	"github.com/cajasmota/grafel/internal/process"
 )
 
 // Options carries install-time parameters. All fields that are empty
@@ -73,11 +77,77 @@ func Install(opts Options) (StatusInfo, error) {
 
 // Uninstall stops and removes the OS service registration. Idempotent:
 // if the service is not installed it returns immediately without error.
+//
+// After tearing down the serve unit, it also runs a belt-and-suspenders
+// orphan-engine sweep (ADR-0024 PR5, epic #5729): in split mode, serve's own
+// graceful drain already SIGTERMs its supervised `grafel engine` child before
+// exiting, so under normal shutdown there is nothing left to sweep. But
+// Unload can also hard-stop serve (launchctl bootout / systemctl disable
+// --now / schtasks /end) without giving its drain defers time to run, which
+// could orphan the engine child. The sweep reads engine.pid and, if it names
+// a still-live process, terminates it directly. It is a safe no-op in
+// monolith mode (no engine.pid exists) or when the engine was already
+// reaped.
 func Uninstall(opts Options) error {
 	if err := resolveOptions(&opts); err != nil {
 		return fmt.Errorf("resolve options: %w", err)
 	}
-	return uninstall(opts)
+	if err := uninstall(opts); err != nil {
+		return err
+	}
+	if layout, lerr := daemon.DefaultLayout(); lerr == nil {
+		sweepOrphanEngine(sweepOrphanEngineDeps{
+			root:    layout.Root,
+			readPID: defaultReadEnginePID,
+			isAlive: process.IsAlive,
+			kill:    process.Kill,
+		})
+	}
+	return nil
+}
+
+// sweepOrphanEngineDeps abstracts the orphan-engine sweep's I/O so it can be
+// unit-tested without touching real processes or a real daemon root.
+type sweepOrphanEngineDeps struct {
+	root    string
+	readPID func(path string) (int, error)
+	isAlive func(pid int) bool
+	kill    func(pid int) error
+}
+
+// sweepOrphanEngine implements the belt-and-suspenders orphan-engine sweep
+// documented on Uninstall. It is intentionally conservative: any failure to
+// read/parse engine.pid (including the common case — it does not exist,
+// because split mode is off or the engine already exited) is treated as
+// "nothing to do", never an error.
+func sweepOrphanEngine(deps sweepOrphanEngineDeps) {
+	if deps.root == "" {
+		return
+	}
+	pidPath := daemon.EnginePIDPath(deps.root)
+	pid, err := deps.readPID(pidPath)
+	if err != nil || pid <= 0 {
+		return
+	}
+	if !deps.isAlive(pid) {
+		return
+	}
+	_ = deps.kill(pid)
+}
+
+// defaultReadEnginePID reads and parses an engine.pid file. Returns an error
+// (including os.IsNotExist) when the file is absent or unparseable — the
+// caller treats any error as "no orphan to sweep".
+func defaultReadEnginePID(path string) (int, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return 0, err
+	}
+	pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+	if err != nil {
+		return 0, err
+	}
+	return pid, nil
 }
 
 // Status reports whether the service is installed and/or running.

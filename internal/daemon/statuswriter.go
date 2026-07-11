@@ -174,6 +174,16 @@ func engineLivenessStatusKey(root string) string {
 	return filepath.Join(root, ".engine-liveness")
 }
 
+// EngineLivenessStatusKey is the exported form of engineLivenessStatusKey for
+// callers outside package daemon — specifically `grafel doctor`'s
+// monolith-aware engine-liveness check (ADR-0024 PR5, epic #5729) — that need
+// to read the SAME engine-global liveness statusfile the serve-side
+// supervisor's own health gate reads, without duplicating (and risking
+// drifting from) the key-derivation format.
+func EngineLivenessStatusKey(root string) string {
+	return engineLivenessStatusKey(root)
+}
+
 // startEngineLivenessHeartbeat launches a goroutine that stamps the
 // engine-global liveness statusfile (EnginePID + a fresh HeartbeatAt) once
 // immediately and then every interval, until the returned stop func is called

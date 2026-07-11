@@ -29,13 +29,17 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/daemon/service"
 	"github.com/cajasmota/grafel/internal/install/mcpreg"
 	"github.com/cajasmota/grafel/internal/install/rulesfiles"
 	"github.com/cajasmota/grafel/internal/install/skilllink"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
 // DoctorSchemaVersion is the JSON schema version for DoctorReport.
@@ -188,6 +192,21 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 
 	// ── Check 2: Daemon /healthz ────────────────────────────────────────────
 	report.Checks = append(report.Checks, checkDaemon(state, opts.DaemonPort, opts.DaemonTimeout))
+
+	// ── Check 2b: Engine liveness + version skew (ADR-0024 PR5, epic #5729) ──
+	// Monolith-aware: in the DEFAULT config (GRAFEL_SPLIT_MODE off) there is no
+	// separate engine process, so this must never warn "engine down" — see
+	// checkEngineLiveness's doc comment for the monolith/split detection logic.
+	report.Checks = append(report.Checks, checkEngineLiveness(state, defaultEngineLivenessDeps()))
+
+	// ── Check 2c: Pre-split OS service unit (ADR-0024 PR5, epic #5729) ───────
+	// Purely informational: an existing install's unit may still literally
+	// exec `grafel daemon` until the next `grafel update`/`grafel install`
+	// re-renders it to `grafel serve` (behavior-identical while the split flag
+	// is off — see service.Install's WriteUnit re-render contract).
+	if preSplit := checkPreSplitUnit(); preSplit != nil {
+		report.Checks = append(report.Checks, *preSplit)
+	}
 
 	// ── Check 3: Skills per-file SHA manifests (COPY) or symlink targets (DEV) ─
 	for skillName, skillRecord := range state.Skills {
@@ -791,6 +810,197 @@ func checkStaleStagingDirs(statePath string) *CheckResult {
 		OK:       false,
 		Severity: SeverityInfo,
 		Drift:    drift,
+	}
+	return &cr
+}
+
+// ── Engine liveness + version skew (ADR-0024 PR5, epic #5729) ─────────────────
+
+// engineLivenessDeps abstracts the I/O checkEngineLiveness needs so tests can
+// drive monolith-mode / split-mode / fresh-heartbeat / stale-heartbeat /
+// version-skew scenarios without a real daemon root, a real engine.pid, or a
+// real statusfile on disk.
+type engineLivenessDeps struct {
+	// root resolves the daemon root directory. Mirrors daemon.DefaultLayout.
+	root func() (string, error)
+	// readEnginePID reads and parses engine.pid at the given path. Any error
+	// (including os.IsNotExist — the common monolith-mode case) means "no
+	// engine.pid": split mode is off, or the engine already exited and was
+	// reaped. Mirrors internal/daemon/service.defaultReadEnginePID.
+	readEnginePID func(path string) (int, error)
+	// readLiveness reads the engine-global liveness statusfile at key.
+	// Mirrors statusfile.Read(daemon.EngineLivenessStatusKey(root)).
+	readLiveness func(key string) (*statusfile.File, error)
+	// staleAfter returns the max heartbeat age before it's stale. Mirrors
+	// daemon.EngineHeartbeatStaleAfter — the SAME threshold the serve-side
+	// supervisor's own health gate uses.
+	staleAfter func() time.Duration
+}
+
+// defaultEngineLivenessDeps wires engineLivenessDeps to the real daemon /
+// statusfile packages.
+func defaultEngineLivenessDeps() engineLivenessDeps {
+	return engineLivenessDeps{
+		root: func() (string, error) {
+			layout, err := daemon.DefaultLayout()
+			if err != nil {
+				return "", err
+			}
+			return layout.Root, nil
+		},
+		readEnginePID: func(path string) (int, error) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return 0, err
+			}
+			pid, err := strconv.Atoi(strings.TrimSpace(string(data)))
+			if err != nil {
+				return 0, err
+			}
+			return pid, nil
+		},
+		readLiveness: statusfile.Read,
+		staleAfter:   daemon.EngineHeartbeatStaleAfter,
+	}
+}
+
+// checkEngineLiveness reports the health of the `grafel engine` child
+// process — but ONLY when the serve/engine split is actually active.
+//
+// ADR-0024's split is opt-in via GRAFEL_SPLIT_MODE, default OFF. In that
+// default (monolith) configuration there is NO separate engine process at
+// all — serve does all indexing in-process, exactly like the pre-split
+// `grafel daemon`. Mode detection here does NOT read SplitModeEnabled()
+// directly (that reflects THIS process's environment, not necessarily the
+// installed service's); instead it uses the observable artifact split mode
+// produces: an engine.pid file. No engine.pid means either split mode is off,
+// or a split-mode engine child already exited and was reaped (serve's own
+// graceful drain, or service.Uninstall's orphan sweep) — either way there is
+// no live engine to be "down", so this reports healthy/in-process rather than
+// warning.
+//
+// Only when engine.pid is present (split mode is/was active) do the
+// liveness-freshness and version-skew checks apply, mirroring the exact
+// staleness definition and pid-matching the serve-side supervisor's own
+// health gate uses (see internal/daemon/supervise.go's engineSupervisor.healthy).
+func checkEngineLiveness(state *State, deps engineLivenessDeps) CheckResult {
+	cr := CheckResult{Surface: "engine", OK: true}
+
+	root, err := deps.root()
+	if err != nil {
+		// Can't resolve a daemon root at all — not an engine-liveness
+		// problem per se (checkDaemon already covers daemon reachability);
+		// report info rather than a false "engine down".
+		cr.Severity = SeverityInfo
+		cr.Drift = []string{fmt.Sprintf("cannot resolve daemon root: %v", err)}
+		return cr
+	}
+
+	pidPath := daemon.EnginePIDPath(root)
+	pid, err := deps.readEnginePID(pidPath)
+	if err != nil || pid <= 0 {
+		// No engine.pid — monolith mode (the default), or the engine child
+		// already exited and was reaped. There is no separate engine process
+		// to be down. Healthy, in-process.
+		cr.Drift = []string{"monolith mode: no separate engine process (GRAFEL_SPLIT_MODE off)"}
+		cr.Severity = SeverityInfo
+		return cr
+	}
+
+	// engine.pid exists — split mode is (or was) active. Validate the
+	// engine-global liveness heartbeat the same way serve's own supervisor
+	// does.
+	f, ferr := deps.readLiveness(daemon.EngineLivenessStatusKey(root))
+	if ferr != nil {
+		cr.OK = false
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf("engine degraded: liveness statusfile unreadable: %v", ferr)}
+		return cr
+	}
+
+	if f.EnginePID != pid {
+		cr.OK = false
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf("engine degraded: liveness pid %d != engine.pid %d", f.EnginePID, pid)}
+		return cr
+	}
+
+	if age := time.Since(f.HeartbeatAt); age > deps.staleAfter() {
+		cr.OK = false
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf("engine degraded: stale heartbeat (%s old, max %s)", age.Truncate(time.Second), deps.staleAfter())}
+		return cr
+	}
+
+	// Version skew: serve's own recorded binary_version (install.json,
+	// refreshed from /healthz on restart — see checkDaemon) vs the engine
+	// child's self-reported version in the liveness statusfile. Only
+	// meaningful in split mode (we already know engine.pid is present here);
+	// in monolith mode there's a single binary so this branch is unreachable.
+	if state != nil && state.DaemonVersion != "" && f.Version != "" && state.DaemonVersion != f.Version {
+		cr.OK = false
+		cr.Severity = SeverityWarning
+		cr.Drift = []string{fmt.Sprintf("version skew: serve=%s engine=%s (restart the engine child to pick up the new build)", state.DaemonVersion, f.Version)}
+		return cr
+	}
+
+	return cr
+}
+
+// preSplitUnitTokens are the literal legacy-argument markers left behind in
+// an OS service unit rendered before PR5 retargeted the templates from
+// `daemon` to `serve` (launchd plist / systemd unit / Windows Task Scheduler
+// XML respectively). Behavior-identical either way while split mode is off —
+// this is purely informational.
+var preSplitUnitTokens = []string{
+	"<string>daemon</string>",       // launchd ProgramArguments
+	"<Arguments>daemon</Arguments>", // Windows Task Scheduler
+}
+
+// looksLikePreSplitUnit reports whether unit content still literally execs
+// the legacy `daemon` argument instead of `serve`.
+func looksLikePreSplitUnit(content string) bool {
+	for _, tok := range preSplitUnitTokens {
+		if strings.Contains(content, tok) {
+			return true
+		}
+	}
+	// systemd's ExecStart is a single line ending in the argument, e.g.
+	// "ExecStart=/usr/local/bin/grafel daemon" — check line-by-line rather
+	// than a single substring so we don't false-match "daemon" appearing
+	// elsewhere (e.g. Description=grafel knowledge-graph daemon).
+	for _, line := range strings.Split(content, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "ExecStart=") && strings.HasSuffix(line, " daemon") {
+			return true
+		}
+	}
+	return false
+}
+
+// checkPreSplitUnit reports (as SeverityInfo) when the installed OS service
+// unit still literally execs the legacy `daemon` argument. Returns nil when
+// no unit is installed, the unit can't be determined/read, or the unit
+// already execs `serve` — this is advisory-only noise we don't want to add
+// when there's nothing to say (mirrors checkStaleStagingDirs' nil-when-clean
+// pattern).
+func checkPreSplitUnit() *CheckResult {
+	st, err := service.Status(service.Options{})
+	if err != nil || st.UnitFile == "" {
+		return nil
+	}
+	data, err := os.ReadFile(st.UnitFile)
+	if err != nil {
+		return nil
+	}
+	if !looksLikePreSplitUnit(string(data)) {
+		return nil
+	}
+	cr := CheckResult{
+		Surface:  "service-unit",
+		OK:       false,
+		Severity: SeverityInfo,
+		Drift:    []string{fmt.Sprintf("%s still execs the legacy 'daemon' shim — it will retarget to 'serve' on the next `grafel update`/`grafel install`", st.UnitFile)},
 	}
 	return &cr
 }
