@@ -14,11 +14,14 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/graph"
+	"github.com/cajasmota/grafel/internal/registry"
 )
 
 // sseEvent is one parsed SSE `event:`/`data:` block.
@@ -335,4 +338,95 @@ func TestGraphStream_ColdGroupReturns503(t *testing.T) {
 	}
 	// Give the background warm goroutine a beat so it doesn't race t.Cleanup.
 	time.Sleep(10 * time.Millisecond)
+}
+
+// TestGraphStream_LoadFailureEmitsSSEError verifies that when a PRIOR warm
+// attempt for the group has actually failed (as opposed to simply not having
+// completed yet), the stream endpoint distinguishes that from the transient
+// "still warming" 503: it upgrades to SSE and emits a `connected` then an
+// `error` event carrying the failure detail, so EventSource (which cannot
+// read a non-2xx body) can actually see why the load failed instead of
+// retrying forever against an opaque 503 (#5722).
+func TestGraphStream_LoadFailureEmitsSSEError(t *testing.T) {
+	archHome := t.TempDir()
+	daemonRoot := t.TempDir()
+	t.Setenv("GRAFEL_HOME", archHome)
+	t.Setenv("GRAFEL_DAEMON_ROOT", daemonRoot)
+
+	// Register a group whose config file is malformed, so loading it fails
+	// deterministically (registry.LoadGroupConfig returns an error) while
+	// registration itself (which only checks the file exists) succeeds.
+	configDir := filepath.Join(archHome, "configs")
+	if err := os.MkdirAll(configDir, 0o755); err != nil {
+		t.Fatalf("mkdir configs: %v", err)
+	}
+	configPath := filepath.Join(configDir, "testgrp.fleet.json")
+	if err := os.WriteFile(configPath, []byte("not valid json"), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	if err := registry.AddGroup("testgrp", configPath); err != nil {
+		t.Fatalf("AddGroup: %v", err)
+	}
+
+	st := newFakeStore()
+	srv, err := NewServer(DefaultConfig(), st)
+	if err != nil {
+		t.Fatalf("NewServer: %v", err)
+	}
+
+	// Force one synchronous load attempt so the failure is recorded BEFORE we
+	// hit the stream endpoint (mirrors the async warm the cache kicks off,
+	// without racing a background goroutine in the test).
+	if _, err := srv.graphs.GetGroupForRef("testgrp", ""); err == nil {
+		t.Fatal("GetGroupForRef: want error for a group with a missing config, got nil")
+	}
+
+	ts := httptest.NewServer(srv.routes())
+	t.Cleanup(ts.Close)
+
+	resp, err := http.Get(ts.URL + "/api/v2/graph/testgrp/stream")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (SSE, so EventSource can read the error event)", resp.StatusCode)
+	}
+	if ct := resp.Header.Get("Content-Type"); !strings.HasPrefix(ct, "text/event-stream") {
+		t.Fatalf("Content-Type = %q, want text/event-stream", ct)
+	}
+	b, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("read body: %v", err)
+	}
+	events := readSSE(t, string(b))
+	if len(events) < 2 {
+		t.Fatalf("want at least connected+error, got %d events: %+v", len(events), events)
+	}
+	if events[0].Type != "connected" {
+		t.Errorf("first event = %q, want connected", events[0].Type)
+	}
+	var errEv *sseEvent
+	for i := range events {
+		if events[i].Type == "error" {
+			errEv = &events[i]
+			break
+		}
+	}
+	if errEv == nil {
+		t.Fatalf("no error event found in %+v", events)
+	}
+	var payload struct {
+		Code    string `json:"code"`
+		Message string `json:"message"`
+	}
+	if err := json.Unmarshal([]byte(errEv.Data), &payload); err != nil {
+		t.Fatalf("error payload unmarshal: %v", err)
+	}
+	if payload.Code == "" {
+		t.Errorf("error payload code is empty")
+	}
+	if payload.Message == "" {
+		t.Errorf("error payload message is empty")
+	}
 }

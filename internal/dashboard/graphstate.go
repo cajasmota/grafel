@@ -257,6 +257,7 @@ type GraphCache struct {
 	mu       sync.Mutex
 	entries  map[string]*cacheEntry
 	loading  map[string]*loadGate // in-flight loads, keyed by group (singleflight)
+	warmErrs map[string]error     // last load error per cache key (#5722), cleared on success
 	ttl      time.Duration
 	Payloads *graphPayloadCache // pre-serialised dense graph JSON, keyed by group+params
 }
@@ -279,6 +280,7 @@ func NewGraphCache(ttl time.Duration) *GraphCache {
 	return &GraphCache{
 		entries:  map[string]*cacheEntry{},
 		loading:  map[string]*loadGate{},
+		warmErrs: map[string]error{},
 		ttl:      ttl,
 		Payloads: newGraphPayloadCache(),
 	}
@@ -311,6 +313,24 @@ func (c *GraphCache) GetGroupCachedForRef(groupName, ref string) (*DashGroup, bo
 	// but return immediately so we never block first paint.
 	go func() { _, _ = c.GetGroupForRef(groupName, ref) }()
 	return nil, false
+}
+
+// LastWarmError returns the error from the most recent load attempt for
+// groupName/ref, if any load has been attempted and the most recent one
+// failed. It returns (nil, false) when no attempt has failed yet — either
+// because the group is warm, or because it simply hasn't finished its first
+// warm attempt (the ordinary "still warming" case). Callers use this to
+// distinguish a genuine load failure (#5722) from a group that just hasn't
+// warmed up yet, so a failure can be surfaced instead of retried forever.
+func (c *GraphCache) LastWarmError(groupName, ref string) (error, bool) {
+	cacheKey := groupName
+	if ref != "" {
+		cacheKey = groupName + "@" + ref
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	err, ok := c.warmErrs[cacheKey]
+	return err, ok
 }
 
 // Invalidate drops the cached entry for group and all per-ref variants
@@ -413,6 +433,12 @@ func (c *GraphCache) GetGroupForRef(groupName, ref string) (*DashGroup, error) {
 	c.mu.Lock()
 	if err == nil {
 		c.entries[cacheKey] = &cacheEntry{group: grp, loadedAt: time.Now()}
+		delete(c.warmErrs, cacheKey)
+	} else {
+		// Record the failure (#5722) so a subsequent best-effort caller (e.g.
+		// the graph-stream endpoint) can distinguish "genuinely failed" from
+		// "just hasn't warmed yet" instead of surfacing an eternal retry.
+		c.warmErrs[cacheKey] = err
 	}
 	delete(c.loading, cacheKey)
 	c.mu.Unlock()

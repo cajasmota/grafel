@@ -116,6 +116,16 @@ func (s *Server) handleV2GraphStream(w http.ResponseWriter, r *http.Request) {
 	// in the background; the frontend handles warm-up separately.
 	grp, warm := s.graphs.GetGroupCachedForRef(group, refParam)
 	if !warm {
+		// #5722 — distinguish a genuine load FAILURE from the ordinary "still
+		// warming" case. EventSource can't read a non-2xx body, so a bare 503
+		// is indistinguishable from "warming" to the frontend and it retries
+		// forever. When the last warm attempt for this group actually failed,
+		// upgrade to SSE and emit a `connected` + distinguishable `error` event
+		// carrying the failure detail instead of the opaque 503.
+		if loadErr, failed := s.graphs.LastWarmError(group, refParam); failed {
+			writeV2GraphStreamLoadError(w, loadErr)
+			return
+		}
 		writeV2Err(w, http.StatusServiceUnavailable, "unavailable",
 			"group not loaded; warming up — retry shortly")
 		return
@@ -235,6 +245,36 @@ func streamGraphChunks(w http.ResponseWriter, flusher http.Flusher, nodes []v2Gr
 			chunk.Edges = []v2GraphEdge{}
 		}
 		writeV2SSEEvent(w, "chunk", jsonString(chunk))
+		flusher.Flush()
+	}
+}
+
+// v2GraphStreamError is the `error` event payload emitted when a PRIOR warm
+// attempt for the group actually failed (see writeV2GraphStreamLoadError).
+type v2GraphStreamError struct {
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
+
+// writeV2GraphStreamLoadError upgrades the response to SSE and emits a
+// `connected` event followed by a distinguishable `error` event carrying
+// loadErr's detail (#5722). EventSource cannot read a non-2xx response body,
+// so a genuine load failure MUST be delivered as an SSE frame (status 200)
+// rather than an HTTP error status, or the frontend has no way to tell it
+// apart from a transient "still warming" 503 and retries forever.
+func writeV2GraphStreamLoadError(w http.ResponseWriter, loadErr error) {
+	flusher, ok := w.(http.Flusher)
+	setV2SSEHeaders(w)
+	w.WriteHeader(http.StatusOK)
+	writeV2SSEEvent(w, "connected", fmt.Sprintf(`{"subscribed_at":%d}`, time.Now().UnixMilli()))
+	if ok {
+		flusher.Flush()
+	}
+	writeV2SSEEvent(w, "error", jsonString(v2GraphStreamError{
+		Code:    "load_failed",
+		Message: loadErr.Error(),
+	}))
+	if ok {
 		flusher.Flush()
 	}
 }

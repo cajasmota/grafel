@@ -135,7 +135,10 @@ export default function GraphScreen() {
   // endpoint, so the screen + cosmos canvas consume the growing payload with no
   // data-model change. If the stream drops mid-way we fall back to the
   // full-payload fetch (same shape) so the graph still loads.
-  const stream = useGraphStream(groupId);
+  // #5722 — bump on manual "Retry" so a give-up/error state can be retried
+  // without needing groupId/enabled to change.
+  const [retryNonce, setRetryNonce] = useState(0);
+  const stream = useGraphStream(groupId, true, retryNonce);
   const streamFailed = stream.phase === "error";
   // The full-payload fetch is the FALLBACK: only enabled once the stream has
   // genuinely failed. A tiny graph still streams instantly (it's a single
@@ -730,7 +733,21 @@ export default function GraphScreen() {
           <div className="grid h-full place-items-center bg-bg">
             <div className="text-center">
               <p className="text-md text-text">Could not load the graph.</p>
-              <p className="mt-1 text-sm text-text-3">Is this group indexed? Check the daemon.</p>
+              {/* #5722 — surface the ACTUAL failure detail (from the stream's
+                  distinguishable `error` event, or the retry-ceiling give-up
+                  message) when we have one, instead of always the generic
+                  "is this indexed?" copy. Falls back to the generic copy when
+                  the stream never reported a specific reason (e.g. the
+                  fallback fetch itself failed for an unrelated reason). */}
+              <p className="mt-1 text-sm text-text-3">
+                {stream.errorMessage ?? "Is this group indexed? Check the daemon."}
+              </p>
+              <button
+                onClick={() => setRetryNonce((n) => n + 1)}
+                className="mt-3 inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-surface px-2.5 text-sm text-text-2 hover:bg-surface-2"
+              >
+                <RotateCcw size={13} /> Retry
+              </button>
             </div>
           </div>
         ) : nodes.length === 0 ? (

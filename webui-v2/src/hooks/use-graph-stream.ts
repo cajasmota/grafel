@@ -16,13 +16,24 @@
      • streaming — meta received; chunks are arriving, the payload grows,
                    the progress counter advances.
      • done      — `done` received; the payload is complete.
-     • error     — the stream dropped AFTER meta (a real mid-stream failure
-                   the caller should fall back from to the full-payload
-                   fetch, since the shapes are identical).
+     • error     — either (a) the stream dropped AFTER meta (a real
+                   mid-stream failure the caller should fall back from to the
+                   full-payload fetch, since the shapes are identical), (b)
+                   the backend emitted a distinguishable `error` SSE event
+                   (a genuine warm/load failure, not just "still warming" —
+                   #5722), or (c) the warm retry ceiling was reached with no
+                   success (#5722) — `errorMessage` carries a user-facing
+                   detail in cases (b)/(c) so the screen can surface it
+                   instead of spinning forever.
 
    EventSource can't read a non-2xx body, so a 503 (cold group) surfaces as
-   an `onerror` BEFORE any event. We distinguish that (→ warming, retry)
-   from a drop after meta (→ error, caller falls back).
+   an `onerror` BEFORE any event. We distinguish that (→ warming, retry) from
+   a drop after meta (→ error, caller falls back). #5722: a cold group whose
+   warm attempt has genuinely FAILED (not just not-yet-warm) is instead
+   signalled via a dedicated `error` SSE event the backend upgrades to (see
+   internal/dashboard/v2_graph_stream.go), and — belt and braces — a warm
+   that never succeeds at all trips a retry ceiling (see
+   lib/graph-stream-warm-policy) rather than retrying forever.
    ============================================================ */
 
 import { useEffect, useReducer, useRef, useState } from "react";
@@ -36,6 +47,7 @@ import {
   type GraphStreamMetaWire,
   type GraphStreamChunkWire,
 } from "@/lib/graph-stream-reducer";
+import { decideWarmRetry, parseWarmErrorEvent } from "@/lib/graph-stream-warm-policy";
 
 export type GraphStreamPhase = "idle" | "warming" | "streaming" | "done" | "error";
 
@@ -47,12 +59,14 @@ export interface UseGraphStreamResult {
   loadedNodes: number;
   /** Total nodes from `meta` (progress denominator); 0 until meta arrives. */
   totalNodes: number;
+  /**
+   * User-facing detail for the `error` phase (#5722): the backend's `error`
+   * SSE event message, or the retry-ceiling give-up message. Null outside
+   * the `error` phase, or for the (generic, caller-falls-back) mid-stream
+   * drop case where the fallback fetch's own error is what matters.
+   */
+  errorMessage: string | null;
 }
-
-// Reconnect/retry backoff for a COLD group (503 → warming). Bounded + capped so
-// a slow warm self-heals without hammering the endpoint; clamps to the last
-// element and keeps retrying. Mirrors the use-mcp-activity schedule.
-const WARM_BACKOFF_MS = [1000, 2000, 3500, 5000];
 
 type Action =
   | { type: "meta"; meta: GraphStreamMetaWire }
@@ -76,12 +90,20 @@ function reducer(state: GraphStreamState, action: Action): GraphStreamState {
 /**
  * Consume the progressive graph stream for `groupId`.
  *
- * @param enabled  When false (e.g. the caller fell back to the full-payload
- *                 fetch), no EventSource is opened and the hook stays idle.
+ * @param enabled   When false (e.g. the caller fell back to the full-payload
+ *                  fetch), no EventSource is opened and the hook stays idle.
+ * @param retryKey  #5722 — bump this (e.g. from a "Retry" button) to force a
+ *                  fresh connect cycle after the hook has given up (`error`
+ *                  phase), without needing to change `groupId`/`enabled`.
  */
-export function useGraphStream(groupId: string, enabled = true): UseGraphStreamResult {
+export function useGraphStream(
+  groupId: string,
+  enabled = true,
+  retryKey = 0,
+): UseGraphStreamResult {
   const [state, dispatch] = useReducer(reducer, undefined, initialStreamState);
   const [phase, setPhase] = useState<GraphStreamPhase>("idle");
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   // Latest phase in a ref so the long-lived effect's handlers branch on the
   // current phase (warming-vs-mid-stream) without re-subscribing.
@@ -98,6 +120,7 @@ export function useGraphStream(groupId: string, enabled = true): UseGraphStreamR
     dispatch({ type: "reset" });
     setPhase("warming");
     phaseRef.current = "warming";
+    setErrorMessage(null);
 
     let cancelled = false;
     let es: EventSource | null = null;
@@ -123,15 +146,23 @@ export function useGraphStream(groupId: string, enabled = true): UseGraphStreamR
       }
     };
 
+    // #5722 — retry with the capped backoff schedule until the retry ceiling
+    // (decideWarmRetry) is reached, then GIVE UP: surface `error` with a
+    // helpful message instead of retrying forever.
     const scheduleWarmRetry = () => {
       if (cancelled || retryTimer !== null) return;
-      const idx = Math.min(warmAttempt, WARM_BACKOFF_MS.length - 1);
-      const delay = WARM_BACKOFF_MS[idx];
+      const decision = decideWarmRetry(warmAttempt);
       warmAttempt += 1;
+      if (decision.kind === "giveUp") {
+        setErrorMessage(decision.message);
+        setPhase("error");
+        phaseRef.current = "error";
+        return;
+      }
       retryTimer = setTimeout(() => {
         retryTimer = null;
         connect();
-      }, delay);
+      }, decision.delayMs);
     };
 
     const connect = () => {
@@ -176,10 +207,25 @@ export function useGraphStream(groupId: string, enabled = true): UseGraphStreamR
         closeES();
       });
 
-      conn.onerror = () => {
+      conn.onerror = (ev: Event) => {
         if (cancelled) return;
         // A clean close after `done` lands here too — ignore it.
         if (phaseRef.current === "done") return;
+        // #5722 — the backend's distinguishable `error` SSE event (a genuine
+        // warm/load failure, not just "still warming") ALSO surfaces here:
+        // per the EventSource spec, a server "event: error" line dispatches
+        // an event of type "error" the same as a native connection failure.
+        // The two are distinguished by shape: the server's carries `.data`
+        // (it's actually a MessageEvent), a bare connection failure does not.
+        if (ev instanceof MessageEvent && typeof ev.data === "string") {
+          const detail = parseWarmErrorEvent(ev.data);
+          closeES();
+          setErrorMessage(detail.message);
+          setPhase("error");
+          phaseRef.current = "error";
+          clearRetry();
+          return;
+        }
         closeES();
         if (sawMeta) {
           // Dropped MID-STREAM after meta — a real failure. Surface `error` so
@@ -205,12 +251,13 @@ export function useGraphStream(groupId: string, enabled = true): UseGraphStreamR
       clearRetry();
       closeES();
     };
-  }, [groupId, enabled]);
+  }, [groupId, enabled, retryKey]);
 
   return {
     state,
     phase,
     loadedNodes: state.payload.nodes.length,
     totalNodes: state.totalNodes,
+    errorMessage,
   };
 }
