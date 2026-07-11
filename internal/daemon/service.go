@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/daemon/requests"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/daemon/watch"
 	"github.com/cajasmota/grafel/internal/install/hooks"
@@ -413,6 +414,14 @@ func (s *Service) Status(_ *proto.StatusArgs, reply *proto.StatusReply) error {
 	return nil
 }
 
+// requestsDirForRepo is the serve→engine control-plane drop directory for a
+// repo (ADR-0024 PR4, epic #5729): a `requests/` subdirectory sibling to
+// repair.json / enrichment-candidates.json under the same
+// StateDirForRepo(repoPath) root. See internal/daemon/requests.
+func requestsDirForRepo(repoPath string) string {
+	return filepath.Join(StateDirForRepo(repoPath), "requests")
+}
+
 // Index runs a single-repo index synchronously. Phase B adds the
 // MarkIndexed bookkeeping so an explicit RPC index updates the same
 // in-memory state that the watcher-driven path uses.
@@ -432,6 +441,30 @@ func (s *Service) Index(args *proto.IndexArgs, reply *proto.IndexReply) error {
 	// reindex instead of N back-to-back full reindexes. Used by git hooks
 	// so git writes never block on a reindex. Falls back to the synchronous
 	// path below when no scheduler is attached (e.g. a watcher-less daemon).
+	//
+	// ADR-0024 PR4 (epic #5729): in split mode this RPC is answered by the
+	// SERVE process, which has no scheduler at all (s.scheduler is always
+	// nil there — startEnginePlane, which assigns it, is skipped for
+	// planeServeOnly). Falling through to the "no scheduler" branch below
+	// would run the synchronous s.index(*args) call — a full reindex — IN
+	// THE SERVE PROCESS, exactly the blast-radius coupling the split exists
+	// to remove. So when SplitModeEnabled() and Async is requested, drop a
+	// KindReindex request file instead of touching the scheduler; the
+	// engine's drain loop (engineplane.go) picks it up and calls
+	// scheduler.Enqueue(repoPath) itself — the same call this function makes
+	// in monolith/engine mode. The two paths are mutually exclusive: split
+	// mode NEVER calls s.scheduler.Enqueue from here, and monolith/engine
+	// mode NEVER writes a request file.
+	if args.Async && SplitModeEnabled() {
+		if _, err := requests.Write(requestsDirForRepo(args.RepoPath), requests.Record{
+			Kind:     requests.KindReindex,
+			RepoPath: args.RepoPath,
+		}); err != nil {
+			return fmt.Errorf("queue reindex request: %w", err)
+		}
+		reply.RepoPath = args.RepoPath
+		return nil
+	}
 	if args.Async && s.scheduler != nil {
 		s.scheduler.Enqueue(args.RepoPath)
 		reply.RepoPath = args.RepoPath

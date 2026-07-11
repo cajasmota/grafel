@@ -138,6 +138,17 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 		}
 		ep.add(scheduler.Stop)
 
+		// ADR-0024 PR4 (epic #5729): the serve→engine request-file queue
+		// consumer. Only meaningful in split mode — the monolith (flag off,
+		// the default) never has anything to drain because Service.Index's
+		// async fast path calls scheduler.Enqueue directly there (see
+		// service.go). Gating on SplitModeEnabled() keeps monolith behavior
+		// byte-identical: no extra goroutine, no directory globbing, when the
+		// flag is off.
+		if SplitModeEnabled() {
+			ep.add(startRequestsDrainLoop(scheduler, logger))
+		}
+
 		// #5725/#5729-W1: status-plane heartbeat file. startStatusWriter runs a
 		// SINGLE serialized writer goroutine that refreshes every known repo's
 		// on-disk status sidecar (internal/statusfile): promptly on each
