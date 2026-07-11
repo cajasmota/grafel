@@ -413,8 +413,9 @@ func Run(ctx context.Context, cfg Config) error {
 			// PH1b: capture the HEAD ref at enqueue time so debounced
 			// batches index against the branch that was active when the
 			// file-change event fired, not the branch at dispatch time.
-			RefCapture: func(repoPath string) string {
-				return gitmeta.Capture(repoPath).Ref
+			RefCapture: func(repoPath string) (ref, commit string) {
+				info := gitmeta.Capture(repoPath)
+				return info.Ref, info.SHA
 			},
 			// #3680: drop enqueues for linked git worktrees of an
 			// already-indexed primary repo so they never become independent
@@ -504,7 +505,10 @@ func Run(ctx context.Context, cfg Config) error {
 				if cfg.BranchSwitchSink != nil {
 					cfg.BranchSwitchSink(ev.RepoPath, ev.OldRef)
 				}
-				scheduler.EnqueueRef(ev.RepoPath, ev.NewRef)
+				// #5726: carry the new commit SHA so the reindex circuit breaker
+				// keys on the commit (branch switches always change the SHA →
+				// the breaker resets and the new ref gets a real attempt).
+				scheduler.EnqueueRefCommit(ev.RepoPath, ev.NewRef, ev.NewSHA)
 			}, logger)
 			headPoller.Start()
 			defer headPoller.Stop()

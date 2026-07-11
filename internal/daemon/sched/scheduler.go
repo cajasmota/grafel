@@ -64,12 +64,17 @@ import (
 // should fall back to gitmeta.Capture(repoPath) if they need it.
 type IndexFn func(ctx context.Context, repoPath string, ref string) error
 
-// RefCaptureFn returns the current HEAD ref for repoPath. Used to snapshot
-// the ref at Enqueue time so debounced batches index against the ref that
-// was active when the file-change event fired, not the ref at dispatch time.
-// May return "" for detached HEAD or non-git directories; IndexFn must
-// tolerate an empty ref.
-type RefCaptureFn func(repoPath string) string
+// RefCaptureFn returns the current HEAD ref AND commit SHA for repoPath. Used
+// to snapshot both at Enqueue time so debounced batches index against the ref
+// that was active when the file-change event fired, not the ref at dispatch
+// time. The commit SHA is the stable per-commit identity the #5726/#5729
+// reindex circuit breaker keys on (the branch NAME is not — a fix commit on
+// the same branch keeps the same name yet must reset the breaker, and a
+// detached HEAD has an empty name but a perfectly good SHA).
+//
+// ref may be "" for a detached HEAD or non-git directory; commit may be "" for
+// a non-git directory. IndexFn must tolerate an empty ref.
+type RefCaptureFn func(repoPath string) (ref, commit string)
 
 // LinksFn re-runs the cross-repo link passes for a group.
 type LinksFn func(ctx context.Context, group string) error
@@ -340,6 +345,7 @@ func reindexFailBackoff(n int) time.Duration {
 type enqueueRequest struct {
 	repoPath string
 	ref      string // captured at Enqueue time via RefCapture; "" = unknown
+	commit   string // commit SHA captured alongside ref; breaker identity (#5726)
 }
 
 // Scheduler is constructed once per daemon. It owns:
@@ -385,13 +391,14 @@ type Scheduler struct {
 	// no lost update (the marker is set AFTER the run snapshots its input, so
 	// a change landing mid-run still triggers the follow-up). N events during
 	// a reindex → 1 follow-up, not N. Guarded by mu.
-	dirty       map[string]bool
-	pendingRefs map[string]string // repo → ref captured at last Enqueue (overwritten on re-enqueue)
-	pendingQ    []string          // ordered admission queue
-	queueLen    int               // pending + admitted-but-not-yet-running
-	usedMB      int64             // sum of inflight MB
-	linkTimers  map[string]*time.Timer
-	linkPending map[string]bool
+	dirty          map[string]bool
+	pendingRefs    map[string]string // repo → ref captured at last Enqueue (overwritten on re-enqueue)
+	pendingCommits map[string]string // repo → commit SHA captured at last Enqueue (mirrors pendingRefs; breaker identity #5726)
+	pendingQ       []string          // ordered admission queue
+	queueLen       int               // pending + admitted-but-not-yet-running
+	usedMB         int64             // sum of inflight MB
+	linkTimers     map[string]*time.Timer
+	linkPending    map[string]bool
 	// Per-GROUP algorithm pass (#5349 A3). Mirrors the link timer machinery:
 	// debounce timer + pending flag + in-flight cancel func, all keyed by group.
 	// Replaces the old per-repo algo timers — algorithms now run once over the
@@ -436,6 +443,7 @@ type Scheduler struct {
 type jobToken struct {
 	repoPath    string
 	ref         string // git ref name captured at Enqueue time; "" = unknown
+	commit      string // commit SHA captured at Enqueue time; breaker identity (#5726); "" = non-git
 	predictedMB int64
 }
 
@@ -455,15 +463,18 @@ type repoStats struct {
 	// completes in this daemon's lifetime.
 	LastIndexedRef string
 
-	// FailRef/FailCount/FailBackoffUntil/FailLoggedAt implement the
-	// #5726/#5729 reindex circuit breaker. FailRef is the ref a same-target
-	// reindex attempt most recently failed at; FailCount counts consecutive
-	// failures at that ref (drives exponential backoff via
-	// reindexFailBackoff); FailBackoffUntil is when the breaker next allows a
-	// real attempt at FailRef; FailLoggedAt debounces the skip-log line to at
-	// most once per backoff window. A successful index, or a trigger for a
-	// DIFFERENT ref, resets all four fields.
-	FailRef          string
+	// FailCommit/FailCount/FailBackoffUntil/FailLoggedAt implement the
+	// #5726/#5729 reindex circuit breaker. FailCommit is the commit SHA a
+	// same-target reindex attempt most recently failed at (SHA, NOT branch
+	// name: a fix commit on the same branch keeps the branch name but changes
+	// the SHA, which must reset the breaker; a detached HEAD has no branch name
+	// but a valid SHA). FailCount counts consecutive failures at that commit
+	// (drives exponential backoff via reindexFailBackoff); FailBackoffUntil is
+	// when the breaker next allows a real attempt at FailCommit; FailLoggedAt
+	// debounces the skip-log line to at most once per backoff window. A
+	// successful index, or a trigger for a DIFFERENT commit, resets all four
+	// fields.
+	FailCommit       string
 	FailCount        int
 	FailBackoffUntil time.Time
 	FailLoggedAt     time.Time
@@ -544,6 +555,7 @@ func New(cfg Config) *Scheduler {
 		pendingIndex:     map[string]bool{},
 		dirty:            map[string]bool{},
 		pendingRefs:      map[string]string{},
+		pendingCommits:   map[string]string{},
 		linkTimers:       map[string]*time.Timer{},
 		linkPending:      map[string]bool{},
 		groupAlgoTimers:  map[string]*time.Timer{},
@@ -617,18 +629,29 @@ func (s *Scheduler) Stop() {
 // the ref is snapshotted at event-fire time, not at eventual dispatch time.
 // Safe to call from arbitrary goroutines.
 func (s *Scheduler) Enqueue(repoPath string) {
-	ref := ""
+	ref, commit := "", ""
 	if s.cfg.RefCapture != nil {
-		ref = s.cfg.RefCapture(repoPath)
+		ref, commit = s.cfg.RefCapture(repoPath)
 	}
-	s.EnqueueRef(repoPath, ref)
+	s.EnqueueRefCommit(repoPath, ref, commit)
 }
 
 // EnqueueRef requests a (debounced+deduped) reindex of repoPath at a
-// specific git ref. Called directly by the GitHeadPoller (branch-switch
-// events) where the new ref has already been observed — no extra git call
-// needed. Safe to call from arbitrary goroutines.
+// specific git ref, with no commit SHA. Retained for callers (and tests) that
+// only have a ref; the #5726 circuit breaker keys on the commit SHA, so an
+// EnqueueRef job carries an empty commit identity. Prefer EnqueueRefCommit on
+// paths where the SHA is known (the GitHeadPoller has it as ev.NewSHA).
 func (s *Scheduler) EnqueueRef(repoPath, ref string) {
+	s.EnqueueRefCommit(repoPath, ref, "")
+}
+
+// EnqueueRefCommit requests a (debounced+deduped) reindex of repoPath at a
+// specific git ref and commit SHA. Called directly by the GitHeadPoller
+// (branch-switch events) where both the new ref and SHA have already been
+// observed — no extra git call needed. The commit SHA is the identity the
+// #5726/#5729 reindex circuit breaker gates on. Safe to call from arbitrary
+// goroutines.
+func (s *Scheduler) EnqueueRefCommit(repoPath, ref, commit string) {
 	// Issue #3680: drop enqueues for linked worktrees of already-indexed
 	// primaries so they never become independent root index jobs (each of
 	// which would spawn its own ~100MB store and pressure the RSS budget).
@@ -637,7 +660,7 @@ func (s *Scheduler) EnqueueRef(repoPath, ref string) {
 		return
 	}
 	select {
-	case s.enq <- enqueueRequest{repoPath: repoPath, ref: ref}:
+	case s.enq <- enqueueRequest{repoPath: repoPath, ref: ref, commit: commit}:
 	case <-s.stop:
 	}
 }
@@ -675,20 +698,27 @@ func (s *Scheduler) dedupLoop() {
 				if req.ref != "" {
 					s.pendingRefs[p] = req.ref
 				}
+				if req.commit != "" {
+					s.pendingCommits[p] = req.commit
+				}
 				s.publishRepoStatesLocked() // #5433: repo just went dirty.
 				s.mu.Unlock()
 				continue
 			}
 			if s.pendingIndex[p] {
-				// Already pending: update the ref to the latest observed value.
+				// Already pending: update the ref/commit to the latest observed.
 				if req.ref != "" {
 					s.pendingRefs[p] = req.ref
+				}
+				if req.commit != "" {
+					s.pendingCommits[p] = req.commit
 				}
 				s.mu.Unlock()
 				continue
 			}
 			s.pendingIndex[p] = true
 			s.pendingRefs[p] = req.ref
+			s.pendingCommits[p] = req.commit
 			s.pendingQ = append(s.pendingQ, p)
 			s.queueLen++
 			// Start the dead-man clock if nothing is currently
@@ -786,9 +816,11 @@ func (s *Scheduler) checkDeadMan() {
 	}
 	repo := s.pendingQ[smallestIdx]
 	ref := s.pendingRefs[repo]
+	commit := s.pendingCommits[repo]
 	// Remove from queue (preserve order for remaining entries).
 	s.pendingQ = append(s.pendingQ[:smallestIdx], s.pendingQ[smallestIdx+1:]...)
 	delete(s.pendingRefs, repo)
+	delete(s.pendingCommits, repo)
 	s.inflight[repo] = smallestMB
 	s.publishIndexStateLocked()
 	s.usedMB += smallestMB
@@ -799,7 +831,7 @@ func (s *Scheduler) checkDeadMan() {
 	s.logger.Info("sched: dead-man: force-admitting",
 		"repo", repo, "predicted_mb", smallestMB, "stuck_for", stuckFor)
 
-	tok := jobToken{repoPath: repo, ref: ref, predictedMB: smallestMB}
+	tok := jobToken{repoPath: repo, ref: ref, commit: commit, predictedMB: smallestMB}
 	// Dispatch asynchronously so we don't hold the lock while blocking on
 	// the jobs channel. The worker pool is guaranteed to drain the channel
 	// because the pool size >= 1.
@@ -1056,6 +1088,7 @@ func (s *Scheduler) tryAdmit() {
 	for len(s.pendingQ) > 0 {
 		repo := s.pendingQ[0]
 		ref := s.pendingRefs[repo]
+		commit := s.pendingCommits[repo]
 		predicted := s.predictedFor(repo)
 		// Admission rule.
 		if s.cfg.BudgetMB > 0 {
@@ -1077,13 +1110,14 @@ func (s *Scheduler) tryAdmit() {
 		// Pop and dispatch.
 		s.pendingQ = s.pendingQ[1:]
 		delete(s.pendingRefs, repo)
+		delete(s.pendingCommits, repo)
 		s.inflight[repo] = predicted
 		s.publishIndexStateLocked()
 		s.usedMB += predicted
 		s.deadManAt = time.Time{} // job admitted — reset dead-man clock
 		s.logEventLocked("admit_ok", repo,
 			"predicted="+formatMB(predicted)+" used="+formatMB(s.usedMB)+" ref="+ref)
-		tok := jobToken{repoPath: repo, ref: ref, predictedMB: predicted}
+		tok := jobToken{repoPath: repo, ref: ref, commit: commit, predictedMB: predicted}
 		s.mu.Unlock()
 		// Block on jobs channel — workers are sized to drain this
 		// without deadlock because admission already ensures we are
@@ -1152,18 +1186,27 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	delete(s.dirty, repoPath)
 
 	// #5726/#5729 circuit breaker: a repo genuinely over the FlatBuffers
-	// 2-GiB cap fails the SAME way on every attempt at the SAME target ref —
-	// the fbwriter fail-soft path recovers the marshal panic but leaves the
-	// input state (watcher fs events, git-HEAD poll) unaware of the failure,
-	// so any further churn at the same commit re-fires a doomed reindex
-	// immediately. If the breaker is open for this exact ref, skip the real
-	// attempt (serve last-good graph.fb) instead of re-marshaling.
+	// 2-GiB cap fails the SAME way on every attempt at the SAME COMMIT — the
+	// fbwriter fail-soft path recovers the marshal panic but leaves the input
+	// state (watcher fs events, git-HEAD poll) unaware of the failure, so any
+	// further working-tree churn at the same commit re-fires a doomed reindex
+	// immediately. The breaker gates on the commit SHA (tok.commit), which is
+	// stable across same-commit churn (hot-loop bounded) yet changes on every
+	// new commit (a fix commit resets it immediately) and is present for a
+	// detached HEAD (the branch name is not). If the breaker is open for this
+	// exact commit, skip the real attempt (serve last-good graph.fb) instead
+	// of re-marshaling.
 	breakerStats := s.indexedRepos[repoPath]
 	now := time.Now()
-	skip := tok.ref != "" && breakerStats.FailRef == tok.ref && now.Before(breakerStats.FailBackoffUntil)
+	skip := breakerStats.FailCommit == tok.commit && now.Before(breakerStats.FailBackoffUntil)
 	shouldLogSkip := false
 	if skip {
-		shouldLogSkip = breakerStats.FailLoggedAt.IsZero() || now.Sub(breakerStats.FailLoggedAt) >= reindexFailBackoffBase
+		// Log at most once per backoff window (tracking the actual window for
+		// the current fail count, not a fixed interval), so a repo hot-looping
+		// at the cap produces a handful of lines instead of the 74x storm the
+		// breaker exists to prevent.
+		window := reindexFailBackoff(breakerStats.FailCount)
+		shouldLogSkip = breakerStats.FailLoggedAt.IsZero() || now.Sub(breakerStats.FailLoggedAt) >= window
 		if shouldLogSkip {
 			breakerStats.FailLoggedAt = now
 			s.indexedRepos[repoPath] = breakerStats
@@ -1177,13 +1220,13 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	var observedPeakMB int64
 
 	if skip {
-		err = fmt.Errorf("reindex circuit open: %d consecutive failure(s) at ref %q, retrying after backoff (#5726/#5729)", breakerStats.FailCount, tok.ref)
+		err = fmt.Errorf("reindex circuit open: %d consecutive failure(s) at commit %q, retrying after backoff (#5726/#5729)", breakerStats.FailCount, tok.commit)
 		if shouldLogSkip {
 			s.logEvent("index_circuit_skip", repoPath,
-				fmt.Sprintf("skipping reindex — %d consecutive failures at ref=%s, serving last-good graph, backoff until %s (#5726/#5729)",
-					breakerStats.FailCount, tok.ref, breakerStats.FailBackoffUntil.Format(time.RFC3339)))
+				fmt.Sprintf("skipping reindex — %d consecutive failures at commit=%s (ref=%s), serving last-good graph, backoff until %s (#5726/#5729)",
+					breakerStats.FailCount, tok.commit, tok.ref, breakerStats.FailBackoffUntil.Format(time.RFC3339)))
 			s.logger.Warn("sched: reindex circuit open — skipping repeated-failure reindex, serving last-good graph",
-				"repo", repoPath, "ref", tok.ref, "fail_count", breakerStats.FailCount,
+				"repo", repoPath, "commit", tok.commit, "ref", tok.ref, "fail_count", breakerStats.FailCount,
 				"backoff_until", breakerStats.FailBackoffUntil)
 		}
 	} else {
@@ -1291,12 +1334,12 @@ func (s *Scheduler) runIndex(tok jobToken) {
 		stats.LastErr = err.Error()
 		if !skip {
 			// A real attempt failed: bump (or start) the breaker for this
-			// ref and arm exponential backoff. A skip does not re-bump —
+			// commit and arm exponential backoff. A skip does not re-bump —
 			// the failure it reflects was already recorded.
-			if stats.FailRef == tok.ref {
+			if stats.FailCommit == tok.commit {
 				stats.FailCount++
 			} else {
-				stats.FailRef = tok.ref
+				stats.FailCommit = tok.commit
 				stats.FailCount = 1
 				stats.FailLoggedAt = time.Time{}
 			}
@@ -1305,9 +1348,9 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	} else {
 		stats.LastErr = ""
 		// Success resets the breaker entirely — including for a DIFFERENT
-		// ref than FailRef, which is already implied since a fresh ref
-		// never matched the open breaker in the first place.
-		stats.FailRef = ""
+		// commit than FailCommit, which is already implied since a fresh
+		// commit never matched the open breaker in the first place.
+		stats.FailCommit = ""
 		stats.FailCount = 0
 		stats.FailBackoffUntil = time.Time{}
 		stats.FailLoggedAt = time.Time{}
@@ -1331,19 +1374,26 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	if followUp {
 		delete(s.dirty, repoPath)
 	}
-	// Prefer the latest observed ref recorded while dirty; fall back to the
-	// ref this run used. dedupLoop overwrites pendingRefs[repoPath] on every
-	// mid-run enqueue, so it holds the most recent branch for the follow-up.
+	// Prefer the latest observed ref/commit recorded while dirty; fall back to
+	// the values this run used. dedupLoop overwrites pendingRefs/pendingCommits
+	// on every mid-run enqueue, so they hold the most recent branch + commit
+	// for the follow-up (the commit is the breaker identity, so it must ride
+	// along too — otherwise a same-commit follow-up would carry an empty commit
+	// and bypass the breaker).
 	followUpRef := tok.ref
 	if r, ok := s.pendingRefs[repoPath]; ok && r != "" {
 		followUpRef = r
+	}
+	followUpCommit := tok.commit
+	if c, ok := s.pendingCommits[repoPath]; ok && c != "" {
+		followUpCommit = c
 	}
 	s.mu.Unlock()
 
 	if followUp {
 		s.logEvent("reindex_coalesced_followup", repoPath,
 			"changes landed during in-flight reindex — scheduling single follow-up (#5138)")
-		s.EnqueueRef(repoPath, followUpRef)
+		s.EnqueueRefCommit(repoPath, followUpRef, followUpCommit)
 	}
 
 	// History persistence happens outside the lock (its own mutex +
@@ -1764,6 +1814,14 @@ func (s *Scheduler) MarkIndexed(repoPath string, err error) {
 		stats.LastErr = err.Error()
 	} else {
 		stats.LastErr = ""
+		// #5726/#5729: an explicit `grafel index` RPC that succeeds means the
+		// repo now serializes under the cap (e.g. the developer removed a huge
+		// vendored tree). Clear any scheduler-armed breaker so a subsequent
+		// watcher reindex is not skipped by a stale backoff window.
+		stats.FailCommit = ""
+		stats.FailCount = 0
+		stats.FailBackoffUntil = time.Time{}
+		stats.FailLoggedAt = time.Time{}
 	}
 	s.indexedRepos[repoPath] = stats
 }

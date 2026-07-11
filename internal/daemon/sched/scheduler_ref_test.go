@@ -27,10 +27,10 @@ func TestSchedulerRef_EnqueueCapturesRef(t *testing.T) {
 
 	s := New(Config{
 		Workers: 1,
-		RefCapture: func(_ string) string {
+		RefCapture: func(_ string) (string, string) {
 			refMu.Lock()
 			defer refMu.Unlock()
-			return currentRef
+			return currentRef, ""
 		},
 		Index: func(_ context.Context, _ string, ref string) error {
 			mu.Lock()
@@ -85,8 +85,8 @@ func TestSchedulerRef_EnqueueRefPassesRefDirectly(t *testing.T) {
 	// RefCapture always returns "main" — but EnqueueRef bypasses it.
 	s := New(Config{
 		Workers: 1,
-		RefCapture: func(_ string) string {
-			return "main"
+		RefCapture: func(_ string) (string, string) {
+			return "main", ""
 		},
 		Index: func(_ context.Context, _ string, ref string) error {
 			mu.Lock()
@@ -125,8 +125,8 @@ func TestSchedulerRef_BranchSwitchAfterFirstIndex(t *testing.T) {
 
 	s := New(Config{
 		Workers: 1,
-		RefCapture: func(_ string) string {
-			return "feat/original"
+		RefCapture: func(_ string) (string, string) {
+			return "feat/original", ""
 		},
 		Index: func(_ context.Context, _ string, ref string) error {
 			// Block on the gate so we can enqueue the branch-switch while
