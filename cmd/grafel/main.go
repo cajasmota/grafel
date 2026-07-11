@@ -50,6 +50,8 @@ func main() {
 	}
 	cli.Execute(cli.Hooks{
 		RunDaemon:       runDaemon,
+		RunServe:        runServe,
+		RunEngine:       runEngine,
 		RunLinks:        runLinksHook,
 		RunDashboard:    runDashboard,
 		RunQuality:      runQuality,

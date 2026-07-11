@@ -18,9 +18,28 @@ type Hooks struct {
 	// RunDaemon runs the long-running daemon (the `grafel daemon`
 	// hidden subcommand). It blocks until the daemon exits. Wired from
 	// cmd/grafel because the daemon imports the extractor stack.
+	//
+	// ADR-0024 (serve/engine split, Phase 1): `daemon` is now a back-compat
+	// shim over the same path as RunServe, kept so an existing OS unit that
+	// still execs `grafel daemon` transparently becomes a serve process.
 	RunDaemon    func(argv []string) error
 	RunDashboard func(argv []string) error
 	RunQuality   func(argv []string) error
+
+	// RunServe runs the serve plane (MCP socket + dashboard + graph_cache
+	// mmap reads), and — while the ADR-0024 capability flag is off (the
+	// default) — the engine plane in-process too, identically to RunDaemon.
+	// It is the `grafel serve` hidden subcommand's entrypoint and is also
+	// what the back-compat `grafel daemon` shim calls. Wired from
+	// cmd/grafel for the same reason as RunDaemon.
+	RunServe func(argv []string) error
+
+	// RunEngine runs the engine plane (scheduler + watcher + extraction +
+	// fbwriter) as the `grafel engine` hidden subcommand's entrypoint. In
+	// this PR (ADR-0024 Phase 1: entrypoint/config carve only) it is not
+	// yet independently runnable — the real process split lands in PR2.
+	// Wired from cmd/grafel for the same reason as RunDaemon.
+	RunEngine func(argv []string) error
 	// RunLinks runs the cross-repo link passes for a group. Wired up
 	// from cmd/grafel so the daemon (Phase B) can re-trigger link
 	// passes whenever a registered repo's graph.json changes.

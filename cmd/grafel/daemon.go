@@ -391,14 +391,55 @@ func envPositiveInt2(name string) int {
 	return n
 }
 
-// runDaemon is the long-running mode of the grafel binary. It is
-// wired into the CLI as a hidden `grafel daemon` subcommand —
-// users normally reach it via `grafel start`, which forks this
-// process and detaches.
+// daemonRunMode selects which of the daemon.Config-driven entrypoints
+// runDaemonMode hands off to at the end of its shared runtime-tune +
+// config-assembly prelude (ADR-0024 Phase 1: entrypoint/config carve).
+type daemonRunMode int
+
+const (
+	daemonRunModeServe daemonRunMode = iota
+	daemonRunModeEngine
+)
+
+// runDaemon is the long-running mode of the grafel binary. It is wired
+// into the CLI as a hidden `grafel daemon` subcommand — users normally
+// reach it via `grafel start`, which forks this process and detaches.
+//
+// ADR-0024 (serve/engine split, Phase 1): `daemon` is now a back-compat
+// shim that runs the SAME path as `grafel serve` (runServe below), so an
+// existing OS unit that still execs `grafel daemon` transparently becomes
+// a serve process. Zero client-visible change.
+func runDaemon(argv []string) error {
+	return runServe(argv)
+}
+
+// runServe is the `grafel serve` entrypoint (ADR-0024 Phase 1): the MCP
+// socket + dashboard plane, plus — while the capability flag
+// (daemon.SplitModeEnabled) is off, the default — the engine plane
+// in-process, identically to today's daemon. It shares the entire
+// runtime-tune + daemon.Config assembly prelude with runEngine via
+// runDaemonMode.
+func runServe(argv []string) error {
+	return runDaemonMode(argv, daemonRunModeServe)
+}
+
+// runEngine is the `grafel engine` entrypoint (ADR-0024 Phase 1): the
+// scheduler/watcher/extraction/fbwriter plane. In this PR it shares the
+// same config-assembly prelude as runServe but hands off to
+// daemon.RunEngine, which — until PR2 lands the real process split —
+// deliberately refuses to run standalone (see daemon.RunEngine's doc).
+func runEngine(argv []string) error {
+	return runDaemonMode(argv, daemonRunModeEngine)
+}
+
+// runDaemonMode holds the runtime-tune prelude (GC/GOMAXPROCS/fd-limit
+// tuning, flag parsing, layout/mode resolution, daemon.Config assembly)
+// shared by runServe and runEngine (ADR-0024 Phase 1 config carve), then
+// dispatches to daemon.RunServe or daemon.RunEngine depending on mode.
 //
 // All extractor + registry + linker work happens here. The CLI's other
 // subcommands are thin RPC clients (see internal/daemon/client).
-func runDaemon(argv []string) error {
+func runDaemonMode(argv []string, runMode daemonRunMode) error {
 	// Fix root-cause E (#2141): lower the GC trigger from the default 100%
 	// heap-growth to 50%. This trades ~5% additional CPU for ~30% lower
 	// steady-state heap by collecting unreachable objects twice as often.
@@ -789,7 +830,16 @@ func runDaemon(argv []string) error {
 	// begins serving requests. The scanner goroutine runs until ctx is cancelled.
 	startDaemonTierManager(ctx, logger)
 
-	return daemon.Run(ctx, cfg)
+	// ADR-0024 Phase 1: dispatch to the serve or engine entrypoint. Both
+	// currently execute the identical in-process daemon.Run body while the
+	// capability flag is off (the default); PR2 diverges these behind the
+	// real process split. See daemon.RunServe / daemon.RunEngine docs.
+	switch runMode {
+	case daemonRunModeEngine:
+		return daemon.RunEngine(ctx, daemon.EngineConfig{Config: cfg})
+	default:
+		return daemon.RunServe(ctx, daemon.ServeConfig{Config: cfg})
+	}
 }
 
 // daemonReposToWatch returns every repo from every registered group

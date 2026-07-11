@@ -218,6 +218,11 @@ var errDaemonNotRunning = errors.New(
 // newDaemonCmd exposes the long-running daemon mode. It is hidden from
 // the primary surface — users normally reach it through `grafel start`,
 // which forks the binary in this mode with stdio detached.
+//
+// ADR-0024 (serve/engine split, Phase 1): `daemon` is the back-compat name.
+// Its RunE calls the SAME path as `grafel serve` (RunServe) so an existing
+// OS unit (launchd/systemd/SCM) that still execs `grafel daemon` becomes a
+// serve process transparently — no client-visible change.
 func newDaemonCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:                "daemon",
@@ -225,10 +230,54 @@ func newDaemonCmd() *cobra.Command {
 		Hidden:             true,
 		DisableFlagParsing: true,
 		RunE: func(_ *cobra.Command, args []string) error {
+			if activeHooks.RunServe != nil {
+				return activeHooks.RunServe(args)
+			}
+			// Fallback for any host that has not yet wired RunServe.
 			if activeHooks.RunDaemon == nil {
 				return errors.New("daemon entrypoint not wired")
 			}
 			return activeHooks.RunDaemon(args)
+		},
+	}
+	return cmd
+}
+
+// newServeCmd exposes the serve plane (ADR-0024 Phase 1): the MCP socket,
+// the dashboard, and graph_cache mmap reads. Hidden — not part of the
+// public surface yet; `grafel daemon` remains the documented/back-compat
+// entrypoint until `grafel install`/OS units are retargeted in a later PR.
+func newServeCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:                "serve",
+		Short:              "Run the grafel serve plane (MCP socket + dashboard)",
+		Hidden:             true,
+		DisableFlagParsing: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			if activeHooks.RunServe == nil {
+				return errors.New("serve entrypoint not wired")
+			}
+			return activeHooks.RunServe(args)
+		},
+	}
+	return cmd
+}
+
+// newEngineCmd exposes the engine plane (ADR-0024 Phase 1): the scheduler,
+// watcher, extraction, and fbwriter. Hidden. In this PR it is not yet
+// independently runnable — the real process split (serve spawning/
+// supervising an engine child) lands in PR2, epic #5729.
+func newEngineCmd() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:                "engine",
+		Short:              "Run the grafel engine plane (scheduler/watcher/extraction/fbwriter)",
+		Hidden:             true,
+		DisableFlagParsing: true,
+		RunE: func(_ *cobra.Command, args []string) error {
+			if activeHooks.RunEngine == nil {
+				return errors.New("engine entrypoint not wired")
+			}
+			return activeHooks.RunEngine(args)
 		},
 	}
 	return cmd

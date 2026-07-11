@@ -262,6 +262,82 @@ type Config struct {
 	OnSchedulerReady func(warming func() WarmingSnapshot)
 }
 
+// SplitModeEnvVar names the capability flag that gates the serve/engine
+// process split (ADR-0024, epic #5729). Default OFF: RunServe runs the
+// entire daemon in-process — identical to today's Run — and does not spawn
+// a separate `grafel engine` child. PR2 will flip the ON branch of RunServe
+// to spawn and supervise a real engine child process instead of running the
+// engine plane inline.
+const SplitModeEnvVar = "GRAFEL_SPLIT_MODE"
+
+// SplitModeEnabled reports whether the serve/engine process-split
+// capability flag is turned on. See SplitModeEnvVar. Defaults to false
+// (single-process, today's behavior) so this PR (the entrypoint/config
+// carve) makes no behavior change.
+func SplitModeEnabled() bool {
+	v := strings.TrimSpace(os.Getenv(SplitModeEnvVar))
+	return v == "1" || strings.EqualFold(v, "true")
+}
+
+// ServeConfig is the serve-plane configuration (ADR-0024 Phase 1): the MCP
+// dispatch socket, the dashboard, and graph_cache mmap reads. It currently
+// composes the entire Config rather than a disjoint field set because,
+// while SplitModeEnabled() is false (the default), RunServe must start the
+// engine plane IN-PROCESS exactly as Run does today — it needs every
+// engine-plane field (scheduler, watcher, extraction, fbwriter hooks) to do
+// so. PR2 narrows ServeConfig to serve-only fields once the engine plane is
+// actually spawned as a separate child process instead of run inline.
+type ServeConfig struct {
+	Config
+}
+
+// EngineConfig is the engine-plane configuration (ADR-0024 Phase 1): the
+// scheduler, file watcher, extraction, and fbwriter. See ServeConfig's doc
+// for why it currently composes the full Config rather than a disjoint
+// subset — that split lands in PR2 alongside the real process spawn.
+type EngineConfig struct {
+	Config
+}
+
+// RunServe starts the serve plane: the MCP socket, the dashboard, and,
+// while SplitModeEnabled() is false (the default), the engine plane
+// in-process — byte-for-byte identical to Run. It is the implementation
+// behind both the `grafel serve` subcommand and the back-compat `grafel
+// daemon` shim, so an existing OS unit that still execs `daemon`
+// transparently becomes a serve process with zero client-visible change.
+//
+// This PR (the ADR-0024 Phase 1 entrypoint/config carve) does not yet spawn
+// a child process on the SplitModeEnabled()==true branch — both branches
+// call Run today. PR2 will replace the true branch with starting only the
+// serve-plane pieces here and spawning/supervising a `grafel engine` child
+// for the rest, without changing RunServe's signature or callers.
+func RunServe(ctx context.Context, cfg ServeConfig) error {
+	if SplitModeEnabled() {
+		// PR2 seam: spawn/supervise a `grafel engine` child here instead of
+		// running the engine plane inline. Until that lands, behavior is
+		// identical to the flag-off path.
+		return Run(ctx, cfg.Config)
+	}
+	return Run(ctx, cfg.Config)
+}
+
+// RunEngine starts the engine plane standalone: the scheduler, watcher,
+// extraction, and fbwriter, without the MCP socket or dashboard. ADR-0024
+// Phase 1 (this PR) wires the `grafel engine` entrypoint and the
+// EngineConfig type but does not yet carve Run's internals into a
+// serve-free engine-only code path — that lands with PR2's actual process
+// split. Until then, RunEngine deliberately refuses to run standalone
+// (rather than silently starting a full duplicate daemon under the
+// "engine" name), since SplitModeEnabled() is off by default and no
+// caller in this PR relies on RunEngine actually serving anything.
+func RunEngine(ctx context.Context, cfg EngineConfig) error {
+	_ = ctx
+	_ = cfg
+	return fmt.Errorf("grafel engine: standalone engine process not yet implemented " +
+		"(ADR-0024 Phase 1 is the entrypoint/config carve only; the process split " +
+		"lands in PR2, epic #5729)")
+}
+
 // Run starts the daemon. It blocks until either:
 //   - the Service receives Stop,
 //   - the process receives SIGTERM/SIGINT, or
