@@ -1298,6 +1298,13 @@ func applyHTTPEndpointSynthesis(args DetectorPassArgs) DetectorPassResult {
 		phpRLBefore := len(entities)
 		// Producer side (#1419): Laravel Route::verb/resource/apiResource.
 		synthesizeLaravel(string(content), emit, emitResource)
+		// Producer side (#5733, refs #5688): Slim Framework
+		// $app->get/post/put/patch/delete/options/any('/path', handler)
+		// routes → the SAME http_endpoint_definition shape Laravel gets.
+		// Gated on phpHasAnySlimRoute so it no-ops on non-Slim PHP files;
+		// first entry in a small per-framework table other minor PHP
+		// frameworks (CakePHP, CodeIgniter, Yii, WordPress, …) can extend.
+		synthesizeSlim(string(content), emit)
 		// Producer side (#4752): reconcile route + group auth middleware
 		// (auth / role: / can: / withoutMiddleware) into the flat auth posture the
 		// authposture laravel resolver decodes live, over the endpoints emitted above.

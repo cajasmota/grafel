@@ -1,0 +1,7 @@
+{
+  "name": "grafel/php-slim-mini",
+  "require": {
+    "slim/slim": "^4.11",
+    "slim/psr7": "^1.6"
+  }
+}

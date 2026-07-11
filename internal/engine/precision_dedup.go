@@ -103,7 +103,7 @@ func dropStatementNoiseOperations(entities []types.EntityRecord, rels []types.Re
 	dropped := make(map[string]bool) // symbolic ID of each dropped Operation
 	out := make([]types.EntityRecord, 0, len(entities))
 	for _, e := range entities {
-		if e.Kind == "Operation" && isStatementNoiseOperationName(e.Name) {
+		if isOperationKind(e.Kind) && !isRouteShapedOperation(e) && isStatementNoiseOperationName(e.Name) {
 			dropped[symbolicID(e.Kind, e.Name)] = true
 			continue
 		}
@@ -293,6 +293,40 @@ func symbolicID(kind, name string) string {
 //
 // Everything else (including call idioms ending in `(` or `<`, dotted names,
 // and ordinary identifiers) is treated as a real operation and kept.
+// isOperationKind reports whether kind is an Operation-shaped kind that
+// dropStatementNoiseOperations is allowed to examine. Handles both the bare
+// "Operation" literal (some rule-engine/legacy paths) and the namespaced
+// "SCOPE.Operation" form (internal/types.EntityKindOperation, the on-disk
+// convention) so the noise filter behaves the same regardless of which
+// producer stamped the entity.
+func isOperationKind(kind string) bool {
+	return kind == "Operation" || kind == "SCOPE.Operation"
+}
+
+// isRouteShapedOperation reports whether an Operation-kind entity is a
+// recognized HTTP ROUTE captured by a framework's route-registration idiom
+// (e.g. the PHP custom extractors in internal/custom/php/frameworks.go for
+// Slim/CakePHP/CodeIgniter/Yii/WordPress/…, subtype "endpoint", stamped with
+// a `route_path` property) rather than genuine statement-level noise (a bare
+// decorator, an assignment fragment, a dangling keyword). These entities are
+// EXEMPT from dropStatementNoiseOperations even when their captured Name
+// looks noise-shaped (a route path such as "/users/:id" trips the "leading
+// keyword" / non-identifier heuristics that were tuned for source
+// statements, not URL paths) — deleting them silently zeroes out a
+// framework's endpoint count (#5733, refs #5688) before any real
+// http_endpoint_definition synthesis exists for it. Narrowly scoped: only
+// fires for Subtype "endpoint" carrying a route_path/route property, never
+// for the broader Operation population.
+func isRouteShapedOperation(e types.EntityRecord) bool {
+	if e.Subtype != "endpoint" {
+		return false
+	}
+	if e.Properties == nil {
+		return false
+	}
+	return e.Properties["route_path"] != "" || e.Properties["route"] != ""
+}
+
 func isStatementNoiseOperationName(name string) bool {
 	if name == "" {
 		return true // an unnamed Operation is noise

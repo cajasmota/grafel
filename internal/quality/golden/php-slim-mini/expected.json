@@ -1,0 +1,13 @@
+{
+  "fixture_name": "php-slim-mini",
+  "language": "php",
+  "description": "Tiny Slim Framework 4 REST API (restapi/v1/index.php) exercising $app->get/post/put/delete route registrations with Slim's `:param` path-parameter syntax. Used by the extraction-quality benchmark to detect the #5733 regression where non-Laravel PHP frameworks synthesized zero http_endpoint_definition entities.",
+  "expected_entities": [
+    { "name": "http:GET:/invoices", "kind": "http_endpoint_definition", "must_exist": true, "note": "Slim $app->get('/invoices', ...)." },
+    { "name": "http:POST:/invoices", "kind": "http_endpoint_definition", "must_exist": true, "note": "Slim $app->post('/invoices', ...)." },
+    { "name": "http:GET:/invoices/{id}", "kind": "http_endpoint_definition", "must_exist": true, "note": "Slim colon-param path canonicalized :id -> {id}." },
+    { "name": "http:PUT:/invoices/{id}", "kind": "http_endpoint_definition", "must_exist": true },
+    { "name": "http:DELETE:/invoices/{id}", "kind": "http_endpoint_definition", "must_exist": true }
+  ],
+  "expected_relationships": []
+}

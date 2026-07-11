@@ -257,3 +257,57 @@ my_chain = prompt | model | parser
 		t.Errorf("expected the real 'my_chain' Operation to survive (1), got %d", realChain)
 	}
 }
+
+// TestPrecision_RouteShapedOperationSurvivesNoiseFilter (#5733, refs #5688)
+// asserts a route-shaped SCOPE.Operation(subtype=endpoint, route_path=...)
+// — the shape internal/custom/php/frameworks.go stamps for non-Laravel PHP
+// frameworks (Slim, CakePHP, CodeIgniter, Yii, WordPress, …) — is EXEMPT
+// from dropStatementNoiseOperations even though its captured route path
+// ("/users/:id") trips the noise heuristics tuned for source-code
+// statements. A genuine statement-noise Operation with the SAME kind must
+// still be pruned, so the guard doesn't just disable the filter wholesale.
+func TestPrecision_RouteShapedOperationSurvivesNoiseFilter(t *testing.T) {
+	entities := []types.EntityRecord{
+		// Route-shaped: subtype=endpoint + route_path property. Must survive
+		// even though nothing about "/users/:id" looks like a real identifier.
+		{
+			Name: "/users/:id", Kind: "SCOPE.Operation", Subtype: "endpoint",
+			SourceFile: "public/index.php", StartLine: 12,
+			Properties: map[string]string{"framework": "slim", "route_path": "/users/:id"},
+		},
+		// Genuine statement noise with the SAME namespaced kind — must still
+		// be dropped; the guard must not blanket-disable the filter.
+		{Name: "@tool", Kind: "SCOPE.Operation", SourceFile: "a.php", StartLine: 4},
+		// A bare "Operation" kind route (legacy/rule-engine form) with the
+		// route-shape properties must ALSO survive.
+		{
+			Name: "/health", Kind: "Operation", Subtype: "endpoint",
+			SourceFile: "routes.php", StartLine: 3,
+			Properties: map[string]string{"route": "/health"},
+		},
+		// Real (non-route) Operation must be kept regardless.
+		{Name: "my_chain", Kind: "Operation", SourceFile: "a.php", StartLine: 12},
+	}
+
+	gotEnts, _ := applyPrecisionDedup(entities, nil)
+
+	gotNames := map[string]bool{}
+	for _, e := range gotEnts {
+		gotNames[e.Name] = true
+	}
+	if !gotNames["/users/:id"] {
+		t.Error("route-shaped SCOPE.Operation('/users/:id') must survive the noise filter")
+	}
+	if !gotNames["/health"] {
+		t.Error("route-shaped Operation('/health') must survive the noise filter")
+	}
+	if gotNames["@tool"] {
+		t.Error("genuine statement-noise SCOPE.Operation('@tool') must still be dropped")
+	}
+	if !gotNames["my_chain"] {
+		t.Error("real Operation('my_chain') must be kept")
+	}
+	if len(gotEnts) != 3 {
+		t.Errorf("entity count: want 3 survivors (2 routes + 1 real op), got %d: %+v", len(gotEnts), gotEnts)
+	}
+}
