@@ -97,10 +97,11 @@ func Uninstall(opts Options) error {
 	}
 	if layout, lerr := daemon.DefaultLayout(); lerr == nil {
 		sweepOrphanEngine(sweepOrphanEngineDeps{
-			root:    layout.Root,
-			readPID: defaultReadEnginePID,
-			isAlive: process.IsAlive,
-			kill:    process.Kill,
+			root:     layout.Root,
+			readPID:  defaultReadEnginePID,
+			isAlive:  process.IsAlive,
+			isGrafel: process.PidIsGrafel,
+			kill:     process.Kill,
 		})
 	}
 	return nil
@@ -109,10 +110,11 @@ func Uninstall(opts Options) error {
 // sweepOrphanEngineDeps abstracts the orphan-engine sweep's I/O so it can be
 // unit-tested without touching real processes or a real daemon root.
 type sweepOrphanEngineDeps struct {
-	root    string
-	readPID func(path string) (int, error)
-	isAlive func(pid int) bool
-	kill    func(pid int) error
+	root     string
+	readPID  func(path string) (int, error)
+	isAlive  func(pid int) bool
+	isGrafel func(pid int) (bool, error)
+	kill     func(pid int) error
 }
 
 // sweepOrphanEngine implements the belt-and-suspenders orphan-engine sweep
@@ -120,6 +122,14 @@ type sweepOrphanEngineDeps struct {
 // read/parse engine.pid (including the common case — it does not exist,
 // because split mode is off or the engine already exited) is treated as
 // "nothing to do", never an error.
+//
+// PID-reuse safety (review #5729): a stale engine.pid can name a pid the OS
+// has since recycled to an unrelated process (the engine was SIGKILLed or the
+// box crashed, so its `defer os.Remove(pidPath)` never ran). Before signaling,
+// confirm the pid is actually a grafel process; treat isGrafel returning an
+// error (e.g. a platform that can't enumerate processes) OR false as "not
+// ours" and skip the kill — we never signal a process we cannot positively
+// confirm is grafel.
 func sweepOrphanEngine(deps sweepOrphanEngineDeps) {
 	if deps.root == "" {
 		return
@@ -130,6 +140,9 @@ func sweepOrphanEngine(deps sweepOrphanEngineDeps) {
 		return
 	}
 	if !deps.isAlive(pid) {
+		return
+	}
+	if ok, gerr := deps.isGrafel(pid); gerr != nil || !ok {
 		return
 	}
 	_ = deps.kill(pid)
