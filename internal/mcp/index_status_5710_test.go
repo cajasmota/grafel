@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
@@ -26,6 +27,7 @@ func TestIndexStatusDiskFallback(t *testing.T) {
 	t.Cleanup(func() { indexstate.SetRepoStates(nil) })
 
 	dir := t.TempDir()
+	setTestHome(t, filepath.Join(dir, "home"))
 	rAlpha := filepath.Join(dir, "alpha")
 	rBeta := filepath.Join(dir, "beta")
 	rGamma := filepath.Join(dir, "gamma")
@@ -55,6 +57,11 @@ func TestIndexStatusDiskFallback(t *testing.T) {
 	indexstate.SetRepoStates([]indexstate.RepoState{
 		{Path: rAlpha, State: indexstate.StateIndexing, HeadRef: "h-alpha", IndexedRef: "i-alpha"},
 	})
+	// #5729 PR3: only alpha has live indexstate — write ONLY its statusfile so
+	// beta continues to exercise the disk-only fallback path (no statusfile
+	// exists for beta, exactly like a repo indexed by `grafel rebuild` or a
+	// prior daemon lifetime).
+	daemon.WriteRepoStatusFileForTest(rAlpha)
 
 	res := callTool(t, srv, "grafel_index_status", map[string]any{"group": "g"})
 	if res == nil || res.IsError {

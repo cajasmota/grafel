@@ -59,14 +59,17 @@ func mcpServerInstance() (*mcp.Server, error) {
 			mcpServerInitErr = fmt.Errorf("mcp server init: %w", err)
 			return
 		}
-		// #5690: wire the warming accessor. The closure reads the holder on
-		// every call, so it works regardless of whether the scheduler has
-		// published yet (returns the zero "not warming" snapshot until then).
+		// #5729 PR3: wire the warming accessor to the status-plane sidecar
+		// (daemon.WarmingFromStatusFile) rather than the live in-process
+		// scheduler handle. This is the ONE code path that answers identically
+		// in monolith mode (flag off) and split mode (serve has no in-process
+		// scheduler at all) — both write the SAME engine-liveness file (see
+		// startEnginePlane), so there is nothing mode-specific left here.
+		// daemonWarmingFn/setDaemonWarmingFn (still wired as
+		// daemon.Config.OnSchedulerReady) is retained for any other in-process
+		// consumer but is no longer this closure's source.
 		srv.State.SetWarmingSnapshot(func() daemon.WarmingSnapshot {
-			if fp := daemonWarmingFn.Load(); fp != nil {
-				return (*fp)()
-			}
-			return daemon.WarmingSnapshot{}
+			return daemon.WarmingFromStatusFile()
 		})
 		mcpServerShared = srv
 	})

@@ -13,6 +13,7 @@ package mcp
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -20,6 +21,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/graph/fbreader"
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
 // indexStatusRepo is one repo's wire-shape row in grafel_index_status.
@@ -105,80 +107,129 @@ func (s *Server) handleIndexStatus(ctx context.Context, req mcpapi.CallToolReque
 	// registry stores, so an exact-path match attaches the group.
 	pathToGroup := s.repoPathToGroup()
 
-	states := indexstate.RepoStates()
-	seen := make(map[string]bool, len(states))
-	out := indexStatusReply{Repos: make([]indexStatusRepo, 0, len(states))}
-	for _, st := range states {
-		seen[st.Path] = true
-		group := pathToGroup[st.Path]
+	// #5729 PR3: source per-repo state from the status-plane sidecar
+	// (internal/statusfile), NOT indexstate.RepoStates(). In split mode serve
+	// has no in-process scheduler at all — indexstate would be permanently
+	// empty there — so the status file (written by whichever process is
+	// running the engine plane, monolith OR the standalone engine child) is
+	// now the ONE source both modes read, giving identical answers in either
+	// mode (the ordering-guard property this PR exists to deliver).
+	seen := make(map[string]bool, len(pathToGroup))
+	out := indexStatusReply{Repos: make([]indexStatusRepo, 0, len(pathToGroup))}
 
-		if groupFilter != "" && group != groupFilter {
-			continue
-		}
-		if repoFilter != "" && !repoMatches(st.Path, repoFilter) {
-			continue
-		}
-
-		row := indexStatusRepo{
-			Repo:       st.Path,
-			Group:      group,
-			State:      st.State,
-			IndexedRef: st.IndexedRef,
-			HeadRef:    st.HeadRef,
-			Dirty:      st.Dirty,
-		}
-		ci := daemon.IndexedCommitForRepo(st.Path)
-		row.IndexedCommit = ci.Commit
-		row.IndexedCommitShort = ci.CommitShort
-		row.AtHead = ci.AtHead
-		out.Repos = append(out.Repos, row)
-		if st.State == indexstate.StateIndexing || st.State == indexstate.StateDirty {
-			out.AnyIndexing = true
-		}
-	}
-
-	// #5710: disk-backed fallback. A repo indexed by a PREVIOUS daemon
-	// lifetime, or via `grafel rebuild` (which bypasses Scheduler.runIndex),
-	// never populates indexstate's live snapshot — RepoStates() has no entry
-	// for it even though a materialized graph exists on disk. Without this,
-	// grafel_index_status disagreed with the CLI (`grafel status`, which reads
-	// the on-disk store/sidecars via ComputeStatusSummary): MCP reported
-	// repos:[] for a repo the CLI showed as fully indexed. This loop only
-	// fills repos ABSENT from the live snapshot (seen[path]==false) — a repo
-	// WITH a live entry (indexing/queued/dirty/current) is never touched here,
-	// so a genuinely in-flight repo's state is never masked.
-	for path, group := range pathToGroup {
+	addRow := func(path, group string) {
 		if seen[path] {
-			continue
+			return
 		}
+		seen[path] = true
 		if groupFilter != "" && group != groupFilter {
-			continue
+			return
 		}
 		if repoFilter != "" && !repoMatches(path, repoFilter) {
-			continue
+			return
 		}
-		row, ok := diskFallbackRow(path, group)
-		if !ok {
-			continue
+
+		if f, ok := daemon.RepoStatusFile(path); ok {
+			state := f.State
+			if state == "" {
+				// Tolerant reader: a status file written by a pre-PR3 engine
+				// (or one whose scheduler never recorded a transition for
+				// this repo) carries no State — a materialized, non-pending
+				// repo is "current", the same default RepoStates() implied
+				// by simply having no entry.
+				state = indexstate.StateCurrent
+			}
+			row := indexStatusRepo{
+				Repo:       path,
+				Group:      group,
+				State:      state,
+				IndexedRef: f.IndexedRef,
+				HeadRef:    f.HeadRef,
+				Dirty:      f.Dirty,
+			}
+			ci := daemon.IndexedCommitForRepo(path)
+			row.IndexedCommit = ci.Commit
+			row.IndexedCommitShort = ci.CommitShort
+			row.AtHead = ci.AtHead
+			out.Repos = append(out.Repos, row)
+			if state == indexstate.StateIndexing || state == indexstate.StateDirty {
+				out.AnyIndexing = true
+			}
+			return
 		}
-		out.Repos = append(out.Repos, row)
-		// A disk-only row is by definition idle (`current`) — it never
-		// contributes to AnyIndexing.
+
+		// #5710: disk-backed fallback. A repo indexed by a PREVIOUS daemon
+		// lifetime, or via `grafel rebuild` (which bypasses Scheduler.runIndex),
+		// may never have a status file at all even though a materialized graph
+		// exists on disk. Without this, grafel_index_status disagreed with the
+		// CLI (`grafel status`, which reads the on-disk store/sidecars via
+		// ComputeStatusSummary): MCP reported repos:[] for a repo the CLI
+		// showed as fully indexed. A disk-only row is by definition idle
+		// (`current`) — it never contributes to AnyIndexing.
+		if row, ok := diskFallbackRow(path, group); ok {
+			out.Repos = append(out.Repos, row)
+		}
 	}
-	// #5493: surface the daemon-wide gate counts so "indexing 2, queued 28" is
-	// visible (a 30-module group draining 2-at-a-time, not stalled).
-	ic := indexstate.GetIndexConcurrency()
-	out.Concurrency = indexConcurrency{Active: ic.Active, Queued: ic.Queued, Cap: ic.Cap}
-	// #5630: surface in-process parse activity + the true busy signal so a daemon
-	// CPU-pinned in ts_parser_parse no longer reports idle. Process-global, so it
-	// is reported regardless of the repo/group filter and OR-ed into AnyIndexing
-	// (an in-process incremental reindex IS indexing work, even though it never
-	// touched the scheduler's per-repo state or the IndexGate).
-	snap := indexstate.Get()
-	out.Parsing = snap.ParseInFlight
-	out.Busy = snap.Busy
-	if snap.ParseInFlight > 0 {
-		out.AnyIndexing = true
+
+	for path, group := range pathToGroup {
+		addRow(path, group)
+	}
+	// #5729 PR3: also surface a WORKTREE CHILD the engine's scheduler tracks
+	// but that was never separately registered — i.e. a repoPath the status
+	// plane knows about that lives UNDER one of this server's own registered
+	// repos. Deliberately narrower than "every sidecar on disk": this server
+	// (and its test doubles) may share a machine-wide $GRAFEL_HOME with
+	// other, wholly unrelated repos/daemons, and those must never leak into
+	// this group's results. Best-effort: an error here (e.g. the status dir
+	// missing entirely — engine never ran) just means nothing extra to add.
+	if all, err := statusfile.ReadAll(); err == nil {
+		for _, f := range all {
+			if daemon.IsEngineLivenessRecord(f) || f.RepoPath == "" {
+				continue
+			}
+			if group, known := pathToGroup[f.RepoPath]; known {
+				addRow(f.RepoPath, group)
+				continue
+			}
+			if parent, ok := descendantOfKnownRepo(f.RepoPath, pathToGroup); ok {
+				addRow(f.RepoPath, pathToGroup[parent])
+			}
+		}
+	}
+
+	// #5493/#5630: surface the daemon-wide gate counts + parse/busy signal
+	// from the engine-liveness sidecar rather than indexstate's in-process
+	// globals — engine_liveness is stale/missing gracefully (Concurrency all
+	// zero, Busy=false, Parsing=0: "unknown", not a crash or stale garbage)
+	// when the engine is down, starting, or degraded.
+	var engineFresh bool
+	if layout, lerr := daemon.DefaultLayout(); lerr == nil {
+		if lf, fresh := daemon.EngineLivenessStatus(layout.Root); fresh && lf != nil {
+			engineFresh = true
+			out.Concurrency = indexConcurrency{Active: lf.ConcurrencyActive, Queued: lf.ConcurrencyQueued, Cap: lf.ConcurrencyCap}
+			out.Parsing = lf.ParseInFlight
+			out.Busy = lf.Busy
+			if lf.ParseInFlight > 0 {
+				out.AnyIndexing = true
+			}
+		}
+	}
+	if !engineFresh {
+		// No fresh engine-liveness sidecar (no engine plane/heartbeat has ever
+		// run against this daemon root — e.g. a test harness driving
+		// indexstate directly, or a real engine that is down/starting).
+		// Falling back to the process-global indexstate record preserves
+		// pre-#5729-PR3 behavior for an in-process scheduler with no
+		// heartbeat writer running yet, rather than reporting stale zeros
+		// when the live data is actually available right here in-process.
+		snap := indexstate.Get()
+		conc := indexstate.GetIndexConcurrency()
+		out.Concurrency = indexConcurrency{Active: conc.Active, Queued: conc.Queued, Cap: conc.Cap}
+		out.Parsing = snap.ParseInFlight
+		out.Busy = snap.Busy
+		if snap.ParseInFlight > 0 {
+			out.AnyIndexing = true
+		}
 	}
 	return jsonResult(out), nil
 }
@@ -233,6 +284,27 @@ func diskFallbackRow(repoPath, group string) (indexStatusRepo, bool) {
 	row.IndexedCommitShort = ci.CommitShort
 	row.AtHead = ci.AtHead
 	return row, true
+}
+
+// descendantOfKnownRepo reports whether path is a strict subdirectory of any
+// repo path already known to known (a pathToGroup-shaped map), returning the
+// matching parent's key. Used to scope a full-disk statusfile.ReadAll() scan
+// down to genuine worktree children of THIS server's own registered repos —
+// never an arbitrary unrelated repo that happens to share the same
+// $GRAFEL_HOME (e.g. another project's daemon on the same machine, or a bare
+// test harness with no HOME isolation at all).
+func descendantOfKnownRepo(path string, known map[string]string) (parent string, ok bool) {
+	for k := range known {
+		if k == "" || k == path {
+			continue
+		}
+		rel, err := filepath.Rel(k, path)
+		if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+			continue
+		}
+		return k, true
+	}
+	return "", false
 }
 
 // repoPathToGroup builds a path→group lookup from the registry. A repo path may

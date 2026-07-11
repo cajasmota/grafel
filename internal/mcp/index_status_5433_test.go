@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/cajasmota/grafel/internal/daemon"
 	"github.com/cajasmota/grafel/internal/indexstate"
 )
 
@@ -17,6 +18,7 @@ func TestIndexStatusSerializationAndFilter(t *testing.T) {
 	t.Cleanup(func() { indexstate.SetRepoStates(nil) })
 
 	dir := t.TempDir()
+	setTestHome(t, filepath.Join(dir, "home"))
 	rAlpha := filepath.Join(dir, "alpha")
 	rBeta := filepath.Join(dir, "beta")
 	_ = os.MkdirAll(rAlpha, 0o755)
@@ -35,6 +37,11 @@ func TestIndexStatusSerializationAndFilter(t *testing.T) {
 		{Path: rAlpha, State: indexstate.StateIndexing, HeadRef: "h-alpha", IndexedRef: "i-alpha"},
 		{Path: rBeta, State: indexstate.StateCurrent, IndexedRef: "i-beta"},
 	})
+	// #5729 PR3: grafel_index_status now reads the status-plane sidecar, not
+	// indexstate.RepoStates() directly — write the sidecar the production
+	// statusWriter goroutine would produce from the same indexstate we just set.
+	daemon.WriteRepoStatusFileForTest(rAlpha)
+	daemon.WriteRepoStatusFileForTest(rBeta)
 
 	parse := func(args map[string]any) map[string]any {
 		t.Helper()

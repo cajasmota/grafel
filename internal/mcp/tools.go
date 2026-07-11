@@ -21,6 +21,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/indexstate"
 	"github.com/cajasmota/grafel/internal/links"
+	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/substrate"
 	"github.com/cajasmota/grafel/internal/types"
 	mcpapi "github.com/mark3labs/mcp-go/mcp"
@@ -3034,41 +3035,117 @@ func (s *Server) handleGraphStats(ctx context.Context, req mcpapi.CallToolReques
 
 	// P5 (dogfooding report): surface live reindex state so a coordinator can
 	// query grafel_stats instead of polling `ps aux` for hot grafel processes.
-	// Sourced from the process-global indexstate record the daemon's scheduler
-	// updates on every in-flight transition. When the MCP server runs outside a
-	// daemon (e.g. `grafel mcp serve` stdio with no scheduler) the count is 0,
-	// so is_indexing is reported false — accurate for that mode.
-	ix := indexstate.Get()
-	totals["is_indexing"] = ix.IsIndexing
-	if ix.IsIndexing {
-		totals["indexing_in_flight"] = ix.InFlight
-		// #5349 A3: surface an in-flight group-scope algorithm pass so a
-		// coordinator can tell the daemon is busy recomputing communities /
-		// centrality over the union, not just reindexing a repo.
-		if ix.GroupAlgoInFlight > 0 {
-			totals["group_algo_in_flight"] = ix.GroupAlgoInFlight
+	//
+	// #5729 PR3: sourced from the engine-liveness status-plane sidecar
+	// (internal/statusfile), NOT the process-global indexstate record — in
+	// split mode serve has no in-process scheduler, so indexstate would be
+	// permanently empty there. daemon.EngineLivenessStatus degrades to
+	// "unknown" (is_indexing=false, no other fields) when the engine is
+	// down/starting/degraded — never a crash or stale garbage. This answers
+	// identically whether the engine plane runs in-process (monolith) or as
+	// the standalone `grafel engine` child (split mode), since both write the
+	// same sidecar (see startEnginePlane).
+	var engineFresh bool
+	var engineFile *statusfile.File
+	if layout, lerr := daemon.DefaultLayout(); lerr == nil {
+		engineFile, engineFresh = daemon.EngineLivenessStatus(layout.Root)
+	}
+	if engineFresh && engineFile != nil {
+		isIndexing := engineFile.EngineInFlight > 0 || engineFile.EngineGroupAlgoInFlight > 0
+		totals["is_indexing"] = isIndexing
+		if isIndexing {
+			totals["indexing_in_flight"] = engineFile.EngineInFlight
+			// #5349 A3: surface an in-flight group-scope algorithm pass so a
+			// coordinator can tell the daemon is busy recomputing communities /
+			// centrality over the union, not just reindexing a repo.
+			if engineFile.EngineGroupAlgoInFlight > 0 {
+				totals["group_algo_in_flight"] = engineFile.EngineGroupAlgoInFlight
+			}
+			if !engineFile.EngineBusyStartedAt.IsZero() {
+				totals["indexing_started_at"] = engineFile.EngineBusyStartedAt.UTC().Format(time.RFC3339)
+			}
 		}
-		if !ix.StartedAt.IsZero() {
-			totals["indexing_started_at"] = ix.StartedAt.UTC().Format(time.RFC3339)
+	} else {
+		// No fresh engine-liveness sidecar exists yet — either no engine plane
+		// has ever run against this daemon root (e.g. this *mcp.Server was
+		// constructed directly in a test harness with no daemon/heartbeat
+		// goroutine), or the engine is down/starting/degraded. Fall back to the
+		// process-global indexstate record so an in-process scheduler (true
+		// legacy monolith, or a test that drives indexstate directly) is still
+		// reflected immediately rather than waiting on the periodic heartbeat —
+		// this is the exact pre-#5729-PR3 behavior, preserved for equivalence.
+		ix := indexstate.Get()
+		totals["is_indexing"] = ix.IsIndexing
+		if ix.IsIndexing {
+			totals["indexing_in_flight"] = ix.InFlight
+			if ix.GroupAlgoInFlight > 0 {
+				totals["group_algo_in_flight"] = ix.GroupAlgoInFlight
+			}
+			if !ix.StartedAt.IsZero() {
+				totals["indexing_started_at"] = ix.StartedAt.UTC().Format(time.RFC3339)
+			}
 		}
 	}
 
-	// #5433: surface per-repo index freshness cheaply (the snapshot is already
-	// in process memory — no group-graph load). Agents should prefer the
-	// dedicated lightweight grafel_index_status tool to avoid paying for the
-	// rest of grafel_stats, but expose it here too for one-shot inspection.
-	if rs := indexstate.RepoStates(); len(rs) > 0 {
-		perRepo := make([]map[string]any, 0, len(rs))
-		for _, st := range rs {
-			row := map[string]any{"repo": st.Path, "state": st.State, "dirty": st.Dirty}
-			if st.IndexedRef != "" {
-				row["indexed_ref"] = st.IndexedRef
+	// #5433/#5729 PR3: surface per-repo index freshness from the status-plane
+	// sidecars (a disk scan, not process memory) so this works identically in
+	// split mode. Agents should prefer the dedicated lightweight
+	// grafel_index_status tool to avoid paying for the rest of grafel_stats,
+	// but expose it here too for one-shot inspection.
+	//
+	// Scoped to repos this server's registry actually knows about (plus their
+	// worktree children) — never an arbitrary unrelated repo that happens to
+	// share the same $GRAFEL_HOME (e.g. another project's daemon on the same
+	// machine, or a bare test harness with no HOME isolation at all).
+	pathToGroup := s.repoPathToGroup()
+	var perRepo []map[string]any
+	if all, err := statusfile.ReadAll(); err == nil && len(all) > 0 {
+		perRepo = make([]map[string]any, 0, len(all))
+		for _, f := range all {
+			if daemon.IsEngineLivenessRecord(f) || f.RepoPath == "" {
+				continue
 			}
-			if st.HeadRef != "" {
-				row["head_ref"] = st.HeadRef
+			if _, known := pathToGroup[f.RepoPath]; !known {
+				if _, ok := descendantOfKnownRepo(f.RepoPath, pathToGroup); !ok {
+					continue
+				}
+			}
+			state := f.State
+			if state == "" {
+				state = indexstate.StateCurrent
+			}
+			row := map[string]any{"repo": f.RepoPath, "state": state, "dirty": f.Dirty}
+			if f.IndexedRef != "" {
+				row["indexed_ref"] = f.IndexedRef
+			}
+			if f.HeadRef != "" {
+				row["head_ref"] = f.HeadRef
 			}
 			perRepo = append(perRepo, row)
 		}
+	}
+	if len(perRepo) == 0 {
+		// Fall back to the process-global indexstate record when the
+		// status-plane scan found nothing — same rationale as is_indexing
+		// above: an in-process scheduler with no engine-plane heartbeat writer
+		// running yet (test harness, or a monolith whose first heartbeat tick
+		// hasn't fired) must still report its live repo states, matching
+		// pre-#5729-PR3 behavior exactly.
+		if rs := indexstate.RepoStates(); len(rs) > 0 {
+			perRepo = make([]map[string]any, 0, len(rs))
+			for _, st := range rs {
+				row := map[string]any{"repo": st.Path, "state": st.State, "dirty": st.Dirty}
+				if st.IndexedRef != "" {
+					row["indexed_ref"] = st.IndexedRef
+				}
+				if st.HeadRef != "" {
+					row["head_ref"] = st.HeadRef
+				}
+				perRepo = append(perRepo, row)
+			}
+		}
+	}
+	if len(perRepo) > 0 {
 		totals["repo_index_states"] = perRepo
 	}
 

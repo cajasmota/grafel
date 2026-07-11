@@ -415,12 +415,13 @@ func RunEngine(ctx context.Context, cfg EngineConfig) error {
 
 	// Engine-global liveness heartbeat: a statusfile keyed on the daemon root
 	// (NOT any single repo) that stamps EnginePID + a fresh HeartbeatAt every
-	// tick. This is the signal serve's supervisor health gate reads to decide
-	// HEALTHY vs DEGRADED — independent of whether any fleet repo is registered
-	// yet (the per-repo status writer, started inside the engine plane, only
-	// covers registered repos).
-	stopHeartbeat := startEngineLivenessHeartbeat(cfg.Layout.Root, statusHeartbeatInterval(), logger)
-	defer stopHeartbeat()
+	// tick, plus the engine-global busy/parsing/concurrency/warming fields
+	// (#5729 PR3). This is the signal serve's supervisor health gate reads to
+	// decide HEALTHY vs DEGRADED — independent of whether any fleet repo is
+	// registered yet. #5729 PR3 moved the startEngineLivenessHeartbeat call
+	// into startEnginePlane (engineplane.go) itself so it ALSO runs in the
+	// monolith (flag-off default), giving serve one status-file code path
+	// that behaves identically in both modes — see startEnginePlane.
 
 	// Bring up the engine plane (no *Service — engine has no MCP surface).
 	ep := startEnginePlane(ctx, cfg.Config, nil, logger)

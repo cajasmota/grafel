@@ -92,11 +92,17 @@ func writeRepoStatusFile(repoPath string, logger *slog.Logger) {
 	}
 
 	// Per-repo scheduler state (indexing/queued/dirty + the ref it targets).
+	// #5729 PR3: also publish the raw State/HeadRef/Dirty so a serve process
+	// with no in-process scheduler can reconstruct grafel_index_status rows
+	// identically to today's indexstate.RepoStates()-backed handler.
 	for _, st := range indexstate.RepoStates() {
 		if st.Path != repoPath {
 			continue
 		}
 		f.IndexedRef = st.IndexedRef
+		f.HeadRef = st.HeadRef
+		f.State = st.State
+		f.Dirty = st.Dirty
 		f.Indexing = st.State == indexstate.StateIndexing || st.State == indexstate.StateDirty
 		break
 	}
@@ -189,19 +195,45 @@ func EngineLivenessStatusKey(root string) string {
 // immediately and then every interval, until the returned stop func is called
 // (which joins the goroutine). It is the engine → serve liveness contract the
 // supervisor's health gate reads (ADR-0024, epic #5729 PR2).
-func startEngineLivenessHeartbeat(root string, interval time.Duration, logger *slog.Logger) (stop func()) {
+//
+// #5729 PR3: this is now the SOLE producer of the engine-global fields (busy/
+// parsing/concurrency/warming) that grafel_index_status and grafel_whoami's
+// warming block need. warmingFn is the same read-only scheduler-warming
+// accessor historically handed to cfg.OnSchedulerReady (nil when no scheduler
+// is wired, e.g. in a test harness with no SchedulerIndex — the corresponding
+// fields are simply omitted). It is invoked on every tick, never cached, so a
+// reader always sees the CURRENT warming state, not a snapshot from startup.
+func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn func() WarmingSnapshot, logger *slog.Logger) (stop func()) {
 	if interval <= 0 {
 		interval = defaultStatusHeartbeatInterval
 	}
 	key := engineLivenessStatusKey(root)
+	startedAt := time.Now().UTC()
 	stopCh := make(chan struct{})
 	doneCh := make(chan struct{})
 	writeOnce := func() {
+		snap := indexstate.Get()
+		conc := indexstate.GetIndexConcurrency()
 		f := &statusfile.File{
-			EnginePID:   os.Getpid(),
-			HeartbeatAt: time.Now().UTC(),
-			Version:     version.String(),
-			RepoPath:    key,
+			EnginePID:               os.Getpid(),
+			HeartbeatAt:             time.Now().UTC(),
+			Version:                 version.String(),
+			RepoPath:                key,
+			EngineStartedAt:         startedAt,
+			Busy:                    snap.Busy,
+			ParseInFlight:           snap.ParseInFlight,
+			EngineInFlight:          snap.InFlight,
+			EngineGroupAlgoInFlight: snap.GroupAlgoInFlight,
+			EngineBusyStartedAt:     snap.StartedAt,
+			ConcurrencyActive:       conc.Active,
+			ConcurrencyQueued:       conc.Queued,
+			ConcurrencyCap:          conc.Cap,
+		}
+		if warmingFn != nil {
+			warm := warmingFn()
+			f.WarmIndexInFlight = warm.IndexInFlight
+			f.WarmPendingAlgo = warm.PendingAlgo
+			f.WarmPendingLinks = warm.PendingLinks
 		}
 		if err := statusfile.Write(key, f); err != nil && logger != nil {
 			logger.Warn("engine liveness: statusfile write failed", "err", err)

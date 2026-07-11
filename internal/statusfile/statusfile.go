@@ -27,6 +27,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/registry"
@@ -77,6 +78,56 @@ type File struct {
 	// LastErr is the most recent index error for this repo, or "" if the
 	// last completed index succeeded.
 	LastErr string `json:"last_err,omitempty"`
+
+	// State mirrors indexstate.RepoState.State (one of "current", "queued",
+	// "indexing", "dirty") — added #5729 PR3 so grafel_index_status can be
+	// reconstructed by a serve process with no in-process scheduler. Empty on
+	// a file written by a pre-PR3 engine; a tolerant reader treats "" the same
+	// as StateCurrent (a repo with a materialized graph and no known live
+	// state is not indexing).
+	State string `json:"state,omitempty"`
+	// HeadRef is the ref captured at the latest enqueue (the ref the pending/
+	// in-flight work targets), or empty when nothing is pending. Mirrors
+	// indexstate.RepoState.HeadRef.
+	HeadRef string `json:"head_ref,omitempty"`
+	// Dirty is true when a coalesced follow-up reindex is pending (#5138).
+	// Mirrors indexstate.RepoState.Dirty.
+	Dirty bool `json:"dirty,omitempty"`
+
+	// --- Engine-global fields (#5729 PR3) ---
+	// These are only meaningful on the ENGINE-LIVENESS sidecar (the file keyed
+	// on the daemon root, not on any single repo — see
+	// internal/daemon.engineLivenessStatusKey) and are the process-wide
+	// superset a serve process needs to answer grafel_index_status's
+	// concurrency/parsing/busy fields and grafel_whoami/grafel_status's
+	// warming fields WITHOUT touching the engine's in-process scheduler
+	// memory. They are additive/omitempty so a per-repo file (which never
+	// sets them) round-trips unchanged.
+
+	// EngineStartedAt is the wall-clock time the writing engine process
+	// booted (captured once, not on every heartbeat tick).
+	EngineStartedAt time.Time `json:"engine_started_at,omitempty"`
+	// Busy mirrors indexstate.Snapshot.Busy: an index job, a group-algo pass,
+	// OR an in-process parse is running somewhere in the engine.
+	Busy bool `json:"busy,omitempty"`
+	// ParseInFlight mirrors indexstate.Snapshot.ParseInFlight (#5630).
+	ParseInFlight int `json:"parse_in_flight,omitempty"`
+	// EngineInFlight mirrors indexstate.Snapshot.InFlight (index-job count).
+	EngineInFlight int `json:"engine_in_flight,omitempty"`
+	// EngineGroupAlgoInFlight mirrors indexstate.Snapshot.GroupAlgoInFlight.
+	EngineGroupAlgoInFlight int `json:"engine_group_algo_in_flight,omitempty"`
+	// EngineBusyStartedAt mirrors indexstate.Snapshot.StartedAt (zero when idle).
+	EngineBusyStartedAt time.Time `json:"engine_busy_started_at,omitempty"`
+	// ConcurrencyActive/Queued/Cap mirror indexstate.IndexConcurrency (#5493).
+	ConcurrencyActive int `json:"concurrency_active,omitempty"`
+	ConcurrencyQueued int `json:"concurrency_queued,omitempty"`
+	ConcurrencyCap    int `json:"concurrency_cap,omitempty"`
+	// WarmIndexInFlight/WarmPendingAlgo/WarmPendingLinks mirror
+	// daemon.WarmingSnapshot (#5690) — the fields grafel_whoami/grafel_status
+	// use to report "warming: post-index enrichment in flight".
+	WarmIndexInFlight bool `json:"warm_index_in_flight,omitempty"`
+	WarmPendingAlgo   int  `json:"warm_pending_algo,omitempty"`
+	WarmPendingLinks  int  `json:"warm_pending_links,omitempty"`
 }
 
 // statusSubdir is the directory name under GRAFEL_HOME holding one file per
@@ -187,4 +238,48 @@ func Read(repoPath string) (*File, error) {
 		return nil, fmt.Errorf("statusfile: unmarshal %s: %w", path, err)
 	}
 	return &f, nil
+}
+
+// ReadAll returns every status file currently on disk under
+// $GRAFEL_HOME/status, parsed (#5729 PR3). Unlike Read (which requires the
+// caller to already know a specific repoPath), ReadAll lets a reader
+// reconstruct the FULL repo universe the status plane knows about — e.g. a
+// serve process rebuilding grafel_index_status entirely from the status
+// plane, including a repo the caller's registry doesn't list (a worktree
+// child the engine tracks but that was never a registered fleet repo).
+//
+// Order is unspecified. A per-file read/parse error is skipped (best-effort;
+// one corrupt/torn sidecar must never fail the whole scan — Write's
+// atomic-rename means a torn file should never occur, but a reader must
+// tolerate one anyway). Returns (nil, nil) — not an error — when the status
+// directory does not exist yet (no engine has ever written a status file).
+func ReadAll() ([]*File, error) {
+	home, err := registry.HomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("statusfile: resolve home dir: %w", err)
+	}
+	dir := filepath.Join(home, statusSubdir)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	out := make([]*File, 0, len(entries))
+	for _, e := range entries {
+		if e.IsDir() || !strings.HasSuffix(e.Name(), ".json") {
+			continue
+		}
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			continue
+		}
+		var f File
+		if err := json.Unmarshal(data, &f); err != nil {
+			continue
+		}
+		out = append(out, &f)
+	}
+	return out, nil
 }

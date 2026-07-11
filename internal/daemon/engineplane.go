@@ -4,6 +4,7 @@ import (
 	"context"
 	"log/slog"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/agentpatterns"
@@ -52,6 +53,35 @@ func (e *enginePlane) shutdown() {
 // stack, and (b) the two svc field writes are nil-guarded.
 func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slog.Logger) *enginePlane {
 	ep := &enginePlane{}
+
+	// #5729 PR3: the engine-global liveness/warming heartbeat now starts here
+	// — UNCONDITIONALLY, before the scheduler-gated block below — so it runs
+	// identically in the monolith (flag-off default) AND the standalone
+	// engine (RunEngine), giving serve ONE code path to read regardless of
+	// split mode (the equivalence property this PR exists to guarantee).
+	// Previously this heartbeat was only started by RunEngine, so a monolith
+	// daemon never published engine-global fields (busy/parsing/concurrency/
+	// warming) to the status plane at all.
+	//
+	// schedulerPtr is populated (if a scheduler is configured) once Start()
+	// below returns; warmingFn reads it lock-free and degrades to the zero
+	// WarmingSnapshot (not warming) before the scheduler is up or when none is
+	// configured (e.g. a bare-RPC test harness) — never a crash or stale read.
+	var schedulerPtr atomic.Pointer[sched.Scheduler]
+	warmingFn := func() WarmingSnapshot {
+		sc := schedulerPtr.Load()
+		if sc == nil {
+			return WarmingSnapshot{}
+		}
+		snap := sc.Snapshot()
+		return WarmingSnapshot{
+			IndexInFlight: len(snap.InFlight) > 0,
+			PendingAlgo:   len(snap.PendingAlgo),
+			PendingLinks:  len(snap.PendingLinks),
+		}
+	}
+	stopEngineLiveness := startEngineLivenessHeartbeat(cfg.Layout.Root, statusHeartbeatInterval(), warmingFn, logger)
+	ep.add(stopEngineLiveness)
 
 	// Phase B — bring up the scheduler + watcher when the caller
 	// supplied the four hooks. They are optional so tests can exercise
@@ -102,6 +132,7 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 			logger.Info("scheduler: RSS-budget admission control enabled", "budget_mb", cfg.MaxRSSBudgetMB, "history", cfg.RSSHistoryPath)
 		}
 		scheduler.Start()
+		schedulerPtr.Store(scheduler)
 		if svc != nil {
 			svc.scheduler = scheduler
 		}
@@ -127,17 +158,13 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 		ep.add(stopStatusWriter)
 
 		// #5690: hand a read-only warming accessor to the wiring layer so the
-		// MCP surface can report warming state. Closes over the live scheduler;
-		// no scheduling authority.
+		// MCP surface can report warming state. Reuses the SAME warmingFn the
+		// engine-liveness heartbeat above publishes to the status plane
+		// (#5729 PR3), so an in-process consumer (monolith) and a status-file
+		// consumer (serve, split mode) observe identical warming data. Closes
+		// over the live scheduler via schedulerPtr; no scheduling authority.
 		if cfg.OnSchedulerReady != nil {
-			cfg.OnSchedulerReady(func() WarmingSnapshot {
-				snap := scheduler.Snapshot()
-				return WarmingSnapshot{
-					IndexInFlight: len(snap.InFlight) > 0,
-					PendingAlgo:   len(snap.PendingAlgo),
-					PendingLinks:  len(snap.PendingLinks),
-				}
-			})
+			cfg.OnSchedulerReady(warmingFn)
 		}
 
 		wcfg := cfg.WatcherConfig
