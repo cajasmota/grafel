@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
@@ -135,19 +136,109 @@ func newEngineSupervisor(layout Layout, logger *slog.Logger) *engineSupervisor {
 	}
 }
 
-// start resolves the self executable and launches the supervision goroutine.
-// It returns once the goroutine is running (the first spawn happens inside it).
+// start resolves the self executable, reaps any stale engine left behind by a
+// previous unclean serve death (SECONDARY orphan-engine hardening layer, see
+// reapStaleEngine), and launches the supervision goroutine. It returns once
+// the goroutine is running (the first spawn happens inside it).
 func (s *engineSupervisor) start(ctx context.Context) error {
 	exe, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("resolve self executable: %w", err)
 	}
 	s.selfExe = exe
+
+	// SECONDARY layer (ADR-0024 orphan-engine hardening, epic #5729): before
+	// spawning OUR engine child, reap any pre-existing one. This catches an
+	// orphan left by a previous serve that died UNCLEANLY (SIGKILL / crash /
+	// OOM / `launchctl kickstart -k`) before its own graceful drain (this
+	// supervisor's terminateChild) or the engine's own parent-death watchdog
+	// (the PRIMARY layer, engine_parentwatch.go) had a chance to reap it.
+	// Without this, the about-to-be-spawned NEW engine child would run
+	// alongside the still-live orphan, both writing graph.fb and clobbering
+	// each other's engine-liveness heartbeat (false "engine degraded" in
+	// doctor). Safe no-op when engine.pid is absent/dead/not-grafel.
+	reapStaleEngine(reapStaleEngineDeps{
+		root:     s.layout.Root,
+		readPID:  readPID,
+		isAlive:  process.IsAlive,
+		isGrafel: process.PidIsGrafel,
+		kill:     process.Kill,
+		waitDead: waitPIDDead,
+	})
+
 	s.stopCh = make(chan struct{})
 	s.doneCh = make(chan struct{})
 	s.fatalCh = make(chan error, 1)
 	go s.run(ctx)
 	return nil
+}
+
+// reapStaleEngineDeps abstracts the pre-spawn stale-engine reap's I/O so it
+// can be unit-tested without touching real processes or a real daemon root.
+// Mirrors service.sweepOrphanEngineDeps (the analogous Uninstall-time sweep)
+// but keys off readPID's (int, bool) signature — the SAME helper RunEngine's
+// own pidfile plumbing already uses in this package — rather than
+// introducing a second (int, error) convention.
+type reapStaleEngineDeps struct {
+	root     string
+	readPID  func(path string) (int, bool)
+	isAlive  func(pid int) bool
+	isGrafel func(pid int) (bool, error)
+	kill     func(pid int) error
+	waitDead func(pid int) // blocks briefly for pid to exit; may no-op in tests
+}
+
+// reapStaleEngine implements the SECONDARY belt-and-suspenders orphan-engine
+// hardening (ADR-0024, epic #5729): serve reaps a stale/lingering engine on
+// STARTUP, before spawning its own. It is intentionally conservative: any
+// failure to find a live, verified-grafel pid in engine.pid (including the
+// common case — it does not exist) is treated as "nothing to do", never an
+// error.
+//
+// PID-reuse safety (mirrors sweepOrphanEngine's #5729 review fix): a stale
+// engine.pid can name a pid the OS has since recycled to an unrelated
+// process. Before signaling, confirm the pid is actually a grafel process;
+// treat isGrafel returning an error OR false as "not ours" and skip the
+// kill.
+func reapStaleEngine(deps reapStaleEngineDeps) {
+	if deps.root == "" {
+		return
+	}
+	pidPath := EnginePIDPath(deps.root)
+	pid, ok := deps.readPID(pidPath)
+	if !ok || pid <= 0 {
+		return
+	}
+	if !deps.isAlive(pid) {
+		return
+	}
+	if grafelOK, gerr := deps.isGrafel(pid); gerr != nil || !grafelOK {
+		return
+	}
+	_ = deps.kill(pid)
+	if deps.waitDead != nil {
+		deps.waitDead(pid)
+	}
+}
+
+// reapStaleEngineWait bounds how long the SECONDARY reap waits for a
+// SIGTERM'd stale engine to actually exit before serve proceeds to spawn its
+// own engine child — long enough for a normal graceful shutdown, short
+// enough to not meaningfully delay serve startup.
+const reapStaleEngineWait = 2 * time.Second
+
+// waitPIDDead polls process.IsAlive(pid) until it reports dead or
+// reapStaleEngineWait elapses. Production implementation for
+// reapStaleEngineDeps.waitDead; tests inject a no-op instead so they never
+// sleep on a fake pid that (correctly) never goes dead.
+func waitPIDDead(pid int) {
+	deadline := time.Now().Add(reapStaleEngineWait)
+	for time.Now().Before(deadline) {
+		if !process.IsAlive(pid) {
+			return
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
 }
 
 // fatal returns a receive-only channel that fires once (with a non-nil error)

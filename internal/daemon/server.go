@@ -440,22 +440,50 @@ func RunEngine(ctx context.Context, cfg EngineConfig) error {
 	// monolith (escape-hatch GRAFEL_SPLIT_MODE=0), giving serve one status-file code path
 	// that behaves identically in both modes — see startEnginePlane.
 
+	// Parent-death watchdog (ADR-0024 orphan-engine hardening, epic #5729,
+	// PRIMARY layer): record the parent pid we were started under, then poll
+	// for reparenting (the original serve parent died uncleanly — SIGKILL,
+	// crash, OOM — and this process was adopted by init) so the engine
+	// self-terminates GRACEFULLY instead of lingering as an orphan that keeps
+	// writing the store alongside a freshly spawned replacement engine. See
+	// startParentDeathWatchdog's doc for the full design and per-platform
+	// notes (engine_parentwatch.go / _unix.go / _windows.go).
+	//
+	// engineCtx derives from ctx so a normal shutdown (ctx cancelled, or the
+	// SIGTERM/SIGINT case below) ALSO stops the watchdog goroutine (no leak);
+	// the watchdog itself cancels engineCtx on reparenting, which the select
+	// below observes as a normal graceful-shutdown trigger.
+	originalParent := os.Getppid()
+	engineCtx, cancelEngine := context.WithCancel(ctx)
+	defer cancelEngine()
+	watchdogDone := startParentDeathWatchdog(engineCtx, originalParent, parentWatchGetppid(), defaultParentWatchInterval, cancelEngine, logger)
+	defer func() { <-watchdogDone }()
+
 	// Bring up the engine plane (no *Service — engine has no MCP surface).
-	ep := startEnginePlane(ctx, cfg.Config, nil, logger)
+	// Uses engineCtx (not ctx) so the watchdog's self-cancel also propagates
+	// into the scheduler/watcher/etc., unwinding them the same way a real
+	// SIGTERM would.
+	ep := startEnginePlane(engineCtx, cfg.Config, nil, logger)
 	defer ep.shutdown()
 
-	logger.Info("engine: ready", "pid", os.Getpid(), "root", cfg.Layout.Root)
+	logger.Info("engine: ready", "pid", os.Getpid(), "ppid", originalParent, "root", cfg.Layout.Root)
 
 	sigCh := make(chan os.Signal, 1)
 	signal.Notify(sigCh, syscall.SIGTERM, syscall.SIGINT)
 	defer signal.Stop(sigCh)
 
 	select {
-	case <-ctx.Done():
-		logger.Info("engine: context cancelled — shutting down", "err", ctx.Err())
+	case <-engineCtx.Done():
+		logger.Info("engine: context cancelled — shutting down", "err", engineCtx.Err())
 	case sig := <-sigCh:
 		logger.Info("engine: signal received — shutting down", "signal", sig.String())
 	}
+	// Explicitly cancel (idempotent alongside the deferred cancelEngine())
+	// BEFORE the deferred ep.shutdown()/watchdogDone-wait unwind below: defers
+	// run LIFO, so without this explicit call ep.shutdown() would fire before
+	// cancelEngine() on the SIGTERM/SIGINT path, leaving engineCtx (and any
+	// child contexts derived from it) live during teardown.
+	cancelEngine()
 	return nil
 }
 
