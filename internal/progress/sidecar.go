@@ -185,11 +185,21 @@ func WithBufferSize(n int) SidecarOption {
 }
 
 // SidecarWriter is a non-blocking progress.Publisher that appends coalesced
-// NDJSON lines to a per-group file. Publish pushes to a buffered channel
-// (drop-oldest when full, mirroring BufferedPublisher); a single background
-// goroutine coalesces same-key events, flushes on a ticker, flushes terminal
-// events immediately, assigns a monotonic seq per line, and compacts the file
-// when it crosses the size cap. Publish never blocks the indexer.
+// NDJSON lines to a per-group file. Non-terminal events push to a buffered
+// channel (drop-oldest when full, mirroring BufferedPublisher); terminal events
+// take a separate guaranteed path (see Publish) so they are never lost to a
+// buffer eviction. A single background goroutine coalesces same-key events,
+// flushes on a ticker, flushes terminal events immediately, assigns a monotonic
+// seq per line, and compacts the file when it crosses the size cap. Publish
+// never blocks the indexer.
+//
+// STICKY-TERMINAL contract for the consumer: a terminal (done/error) line is
+// sticky per (repo, module) key — compaction lets a terminal supersede a
+// non-terminal for the same key. A stale non-terminal event arriving AFTER a
+// terminal (e.g. a slow repo's late tick) can still transiently flush a
+// post-terminal non-terminal line; that is safe ONLY because the tailer's fold
+// is monotonic — a consumer must treat a key it has already seen terminate as
+// done and ignore any later non-terminal line for it.
 type SidecarWriter struct {
 	groupSlug     string
 	path          string
@@ -198,6 +208,21 @@ type SidecarWriter struct {
 	bufSize       int
 
 	ch chan Event
+
+	// pendingTerm holds terminal (done/error) lines routed OUTSIDE the lossy
+	// drop-oldest channel. A terminal is emitted exactly once per repo and must
+	// never be lost to a buffer eviction (a stuck wizard bar is the whole bug
+	// this feature fixes), so Publish appends it here under mu and pokes wake;
+	// the flush goroutine drains it on every flush. Guaranteed delivery.
+	mu          sync.Mutex
+	pendingTerm []SidecarLine
+	wake        chan struct{}
+
+	// reset carries a Reset request into the flush goroutine so the goroutine
+	// (sole owner of the file, seq, and coalescing maps) performs truncation
+	// and clears its in-memory pending state — no cross-goroutine data race and
+	// a genuinely fresh stream.
+	reset chan chan error
 
 	closeOnce sync.Once
 	quit      chan struct{}
@@ -221,6 +246,8 @@ func NewSidecarWriter(groupSlug string, opts ...SidecarOption) (*SidecarWriter, 
 		flushInterval: defaultFlushInterval,
 		maxBytes:      sidecarMaxBytes(),
 		bufSize:       defaultSidecarBuffer,
+		wake:          make(chan struct{}, 1),
+		reset:         make(chan chan error),
 		quit:          make(chan struct{}),
 		stopped:       make(chan struct{}),
 	}
@@ -245,10 +272,34 @@ func NewSidecarWriter(groupSlug string, opts ...SidecarOption) (*SidecarWriter, 
 // Path returns the on-disk NDJSON path this writer appends to.
 func (w *SidecarWriter) Path() string { return w.path }
 
-// Publish enqueues e without blocking. If the buffer is full the oldest queued
-// event is discarded before enqueuing the new one (drop-oldest), matching
-// BufferedPublisher's backpressure discipline so the indexer never stalls.
+// Publish enqueues e without blocking.
+//
+// Terminal events (PhaseDone / PhaseError) take a GUARANTEED path: they are
+// appended to a mutex-guarded pending slice the flush goroutine always drains,
+// never the lossy channel. This is the fix for the terminal-drop bug — a
+// terminal that became the FIFO head could otherwise be evicted by drop-oldest
+// once >bufSize newer events piled up behind a stalled goroutine (e.g. a fast
+// repo finishing while slow repos keep streaming), leaving the wizard bar stuck
+// forever.
+//
+// Non-terminal events go through the buffered channel with drop-oldest when
+// full, matching BufferedPublisher's backpressure discipline so the indexer
+// never stalls. (Coalescing means a dropped mid-stream tick is harmless — the
+// next tick carries the latest state.)
 func (w *SidecarWriter) Publish(e Event) {
+	if isTerminalPhase(e.Phase) {
+		l := lineFromEvent(e)
+		w.mu.Lock()
+		w.pendingTerm = append(w.pendingTerm, l)
+		w.mu.Unlock()
+		// Poke the goroutine to flush promptly; non-blocking because wake has a
+		// capacity of 1 and a pending poke already guarantees a wake-up.
+		select {
+		case w.wake <- struct{}{}:
+		default:
+		}
+		return
+	}
 	select {
 	case w.ch <- e:
 	default:
@@ -263,10 +314,21 @@ func (w *SidecarWriter) Publish(e Event) {
 	}
 }
 
-// Reset truncates the group file, starting a fresh stream without tearing down
-// the goroutine. Safe to call between runs that reuse the same writer.
+// Reset truncates the group file and clears the flush goroutine's in-memory
+// coalescing state and seq counter, starting a genuinely fresh stream without
+// tearing down the goroutine. The truncation and state clear happen INSIDE the
+// goroutine (which solely owns the file, seq, and maps) so there is no data
+// race and no stale pending line leaks into the new run. Safe to call between
+// runs that reuse the same writer.
 func (w *SidecarWriter) Reset() error {
-	return os.WriteFile(w.path, nil, 0o600)
+	done := make(chan error, 1)
+	select {
+	case w.reset <- done:
+		return <-done
+	case <-w.stopped:
+		// Goroutine already gone (post-Close): truncate directly as a fallback.
+		return os.WriteFile(w.path, nil, 0o600)
+	}
 }
 
 // Close flushes any buffered/coalesced state and stops the background
@@ -286,35 +348,85 @@ func (w *SidecarWriter) run() {
 	defer ticker.Stop()
 
 	latest := make(map[string]SidecarLine)
-	var terminals []SidecarLine
 
+	// flush drains the guaranteed pending-terminal slice (populated by Publish
+	// under mu) together with the coalesced latest-per-key state and writes them
+	// in one append.
 	flush := func() {
-		w.flush(latest, terminals)
+		w.mu.Lock()
+		terms := w.pendingTerm
+		w.pendingTerm = nil
+		w.mu.Unlock()
+		w.flush(latest, terms)
 		latest = make(map[string]SidecarLine)
-		terminals = terminals[:0]
 	}
 
 	ingest := func(e Event) {
 		l := lineFromEvent(e)
 		if l.isTerminal() {
-			terminals = append(terminals, l)
-			// Terminal events flush immediately (also carrying any pending
-			// coalesced non-terminal state) so completion is never delayed by
-			// the ticker.
+			// Terminals normally arrive via pendingTerm (Publish routes them
+			// there); tolerate one that reached the channel anyway and give it
+			// the same guaranteed, flush-now treatment.
+			w.mu.Lock()
+			w.pendingTerm = append(w.pendingTerm, l)
+			w.mu.Unlock()
 			flush()
 			return
 		}
 		latest[l.coalesceKey()] = l
 	}
 
+	// drainChannel ingests every event currently buffered on the channel
+	// (non-blocking). Used before a terminal flush so the terminal frame
+	// includes the non-terminal ticks published just before it, and on quit.
+	drainChannel := func() {
+		for {
+			select {
+			case e := <-w.ch:
+				ingest(e)
+			default:
+				return
+			}
+		}
+	}
+
 	for {
 		select {
 		case e := <-w.ch:
 			ingest(e)
+		case <-w.wake:
+			// A terminal was routed through pendingTerm. Drain any non-terminals
+			// buffered before it so they share the terminal's flush, then flush
+			// immediately so completion is never delayed by the ticker.
+			drainChannel()
+			flush()
+		case done := <-w.reset:
+			// Truncate + clear ALL in-memory state inside the goroutine that
+			// owns the file, seq, and maps: a genuinely fresh stream. This
+			// includes draining any still-buffered non-terminal events from the
+			// channel — otherwise events queued before Reset would ingest after
+			// it and leak stale state into the new run.
+		drain:
+			for {
+				select {
+				case <-w.ch:
+				default:
+					break drain
+				}
+			}
+			err := os.WriteFile(w.path, nil, 0o600)
+			latest = make(map[string]SidecarLine)
+			w.mu.Lock()
+			w.pendingTerm = nil
+			w.mu.Unlock()
+			w.seq = 0
+			done <- err
 		case <-ticker.C:
 			flush()
 		case <-w.quit:
-			// Drain anything still buffered, then flush and exit.
+			// Drain anything still buffered, then flush and exit. The final
+			// flush also drains any pending terminal so a Done published just
+			// before Close is never lost.
 			for {
 				select {
 				case e := <-w.ch:

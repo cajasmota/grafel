@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 )
@@ -558,6 +559,246 @@ func TestPruneTerminalSidecars(t *testing.T) {
 	}
 	if _, err := os.Stat(livePath); err != nil {
 		t.Fatal("live file was wrongly deleted")
+	}
+}
+
+// TestTerminalSurvivesBufferEviction is the B1 regression: a terminal event
+// published BEFORE a flood of >bufSize newer events must reach disk. Before the
+// fix the terminal rode the lossy drop-oldest channel and, once it became the
+// FIFO head, was silently evicted by the flood — leaving sawTerminal=false and
+// a wizard bar stuck forever.
+func TestTerminalSurvivesBufferEviction(t *testing.T) {
+	setHome(t)
+	w, err := NewSidecarWriter("evict",
+		WithFlushInterval(time.Hour), // ticker never fires; only wake/quit flush
+		WithBufferSize(8),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Fast repo finishes first...
+	w.Publish(Event{GroupSlug: "evict", RepoSlug: "fast", Phase: PhaseDone, FilesDone: 5, FilesTotal: 5, TS: 1})
+	// ...then slow repos bury it under far more than bufSize newer events.
+	for i := 0; i < 50000; i++ {
+		w.Publish(Event{GroupSlug: "evict", RepoSlug: "slow", Module: "m", Phase: PhaseExtractAST, FilesDone: i, TS: int64(i + 2)})
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got := drainReader(t, "evict")
+	var sawTerminal bool
+	for _, e := range got {
+		if e.RepoSlug == "fast" && e.Phase == PhaseDone {
+			sawTerminal = true
+		}
+	}
+	if !sawTerminal {
+		t.Fatalf("terminal evicted under buffer pressure (B1): %d lines on disk, none terminal", len(got))
+	}
+}
+
+// TestTerminalSurvivesConcurrentProducers is the harder B1 variant: many
+// goroutines (as a TeePublisher fan-out would drive) hammer the writer while a
+// terminal is in flight. The terminal must still land.
+func TestTerminalSurvivesConcurrentProducers(t *testing.T) {
+	setHome(t)
+	w, err := NewSidecarWriter("evict2",
+		WithFlushInterval(time.Hour),
+		WithBufferSize(4),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var wg sync.WaitGroup
+	for g := 0; g < 8; g++ {
+		wg.Add(1)
+		go func(id int) {
+			defer wg.Done()
+			for i := 0; i < 20000; i++ {
+				w.Publish(Event{GroupSlug: "evict2", RepoSlug: "slow", Module: "m", Phase: PhaseExtractAST, FilesDone: i, TS: int64(i)})
+			}
+		}(g)
+	}
+	// Publish the terminal concurrently with the flood.
+	w.Publish(Event{GroupSlug: "evict2", RepoSlug: "fast", Phase: PhaseError, Error: "kaboom", TS: 999})
+	wg.Wait()
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got := drainReader(t, "evict2")
+	var sawTerminal bool
+	for _, e := range got {
+		if e.Phase == PhaseError && e.Error == "kaboom" {
+			sawTerminal = true
+		}
+	}
+	if !sawTerminal {
+		t.Fatalf("terminal lost under concurrent producers (B1): %d lines on disk", len(got))
+	}
+}
+
+// TestReadFromAfterTruncate is the B2 regression: a reader holding a stale
+// offset from run 1 must pick up run 2 after NewSidecarWriter truncates the
+// file. Before the fix ReadFrom seeked past EOF and returned nothing forever.
+func TestReadFromAfterTruncate(t *testing.T) {
+	setHome(t)
+	// Run 1: write several lines so the reader carries a non-trivial offset.
+	w1, err := NewSidecarWriter("re", WithFlushInterval(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 6; i++ {
+		w1.Publish(Event{GroupSlug: "re", RepoSlug: "r", Module: "m", Phase: PhaseExtractAST, FilesDone: i, TS: int64(i)})
+	}
+	w1.Publish(Event{GroupSlug: "re", RepoSlug: "r", Phase: PhaseDone, TS: 9})
+	w1.Close()
+
+	r, err := NewSidecarReader("re")
+	if err != nil {
+		t.Fatal(err)
+	}
+	evs1, off1, err := r.ReadFrom(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs1) == 0 || off1 == 0 {
+		t.Fatalf("run 1 read got %d events at offset %d", len(evs1), off1)
+	}
+
+	// Run 2: a fresh writer truncates the file and writes a distinct run.
+	w2, err := NewSidecarWriter("re", WithFlushInterval(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	w2.Publish(Event{GroupSlug: "re", RepoSlug: "r", Module: "m", Phase: PhaseScan, FilesTotal: 3, TS: 100})
+	w2.Publish(Event{GroupSlug: "re", RepoSlug: "r", Phase: PhaseDone, TS: 101})
+	w2.Close()
+
+	// Reading from the carried (now-stale, too-large) offset must reset and
+	// return run 2 in full.
+	evs2, off2, err := r.ReadFrom(off1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs2) != 2 {
+		t.Fatalf("post-truncate read got %d events, want 2 (B2 reset failed)", len(evs2))
+	}
+	if off2 >= off1 {
+		t.Fatalf("reset not surfaced: new offset %d should be < stale offset %d", off2, off1)
+	}
+	// The run-2 fresh-start marker must be present.
+	var sawScan bool
+	for _, e := range evs2 {
+		if e.Phase == PhaseScan && e.TS == 100 {
+			sawScan = true
+		}
+	}
+	if !sawScan {
+		t.Fatal("post-truncate read did not return the new run's opening event")
+	}
+}
+
+// TestReadFromAfterCompaction is the second B2 case: compaction shrinks the file
+// below the reader's saved offset. The reader must reset and replay.
+func TestReadFromAfterCompaction(t *testing.T) {
+	setHome(t)
+	p, err := SidecarPath("rc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	f, err := os.Create(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var seq int64
+	writeLine := func(l SidecarLine) {
+		seq++
+		l.Seq = seq
+		b, _ := json.Marshal(l)
+		f.Write(b)
+		f.Write([]byte("\n"))
+	}
+	for i := 0; i < 200; i++ {
+		writeLine(SidecarLine{GroupSlug: "rc", RepoSlug: "r", Module: "m", Phase: PhaseExtractAST, FilesDone: i})
+	}
+	writeLine(SidecarLine{GroupSlug: "rc", RepoSlug: "r", Module: "done", Phase: PhaseDone, Done: true})
+	f.Close()
+
+	r, err := NewSidecarReader("rc")
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, offBig, err := r.ReadFrom(0)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := compactSidecarFile(p); err != nil {
+		t.Fatal(err)
+	}
+	st, _ := os.Stat(p)
+	if st.Size() >= offBig {
+		t.Fatalf("precondition: compacted file (%d) must be smaller than saved offset (%d)", st.Size(), offBig)
+	}
+
+	// Reading from the stale offset must reset and return the compacted content
+	// (latest m + terminal done = 2 lines).
+	evs, offNew, err := r.ReadFrom(offBig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(evs) != 2 {
+		t.Fatalf("post-compaction read got %d events, want 2 (B2 reset failed)", len(evs))
+	}
+	if offNew >= offBig {
+		t.Fatalf("reset not surfaced after compaction: new offset %d should be < %d", offNew, offBig)
+	}
+}
+
+// TestResetClearsPendingState is the medium fix: Reset must produce a genuinely
+// fresh stream — seq restarts and no stale coalesced/terminal state leaks in.
+func TestResetClearsPendingState(t *testing.T) {
+	setHome(t)
+	w, err := NewSidecarWriter("rs", WithFlushInterval(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Bury some non-terminal state that has NOT been flushed yet.
+	for i := 0; i < 100; i++ {
+		w.Publish(Event{GroupSlug: "rs", RepoSlug: "r", Module: "old", Phase: PhaseExtractAST, FilesDone: i, TS: int64(i)})
+	}
+	if err := w.Reset(); err != nil {
+		t.Fatalf("Reset: %v", err)
+	}
+	// After Reset the file is empty and the buried "old" state is gone.
+	if got := drainReader(t, "rs"); len(got) != 0 {
+		t.Fatalf("Reset did not clear stream: %d lines remain", len(got))
+	}
+	// A fresh event flushes with seq restarting at 1.
+	w.Publish(Event{GroupSlug: "rs", RepoSlug: "r", Module: "new", Phase: PhaseScan, FilesTotal: 4, TS: 500})
+	w.Close()
+
+	pth, _ := SidecarPath("rs")
+	data, err := os.ReadFile(pth)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lines := strings.Split(strings.TrimRight(string(data), "\n"), "\n")
+	if len(lines) != 1 {
+		t.Fatalf("fresh stream got %d lines, want 1: %q", len(lines), string(data))
+	}
+	var l SidecarLine
+	if err := json.Unmarshal([]byte(lines[0]), &l); err != nil {
+		t.Fatal(err)
+	}
+	if l.Seq != 1 {
+		t.Fatalf("seq did not restart after Reset: got %d, want 1", l.Seq)
+	}
+	if l.Module != "new" {
+		t.Fatalf("stale pre-Reset state leaked: module=%q", l.Module)
 	}
 }
 

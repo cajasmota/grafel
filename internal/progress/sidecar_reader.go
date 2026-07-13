@@ -39,6 +39,17 @@ func (r *SidecarReader) Path() string { return r.path }
 // rest up once it is completed. A complete line that fails json.Unmarshal is
 // discarded (and its bytes skipped) rather than failing the whole read.
 //
+// TRUNCATION / SHRINK HANDLING: if the file is now SMALLER than offset — the
+// writer truncated it for a new run (NewSidecarWriter / Reset) or rewrote it
+// via compaction — the read transparently restarts from offset 0 and returns
+// the whole current file. This is surfaced to the caller: the returned offset
+// will be LESS than the offset passed in, which signals "the stream reset;
+// discard any prior fold state and re-seed from these events." Replay-from-0 is
+// safe because the fold the tailer applies is monotonic/idempotent — re-reading
+// the current file re-derives the current dashboard state. Without this a
+// tailer holding a stale large offset would seek past EOF forever, miss the
+// entire new run, then resume mid-line on garbage once the file regrew.
+//
 // A non-existent file is not an error: it yields (nil, offset, nil), the normal
 // "writer hasn't started yet" state for a poll-safe tailer.
 func (r *SidecarReader) ReadFrom(offset int64) ([]Event, int64, error) {
@@ -77,6 +88,16 @@ func readSidecarLines(path string, offset int64) ([]SidecarLine, int64, error) {
 	}
 	defer f.Close()
 
+	// Detect truncation/compaction: if the file is now smaller than the caller's
+	// saved offset, the writer reset the stream (new run) or compacted it below
+	// our position. Restart from 0 and replay the whole current file — the fold
+	// is idempotent so this re-derives current state. Returning a smaller offset
+	// than we were given is the caller's signal to discard prior fold state.
+	if offset > 0 {
+		if st, statErr := f.Stat(); statErr == nil && offset > st.Size() {
+			offset = 0
+		}
+	}
 	if offset > 0 {
 		if _, err := f.Seek(offset, 0); err != nil {
 			return nil, offset, err
