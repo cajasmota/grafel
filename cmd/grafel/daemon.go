@@ -665,6 +665,12 @@ func runDaemonMode(argv []string, runMode daemonRunMode) error {
 		Rebuild:      makeDaemonRebuildFunc(maxConcurrentGroups),
 		QualityAudit: daemonQualityAuditFunc,
 
+		// Split-mode progress bridge (ADR-0024 / epic #5729): the SAME broker the
+		// dashboard SSE subscribes to (srv.SetProgressBroker below). In split mode
+		// the serve plane's sidecarTailer republishes the engine's per-group
+		// progress sidecars into it.
+		ProgressBroker: daemonProgressBroker,
+
 		// Phase B — wire the watcher + scheduler. The fast reactive
 		// reindex skips Pass 4 (graph algorithms) so a freshly-saved
 		// file becomes queryable as soon as the basic graph lands;
@@ -1272,6 +1278,35 @@ func daemonRebuildFuncCore(
 		resolve.RegisterExtraStdlibFilter(lang, names)
 	}
 
+	// Split-mode progress bridge — WRITE side (ADR-0024 / epic #5729). In SPLIT
+	// mode this rebuild runs inside the ENGINE process; the dashboard/wizard SSE
+	// lives in the separate SERVE process reading serve's own broker, so events
+	// published only into daemonProgressBroker here never reach it. Bridge them
+	// by teeing the broker with a per-GROUP NDJSON SidecarWriter that serve's
+	// sidecarTailer tails and republishes. progressPub is handed to BOTH the
+	// per-repo indexer publisher AND the group link tracker so per-module Tick
+	// events and the group-phase (cross-repo link) events all reach the sidecar.
+	//
+	// In MONOLITH mode (escape hatch GRAFEL_SPLIT_MODE=0) the publisher stays the
+	// broker directly — no sidecar is created and nothing is written under
+	// GRAFEL_HOME/progress, so monolith behavior is byte-for-byte unchanged.
+	var progressPub progress.Publisher = daemonProgressBroker
+	if daemon.SplitModeEnabled() {
+		sidecarWriter, swErr := progress.NewSidecarWriter(args.Group)
+		if swErr != nil {
+			// Best-effort: a sidecar-writer failure must never fail the rebuild.
+			// Fall back to the broker-only publisher (the split-mode dashboard
+			// simply won't see live progress for this run).
+			fmt.Fprintf(os.Stderr,
+				"grafel: rebuild: progress sidecar writer for group=%s failed: %v (dashboard progress bridge disabled for this run)\n",
+				args.Group, swErr)
+		} else {
+			// Flush the terminal + join the goroutine at the end of the rebuild.
+			defer sidecarWriter.Close()
+			progressPub = progress.NewTeePublisher(daemonProgressBroker, sidecarWriter)
+		}
+	}
+
 	// Collect repos to index, respecting the optional single-slug filter.
 	var work []repoWork
 	for _, r := range cfg.Repos {
@@ -1329,7 +1364,7 @@ func daemonRebuildFuncCore(
 			// Publish granular per-repo progress into the shared broker so the
 			// WebUI Index step renders live rows + file counters (#1531).
 			opts = append(opts,
-				WithPublisher(daemonProgressBroker),
+				WithPublisher(progressPub),
 				WithProgressSlugs(args.Group, rw.r.Slug))
 			// #5328: run at the foreground (higher) CPU cap only for human-awaited
 			// rebuilds; an automatic watcher/git-hook-triggered rebuild stays at
@@ -1456,7 +1491,7 @@ func daemonRebuildFuncCore(
 	// label and the CLI's live line advance to "Detecting cross-repo links…".
 	// The phantom-edge pass re-runs process-flow inside linksFn, so the same
 	// phase also covers the group-level flow recompute.
-	linkTrk := progress.NewTracker(daemonProgressBroker, args.Group, args.Group)
+	linkTrk := progress.NewTracker(progressPub, args.Group, args.Group)
 	linkTrk.Phase(progress.PhaseDetectLinks, "cross-repo links", 0)
 
 	// Cross-repo link passes run after every member is indexed.

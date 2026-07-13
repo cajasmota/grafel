@@ -24,6 +24,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/watch"
 	"github.com/cajasmota/grafel/internal/daemon/worktree"
 	"github.com/cajasmota/grafel/internal/extractor"
+	"github.com/cajasmota/grafel/internal/progress"
 )
 
 // defaultActivateConcurrency bounds how many worktree working-tree fsnotify
@@ -53,6 +54,16 @@ type Config struct {
 	// Logger is the *slog.Logger used by daemon-internal code and all sub-packages.
 	// When nil, Run constructs a default stderr slog.Logger.
 	Logger *slog.Logger
+
+	// ProgressBroker is the serve-plane indexer progress bus the dashboard SSE
+	// subscribes to (the cmd/grafel daemonProgressBroker). In SPLIT mode the
+	// engine indexes in a separate process and publishes progress into ITS own
+	// broker, so serve's dashboard would otherwise see nothing; the serve-side
+	// sidecarTailer (started only in planeServeOnly) tails the engine's per-group
+	// NDJSON sidecars and republishes each event into THIS broker. nil disables
+	// the tailer (monolith carries everything in-process; tests without a
+	// dashboard leave it unset). ADR-0024 / epic #5729.
+	ProgressBroker progress.Publisher
 
 	// Phase B optional wiring. When all four are non-nil the daemon
 	// starts the fsnotify watcher + scheduler and registers every
@@ -640,6 +651,19 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	if plane != planeServeOnly {
 		ep := startEnginePlane(ctx, cfg, svc, logger)
 		defer ep.shutdown()
+	}
+
+	// Split-mode progress bridge — READ side (ADR-0024 / epic #5729). ONLY the
+	// serve plane tails the engine's per-group progress sidecars and republishes
+	// them into serve's broker so the dashboard/wizard SSE renders live per-repo
+	// / per-module rows even though the engine indexed in a separate process. It
+	// must NOT run in the engine plane (the engine is the WRITER) nor in the
+	// monolith (planeServeOnly is only ever selected under SplitModeEnabled, and
+	// the in-process broker already carries everything). Gated on a wired broker
+	// so a serve process with no dashboard (tests) is a no-op.
+	if plane == planeServeOnly && SplitModeEnabled() && cfg.ProgressBroker != nil {
+		stopTailer := startSidecarTailer(cfg.ProgressBroker, defaultSidecarTailPoll, logger)
+		defer stopTailer()
 	}
 
 	// Dashboard HTTP server — started in a goroutine so it does not
