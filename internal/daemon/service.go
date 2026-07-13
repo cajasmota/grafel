@@ -31,7 +31,10 @@ import (
 // goroutines are abandoned (they will eventually complete or panic-recover and
 // be cleaned up). 2 hours is intentionally conservative — even a full cold
 // re-index of a large group should finish well under 30 minutes in practice.
-const rebuildRPCTimeout = 2 * time.Hour
+//
+// A var (not const) so tests can shrink it to exercise the timeout / single-
+// flight paths deterministically; production never reassigns it.
+var rebuildRPCTimeout = 2 * time.Hour
 
 // defaultStallWarnInterval is how long a Rebuild RPC may run without producing
 // a result before the dead-man detector logs a "possible stall" warning plus a
@@ -159,12 +162,17 @@ type Service struct {
 	// enables the worker pool introduced in #1276.
 	maxConcurrentGroups int
 
-	// groupRebuildMu prevents a concurrent double-rebuild of the same
-	// group. Keyed by group name. Each value is a *sync.Mutex; loaded-or-
-	// stored atomically via sync.Map to avoid the TOCTOU race that would
-	// arise with a plain map + RWMutex. Wired into Service.Rebuild in
-	// #2097 after the field was left as an unwired stub.
-	groupRebuildMu sync.Map // map[string]*sync.Mutex
+	// groupRebuildMu prevents a concurrent double-rebuild of the same group.
+	// Keyed by group name. Each value is a capacity-1 semaphore channel
+	// (chan struct{}), loaded-or-stored atomically via sync.Map to avoid the
+	// TOCTOU race a plain map + RWMutex would have. Wired into Service.Rebuild
+	// in #2097; converted from *sync.Mutex to a semaphore in #5681 so that (a)
+	// acquisition is timeout-aware and (b) the guard is RELEASED from the
+	// rebuild worker goroutine on real completion — not from the RPC handler —
+	// so an RPC-timed-out orphan keeps the guard and a superseding same-group
+	// rebuild cannot start a SECOND concurrent in-process rebuild (the engine
+	// RSS blow-up: N overlapping runs each holding a multi-GB doc).
+	groupRebuildMu sync.Map // map[string]chan struct{} (cap 1)
 
 	// rebuildInFlight counts Rebuild RPCs that are currently inside
 	// Service.Rebuild (i.e. past the per-group mutex acquisition). It is
@@ -519,13 +527,17 @@ func (s *Service) Index(args *proto.IndexArgs, reply *proto.IndexReply) error {
 // When args.ProgressToken is non-empty, per-repo progress is stored
 // so the CLI can poll it via IndexProgress while this call blocks.
 //
-// Concurrency guard (#2097): each group gets a per-group mutex
-// (groupRebuildMu) so only one Rebuild RPC per group runs at a time.
-// A second concurrent RPC for the same group blocks until the first
-// finishes — it does NOT race against the same output files. Combined
-// with a per-RPC wall-clock timeout (rebuildRPCTimeout) this prevents
-// the indefinite hang that was observed when in_flight=4 and all four
-// RPCs targeted the same group.
+// Concurrency guard (#2097 + #5681): each group gets a per-group
+// capacity-1 semaphore (groupRebuildMu) so only one Rebuild RPC per
+// group runs at a time. A second concurrent RPC for the same group
+// waits until the first finishes — it does NOT race against the same
+// output files, and (the #5681 fix) it does NOT start a second
+// concurrent in-process rebuild when the first RPC times out: the guard
+// is held by the worker goroutine until the heap-heavy rebuild really
+// completes, so overlapping runs can never pile multiple multi-GB
+// documents into the engine at once. Combined with a per-RPC wall-clock
+// timeout (rebuildRPCTimeout) this prevents the indefinite hang observed
+// when in_flight=4 and all four RPCs targeted the same group.
 func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) error {
 	if s.rebuild == nil {
 		return errors.New("rebuild entrypoint not configured")
@@ -577,19 +589,42 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	atomic.AddInt64(&s.inFlight, 1)
 	defer atomic.AddInt64(&s.inFlight, -1)
 
-	// Per-group mutual exclusion: load-or-store a *sync.Mutex for this
-	// group so that concurrent Rebuild RPCs targeting the same group are
-	// serialised rather than racing on the same output files (#2097).
-	muVal, _ := s.groupRebuildMu.LoadOrStore(args.Group, &sync.Mutex{})
-	groupMu := muVal.(*sync.Mutex)
-	groupMu.Lock()
+	// Per-group single-flight (#2097 + #5681). Load-or-store a capacity-1
+	// semaphore for this group so concurrent Rebuild RPCs targeting the same
+	// group are serialised rather than racing on the same output files AND,
+	// crucially for the #5681 engine-RSS blow-up, so at most ONE in-process
+	// group rebuild is alive at a time even across the per-RPC timeout below.
+	//
+	// Acquisition is timeout-aware: if a prior same-group rebuild still holds
+	// the guard (including an RPC-timed-out orphan whose heap-heavy goroutine is
+	// still running), this RPC waits up to rebuildRPCTimeout and then returns a
+	// timeout — it does NOT start a second concurrent rebuild. The guard is
+	// released from the WORKER goroutine on the rebuild's real completion (see
+	// releaseGuard below), never from this handler's timeout path, so N
+	// re-triggered rebuilds can never coexist and pile up N multi-GB docs.
+	semVal, _ := s.groupRebuildMu.LoadOrStore(args.Group, make(chan struct{}, 1))
+	groupSem := semVal.(chan struct{})
+	acqTimer := time.NewTimer(rebuildRPCTimeout)
+	select {
+	case groupSem <- struct{}{}:
+		acqTimer.Stop()
+	case <-acqTimer.C:
+		return fmt.Errorf("rebuild group=%s timed out after %s waiting for an in-flight rebuild of the same group to finish", args.Group, rebuildRPCTimeout)
+	}
 	atomic.AddInt64(&s.groupsActiveCount, 1)
 	atomic.AddInt64(&s.rebuildInFlight, 1)
-	defer func() {
-		atomic.AddInt64(&s.groupsActiveCount, -1)
-		atomic.AddInt64(&s.rebuildInFlight, -1)
-		groupMu.Unlock()
-	}()
+	// releaseGuard releases the per-group semaphore + decrements the counters
+	// exactly once. It is called from the worker goroutine on real completion
+	// (normal or error), NOT from the RPC-timeout return path, so an orphaned
+	// rebuild keeps the guard until its heap is actually freed.
+	var releaseOnce sync.Once
+	releaseGuard := func() {
+		releaseOnce.Do(func() {
+			atomic.AddInt64(&s.groupsActiveCount, -1)
+			atomic.AddInt64(&s.rebuildInFlight, -1)
+			<-groupSem
+		})
+	}
 
 	if s.logger != nil {
 		s.logger.Info("rebuild: start",
@@ -621,6 +656,11 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 
 	rebuildStartTime := time.Now()
 	go func() {
+		// Release the per-group guard on REAL completion, even if this RPC
+		// handler already returned on timeout (#5681): the orphaned rebuild
+		// holds the guard until here so no superseding same-group rebuild can
+		// run concurrently and double the engine heap.
+		defer releaseGuard()
 		var repos []string
 		var warning string
 		var err error
