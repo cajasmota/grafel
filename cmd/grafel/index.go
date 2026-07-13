@@ -820,6 +820,15 @@ func moduleForFile(currentFile string, pkgRoots []string, markers module.MarkerS
 	return module.Derive(f, markers)
 }
 
+// moduleRowWorthy reports whether a resolved module label deserves its own
+// per-module progress bar. Empty (no resolver) and the repo-root sentinel
+// (module.RootLabel — stray files at the repo root that belong to no package)
+// get no independent row: the wizard has no meaningful bar to show them in, and
+// a "_root" row is noise next to the real packages.
+func moduleRowWorthy(mod string) bool {
+	return mod != "" && mod != module.RootLabel
+}
+
 // Run executes the orchestrated pipeline. Each pass is a named method so
 // callers (and tests) can reason about per-pass output independently.
 func (i *Indexer) Run(ctx context.Context, absRepo string) (*graph.Document, error) {
@@ -2997,13 +3006,6 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 		classified []classifiedFile
 	)
 
-	publishTick := func(filesDone int, bytesSeen int64, currentFile string) {
-		if trk == nil {
-			return
-		}
-		trk.Tick(progress.PhaseExtractAST, filesDone, bytesSeen, currentFile, 0)
-	}
-
 	// Per-module tick cadence (per-module progress bars). The bare global
 	// fileCounter gate — tick only when the GLOBAL count hits a multiple of
 	// TickEveryNFiles — emitted ZERO per-module ticks for a monorepo with fewer
@@ -3011,28 +3013,50 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 	// module got a row only if one of its files happened to land on a global
 	// multiple of 20). We instead track each module and emit on its FIRST file
 	// (prompt per-module row), on its own N-file cadence (liveness within a big
-	// module), or on the global N-file cadence (aggregate liveness); a final
-	// per-module flush after the workers join guarantees every package has a
-	// fresh row. Guarded by pmMu; only active when a tracker is present.
+	// module), or on its LAST file (a module smaller than N still reaches its
+	// own 100% mid-run); a final per-module flush after the workers join
+	// guarantees every package reaches
+	// 100%. Each tick carries the MODULE's own done/total (via TickModule), so
+	// the bars advance INDEPENDENTLY like the per-repo fleet bars rather than in
+	// lockstep on the aggregate. Guarded by pmMu; only active with a tracker.
+	//
+	// Precompute per-module TOTALS once from the (post-incremental-filter) file
+	// list so each bar knows its own denominator. Files with no meaningful
+	// module (repo-root strays → module.RootLabel, or no resolver) are excluded:
+	// they get no independent bar (the wizard has no row to show them in).
 	var (
 		pmMu           sync.Mutex
 		moduleCount    = map[string]int{}
 		moduleLastFile = map[string]string{}
+		moduleTotal    = map[string]int{}
 	)
-	recordAndMaybeTick := func(filesDone int, bytesSeen int64, currentFile string) {
+	if trk != nil {
+		for _, rel := range files {
+			if m := trk.ResolveModule(rel); moduleRowWorthy(m) {
+				moduleTotal[m]++
+			}
+		}
+	}
+	recordAndMaybeTick := func(bytesSeen int64, currentFile string) {
 		if trk == nil {
 			return
 		}
 		mod := trk.ResolveModule(currentFile)
+		if !moduleRowWorthy(mod) {
+			return
+		}
 		pmMu.Lock()
 		moduleCount[mod]++
 		c := moduleCount[mod]
+		total := moduleTotal[mod]
 		moduleLastFile[mod] = currentFile
 		pmMu.Unlock()
 		// Coalescing downstream collapses volume, so over-emitting is cheap and
 		// safe: prefer guaranteed per-module coverage over minimal event count.
-		if c == 1 || c%progress.TickEveryNFiles == 0 || filesDone%progress.TickEveryNFiles == 0 {
-			publishTick(filesDone, bytesSeen, currentFile)
+		// Emit on this module's FIRST file, its own N-file cadence, or its last
+		// file (so a module smaller than N still reaches its own 100% mid-run).
+		if c == 1 || c%progress.TickEveryNFiles == 0 || c == total {
+			trk.TickModule(progress.PhaseExtractAST, mod, c, total, bytesSeen, currentFile, 0)
 		}
 	}
 
@@ -3051,8 +3075,8 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					mu.Lock()
 					i.stats.skipped++
 					mu.Unlock()
-					n := int(atomic.AddInt64(&fileCounter, 1))
-					recordAndMaybeTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
+					atomic.AddInt64(&fileCounter, 1)
+					recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -3061,8 +3085,8 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					mu.Lock()
 					i.stats.failed++
 					mu.Unlock()
-					n := int(atomic.AddInt64(&fileCounter, 1))
-					recordAndMaybeTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
+					atomic.AddInt64(&fileCounter, 1)
+					recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -3120,8 +3144,8 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					mu.Lock()
 					classified = append(classified, cf)
 					mu.Unlock()
-					n := int(atomic.AddInt64(&fileCounter, 1))
-					recordAndMaybeTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
+					atomic.AddInt64(&fileCounter, 1)
+					recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -3148,20 +3172,21 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 				classified = append(classified, cf)
 				mu.Unlock()
 
-				n := int(atomic.AddInt64(&fileCounter, 1))
-				if n%progress.TickEveryNFiles == 0 {
-					publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-				}
+				atomic.AddInt64(&fileCounter, 1)
+				recordAndMaybeTick(atomic.LoadInt64(&byteCounter), t.relPath)
 			}
 		}()
 	}
 	wg.Wait()
 
-	// Final per-module flush: guarantee at least one fresh extracting_ast line
-	// per module at end-of-extraction so every package's row survives downstream
-	// coalescing even for fast/small repos where no periodic tick fired.
+	// Final per-module flush: emit each module at its OWN 100% (moduleTotal /
+	// moduleTotal) at end-of-extraction so every package's row reaches complete
+	// and survives downstream coalescing even for fast/small repos where no
+	// periodic tick fired. NOTE: a monorepo with >256 distinct modules can burst
+	// past the sidecar's 256-event buffer here — acceptable: the sidecar
+	// coalesces to latest-per-(repo,module) on disk so every module's row still
+	// survives, though a dropped final tick may leave a row a hair under 100%.
 	if trk != nil {
-		total := int(atomic.LoadInt64(&fileCounter))
 		bytesSeen := atomic.LoadInt64(&byteCounter)
 		pmMu.Lock()
 		mods := make([]string, 0, len(moduleLastFile))
@@ -3170,7 +3195,8 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 		}
 		sort.Strings(mods)
 		for _, m := range mods {
-			publishTick(total, bytesSeen, moduleLastFile[m])
+			total := moduleTotal[m]
+			trk.TickModule(progress.PhaseExtractAST, m, total, total, bytesSeen, moduleLastFile[m], 0)
 		}
 		pmMu.Unlock()
 	}

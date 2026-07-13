@@ -16,7 +16,10 @@
 //     the UI extra detail without requiring the broker or frontend to land.
 package progress
 
-import "time"
+import (
+	"sync"
+	"time"
+)
 
 // Phase labels emitted during indexing. The set deliberately mirrors the
 // user-visible pipeline stages rather than the internal pass numbers so the
@@ -194,15 +197,21 @@ func (b *BufferedPublisher) Publish(e Event) {
 	}
 }
 
-// SliceCollector collects every published event into a slice. It is
-// intended for unit tests only; it holds a mutex so it is goroutine-safe.
+// SliceCollector collects every published event into a slice. It is intended
+// for unit tests only. Publish holds a mutex so it is goroutine-safe: the
+// indexer's extraction workers publish per-module ticks concurrently, so an
+// unsynchronised append would race. Read Events only after the run's producers
+// have joined (e.g. after Indexer.Run returns).
 type SliceCollector struct {
+	mu     sync.Mutex
 	Events []Event
 }
 
 // Publish appends e to Events. Safe for concurrent use.
 func (s *SliceCollector) Publish(e Event) {
+	s.mu.Lock()
 	s.Events = append(s.Events, e)
+	s.mu.Unlock()
 }
 
 // Tracker is the per-indexing-job helper that constructs and publishes
@@ -296,6 +305,31 @@ func (t *Tracker) Tick(phase string, filesDone int, bytesSeen int64, currentFile
 		BytesSeen:        bytesSeen,
 		CurrentFile:      currentFile,
 		Module:           t.module(currentFile),
+		PhaseStartedAtMS: t.phaseStartedAtMS,
+		TS:               nowMS(),
+	})
+}
+
+// TickModule emits a within-phase progress event for a SPECIFIC module,
+// carrying that module's OWN file progress (moduleDone / moduleTotal) and an
+// explicit module label rather than the repo-wide FilesDone/FilesTotal that
+// Tick derives from the tracker's global counters. This lets a monorepo render
+// one progress bar PER PACKAGE that advances independently — each bar reflects
+// its own module's completion, not the shared aggregate, matching the per-repo
+// fleet bars. currentFile should belong to module so the UI's "extracting: X"
+// label stays consistent; the Module field is stamped verbatim (no resolver
+// round-trip) so the caller controls attribution.
+func (t *Tracker) TickModule(phase, module string, moduleDone, moduleTotal int, bytesSeen int64, currentFile string, entitiesSoFar int) {
+	t.pub.Publish(Event{
+		GroupSlug:        t.groupSlug,
+		RepoSlug:         t.repoSlug,
+		Phase:            phase,
+		FilesDone:        moduleDone,
+		FilesTotal:       moduleTotal,
+		EntitiesSoFar:    entitiesSoFar,
+		BytesSeen:        bytesSeen,
+		CurrentFile:      currentFile,
+		Module:           module,
 		PhaseStartedAtMS: t.phaseStartedAtMS,
 		TS:               nowMS(),
 	})
