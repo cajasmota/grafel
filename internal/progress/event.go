@@ -243,6 +243,15 @@ func (t *Tracker) module(currentFile string) string {
 	return t.moduleResolver(currentFile)
 }
 
+// ResolveModule returns the module label Tick would stamp for currentFile, or
+// "" when no resolver is installed or currentFile is empty. It is exported so
+// the extraction loop can drive per-module tick cadence (first-seen + final
+// flush) consistently with the Module field Tick emits. Pure/read-only: safe
+// to call from concurrent extraction workers.
+func (t *Tracker) ResolveModule(currentFile string) string {
+	return t.module(currentFile)
+}
+
 // NewTracker constructs a Tracker for one indexing job. pub must not be nil;
 // use NoOpPublisher{} for a no-op sink.
 func NewTracker(pub Publisher, groupSlug, repoSlug string) *Tracker {

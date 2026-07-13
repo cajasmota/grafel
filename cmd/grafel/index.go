@@ -3004,6 +3004,38 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 		trk.Tick(progress.PhaseExtractAST, filesDone, bytesSeen, currentFile, 0)
 	}
 
+	// Per-module tick cadence (per-module progress bars). The bare global
+	// fileCounter gate — tick only when the GLOBAL count hits a multiple of
+	// TickEveryNFiles — emitted ZERO per-module ticks for a monorepo with fewer
+	// than TickEveryNFiles files, and only incidental coverage otherwise (a
+	// module got a row only if one of its files happened to land on a global
+	// multiple of 20). We instead track each module and emit on its FIRST file
+	// (prompt per-module row), on its own N-file cadence (liveness within a big
+	// module), or on the global N-file cadence (aggregate liveness); a final
+	// per-module flush after the workers join guarantees every package has a
+	// fresh row. Guarded by pmMu; only active when a tracker is present.
+	var (
+		pmMu           sync.Mutex
+		moduleCount    = map[string]int{}
+		moduleLastFile = map[string]string{}
+	)
+	recordAndMaybeTick := func(filesDone int, bytesSeen int64, currentFile string) {
+		if trk == nil {
+			return
+		}
+		mod := trk.ResolveModule(currentFile)
+		pmMu.Lock()
+		moduleCount[mod]++
+		c := moduleCount[mod]
+		moduleLastFile[mod] = currentFile
+		pmMu.Unlock()
+		// Coalescing downstream collapses volume, so over-emitting is cheap and
+		// safe: prefer guaranteed per-module coverage over minimal event count.
+		if c == 1 || c%progress.TickEveryNFiles == 0 || filesDone%progress.TickEveryNFiles == 0 {
+			publishTick(filesDone, bytesSeen, currentFile)
+		}
+	}
+
 	var wg sync.WaitGroup
 	for w := 0; w < i.workers; w++ {
 		wg.Add(1)
@@ -3020,9 +3052,7 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					i.stats.skipped++
 					mu.Unlock()
 					n := int(atomic.AddInt64(&fileCounter, 1))
-					if n%progress.TickEveryNFiles == 0 {
-						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-					}
+					recordAndMaybeTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -3032,9 +3062,7 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					i.stats.failed++
 					mu.Unlock()
 					n := int(atomic.AddInt64(&fileCounter, 1))
-					if n%progress.TickEveryNFiles == 0 {
-						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-					}
+					recordAndMaybeTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -3093,9 +3121,7 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 					classified = append(classified, cf)
 					mu.Unlock()
 					n := int(atomic.AddInt64(&fileCounter, 1))
-					if n%progress.TickEveryNFiles == 0 {
-						publishTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
-					}
+					recordAndMaybeTick(n, atomic.LoadInt64(&byteCounter), t.relPath)
 					continue
 				}
 
@@ -3130,6 +3156,25 @@ func (i *Indexer) classifyAndReadWithProgress(ctx context.Context, absRepo strin
 		}()
 	}
 	wg.Wait()
+
+	// Final per-module flush: guarantee at least one fresh extracting_ast line
+	// per module at end-of-extraction so every package's row survives downstream
+	// coalescing even for fast/small repos where no periodic tick fired.
+	if trk != nil {
+		total := int(atomic.LoadInt64(&fileCounter))
+		bytesSeen := atomic.LoadInt64(&byteCounter)
+		pmMu.Lock()
+		mods := make([]string, 0, len(moduleLastFile))
+		for m := range moduleLastFile {
+			mods = append(mods, m)
+		}
+		sort.Strings(mods)
+		for _, m := range mods {
+			publishTick(total, bytesSeen, moduleLastFile[m])
+		}
+		pmMu.Unlock()
+	}
+
 	// Issue #481 — worker-pool outputs accumulate in goroutine-scheduling
 	// order. Sort by canonical fields so downstream passes (BuildIndex
 	// first-writer-wins, dedup) see a stable slice and graph.json is

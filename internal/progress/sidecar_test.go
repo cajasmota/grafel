@@ -208,6 +208,48 @@ func TestCoalescing(t *testing.T) {
 	}
 }
 
+// TestPerModuleCoalescingPreservesEveryModule asserts that a burst of
+// interleaved per-module extraction ticks — all landing in a SINGLE flush
+// window — survives coalescing as ONE line per distinct module. This is the
+// downstream half of the per-module-progress fix: even when a small monorepo
+// finishes extraction inside one 200ms window, each package's row must reach
+// the sidecar (coalescing collapses volume PER (repo,module) key, never across
+// modules).
+func TestPerModuleCoalescingPreservesEveryModule(t *testing.T) {
+	setHome(t)
+	w, err := NewSidecarWriter("permod", WithFlushInterval(time.Hour))
+	if err != nil {
+		t.Fatal(err)
+	}
+	modules := []string{"packages/alpha", "packages/beta", "packages/gamma"}
+	// Interleave several ticks per module, as concurrent extraction workers
+	// would, all within the (single, Close-forced) flush window.
+	for round := 0; round < 5; round++ {
+		for _, m := range modules {
+			w.Publish(Event{
+				GroupSlug: "permod", RepoSlug: "r", Module: m,
+				Phase: PhaseExtractAST, FilesDone: round, FilesTotal: 15,
+				CurrentFile: m + "/mod.js", TS: int64(round),
+			})
+		}
+	}
+	if err := w.Close(); err != nil {
+		t.Fatal(err)
+	}
+	got := drainReader(t, "permod")
+	seen := map[string]int{}
+	for _, e := range got {
+		if e.Phase == PhaseExtractAST {
+			seen[e.Module]++
+		}
+	}
+	for _, m := range modules {
+		if seen[m] != 1 {
+			t.Errorf("module %q: got %d coalesced lines, want exactly 1 (all modules: %v)", m, seen[m], seen)
+		}
+	}
+}
+
 // TestTerminalFlushesPromptly asserts a terminal event is flushed without
 // waiting for the ticker, even under a long flush interval.
 func TestTerminalFlushesPromptly(t *testing.T) {
