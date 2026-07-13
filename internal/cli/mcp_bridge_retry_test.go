@@ -89,6 +89,66 @@ func TestBridgeRetryBudget_SurvivalWindow(t *testing.T) {
 	}
 }
 
+// TestBridgeConnectBudget_SurvivalWindow asserts the dead-serve connect-only
+// budget, evaluated at the PRODUCTION backoff defaults, spans a wall-clock
+// window that comfortably covers a real deploy's serve-down window — so a
+// normal serve restart still auto-recovers rather than fail-fasting
+// (#5717 regression guard) — while still being meaningfully shorter than the
+// full bridgeMaxRetries ride-out window (so the fail-fast + clearer
+// errDaemonUnreachable signal remain a real improvement) (#5729).
+//
+// callDaemon bails the connect budget after applying the backoffs for
+// attempts 1..(bridgeMaxConnectRetries-1) (attempt 0 dials with no backoff;
+// each subsequent dial failure pays bridgeBackoffForAttempt(attempt) before
+// the next try, and the (bridgeMaxConnectRetries)th failure returns without a
+// further sleep). The sum of those backoffs is the worst-case wall-clock
+// window a never-reachable serve blocks for.
+func TestBridgeConnectBudget_SurvivalWindow(t *testing.T) {
+	const (
+		prodInitial = 150 * time.Millisecond
+		prodCap     = 3 * time.Second
+		// dev-deploy.sh tolerates up to 25s of graceful daemon shutdown before
+		// swapping the binary; startup work before transport.Listen adds more.
+		// The connect budget must cover this whole window so a deploy restart
+		// (a dial failure) still rides out instead of fail-fasting (#5717).
+		deployGracefulWindow = 25 * time.Second
+	)
+	saved, savedMax := bridgeRetryBackoff, bridgeRetryMaxBackoff
+	defer func() { bridgeRetryBackoff, bridgeRetryMaxBackoff = saved, savedMax }()
+	bridgeRetryBackoff = prodInitial
+	bridgeRetryMaxBackoff = prodCap
+
+	var connectWindow time.Duration
+	for attempt := 1; attempt <= bridgeMaxConnectRetries-1; attempt++ {
+		connectWindow += bridgeBackoffForAttempt(attempt)
+	}
+
+	// Lower bound: must comfortably exceed the deploy graceful-exit window so a
+	// normal serve restart auto-recovers (#5717). "Comfortably" = a startup
+	// margin on top of the 25s graceful window for the pre-Listen work.
+	if connectWindow < deployGracefulWindow {
+		t.Fatalf("connect-budget window = %v, want >= the %v deploy graceful-exit window "+
+			"(a normal serve restart is a dial failure charged against this budget — "+
+			"undersizing it regresses #5717 auto-recovery)", connectWindow, deployGracefulWindow)
+	}
+	if margin := connectWindow - deployGracefulWindow; margin < 5*time.Second {
+		t.Fatalf("connect-budget window = %v leaves only %v over the %v deploy window; "+
+			"want a comfortable startup margin (pre-Listen work can take several seconds)",
+			connectWindow, margin, deployGracefulWindow)
+	}
+
+	// Upper bound: must stay shorter than the full ride-out window, otherwise
+	// the dead-serve fail-fast is no faster than just riding out (#5729 intent).
+	var rideOutWindow time.Duration
+	for attempt := 1; attempt <= bridgeMaxRetries; attempt++ {
+		rideOutWindow += bridgeBackoffForAttempt(attempt)
+	}
+	if connectWindow >= rideOutWindow {
+		t.Fatalf("connect-budget window = %v is not shorter than the ride-out window %v — "+
+			"the dead-serve fail-fast provides no earlier signal", connectWindow, rideOutWindow)
+	}
+}
+
 // TestIsRetryableRPCErr covers the classifier that decides whether the bridge
 // reconnects+retries vs surfaces an error (#5633).
 func TestIsRetryableRPCErr(t *testing.T) {

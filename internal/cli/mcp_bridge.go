@@ -258,11 +258,28 @@ const bridgeMaxRetries = 20
 // longer capped by this smaller budget — the outer bridgeMaxRetries governs,
 // since a serve we've already spoken to this call is presumed genuinely up.
 //
-// Sized so a normal serve restart during a deploy (down for a few seconds
-// while it rebinds its socket) still rides out and auto-recovers — do not
-// regress #5717 — while a permanently-dead serve fails in ~10s instead of
-// silently hanging for the full ~30-60s bridgeMaxRetries ride-out window.
-const bridgeMaxConnectRetries = 8
+// Sizing (must NOT regress #5717): a NORMAL serve restart during a deploy is
+// itself a dial failure (the socket is gone until the replacement rebinds),
+// so it is charged against THIS budget, not the ride-out one. The socket-down
+// window on a real deploy can be substantial:
+//   - .claude/dev/dev-deploy.sh tolerates up to 25s of graceful daemon
+//     shutdown before it even swaps the binary; and
+//   - daemon startup does synchronous work BEFORE transport.Listen binds
+//     (MigrateToRefStore, PruneStaleGenerations, pidfile acquisition,
+//     canonicalizePath — a documented past startup-stall source; see
+//     internal/daemon/server.go), so the listener may not appear for several
+//     more seconds on a slow/loaded start.
+//
+// At the production backoff (bridgeRetryBackoff=150ms base, doubling, capped
+// at bridgeRetryMaxBackoff=3s), bridgeMaxConnectRetries=16 spans ~34.65s of
+// wall-clock before giving up (sum of bridgeBackoffForAttempt(1..15) — see
+// TestBridgeConnectBudget_SurvivalWindow). That COMFORTABLY exceeds the 25s
+// deploy graceful-exit window plus a startup margin, so a normal deploy still
+// auto-recovers (#5717 preserved), while a permanently-dead serve fails in
+// ~35s — meaningfully faster than, and with a clearer errDaemonUnreachable
+// signal than, silently hanging out the full ~49s bridgeMaxRetries ride-out
+// window.
+const bridgeMaxConnectRetries = 16
 
 // errDaemonUnreachable is a sentinel wrapped into the error callDaemon
 // returns when the bridgeMaxConnectRetries connect-only budget is exhausted
