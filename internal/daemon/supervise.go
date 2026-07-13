@@ -50,12 +50,37 @@ const (
 var engineChildCommand = defaultEngineChildCommand
 
 // defaultEngineChildCommand launches `grafel engine --foreground` from the
-// current executable, in its own process group, with the daemon root threaded
-// through the environment (so the child's DefaultLayout resolves the same root)
-// and stdio inherited so its logs land alongside serve's.
+// current executable, in its own process group, with stdio inherited so its
+// logs land alongside serve's.
+//
+// Store-root invariant (production-divergence fix, ADR-0024 PR6 blocker, epic
+// #5729): the engine child inherits serve's environment UNCHANGED. It must NOT
+// synthesize GRAFEL_DAEMON_ROOT. That env var is the isolated-daemon switch that
+// flips the on-disk store layout from the production StoreDir()
+// (~/.grafel|$GRAFEL_HOME/store) to <root>/state — see repoBaseDir/requestsRoot/
+// StoreRootBase in state_path.go + requests_drain.go, all of which key off
+// os.Getenv(EnvRoot), not off Layout.Root.
+//
+// Serve resolves its own root from that SAME env: DefaultLayout uses
+// GRAFEL_DAEMON_ROOT when set (isolated/tests), else ~/.grafel (production, where
+// launchd/systemd do NOT set it). So plain os.Environ() inheritance makes the
+// child observe the IDENTICAL EnvRoot state serve saw:
+//
+//   - production (serve has no GRAFEL_DAEMON_ROOT): the child also sees it unset
+//     → both resolve StoreDir(). Force-appending EnvRoot=layout.Root (=~/.grafel)
+//     here is what broke this: it flipped the child to ~/.grafel/state while serve
+//     kept using ~/.grafel/store, so serve-written reindex/rebuild requests were
+//     silently dropped and engine-written graph.fb landed where serve never read.
+//   - isolated (serve has GRAFEL_DAEMON_ROOT=<tmp>): it is already in os.Environ()
+//     and inherited verbatim → both resolve <tmp>/state.
+//
+// root is retained in the signature (it is Layout.Root, threaded from the
+// supervisor) for the test seam and future non-layout-switching uses, but is
+// deliberately NOT written into the child env.
 func defaultEngineChildCommand(selfExe, root string) *exec.Cmd {
+	_ = root // intentionally not exported to the child env; see doc comment.
 	cmd := exec.Command(selfExe, "engine", "--foreground")
-	cmd.Env = append(os.Environ(), EnvRoot+"="+root)
+	cmd.Env = os.Environ()
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	cmd.SysProcAttr = engineChildSysProcAttr()
