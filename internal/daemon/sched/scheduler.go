@@ -52,6 +52,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/extractor"
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/repolock"
 )
 
 // IndexFn re-indexes a single repo at a specific git ref. The scheduler
@@ -289,6 +290,13 @@ type Config struct {
 // job. This is the relief valve for admission-control wedge scenarios
 // (e.g. inflated RSS history predictions that exceed the budget).
 const deadManTimeout = 2 * time.Minute
+
+// yieldRetryDelay is how long the scheduler waits before re-enqueuing a repo it
+// skipped because a foreground group-rebuild owned it (see runIndex). It bounds
+// the retry rate so the scheduler cannot busy-loop against a still-running
+// rebuild, while remaining short enough that the repo is promptly reindexed
+// once the rebuild releases its claim.
+const yieldRetryDelay = 3 * time.Second
 
 // memReleaseDebounceDefault is how long the scheduler must be fully idle
 // (no in-flight index, empty queue, no pending algo/link passes) before it
@@ -1219,6 +1227,29 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	var err error
 	var observedPeakMB int64
 
+	// Cross-path mutual exclusion (foreground group-rebuild ⇄ scheduler): the
+	// foreground rebuild path in cmd/grafel indexes a repo directly, bypassing
+	// this scheduler's per-repo in-flight guard, and both write the same
+	// graph.fb. Yield to a foreground rebuild that owns (or intends to own) this
+	// repo: skip THIS attempt without racing its write, and schedule a single
+	// delayed retry so the repo is still reindexed once the rebuild releases.
+	// A background claim also serialises the scheduler against a concurrent
+	// rebuild that has not yet marked foreground intent.
+	yielded := false
+	backgroundRelease := func() {}
+	if !skip {
+		if rel, ok := repolock.DefaultRegistry.TryClaimBackground(repoPath); ok {
+			backgroundRelease = rel
+		} else {
+			yielded = true
+			s.logEvent("index_yield_foreground", repoPath,
+				"foreground group-rebuild owns this repo — skipping concurrent reindex, retrying after backoff")
+			s.logger.Info("sched: yielding repo to foreground group-rebuild (avoids concurrent graph.fb rewrite)",
+				"repo", repoPath, "ref", tok.ref)
+		}
+	}
+	defer backgroundRelease()
+
 	if skip {
 		err = fmt.Errorf("reindex circuit open: %d consecutive failure(s) at commit %q, retrying after backoff (#5726/#5729)", breakerStats.FailCount, tok.commit)
 		if shouldLogSkip {
@@ -1229,7 +1260,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 				"repo", repoPath, "commit", tok.commit, "ref", tok.ref, "fail_count", breakerStats.FailCount,
 				"backoff_until", breakerStats.FailBackoffUntil)
 		}
-	} else {
+	} else if !yielded {
 		s.logEvent("index_start", repoPath, "predicted="+formatMB(tok.predictedMB)+" ref="+tok.ref)
 		// Observability: log goroutine identity + ref so concurrent-indexer
 		// regressions are diagnosable without a pprof trace (#2141).
@@ -1319,7 +1350,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 	s.mu.Lock()
 	stats := s.indexedRepos[repoPath]
-	if !skip {
+	if !skip && !yielded {
 		stats.LastIndex = time.Now()
 		stats.IndexCount++
 		stats.PredictedMB = tok.predictedMB
@@ -1345,7 +1376,7 @@ func (s *Scheduler) runIndex(tok jobToken) {
 			}
 			stats.FailBackoffUntil = time.Now().Add(reindexFailBackoff(stats.FailCount))
 		}
-	} else {
+	} else if !yielded {
 		stats.LastErr = ""
 		// Success resets the breaker entirely — including for a DIFFERENT
 		// commit than FailCommit, which is already implied since a fresh
@@ -1390,7 +1421,18 @@ func (s *Scheduler) runIndex(tok jobToken) {
 	}
 	s.mu.Unlock()
 
-	if followUp {
+	if yielded {
+		// Do NOT re-enqueue immediately: the foreground rebuild that owns this
+		// repo is still running, so an instant retry would busy-loop (yield →
+		// re-enqueue → admit → yield). Retry once after a bounded backoff; the
+		// rebuild will have released its claim by then in the common case, and
+		// EnqueueRefCommit dedups so overlapping retries coalesce into one.
+		s.logEvent("reindex_yield_retry", repoPath,
+			"scheduling delayed reindex retry after foreground rebuild backoff")
+		time.AfterFunc(yieldRetryDelay, func() {
+			s.EnqueueRefCommit(repoPath, followUpRef, followUpCommit)
+		})
+	} else if followUp {
 		s.logEvent("reindex_coalesced_followup", repoPath,
 			"changes landed during in-flight reindex — scheduling single follow-up (#5138)")
 		s.EnqueueRefCommit(repoPath, followUpRef, followUpCommit)
@@ -1405,6 +1447,12 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 	// Wake admission — capacity has freed.
 	s.poke()
+
+	if yielded {
+		// Nothing was indexed (we yielded to a foreground rebuild). Do not log a
+		// completion nor arm the cross-repo link pass — the rebuild owns those.
+		return
+	}
 
 	if err != nil {
 		// A skip already logged its own (rate-limited) index_circuit_skip

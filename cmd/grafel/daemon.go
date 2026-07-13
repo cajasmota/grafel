@@ -47,6 +47,7 @@ import (
 	"github.com/cajasmota/grafel/internal/quality"
 	"github.com/cajasmota/grafel/internal/quality/audit"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/repolock"
 	"github.com/cajasmota/grafel/internal/resolve"
 )
 
@@ -1335,6 +1336,22 @@ func daemonRebuildFuncCore(
 			// the throttled background cap. This appears AFTER indexFn's prepended
 			// default so it is the effective WithInteractive value.
 			opts = append(opts, WithInteractive(foreground))
+			// Cross-path mutual exclusion (#5729 concurrency bug): this rebuild
+			// indexes the repo DIRECTLY and never touches the engine scheduler,
+			// so the scheduler's per-repo in-flight guard cannot see it. Without
+			// a shared claim, a scheduler-enqueued reindex of the same repo (e.g.
+			// from the wizard-installed `grafel watch` process, a git-HEAD switch,
+			// or a drained KindReindex request) races this rebuild, both
+			// rewriting the same graph.fb — the runaway re-index the live daemon
+			// exhibited. ClaimForeground takes PRIORITY: the scheduler yields the
+			// repo while we own it; we only block on a background index already
+			// mid-write. Acquired/released INSIDE this index goroutine so the
+			// claim tracks the index's real completion — a rebuild whose outer
+			// per-repo timeout fires but whose goroutine keeps running still holds
+			// the claim until the write finishes, and the release is idempotent
+			// (safe alongside the panic-recovery defer above).
+			releaseClaim := repolock.DefaultRegistry.ClaimForeground(rw.r.Path)
+			defer releaseClaim()
 			// #1576: tag the graph with the CONFIG slug (not the on-disk
 			// directory basename) so doc.Repo matches the slug the dashboard
 			// keys nodes by and the slug the cross-repo link pass emits as the
