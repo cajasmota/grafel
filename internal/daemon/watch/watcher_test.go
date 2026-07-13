@@ -1,6 +1,7 @@
 package watch
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -344,6 +345,30 @@ func filepathHasClaude(p string) bool {
 // TestBulkDetection verifies that a burst exceeding BulkThreshold in one
 // window calls the sink with bulk=true exactly once and suppresses a
 // subsequent non-bulk debounced call for the same burst.
+//
+// This test was flaky for two independent, compounding reasons, both
+// test-synchronization issues (not product bugs):
+//
+//  1. The bulk-window arithmetic in recordAndArm judges events against
+//     time.Now(). Under a CPU-contended full-suite run, real fsnotify event
+//     delivery for the burst below can be delayed enough that the last
+//     event lands more than BulkWindow after the first, silently resetting
+//     the window and making bulk detection never fire (observed flake:
+//     "expected 1 bulk call, got 0" — the debounce path's non-bulk call
+//     still satisfied the old any-call doneCh, masking that bulk never
+//     triggered). Per the same fix pattern used for TestDebounceTwoBursts
+//     (#5392), we inject the deterministic manualClock and freeze it across
+//     the burst: every event the watcher records sees the same `now`, so
+//     all 5 are always judged "within window" regardless of how long the
+//     OS/scheduler took to deliver them.
+//  2. Rewriting a single freshly-created file 5 times in a tight loop can
+//     under-deliver events: fsnotify's kqueue backend (darwin) arms a
+//     per-file watch asynchronously after observing the directory-level
+//     CREATE, so a write immediately following creation can race that
+//     watch-arming and be silently dropped, leaving fewer than
+//     BulkThreshold events recorded even with the clock frozen. Using 5
+//     distinct filenames makes every write an unambiguous CREATE observed
+//     at the directory-watch level, with no such race.
 func TestBulkDetection(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping in short mode")
@@ -359,9 +384,10 @@ func TestBulkDetection(t *testing.T) {
 		bulkCalls int
 		normCalls int
 	)
-	doneCh := make(chan struct{}, 10)
+	const debounce = 200 * time.Millisecond
+	fc := newManualClock()
 	w, err := NewWatcherConfig(Config{
-		Debounce:          200 * time.Millisecond,
+		Debounce:          debounce,
 		BulkThreshold:     3, // low so tests are fast
 		BulkWindow:        500 * time.Millisecond,
 		HeartbeatInterval: time.Hour,
@@ -373,34 +399,48 @@ func TestBulkDetection(t *testing.T) {
 			normCalls++
 		}
 		mu.Unlock()
-		doneCh <- struct{}{}
 	}, nil)
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
+	// Inject the manual clock before subscribing (see comment above).
+	w.clk = fc
 	defer w.Stop()
 	if _, err := w.AddRepo(repo); err != nil {
 		t.Fatalf("add: %v", err)
 	}
 
-	// Write 5 files rapidly — should trigger bulk at event #3.
+	// Write 5 DISTINCT files rapidly — should trigger bulk at event #3. Each
+	// write is a fresh filename (not 5 rewrites of the same path): fsnotify's
+	// kqueue backend (used on darwin) arms a per-file watch asynchronously
+	// right after it observes a directory-level CREATE, so writes to a file
+	// that was *just* created in the same burst can race that watch-arming
+	// and be silently dropped — repeatedly rewriting one path could
+	// therefore under-deliver events and never reach BulkThreshold. A CREATE
+	// on a brand-new name is always observed at the directory-watch level
+	// with no such race, so this reliably produces one event per write. The
+	// clock is frozen for the duration of the burst, so this also no longer
+	// races BulkWindow against real scheduling delays.
 	for i := 0; i < 5; i++ {
-		p := filepath.Join(src, "bulk_test_file.go")
+		p := filepath.Join(src, fmt.Sprintf("bulk_test_file_%d.go", i))
 		if err := os.WriteFile(p, []byte("package main"), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
 
-	// Wait for the bulk call.
-	select {
-	case <-doneCh:
-	case <-time.After(2 * time.Second):
-		t.Fatal("bulk sink never fired")
-	}
+	// Wait for the bulk call to land by polling the actual bulk counter
+	// (not a shared "any sink call" channel, which could be satisfied by a
+	// stray non-bulk call and mask bulkCalls staying at 0).
+	waitForCalls5392(t, &mu, &bulkCalls, 1, 5*time.Second)
 
-	// Wait out the debounce window to confirm no extra normal call.
-	time.Sleep(600 * time.Millisecond)
+	// Advance the clock past the debounce window to deterministically
+	// resolve whatever timer state events #4/#5 left behind: bulk cancels
+	// and clears the timer at the moment of trigger, but events recorded
+	// after the threshold re-arm a normal debounce timer (see
+	// recordAndArm). manualClock.Advance runs any due callback synchronously
+	// before returning, so no extra sleep/poll is needed afterward.
+	fc.Advance(debounce + time.Millisecond)
 
 	mu.Lock()
 	bc, nc := bulkCalls, normCalls
@@ -409,8 +449,9 @@ func TestBulkDetection(t *testing.T) {
 	if bc != 1 {
 		t.Errorf("expected 1 bulk call, got %d", bc)
 	}
-	// A debounce timer may or may not fire after a bulk trigger depending on
-	// OS scheduling; we only require no more than 1 extra call total.
+	// A debounce timer may or may not have been armed by events #4/#5
+	// depending on event ordering; we only require no more than 1 extra
+	// call total.
 	if nc > 1 {
 		t.Errorf("expected ≤1 normal calls after bulk, got %d", nc)
 	}
