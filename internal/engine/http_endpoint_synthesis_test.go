@@ -1071,6 +1071,41 @@ async def item(id: int):
 	requireContains(t, got, want, "FastAPI APIRouter prefix fold — api_route decorator")
 }
 
+// TestSynth_FastAPI_NonRouterReceiverNotSynthesized guards against phantom
+// endpoints from decorators whose receiver is NOT a same-file app/router
+// (#5688). Widening the verb-decorator receiver capture to support arbitrary
+// router names must stay scoped to recognised receivers — otherwise an
+// unrelated decorator such as `@feature_flags.options(...)` or `@mock.head(...)`
+// in a file that merely contains a FastAPI marker synthesises a false endpoint.
+// head/options/trace are FastAPI-only verbs (no other synthesizer masks them),
+// so this is the exact new false-positive surface the receiver gate closes.
+func TestSynth_FastAPI_NonRouterReceiverNotSynthesized(t *testing.T) {
+	src := `from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+@feature_flags.options("some-flag-key")
+def toggle_flag():
+    return {}
+
+@mock.head("/internal/probe")
+def probe():
+    return {}
+`
+	got, _ := runDetect(t, "python", "app/main.py", src)
+	requireContains(t, got, []string{"http:GET:/health"},
+		"FastAPI real @app route still synthesised")
+	requireNotContains(t, got, []string{
+		"http:OPTIONS:/some-flag-key",
+		"http:OPTIONS:some-flag-key",
+		"http:HEAD:/internal/probe",
+	}, "FastAPI non-router receiver must not synthesise a phantom endpoint")
+}
+
 // TestSynth_FastAPI_YamlDrivenRouteNotSynthesized_Unit is a direct unit test
 // of synthesizeDjangoFromComposed — it feeds it a yaml_driven Route entity
 // (the kind that the Django YAML path() pattern would produce for a FastAPI

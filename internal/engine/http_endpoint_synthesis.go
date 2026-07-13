@@ -2715,12 +2715,13 @@ func parseFlaskMethods(args string) []string {
 // ---------------------------------------------------------------------------
 
 // fastapiVerbDecoratorRe captures @app.<verb>("/path") and
-// @<recv>.<verb>("/path") forms (recv is typically `router`/`api`/a
-// `*_router`-suffixed variable, but any receiver name is accepted so a
+// @<recv>.<verb>("/path") forms. The receiver is captured unrestricted so a
 // same-file `APIRouter(prefix=...)` mount-prefix fold (#5688) can be applied
-// regardless of naming convention). The handler function follows on the next
-// `def`/`async def` line; intermediate decorators (e.g. @app.middleware,
-// @Depends) are allowed.
+// regardless of naming convention; synthesizeFastAPI then gates each match on
+// recognizedRecv so a receiver that is NOT a same-file app/router (e.g.
+// `@feature_flags.options(...)`) is not emitted as a phantom endpoint. The
+// handler function follows on the next `def`/`async def` line; intermediate
+// decorators (e.g. @app.middleware, @Depends) are allowed.
 // The decorator argument tail tolerates ONE level of nested parens so a
 // `dependencies=[Depends(verify_token)]` / `response_model=Foo()` kwarg does not
 // terminate the match prematurely (the inner `)` previously aborted the scan,
@@ -2752,6 +2753,29 @@ var fastapiRouterConstructorRe = regexp.MustCompile(
 // unmatched — those routes fall back to the unprefixed path, which the
 // byPath linker normalises (v0.1.9 follow-up).
 var fastapiRouterPrefixKwargRe = regexp.MustCompile(`\bprefix\s*=\s*["']([^"'\n\r]*)["']`)
+
+// fastapiAppConstructorRe captures a same-file `<var> = FastAPI(...)`
+// application instance. Group 1 is the receiver variable. Used together with
+// fastapiRouterPrefixes to gate decorator synthesis to receivers that are
+// actually a recognised app/router in this file (#5688), so a non-router
+// decorator such as `@feature_flags.options("some-key")` cannot synthesise a
+// phantom endpoint.
+var fastapiAppConstructorRe = regexp.MustCompile(
+	`(?m)^[ \t]*([A-Za-z_]\w*)\s*=\s*FastAPI\s*\(`,
+)
+
+// fastapiAppInstances returns the set of same-file `<var> = FastAPI(...)`
+// application-instance variable names.
+func fastapiAppInstances(content string) map[string]struct{} {
+	apps := map[string]struct{}{}
+	for _, m := range fastapiAppConstructorRe.FindAllStringSubmatch(content, -1) {
+		if len(m) < 2 {
+			continue
+		}
+		apps[m[1]] = struct{}{}
+	}
+	return apps
+}
 
 // fastapiRouterPrefixes builds a same-file map of {APIRouter receiver
 // variable → mount prefix} from every `<var> = APIRouter(...)` constructor in
@@ -2797,6 +2821,28 @@ func synthesizeFastAPI(content string, emit emitDefFn) {
 		return raw
 	}
 
+	// #5688 — the verb/api_route decorator regexes capture an unrestricted
+	// receiver name so any router variable is supported regardless of naming
+	// convention. That must be scoped to receivers that are actually a router
+	// or the FastAPI app in THIS file, otherwise a non-router decorator such as
+	// `@feature_flags.options("some-key")` or `@mock.head(...)` in a file that
+	// merely contains a FastAPI marker would synthesise a phantom endpoint —
+	// and head/options/trace are FastAPI-only verbs, so no other synthesizer
+	// masks them. Recognised = the conventional app-instance names (`app`,
+	// `api`), any same-file `<var> = FastAPI(...)`, or any same-file
+	// `<var> = APIRouter(...)`.
+	appInstances := fastapiAppInstances(content)
+	recognizedRecv := func(recv string) bool {
+		if recv == "app" || recv == "api" {
+			return true
+		}
+		if _, ok := prefixes[recv]; ok {
+			return true
+		}
+		_, ok := appInstances[recv]
+		return ok
+	}
+
 	// SubmatchIndex variant so the 1-based line of the handler `def`
 	// (capture group 4) can be recovered for issue #2678 attribution.
 	for _, idx := range fastapiVerbDecoratorRe.FindAllStringSubmatchIndex(content, -1) {
@@ -2804,6 +2850,9 @@ func synthesizeFastAPI(content string, emit emitDefFn) {
 			continue
 		}
 		recv := content[idx[2]:idx[3]]
+		if !recognizedRecv(recv) {
+			continue
+		}
 		verb := strings.ToUpper(content[idx[4]:idx[5]])
 		raw := content[idx[6]:idx[7]]
 		handler := content[idx[8]:idx[9]]
@@ -2818,6 +2867,9 @@ func synthesizeFastAPI(content string, emit emitDefFn) {
 			continue
 		}
 		recv := content[idx[2]:idx[3]]
+		if !recognizedRecv(recv) {
+			continue
+		}
 		raw := content[idx[4]:idx[5]]
 		tail := content[idx[6]:idx[7]]
 		handler := content[idx[8]:idx[9]]
