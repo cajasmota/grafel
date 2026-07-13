@@ -120,5 +120,15 @@ func TestRebuildAndSchedulerDoNotIndexSameRepoConcurrently(t *testing.T) {
 	if got := atomic.LoadInt32(&maxActive); got != 1 {
 		t.Fatalf("rebuild and scheduler indexed the same repo concurrently: maxActive=%d, want 1", got)
 	}
+
+	// Guard against a false pass where maxActive stayed 1 only because the
+	// scheduler never admitted the repo at all: on the fixed code it yields
+	// during the rebuild (no Index call) and retries after yieldRetryDelay, so
+	// its Index hook must fire shortly after the rebuild releases its claim.
+	select {
+	case <-schedRan:
+	case <-time.After(6 * time.Second):
+		t.Fatal("scheduler never admitted/ran the enqueued repo (no yield-retry observed)")
+	}
 	wg.Wait()
 }

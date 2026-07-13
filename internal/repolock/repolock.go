@@ -23,6 +23,12 @@
 // retries later) instead of racing. A foreground claim still BLOCKS on a
 // background index that is already running for the repo — it must not corrupt a
 // write already in progress.
+//
+// Boundary: this is an in-process (in-memory) lock. It serialises the daemon's
+// own foreground-rebuild and scheduler paths only. A directly-invoked
+// `grafel index` CLI runs in a SEPARATE OS process and is NOT covered by this
+// registry — that pre-existing hazard (two processes writing one store) is out
+// of scope here and would need a filesystem lock to close.
 package repolock
 
 import (

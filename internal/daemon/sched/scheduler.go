@@ -1346,6 +1346,19 @@ func (s *Scheduler) runIndex(tok jobToken) {
 
 		close(sampleStop)
 		sampleWG.Wait()
+
+		// Release the cross-path claim the INSTANT the graph.fb write is done —
+		// BEFORE the stats/follow-up/poke section below. The background claim
+		// only needs to cover the write; the scheduler already serialises
+		// against itself via inflight[repoPath]. Releasing at end-of-function
+		// (defer) instead would leave the claim held while this run re-enqueues
+		// its own #5138 coalesced follow-up and pokes admission — a second
+		// worker could then admit that follow-up, have TryClaimBackground fail
+		// against our not-yet-released claim, and wrongly "yield to a foreground
+		// rebuild" against the scheduler's OWN just-completed run (delaying the
+		// no-lost-update follow-up up to yieldRetryDelay + phantom logs). The
+		// idempotent defer below still covers the skip/yield/early-return paths.
+		backgroundRelease()
 	}
 
 	s.mu.Lock()
