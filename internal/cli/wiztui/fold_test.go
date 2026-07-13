@@ -10,6 +10,20 @@ func ev(slug, phase string, ts int64) progress.Event {
 	return progress.Event{RepoSlug: slug, Phase: phase, TS: ts}
 }
 
+// evMod builds a module-scoped progress event (monorepo per-file attribution).
+func evMod(slug, module, phase string, ts int64) progress.Event {
+	return progress.Event{RepoSlug: slug, Module: module, Phase: phase, TS: ts}
+}
+
+// rowKeys returns the map keys of rows, for failure messages.
+func rowKeys(rows map[string]Row) []string {
+	out := make([]string, 0, len(rows))
+	for k := range rows {
+		out = append(out, k)
+	}
+	return out
+}
+
 // TestFold_MultipleReposManyRows is the dropped-repo regression: events for two
 // repos must yield two rows, not one. This is the core bug #5340 fixes.
 func TestFold_MultipleReposManyRows(t *testing.T) {
@@ -121,6 +135,82 @@ func TestRowsTerminal_GatesOnExpected(t *testing.T) {
 	}
 	if RowsTerminal(rows, 0) {
 		t.Error("terminal with unknown expected count — should defer")
+	}
+}
+
+// TestFold_MonorepoModulesGetSeparateRows is the monorepo module-collapse bug:
+// events for the SAME repo slug but DIFFERENT modules must yield one row PER
+// MODULE, not a single row for the whole repo (the bug this change fixes).
+func TestFold_MonorepoModulesGetSeparateRows(t *testing.T) {
+	rows := map[string]Row{}
+	for i, mod := range []string{"a", "b", "c"} {
+		rows = Fold(rows, evMod("mono", mod, progress.PhaseExtractAST, int64(i+1)))
+	}
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3 (one per module) — monorepo module-collapse bug: %v", len(rows), rowKeys(rows))
+	}
+	for _, mod := range []string{"a", "b", "c"} {
+		key := "mono/" + mod
+		r, ok := rows[key]
+		if !ok {
+			t.Fatalf("row %q missing; got keys %v", key, rowKeys(rows))
+		}
+		if r.RepoSlug != "mono" || r.Module != mod {
+			t.Errorf("row %q = {RepoSlug:%q Module:%q}, want {mono %q}", key, r.RepoSlug, r.Module, mod)
+		}
+	}
+}
+
+// TestFold_MonorepoModulesAdvanceIndependently: each module row's phase
+// advances on its own timeline — one module's phase must not bleed into
+// another's.
+func TestFold_MonorepoModulesAdvanceIndependently(t *testing.T) {
+	rows := map[string]Row{}
+	rows = Fold(rows, evMod("mono", "a", progress.PhaseWriteGraph, 1))
+	rows = Fold(rows, evMod("mono", "b", progress.PhaseScan, 2))
+	if rows["mono/a"].Phase != progress.PhaseWriteGraph {
+		t.Errorf("module a phase = %q, want %q", rows["mono/a"].Phase, progress.PhaseWriteGraph)
+	}
+	if rows["mono/b"].Phase != progress.PhaseScan {
+		t.Errorf("module b phase = %q, want %q", rows["mono/b"].Phase, progress.PhaseScan)
+	}
+}
+
+// TestFold_MonorepoModuleStaleTSIgnoredIndependently: monotonic/stale-TS
+// guarantees hold PER MODULE KEY, and don't cross-contaminate sibling modules.
+func TestFold_MonorepoModuleStaleTSIgnoredIndependently(t *testing.T) {
+	rows := map[string]Row{}
+	rows = Fold(rows, evMod("mono", "a", progress.PhaseExtractAST, 10))
+	before := rows["mono/a"]
+	rows = Fold(rows, evMod("mono", "a", progress.PhaseScan, 5)) // stale ts for module a
+	if rows["mono/a"] != before {
+		t.Errorf("stale module event mutated row: %+v -> %+v", before, rows["mono/a"])
+	}
+	rows = Fold(rows, evMod("mono", "b", progress.PhaseScan, 6))
+	if rows["mono/b"].Phase != progress.PhaseScan {
+		t.Errorf("module b phase = %q, want %q", rows["mono/b"].Phase, progress.PhaseScan)
+	}
+}
+
+// TestFold_FleetRepoRowsUnaffectedByModuleKeying is the CRITICAL regression
+// guard: a multi-repo fleet stream (Module == "" or Module == RepoSlug — no
+// true sub-module reporting) must still collapse to exactly one row per repo.
+// The existing fleet UX this change must not disturb.
+func TestFold_FleetRepoRowsUnaffectedByModuleKeying(t *testing.T) {
+	rows := map[string]Row{}
+	rows = Fold(rows, evMod("frontend", "", progress.PhaseScan, 1))
+	rows = Fold(rows, evMod("backend", "backend", progress.PhaseScan, 2)) // Module==RepoSlug variant
+	rows = Fold(rows, evMod("mobile", "", progress.PhaseScan, 3))
+	rows = Fold(rows, evMod("frontend", "", progress.PhaseExtractAST, 4))
+	rows = Fold(rows, evMod("backend", "backend", progress.PhaseExtractAST, 5))
+
+	if len(rows) != 3 {
+		t.Fatalf("got %d rows, want 3 (frontend, backend, mobile) — fleet regression: %v", len(rows), rowKeys(rows))
+	}
+	for _, slug := range []string{"frontend", "backend", "mobile"} {
+		if _, ok := rows[slug]; !ok {
+			t.Errorf("fleet row %q missing (keyed wrong): %v", slug, rowKeys(rows))
+		}
 	}
 }
 

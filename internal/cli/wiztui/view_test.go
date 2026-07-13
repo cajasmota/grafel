@@ -135,6 +135,49 @@ func TestIndexView_GroupEventFoldedRegardlessOfOrder(t *testing.T) {
 	}
 }
 
+// TestIndexView_MonorepoModulesRenderSeparateRows exercises the module-row fix
+// end-to-end through indexView: a monorepo emits Module-stamped events under
+// the SAME RepoSlug, and the view must render one row per module (not one
+// collapsed repo row) — the monorepo counterpart of
+// TestIndexView_RendersOneRowPerRepo.
+func TestIndexView_MonorepoModulesRenderSeparateRows(t *testing.T) {
+	v := newIndexView("mono", 3)
+	v.width = 100
+	for _, mod := range []string{"a", "b", "c"} {
+		v.foldEvent(progress.Event{RepoSlug: "mono", Module: mod, Phase: progress.PhaseExtractAST, FilesDone: 5, FilesTotal: 10, TS: 1})
+	}
+	if len(v.rows) != 3 {
+		t.Fatalf("got %d rows, want 3 (one per module): %v", len(v.rows), keysOf(v.rows))
+	}
+	out := v.view()
+	for _, mod := range []string{"a", "b", "c"} {
+		if !strings.Contains(out, "mono/"+mod) {
+			t.Errorf("module row %q missing from view:\n%s", mod, out)
+		}
+	}
+	pct := AggregateProgress(v.rows, v.expectedRepos)
+	if pct <= 0 || pct > 1 {
+		t.Errorf("aggregate progress out of range: %v", pct)
+	}
+}
+
+// TestIndexView_MonorepoFinalizeRowsMarksAllModulesDone asserts finalizeRows
+// advances EVERY module row to Done, not just a single collapsed repo row.
+func TestIndexView_MonorepoFinalizeRowsMarksAllModulesDone(t *testing.T) {
+	v := newIndexView("mono", 2)
+	v.foldEvent(progress.Event{RepoSlug: "mono", Module: "a", Phase: progress.PhaseBuildCommunities, TS: 1})
+	v.foldEvent(progress.Event{RepoSlug: "mono", Module: "b", Phase: progress.PhaseDone, TS: 2})
+
+	v.finalizeRows()
+
+	for _, mod := range []string{"a", "b"} {
+		r := v.rows["mono/"+mod]
+		if r.Phase != progress.PhaseDone {
+			t.Errorf("module %q phase = %q, want Done after finalizeRows", mod, r.Phase)
+		}
+	}
+}
+
 func keysOf(rows map[string]Row) []string {
 	out := make([]string, 0, len(rows))
 	for k := range rows {

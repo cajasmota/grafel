@@ -57,12 +57,16 @@ func newIndexView(group string, expectedRepos int) indexView {
 	}
 }
 
-// foldEvent folds a single broker event into the per-repo rows. A group-scoped
-// event (RepoSlug == group, the cross-repo links/flows pass) is NOT a repo: it
-// updates the overall group phase instead of spawning a spurious group row
-// (#5340). Per-repo events (backend, frontend, …) always fold into rows.
+// foldEvent folds a single broker event into the per-repo (or, for a
+// monorepo, per-module) rows. A group-scoped event (RepoSlug == group and no
+// Module, the cross-repo links/flows pass) is NOT a repo: it updates the
+// overall group phase instead of spawning a spurious group row (#5340).
+// Per-repo events (backend, frontend, …) and per-module monorepo events
+// always fold into rows — the Module check keeps a monorepo whose single
+// repo shares its slug with the group name (a common case) from having its
+// module ticks misrouted into the group-phase guard.
 func (v *indexView) foldEvent(e prog.Event) {
-	if v.group != "" && e.RepoSlug == v.group {
+	if v.group != "" && e.RepoSlug == v.group && e.Module == "" {
 		// Monotonic: never regress the group phase to a coarser one.
 		if phaseRank(e.Phase) >= phaseRank(v.groupPhase) {
 			v.groupPhase = e.Phase
@@ -151,7 +155,11 @@ var (
 func (v indexView) renderRow(r Row, spinnerFrame string) string {
 	const slugW = 22
 
-	name := truncate(r.RepoSlug, slugW)
+	label := r.RepoSlug
+	if r.Module != "" {
+		label = r.RepoSlug + "/" + r.Module
+	}
+	name := truncate(label, slugW)
 	name = rowSlugStyle.Render(fmt.Sprintf("%-*s", slugW, name))
 
 	var glyph, phase string

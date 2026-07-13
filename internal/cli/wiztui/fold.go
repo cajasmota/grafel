@@ -2,11 +2,13 @@
 //
 // fold.go is a Go port of the dashboard's per-repo progress folding
 // (webui-v2/src/lib/index-progress-fold.ts). It collapses the broker's
-// firehose of progress.Event records into exactly ONE row per repo, keyed by
-// repo_slug, with a monotonic phase so a stale lower phase never regresses a
-// more-advanced one. This is the model that fixes the dropped-repo display bug
-// in the CLI indexing view: instead of overwriting a single carriage-return
-// line (which dropped all-but-one repo), every repo renders as its own row.
+// firehose of progress.Event records into exactly ONE row per repo — or, for
+// a monorepo, one row per module — keyed by rowKey(repo_slug, module), with a
+// monotonic phase so a stale lower phase never regresses a more-advanced one.
+// This is the model that fixes the dropped-repo display bug in the CLI
+// indexing view: instead of overwriting a single carriage-return line (which
+// dropped all-but-one repo), every repo (or monorepo module) renders as its
+// own row.
 package wiztui
 
 import (
@@ -89,16 +91,30 @@ func (r Row) Terminal() bool {
 	return r.Phase == progress.PhaseDone || r.Phase == progress.PhaseError
 }
 
-// Fold collapses progress events into one row per repo. It is a value-semantics
-// fold: callers hold a map[string]Row keyed by repo slug and call Fold per
-// event. Stale (older-ts) events and lower-ordered phases never regress an
-// existing row; terminal rows are never pulled back to an in-flight phase by a
-// late module-scoped event. A faithful port of fold() in index-progress-fold.ts.
+// rowKey computes the row map key for an event: repoSlug alone for a plain
+// repo / whole-repo event (module == "" or module == repoSlug, e.g. fleet
+// indexing or a monorepo's repo-level phases), or "repoSlug/module" for a
+// true per-module event (monorepo per-file attribution) so each module gets
+// its own row instead of collapsing into the repo's row.
+func rowKey(repoSlug, module string) string {
+	if module == "" || module == repoSlug {
+		return repoSlug
+	}
+	return repoSlug + "/" + module
+}
+
+// Fold collapses progress events into one row per repo (or, for a monorepo,
+// one row per module). It is a value-semantics fold: callers hold a
+// map[string]Row keyed by rowKey(repoSlug, module) and call Fold per event.
+// Stale (older-ts) events and lower-ordered phases never regress an existing
+// row; terminal rows are never pulled back to an in-flight phase by a late
+// module-scoped event. A faithful port of fold() in index-progress-fold.ts,
+// extended with module-aware keying (#5751 monorepo one-row-per-module).
 func Fold(rows map[string]Row, e progress.Event) map[string]Row {
 	if rows == nil {
 		rows = map[string]Row{}
 	}
-	key := e.RepoSlug
+	key := rowKey(e.RepoSlug, e.Module)
 	existing, had := rows[key]
 
 	// Ignore stale events that predate what we already have for this row.
