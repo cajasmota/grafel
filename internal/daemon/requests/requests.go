@@ -63,6 +63,16 @@ const (
 	// note as above: internal/mcp/candidates.go's appendResolution /
 	// appendRejection already write directly and are consumed lazily.
 	KindEnrichmentEnqueue Kind = "enrichment_enqueue"
+	// KindRebuild asks the engine to force-rebuild a whole GROUP (the
+	// request-file equivalent of an in-process daemon.RebuildFunc call —
+	// see Service.Rebuild in internal/daemon/service.go). Unlike KindReindex
+	// (single repo, keyed by RepoPath), a rebuild targets a group name, so
+	// the full proto.RebuildArgs (Group/Slug/Wipe/Incremental/…) travels in
+	// Payload as JSON; RepoPath/Ref/Commit are unused for this kind. Added
+	// as the PR6 prerequisite (epic #5729) that closes the gap where
+	// Service.Rebuild ran a full group rebuild IN THE SERVE PROCESS even in
+	// split mode.
+	KindRebuild Kind = "rebuild"
 )
 
 // Status is the terminal state an Ack records for a drained request.
@@ -277,20 +287,39 @@ func Delete(dir, id string) error {
 
 // ApplyAndAck is the standard consumer sequence: apply(rec) using the
 // existing in-process logic (e.g. sched.Scheduler.EnqueueRefCommit), then
-// write an ack recording the outcome, then delete the request file — in that
-// order, so a crash at any point leaves the on-disk state safely resumable:
+// write an ack recording the outcome, then delete the request file, then
+// delete the (now load-bearing-for-nothing) ack file — in that order, so a
+// crash at any point leaves the on-disk state safely resumable:
 //
 //   - crash before apply returns: request still pending, unacked → redrained
 //     and re-applied (apply must be idempotent — true for Enqueue-style
-//     triggers, which already dedup/coalesce).
-//   - crash after ack write, before delete: ListPending's ack-guard excludes
-//     the request from the next drain — no double-apply.
-//   - crash after delete: fully done, nothing to redrain.
+//     triggers, which already dedup/coalesce, and for KindRebuild, which
+//     rebuilds a group from scratch).
+//   - crash after ack write, before request delete: ListPending's ack-guard
+//     excludes the request from the next drain (and best-effort removes the
+//     stale request file itself) — no double-apply.
+//   - crash after request delete, before ack delete: the ack is orphaned
+//     (see the GC note below) but harmless — ListPending only globs
+//     *.request.json, and that file is already gone, so nothing is
+//     re-applied.
+//   - crash after ack delete: fully done, nothing to redrain, nothing left
+//     on disk.
 //
 // A non-nil error from apply is recorded in the ack as StatusError (not
 // returned as a hard failure) so the request is still consumed exactly once;
 // ApplyAndAck itself only returns an error if writing the ack or deleting the
 // request fails (an on-disk problem, not an application-level one).
+//
+// Ack GC (PR6 prerequisite gap #2, epic #5729): the ack's ONLY purpose is to
+// guard the crash window between "ack written" and "request deleted" above.
+// Once the request file is confirmed deleted, that window is closed for
+// good — a crash from this point on leaves no request file for ListPending
+// to find, so the ack can no longer influence anything. Removing it here
+// (best-effort; a failure is not surfaced as an error, matching Delete's own
+// on-disk best-effort semantics) prevents the ~150-byte ack files from
+// accumulating unboundedly on a busy split repo, without reopening the
+// double-apply hole: the guard the ack provides is dead the instant the
+// request file it was guarding is gone.
 func ApplyAndAck(dir string, rec Record, apply func(Record) error) error {
 	applyErr := apply(rec)
 
@@ -304,6 +333,15 @@ func ApplyAndAck(dir string, rec Record, apply func(Record) error) error {
 	}
 	if err := Delete(dir, rec.ID); err != nil {
 		return fmt.Errorf("requests: delete request %s: %w", rec.ID, err)
+	}
+	_ = deleteAck(dir, rec.ID) // best-effort GC; see doc comment above
+	return nil
+}
+
+// deleteAck removes dir/<id>.ack.json. Absent file is not an error.
+func deleteAck(dir, id string) error {
+	if err := os.Remove(ackPath(dir, id)); err != nil && !os.IsNotExist(err) {
+		return err
 	}
 	return nil
 }

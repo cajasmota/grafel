@@ -422,6 +422,31 @@ func requestsDirForRepo(repoPath string) string {
 	return filepath.Join(StateDirForRepo(repoPath), "requests")
 }
 
+// requestsDirForGroup is the serve→engine control-plane drop directory for a
+// GROUP-level request (ADR-0024 PR6 prerequisite, epic #5729 — KindRebuild).
+// A rebuild targets a group name (proto.RebuildArgs.Group), not a single
+// repo path, so requestsDirForRepo's StateDirForRepo(repoPath) hashing
+// doesn't apply directly — there is no repoPath to hash. Rather than teach
+// discoverRequestsDirs a second directory shape, this synthesizes a stable
+// per-group key ("group:<name>", which can never collide with a real
+// absolute repo path's hash) and reuses the exact same repoBaseDir +
+// refs/<ref-safe>/requests layout requestsDirForRepo produces, with the
+// "_unknown" ref sentinel (a group has no git ref of its own). The result
+// still matches discoverRequestsDirs' existing `root/*/refs/*/requests` glob
+// verbatim, so the engine finds it with zero discovery-side changes.
+//
+// This intentionally does NOT resolve the group to its member repos here:
+// proto.RebuildArgs.Group is resolved to repos lazily, INSIDE the RebuildFunc
+// itself (see cmd/grafel's daemonRebuildFuncCore, which loads the group from
+// the registry and iterates cfg.Repos), exactly as it already does when
+// Service.Rebuild calls s.rebuild(*args) directly in monolith/engine mode.
+// So one group-level request (not one-per-repo) is both simplest and
+// correct: the engine drains it and calls the SAME RebuildFunc, which does
+// its own group→repos expansion identically to today.
+func requestsDirForGroup(group string) string {
+	return filepath.Join(repoBaseDir("group:"+group), "refs", RefSafeEncode(""), "requests")
+}
+
 // Index runs a single-repo index synchronously. Phase B adds the
 // MarkIndexed bookkeeping so an explicit RPC index updates the same
 // in-memory state that the watcher-driven path uses.
@@ -508,6 +533,47 @@ func (s *Service) Rebuild(args *proto.RebuildArgs, reply *proto.RebuildReply) er
 	if args == nil || args.Group == "" {
 		return errors.New("group is required")
 	}
+
+	// ADR-0024 PR6 prerequisite (epic #5729): in split mode this RPC is
+	// answered by the SERVE process. Unlike Service.Index (whose split-mode
+	// fast path is gated by s.scheduler being nil there), s.rebuild here is
+	// assigned unconditionally by newService regardless of plane (see
+	// server.go) — so it is NON-NIL in split-mode serve, and the nil check
+	// above never trips. Falling through to the synchronous s.rebuild(*args)
+	// call below would run a FULL GROUP REBUILD IN THE SERVE PROCESS,
+	// exactly the blast-radius coupling the split exists to remove. So when
+	// SplitModeEnabled(), drop a KindRebuild request (the full RebuildArgs,
+	// JSON-encoded, as Payload — see requests.KindRebuild) into a
+	// group-scoped requests dir instead, and return immediately; the
+	// engine's drain loop (requests_drain.go's applyRequest) picks it up and
+	// calls the SAME RebuildFunc this method calls directly below in
+	// monolith/engine mode. The two paths are mutually exclusive by
+	// construction: split mode NEVER reaches the s.rebuild(*args) call
+	// below, and monolith/engine mode NEVER writes a request file.
+	//
+	// Fire-and-forget, mirroring Index's async fast path: the reply carries
+	// no repo/stat/progress data because the rebuild hasn't happened yet by
+	// the time this RPC returns. In particular args.ProgressToken-based
+	// polling (IndexProgress) is NOT bridged across the process boundary —
+	// s.progress lives in serve's memory, but the rebuild itself runs in the
+	// engine process, so nothing here would ever mark that session done.
+	// That is a known, documented limitation of this fire-and-forget queue
+	// hop (not one of the two PR6-prerequisite gaps this change closes) and
+	// is left for a follow-up if split-mode progress UX is needed.
+	if SplitModeEnabled() {
+		payload, err := json.Marshal(*args)
+		if err != nil {
+			return fmt.Errorf("encode rebuild request: %w", err)
+		}
+		if _, err := requests.Write(requestsDirForGroup(args.Group), requests.Record{
+			Kind:    requests.KindRebuild,
+			Payload: payload,
+		}); err != nil {
+			return fmt.Errorf("queue rebuild request: %w", err)
+		}
+		return nil
+	}
+
 	atomic.AddInt64(&s.inFlight, 1)
 	defer atomic.AddInt64(&s.inFlight, -1)
 

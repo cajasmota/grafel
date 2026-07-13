@@ -101,7 +101,7 @@ func TestIndexAsync_SplitModeOn_WritesRequestFile_NeverTouchesScheduler(t *testi
 
 	// Mutual exclusion, end to end: draining it now must reach the SAME
 	// scheduler this test proved was never touched directly.
-	if err := drainRequestsOnce(requestsRoot(), extractSchedulerForTest(svc), nil); err != nil {
+	if err := drainRequestsOnce(requestsRoot(), extractSchedulerForTest(svc), nil, nil); err != nil {
 		t.Fatalf("drainRequestsOnce: %v", err)
 	}
 	select {

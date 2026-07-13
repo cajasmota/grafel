@@ -67,7 +67,7 @@ func TestDrainRequestsOnce_ReindexEnqueuesOntoScheduler(t *testing.T) {
 	sc.Start()
 	defer sc.Stop()
 
-	if err := drainRequestsOnce(requestsRoot(), sc, nil); err != nil {
+	if err := drainRequestsOnce(requestsRoot(), sc, nil, nil); err != nil {
 		t.Fatalf("drainRequestsOnce: %v", err)
 	}
 
@@ -80,15 +80,17 @@ func TestDrainRequestsOnce_ReindexEnqueuesOntoScheduler(t *testing.T) {
 		t.Fatal("timed out waiting for scheduler to index the enqueued repo")
 	}
 
-	ack, ok, err := requests.ReadAck(dir, id)
-	if err != nil {
+	// Ack-GC (PR6 prerequisite gap #2, epic #5729): ApplyAndAck now deletes
+	// the ack file immediately after a successful apply+request-delete —
+	// its only purpose was guarding the crash window between "ack written"
+	// and "request deleted", which is closed the instant the request file
+	// is confirmed gone. So a fully-succeeded drain leaves NEITHER the
+	// request NOR the ack behind (see requests.TestApplyAndAck_DeletesAckAfterSuccess
+	// for the focused regression); this is exactly what we assert here.
+	if _, ok, err := requests.ReadAck(dir, id); err != nil {
 		t.Fatalf("ReadAck: %v", err)
-	}
-	if !ok {
-		t.Fatal("expected an ack to have been written")
-	}
-	if ack.Status != requests.StatusOK {
-		t.Fatalf("unexpected ack status: %+v", ack)
+	} else if ok {
+		t.Fatal("expected the ack to have been GC'd after a successful drain, but it still exists")
 	}
 
 	recs, err := requests.ListPending(dir)
@@ -125,10 +127,10 @@ func TestDrainRequestsOnce_SecondDrainDoesNotDoubleEnqueue(t *testing.T) {
 	sc.Start()
 	defer sc.Stop()
 
-	if err := drainRequestsOnce(requestsRoot(), sc, nil); err != nil {
+	if err := drainRequestsOnce(requestsRoot(), sc, nil, nil); err != nil {
 		t.Fatalf("drainRequestsOnce (1st): %v", err)
 	}
-	if err := drainRequestsOnce(requestsRoot(), sc, nil); err != nil {
+	if err := drainRequestsOnce(requestsRoot(), sc, nil, nil); err != nil {
 		t.Fatalf("drainRequestsOnce (2nd): %v", err)
 	}
 

@@ -1,12 +1,14 @@
 package daemon
 
 import (
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"os"
 	"path/filepath"
 	"time"
 
+	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/requests"
 	"github.com/cajasmota/grafel/internal/daemon/sched"
 )
@@ -59,15 +61,21 @@ func requestsRoot() string {
 
 // drainRequestsOnce performs a single pass: discover every requests/ dir
 // under root, list its pending records, and apply each via
-// requests.ApplyAndAck. Only KindReindex is understood as of PR4 — see
-// internal/daemon/requests's Kind doc comments for why KindSubmitRepair /
-// KindDocgenApply / KindEnrichmentEnqueue are defined but not (yet) produced
-// or consumed anywhere (their handlers already write their sidecars
-// directly and are picked up lazily by the next scheduled index pass, so
-// they are already cross-process safe with no engine-side action needed).
+// requests.ApplyAndAck. KindReindex (PR4) and KindRebuild (PR6 prerequisite,
+// epic #5729) are understood — see internal/daemon/requests's Kind doc
+// comments for why KindSubmitRepair / KindDocgenApply / KindEnrichmentEnqueue
+// are defined but not (yet) produced or consumed anywhere (their handlers
+// already write their sidecars directly and are picked up lazily by the next
+// scheduled index pass, so they are already cross-process safe with no
+// engine-side action needed).
+//
+// rebuildFn is the engine's in-process rebuild entrypoint (cfg.Rebuild — the
+// SAME RebuildFunc Service.Rebuild calls directly in monolith/engine mode);
+// may be nil (a KindRebuild request then acks as an error, same shape as a
+// reindex request arriving with no scheduler attached).
 //
 // logger may be nil (tests exercise the apply path without one).
-func drainRequestsOnce(root string, scheduler *sched.Scheduler, logger *slog.Logger) error {
+func drainRequestsOnce(root string, scheduler *sched.Scheduler, rebuildFn RebuildFunc, logger *slog.Logger) error {
 	dirs, err := discoverRequestsDirs(root)
 	if err != nil {
 		return fmt.Errorf("requests: discover dirs: %w", err)
@@ -83,7 +91,7 @@ func drainRequestsOnce(root string, scheduler *sched.Scheduler, logger *slog.Log
 		for _, rec := range recs {
 			rec := rec
 			applyErr := requests.ApplyAndAck(dir, rec, func(r requests.Record) error {
-				return applyRequest(scheduler, r)
+				return applyRequest(scheduler, rebuildFn, r)
 			})
 			if applyErr != nil && logger != nil {
 				logger.Warn("requests: apply/ack failed", "dir", dir, "id", rec.ID, "kind", rec.Kind, "err", applyErr)
@@ -94,11 +102,11 @@ func drainRequestsOnce(root string, scheduler *sched.Scheduler, logger *slog.Log
 }
 
 // applyRequest dispatches a single drained Record to the same in-process
-// call the monolith/engine makes when it owns the scheduler directly. This
-// is the ONLY kind currently produced (see drainRequestsOnce's doc comment);
-// an unknown/future kind is reported as an error in the ack rather than
-// silently dropped, so the producer can observe the mismatch.
-func applyRequest(scheduler *sched.Scheduler, rec requests.Record) error {
+// call the monolith/engine makes when it owns the scheduler/rebuild
+// entrypoint directly. An unknown/future kind is reported as an error in the
+// ack rather than silently dropped, so the producer can observe the
+// mismatch.
+func applyRequest(scheduler *sched.Scheduler, rebuildFn RebuildFunc, rec requests.Record) error {
 	switch rec.Kind {
 	case requests.KindReindex:
 		if scheduler == nil {
@@ -106,6 +114,24 @@ func applyRequest(scheduler *sched.Scheduler, rec requests.Record) error {
 		}
 		scheduler.Enqueue(rec.RepoPath)
 		return nil
+	case requests.KindRebuild:
+		if rebuildFn == nil {
+			return fmt.Errorf("requests: rebuild request %s but no rebuild entrypoint is attached", rec.ID)
+		}
+		var args proto.RebuildArgs
+		if err := json.Unmarshal(rec.Payload, &args); err != nil {
+			return fmt.Errorf("requests: decode rebuild payload for %s: %w", rec.ID, err)
+		}
+		// Idempotency (PR6 prerequisite, epic #5729): a rebuild rebuilds its
+		// group FROM SCRATCH — the same call daemon.Service.Rebuild makes
+		// synchronously in monolith/engine mode. A redrain after a crash
+		// mid-apply (before the ack was written) simply reruns the same
+		// full rebuild a second time; it is not additive/incremental, so
+		// there is no double-effect to guard against beyond the normal
+		// wasted-work cost, which ApplyAndAck's ack-before-delete ordering
+		// already keeps to "at most once more", never unboundedly.
+		_, _, err := rebuildFn(args)
+		return err
 	default:
 		return fmt.Errorf("requests: unsupported kind %q", rec.Kind)
 	}
@@ -114,8 +140,9 @@ func applyRequest(scheduler *sched.Scheduler, rec requests.Record) error {
 // startRequestsDrainLoop starts the periodic drain goroutine and returns a
 // stop func (ep.add-compatible) that halts it. Only meaningful when a
 // scheduler is attached and SplitModeEnabled() — see the call site in
-// startEnginePlane (engineplane.go), which gates on both.
-func startRequestsDrainLoop(scheduler *sched.Scheduler, logger *slog.Logger) (stop func()) {
+// startEnginePlane (engineplane.go), which gates on both. rebuildFn is
+// threaded through to applyRequest for KindRebuild dispatch (may be nil).
+func startRequestsDrainLoop(scheduler *sched.Scheduler, rebuildFn RebuildFunc, logger *slog.Logger) (stop func()) {
 	done := make(chan struct{})
 	stopped := make(chan struct{})
 	go func() {
@@ -127,7 +154,7 @@ func startRequestsDrainLoop(scheduler *sched.Scheduler, logger *slog.Logger) (st
 			case <-done:
 				return
 			case <-ticker.C:
-				if err := drainRequestsOnce(requestsRoot(), scheduler, logger); err != nil && logger != nil {
+				if err := drainRequestsOnce(requestsRoot(), scheduler, rebuildFn, logger); err != nil && logger != nil {
 					logger.Warn("requests: drain pass failed", "err", err)
 				}
 			}

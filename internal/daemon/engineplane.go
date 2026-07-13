@@ -146,7 +146,12 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 		// byte-identical: no extra goroutine, no directory globbing, when the
 		// flag is off.
 		if SplitModeEnabled() {
-			ep.add(startRequestsDrainLoop(scheduler, logger))
+			// PR6 prerequisite (epic #5729): cfg.Rebuild is threaded through
+			// so a drained KindRebuild request invokes the SAME RebuildFunc
+			// the monolith/engine calls in-process from Service.Rebuild —
+			// see requests_drain.go's applyRequest and service.go's
+			// Rebuild split-mode branch.
+			ep.add(startRequestsDrainLoop(scheduler, cfg.Rebuild, logger))
 		}
 
 		// #5725/#5729-W1: status-plane heartbeat file. startStatusWriter runs a

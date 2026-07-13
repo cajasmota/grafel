@@ -246,6 +246,46 @@ func TestApplyAndAck_CrashBetweenAckAndDelete(t *testing.T) {
 	}
 }
 
+// TestApplyAndAck_DeletesAckAfterSuccess is the ack-GC regression (PR6
+// prerequisite gap #2, epic #5729): a successful ApplyAndAck must not leave
+// the <id>.ack.json sidecar behind once the request file it was guarding is
+// gone, otherwise a busy split repo accumulates ~150-byte ack files
+// unboundedly. This does not reopen the crash-between-ack-and-delete hole
+// (see TestApplyAndAck_CrashBetweenAckAndDelete): the ack only needs to
+// exist between the ack write and the request delete, both of which have
+// already happened by the time ApplyAndAck deletes it.
+func TestApplyAndAck_DeletesAckAfterSuccess(t *testing.T) {
+	dir := t.TempDir()
+	id, err := Write(dir, Record{Kind: KindReindex, RepoPath: "/repo"})
+	if err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+
+	if err := ApplyAndAck(dir, Record{ID: id, Kind: KindReindex, RepoPath: "/repo"}, func(Record) error {
+		return nil
+	}); err != nil {
+		t.Fatalf("ApplyAndAck: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(dir, id+ackSuffix)); !os.IsNotExist(err) {
+		t.Fatalf("expected ack file to be removed after successful apply, stat err=%v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, id+requestSuffix)); !os.IsNotExist(err) {
+		t.Fatalf("expected request file to be removed after successful apply, stat err=%v", err)
+	}
+
+	// A redrain over the now-empty dir must not error and must find nothing
+	// pending — the whole point of Delete-then-deleteAck is that no residue
+	// (request OR ack) can trip up the next drain pass.
+	recs, err := ListPending(dir)
+	if err != nil {
+		t.Fatalf("ListPending: %v", err)
+	}
+	if len(recs) != 0 {
+		t.Fatalf("expected 0 pending after ack-GC, got %d", len(recs))
+	}
+}
+
 // TestWriteAck_ErrorStatusRoundTrips ensures a failed apply is reported
 // faithfully through the ack so the producer (serve) can surface the error
 // to the caller instead of silently treating it as success.
