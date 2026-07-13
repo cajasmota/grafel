@@ -2741,10 +2741,13 @@ var fastapiApiRouteDecoratorRe = regexp.MustCompile(`@(\w+)\.api_route\s*\(\s*["
 // fastapiRouterConstructorRe captures a same-file `<var> = APIRouter(...)`
 // constructor call (#5688). Group 1 is the receiver variable, group 2 is the
 // constructor argument tail (which may or may not carry a `prefix=` kwarg).
-// One level of nested parens is tolerated so kwargs like
-// `dependencies=[Depends(x)]` don't abort the match early.
+// An optional PEP-526 type annotation between the identifier and `=` is
+// tolerated so the idiomatic typed form `router: APIRouter = APIRouter(...)`
+// (used in FastAPI's own docs) is recognised and prefix-folded. One level of
+// nested parens is tolerated so kwargs like `dependencies=[Depends(x)]` don't
+// abort the match early.
 var fastapiRouterConstructorRe = regexp.MustCompile(
-	`(?m)^[ \t]*([A-Za-z_]\w*)\s*=\s*APIRouter\s*\(((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
+	`(?m)^[ \t]*([A-Za-z_]\w*)\s*(?::\s*[\w\[\]., ]+?)?\s*=\s*APIRouter\s*\(((?:[^()]*(?:\([^()]*\)[^()]*)*))\)`,
 )
 
 // fastapiRouterPrefixKwargRe extracts a `prefix="/x"` (or single-quoted)
@@ -2824,16 +2827,24 @@ func synthesizeFastAPI(content string, emit emitDefFn) {
 	// #5688 — the verb/api_route decorator regexes capture an unrestricted
 	// receiver name so any router variable is supported regardless of naming
 	// convention. That must be scoped to receivers that are actually a router
-	// or the FastAPI app in THIS file, otherwise a non-router decorator such as
+	// or the FastAPI app, otherwise a non-router decorator such as
 	// `@feature_flags.options("some-key")` or `@mock.head(...)` in a file that
 	// merely contains a FastAPI marker would synthesise a phantom endpoint —
 	// and head/options/trace are FastAPI-only verbs, so no other synthesizer
-	// masks them. Recognised = the conventional app-instance names (`app`,
-	// `api`), any same-file `<var> = FastAPI(...)`, or any same-file
-	// `<var> = APIRouter(...)`.
+	// masks them. Recognised =
+	//   - the conventional app-instance names (`app`, `api`);
+	//   - the conventional router names (`router`, or any `*_router`) — these
+	//     are accepted BY NAME regardless of construction so an imported router
+	//     (`from .deps import router` + `@router.get(...)`, constructed in
+	//     another file) is still recognised, matching the pre-#5688 allowlist;
+	//   - any same-file `<var> = FastAPI(...)` instance;
+	//   - any same-file `<var> = APIRouter(...)` variable (also carries its
+	//     mount prefix for folding).
+	// `@feature_flags.options(...)` / `@mock.head(...)` match none of these, so
+	// the phantom-endpoint fix stays intact.
 	appInstances := fastapiAppInstances(content)
 	recognizedRecv := func(recv string) bool {
-		if recv == "app" || recv == "api" {
+		if recv == "app" || recv == "api" || recv == "router" || strings.HasSuffix(recv, "_router") {
 			return true
 		}
 		if _, ok := prefixes[recv]; ok {

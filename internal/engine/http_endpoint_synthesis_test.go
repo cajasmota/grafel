@@ -1106,6 +1106,48 @@ def probe():
 	}, "FastAPI non-router receiver must not synthesise a phantom endpoint")
 }
 
+// TestSynth_FastAPI_AnnotatedRouterConstruction covers the idiomatic PEP-526
+// typed construction `router: APIRouter = APIRouter(prefix="/v1")` (used in
+// FastAPI's own docs). The type annotation between the identifier and `=` must
+// not defeat router recognition — the router must be both recognised (so its
+// routes are emitted) AND prefix-folded (#5688).
+func TestSynth_FastAPI_AnnotatedRouterConstruction(t *testing.T) {
+	src := `from fastapi import FastAPI, APIRouter
+
+app = FastAPI()
+router: APIRouter = APIRouter(prefix="/v1")
+
+@router.get("/x")
+def handler():
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/annotated.py", src)
+	requireContains(t, got, []string{"http:GET:/v1/x"},
+		"FastAPI annotated APIRouter construction — recognised and prefix-folded")
+	requireNotContains(t, got, []string{"http:GET:/x"},
+		"FastAPI annotated APIRouter construction — unfolded path must not leak")
+}
+
+// TestSynth_FastAPI_ImportedRouterByName covers a router imported from another
+// module (`from .deps import router`) and used via `@router.get(...)` with NO
+// same-file `= APIRouter()` construction. It must still be recognised by the
+// conventional `router` / `*_router` name (matching the pre-#5688 allowlist),
+// with no prefix since none is discoverable in this file.
+func TestSynth_FastAPI_ImportedRouterByName(t *testing.T) {
+	src := `from fastapi import FastAPI
+from .deps import router
+
+app = FastAPI()
+
+@router.get("/y")
+def handler():
+    return {}
+`
+	got, _ := runDetect(t, "python", "routers/imported.py", src)
+	requireContains(t, got, []string{"http:GET:/y"},
+		"FastAPI imported router recognised by conventional name")
+}
+
 // TestSynth_FastAPI_YamlDrivenRouteNotSynthesized_Unit is a direct unit test
 // of synthesizeDjangoFromComposed — it feeds it a yaml_driven Route entity
 // (the kind that the Django YAML path() pattern would produce for a FastAPI
