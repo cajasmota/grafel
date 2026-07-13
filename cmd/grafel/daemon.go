@@ -413,12 +413,14 @@ func runDaemon(argv []string) error {
 	return runServe(argv)
 }
 
-// runServe is the `grafel serve` entrypoint (ADR-0024 Phase 1): the MCP
-// socket + dashboard plane, plus — while the capability flag
-// (daemon.SplitModeEnabled) is off, the default — the engine plane
-// in-process, identically to today's daemon. It shares the entire
-// runtime-tune + daemon.Config assembly prelude with runEngine via
-// runDaemonMode.
+// runServe is the `grafel serve` entrypoint (ADR-0024): the MCP socket +
+// dashboard plane. As of PR6/epic #5729 the capability flag
+// (daemon.SplitModeEnabled) is ON BY DEFAULT, so serve spawns and supervises
+// a separate `grafel engine` child for the scheduler/watcher/extraction/
+// fbwriter. The escape hatch — GRAFEL_SPLIT_MODE=0 (or "false"/"off"/"no") —
+// falls back to running the engine plane in-process, identically to the
+// pre-split daemon. It shares the entire runtime-tune + daemon.Config
+// assembly prelude with runEngine via runDaemonMode.
 func runServe(argv []string) error {
 	return runDaemonMode(argv, daemonRunModeServe)
 }

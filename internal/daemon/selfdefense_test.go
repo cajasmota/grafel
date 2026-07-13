@@ -71,19 +71,34 @@ func TestSelfDefenseCheck_RunRefusesWhenCalledFromTmpBinary(t *testing.T) {
 		t.Skip("running as root — PPID/ps signal checks behave differently")
 	}
 
-	// Check if we're running in a worktree (presence of .git/worktrees indicates
-	// git worktree setup). If so, and a canonical daemon exists, skip gracefully
-	// because binary SHA mismatch is expected and unavoidable.
+	// Check if we're running in a worktree. If so, and a canonical daemon
+	// exists, skip gracefully because the worktree-compiled binary's SHA won't
+	// match the installed daemon's ("binary updated since last install"),
+	// making this real-binary e2e refusal test structurally fragile.
+	//
+	// Two worktree shapes must both be detected (the old guard only caught the
+	// first, which is why it never fired when the tests themselves run FROM a
+	// linked worktree):
+	//   - a MAIN checkout that has linked worktrees → .git is a DIR containing
+	//     a "worktrees/" subdirectory.
+	//   - a LINKED worktree (this case) → .git is a FILE ("gitdir: …" pointer),
+	//     not a directory.
 	canonPID, canonExe := daemon.FindCanonicalDaemon()
 	if canonPID > 0 {
-		// A canonical daemon is running. Check if we're in a worktree.
-		modRoot, err := findModuleRoot()
-		if err == nil {
-			gitDir := filepath.Join(modRoot, ".git")
-			if st, err := os.Stat(gitDir); err == nil && st.IsDir() {
-				// Check for git worktree marker (git worktrees have a "worktrees" subdirectory).
-				worktreeMarkerPath := filepath.Join(gitDir, "worktrees")
-				if _, err := os.Stat(worktreeMarkerPath); err == nil {
+		if modRoot, err := findModuleRoot(); err == nil {
+			gitPath := filepath.Join(modRoot, ".git")
+			if st, err := os.Stat(gitPath); err == nil {
+				inWorktree := false
+				if st.IsDir() {
+					if _, err := os.Stat(filepath.Join(gitPath, "worktrees")); err == nil {
+						inWorktree = true
+					}
+				} else {
+					// .git is a file → this checkout is itself a linked worktree
+					// (or submodule); binary SHA parity cannot be guaranteed.
+					inWorktree = true
+				}
+				if inWorktree {
 					t.Skipf("self-defense check requires installed binary parity; skipping in worktree environment (canonical daemon pid=%d %s)", canonPID, canonExe)
 				}
 			}

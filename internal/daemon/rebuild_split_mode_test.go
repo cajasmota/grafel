@@ -26,7 +26,10 @@ import (
 )
 
 func TestRebuild_SplitModeOff_CallsRebuildDirectly_NoRequestFile(t *testing.T) {
-	t.Setenv(SplitModeEnvVar, "")
+	// PR6 (epic #5729): split mode is ON by default now, so "off" must be
+	// requested via the explicit escape hatch (an empty/unset value is no
+	// longer OFF — see SplitModeEnabled's doc comment).
+	t.Setenv(SplitModeEnvVar, "0")
 	root := t.TempDir()
 	t.Setenv(EnvRoot, root)
 

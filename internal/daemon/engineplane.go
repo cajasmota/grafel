@@ -56,7 +56,7 @@ func startEnginePlane(ctx context.Context, cfg Config, svc *Service, logger *slo
 
 	// #5729 PR3: the engine-global liveness/warming heartbeat now starts here
 	// — UNCONDITIONALLY, before the scheduler-gated block below — so it runs
-	// identically in the monolith (flag-off default) AND the standalone
+	// identically in the monolith (escape-hatch GRAFEL_SPLIT_MODE=0) AND the standalone
 	// engine (RunEngine), giving serve ONE code path to read regardless of
 	// split mode (the equivalence property this PR exists to guarantee).
 	// Previously this heartbeat was only started by RunEngine, so a monolith

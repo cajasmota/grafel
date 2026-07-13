@@ -56,10 +56,13 @@ func TestRunServe_MatchesDaemonInProcessWiring(t *testing.T) {
 }
 
 // TestRunServe_FlagOff_SpawnsNoEngineChild is the ADR-0024 PR2 flag-OFF
-// regression (epic #5729): with GRAFEL_SPLIT_MODE unset (the default), RunServe
-// must run the whole daemon in-process and spawn NO engine child — so it must
-// never write engine.pid. This pins the critical invariant that split-mode is
-// strictly opt-in and the default running daemon is unchanged.
+// regression (epic #5729): with GRAFEL_SPLIT_MODE explicitly disabled (this
+// package's TestMain pins the test suite to monolith by default — see
+// daemon_test.go; production defaults to split-ON as of PR6), RunServe must
+// run the whole daemon in-process and spawn NO engine child — so it must
+// never write engine.pid. This pins the critical invariant that the
+// GRAFEL_SPLIT_MODE=0 escape hatch actually produces a monolith daemon with
+// zero engine-child spawning.
 func TestRunServe_FlagOff_SpawnsNoEngineChild(t *testing.T) {
 	layout := runServeForTest(t, func(args proto.IndexArgs) (string, string, error) {
 		return args.RepoPath + "/.grafel/graph.json", `{"ok":true}`, nil

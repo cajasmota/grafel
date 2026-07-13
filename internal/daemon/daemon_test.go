@@ -23,7 +23,24 @@ import (
 // user home and no GRAFEL_DAEMON_ROOT isolation is in effect — these tests
 // start an in-process daemon and dial its socket, and must never displace or
 // dial the developer's live daemon.
+//
+// It also pins this test binary's default to MONOLITH mode (ADR-0024 PR6,
+// epic #5729): daemon.SplitModeEnabled() is ON by default in production, but
+// the broad daemon test suite starts in-process daemons via daemon.Run /
+// daemon.RunServe without a real `grafel` binary on disk — os.Executable()
+// in a test binary resolves to the test binary itself, not `grafel`, so a
+// real split-mode engine-child spawn would fail or hang. Setting
+// GRAFEL_SPLIT_MODE=0 here (only if the environment doesn't already specify
+// it) keeps the suite running monolith by default. Tests that specifically
+// exercise split mode override this per-test via t.Setenv(GRAFEL_SPLIT_MODE,
+// "1") (which restores to this TestMain default afterward) and/or
+// daemon.SetEngineChildCommandForTest to substitute a safe in-binary helper
+// process for the engine child — see serve_split_e2e_test.go and
+// serve_engine_split_test.go.
 func TestMain(m *testing.M) {
+	if _, set := os.LookupEnv(daemon.SplitModeEnvVar); !set {
+		os.Setenv(daemon.SplitModeEnvVar, "0")
+	}
 	testsupport.GuardRealHomeMain()
 	os.Exit(m.Run())
 }

@@ -193,17 +193,19 @@ func RunDoctor(opts DoctorOptions) (*DoctorReport, error) {
 	// ── Check 2: Daemon /healthz ────────────────────────────────────────────
 	report.Checks = append(report.Checks, checkDaemon(state, opts.DaemonPort, opts.DaemonTimeout))
 
-	// ── Check 2b: Engine liveness + version skew (ADR-0024 PR5, epic #5729) ──
-	// Monolith-aware: in the DEFAULT config (GRAFEL_SPLIT_MODE off) there is no
-	// separate engine process, so this must never warn "engine down" — see
-	// checkEngineLiveness's doc comment for the monolith/split detection logic.
+	// ── Check 2b: Engine liveness + version skew (ADR-0024 PR5/PR6, epic #5729) ──
+	// Monolith-aware: when the escape hatch (GRAFEL_SPLIT_MODE=0) puts the
+	// install in monolith mode, there is no separate engine process, so this
+	// must never warn "engine down" — see checkEngineLiveness's doc comment
+	// for the monolith/split detection logic.
 	report.Checks = append(report.Checks, checkEngineLiveness(state, defaultEngineLivenessDeps()))
 
 	// ── Check 2c: Pre-split OS service unit (ADR-0024 PR5, epic #5729) ───────
 	// Purely informational: an existing install's unit may still literally
 	// exec `grafel daemon` until the next `grafel update`/`grafel install`
-	// re-renders it to `grafel serve` (behavior-identical while the split flag
-	// is off — see service.Install's WriteUnit re-render contract).
+	// re-renders it to `grafel serve` (behavior-identical when the split flag
+	// is disabled via the GRAFEL_SPLIT_MODE=0 escape hatch — see
+	// service.Install's WriteUnit re-render contract).
 	if preSplit := checkPreSplitUnit(); preSplit != nil {
 		report.Checks = append(report.Checks, *preSplit)
 	}
@@ -867,10 +869,11 @@ func defaultEngineLivenessDeps() engineLivenessDeps {
 // checkEngineLiveness reports the health of the `grafel engine` child
 // process — but ONLY when the serve/engine split is actually active.
 //
-// ADR-0024's split is opt-in via GRAFEL_SPLIT_MODE, default OFF. In that
-// default (monolith) configuration there is NO separate engine process at
-// all — serve does all indexing in-process, exactly like the pre-split
-// `grafel daemon`. Mode detection here does NOT read SplitModeEnabled()
+// ADR-0024's split is ON by default as of PR6; GRAFEL_SPLIT_MODE=0 (or
+// "false"/"off"/"no") is the escape hatch back to monolith mode. In monolith
+// mode there is NO separate engine process at all — serve does all indexing
+// in-process, exactly like the pre-split `grafel daemon`. Mode detection here
+// does NOT read SplitModeEnabled()
 // directly (that reflects THIS process's environment, not necessarily the
 // installed service's); instead it uses the observable artifact split mode
 // produces: an engine.pid file. No engine.pid means either split mode is off,
@@ -899,10 +902,10 @@ func checkEngineLiveness(state *State, deps engineLivenessDeps) CheckResult {
 	pidPath := daemon.EnginePIDPath(root)
 	pid, err := deps.readEnginePID(pidPath)
 	if err != nil || pid <= 0 {
-		// No engine.pid — monolith mode (the default), or the engine child
-		// already exited and was reaped. There is no separate engine process
-		// to be down. Healthy, in-process.
-		cr.Drift = []string{"monolith mode: no separate engine process (GRAFEL_SPLIT_MODE off)"}
+		// No engine.pid — monolith mode (escape hatch: GRAFEL_SPLIT_MODE=0), or
+		// the engine child already exited and was reaped. There is no separate
+		// engine process to be down. Healthy, in-process.
+		cr.Drift = []string{"monolith mode: no separate engine process (GRAFEL_SPLIT_MODE=0)"}
 		cr.Severity = SeverityInfo
 		return cr
 	}

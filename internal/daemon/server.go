@@ -260,30 +260,42 @@ type Config struct {
 }
 
 // SplitModeEnvVar names the capability flag that gates the serve/engine
-// process split (ADR-0024, epic #5729). Default OFF: RunServe runs the
-// entire daemon in-process — identical to today's Run — and does not spawn
-// a separate `grafel engine` child. PR2 will flip the ON branch of RunServe
-// to spawn and supervise a real engine child process instead of running the
-// engine plane inline.
+// process split (ADR-0024, epic #5729). As of PR6 (epic #5729) the split is
+// ON BY DEFAULT: RunServe spawns and supervises a separate `grafel engine`
+// child process for the scheduler/watcher/extraction/fbwriter, while serve
+// keeps the MCP dispatch socket, dashboard, and graph_cache mmap reads
+// in-process. This is the escape hatch: set GRAFEL_SPLIT_MODE=0 (or
+// "false"/"off"/"no", case-insensitive) to force single-process monolith
+// mode — the entire daemon (serve + engine plane) runs in one process, byte-
+// for-byte identical to the pre-split `grafel daemon`, with no engine child
+// spawned.
 const SplitModeEnvVar = "GRAFEL_SPLIT_MODE"
 
 // SplitModeEnabled reports whether the serve/engine process-split
-// capability flag is turned on. See SplitModeEnvVar. Defaults to false
-// (single-process, today's behavior) so this PR (the entrypoint/config
-// carve) makes no behavior change.
+// capability flag is turned on. See SplitModeEnvVar.
+//
+// Defaults to true (split ON) as of PR6/epic #5729: unset, empty, or any
+// value NOT recognized as an explicit disable is treated as split-mode ON.
+// It returns false ONLY when GRAFEL_SPLIT_MODE is explicitly set to one of
+// "0", "false", "off", or "no" (case-insensitive, whitespace-trimmed) — the
+// documented escape hatch back to single-process monolith mode.
 func SplitModeEnabled() bool {
-	v := strings.TrimSpace(os.Getenv(SplitModeEnvVar))
-	return v == "1" || strings.EqualFold(v, "true")
+	v := strings.ToLower(strings.TrimSpace(os.Getenv(SplitModeEnvVar)))
+	switch v {
+	case "0", "false", "off", "no":
+		return false
+	default:
+		return true
+	}
 }
 
 // ServeConfig is the serve-plane configuration (ADR-0024 Phase 1): the MCP
 // dispatch socket, the dashboard, and graph_cache mmap reads. It currently
-// composes the entire Config rather than a disjoint field set because,
-// while SplitModeEnabled() is false (the default), RunServe must start the
-// engine plane IN-PROCESS exactly as Run does today — it needs every
-// engine-plane field (scheduler, watcher, extraction, fbwriter hooks) to do
-// so. PR2 narrows ServeConfig to serve-only fields once the engine plane is
-// actually spawned as a separate child process instead of run inline.
+// composes the entire Config rather than a disjoint field set because, when
+// split mode is explicitly disabled (GRAFEL_SPLIT_MODE=0, the escape hatch;
+// see SplitModeEnabled), RunServe must start the engine plane IN-PROCESS
+// exactly as Run does today — it needs every engine-plane field (scheduler,
+// watcher, extraction, fbwriter hooks) to do so.
 type ServeConfig struct {
 	Config
 }
@@ -291,49 +303,54 @@ type ServeConfig struct {
 // EngineConfig is the engine-plane configuration (ADR-0024 Phase 1): the
 // scheduler, file watcher, extraction, and fbwriter. See ServeConfig's doc
 // for why it currently composes the full Config rather than a disjoint
-// subset — that split lands in PR2 alongside the real process spawn.
+// subset.
 type EngineConfig struct {
 	Config
 }
 
 // daemonPlaneMode selects which planes the shared run() body starts. It is an
-// internal (unexported) implementation detail of the ADR-0024 Phase 1 / PR2
-// carve; the public entrypoints (Run, RunServe, RunEngine) each pick a mode.
+// internal (unexported) implementation detail of the ADR-0024 carve; the
+// public entrypoints (Run, RunServe, RunEngine) each pick a mode.
 type daemonPlaneMode int
 
 const (
-	// planeMonolith is today's single-process daemon: the serve plane (socket,
+	// planeMonolith is the single-process daemon: the serve plane (socket,
 	// dashboard, MCP dispatch) AND the engine plane (scheduler, watcher,
-	// fbwriter) both run in ONE process. This is the flag-off default and is
-	// byte-for-byte behavior-identical to the pre-split daemon.
+	// fbwriter) both run in ONE process. This is the escape-hatch mode
+	// (GRAFEL_SPLIT_MODE=0/false/off/no) and is byte-for-byte behavior-
+	// identical to the pre-split daemon.
 	planeMonolith daemonPlaneMode = iota
 	// planeServeOnly starts ONLY the serve plane; the engine plane is skipped
 	// because a supervised `grafel engine` child runs it in a separate process
-	// (split-mode ON). Used by RunServe when SplitModeEnabled().
+	// (split-mode ON, the default as of PR6/epic #5729). Used by RunServe
+	// when SplitModeEnabled().
 	planeServeOnly
 )
 
 // RunServe starts the serve plane: the MCP dispatch socket, the dashboard, and
 // the zero-copy graph_cache mmap reads.
 //
-// While the serve/engine split capability flag is OFF (the default,
-// SplitModeEnabled()==false), RunServe runs the ENTIRE daemon in one process —
-// byte-for-byte identical to Run — so an existing OS unit that execs `serve`
-// (or the back-compat `daemon` shim) behaves exactly like today's daemon.
+// As of PR6 (epic #5729), split mode is ON BY DEFAULT (SplitModeEnabled()==
+// true): RunServe starts ONLY the serve plane in-process and spawns +
+// supervises a separate `grafel engine` child for the
+// scheduler/watcher/extraction/fbwriter. The supervisor keeps the engine
+// child alive across crashes with exponential backoff, exposes a status-file
+// health gate, and gracefully drains (SIGTERM → bounded wait → SIGKILL,
+// reaped) the child when serve shuts down. serve never exits for a
+// degraded/dead engine — it keeps answering reads from the last-good
+// graph.fb — and returns non-zero only when the engine is unkeepable
+// (repeated crash-loop at the backoff ceiling), so the OS unit recycles the
+// whole thing.
 //
-// When the flag is ON (ADR-0024 Phase 1 / PR2, epic #5729), RunServe starts
-// ONLY the serve plane in-process and spawns + supervises a separate
-// `grafel engine` child for the scheduler/watcher/extraction/fbwriter. The
-// supervisor keeps the engine child alive across crashes with exponential
-// backoff, exposes a status-file health gate, and gracefully drains (SIGTERM →
-// bounded wait → SIGKILL, reaped) the child when serve shuts down. serve never
-// exits for a degraded/dead engine — it keeps answering reads from the
-// last-good graph.fb — and returns non-zero only when the engine is
-// unkeepable (repeated crash-loop at the backoff ceiling), so the OS unit
-// recycles the whole thing.
+// The escape hatch: set GRAFEL_SPLIT_MODE=0 (or "false"/"off"/"no") to force
+// SplitModeEnabled()==false, in which case RunServe runs the ENTIRE daemon in
+// one process — byte-for-byte identical to Run — so an existing OS unit that
+// execs `serve` (or the back-compat `daemon` shim) behaves exactly like the
+// pre-split daemon, with no engine child spawned.
 func RunServe(ctx context.Context, cfg ServeConfig) error {
 	if !SplitModeEnabled() {
-		// Flag OFF (default): everything in one process, exactly as before.
+		// Escape hatch (GRAFEL_SPLIT_MODE=0/false/off/no): everything in one
+		// process, exactly as before.
 		return run(ctx, cfg.Config, planeMonolith)
 	}
 
@@ -420,7 +437,7 @@ func RunEngine(ctx context.Context, cfg EngineConfig) error {
 	// decide HEALTHY vs DEGRADED — independent of whether any fleet repo is
 	// registered yet. #5729 PR3 moved the startEngineLivenessHeartbeat call
 	// into startEnginePlane (engineplane.go) itself so it ALSO runs in the
-	// monolith (flag-off default), giving serve one status-file code path
+	// monolith (escape-hatch GRAFEL_SPLIT_MODE=0), giving serve one status-file code path
 	// that behaves identically in both modes — see startEnginePlane.
 
 	// Bring up the engine plane (no *Service — engine has no MCP surface).
@@ -588,7 +605,7 @@ func run(ctx context.Context, cfg Config, plane daemonPlaneMode) error {
 	// watcher, git-HEAD poller, worktree discovery, reapers/sweepers, the
 	// status writer, pattern-decay, and the docgen sweeper. In split-mode
 	// serve (planeServeOnly) a separate supervised `grafel engine` child runs
-	// this, so we skip it here; in the monolith (flag-off default) and the
+	// this, so we skip it here; in the monolith (escape-hatch GRAFEL_SPLIT_MODE=0) and the
 	// standalone engine it runs in-process. The assembly lives in
 	// startEnginePlane (engineplane.go); the extraction is behavior-preserving
 	// for the monolith (same constructors, same order, LIFO teardown).
