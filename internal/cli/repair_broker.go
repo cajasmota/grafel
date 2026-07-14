@@ -380,4 +380,10 @@ type rebuildOutcome struct {
 	entities int64
 	rels     int64
 	err      error
+	// repoStats carries the split-mode status-plane classify's per-repo final
+	// stats (see splitResult.Repos), threaded to the wiztui model so a repo
+	// that emitted zero progress events still shows its real count on
+	// completion (#seed-rows dropped-row fix). nil in monolith mode (the RPC
+	// reply has no per-repo breakdown).
+	repoStats []splitRepoResult
 }

@@ -4,16 +4,20 @@ package cli
 // detection. All fakes; no real daemon, no real index, no real sleeps.
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
+	"github.com/cajasmota/grafel/internal/install/detect"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/statusfile"
+	"github.com/cajasmota/grafel/internal/testsupport"
 )
 
 // fakeSplitClock advances virtual time on Sleep so the poll loop's timeout
@@ -703,5 +707,179 @@ func TestMonolith_CompletesAtRPCReturnWithRPCStats(t *testing.T) {
 	}
 	if o.entities != 111 || o.rels != 222 {
 		t.Fatalf("monolith stats = (%d,%d); want (111,222) from the RPC reply", o.entities, o.rels)
+	}
+}
+
+// --- Per-repo classify stats (#seed-rows dropped-row fix, part 2) ---
+
+// TestStatusProbe_ClassifyPopulatesPerRepoStats: Classify must return a
+// splitRepoResult per group repo (slug/entities/rels/advanced-vs-failed), not
+// just the aggregate — this is what lets the wiztui model populate a row for
+// a repo that emitted zero progress events, sourced from the status plane
+// rather than folded SSE ticks.
+func TestStatusProbe_ClassifyPopulatesPerRepoStats(t *testing.T) {
+	const repoA, repoB, repoC = "/repo/core-mobile", "/repo/upvate_core", "/repo/upvate_core_frontend"
+	store := newFakeStatusStore()
+	probe := newStatusPlaneProbeWith([]string{repoA, repoB, repoC}, "/root", store.read, aliveLiveness, pendingUntil(1))
+
+	// All three advance past baseline (0) — including repoC, which never
+	// reported a single progress tick over SSE (the live bug scenario).
+	store.set(repoA, &statusfile.File{Indexing: false, GraphFBMtime: 100, Entities: 8383, Relationships: 9000})
+	store.set(repoB, &statusfile.File{Indexing: false, GraphFBMtime: 100, Entities: 6039, Relationships: 7000})
+	store.set(repoC, &statusfile.File{Indexing: false, GraphFBMtime: 100, Entities: 17270, Relationships: 18000})
+
+	res, err := probe.Classify()
+	if err != nil {
+		t.Fatalf("Classify: %v", err)
+	}
+	if len(res.Repos) != 3 {
+		t.Fatalf("len(Repos) = %d, want 3 (one per group repo, even one with zero progress events)", len(res.Repos))
+	}
+	byslug := map[string]splitRepoResult{}
+	for _, r := range res.Repos {
+		byslug[r.Slug] = r
+	}
+	c, ok := byslug["upvate_core_frontend"]
+	if !ok {
+		t.Fatal("silent repo (upvate_core_frontend) missing from Classify's per-repo stats")
+	}
+	if c.Failed {
+		t.Error("silent-but-advanced repo incorrectly marked Failed")
+	}
+	if c.Entities != 17270 || c.Rels != 18000 {
+		t.Errorf("silent repo stats = (%d,%d), want (17270,18000)", c.Entities, c.Rels)
+	}
+
+	var sum int64
+	for _, r := range res.Repos {
+		sum += r.Entities
+	}
+	if sum != res.Entities {
+		t.Errorf("sum of per-repo Entities = %d, want %d (must match the aggregate)", sum, res.Entities)
+	}
+}
+
+// TestStatusProbe_ClassifyPerRepoStats_MarksFailedRepo: a repo that never
+// advances is reported in Repos as Failed with a reason, alongside the
+// existing aggregate Failed slice.
+func TestStatusProbe_ClassifyPerRepoStats_MarksFailedRepo(t *testing.T) {
+	const repoOK, repoBad = "/repo/backend", "/repo/docs-only"
+	store := newFakeStatusStore()
+	probe := newStatusPlaneProbeWith([]string{repoOK, repoBad}, "/root", store.read, aliveLiveness, pendingUntil(1))
+	store.set(repoOK, &statusfile.File{Indexing: false, GraphFBMtime: 100, Entities: 10})
+	// repoBad never produces a graph.
+
+	res, _ := probe.Classify()
+	var bad splitRepoResult
+	found := false
+	for _, r := range res.Repos {
+		if r.Slug == "docs-only" {
+			bad = r
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("failed repo missing from per-repo Repos")
+	}
+	if !bad.Failed {
+		t.Error("Failed = false, want true")
+	}
+	if bad.Reason == "" {
+		t.Error("Reason empty for a failed repo")
+	}
+}
+
+// TestRunSplitIndexCore_ThreadsPerRepoStatsIntoOutcome: a successful split
+// index's rebuildOutcome carries the classify's per-repo breakdown, and
+// toIndexOutcome maps it through to wiztui.IndexOutcome.RepoStats so the
+// model can populate a silent repo's row.
+func TestRunSplitIndexCore_ThreadsPerRepoStatsIntoOutcome(t *testing.T) {
+	probe := &fakeProbe{
+		pollFn: func(call int) splitPoll { return splitPoll{RequestPending: call < 2, EngineAlive: true} },
+		classify: splitResult{
+			Entities: 31692, Rels: 40000,
+			Repos: []splitRepoResult{
+				{Slug: "core-mobile", Entities: 8383, Rels: 9000},
+				{Slug: "upvate_core", Entities: 6039, Rels: 7000},
+				{Slug: "upvate_core_frontend", Entities: 17270, Rels: 24000},
+			},
+		},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
+	if o.err != nil {
+		t.Fatalf("unexpected error: %v", o.err)
+	}
+	if len(o.repoStats) != 3 {
+		t.Fatalf("len(o.repoStats) = %d, want 3", len(o.repoStats))
+	}
+
+	oc := toIndexOutcome(o, wiztui.InstallSummary{})
+	if len(oc.RepoStats) != 3 {
+		t.Fatalf("len(IndexOutcome.RepoStats) = %d, want 3", len(oc.RepoStats))
+	}
+	found := false
+	for _, rs := range oc.RepoStats {
+		if rs.Slug == "upvate_core_frontend" {
+			found = true
+			if rs.Entities != 17270 {
+				t.Errorf("silent repo Entities = %d, want 17270", rs.Entities)
+			}
+			if rs.Failed {
+				t.Error("silent-but-advanced repo incorrectly Failed")
+			}
+		}
+	}
+	if !found {
+		t.Fatal("silent repo missing from mapped IndexOutcome.RepoStats")
+	}
+}
+
+// TestMakeIndexFunc_SeedsQueuedRowForEverySelectedRepo: the IndexFunc must
+// emit a PhaseQueued progress event for every repo in the selection BEFORE
+// any real indexing work — the fix for the dropped-row bug where a repo with
+// no real progress events never got a row at all. Uses --no-index so the
+// test never touches a real daemon; group registration still runs against a
+// throwaway GRAFEL_HOME.
+func TestMakeIndexFunc_SeedsQueuedRowForEverySelectedRepo(t *testing.T) {
+	dir := testsupport.IsolateHome(t)
+
+	repoA := t.TempDir()
+	repoB := t.TempDir()
+
+	var out, errOut bytes.Buffer
+	class, _ := detect.ClassifyPath(repoA)
+	opts := wizardOptions{NoIndex: true, RunInstall: false}
+	idxFn := makeIndexFunc(&out, &errOut, class, opts, nil)
+
+	res := wiztui.Result{
+		Action:    wiztui.ActionGroup,
+		Repos:     []string{repoA, repoB},
+		GroupName: "seed-test-group-" + filepath.Base(dir),
+	}
+
+	evCh, outCh := idxFn(res)
+
+	var seeded []string
+	for e := range evCh {
+		if e.Phase == wiztui.PhaseQueued {
+			seeded = append(seeded, e.RepoSlug)
+		}
+	}
+	<-outCh // drain to let the goroutine finish cleanly
+
+	wantA, wantB := filepath.Base(repoA), filepath.Base(repoB)
+	gotA, gotB := false, false
+	for _, s := range seeded {
+		if s == wantA {
+			gotA = true
+		}
+		if s == wantB {
+			gotB = true
+		}
+	}
+	if !gotA || !gotB {
+		t.Fatalf("seeded slugs = %v, want both %q and %q", seeded, wantA, wantB)
 	}
 }

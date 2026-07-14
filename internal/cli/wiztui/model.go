@@ -103,6 +103,27 @@ type IndexOutcome struct {
 	// still running" checkpoint. At most one interim outcome is ever sent,
 	// always followed by exactly one terminal (Interim==false) outcome.
 	Interim bool
+	// RepoStats carries the split-mode status-plane classify's per-repo final
+	// stats (slug, entities, rels, advanced-vs-failed), sourced independently
+	// of the folded SSE progress rows. The model applies these over the
+	// seeded/folded rows on the terminal outcome (see applyRepoStats) so a
+	// repo that emitted ZERO progress events still shows its real entity count
+	// and Done state instead of remaining blank/queued (the dropped-row bug).
+	// nil/empty in monolith mode, which has no per-repo classify — rows there
+	// fall back entirely to finalizeRows.
+	RepoStats []RepoStat
+}
+
+// RepoStat is one selected repo's final classified result (see
+// IndexOutcome.RepoStats). Slug must match the same repo-slug keying used by
+// progress.Event.RepoSlug / Row.RepoSlug (rowKey) so it overlays the correct
+// row rather than creating a duplicate.
+type RepoStat struct {
+	Slug     string
+	Entities int64
+	Rels     int64
+	Failed   bool
+	Error    string
 }
 
 // InstallSummary is the captured, structured outcome of applyGroupConfig's
@@ -356,6 +377,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.res.indexErr = o.Err
 		} else {
 			m.idx.terminal = true
+			// Overlay the classify's authoritative per-repo stats FIRST (fixes
+			// the dropped-row bug: a repo with zero folded progress events still
+			// gets its real count + Done here), then finalizeRows as the
+			// fallback for anything applyRepoStats didn't cover (e.g. monolith
+			// mode, or a row somehow still non-terminal after the overlay).
+			m.idx.applyRepoStats(o.RepoStats)
 			// The whole index succeeded, so every repo is done. Force any row
 			// still on an intermediate phase to Done — its final SSE events may
 			// have arrived after the RPC returned and been dropped (#5340).

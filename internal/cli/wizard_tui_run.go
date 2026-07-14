@@ -259,6 +259,22 @@ func makeIndexFunc(out, errOut io.Writer, class detect.Classification, opts wiza
 
 			repos := reposForResult(class, r)
 
+			// Seed a "queued" row for every selected repo BEFORE any real work
+			// starts (fix part 1, #seed-rows dropped-row bug): per-repo rows
+			// used to be created ONLY when a broker/SSE progress event arrived,
+			// so a repo whose events were missed/dropped/raced (a fast repo
+			// racing the forwarder, a dropped batch, a subprocess-IPC gap)
+			// never got a row at all — even though it indexed successfully and
+			// its watcher was installed. Seeding with repo.Slug (the SAME slug
+			// real progress.Event.RepoSlug values carry — see repoFromPath /
+			// monorepoRepoForChosen) guarantees the seed row MERGES with real
+			// events for that repo instead of duplicating (see
+			// indexView.foldEvent's PhaseQueued bypass). Buffered generously
+			// (64-cap evCh), so this never blocks even for a large group.
+			for _, repo := range repos {
+				evCh <- progress.Event{RepoSlug: repo.Slug, Phase: wiztui.PhaseQueued}
+			}
+
 			// Resolve the MCP-tools selection (#5344): the picker screen sets
 			// r.MCPTools; when a flag preset the choice the screen was skipped
 			// and r.MCPTools is nil, so fall back to opts.MCPTools.
@@ -366,10 +382,11 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 		// streamIndexWithSummary), so it's safe to attach the same summary here.
 		onQueryable := func(res splitResult) {
 			outCh <- wiztui.IndexOutcome{
-				Interim:  true,
-				Entities: res.Entities,
-				Rels:     res.Rels,
-				Install:  summary,
+				Interim:   true,
+				Entities:  res.Entities,
+				Rels:      res.Rels,
+				Install:   summary,
+				RepoStats: toWiztuiRepoStats(res.Repos),
 			}
 		}
 		o := runSplitIndex(ctx, cancel, c, group, token, sseCh, evCh, onQueryable)
@@ -502,11 +519,32 @@ func toIndexOutcome(o rebuildOutcome, summary wiztui.InstallSummary) wiztui.Inde
 		elapsed = fmtDuration(time.Duration(o.elapsed * float64(time.Second)))
 	}
 	return wiztui.IndexOutcome{
-		Entities: o.entities,
-		Rels:     o.rels,
-		Elapsed:  elapsed,
-		Install:  summary,
+		Entities:  o.entities,
+		Rels:      o.rels,
+		Elapsed:   elapsed,
+		Install:   summary,
+		RepoStats: toWiztuiRepoStats(o.repoStats),
 	}
+}
+
+// toWiztuiRepoStats maps the split-mode classify's per-repo results to the
+// wiztui model's RepoStat shape, keeping wiztui decoupled from the cli
+// package's internal splitRepoResult type.
+func toWiztuiRepoStats(repos []splitRepoResult) []wiztui.RepoStat {
+	if len(repos) == 0 {
+		return nil
+	}
+	out := make([]wiztui.RepoStat, 0, len(repos))
+	for _, r := range repos {
+		out = append(out, wiztui.RepoStat{
+			Slug:     r.Slug,
+			Entities: r.Entities,
+			Rels:     r.Rels,
+			Failed:   r.Failed,
+			Error:    r.Reason,
+		})
+	}
+	return out
 }
 
 // addReposToExistingGroupNoIndex appends repos to an existing group and applies

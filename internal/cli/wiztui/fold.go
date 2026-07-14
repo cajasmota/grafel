@@ -20,7 +20,22 @@ import (
 // Phase labels, kept in lock-step with the dashboard PHASE_LABEL and the CLI
 // renderer so all three surfaces speak the same human phrase for the same
 // phase (#5334).
+// PhaseQueued is the synthetic seed phase folded into a row for every
+// selected repo the moment indexing starts, BEFORE any real broker/SSE
+// progress event has arrived for it. Rows are keyed by repo slug (see
+// rowKey), so a queued row created with this phase MERGES with the real
+// progress events that follow for the same repo instead of duplicating —
+// Fold's monotonic-phase rule (phaseRank(PhaseQueued) is unknown → -1, lower
+// than every real phase) guarantees the first real event always advances
+// past it. This closes the dropped-row bug where a repo whose progress
+// events were missed/dropped/raced never got a row at all: seeding
+// unconditionally guarantees one row per selected repo up front, and
+// indexView.applyRepoStats backstops the final count/state from the
+// split-mode classify even if no real event ever arrived.
+const PhaseQueued = "queued"
+
 var phaseLabel = map[string]string{
+	PhaseQueued:                     "Queued…",
 	progress.PhaseScan:              "Scanning…",
 	progress.PhaseExtractAST:        "Extracting AST…",
 	progress.PhaseResolveRefs:       "Resolving references…",

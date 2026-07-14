@@ -426,6 +426,143 @@ func TestModel_FinalOutcomeAfterInterim_ReachesDoneWithFinalStats(t *testing.T) 
 	}
 }
 
+// TestModel_SilentRepoStillRendersRowAndCompletes is the model-level
+// regression for the live dropped-row bug: a 3-repo group where the third
+// repo's progress events never arrive must still render a row for it
+// throughout indexing, and the completion screen must show its REAL entity
+// count and Done state (sourced from IndexOutcome.RepoStats), never
+// missing/blank — with the aggregate matching the sum of the rows.
+func TestModel_SilentRepoStillRendersRowAndCompletes(t *testing.T) {
+	slugs := []string{"core-mobile", "upvate_core", "upvate_core_frontend"}
+	idx := func(Result) (<-chan progress.Event, <-chan IndexOutcome) {
+		ev := make(chan progress.Event, 8)
+		out := make(chan IndexOutcome, 1)
+		// Seed a row for every selected repo up front (mirrors what the cli
+		// layer's makeIndexFunc does before the real index starts).
+		for _, s := range slugs {
+			ev <- progress.Event{RepoSlug: s, Phase: PhaseQueued, TS: 0}
+		}
+		// Only two of the three ever report real progress — the third (the
+		// exact live symptom) emits nothing.
+		ev <- progress.Event{RepoSlug: "core-mobile", Phase: progress.PhaseDone, EntitiesSoFar: 8383, TS: 1}
+		ev <- progress.Event{RepoSlug: "upvate_core", Phase: progress.PhaseDone, EntitiesSoFar: 6039, TS: 1}
+		close(ev)
+		out <- IndexOutcome{
+			Entities: 31692,
+			RepoStats: []RepoStat{
+				{Slug: "core-mobile", Entities: 8383},
+				{Slug: "upvate_core", Entities: 6039},
+				{Slug: "upvate_core_frontend", Entities: 17270},
+			},
+		}
+		close(out)
+		return ev, out
+	}
+
+	d := fakeDriver{suggested: ActionGroup, cands: []Candidate{
+		{Label: "/core-mobile", Value: "/core-mobile", Selected: true},
+		{Label: "/upvate_core", Value: "/upvate_core", Selected: true},
+		{Label: "/upvate_core_frontend", Value: "/upvate_core_frontend", Selected: true},
+	}}
+	m := newTestModel(d, idx)
+	m = m.update(key("enter")) // action → select (all pre-selected)
+	m = m.update(key("enter")) // select → name
+	m = m.update(key("enter")) // name → docs
+	m = m.update(key("enter")) // docs → index
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex", m.scr)
+	}
+
+	evc, outc := m.index(m.res)
+	m = m.update(indexStartedMsg{events: evc, outcome: outc})
+	// Drain every buffered progress event synchronously (the test channels are
+	// pre-filled and closed, so waitEvent resolves immediately each time).
+	for i := 0; i < 5; i++ {
+		e, ok := <-evc
+		if !ok {
+			break
+		}
+		m = m.update(progressMsg(e))
+	}
+	if len(m.idx.rows) != 3 {
+		t.Fatalf("mid-index: len(rows) = %d, want 3 (a row for every selected repo, even one with zero events)", len(m.idx.rows))
+	}
+	o := <-outc
+	m = m.update(outcomeMsg(o))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+	if len(m.idx.rows) != 3 {
+		t.Fatalf("final: len(rows) = %d, want 3 (the silent repo's row must never disappear)", len(m.idx.rows))
+	}
+	row, ok := m.idx.rows["upvate_core_frontend"]
+	if !ok {
+		t.Fatal("silent repo's row is missing from the completion screen")
+	}
+	if row.Phase != progress.PhaseDone {
+		t.Errorf("silent repo's Phase = %q, want Done", row.Phase)
+	}
+	if row.EntitiesSoFar != 17270 {
+		t.Errorf("silent repo's EntitiesSoFar = %d, want 17270 (its real count from the classify)", row.EntitiesSoFar)
+	}
+
+	var sum int64
+	for _, r := range m.idx.rows {
+		sum += int64(r.EntitiesSoFar)
+	}
+	if sum != m.idx.summaryEntities {
+		t.Errorf("sum of per-repo rows = %d, but Done summary reports %d entities — silent shortfall", sum, m.idx.summaryEntities)
+	}
+	if m.idx.summaryEntities != 31692 {
+		t.Errorf("summaryEntities = %d, want 31692", m.idx.summaryEntities)
+	}
+}
+
+// TestModel_MonolithMode_StillRendersAndCompletes: a terminal IndexOutcome
+// with NO RepoStats (the monolith path, which has no per-repo classify) must
+// still complete cleanly via the finalizeRows fallback — no regression.
+func TestModel_MonolithMode_StillRendersAndCompletes(t *testing.T) {
+	idx := func(Result) (<-chan progress.Event, <-chan IndexOutcome) {
+		ev := make(chan progress.Event, 2)
+		out := make(chan IndexOutcome, 1)
+		ev <- progress.Event{RepoSlug: "monolith-repo", Phase: progress.PhaseExtractAST, FilesDone: 3, FilesTotal: 10, TS: 1}
+		close(ev)
+		out <- IndexOutcome{Entities: 999, Rels: 50, Elapsed: "10s"}
+		close(out)
+		return ev, out
+	}
+	d := fakeDriver{suggested: ActionSingle, cands: []Candidate{
+		{Label: "/monolith-repo", Value: "/monolith-repo", Selected: true},
+	}}
+	m := newTestModel(d, idx)
+	m = m.update(key("enter")) // action → select
+	m = m.update(key("enter")) // select → name
+	m = m.update(key("enter")) // name → docs
+	m = m.update(key("enter")) // docs → index
+
+	evc, outc := m.index(m.res)
+	m = m.update(indexStartedMsg{events: evc, outcome: outc})
+	e := <-evc
+	m = m.update(progressMsg(e))
+	o := <-outc
+	m = m.update(outcomeMsg(o))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+	row, ok := m.idx.rows["monolith-repo"]
+	if !ok {
+		t.Fatal("monolith repo's row missing")
+	}
+	if row.Phase != progress.PhaseDone {
+		t.Errorf("Phase = %q, want Done (finalizeRows fallback with no RepoStats)", row.Phase)
+	}
+	if m.idx.summaryEntities != 999 {
+		t.Errorf("summaryEntities = %d, want 999", m.idx.summaryEntities)
+	}
+}
+
 func nilIndex(Result) (<-chan progress.Event, <-chan IndexOutcome) {
 	ev := make(chan progress.Event)
 	out := make(chan IndexOutcome)

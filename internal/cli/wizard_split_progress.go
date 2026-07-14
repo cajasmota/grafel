@@ -121,6 +121,28 @@ type splitResult struct {
 	// may be 0 on the wizard path where the graph-stats sidecar isn't written).
 	Entities int64
 	Rels     int64
+	// Repos carries the PER-REPO classified result (slug, entities, rels,
+	// advanced-vs-failed) for every repo in the group config, one entry each —
+	// the same repos summed into Entities/Rels above, individually broken out.
+	// Threaded to the wiztui model (via rebuildOutcome.repoStats →
+	// IndexOutcome.RepoStats) so a repo whose progress SSE events never
+	// arrived still gets its real final count and Done/Error state on the
+	// completion screen instead of staying blank/queued (#seed-rows dropped-
+	// row fix — the live bug where a 3-repo group's per-repo rows summed to
+	// less than the reported aggregate total).
+	Repos []splitRepoResult
+}
+
+// splitRepoResult is one repo's classified final result (see
+// splitResult.Repos). Slug matches registry.Repo.Slug / the progress.Event
+// RepoSlug the same repo's SSE ticks carry, so it overlays the correct wiztui
+// row rather than creating a duplicate.
+type splitRepoResult struct {
+	Slug     string
+	Entities int64
+	Rels     int64
+	Failed   bool
+	Reason   string // non-empty only when Failed
 }
 
 // splitProbe is the seam the completion loop polls. Poll is called repeatedly;
@@ -275,8 +297,9 @@ func runSplitIndexCore(
 		return rebuildOutcome{err: fmt.Errorf("index did not complete for %d repo(s): %s", len(res.Failed), strings.Join(res.Failed, "; "))}
 	}
 	return rebuildOutcome{
-		entities: res.Entities,
-		rels:     res.Rels,
+		entities:  res.Entities,
+		rels:      res.Rels,
+		repoStats: res.Repos,
 	}
 }
 
@@ -391,10 +414,12 @@ func (p *statusPlaneProbe) Poll() (splitPoll, error) {
 func (p *statusPlaneProbe) Classify() (splitResult, error) {
 	var res splitResult
 	for _, rp := range p.repoPaths {
+		slug := filepath.Base(rp)
 		f, ok := p.readStatus(rp)
 		if ok && repoAdvanced(f, p.baseline[rp]) {
 			res.Entities += f.Entities
 			res.Rels += f.Relationships
+			res.Repos = append(res.Repos, splitRepoResult{Slug: slug, Entities: f.Entities, Rels: f.Relationships})
 			continue
 		}
 		reason := "produced no graph"
@@ -406,7 +431,8 @@ func (p *statusPlaneProbe) Classify() (splitResult, error) {
 				reason = "still indexing when the rebuild acked"
 			}
 		}
-		res.Failed = append(res.Failed, fmt.Sprintf("%s (%s)", filepath.Base(rp), reason))
+		res.Failed = append(res.Failed, fmt.Sprintf("%s (%s)", slug, reason))
+		res.Repos = append(res.Repos, splitRepoResult{Slug: slug, Failed: true, Reason: reason})
 	}
 	return res, nil
 }
