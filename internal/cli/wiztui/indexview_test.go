@@ -277,3 +277,64 @@ func TestApplyRepoStats_FailedRepoRendersError(t *testing.T) {
 		t.Errorf("Error = %q, want %q", row.Error, "produced no graph")
 	}
 }
+
+// TestApplyRepoStats_DoesNotDowngradeDoneRowToError: a repo that already
+// reported Done over SSE must NOT be flipped to Error by a classify overlay
+// that (e.g. on a status-plane mtime/ack race) transiently reports it failed.
+// The live SSE stream that saw it finish is more authoritative.
+func TestApplyRepoStats_DoesNotDowngradeDoneRowToError(t *testing.T) {
+	v := newIndexView("grp", 1)
+	// The repo reported Done via SSE, with a real entity count.
+	v.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseDone, EntitiesSoFar: 4200, TS: 1})
+	// A racy classify claims it failed.
+	v.applyRepoStats([]RepoStat{{Slug: "backend", Failed: true, Error: "produced no graph"}})
+
+	row := v.rows["backend"]
+	if row.Phase != progress.PhaseDone {
+		t.Errorf("Phase = %q, want Done (must not downgrade an SSE-reported Done to Error)", row.Phase)
+	}
+	if row.Error != "" {
+		t.Errorf("Error = %q, want empty (no error stamped on a Done row)", row.Error)
+	}
+	if row.EntitiesSoFar != 4200 {
+		t.Errorf("EntitiesSoFar = %d, want 4200 (preserved from the SSE Done)", row.EntitiesSoFar)
+	}
+}
+
+// TestMonorepo_PerModuleRowsSumToAggregate_NoSpuriousRepoRow documents the
+// intended monorepo rendering the cli-layer gate protects: per-module rows
+// (keyed monorepoSlug/module) render individually, finalizeRows flips them to
+// Done, and NO bare repo-level row (key == monorepoSlug) is ever created — so
+// the visible rows sum to the aggregate exactly ONCE, never 2×. applyRepoStats
+// is intentionally NOT called here (the cli layer passes nil RepoStats for a
+// monorepo).
+func TestMonorepo_PerModuleRowsSumToAggregate_NoSpuriousRepoRow(t *testing.T) {
+	const mono = "some-monorepo"
+	v := newIndexView("some-monorepo-group", 1)
+	// Per-module progress (the #5751 model): distinct Module, shared RepoSlug.
+	v.foldEvent(progress.Event{RepoSlug: mono, Module: "services/auth", Phase: progress.PhaseDone, EntitiesSoFar: 1200, TS: 1})
+	v.foldEvent(progress.Event{RepoSlug: mono, Module: "packages/ui", Phase: progress.PhaseDone, EntitiesSoFar: 800, TS: 1})
+	v.foldEvent(progress.Event{RepoSlug: mono, Module: "services/billing", Phase: progress.PhaseExtractAST, EntitiesSoFar: 0, TS: 1})
+
+	// Monorepo path passes NO RepoStats — the aggregate lives only in the header.
+	v.applyRepoStats(nil)
+	v.finalizeRows()
+	v.terminal = true
+
+	if _, spurious := v.rows[mono]; spurious {
+		t.Fatalf("a spurious bare repo-level row (key %q) was created — this doubles the entity total", mono)
+	}
+	if len(v.rows) != 3 {
+		t.Fatalf("len(rows) = %d, want 3 (one per module, no repo-level row)", len(v.rows))
+	}
+	var sum int
+	for _, r := range v.rows {
+		if r.Phase != progress.PhaseDone {
+			t.Errorf("module row %q not finalized to Done: %q", r.Key, r.Phase)
+		}
+		sum += r.EntitiesSoFar
+	}
+	if sum != 2000 {
+		t.Errorf("sum of module rows = %d, want 2000 (aggregate counted exactly once, not doubled)", sum)
+	}
+}

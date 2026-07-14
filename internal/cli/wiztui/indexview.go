@@ -44,6 +44,14 @@ type indexView struct {
 	// Model's outcomeMsg handling and the scrIndex enter key case.
 	queryable bool
 
+	// interimRepoStats holds the per-repo classify stats carried by the interim
+	// (queryable) outcome, stashed so that if the user presses enter to FINISH
+	// EARLY (before the terminal outcome lands) the enter-early finalize can
+	// still overlay real per-repo counts onto the rows — otherwise a repo that
+	// emitted zero progress events would show "Done · 0 entities" on early
+	// finish. Empty in monolith mode / when no interim carried stats.
+	interimRepoStats []RepoStat
+
 	// startedAt / finishedAt bound the live elapsed timer shown in the index
 	// header. startedAt is stamped when the index screen begins (startIndex);
 	// finishedAt is stamped once terminal/failed so the header FREEZES at the
@@ -126,15 +134,26 @@ func (v *indexView) applyRepoStats(stats []RepoStat) {
 		if !had {
 			row = Row{Key: key, RepoSlug: s.Slug}
 		}
-		row.EntitiesSoFar = int(s.Entities)
 		if s.Failed {
+			// Never DOWNGRADE a row that already reported Done over SSE to
+			// Error via the classify overlay: the live SSE stream saw the repo
+			// finish, which is more authoritative than a status-plane classify
+			// that (e.g. on a mtime/ack race) transiently reads it as
+			// not-advanced. Trust the row that actually reported success and
+			// leave it as-is.
+			if had && row.Phase == prog.PhaseDone {
+				continue
+			}
 			row.Phase = prog.PhaseError
 			if s.Error != "" {
 				row.Error = s.Error
 			}
-		} else {
-			row.Phase = prog.PhaseDone
+			v.rows[key] = row
+			continue
 		}
+		// Success: overlay the authoritative final entity count and mark Done.
+		row.EntitiesSoFar = int(s.Entities)
+		row.Phase = prog.PhaseDone
 		v.rows[key] = row
 	}
 }

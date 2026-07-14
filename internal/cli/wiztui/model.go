@@ -364,6 +364,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.idx.summaryRels = o.Rels
 			m.idx.install = o.Install
 			m.idx.queryable = true
+			// Stash the interim per-repo stats so an enter-early finalize (see
+			// updateKey's scrIndex case) can still overlay real per-repo counts
+			// instead of leaving a silent repo at "Done · 0 entities".
+			m.idx.interimRepoStats = o.RepoStats
 			return m, waitOutcome(m.outCh)
 		}
 		m.idx.summaryEntities = o.Entities
@@ -437,6 +441,11 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		// the final outcome to land on its own.
 		if msg.String() == "enter" && m.idx.queryable && !m.idx.terminal {
 			m.idx.terminal = true
+			// Overlay the interim classify's per-repo stats FIRST (so a repo
+			// that emitted no progress events shows its real count, not 0),
+			// then finalizeRows as the fallback — mirrors the terminal-outcome
+			// path so finishing early is consistent with waiting.
+			m.idx.applyRepoStats(m.idx.interimRepoStats)
 			m.idx.finalizeRows()
 			m.idx.finishedAt = time.Now()
 			m.scr = scrDone

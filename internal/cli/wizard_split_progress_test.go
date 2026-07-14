@@ -883,3 +883,39 @@ func TestMakeIndexFunc_SeedsQueuedRowForEverySelectedRepo(t *testing.T) {
 		t.Fatalf("seeded slugs = %v, want both %q and %q", seeded, wantA, wantB)
 	}
 }
+
+// TestMakeIndexFunc_MonorepoDoesNotSeedQueuedRows is the BLOCKING-regression
+// guard: for a MONOREPO action, reposForResult collapses to ONE registry.Repo
+// (root slug, packages in .Modules) but real progress is PER-MODULE (#5751),
+// so seeding a bare repo-level row would neither merge with the per-module
+// event keys nor be suppressed by the repo-row guard — producing a spurious
+// repo-level row that doubles the visible entity total. The IndexFunc must
+// therefore emit ZERO PhaseQueued events for a monorepo.
+func TestMakeIndexFunc_MonorepoDoesNotSeedQueuedRows(t *testing.T) {
+	dir := testsupport.IsolateHome(t)
+	monorepo := t.TempDir()
+
+	var out, errOut bytes.Buffer
+	class, _ := detect.ClassifyPath(monorepo)
+	opts := wizardOptions{NoIndex: true, RunInstall: false}
+	idxFn := makeIndexFunc(&out, &errOut, class, opts, nil)
+
+	res := wiztui.Result{
+		Action:    wiztui.ActionMonorepo,
+		Repos:     []string{"services/auth", "packages/ui"}, // chosen packages → Modules
+		GroupName: "mono-test-group-" + filepath.Base(dir),
+	}
+
+	evCh, outCh := idxFn(res)
+	seeded := 0
+	for e := range evCh {
+		if e.Phase == wiztui.PhaseQueued {
+			seeded++
+		}
+	}
+	<-outCh
+
+	if seeded != 0 {
+		t.Fatalf("monorepo emitted %d PhaseQueued seed events; want 0 (a bare repo-level seed row doubles the entity total)", seeded)
+	}
+}

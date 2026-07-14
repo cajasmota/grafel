@@ -389,6 +389,47 @@ func TestModel_EnterInQueryableState_FinishesWithInterimStats(t *testing.T) {
 	}
 }
 
+// TestModel_EnterEarlyAppliesInterimRepoStats: when the user finishes early
+// from the queryable state, the interim outcome's per-repo classify stats must
+// be overlaid onto the rows — otherwise a repo that emitted zero progress
+// events would show "Done · 0 entities" on early finish. Regression for the
+// review's "enter-early drops classify stats" finding.
+func TestModel_EnterEarlyAppliesInterimRepoStats(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	// Seed a queued row for a repo that will NEVER report a progress event.
+	m = m.update(progressMsg(progress.Event{RepoSlug: "silent-repo", Phase: PhaseQueued}))
+
+	// Interim (queryable) outcome carries the classify's per-repo stats.
+	m = m.update(outcomeMsg(IndexOutcome{
+		Interim:   true,
+		Entities:  9000,
+		RepoStats: []RepoStat{{Slug: "silent-repo", Entities: 9000}},
+	}))
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex after interim", m.scr)
+	}
+	if got := m.idx.rows["silent-repo"].EntitiesSoFar; got != 0 {
+		t.Fatalf("precondition: silent repo should still be 0 before finishing early, got %d", got)
+	}
+
+	// User presses enter to finish early.
+	m = m.update(key("enter"))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone", m.scr)
+	}
+	row, ok := m.idx.rows["silent-repo"]
+	if !ok {
+		t.Fatal("silent repo's row missing after early finish")
+	}
+	if row.Phase != progress.PhaseDone {
+		t.Errorf("Phase = %q, want Done", row.Phase)
+	}
+	if row.EntitiesSoFar != 9000 {
+		t.Errorf("EntitiesSoFar = %d, want 9000 (interim classify stats must be applied on early finish, not 0)", row.EntitiesSoFar)
+	}
+}
+
 // TestModel_EnterBeforeQueryable_NoOp: pressing enter on the index screen
 // BEFORE any interim/terminal outcome has landed is a no-op (matches the old
 // ctrl-c-only behavior; a bare enter must not skip the wait).
