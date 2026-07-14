@@ -1036,7 +1036,7 @@ func daemonSchedulerIndex(ctx context.Context, repoPath string, ref string) erro
 	var err error
 	if sched.SubprocessIndexEnabled() {
 		// S5 path: fork-exec `grafel index-internal` for memory isolation.
-		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, slog.Default())
+		err = sched.RunSubprocessIndex(ctx, repoPath, ref, []string{"graph-algo"}, nil, slog.Default())
 	} else {
 		// In-process path (opt-out via GRAFEL_SUBPROCESS_INDEXER=0).
 		// ADR-0016 flip-day (#808): graph.fb is always written by default now.

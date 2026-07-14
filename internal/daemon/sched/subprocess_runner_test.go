@@ -73,7 +73,7 @@ func TestRunSubprocessIndexMissingBinary(t *testing.T) {
 	// Point to a directory that looks like a binary but is not — on Linux/macOS
 	// exec will return "permission denied" or "not a file". We just want a
 	// non-zero exit.
-	err := RunSubprocessIndex(ctx, tmpDir, "", nil, slog.Default())
+	err := RunSubprocessIndex(ctx, tmpDir, "", nil, nil, slog.Default())
 	// Any error is correct here — non-existent binary OR index failure on tmpDir.
 	if err == nil {
 		t.Fatal("expected an error for non-repo tmpDir but got nil")

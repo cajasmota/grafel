@@ -3,7 +3,6 @@ package sched
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"log/slog"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/cajasmota/grafel/internal/executil"
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/progress"
 )
 
 // backgroundYieldGOMAXPROCSDefault is the per-child GOMAXPROCS a BACKGROUND
@@ -248,7 +248,7 @@ type ipcEvent struct {
 // Cancellation: ctx.Done() sends SIGTERM to the child. The child is
 // expected to exit on SIGTERM; if it does not, the parent waits and the
 // context timeout (if any) will eventually unblock the caller.
-func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []string, logger *slog.Logger) error {
+func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []string, opts *SubprocessIndexOptions, logger *slog.Logger) error {
 	binary, err := os.Executable()
 	if err != nil {
 		return fmt.Errorf("subprocess-indexer: resolve binary: %w", err)
@@ -261,6 +261,31 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 	}
 	if len(skipPasses) > 0 {
 		args = append(args, "--skip-pass="+strings.Join(skipPasses, ","))
+	}
+	// Progress-republish channel (rebuild / wizard first-index). When the caller
+	// supplies a Publisher the child is told to STREAM per-module progress on
+	// stdout (--emit-progress) and to stamp events with the rebuild's group/repo
+	// slugs so republished rows key the same (group, repo, module) identity the
+	// in-process path emits. A nil opts (the scheduler background reindex) adds
+	// none of these flags, so its child args are byte-identical to before.
+	var progressPub progress.Publisher
+	if opts != nil {
+		progressPub = opts.ProgressPub
+		if opts.RepoSlug != "" {
+			args = append(args, "--repo-tag="+opts.RepoSlug)
+		}
+		if opts.ProgressPub != nil {
+			args = append(args, "--emit-progress")
+			if opts.GroupSlug != "" {
+				args = append(args, "--group-slug="+opts.GroupSlug)
+			}
+		}
+		if opts.IncrementalStateDir != "" {
+			args = append(args, "--incremental="+opts.IncrementalStateDir)
+		}
+		if opts.Interactive {
+			args = append(args, "--interactive")
+		}
 	}
 
 	cmd := exec.CommandContext(ctx, binary, args...)
@@ -337,22 +362,16 @@ func RunSubprocessIndex(ctx context.Context, repoPath, ref string, skipPasses []
 		}
 	}()
 
-	// Drain child stdout for IPC events.
+	// Drain child stdout for IPC events. parseSubprocessStdout demuxes the two
+	// line types: coarse lifecycle events (index_start/done/error → lastEvent for
+	// exit classification) and tagged per-module progress lines, which it
+	// republishes into progressPub so the rebuild's broker / split-mode sidecar
+	// sees the same live rows the in-process indexer would have published.
 	var lastEvent ipcEvent
 	stdoutDone := make(chan struct{})
 	go func() {
 		defer close(stdoutDone)
-		sc := bufio.NewScanner(stdoutPipe)
-		for sc.Scan() {
-			var ev ipcEvent
-			if jerr := json.Unmarshal([]byte(sc.Text()), &ev); jerr != nil {
-				continue // not a JSON line — ignore
-			}
-			lastEvent = ev
-			if logger != nil {
-				logger.Info("subprocess-indexer: event", "event", ev.Event, "repo", ev.Repo, "ref", ev.Ref)
-			}
-		}
+		lastEvent = parseSubprocessStdout(stdoutPipe, progressPub, pid, logger)
 	}()
 
 	// Wait for both pipe goroutines and the process itself.
