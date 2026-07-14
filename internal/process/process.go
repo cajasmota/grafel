@@ -7,7 +7,17 @@
 //	FindByName(name) — returns all running processes whose command name
 //	                    contains the given string (case-insensitive).
 //	Kill(pid)         — sends SIGTERM on unix; calls TerminateProcess on windows.
-//	CPUPercent(pid)   — returns the instantaneous CPU percent for pid.
+//	CPUPercent(pid)   — PLATFORM-INCONSISTENT, avoid for new code: on darwin
+//	                    it returns instantaneous %cpu (`ps -o %cpu`); on linux
+//	                    it returns CUMULATIVE cpu-seconds since start (from
+//	                    /proc stat), NOT a percentage; unsupported elsewhere.
+//	                    Kept only for the existing hot-loop watchdog. New
+//	                    callers that want a real percentage should sample
+//	                    CPUTimeSeconds twice and diff over wall-clock.
+//	CPUTimeSeconds(pid)— returns pid's CUMULATIVE CPU time (user+system) in
+//	                    seconds since start, with IDENTICAL semantics on linux
+//	                    and darwin (unsupported elsewhere). Diff two readings
+//	                    over a wall-clock interval to get an instantaneous %.
 //	RSSBytes(pid)     — returns the resident-set size of pid in bytes.
 //	FootprintBytes()  — returns the best honest physical-memory number for
 //	                    the CURRENT process plus a label describing what it

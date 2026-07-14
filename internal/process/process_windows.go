@@ -87,6 +87,14 @@ func CPUPercent(_ int) (float64, error) {
 	return 0, fmt.Errorf("process.CPUPercent: unsupported platform windows")
 }
 
+// CPUTimeSeconds is not implemented on Windows. A caller (e.g. the
+// engine-liveness heartbeat's CPU-delta sampler) treats the error as "CPU%
+// unavailable" and simply omits the CPU portion of its readout — RSS is still
+// reported via RSSBytes.
+func CPUTimeSeconds(_ int) (float64, error) {
+	return 0, fmt.Errorf("process.CPUTimeSeconds: unsupported platform windows")
+}
+
 // processMemoryCounters mirrors the Win32 PROCESS_MEMORY_COUNTERS struct
 // (psapi.h). WorkingSetSize is the resident set — the bytes the process
 // currently has in physical RAM — which is the honest Windows analogue of

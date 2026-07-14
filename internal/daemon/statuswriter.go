@@ -191,35 +191,94 @@ func EngineLivenessStatusKey(root string) string {
 	return engineLivenessStatusKey(root)
 }
 
-// populateProcessMetrics stamps f.RSSMB and f.CPUPct from the CURRENT
-// process's own stats (wizard CPU/RAM readout — see statusfile.File's
-// RSSMB/CPUPct doc). Called once per heartbeat write, from whichever process
-// is running the index: the standalone `grafel engine` child in split mode
-// (the DEFAULT), or the monolith daemon process itself when split mode is
-// disabled — both call startEngineLivenessHeartbeat identically (see
-// startEnginePlane in engineplane.go), so the readout works unchanged in
-// either mode.
+// populateProcessMetrics stamps f.RSSMB from the CURRENT process's own
+// resident-set size (wizard CPU/RAM readout — see statusfile.File's RSSMB
+// doc). RSS is the must-have signal (it shows the multi-GB enrichment-phase
+// peak) and is a stateless single reading, so it lives here; the CPU%
+// portion needs a delta across successive writes and is therefore owned by
+// the stateful cpuSampler in the heartbeat writer (see cpuSampler.observe),
+// NOT computed here.
+//
+// Called once per heartbeat write, from whichever process is running the
+// index: the standalone `grafel engine` child in split mode (the DEFAULT), or
+// the monolith daemon process itself when split mode is disabled — both call
+// startEngineLivenessHeartbeat identically (see startEnginePlane in
+// engineplane.go), so the readout works unchanged in either mode.
 //
 // Cheap and non-blocking: RSSBytes is a single /proc read (Linux) or `ps`
-// shell-out (macOS); CPUPercent is likewise a single `ps` shell-out on macOS
-// or a /proc read on Linux — both return in low-single-digit milliseconds, so
-// calling this on every ~5-30s heartbeat tick is negligible overhead. Neither
-// call blocks on an interval sample (no "measure twice, subtract" dance): the
-// OS/toolchain (ps %cpu, or /proc's own accounting) already computes the
-// instantaneous percentage.
-//
-// Best-effort: a measurement failure (unsupported platform, transient ps
-// error) silently leaves the corresponding field at its current value (zero
-// on a fresh *statusfile.File) rather than erroring — RSS/CPU are an
-// observability nicety, never load-bearing for indexing itself.
+// shell-out (macOS), low-single-digit milliseconds — negligible on the ~5-30s
+// heartbeat cadence. Best-effort: a measurement failure (unsupported platform,
+// transient ps error) silently leaves RSSMB at zero rather than erroring — the
+// readout is an observability nicety, never load-bearing for indexing itself.
 func populateProcessMetrics(f *statusfile.File) {
 	pid := os.Getpid()
 	if rss, err := process.RSSBytes(pid); err == nil && rss > 0 {
 		f.RSSMB = int64(rss / (1024 * 1024))
 	}
-	if pct, err := process.CPUPercent(pid); err == nil && pct > 0 {
-		f.CPUPct = pct
+}
+
+// cpuSampler derives an instantaneous-ish CPU percentage for the wizard's
+// CPU/RAM readout by diffing the process's CUMULATIVE CPU-seconds
+// (process.CPUTimeSeconds — identical semantics on linux and darwin) across
+// successive heartbeat writes. This is the ONLY correct way to get a
+// percentage on BOTH platforms: process.CPUPercent is platform-inconsistent
+// (instantaneous % on darwin, cumulative seconds on linux), so feeding it
+// straight into CPUPct would render meaningless unbounded numbers on a Linux
+// engine ("CPU 9843%" and climbing). The heartbeat writer already runs on a
+// fixed interval, so it is the natural home for the (lastCPUSeconds, lastWall)
+// state the delta needs.
+//
+// A single cpuSampler is owned by each startEngineLivenessHeartbeat goroutine
+// and is therefore only ever touched from that one goroutine — no locking
+// needed.
+type cpuSampler struct {
+	lastCPUSeconds float64
+	lastWall       time.Time
+	primed         bool // false until the first observe() records a baseline
+}
+
+// observe records a new cumulative CPU-seconds reading taken at wall-clock
+// time now and returns the CPU percentage since the previous reading. It is a
+// PURE function of its inputs + prior state (the actual process read happens in
+// the caller), so it is fully unit-testable with a stubbed rising cpuSeconds +
+// advancing clock.
+//
+// Returns 0 — so the caller omits the CPU portion of the readout that tick —
+// on the FIRST call (baseline only, no interval to divide by), on a
+// non-positive wall interval (clock didn't advance / went backwards), or on a
+// negative computed delta (CPU counter reset). Otherwise returns
+// 100*(ΔcpuSeconds/Δwall), which can legitimately exceed 100% for a
+// multi-core/multi-threaded index (the large-monorepo enrichment phase hits
+// ~400%, which is intended).
+func (s *cpuSampler) observe(cpuSeconds float64, now time.Time) float64 {
+	prevCPU, prevWall, primed := s.lastCPUSeconds, s.lastWall, s.primed
+	s.lastCPUSeconds = cpuSeconds
+	s.lastWall = now
+	s.primed = true
+	if !primed {
+		return 0 // first sample: establish the baseline, no percentage yet
 	}
+	wall := now.Sub(prevWall).Seconds()
+	if wall <= 0 {
+		return 0
+	}
+	pct := 100 * (cpuSeconds - prevCPU) / wall
+	if pct < 0 {
+		return 0
+	}
+	return pct
+}
+
+// sample reads the current process's cumulative CPU time and folds it through
+// observe, returning the CPU% since the last heartbeat write (0 when
+// unavailable — first tick, unsupported platform, or a transient read error —
+// so the caller omits the CPU portion of the readout).
+func (s *cpuSampler) sample(pid int, now time.Time) float64 {
+	cpuSec, err := process.CPUTimeSeconds(pid)
+	if err != nil {
+		return 0
+	}
+	return s.observe(cpuSec, now)
 }
 
 // startEngineLivenessHeartbeat launches a goroutine that stamps the
@@ -243,6 +302,9 @@ func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn
 	startedAt := time.Now().UTC()
 	stopCh := make(chan struct{})
 	doneCh := make(chan struct{})
+	// cpuSampler holds the (lastCPUSeconds, lastWall) state the CPU-delta needs;
+	// it is only ever touched by writeOnce, which runs on this single goroutine.
+	sampler := &cpuSampler{}
 	writeOnce := func() {
 		snap := indexstate.Get()
 		conc := indexstate.GetIndexConcurrency()
@@ -262,6 +324,11 @@ func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn
 			ConcurrencyCap:          conc.Cap,
 		}
 		populateProcessMetrics(f)
+		// CPU% is a delta across successive heartbeat writes (the first tick
+		// establishes the baseline and reports 0 → readout omits CPU that tick).
+		if pct := sampler.sample(os.Getpid(), time.Now()); pct > 0 {
+			f.CPUPct = pct
+		}
 		if warmingFn != nil {
 			warm := warmingFn()
 			f.WarmIndexInFlight = warm.IndexInFlight

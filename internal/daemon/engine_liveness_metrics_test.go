@@ -28,6 +28,56 @@ func TestPopulateProcessMetrics_ReportsCurrentProcessRSS(t *testing.T) {
 	}
 }
 
+// TestCPUSampler_ObserveComputesBoundedDelta is the RED test for the
+// Linux-correct CPU% fix: the sampler must turn CUMULATIVE CPU-seconds into a
+// bounded instantaneous PERCENTAGE via a delta across successive heartbeat
+// writes — NOT stamp the raw ever-rising cumulative value (which on Linux
+// would render "CPU 9843%" and climbing).
+func TestCPUSampler_ObserveComputesBoundedDelta(t *testing.T) {
+	var s cpuSampler
+	t0 := time.Unix(1_000_000, 0)
+
+	// First sample: baseline only, no interval to divide by → 0 (readout omits CPU).
+	if pct := s.observe(10.0, t0); pct != 0 {
+		t.Errorf("first observe = %v, want 0 (baseline only)", pct)
+	}
+
+	// Second sample: 4 CPU-seconds burned over 1 wall-second → 400% (a real,
+	// multi-core-capable percentage), NOT the raw cumulative 14.
+	pct := s.observe(14.0, t0.Add(1*time.Second))
+	if pct == 14.0 {
+		t.Fatalf("observe returned the raw cumulative value %v — must be a delta percentage", pct)
+	}
+	if got, want := pct, 400.0; got != want {
+		t.Errorf("observe = %v%%, want %v%% (Δ4 cpu-sec / 1 wall-sec)", got, want)
+	}
+
+	// Third sample: 0.5 CPU-seconds over 2 wall-seconds → 25%.
+	if got := s.observe(14.5, t0.Add(3*time.Second)); got != 25.0 {
+		t.Errorf("observe = %v%%, want 25%%", got)
+	}
+}
+
+// TestCPUSampler_GuardsFirstSampleAndZeroInterval covers the degrade-to-zero
+// guards: a zero/negative wall interval and a counter reset both yield 0 (so
+// the readout omits CPU that tick) rather than a divide-by-zero or a negative %.
+func TestCPUSampler_GuardsFirstSampleAndZeroInterval(t *testing.T) {
+	var s cpuSampler
+	t0 := time.Unix(2_000_000, 0)
+	_ = s.observe(5.0, t0) // baseline
+
+	// Same wall-clock instant → zero interval → guard returns 0.
+	if got := s.observe(9.0, t0); got != 0 {
+		t.Errorf("zero-interval observe = %v, want 0", got)
+	}
+	// Note: the previous call still advanced the baseline to (9.0, t0). A CPU
+	// counter reset (cpuSeconds < prev) over a positive interval → negative
+	// delta → guard returns 0.
+	if got := s.observe(1.0, t0.Add(1*time.Second)); got != 0 {
+		t.Errorf("counter-reset observe = %v, want 0", got)
+	}
+}
+
 // TestStartEngineLivenessHeartbeat_PopulatesRSS proves the production
 // heartbeat writer (not just the helper in isolation) publishes RSSMB>0 onto
 // the on-disk engine-liveness sidecar, so a wizard TUI reading

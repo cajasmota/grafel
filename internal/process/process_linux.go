@@ -70,13 +70,14 @@ func ForceKill(pid int) error {
 	return nil
 }
 
-// CPUPercent returns the instantaneous CPU usage of pid as a percentage
-// by reading /proc/<pid>/stat and computing user+sys ticks / clock ticks.
-// On Linux this is derived from two samples; for a single-shot reading it
-// returns the kernel's accumulated time as a rough proxy. Returns 0 on error.
-//
-// Note: for the hot-loop watchdog the daemon computes a delta itself;
-// this provides the raw ticks for that calculation.
+// CPUPercent on Linux does NOT return a percentage despite its name — it
+// returns pid's CUMULATIVE CPU-seconds since start ((utime+stime)/clk_tck from
+// /proc/<pid>/stat). This is the platform inconsistency documented on the
+// package-level API surface: darwin's CPUPercent returns instantaneous %cpu,
+// linux's returns cumulative seconds. It is kept ONLY for the existing
+// hot-loop watchdog, which caches and diffs it itself. New callers wanting a
+// real, portable percentage must use CPUTimeSeconds (identical semantics on
+// both platforms) and diff over wall-clock. Returns 0 on error.
 func CPUPercent(pid int) (float64, error) {
 	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
 	if err != nil {
@@ -102,6 +103,38 @@ func CPUPercent(pid int) (float64, error) {
 	// a delta over a wall-clock interval. For the single-call watchdog use
 	// case this is the accumulated value; callers should cache and diff.
 	return totalSec, nil
+}
+
+// CPUTimeSeconds returns pid's CUMULATIVE CPU time (user+system) in seconds
+// since the process started, read from /proc/<pid>/stat. This is the uniform
+// cross-platform primitive a caller diffs over a wall-clock interval to derive
+// an instantaneous CPU percentage (see the darwin/other implementations for
+// the matching semantics). It is deliberately NOT a percentage — the whole
+// point of the type is that its meaning is identical on every platform, unlike
+// CPUPercent (which is instantaneous %cpu on darwin but cumulative-ish on
+// linux and unsupported elsewhere). Returns 0 + error on any read/parse
+// failure.
+func CPUTimeSeconds(pid int) (float64, error) {
+	data, err := os.ReadFile(fmt.Sprintf("/proc/%d/stat", pid))
+	if err != nil {
+		return 0, fmt.Errorf("read /proc/%d/stat: %w", pid, err)
+	}
+	// Format: pid (comm) state ppid ... utime stime cutime cstime ...
+	// comm may contain spaces AND parentheses; split at the LAST ')' so the
+	// numeric fields after it align regardless of the comm's contents.
+	raw := string(data)
+	rp := strings.LastIndex(raw, ")")
+	if rp < 0 {
+		return 0, fmt.Errorf("malformed /proc/%d/stat", pid)
+	}
+	fields := strings.Fields(raw[rp+2:])
+	if len(fields) < 13 {
+		return 0, fmt.Errorf("not enough fields in /proc/%d/stat", pid)
+	}
+	utime, _ := strconv.ParseFloat(fields[11], 64)
+	stime, _ := strconv.ParseFloat(fields[12], 64)
+	const clkTck = float64(100) // sysconf(_SC_CLK_TCK) — 100 on virtually all Linux
+	return (utime + stime) / clkTck, nil
 }
 
 // RSSBytes returns the resident-set size of pid in bytes by reading

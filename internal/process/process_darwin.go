@@ -70,6 +70,72 @@ func CPUPercent(pid int) (float64, error) {
 	return pct, nil
 }
 
+// CPUTimeSeconds returns pid's CUMULATIVE CPU time (user+system) in seconds
+// since the process started, via `ps -o cputime= -p <pid>`. It is the uniform
+// cross-platform primitive a caller diffs over a wall-clock interval to derive
+// an instantaneous CPU percentage (mirrors the linux /proc-stat reader's
+// semantics). Deliberately NOT a percentage — see the linux implementation's
+// doc for why the cumulative form is the portable contract.
+//
+// `ps -o cputime` prints `[[DD-]HH:]MM:SS[.ss]` (e.g. "0:00.42", "12:34",
+// "1-02:03:04"); parseCPUTime handles every shape. Returns 0 + error on any
+// shell-out or parse failure.
+func CPUTimeSeconds(pid int) (float64, error) {
+	out, err := exec.Command("ps", "-o", "cputime=", "-p", strconv.Itoa(pid)).Output()
+	if err != nil {
+		return 0, fmt.Errorf("ps -o cputime= -p %d: %w", pid, err)
+	}
+	secs, perr := parseCPUTime(strings.TrimSpace(string(out)))
+	if perr != nil {
+		return 0, fmt.Errorf("parse cputime %q: %w", strings.TrimSpace(string(out)), perr)
+	}
+	return secs, nil
+}
+
+// parseCPUTime parses the `ps -o cputime` duration format
+// `[[DD-]HH:]MM:SS[.ss]` into total seconds. The days segment (if present) is
+// separated from the clock by a '-'; the clock has 2 (MM:SS) or 3 (HH:MM:SS)
+// colon-separated components, the last of which may carry a fractional part.
+func parseCPUTime(s string) (float64, error) {
+	if s == "" {
+		return 0, fmt.Errorf("empty cputime")
+	}
+	var days float64
+	clock := s
+	if dash := strings.IndexByte(s, '-'); dash >= 0 {
+		d, err := strconv.ParseFloat(s[:dash], 64)
+		if err != nil {
+			return 0, fmt.Errorf("bad days %q: %w", s[:dash], err)
+		}
+		days = d
+		clock = s[dash+1:]
+	}
+	parts := strings.Split(clock, ":")
+	if len(parts) < 2 || len(parts) > 3 {
+		return 0, fmt.Errorf("unexpected clock %q", clock)
+	}
+	var hours, mins, secs float64
+	if len(parts) == 3 {
+		h, err := strconv.ParseFloat(parts[0], 64)
+		if err != nil {
+			return 0, fmt.Errorf("bad hours %q: %w", parts[0], err)
+		}
+		hours = h
+		parts = parts[1:]
+	}
+	m, err := strconv.ParseFloat(parts[0], 64)
+	if err != nil {
+		return 0, fmt.Errorf("bad minutes %q: %w", parts[0], err)
+	}
+	mins = m
+	sc, err := strconv.ParseFloat(parts[1], 64)
+	if err != nil {
+		return 0, fmt.Errorf("bad seconds %q: %w", parts[1], err)
+	}
+	secs = sc
+	return days*86400 + hours*3600 + mins*60 + secs, nil
+}
+
 // RSSBytes returns the resident-set size of pid in bytes via `ps -o rss= -p <pid>`.
 func RSSBytes(pid int) (uint64, error) {
 	out, err := exec.Command("ps", "-o", "rss=", "-p", strconv.Itoa(pid)).Output()

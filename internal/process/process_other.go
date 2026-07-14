@@ -31,6 +31,13 @@ func CPUPercent(_ int) (float64, error) {
 	return 0, fmt.Errorf("process.CPUPercent: unsupported platform %s", runtime.GOOS)
 }
 
+// CPUTimeSeconds is not implemented on this platform. A caller (e.g. the
+// engine-liveness heartbeat's CPU-delta sampler) treats the error as "CPU%
+// unavailable" and simply omits the CPU portion of its readout.
+func CPUTimeSeconds(_ int) (float64, error) {
+	return 0, fmt.Errorf("process.CPUTimeSeconds: unsupported platform %s", runtime.GOOS)
+}
+
 // RSSBytes is not implemented on this platform.
 func RSSBytes(_ int) (uint64, error) {
 	return 0, fmt.Errorf("process.RSSBytes: unsupported platform %s", runtime.GOOS)
