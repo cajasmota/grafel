@@ -118,6 +118,21 @@ func parseSubprocessStdout(r io.Reader, progressPub progress.Publisher, pid int,
 			logger.Info("subprocess-indexer: event", "event", last.Event, "repo", last.Repo, "ref", last.Ref)
 		}
 	}
+	// CRITICAL (hang guard): a Scanner error — most importantly bufio.ErrTooLong
+	// for a single line above the 1 MiB cap — makes Scan() return false EARLY,
+	// while the child is still writing. If the drain goroutine returned here the
+	// child would block on its full stdout pipe and cmd.Wait() would hang forever
+	// — the exact failure class the subprocess indexer exists to kill. So on a
+	// scanner error we surface it (never silently swallowed) and then keep
+	// draining the pipe to EOF with io.Copy(io.Discard): a pathological oversized
+	// line degrades to dropped progress, not a deadlock.
+	if err := sc.Err(); err != nil {
+		if logger != nil {
+			logger.Warn("subprocess-indexer: stdout scan aborted; draining remainder to avoid child stall",
+				"err", err, "pid", pid)
+		}
+		_, _ = io.Copy(io.Discard, r)
+	}
 	return last
 }
 

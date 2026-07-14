@@ -2,9 +2,11 @@ package sched
 
 import (
 	"bytes"
+	"log/slog"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/cajasmota/grafel/internal/progress"
 )
@@ -84,6 +86,55 @@ func TestParseSubprocessStdout_ErrorEvent(t *testing.T) {
 	last := parseSubprocessStdout(strings.NewReader(stream), nil, 0, nil)
 	if last.Event != "index_error" || last.Error != "boom" {
 		t.Errorf("lastEvent = %+v, want index_error with error=boom", last)
+	}
+}
+
+// TestParseSubprocessStdout_OversizedLineDrainsToEOF is the hang guard: a single
+// stdout line above the 1 MiB scanner cap makes Scan() abort early
+// (bufio.ErrTooLong). The drain MUST NOT return while the child is still
+// writing — it must (a) surface the scanner error (never silently swallowed) and
+// (b) keep consuming the pipe to EOF so the child never blocks on a full stdout
+// pipe (which would wedge cmd.Wait forever). A pathological oversized line
+// degrades to dropped progress, not a deadlock.
+func TestParseSubprocessStdout_OversizedLineDrainsToEOF(t *testing.T) {
+	var stream bytes.Buffer
+	// A valid lifecycle line first.
+	stream.WriteString(`{"event":"index_start","repo":"/r"}` + "\n")
+	// An oversized line (> 1 MiB, no interior newline) → bufio.ErrTooLong.
+	stream.Write(bytes.Repeat([]byte("x"), 1500*1024))
+	stream.WriteByte('\n')
+	// More bytes AFTER the oversized line — these represent the child still
+	// writing. If the drain returned early they would stay unread and the child
+	// would block. The drain must consume them.
+	tail := `{"event":"index_done","repo":"/r"}` + "\n"
+	stream.WriteString(tail)
+
+	r := bytes.NewReader(stream.Bytes())
+
+	var logBuf bytes.Buffer
+	logger := slog.New(slog.NewTextHandler(&logBuf, &slog.HandlerOptions{Level: slog.LevelWarn}))
+
+	// Guard against a real hang: run the drain with a hard deadline.
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_ = parseSubprocessStdout(r, nil, 1234, logger)
+	}()
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("parseSubprocessStdout did not return — oversized line caused a hang")
+	}
+
+	// The whole stream was consumed to EOF (no early return leaving the child
+	// blocked): the reader must be fully drained.
+	if r.Len() != 0 {
+		t.Errorf("reader not drained to EOF: %d bytes remain (child would block on a full pipe)", r.Len())
+	}
+	// The scanner error must be surfaced, not swallowed.
+	logged := logBuf.String()
+	if !strings.Contains(logged, "scan aborted") || !strings.Contains(logged, "too long") {
+		t.Errorf("scanner error not surfaced in log; got: %q", logged)
 	}
 }
 
