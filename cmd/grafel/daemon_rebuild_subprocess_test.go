@@ -183,6 +183,59 @@ func TestRebuild_SubprocessReroute_RepublishesProgressAndCompletes(t *testing.T)
 	}
 }
 
+// TestRebuild_SubprocessReroute_TimeoutCancelsChild is the leak guard: a child
+// that would outlive the per-repo deadline must be cancelled (its ctx killed) so
+// the parent goroutine unblocks and the repolock claim releases, instead of
+// leaking a live subprocess with the parent stuck in Wait. The stub stands in
+// for a wedged child that only returns when its ctx is cancelled — proving the
+// reroute threads a cancellable, timeout-bounded ctx into the child (not
+// context.Background()).
+func TestRebuild_SubprocessReroute_TimeoutCancelsChild(t *testing.T) {
+	group := setupTestGroup(t, "subproc-timeout-group", []string{"wedged"})
+	forceSubprocessRebuild(t)
+	t.Setenv("GRAFEL_REBUILD_REPO_TIMEOUT", "100ms") // tiny per-repo deadline
+
+	orig := runRebuildSubprocess
+	t.Cleanup(func() { runRebuildSubprocess = orig })
+
+	childReturned := make(chan struct{})
+	var sawCancel bool
+	runRebuildSubprocess = func(ctx context.Context, _ rebuildSubprocessParams) error {
+		<-ctx.Done() // a wedged child: only unblocks when the ctx is cancelled/killed
+		sawCancel = ctx.Err() != nil
+		close(childReturned)
+		return ctx.Err()
+	}
+
+	// The rebuild must return promptly (bounded by the 100ms per-repo timeout),
+	// never blocking on the wedged child.
+	rebuildDone := make(chan error, 1)
+	go func() {
+		_, _, err := daemonRebuildFuncCore(1, proto.RebuildArgs{Group: group, Interactive: true}, failIfCalledIndexFn(t), noopLinksFn)
+		rebuildDone <- err
+	}()
+
+	select {
+	case err := <-rebuildDone:
+		if err == nil || !contains(err.Error(), "wedged") || !contains(err.Error(), "timed out") {
+			t.Fatalf("expected a timeout error naming the wedged repo, got: %v", err)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("rebuild did not return — the wedged child was not cancelled on timeout (leak)")
+	}
+
+	// The child goroutine must have been released via ctx cancellation (not left
+	// leaked): its ctx was cancelled and it returned.
+	select {
+	case <-childReturned:
+	case <-time.After(5 * time.Second):
+		t.Fatal("child goroutine never returned — ctx was not cancelled (process/claim leak)")
+	}
+	if !sawCancel {
+		t.Error("child observed ctx.Err()==nil; the reroute must pass a cancellable ctx, not context.Background()")
+	}
+}
+
 // TestRebuild_SubprocessReroute_ChildErrorIsPerRepoFailure verifies a child
 // index_error surfaces as that repo's failure with the same partial-failure
 // semantics as an in-process error: the group returns an error naming the repo,

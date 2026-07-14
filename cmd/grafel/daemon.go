@@ -1368,8 +1368,12 @@ func daemonRebuildFuncCore(
 	// indexOne executes the index function for a single repo and returns its
 	// result. It is shared by both the serial and parallel paths so the logic
 	// (panic recovery, wipe, incremental opts, progress slugs, slug tag) stays
-	// in one place.
-	indexOneInner := func(idx int, rw repoWork) repoResult {
+	// in one place. ctx bounds the SUBPROCESS child's lifetime: indexOne cancels
+	// it on the per-repo timeout (and on normal completion), so a wedged child is
+	// killed and the repolock claim released rather than leaking as a live
+	// process. The in-process indexFn takes no context, so its "orphaned
+	// goroutine finishes in the background" semantics are unchanged.
+	indexOneInner := func(ctx context.Context, idx int, rw repoWork) repoResult {
 		t0 := time.Now()
 		var indexErr error
 		func() {
@@ -1423,7 +1427,7 @@ func daemonRebuildFuncCore(
 				// index: the repolock claim above, the group-level linksFn, and the
 				// status-before-ack FlushRepoStatusFile. When the toggle is OFF the
 				// in-process path below runs unchanged.
-				indexErr = runRebuildSubprocess(context.Background(), rebuildSubprocessParams{
+				indexErr = runRebuildSubprocess(ctx, rebuildSubprocessParams{
 					RepoPath:            rw.r.Path,
 					RepoSlug:            rw.r.Slug,
 					GroupSlug:           args.Group,
@@ -1472,18 +1476,29 @@ func daemonRebuildFuncCore(
 	// in the background (matching the existing RPC-timeout semantics) rather
 	// than killed mid-write.
 	indexOne := func(idx int, rw repoWork) repoResult {
+		// Per-repo cancellable context. Cancelling it (on timeout below, or on
+		// normal completion via defer) SIGKILLs a wedged subprocess child so its
+		// parent goroutine unblocks from cmd.Wait and releases the repolock claim
+		// — no process/claim leak. The in-process path ignores ctx.
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
 		if perRepoTimeout <= 0 {
-			return indexOneInner(idx, rw)
+			return indexOneInner(ctx, idx, rw)
 		}
 		t0 := time.Now()
 		done := make(chan repoResult, 1)
-		go func() { done <- indexOneInner(idx, rw) }()
+		go func() { done <- indexOneInner(ctx, idx, rw) }()
 		timer := time.NewTimer(perRepoTimeout)
 		defer timer.Stop()
 		select {
 		case res := <-done:
 			return res
 		case <-timer.C:
+			// Cancel the child so it is killed now and the goroutine + claim are
+			// reclaimed promptly (defer cancel() also covers this, but doing it
+			// explicitly documents intent). The in-process path's goroutine still
+			// finishes in the background — ctx cancellation is a no-op for it.
+			cancel()
 			fmt.Fprintf(os.Stderr,
 				"grafel: rebuild %s STALLED — no result after %s; surfacing as timeout and continuing with remaining repos (group=%s)\n",
 				rw.r.Slug, perRepoTimeout, args.Group)
