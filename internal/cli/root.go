@@ -78,6 +78,7 @@ func newRoot() *cobra.Command {
 		newBenchCaptureCmd(),
 		newPersonasCmd(),
 		newFeedbackCmd(),
+		newStatuslineCmd(),
 		newHelpCmd(),
 	)
 
@@ -221,4 +222,9 @@ Personas (cross-platform wrappers):
   personas render --target <target> [--output <dir>] [--personas-dir <dir>]
                                   Render platform-specific wrappers from canonical persona files
                                   Targets: claude-code, windsurf, cursor, codex
+
+Statusline:
+  statusline                     Explain how to surface live index status in a shell/editor
+                                  statusline; prints example segments + wiring guide (installs nothing)
+  statusline --snippet           Print only the icon-based bash segment (copy/pipe-ready)
 `
