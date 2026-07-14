@@ -359,7 +359,20 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 				sseCh = ch
 			}
 		}
-		o := runSplitIndex(ctx, cancel, c, group, token, sseCh, evCh)
+		// Interim "graph queryable" checkpoint (at most once, see
+		// awaitSplitCompletion): surface it on outCh so the TUI can offer
+		// finish-now-or-wait instead of collapsing straight to Done. Install is
+		// already complete by this point (makeIndexFunc runs it before
+		// streamIndexWithSummary), so it's safe to attach the same summary here.
+		onQueryable := func(res splitResult) {
+			outCh <- wiztui.IndexOutcome{
+				Interim:  true,
+				Entities: res.Entities,
+				Rels:     res.Rels,
+				Install:  summary,
+			}
+		}
+		o := runSplitIndex(ctx, cancel, c, group, token, sseCh, evCh, onQueryable)
 		outCh <- toIndexOutcome(o, summary)
 		return
 	}

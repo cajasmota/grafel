@@ -79,7 +79,14 @@ type Driver interface {
 // by the model once the user confirms; the model only renders what flows back.
 type IndexFunc func(r Result) (<-chan prog.Event, <-chan IndexOutcome)
 
-// IndexOutcome is the terminal result of indexing.
+// IndexOutcome is the terminal result of indexing — OR, when Interim is true,
+// an intermediate "graph queryable" checkpoint (#split-mode queryable state):
+// the group's graph is already queryable but the background enhancement pass
+// (linksFn tail) is still running. An interim outcome carries the
+// queryable-time Entities/Rels + the Install summary (install always finishes
+// before indexing starts, so it is safe/complete at interim time too); the
+// model stays on the index screen and keeps waiting for the FINAL
+// (Interim==false) outcome, unless the user presses enter to finish early.
 type IndexOutcome struct {
 	Entities int64
 	Rels     int64
@@ -92,6 +99,10 @@ type IndexOutcome struct {
 	// any non-fatal watcher warnings, captured so the TUI can render them inside
 	// the Done screen instead of letting raw stdout scatter over the alt-screen.
 	Install InstallSummary
+	// Interim marks a non-terminal "graph queryable, background enhancement
+	// still running" checkpoint. At most one interim outcome is ever sent,
+	// always followed by exactly one terminal (Interim==false) outcome.
+	Interim bool
 }
 
 // InstallSummary is the captured, structured outcome of applyGroupConfig's
@@ -184,6 +195,24 @@ func metricsTick(fn MetricsFunc) tea.Cmd {
 	}
 	return tea.Tick(metricsPollInterval, func(time.Time) tea.Msg {
 		return metricsMsg(fn())
+	})
+}
+
+// timerMsg is a no-payload tick used only to force a re-render of the index
+// screen's live elapsed timer (see indexView.elapsedText). The elapsed value
+// itself is computed from indexView.startedAt at render time; this message
+// carries nothing but a "wake up and redraw" signal.
+type timerMsg time.Time
+
+// timerTickInterval is how often the index screen re-renders to advance the
+// live elapsed timer. 1s matches the compact "MmSSs" display's resolution —
+// any faster would waste CPU on a value that can't visibly change.
+const timerTickInterval = 1 * time.Second
+
+// timerTick schedules the next timer tick as a tea.Cmd.
+func timerTick() tea.Cmd {
+	return tea.Tick(timerTickInterval, func(t time.Time) tea.Msg {
+		return timerMsg(t)
 	})
 }
 
@@ -286,7 +315,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case indexStartedMsg:
 		m.evCh = msg.events
 		m.outCh = msg.outcome
-		return m, tea.Batch(m.idx.spin.Tick, waitEvent(m.evCh), waitOutcome(m.outCh), metricsTick(m.metricsFn))
+		return m, tea.Batch(m.idx.spin.Tick, waitEvent(m.evCh), waitOutcome(m.outCh), metricsTick(m.metricsFn), timerTick())
 
 	case progressMsg:
 		m.idx.foldEvent(prog.Event(msg))
@@ -304,6 +333,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case outcomeMsg:
 		o := IndexOutcome(msg)
+		if o.Interim {
+			// Graph queryable, background enhancement still running: capture the
+			// queryable-time stats + install summary, enter the queryable
+			// sub-state, and KEEP waiting — outCh still owes us the final
+			// outcome. Never transitions to scrDone on its own (the user can
+			// press enter to finish early; see updateKey's scrIndex case).
+			m.idx.summaryEntities = o.Entities
+			m.idx.summaryRels = o.Rels
+			m.idx.install = o.Install
+			m.idx.queryable = true
+			return m, waitOutcome(m.outCh)
+		}
 		m.idx.summaryEntities = o.Entities
 		m.idx.summaryRels = o.Rels
 		m.idx.elapsed = o.Elapsed
@@ -320,8 +361,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// have arrived after the RPC returned and been dropped (#5340).
 			m.idx.finalizeRows()
 		}
+		m.idx.finishedAt = time.Now()
 		m.scr = scrDone
 		m.step = StepDone
+		return m, nil
+
+	case timerMsg:
+		// Live elapsed timer: re-render at ~1s cadence while the index screen is
+		// active; stop scheduling once it's done (Done/Failed) so the ticker
+		// doesn't run forever in the background.
+		if m.scr == scrIndex && !m.idx.done() {
+			return m, timerTick()
+		}
 		return m, nil
 
 	default:
@@ -352,7 +403,19 @@ func (m Model) updateKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case scrMCP:
 		return m.updateMCP(msg)
 	case scrIndex:
-		// Index screen: only ctrl-c (handled globally) interrupts.
+		// Index screen: ctrl-c (handled globally) interrupts. Once the graph is
+		// queryable but the background enhancement pass hasn't acked yet, enter
+		// also finishes the wizard immediately as SUCCESS using the
+		// already-captured interim stats — the alternative to just waiting for
+		// the final outcome to land on its own.
+		if msg.String() == "enter" && m.idx.queryable && !m.idx.terminal {
+			m.idx.terminal = true
+			m.idx.finalizeRows()
+			m.idx.finishedAt = time.Now()
+			m.scr = scrDone
+			m.step = StepDone
+			return m, nil
+		}
 		return m, nil
 	case scrDone:
 		switch msg.String() {
@@ -594,6 +657,7 @@ func (m Model) startIndex() (tea.Model, tea.Cmd) {
 	}
 	m.idx = newIndexView(name, len(m.res.Repos))
 	m.idx.width = m.width
+	m.idx.startedAt = time.Now()
 	res := m.res
 	start := func() tea.Msg {
 		ev, out := m.index(res)

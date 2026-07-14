@@ -45,6 +45,13 @@ import (
 // streamIndexWithSummary. It builds the status-plane probe for the group (which
 // captures the per-repo graph_fb_mtime baseline BEFORE the enqueue) and a
 // synchronous enqueue closure, then delegates to runSplitIndexCore.
+// onQueryable is invoked AT MOST ONCE, mid-poll, the first time the group
+// becomes graph-queryable (AllAdvanced) while the background enhancement pass
+// is still running (RequestPending still true). It carries the classified
+// queryable-time stats. nil is fine — it simply means "no interim checkpoint
+// wanted" (the caller only cares about the terminal outcome).
+type onQueryableFunc func(splitResult)
+
 func runSplitIndex(
 	ctx context.Context,
 	cancel context.CancelFunc,
@@ -52,6 +59,7 @@ func runSplitIndex(
 	group, token string,
 	sseCh <-chan sseEvent,
 	evCh chan<- progress.Event,
+	onQueryable onQueryableFunc,
 ) rebuildOutcome {
 	probe, err := newStatusPlaneProbe(group, token)
 	if err != nil {
@@ -66,7 +74,7 @@ func runSplitIndex(
 		_, rErr := c.Rebuild(proto.RebuildArgs{Group: group, ProgressToken: token, Interactive: true})
 		return rErr
 	}
-	return runSplitIndexCore(ctx, cancel, trigger, sseCh, evCh, probe, realSplitClock{}, defaultSplitPoll())
+	return runSplitIndexCore(ctx, cancel, trigger, sseCh, evCh, probe, realSplitClock{}, defaultSplitPoll(), onQueryable)
 }
 
 // splitClock is the injectable time seam so completion-poll tests advance
@@ -148,20 +156,36 @@ func defaultSplitPoll() splitPollConfig {
 // and then went stale (backstop), or the overall timeout elapses (last resort).
 // It NEVER returns success on the enqueue instant — completion is the request
 // ack, not the RPC return.
-func awaitSplitCompletion(probe splitProbe, clk splitClock, cfg splitPollConfig) (splitResult, error) {
+//
+// QUERYABLE CHECKPOINT: when every repo becomes graph-queryable (AllAdvanced)
+// while the request is STILL pending (the background linksFn tail hasn't
+// acked yet), the loop does NOT return early anymore — it invokes onQueryable
+// (at most once, with the classified queryable-time stats) and keeps polling
+// for the real ack, so the TUI can offer "queryable, enhancing in the
+// background" instead of collapsing straight to Done. If AllAdvanced and
+// !RequestPending land in the SAME poll (the rebuild was already fully done),
+// the ack check runs first, so no interim fires — straight to the terminal
+// return, matching the pre-existing fast/failure-path behavior.
+func awaitSplitCompletion(probe splitProbe, clk splitClock, cfg splitPollConfig, onQueryable onQueryableFunc) (splitResult, error) {
 	start := clk.Now()
 	sawAlive := false
+	queryableFired := false
 	for {
 		p, err := probe.Poll()
 		if err == nil {
-			if p.AllAdvanced || !p.RequestPending {
-				// Complete when EITHER every repo is already graph-queryable
-				// (AllAdvanced — the ~6-min early success, engine still running the
-				// background linksFn tail) OR the engine drained+acked our rebuild
-				// request (!RequestPending — the failure/backstop path). Classify is
-				// unchanged: on the ack path it still lists any non-advanced repo as
-				// Failed; on the AllAdvanced path every repo advanced so it is clean.
+			if !p.RequestPending {
+				// The engine drained+acked our rebuild request — real completion,
+				// checked FIRST so an AllAdvanced-and-acked poll never fires an
+				// interim (nothing left to wait for).
 				return probe.Classify()
+			}
+			if p.AllAdvanced && !queryableFired {
+				queryableFired = true
+				if onQueryable != nil {
+					if res, cErr := probe.Classify(); cErr == nil {
+						onQueryable(res)
+					}
+				}
 			}
 			if p.EngineAlive {
 				sawAlive = true
@@ -224,6 +248,7 @@ func runSplitIndexCore(
 	probe splitProbe,
 	clk splitClock,
 	cfg splitPollConfig,
+	onQueryable onQueryableFunc,
 ) rebuildOutcome {
 	// 1. Start forwarding SSE per-module events CONCURRENTLY so the bars render
 	//    live from the first moment (even during the enqueue).
@@ -236,8 +261,9 @@ func runSplitIndexCore(
 		return rebuildOutcome{err: fmt.Errorf("enqueue rebuild: %w", err)}
 	}
 
-	// 3. Poll for real completion (the request ack), then classify.
-	res, err := awaitSplitCompletion(probe, clk, cfg)
+	// 3. Poll for real completion (the request ack), then classify. onQueryable
+	//    may fire once, mid-poll, on the AllAdvanced-while-pending checkpoint.
+	res, err := awaitSplitCompletion(probe, clk, cfg, onQueryable)
 	cancel() // stop the SSE forward goroutine
 	if err != nil {
 		return rebuildOutcome{err: err}

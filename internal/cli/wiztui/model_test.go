@@ -317,6 +317,115 @@ func TestDocsInputAcceptsKeystrokes(t *testing.T) {
 	}
 }
 
+// driveToIndexScreen walks a fresh model through action→select→name→docs to
+// land on scrIndex, for tests that only care about outcome/queryable handling.
+func driveToIndexScreen(t *testing.T, idx IndexFunc) Model {
+	t.Helper()
+	d := fakeDriver{suggested: ActionGroup, cands: []Candidate{
+		{Label: "/a", Value: "/a", Selected: true},
+	}}
+	m := newTestModel(d, idx)
+	m = m.update(key("enter")) // action → select
+	m = m.update(key("enter")) // select → name
+	m = m.update(key("enter")) // name → docs
+	m = m.update(key("enter")) // docs → index
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex", m.scr)
+	}
+	return m
+}
+
+// TestModel_InterimOutcome_EntersQueryableAndKeepsWaiting: an Interim outcome
+// must NOT transition to scrDone — it enters the queryable sub-state, captures
+// the interim stats, and re-arms waitOutcome so the (still-pending) final
+// outcome is not missed.
+func TestModel_InterimOutcome_EntersQueryableAndKeepsWaiting(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+
+	m = m.update(outcomeMsg(IndexOutcome{
+		Interim:  true,
+		Entities: 4200,
+		Rels:     100,
+		Install:  InstallSummary{Applied: true, Hooks: 1},
+	}))
+
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex (interim must not finish the wizard)", m.scr)
+	}
+	if !m.idx.queryable {
+		t.Error("idx.queryable not set after an interim outcome")
+	}
+	if m.idx.terminal {
+		t.Error("idx.terminal set by an interim outcome")
+	}
+	if m.idx.summaryEntities != 4200 || m.idx.summaryRels != 100 {
+		t.Errorf("interim stats not captured: entities=%d rels=%d", m.idx.summaryEntities, m.idx.summaryRels)
+	}
+	if !m.idx.install.Applied {
+		t.Error("interim outcome's Install summary not captured")
+	}
+}
+
+// TestModel_EnterInQueryableState_FinishesWithInterimStats: pressing enter
+// while queryable (but not yet terminal) finishes the wizard immediately as
+// SUCCESS, using the already-captured interim stats.
+func TestModel_EnterInQueryableState_FinishesWithInterimStats(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 777, Rels: 33}))
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex after interim", m.scr)
+	}
+
+	m = m.update(key("enter"))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone after enter in queryable state", m.scr)
+	}
+	if !m.idx.terminal {
+		t.Error("idx.terminal not set after finishing early from queryable")
+	}
+	if m.idx.summaryEntities != 777 || m.idx.summaryRels != 33 {
+		t.Errorf("Done summary lost the interim stats: entities=%d rels=%d", m.idx.summaryEntities, m.idx.summaryRels)
+	}
+}
+
+// TestModel_EnterBeforeQueryable_NoOp: pressing enter on the index screen
+// BEFORE any interim/terminal outcome has landed is a no-op (matches the old
+// ctrl-c-only behavior; a bare enter must not skip the wait).
+func TestModel_EnterBeforeQueryable_NoOp(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(key("enter"))
+	if m.scr != scrIndex {
+		t.Errorf("scr = %v, want scrIndex (enter with no queryable/terminal state must be a no-op)", m.scr)
+	}
+}
+
+// TestModel_FinalOutcomeAfterInterim_ReachesDoneWithFinalStats: the sequence
+// interim → final (the normal background-completes-on-its-own path) lands on
+// scrDone carrying the FINAL stats (which may differ from the interim ones).
+func TestModel_FinalOutcomeAfterInterim_ReachesDoneWithFinalStats(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 100, Rels: 10}))
+	if m.scr != scrIndex {
+		t.Fatalf("scr = %v, want scrIndex after interim", m.scr)
+	}
+
+	m = m.update(outcomeMsg(IndexOutcome{Entities: 500, Rels: 90, Elapsed: "5m00s"}))
+
+	if m.scr != scrDone {
+		t.Fatalf("scr = %v, want scrDone after the final outcome", m.scr)
+	}
+	if !m.idx.terminal {
+		t.Error("idx.terminal not set by the final outcome")
+	}
+	if m.idx.summaryEntities != 500 || m.idx.summaryRels != 90 {
+		t.Errorf("final stats not applied: entities=%d rels=%d", m.idx.summaryEntities, m.idx.summaryRels)
+	}
+	if m.idx.elapsed != "5m00s" {
+		t.Errorf("final elapsed not applied: %q", m.idx.elapsed)
+	}
+}
+
 func nilIndex(Result) (<-chan progress.Event, <-chan IndexOutcome) {
 	ev := make(chan progress.Event)
 	out := make(chan IndexOutcome)

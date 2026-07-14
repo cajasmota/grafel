@@ -140,7 +140,7 @@ func TestSplit_CompletionWaitsForRequestAck(t *testing.T) {
 	evCh := make(chan progress.Event, 8)
 	rebuildCalled := false
 
-	o := runSplitIndexCore(ctx, cancel, func() error { rebuildCalled = true; return nil }, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, func() error { rebuildCalled = true; return nil }, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), nil)
 
 	if !rebuildCalled {
 		t.Fatal("triggerRebuild was never called")
@@ -179,7 +179,7 @@ func TestSplit_ForwardsPerModuleEventsDuringWindow(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -202,7 +202,7 @@ func TestSplit_OutcomeCarriesClassifiedStats(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -226,7 +226,7 @@ func TestSplit_EngineDiesSurfacesError(t *testing.T) {
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
 	if o.err == nil {
 		t.Fatal("engine died but outcome carried no error (fake Done)")
 	}
@@ -243,7 +243,7 @@ func TestSplit_TimeoutSurfacesError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: time.Second, startupWindow: 0, timeout: 3 * time.Second}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
 	if o.err == nil {
 		t.Fatal("rebuild never acked but no timeout error surfaced")
 	}
@@ -258,7 +258,7 @@ func TestSplit_NeverAliveEngineFailsFast(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 100 * time.Millisecond, startupWindow: time.Second, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
 	if o.err == nil {
 		t.Fatal("engine never came alive but no error surfaced")
 	}
@@ -293,7 +293,7 @@ func TestSplit_MultiRepoPartialFailure_PromptError(t *testing.T) {
 	// Short interval + comfortably large timeout: a PROMPT terminal state must
 	// arrive from the ack, long before the timeout.
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
 
 	if o.err == nil {
 		t.Fatal("partial failure (repo B never indexed) produced no error — this is the hang/fake-done regression")
@@ -313,7 +313,7 @@ func TestSplit_EmptyRepo_PromptTerminal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
 	if o.err == nil {
 		t.Fatal("empty repo produced no terminal error (would hang in production)")
 	}
@@ -409,7 +409,7 @@ func TestSplit_NoDashboard_WaitsForAck(t *testing.T) {
 	defer cancel()
 
 	var sseCh <-chan sseEvent // nil: no dashboard, no live bars
-	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -436,7 +436,7 @@ func TestSplit_StaleStatusAtAck_FalseFailsWithoutFlush(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
 	if o.err == nil {
 		t.Fatal("expected a (false) failure when status is stale at ack — documents the race the flush closes")
 	}
@@ -459,7 +459,7 @@ func TestSplit_FreshStatusFlushedBeforeAck_ClassifiesOK(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
 	if o.err != nil {
 		t.Fatalf("fresh status flushed before ack should classify OK, got: %v", o.err)
 	}
@@ -469,32 +469,50 @@ func TestSplit_FreshStatusFlushedBeforeAck_ClassifiesOK(t *testing.T) {
 }
 
 // HYBRID-1. SPLIT: every repo becomes graph-queryable (graph_fb_mtime advanced,
-// !Indexing) while our rebuild request is STILL pending → completion fires EARLY
-// (success) via the AllAdvanced predicate, without waiting for the ack. Modeled
-// by a pendingReader that NEVER acks: the only way this can succeed is the early
-// AllAdvanced path. Fails today (waits for the ack → hits the timeout → error).
-func TestSplit_AllReposAdvance_CompletesEarlyBeforeAck(t *testing.T) {
+// !Indexing) while our rebuild request is STILL pending. Per the queryable-state
+// UX (the graph is queryable, but background enhancement — the linksFn tail —
+// is still running), this must NOT complete early anymore: it fires
+// onQueryable EXACTLY ONCE with the queryable-time stats, then keeps polling
+// until the real ack, returning the (here, identical) final stats.
+func TestSplit_AllReposAdvance_FiresQueryableThenWaitsForAck(t *testing.T) {
 	const repoA, repoB = "/repo/backend", "/repo/frontend"
 	store := newFakeStatusStore() // both absent at construction → baseline 0
-	neverAck := func() (bool, error) { return true, nil }
-	probe := newStatusPlaneProbeWith([]string{repoA, repoB}, "/root", store.read, aliveLiveness, neverAck)
+	pending := pendingUntil(6)    // acks well after AllAdvanced first goes true
+	probe := newStatusPlaneProbeWith([]string{repoA, repoB}, "/root", store.read, aliveLiveness, pending)
 
 	// Both repos produce a fresh graph (mtime advanced past baseline 0) while the
 	// request is still pending — the ~6-min "graph queryable" moment.
 	store.set(repoA, &statusfile.File{Indexing: false, GraphFBMtime: 100, Entities: 5, Relationships: 6})
 	store.set(repoB, &statusfile.File{Indexing: false, GraphFBMtime: 200, Entities: 7, Relationships: 8})
 
+	var qmu sync.Mutex
+	fired := 0
+	var interim splitResult
+	onQueryable := func(res splitResult) {
+		qmu.Lock()
+		fired++
+		interim = res
+		qmu.Unlock()
+	}
+
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	// Generous timeout: if completion needed the (never-coming) ack this would
-	// spin to the timeout and error. Early success proves the AllAdvanced path.
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, onQueryable)
 	if o.err != nil {
-		t.Fatalf("all repos graph-queryable but no early completion (waited for the ack): %v", o.err)
+		t.Fatalf("unexpected error: %v", o.err)
 	}
 	if o.entities != 12 || o.rels != 14 {
-		t.Fatalf("stats = (%d,%d); want (12,14) summed across the advanced repos", o.entities, o.rels)
+		t.Fatalf("final stats = (%d,%d); want (12,14) summed across the advanced repos", o.entities, o.rels)
+	}
+	qmu.Lock()
+	gotFired, gotInterim := fired, interim
+	qmu.Unlock()
+	if gotFired != 1 {
+		t.Fatalf("onQueryable fired %d times; want exactly 1", gotFired)
+	}
+	if gotInterim.Entities != 12 || gotInterim.Rels != 14 {
+		t.Fatalf("interim stats = (%d,%d); want (12,14)", gotInterim.Entities, gotInterim.Rels)
 	}
 }
 
@@ -522,7 +540,7 @@ func TestSplit_OneRepoNeverAdvances_AckBackstopPromptError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
 	if o.err == nil {
 		t.Fatal("repo B never advanced but completion reported success (AllAdvanced early false-success or hang)")
 	}
@@ -539,11 +557,11 @@ func TestSplit_OneRepoNeverAdvances_AckBackstopPromptError(t *testing.T) {
 }
 
 // HYBRID-3. FALSE-FAILURE guard: while a repo's status is STALE (graph_fb_mtime
-// == baseline) the AllAdvanced predicate stays false — no early completion on a
-// stale read. Only once graph_fb_mtime genuinely advances does the early path
-// fire. Modeled with a never-acking pendingReader so the ONLY route to success is
-// a real mtime advance, and a status reader that stays stale for the first polls.
-func TestSplit_StaleStatus_NoEarlyComplete_AdvanceCompletes(t *testing.T) {
+// == baseline) the AllAdvanced predicate stays false, so onQueryable must NOT
+// fire on a stale read — only once graph_fb_mtime genuinely advances. It still
+// waits for the real ack to complete (queryable-state UX), firing onQueryable
+// exactly once at the advance.
+func TestSplit_StaleStatus_QueryableFiresOnceThenWaitsForAck(t *testing.T) {
 	const repo = "/repo/monorepo"
 	var mu sync.Mutex
 	calls := 0
@@ -560,26 +578,110 @@ func TestSplit_StaleStatus_NoEarlyComplete_AdvanceCompletes(t *testing.T) {
 		}
 		return &statusfile.File{Indexing: false, GraphFBMtime: 2000, Entities: 11, Relationships: 22}, true
 	}
-	neverAck := func() (bool, error) { return true, nil } // only AllAdvanced can complete
-	probe := newStatusPlaneProbeWith([]string{repo}, "/root", read, aliveLiveness, neverAck)
+	pending := pendingUntil(10) // acks well after the advance
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", read, aliveLiveness, pending)
+
+	var qmu sync.Mutex
+	fired := 0
+	onQueryable := func(splitResult) {
+		qmu.Lock()
+		fired++
+		qmu.Unlock()
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, onQueryable)
 	if o.err != nil {
-		t.Fatalf("should complete once mtime advances past baseline, got: %v", o.err)
+		t.Fatalf("should complete once the ack lands, got: %v", o.err)
 	}
 	if o.entities != 11 || o.rels != 22 {
 		t.Fatalf("stats = (%d,%d); want (11,22) from the advanced status", o.entities, o.rels)
 	}
-	// It must NOT have early-completed on a stale read: at least the stale polls
-	// happened before the advance at call 5.
-	mu.Lock()
-	total := calls
-	mu.Unlock()
-	if total < 5 {
-		t.Fatalf("only %d status reads; want >=5 (early-completed on a stale read == false-failure race)", total)
+	qmu.Lock()
+	gotFired := fired
+	qmu.Unlock()
+	if gotFired != 1 {
+		t.Fatalf("onQueryable fired %d times; want exactly 1 (must not fire on a stale read)", gotFired)
+	}
+}
+
+// QUERYABLE-0a. Fast path (AllAdvanced and the ack land in the SAME poll —
+// i.e. the rebuild was already fully done by the time we first noticed): no
+// interim is emitted, straight to the terminal return.
+func TestSplit_FastPath_AllAdvancedAndAckedSamePoll_NoInterim(t *testing.T) {
+	probe := &fakeProbe{
+		pollFn:   func(int) splitPoll { return splitPoll{RequestPending: false, AllAdvanced: true, EngineAlive: true} },
+		classify: splitResult{Entities: 42, Rels: 7},
+	}
+	fired := 0
+	onQueryable := func(splitResult) { fired++ }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), onQueryable)
+	if o.err != nil {
+		t.Fatalf("unexpected error: %v", o.err)
+	}
+	if fired != 0 {
+		t.Fatalf("onQueryable fired %d times; want 0 (AllAdvanced and ack landed in the same poll — nothing left to wait for)", fired)
+	}
+	if o.entities != 42 || o.rels != 7 {
+		t.Fatalf("stats = (%d,%d); want (42,7)", o.entities, o.rels)
+	}
+}
+
+// QUERYABLE-0b. Ordinary fast path (small index: never even observed
+// AllAdvanced before the ack lands): no interim, unchanged from the pre-#queryable
+// behavior — mirrors TestSplit_CompletionWaitsForRequestAck but asserts the
+// callback specifically.
+func TestSplit_FastAck_NeverAllAdvanced_NoInterim(t *testing.T) {
+	probe := &fakeProbe{
+		pollFn: func(call int) splitPoll {
+			return splitPoll{RequestPending: call < 3, EngineAlive: true} // never AllAdvanced
+		},
+		classify: splitResult{Entities: 9, Rels: 3},
+	}
+	fired := 0
+	onQueryable := func(splitResult) { fired++ }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), onQueryable)
+	if o.err != nil {
+		t.Fatalf("unexpected error: %v", o.err)
+	}
+	if fired != 0 {
+		t.Fatalf("onQueryable fired %d times; want 0 (AllAdvanced never observed)", fired)
+	}
+}
+
+// QUERYABLE-0c. Partial-failure path: AllAdvanced never becomes true (one repo
+// never advances) and the ack eventually surfaces the classification failure —
+// no interim, error classification unchanged from the pre-#queryable behavior.
+func TestSplit_PartialFailure_NoInterim(t *testing.T) {
+	const repoA, repoB = "/repo/backend", "/repo/frontend"
+	store := newFakeStatusStore()
+	probe := newStatusPlaneProbeWith([]string{repoA, repoB}, "/root", store.read, aliveLiveness, pendingUntil(3))
+	store.set(repoA, &statusfile.File{Indexing: false, GraphFBMtime: 500, Entities: 1000, Relationships: 2000})
+	// repoB never produces a graph → AllAdvanced never true.
+
+	fired := 0
+	onQueryable := func(splitResult) { fired++ }
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, onQueryable)
+	if o.err == nil {
+		t.Fatal("expected a partial-failure error naming the non-advanced repo")
+	}
+	if !strings.Contains(o.err.Error(), "frontend") {
+		t.Fatalf("err = %v; want it to name frontend", o.err)
+	}
+	if fired != 0 {
+		t.Fatalf("onQueryable fired %d times; want 0 on a partial-failure path", fired)
 	}
 }
 
