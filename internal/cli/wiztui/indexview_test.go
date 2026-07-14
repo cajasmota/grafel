@@ -107,6 +107,94 @@ func TestIndexView_QueryableBanner_ShownWhenQueryableNotTerminal(t *testing.T) {
 	}
 }
 
+// TestIndexView_HeaderFreezesElapsedAtQueryableMoment: once the graph becomes
+// queryable (interim outcome landed), the main header elapsed FREEZES at the
+// queryable moment (startedAt..queryableAt) instead of continuing to grow with
+// wall-clock time while the background enhancement pass keeps running.
+func TestIndexView_HeaderFreezesElapsedAtQueryableMoment(t *testing.T) {
+	v := newIndexView("grp", 1)
+	v.width = 100
+	v.startedAt = time.Now().Add(-10 * time.Minute)   // indexing "started" long ago
+	v.queryableAt = v.startedAt.Add(74 * time.Second) // became queryable at 1m14s
+	v.queryable = true
+
+	out := v.view()
+	if !strings.Contains(out, "1m14s") {
+		t.Errorf("header missing elapsed frozen at the queryable moment \"1m14s\":\n%s", out)
+	}
+	if strings.Contains(out, "10m00s") {
+		t.Errorf("header shows live wall-clock elapsed instead of freezing at the queryable moment:\n%s", out)
+	}
+}
+
+// TestIndexView_BgElapsed_StartsAtQueryableMomentAndAdvancesIndependently: the
+// secondary "enhancing in background" elapsed is computed from queryableAt,
+// independent of (and later-starting than) the main startedAt-based elapsed.
+func TestIndexView_BgElapsed_StartsAtQueryableMomentAndAdvancesIndependently(t *testing.T) {
+	v := newIndexView("grp", 1)
+	v.width = 100
+	v.startedAt = time.Now().Add(-5 * time.Minute)
+	v.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseDone, TS: 1})
+	v.queryable = true
+	v.queryableAt = time.Now().Add(-30 * time.Second)
+
+	out := v.view()
+	if !strings.Contains(out, "0m30s") {
+		t.Errorf("secondary bar missing its own elapsed timer \"0m30s\":\n%s", out)
+	}
+}
+
+// TestIndexView_SecondaryBar_OnlyRendersInInterimState: the background
+// enhancement bar is present only while queryable && !terminal — absent
+// before queryable, and absent again once terminal.
+func TestIndexView_SecondaryBar_OnlyRendersInInterimState(t *testing.T) {
+	v := newIndexView("grp", 1)
+	v.width = 100
+	v.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseExtractAST, TS: 1})
+
+	out := v.view()
+	if strings.Contains(out, "Enhancing relationships in the background") {
+		t.Errorf("secondary bar rendered before the graph is queryable:\n%s", out)
+	}
+
+	v.queryable = true
+	v.queryableAt = time.Now()
+	out = v.view()
+	if !strings.Contains(out, "Enhancing relationships in the background") {
+		t.Errorf("secondary bar missing while queryable and not terminal:\n%s", out)
+	}
+
+	v.terminal = true
+	out = v.view()
+	if strings.Contains(out, "Enhancing relationships in the background") {
+		t.Errorf("secondary bar still rendered after the outcome went terminal:\n%s", out)
+	}
+}
+
+// TestIndexView_AdvanceBgAnim_MovesAndBounces: the indeterminate animation
+// driver advances bgPct forward each tick and bounces back within [0,1]
+// instead of running away or going negative.
+func TestIndexView_AdvanceBgAnim_MovesAndBounces(t *testing.T) {
+	v := newIndexView("grp", 1)
+	if v.bgPct != 0 {
+		t.Fatalf("initial bgPct = %v, want 0", v.bgPct)
+	}
+	prev := v.bgPct
+	for i := 0; i < 5; i++ {
+		v.advanceBgAnim()
+		if v.bgPct <= prev {
+			t.Fatalf("bgPct did not advance forward on tick %d: prev=%v now=%v", i, prev, v.bgPct)
+		}
+		prev = v.bgPct
+	}
+	for i := 0; i < 40; i++ {
+		v.advanceBgAnim()
+		if v.bgPct > 1 || v.bgPct < 0 {
+			t.Fatalf("bgPct out of [0,1] bounds after tick %d: %v", i, v.bgPct)
+		}
+	}
+}
+
 // TestIndexView_DoneSummary_Commafied asserts doneSummary formats entities and
 // relationships with thousands separators.
 func TestIndexView_DoneSummary_Commafied(t *testing.T) {

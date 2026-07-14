@@ -59,6 +59,32 @@ type indexView struct {
 	startedAt  time.Time
 	finishedAt time.Time
 
+	// queryableAt is stamped the instant the interim ("graph queryable")
+	// outcome lands (see Model's outcomeMsg handling). Two things key off it:
+	// (1) the MAIN header elapsed (elapsedText) freezes at startedAt..
+	// queryableAt instead of continuing to grow while only the background
+	// enhancement pass is still running — a still-ticking "Done · 1m14s…" reads
+	// as "indexing is stuck" when the graph is actually ready; (2) the
+	// secondary background-enhancement bar's own elapsed (bgElapsedText) counts
+	// up from this moment, clearly attributing the running time to background
+	// work rather than stalled indexing. Zero until the interim outcome lands.
+	queryableAt time.Time
+
+	// bgBar is the secondary progress bar shown only in the interim/queryable
+	// sub-state, rendered below the queryable banner (reuses bar's gradient
+	// styling — see newIndexView). The background enhancement pass (relationship
+	// linking / enrichment) doesn't report a percentage to the wizard, so this
+	// is driven as an INDETERMINATE animated sweep via bgPct/bgAnimDir rather
+	// than a fabricated determinate percentage.
+	bgBar progress.Model
+	// bgPct is the current fill fraction [0,1] of the indeterminate sweep,
+	// advanced by advanceBgAnim on each bgAnimMsg tick (see model.go). It
+	// bounces between 0 and 1 (a "breathing" gradient) rather than monotonically
+	// filling, since there is no real percentage to represent.
+	bgPct float64
+	// bgAnimDir is the current direction (+1 or -1) of the bgPct sweep.
+	bgAnimDir float64
+
 	// rssMB / cpuPct are the engine process's live CPU/RAM readout (wizard
 	// CPU/RAM readout — see internal/statusfile.File's RSSMB/CPUPct doc),
 	// polled periodically from the engine-liveness status-plane sidecar via
@@ -78,6 +104,12 @@ func newIndexView(group string, expectedRepos int) indexView {
 		progress.WithScaledGradient("#5FB0FF", "#2FD6A6"),
 		progress.WithoutPercentage(),
 	)
+	// bgBar mirrors the main bar's gradient styling so the secondary
+	// background-enhancement bar reads as visually part of the same system.
+	bg := progress.New(
+		progress.WithScaledGradient("#5FB0FF", "#2FD6A6"),
+		progress.WithoutPercentage(),
+	)
 	s := spinner.New()
 	s.Spinner = g.Spinner()
 	s.Style = lipgloss.NewStyle().Foreground(colAccent)
@@ -86,7 +118,26 @@ func newIndexView(group string, expectedRepos int) indexView {
 		expectedRepos: expectedRepos,
 		rows:          map[string]Row{},
 		bar:           b,
+		bgBar:         bg,
+		bgAnimDir:     1,
 		spin:          s,
+	}
+}
+
+// advanceBgAnim advances the indeterminate secondary bar's sweep by one tick,
+// bouncing bgPct between 0 and 1 (a "breathing" gradient) rather than filling
+// monotonically — there is no real percentage for the background enhancement
+// pass to report (see bgBar's doc), so an honest indeterminate sweep is used
+// instead of a fabricated one.
+func (v *indexView) advanceBgAnim() {
+	const step = 0.055
+	v.bgPct += step * v.bgAnimDir
+	if v.bgPct >= 1 {
+		v.bgPct = 1
+		v.bgAnimDir = -1
+	} else if v.bgPct <= 0 {
+		v.bgPct = 0
+		v.bgAnimDir = 1
 	}
 }
 
@@ -332,16 +383,45 @@ func (v indexView) metricSuffix() string {
 // startIndex) returns "" so the header renders exactly as before this
 // feature. While indexing it is computed against time.Now() (so it advances
 // every ~1s tick — see Model's timerMsg handling); once done() it freezes at
-// finishedAt-startedAt so it stops growing with wall-clock time.
+// finishedAt-startedAt so it stops growing with wall-clock time. In the
+// split-mode interim/queryable sub-state (graph queryable, background
+// enhancement still running, not yet terminal) it ALSO freezes — at
+// queryableAt-startedAt — so the header doesn't read as "stuck" while only
+// optional background work remains; see bgElapsedText for the secondary
+// timer that keeps counting for that background work.
 func (v indexView) elapsedText() string {
 	if v.startedAt.IsZero() {
+		return ""
+	}
+	end := time.Now()
+	switch {
+	case v.done() && !v.finishedAt.IsZero():
+		end = v.finishedAt
+	case v.queryable && !v.queryableAt.IsZero():
+		end = v.queryableAt
+	}
+	return fmtElapsed(end.Sub(v.startedAt))
+}
+
+// bgElapsedText renders the secondary bar's own elapsed segment ("1m02s"),
+// counting up from the moment the graph became queryable (queryableAt) rather
+// than from startedAt — so the running time is clearly attributed to the
+// background enhancement pass, not indexing itself. Returns "" before
+// queryableAt is stamped. Freezes at finishedAt once done(), mirroring
+// elapsedText, so it doesn't keep growing after the screen finishes.
+func (v indexView) bgElapsedText() string {
+	if v.queryableAt.IsZero() {
 		return ""
 	}
 	end := time.Now()
 	if v.done() && !v.finishedAt.IsZero() {
 		end = v.finishedAt
 	}
-	return fmtElapsed(end.Sub(v.startedAt))
+	d := end.Sub(v.queryableAt)
+	if d < 0 {
+		d = 0
+	}
+	return fmtElapsed(d)
 }
 
 // view renders the full indexing body (overall bar + per-repo rows + summary).
@@ -350,9 +430,11 @@ func (v indexView) view() string {
 
 	rows := SortRows(v.rows)
 
-	// Overall progress bar + label.
+	// Overall progress bar + label. In the interim/queryable sub-state the
+	// graph is already usable, so the MAIN bar reads 100% too — only the
+	// secondary bar (below) represents the still-running background work.
 	pct := AggregateProgress(v.rows, v.expectedRepos)
-	if v.terminal {
+	if v.terminal || v.queryable {
 		pct = 1
 	}
 	label := v.overallLabel()
@@ -404,7 +486,40 @@ func (v indexView) view() string {
 	} else if v.queryable {
 		b.WriteString("\n")
 		b.WriteString(v.queryableBanner())
+		b.WriteString("\n\n")
+		b.WriteString(v.bgProgressBlock())
 	}
+
+	return b.String()
+}
+
+// bgProgressBlock renders the secondary background-enhancement bar shown only
+// in the interim/queryable sub-state (queryable && !terminal): a label with
+// its own independently-running elapsed timer, followed by an indeterminate
+// animated bar (bgPct, advanced by advanceBgAnim on each bgAnimMsg tick — see
+// model.go). It is indeterminate rather than a fabricated percentage because
+// the background enhancement pass genuinely reports no progress signal to the
+// wizard (runSplitIndex just awaits completion; see wizard_tui_run.go).
+func (v indexView) bgProgressBlock() string {
+	var b strings.Builder
+
+	label := "Enhancing relationships in the background"
+	if e := v.bgElapsedText(); e != "" {
+		label += "  " + g.MidDot + " +" + e
+	}
+	b.WriteString(rowCountStyle.Render(label))
+	b.WriteString("\n")
+
+	width := v.width - 4
+	if width < 20 {
+		width = 20
+	}
+	if width > 80 {
+		width = 80
+	}
+	bar := v.bgBar
+	bar.Width = width
+	b.WriteString(bar.ViewAs(v.bgPct))
 
 	return b.String()
 }

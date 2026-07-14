@@ -237,6 +237,27 @@ func timerTick() tea.Cmd {
 	})
 }
 
+// bgAnimMsg drives the secondary (background-enhancement) bar's indeterminate
+// sweep animation (see indexView.advanceBgAnim). Scheduled only while the
+// model is in the interim/queryable sub-state (see the outcomeMsg Interim
+// branch and the bgAnimMsg case in Update) and deliberately NOT rescheduled
+// once that state ends (terminal outcome lands, or the user finishes early) —
+// so the ticker never leaks into the background after the screen is done.
+type bgAnimMsg time.Time
+
+// bgAnimTickInterval is the cadence of the indeterminate sweep. Faster than
+// timerTickInterval (which only needs to redraw a 1s-resolution clock) since
+// this drives a visibly moving/pulsing bar — smooth motion needs a shorter
+// period.
+const bgAnimTickInterval = 90 * time.Millisecond
+
+// bgAnimTick schedules the next background-animation tick as a tea.Cmd.
+func bgAnimTick() tea.Cmd {
+	return tea.Tick(bgAnimTickInterval, func(t time.Time) tea.Msg {
+		return bgAnimMsg(t)
+	})
+}
+
 // Model is the full-screen Bubble Tea wizard model.
 type Model struct {
 	drv   Driver
@@ -368,7 +389,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// updateKey's scrIndex case) can still overlay real per-repo counts
 			// instead of leaving a silent repo at "Done · 0 entities".
 			m.idx.interimRepoStats = o.RepoStats
-			return m, waitOutcome(m.outCh)
+			// Stamp the queryable moment (freezes the main header elapsed there,
+			// and anchors the secondary bar's own elapsed — see elapsedText /
+			// bgElapsedText) and kick off the indeterminate sweep animation. At
+			// most one interim outcome is ever sent, so queryableAt is only ever
+			// stamped once, but guard IsZero defensively anyway.
+			if m.idx.queryableAt.IsZero() {
+				m.idx.queryableAt = time.Now()
+			}
+			return m, tea.Batch(waitOutcome(m.outCh), bgAnimTick())
 		}
 		m.idx.summaryEntities = o.Entities
 		m.idx.summaryRels = o.Rels
@@ -403,6 +432,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// doesn't run forever in the background.
 		if m.scr == scrIndex && !m.idx.done() {
 			return m, timerTick()
+		}
+		return m, nil
+
+	case bgAnimMsg:
+		// Secondary bar's indeterminate sweep: advance one frame and reschedule
+		// only while still in the interim/queryable sub-state. Once terminal (the
+		// background pass finished, or the user finished early) this simply stops
+		// rescheduling — no goroutine/ticker leak.
+		if m.idx.queryable && !m.idx.terminal {
+			m.idx.advanceBgAnim()
+			return m, bgAnimTick()
 		}
 		return m, nil
 

@@ -2,6 +2,7 @@ package wiztui
 
 import (
 	"testing"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 
@@ -363,6 +364,75 @@ func TestModel_InterimOutcome_EntersQueryableAndKeepsWaiting(t *testing.T) {
 	}
 	if !m.idx.install.Applied {
 		t.Error("interim outcome's Install summary not captured")
+	}
+}
+
+// TestModel_InterimOutcome_StampsQueryableAt: an interim outcome stamps
+// idx.queryableAt at the moment it lands, so the main header can freeze there
+// and the secondary bar's elapsed can start counting from it.
+func TestModel_InterimOutcome_StampsQueryableAt(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	before := time.Now()
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 100}))
+	if m.idx.queryableAt.IsZero() {
+		t.Fatal("queryableAt not stamped after an interim outcome")
+	}
+	if m.idx.queryableAt.Before(before) {
+		t.Errorf("queryableAt = %v, want at/after %v (the interim moment)", m.idx.queryableAt, before)
+	}
+}
+
+// TestModel_BgAnimMsg_AdvancesBgPctWhileInterim: the background animation tick
+// advances idx.bgPct and reschedules itself while still in the interim
+// (queryable, not terminal) sub-state.
+func TestModel_BgAnimMsg_AdvancesBgPctWhileInterim(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 100}))
+	before := m.idx.bgPct
+
+	nm, cmd := m.Update(bgAnimMsg(time.Now()))
+	m = nm.(Model)
+
+	if m.idx.bgPct <= before {
+		t.Errorf("bgPct did not advance on tick: before=%v after=%v", before, m.idx.bgPct)
+	}
+	if cmd == nil {
+		t.Error("expected the bg anim tick to reschedule itself while still interim")
+	}
+}
+
+// TestModel_BgAnimMsg_StopsAfterTerminal: once the final outcome lands (the
+// background-completes-on-its-own path), the anim tick must NOT reschedule —
+// otherwise it leaks a ticker running forever after the screen is done.
+func TestModel_BgAnimMsg_StopsAfterTerminal(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 100}))
+	m = m.update(outcomeMsg(IndexOutcome{Entities: 500, Rels: 10}))
+	if !m.idx.terminal {
+		t.Fatal("expected terminal after the final outcome")
+	}
+
+	nm, cmd := m.Update(bgAnimMsg(time.Now()))
+	m = nm.(Model)
+	if cmd != nil {
+		t.Error("expected the bg anim tick to stop rescheduling after terminal (ticker leak)")
+	}
+}
+
+// TestModel_EnterEarly_StopsBgAnimTick: finishing early via enter (before the
+// final outcome lands) must also stop the anim tick from rescheduling.
+func TestModel_EnterEarly_StopsBgAnimTick(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 100}))
+	m = m.update(key("enter")) // finish early
+	if !m.idx.terminal {
+		t.Fatal("expected terminal after finishing early")
+	}
+
+	nm, cmd := m.Update(bgAnimMsg(time.Now()))
+	m = nm.(Model)
+	if cmd != nil {
+		t.Error("expected the bg anim tick to stop rescheduling after finishing early (ticker leak)")
 	}
 }
 
