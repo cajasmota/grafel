@@ -36,6 +36,7 @@ const PhaseQueued = "queued"
 
 var phaseLabel = map[string]string{
 	PhaseQueued:                     "Queued…",
+	progress.PhaseIndexing:          "Indexing…",
 	progress.PhaseScan:              "Scanning…",
 	progress.PhaseExtractAST:        "Extracting AST…",
 	progress.PhaseResolveRefs:       "Resolving references…",
@@ -53,6 +54,17 @@ var phaseLabel = map[string]string{
 // phaseOrder is the monotonic phase ranking, mirroring the backend's real
 // emission sequence so a later, finer phase never regresses to a coarse one.
 var phaseOrder = map[string]int{
+	// PhaseIndexing is the coarse status-plane-derived "active" FLOOR (see
+	// wizard_split_progress.go's emitStatusPlaneRowEvents), used only when no
+	// fine-grained SSE event has arrived. Its rank here is consulted ONLY by
+	// rowFraction (a non-zero rank of 1 makes a status-plane-only run visibly
+	// leave 0% on AggregateProgress the moment a repo goes active). The
+	// phase-ADVANCE decision for PhaseIndexing does NOT use this rank — Fold
+	// special-cases it as a floor that only lifts a still-PhaseQueued row and
+	// never overwrites a real SSE phase (and conversely any real SSE phase
+	// always replaces the floor), so the numeric tie with PhaseExtractAST is
+	// deliberately harmless.
+	progress.PhaseIndexing:          1,
 	progress.PhaseScan:              0,
 	progress.PhaseExtractAST:        1,
 	progress.PhaseResolveRefs:       2,
@@ -140,6 +152,24 @@ func Fold(rows map[string]Row, e progress.Event) map[string]Row {
 	// Don't let a late, lower-ordered phase event overwrite a more-advanced
 	// phase already shown for this repo (the dropped/stale-row symptom #5326).
 	advance := !had || phaseRank(e.Phase) >= phaseRank(existing.Phase)
+
+	// PhaseIndexing is the coarse status-plane "active" FLOOR (see
+	// wizard_split_progress.go's emitStatusPlaneRowEvents), synthesized every
+	// ~500ms poll whether or not a dashboard is delivering SSE. It must ONLY
+	// lift a row that has no real phase yet (still PhaseQueued/unknown) — never
+	// overwrite a genuine SSE phase. Otherwise a status tick would clobber live
+	// PhaseScan/PhaseExtractAST progress (a `>=` rank TIE overwrites, and the
+	// coarse event lacks FilesTotal, so the ExtractAST file-bonus in rowFraction
+	// is lost → the label flips "Extracting AST…"→"Indexing…" and the bar
+	// stutters backward every poll for the whole AST phase). Conversely, a real
+	// SSE phase always REPLACES the coarse floor.
+	switch {
+	case e.Phase == progress.PhaseIndexing:
+		advance = !had || phaseRank(existing.Phase) < 0
+	case had && existing.Phase == progress.PhaseIndexing && phaseRank(e.Phase) >= 0:
+		advance = true
+	}
+
 	phase := e.Phase
 	if !advance {
 		phase = existing.Phase

@@ -421,7 +421,7 @@ func streamIndexWithSummary(evCh chan<- progress.Event, outCh chan<- wiztui.Inde
 				RepoStats: toWiztuiRepoStats(stats),
 			}
 		}
-		o := runSplitIndex(ctx, cancel, c, group, token, sseCh, evCh, onQueryable)
+		o := runSplitIndex(ctx, cancel, c, group, token, sseCh, evCh, perRepoRows, onQueryable)
 		if !perRepoRows {
 			o.repoStats = nil // monorepo: suppress the aggregate-as-repo-row overlay
 		}

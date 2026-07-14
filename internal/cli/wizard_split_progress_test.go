@@ -144,7 +144,7 @@ func TestSplit_CompletionWaitsForRequestAck(t *testing.T) {
 	evCh := make(chan progress.Event, 8)
 	rebuildCalled := false
 
-	o := runSplitIndexCore(ctx, cancel, func() error { rebuildCalled = true; return nil }, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, func() error { rebuildCalled = true; return nil }, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 
 	if !rebuildCalled {
 		t.Fatal("triggerRebuild was never called")
@@ -183,7 +183,7 @@ func TestSplit_ForwardsPerModuleEventsDuringWindow(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -206,7 +206,7 @@ func TestSplit_OutcomeCarriesClassifiedStats(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -230,7 +230,7 @@ func TestSplit_EngineDiesSurfacesError(t *testing.T) {
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err == nil {
 		t.Fatal("engine died but outcome carried no error (fake Done)")
 	}
@@ -247,7 +247,7 @@ func TestSplit_TimeoutSurfacesError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: time.Second, startupWindow: 0, timeout: 3 * time.Second}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, nil)
 	if o.err == nil {
 		t.Fatal("rebuild never acked but no timeout error surfaced")
 	}
@@ -262,7 +262,7 @@ func TestSplit_NeverAliveEngineFailsFast(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 100 * time.Millisecond, startupWindow: time.Second, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, nil)
 	if o.err == nil {
 		t.Fatal("engine never came alive but no error surfaced")
 	}
@@ -297,7 +297,7 @@ func TestSplit_MultiRepoPartialFailure_PromptError(t *testing.T) {
 	// Short interval + comfortably large timeout: a PROMPT terminal state must
 	// arrive from the ack, long before the timeout.
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, nil)
 
 	if o.err == nil {
 		t.Fatal("partial failure (repo B never indexed) produced no error — this is the hang/fake-done regression")
@@ -317,7 +317,7 @@ func TestSplit_EmptyRepo_PromptTerminal(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, nil)
 	if o.err == nil {
 		t.Fatal("empty repo produced no terminal error (would hang in production)")
 	}
@@ -413,7 +413,7 @@ func TestSplit_NoDashboard_WaitsForAck(t *testing.T) {
 	defer cancel()
 
 	var sseCh <-chan sseEvent // nil: no dashboard, no live bars
-	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -440,7 +440,7 @@ func TestSplit_StaleStatusAtAck_FalseFailsWithoutFlush(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err == nil {
 		t.Fatal("expected a (false) failure when status is stale at ack — documents the race the flush closes")
 	}
@@ -463,7 +463,7 @@ func TestSplit_FreshStatusFlushedBeforeAck_ClassifiesOK(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err != nil {
 		t.Fatalf("fresh status flushed before ack should classify OK, got: %v", o.err)
 	}
@@ -502,7 +502,7 @@ func TestSplit_AllReposAdvance_FiresQueryableThenWaitsForAck(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, onQueryable)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, onQueryable)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -544,7 +544,7 @@ func TestSplit_OneRepoNeverAdvances_AckBackstopPromptError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, nil)
 	if o.err == nil {
 		t.Fatal("repo B never advanced but completion reported success (AllAdvanced early false-success or hang)")
 	}
@@ -596,7 +596,7 @@ func TestSplit_StaleStatus_QueryableFiresOnceThenWaitsForAck(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, onQueryable)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, onQueryable)
 	if o.err != nil {
 		t.Fatalf("should complete once the ack lands, got: %v", o.err)
 	}
@@ -624,7 +624,7 @@ func TestSplit_FastPath_AllAdvancedAndAckedSamePoll_NoInterim(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), onQueryable)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, onQueryable)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -652,7 +652,7 @@ func TestSplit_FastAck_NeverAllAdvanced_NoInterim(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), onQueryable)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, onQueryable)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -677,7 +677,7 @@ func TestSplit_PartialFailure_NoInterim(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, onQueryable)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg, true, onQueryable)
 	if o.err == nil {
 		t.Fatal("expected a partial-failure error naming the non-advanced repo")
 	}
@@ -807,7 +807,7 @@ func TestRunSplitIndexCore_ThreadsPerRepoStatsIntoOutcome(t *testing.T) {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), nil)
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg(), true, nil)
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -917,5 +917,177 @@ func TestMakeIndexFunc_MonorepoDoesNotSeedQueuedRows(t *testing.T) {
 
 	if seeded != 0 {
 		t.Fatalf("monorepo emitted %d PhaseQueued seed events; want 0 (a bare repo-level seed row doubles the entity total)", seeded)
+	}
+}
+
+// --- Live status-plane row driving (#liverows: fast/warm re-index rows must
+// not sit at "Queued…" the whole time and jump to Done all at once) ---
+
+// LIVE-1. SPLIT status-plane row driving: a flat-group repo whose status goes
+// indexing→done with NO SSE events at all must drive its row queued→active→
+// Done LIVE during the poll, not sit at "Queued…" until the terminal
+// classify. This is the exact live-daemon symptom: on a fast/warm re-index
+// (or whenever no dashboard SSE is delivering), the seeded row used to render
+// 0% the entire time and then jump straight to Done at the very end.
+func TestSplit_StatusPlaneDrivesRowLiveWithNoSSE(t *testing.T) {
+	const repo = "/repo/backend"
+	wantSlug := filepath.Base(repo)
+
+	var mu sync.Mutex
+	calls := 0
+	read := func(string) (*statusfile.File, bool) {
+		mu.Lock()
+		calls++
+		c := calls
+		mu.Unlock()
+		if c <= 3 {
+			return &statusfile.File{Indexing: true, Entities: 0}, true // actively indexing
+		}
+		return &statusfile.File{Indexing: false, GraphFBMtime: 1000, Entities: 4242}, true // done
+	}
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", read, aliveLiveness, pendingUntil(8))
+
+	var sseCh <-chan sseEvent // nil: NEVER delivers — no dashboard / fast-path race
+	evCh := make(chan progress.Event, 64)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, cfg, true, nil)
+	if o.err != nil {
+		t.Fatalf("unexpected error: %v", o.err)
+	}
+
+	rows := map[string]wiztui.Row{}
+	sawActive := false
+	n := len(evCh)
+	if n == 0 {
+		t.Fatal("no status-plane row events were forwarded onto evCh — row would sit at Queued the whole index")
+	}
+	for i := 0; i < n; i++ {
+		e := <-evCh
+		rows = wiztui.Fold(rows, e)
+		if rows[wantSlug].Phase == progress.PhaseIndexing {
+			sawActive = true
+		}
+	}
+	if !sawActive {
+		t.Fatal("row never passed through the PhaseIndexing active phase — it would appear stuck at Queued until the terminal classify")
+	}
+	final := rows[wantSlug]
+	if final.Phase != progress.PhaseDone {
+		t.Fatalf("final row phase = %q, want %q (done)", final.Phase, progress.PhaseDone)
+	}
+	if final.EntitiesSoFar != 4242 {
+		t.Fatalf("final row EntitiesSoFar = %d, want 4242 (from the status plane)", final.EntitiesSoFar)
+	}
+}
+
+// LIVE-2. The aggregate progress bar must LEAVE 0% as soon as a repo goes
+// active/done via the status plane — not sit at 0 until the terminal
+// classify (the same live symptom viewed through AggregateProgress, which
+// drives the wizard's overall progress bar).
+func TestSplit_StatusPlaneAggregateProgressAdvances(t *testing.T) {
+	const repo = "/repo/backend"
+	wantSlug := filepath.Base(repo)
+
+	var mu sync.Mutex
+	calls := 0
+	read := func(string) (*statusfile.File, bool) {
+		mu.Lock()
+		calls++
+		c := calls
+		mu.Unlock()
+		if c <= 3 {
+			return &statusfile.File{Indexing: true, Entities: 100}, true
+		}
+		return &statusfile.File{Indexing: false, GraphFBMtime: 1000, Entities: 500}, true
+	}
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", read, aliveLiveness, pendingUntil(8))
+
+	var sseCh <-chan sseEvent
+	evCh := make(chan progress.Event, 64)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, cfg, true, nil)
+	if o.err != nil {
+		t.Fatalf("unexpected error: %v", o.err)
+	}
+
+	rows := map[string]wiztui.Row{}
+	sawPositiveBeforeDone := false
+	n := len(evCh)
+	for i := 0; i < n; i++ {
+		e := <-evCh
+		rows = wiztui.Fold(rows, e)
+		if rows[wantSlug].Phase != progress.PhaseDone && wiztui.AggregateProgress(rows, 1) > 0 {
+			sawPositiveBeforeDone = true
+		}
+	}
+	if !sawPositiveBeforeDone {
+		t.Fatal("AggregateProgress stayed at 0 until the terminal Done event — the overall bar would look hung")
+	}
+}
+
+// LIVE-3. Monotonic merge: a status-plane event (coarse PhaseIndexing) must
+// NOT regress a row that a real, finer-grained SSE event already advanced
+// past it, and it must fold into the SAME row (no duplicate) rather than
+// creating a second entry keyed differently.
+func TestSplit_StatusPlaneEventMergesMonotonicWithFinerSSEPhase(t *testing.T) {
+	rows := map[string]wiztui.Row{}
+	// A real SSE tick already reported a finer, more-advanced phase.
+	rows = wiztui.Fold(rows, progress.Event{RepoSlug: "backend", Phase: progress.PhaseResolveRefs, TS: 1})
+
+	// A later status-plane poll observes the repo still Indexing and
+	// synthesizes the coarse PhaseIndexing event.
+	evCh := make(chan progress.Event, 4)
+	emitStatusPlaneRowEvents(evCh, []repoStatusSnapshot{{Slug: "backend", Indexing: true, Entities: 77}})
+	if len(evCh) != 1 {
+		t.Fatalf("emitStatusPlaneRowEvents sent %d events, want 1", len(evCh))
+	}
+	statusEvent := <-evCh
+	statusEvent.TS = 2 // later than the SSE event, still must not regress the phase
+	rows = wiztui.Fold(rows, statusEvent)
+
+	if len(rows) != 1 {
+		t.Fatalf("len(rows) = %d, want 1 (status-plane event must merge into the existing row, not duplicate it)", len(rows))
+	}
+	got := rows["backend"]
+	if got.Phase != progress.PhaseResolveRefs {
+		t.Fatalf("row phase regressed to %q; want it to stay at the finer SSE phase %q", got.Phase, progress.PhaseResolveRefs)
+	}
+}
+
+// LIVE-4. Monorepo gate: for a monorepo (perRepoRows=false), the completion
+// poll must emit ZERO status-plane row events — the status plane has ONE
+// entry for the whole repo root while the display is per-MODULE, so emitting
+// a repo-level event here would resurrect the spurious repo-level row #5773
+// removed and double-count against the per-module rows.
+func TestSplit_Monorepo_NoStatusPlaneRowEmitted(t *testing.T) {
+	const repo = "/repo/monorepo-root"
+	store := newFakeStatusStore()
+	// Repo actively indexing, then advances (flushed right before the ack,
+	// same pattern as pendingUntilThen elsewhere in this file) — exactly the
+	// sequence that would fire row events for a flat repo.
+	store.set(repo, &statusfile.File{Indexing: true})
+	flush := func() {
+		store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 1000, Entities: 999})
+	}
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness, pendingUntilThen(4, flush))
+
+	var sseCh <-chan sseEvent
+	evCh := make(chan progress.Event, 64)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, cfg, false /* monorepo: perRepoRows=false */, nil)
+	if o.err != nil {
+		t.Fatalf("unexpected error: %v", o.err)
+	}
+	if got := len(evCh); got != 0 {
+		t.Fatalf("evCh got %d status-plane row event(s) for a monorepo; want 0 (perRepoRows=false must suppress them)", got)
 	}
 }

@@ -223,3 +223,63 @@ func TestSortRows_StableBySlug(t *testing.T) {
 		t.Errorf("sort order = %v, want [alpha zeta]", []string{got[0].RepoSlug, got[1].RepoSlug})
 	}
 }
+
+// TestFold_PhaseIndexingFloor_DoesNotClobberLiveSSEExtractAST is the
+// dashboard-up (SSE-active) regression guard: the coarse status-plane
+// PhaseIndexing floor (synthesized every ~500ms poll) must NEVER overwrite a
+// live, finer SSE phase. Here a real PhaseExtractAST event with file progress
+// (40/100) lands first; a later PhaseIndexing status tick (no FilesTotal) must
+// leave the label at "Extracting AST…" and NOT regress rowFraction — otherwise
+// the bar stutters backward for the whole (longest, most-watched) AST phase.
+func TestFold_PhaseIndexingFloor_DoesNotClobberLiveSSEExtractAST(t *testing.T) {
+	rows := map[string]Row{}
+	// Live SSE tick: extracting AST, 40/100 files.
+	rows = Fold(rows, progress.Event{RepoSlug: "backend", Phase: progress.PhaseExtractAST, FilesDone: 40, FilesTotal: 100, TS: 1})
+	before := rowFraction(rows["backend"])
+	if PhaseLabel(rows["backend"].Phase) != "Extracting AST…" {
+		t.Fatalf("setup: label = %q, want Extracting AST…", PhaseLabel(rows["backend"].Phase))
+	}
+
+	// A later status-plane poll synthesizes the coarse PhaseIndexing floor
+	// (repo still Indexing, no FilesTotal, carries a status-plane entity count).
+	rows = Fold(rows, progress.Event{RepoSlug: "backend", Phase: progress.PhaseIndexing, EntitiesSoFar: 77, TS: 2})
+
+	if PhaseLabel(rows["backend"].Phase) != "Extracting AST…" {
+		t.Fatalf("PhaseIndexing floor clobbered the live SSE phase: label = %q, want Extracting AST…", PhaseLabel(rows["backend"].Phase))
+	}
+	if after := rowFraction(rows["backend"]); after < before {
+		t.Fatalf("rowFraction regressed %v -> %v when the coarse floor arrived (backward stutter)", before, after)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("got %d rows, want 1 (floor must merge into the SSE row, not duplicate)", len(rows))
+	}
+}
+
+// TestFold_PhaseIndexingFloor_LiftsQueuedRow: the floor's intended job — it
+// DOES advance a still-PhaseQueued (seeded) row that has no real phase yet, so
+// the no-SSE live path (fast/warm re-index, no dashboard) leaves "Queued…".
+func TestFold_PhaseIndexingFloor_LiftsQueuedRow(t *testing.T) {
+	rows := map[string]Row{}
+	rows = Fold(rows, ev("backend", PhaseQueued, 1)) // seeded row
+	rows = Fold(rows, progress.Event{RepoSlug: "backend", Phase: progress.PhaseIndexing, EntitiesSoFar: 5, TS: 2})
+
+	if rows["backend"].Phase != progress.PhaseIndexing {
+		t.Fatalf("PhaseIndexing did not lift a bare PhaseQueued row: phase = %q", rows["backend"].Phase)
+	}
+	if rowFraction(rows["backend"]) <= 0 {
+		t.Fatalf("rowFraction = %v, want > 0 once the floor lifts a queued row (bar must leave 0%%)", rowFraction(rows["backend"]))
+	}
+}
+
+// TestFold_RealPhaseReplacesIndexingFloor: the converse — once the coarse floor
+// is showing, a genuine SSE phase (even the earliest, PhaseScan) must REPLACE
+// it, so a row that briefly showed "Indexing…" before the first SSE tick
+// advances into the real pipeline phases rather than sticking at the floor.
+func TestFold_RealPhaseReplacesIndexingFloor(t *testing.T) {
+	rows := map[string]Row{}
+	rows = Fold(rows, progress.Event{RepoSlug: "backend", Phase: progress.PhaseIndexing, TS: 1})
+	rows = Fold(rows, ev("backend", progress.PhaseScan, 2)) // first real SSE tick
+	if rows["backend"].Phase != progress.PhaseScan {
+		t.Fatalf("real PhaseScan did not replace the coarse Indexing floor: phase = %q", rows["backend"].Phase)
+	}
+}

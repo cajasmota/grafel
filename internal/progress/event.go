@@ -75,6 +75,15 @@ const (
 
 	// PhaseError is emitted when the indexer encounters a fatal error.
 	PhaseError = "error"
+
+	// PhaseIndexing is a coarse "actively being indexed" signal, distinct
+	// from the fine-grained pipeline phases above. It is synthesized (not
+	// emitted by the indexer itself) from the status-plane sidecar file when
+	// no fine-grained SSE progress event is available for a repo yet — e.g.
+	// no dashboard is running, or a fast/warm re-index completes before any
+	// SSE tick is delivered. See wizard_split_progress.go's
+	// emitStatusPlaneRowEvents (grafel wizard split-mode index).
+	PhaseIndexing = "indexing"
 )
 
 // TickEveryNFiles is the default file-tick interval for the AST extraction
