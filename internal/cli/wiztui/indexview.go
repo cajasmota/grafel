@@ -434,7 +434,7 @@ func (v indexView) view() string {
 	// graph is already usable, so the MAIN bar reads 100% too — only the
 	// secondary bar (below) represents the still-running background work.
 	pct := AggregateProgress(v.rows, v.expectedRepos)
-	if v.terminal || v.queryable {
+	if (v.terminal || v.queryable) && !v.failed {
 		pct = 1
 	}
 	label := v.overallLabel()

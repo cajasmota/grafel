@@ -171,6 +171,32 @@ func TestIndexView_SecondaryBar_OnlyRendersInInterimState(t *testing.T) {
 	}
 }
 
+// TestIndexView_QueryableThenFailed_MainBarNotFull: if a run becomes
+// queryable and THEN the final ack surfaces a failure (engine died/timeout),
+// the main bar must NOT force to 100% beside the "Failed" label, and the
+// secondary background bar must be suppressed.
+func TestIndexView_QueryableThenFailed_MainBarNotFull(t *testing.T) {
+	v := newIndexView("grp", 1)
+	v.width = 100
+	// A repo mid-flight (well under 100%), then queryable, then failed.
+	v.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseExtractAST, FilesDone: 1, FilesTotal: 10, TS: 1})
+	v.queryable = true
+	v.queryableAt = time.Now()
+	v.failed = true
+	v.errMsg = "engine died"
+
+	out := v.view()
+	if !strings.Contains(out, "Failed") {
+		t.Errorf("failed run missing the \"Failed\" label:\n%s", out)
+	}
+	if strings.Contains(out, "100%") {
+		t.Errorf("main bar forced to 100%% beside a Failed label (queryable-then-failed glitch):\n%s", out)
+	}
+	if strings.Contains(out, "Enhancing relationships in the background") {
+		t.Errorf("secondary bg bar rendered on a failed run (should be suppressed):\n%s", out)
+	}
+}
+
 // TestIndexView_AdvanceBgAnim_MovesAndBounces: the indeterminate animation
 // driver advances bgPct forward each tick and bounces back within [0,1]
 // instead of running away or going negative.

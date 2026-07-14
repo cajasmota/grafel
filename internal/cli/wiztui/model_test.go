@@ -401,6 +401,30 @@ func TestModel_BgAnimMsg_AdvancesBgPctWhileInterim(t *testing.T) {
 	}
 }
 
+// TestModel_SecondInterim_DoesNotSpawnSecondTickChain: only one interim
+// outcome is ever sent in practice, but a spurious second one must NOT stamp a
+// new queryableAt nor kick a second concurrent bgAnimTick chain. The first
+// interim returns a Batch that includes the tick; a second interim returns
+// only the re-armed waitOutcome (no additional tick).
+func TestModel_SecondInterim_DoesNotSpawnSecondTickChain(t *testing.T) {
+	m := driveToIndexScreen(t, nilIndex)
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 100}))
+	firstQueryableAt := m.idx.queryableAt
+	if firstQueryableAt.IsZero() {
+		t.Fatal("first interim did not stamp queryableAt")
+	}
+
+	// A spurious second interim: queryableAt must be unchanged (guarded on
+	// IsZero), so no second bgAnimTick chain is kicked (the tick-start is gated
+	// on the same IsZero as the stamp). The still-running first chain also
+	// self-limits — it only advances while queryable && !terminal (see the
+	// bgAnimMsg handler) — so there is exactly one advancing chain regardless.
+	m = m.update(outcomeMsg(IndexOutcome{Interim: true, Entities: 200}))
+	if !m.idx.queryableAt.Equal(firstQueryableAt) {
+		t.Errorf("second interim re-stamped queryableAt: was %v now %v", firstQueryableAt, m.idx.queryableAt)
+	}
+}
+
 // TestModel_BgAnimMsg_StopsAfterTerminal: once the final outcome lands (the
 // background-completes-on-its-own path), the anim tick must NOT reschedule —
 // otherwise it leaks a ticker running forever after the screen is done.

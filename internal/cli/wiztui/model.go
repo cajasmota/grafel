@@ -392,12 +392,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			// Stamp the queryable moment (freezes the main header elapsed there,
 			// and anchors the secondary bar's own elapsed — see elapsedText /
 			// bgElapsedText) and kick off the indeterminate sweep animation. At
-			// most one interim outcome is ever sent, so queryableAt is only ever
-			// stamped once, but guard IsZero defensively anyway.
+			// most one interim outcome is ever sent, so this normally runs once;
+			// gate BOTH the stamp and the tick-start on IsZero so a (spurious)
+			// second interim outcome can't spawn a second concurrent tick chain.
+			cmds := []tea.Cmd{waitOutcome(m.outCh)}
 			if m.idx.queryableAt.IsZero() {
 				m.idx.queryableAt = time.Now()
+				cmds = append(cmds, bgAnimTick())
 			}
-			return m, tea.Batch(waitOutcome(m.outCh), bgAnimTick())
+			return m, tea.Batch(cmds...)
 		}
 		m.idx.summaryEntities = o.Entities
 		m.idx.summaryRels = o.Rels
