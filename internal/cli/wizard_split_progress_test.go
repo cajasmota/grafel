@@ -371,6 +371,103 @@ func TestStatusProbe_ClassifyWaitsForMtimeAdvancePastBaseline(t *testing.T) {
 	}
 }
 
+// pendingUntilThen is like pendingUntil, but invokes onAck exactly once on the
+// first call that reports "gone" (acked) — modeling the engine flushing fresh
+// per-repo status RIGHT BEFORE it writes the ack (blocker #5 ordering).
+func pendingUntilThen(n int, onAck func()) pendingReader {
+	var mu sync.Mutex
+	calls := 0
+	fired := false
+	return func() (bool, error) {
+		mu.Lock()
+		calls++
+		c := calls
+		doFire := c >= n && !fired
+		if doFire {
+			fired = true
+		}
+		mu.Unlock()
+		if c >= n {
+			if doFire && onAck != nil {
+				onAck()
+			}
+			return false, nil
+		}
+		return true, nil
+	}
+}
+
+// #10. SPLIT with NO dashboard (nil SSE channel): completion must STILL wait for
+// the request ack — never return instantly at the fire-and-forget enqueue. This
+// is the path that previously bypassed the whole fix when dashPort==0.
+func TestSplit_NoDashboard_WaitsForAck(t *testing.T) {
+	probe := &fakeProbe{
+		pollFn:   func(call int) splitPoll { return splitPoll{RequestPending: call < 5, EngineAlive: true} },
+		classify: splitResult{Entities: 7, Rels: 9},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	var sseCh <-chan sseEvent // nil: no dashboard, no live bars
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	if o.err != nil {
+		t.Fatalf("unexpected error: %v", o.err)
+	}
+	if probe.count() < 5 {
+		t.Fatalf("completed after %d polls with no dashboard; want >=5 (must wait for the ack, not the enqueue return)", probe.count())
+	}
+	if o.entities != 7 || o.rels != 9 {
+		t.Fatalf("stats = (%d,%d); want (7,9)", o.entities, o.rels)
+	}
+}
+
+// #5a. Status-write-vs-ack RACE: if a rebuilt repo's status is STILL stale
+// (graph_fb_mtime == baseline) at the instant the request acks, Classify
+// false-fails a repo that actually succeeded. Documents the race the engine-side
+// flush fixes.
+func TestSplit_StaleStatusAtAck_FalseFailsWithoutFlush(t *testing.T) {
+	const repo = "/repo/monorepo"
+	store := newFakeStatusStore()
+	// Pre-existing graph from a prior index → baseline captured at mtime 1000.
+	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 1000})
+
+	// Engine acks WITHOUT flushing fresh status (status stays at 1000 == baseline).
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness, pendingUntil(3))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	if o.err == nil {
+		t.Fatal("expected a (false) failure when status is stale at ack — documents the race the flush closes")
+	}
+}
+
+// #5b. With the engine-side fix, fresh per-repo status is flushed BEFORE the ack
+// is written, so by the time the request goes !pending the status already shows
+// an advanced graph_fb_mtime and Classify passes.
+func TestSplit_FreshStatusFlushedBeforeAck_ClassifiesOK(t *testing.T) {
+	const repo = "/repo/monorepo"
+	store := newFakeStatusStore()
+	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 1000}) // baseline 1000
+
+	// Model the fix: the engine flushes fresh status (mtime advances) RIGHT
+	// BEFORE it writes the ack that makes the request go !pending.
+	flush := func() {
+		store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 5000, Entities: 42, Relationships: 84})
+	}
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness, pendingUntilThen(3, flush))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	if o.err != nil {
+		t.Fatalf("fresh status flushed before ack should classify OK, got: %v", o.err)
+	}
+	if o.entities != 42 || o.rels != 84 {
+		t.Fatalf("stats = (%d,%d); want (42,84) from the freshly-flushed status", o.entities, o.rels)
+	}
+}
+
 // 5. MONOLITH: unchanged — completion is the RPC return, carrying the RPC's own
 // stats, and in-window SSE events still forward. Exercises the monolith path
 // (forwardBrokerToChannel), which the fix must leave byte-identical.

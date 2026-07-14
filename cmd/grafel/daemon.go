@@ -1477,9 +1477,25 @@ func daemonRebuildFuncCore(
 		}
 	}
 
+	// flushRebuiltStatus synchronously writes each successful repo's status-plane
+	// sidecar (fresh graph_fb_mtime, Indexing=false) inline, BEFORE this function
+	// returns — i.e. before the split-mode drain writes the request ack. This
+	// closes the status-write-vs-ack race (#5729 blocker #5): a wizard keying
+	// completion on the rebuild-request ack then sees a FRESH GraphFBMtime on its
+	// first classify poll instead of a stale one for up to a heartbeat interval.
+	// Best-effort per repo; never affects the rebuild result.
+	flushRebuiltStatus := func(paths []string) {
+		for _, repoPath := range paths {
+			daemon.FlushRepoStatusFile(repoPath)
+		}
+	}
+
 	// Return a combined error if any repos failed. The rebuilt list still
 	// contains all repos that succeeded, so the caller can report partial results.
 	if len(errs) > 0 {
+		// Flush the SUCCESSFUL repos' fresh status before the (early) error
+		// return so the wizard classifies them as indexed-OK, not false-failed.
+		flushRebuiltStatus(rebuilt)
 		return rebuilt, "", fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 
@@ -1517,6 +1533,11 @@ func daemonRebuildFuncCore(
 	for _, repoPath := range rebuilt {
 		invalidateAfterIndex(repoPath)
 	}
+
+	// Flush fresh per-repo status AFTER linksFn (which may rewrite graph.fb) and
+	// the cache invalidation, so the sidecar captures the newest graph_fb_mtime,
+	// BEFORE returning (and thus before the split-mode ack). See #5729 blocker #5.
+	flushRebuiltStatus(rebuilt)
 
 	// Persist a quality-metrics snapshot to health-history.jsonl (#1329).
 	// Best-effort: failure is logged but never blocks the caller.

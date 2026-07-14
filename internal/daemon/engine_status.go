@@ -83,6 +83,34 @@ func WarmingFromStatusFile() WarmingSnapshot {
 	}
 }
 
+// FlushRepoStatusFile synchronously recomputes and writes repoPath's per-repo
+// status-plane sidecar from the CURRENT indexstate + the on-disk graph.fb, right
+// now — the same work the async statusWriter goroutine would do on its next
+// coalesced pass or 5s heartbeat, but ON DEMAND and inline.
+//
+// The engine's DIRECT group-rebuild path (cmd/grafel daemonRebuildFuncCore)
+// bypasses the scheduler, so it never triggers the statusWriter's
+// SetRepoStates→notify refresh; a rebuilt repo's status file can therefore carry
+// a STALE GraphFBMtime (== the pre-rebuild baseline) for up to a heartbeat
+// interval after the rebuild returns. In split mode the drain writes the
+// request ack the instant rebuildFn returns, so a wizard keying completion on
+// that ack (internal/cli RebuildRequestPending) would classify a repo that
+// actually succeeded as "produced no graph". daemonRebuildFuncCore calls this
+// for every rebuilt repo AFTER its graph.fb is written and BEFORE returning, so
+// !RequestPending implies the per-repo status is already fresh and the wizard's
+// first classify poll is correct (#5729 blocker #5).
+//
+// Sourced fields of note: GraphFBMtime is stat'd from the real graph.fb via
+// FindGraphFile (so this MUST be called after the graph.fb write to capture the
+// fresh mtime); Indexing comes from indexstate (false on the direct path, which
+// never registers the repo as indexing). Entities may still be 0 — the
+// graph-stats sidecar is a separate follow-up — and that is fine, the wizard's
+// classification uses graph_fb_mtime, not entities. Best-effort: a write failure
+// is swallowed (nil logger) and never fails the rebuild.
+func FlushRepoStatusFile(repoPath string) {
+	writeRepoStatusFile(repoPath, nil)
+}
+
 // WriteRepoStatusFileForTest synchronously computes and writes repoPath's
 // status-plane sidecar from the CURRENT indexstate — exactly what the
 // production statusWriter goroutine would do on its next coalesced pass, but
