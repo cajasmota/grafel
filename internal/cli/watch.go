@@ -95,6 +95,14 @@ var indexRPCFunc = func(args proto.IndexArgs) (proto.IndexReply, error) {
 // full synchronous index — it enqueues onto the daemon's debounced/
 // coalescing scheduler (service.go's Async fast-paths) and returns as
 // soon as the request is queued, exactly like the git-hooks path (#3366).
+//
+// TRADEOFF (intentional, not a bug): the error returned here now reflects
+// only whether the ENQUEUE was ACCEPTED, not whether the index actually
+// completed. An async index that fails INSIDE the daemon is therefore no
+// longer surfaced as `grafel watch: index failed (N/10)` on this path —
+// failure reporting for the reindex itself now belongs to the daemon
+// scheduler (mirrors the git-hooks async path #3366). See the matching
+// note in maybeTriggerIndex where lastSHA is cached on enqueue-accepted.
 func indexViaDaemon(repo string) error {
 	_, err := indexRPCFunc(proto.IndexArgs{RepoPath: repo, Async: true})
 	if err != nil {
@@ -143,6 +151,13 @@ type watchTickState struct {
 // The cache is updated only after a SUCCESSFUL trigger, so a failed index
 // (daemon down, RPC error) does not get treated as "up to date" and does
 // not suppress a retry on the next tick.
+//
+// NOTE (watch-head-gate tradeoff): "successful trigger" here means the
+// async ENQUEUE was ACCEPTED (see indexViaDaemon), NOT that the reindex
+// itself completed. So lastSHA is cached — and this SHA no longer
+// re-triggers — as soon as the daemon accepts the request; a failure
+// DURING the async index is owned by the daemon scheduler, not re-reported
+// by the watcher. Intentional, mirrors the git-hooks async path (#3366).
 //
 // triggered reports whether the index RPC was invoked at all (regardless
 // of whether it returned an error), so callers can distinguish "skipped by
