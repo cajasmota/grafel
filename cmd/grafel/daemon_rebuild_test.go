@@ -19,14 +19,38 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
+	"github.com/cajasmota/grafel/internal/daemon/sched"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
+// forceInProcessRebuild pins the rebuild path to the in-process indexFn for the
+// duration of a test by turning the subprocess-indexer toggle OFF (restored on
+// cleanup). The rebuild-iteration tests (panic recovery, semaphore cap, per-repo
+// timeout, status flush, sidecar) inject a mock indexFn and assert it runs, so
+// they must exercise the flag-OFF in-process path; with the toggle ON the
+// rebuild would fork a real `index-internal` child and never call the mock.
+func forceInProcessRebuild(t *testing.T) {
+	t.Helper()
+	prev := sched.SetSubprocessIndexEnabled(false)
+	t.Cleanup(func() { sched.SetSubprocessIndexEnabled(prev) })
+}
+
+// forceSubprocessRebuild pins the rebuild path to the subprocess reroute (toggle
+// ON), for the test that exercises the reroute wiring. Restored on cleanup.
+func forceSubprocessRebuild(t *testing.T) {
+	t.Helper()
+	prev := sched.SetSubprocessIndexEnabled(true)
+	t.Cleanup(func() { sched.SetSubprocessIndexEnabled(prev) })
+}
+
 // setupTestGroup creates a temporary GRAFEL_HOME, registers a group with
 // n repos whose paths are subdirectories of repoBase, and returns the group
-// name. t.Cleanup removes everything.
+// name. t.Cleanup removes everything. It also pins the rebuild to the in-process
+// path (forceInProcessRebuild) since every caller injects a mock indexFn; the
+// one subprocess-reroute test re-enables the toggle explicitly.
 func setupTestGroup(t *testing.T, groupName string, slugs []string) string {
 	t.Helper()
+	forceInProcessRebuild(t)
 	tmpHome := t.TempDir()
 	t.Setenv("GRAFEL_HOME", tmpHome)
 	repoBase := t.TempDir()

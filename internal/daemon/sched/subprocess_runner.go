@@ -264,6 +264,15 @@ func SubprocessIndexEnabled() bool {
 	return subprocessIndexerEnabled.Load()
 }
 
+// SetSubprocessIndexEnabled overrides the toggle at runtime and returns the
+// previous value so a caller can restore it. Exposed for tests that need to
+// force one path or the other (the rebuild reroute is gated on this toggle, so
+// the in-process iteration tests force it OFF and the subprocess-reroute test
+// forces it ON, each restoring the prior value on cleanup).
+func SetSubprocessIndexEnabled(v bool) (previous bool) {
+	return subprocessIndexerEnabled.Swap(v)
+}
+
 // ipcEvent is one JSON line emitted by the child process on stdout.
 type ipcEvent struct {
 	Event string `json:"event"`

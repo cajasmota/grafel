@@ -54,6 +54,11 @@ func setupSingleRepoGroup(t *testing.T, groupName, slug string) (group, repoPath
 }
 
 func TestRebuildAndSchedulerDoNotIndexSameRepoConcurrently(t *testing.T) {
+	// This test observes the rebuild⇄scheduler repolock serialisation through a
+	// mock indexFn, so it must run the in-process rebuild path (with the toggle
+	// ON the rebuild would fork a child and never call the mock). The repolock
+	// claim it guards is held across BOTH paths, so the invariant is unchanged.
+	forceInProcessRebuild(t)
 	group, repoPath := setupSingleRepoGroup(t, "mutex-group", "only")
 
 	const hold = 250 * time.Millisecond

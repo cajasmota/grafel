@@ -19,6 +19,7 @@ func TestDaemonRebuildParallel(t *testing.T) {
 	if testing.Short() {
 		t.Skip("parallel-rebuild timing test skipped in short mode")
 	}
+	forceInProcessRebuild(t)
 
 	// Build a temporary registry with a synthetic group containing 4 repos.
 	tmpHome := t.TempDir()
@@ -121,6 +122,7 @@ func TestDaemonRebuildParallel(t *testing.T) {
 // TestDaemonRebuildSerial verifies the serial path (concurrency=1)
 // indexes all repos without error and produces one result per repo.
 func TestDaemonRebuildSerial(t *testing.T) {
+	forceInProcessRebuild(t)
 	tmpHome := t.TempDir()
 	t.Setenv("GRAFEL_HOME", tmpHome)
 
@@ -159,6 +161,7 @@ func TestDaemonRebuildSerial(t *testing.T) {
 // TestDaemonRebuildFailureIsolation confirms that a failing repo does not
 // prevent other repos in the group from completing.
 func TestDaemonRebuildFailureIsolation(t *testing.T) {
+	forceInProcessRebuild(t)
 	tmpHome := t.TempDir()
 	t.Setenv("GRAFEL_HOME", tmpHome)
 
