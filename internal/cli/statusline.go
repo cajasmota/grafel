@@ -9,7 +9,7 @@ import (
 // This command INSTALLS NOTHING and edits no files — it only prints an
 // explainer + copy-paste bash snippets to stdout so a user can wire
 // grafel's live status-plane (internal/statusfile) into their own shell
-// prompt or editor statusline by hand. See internal/statusfine.go doc
+// prompt or editor statusline by hand. See internal/statusfile.go doc
 // comment for the on-disk schema this command documents.
 func newStatuslineCmd() *cobra.Command {
 	var snippetOnly bool
@@ -70,7 +70,7 @@ fi
 `
 
 // statuslineIconSnippet is example 3b: the canonical icon-state segment.
-// State precedence: engine down (heartbeat >90s stale) > last_err set >
+// State precedence: engine down (heartbeat >15s stale) > last_err set >
 // indexing > idle (graph_fb_mtime>0, "X ago") > not indexed (graph_fb_mtime
 // == 0). Prints nothing if this isn't a grafel-indexed repo (no status
 // file). Self-contained: no external color/helper dependency, works when
@@ -100,7 +100,8 @@ if [ -n "$hb" ]; then
   # BSD/macOS date parsing. On GNU/Linux, replace this line with:
   #   hbep=$(date -d "$hb" +%s 2>/dev/null)
   hbep=$(date -j -u -f "%Y-%m-%dT%H:%M:%S" "${hb%%.*}" +%s 2>/dev/null)
-  [ -n "$hbep" ] && [ $((now - hbep)) -gt 90 ] && down=1
+  # 15s = grafel's EngineHeartbeatStaleAfter (3 × 5s heartbeat); matches 'grafel doctor'
+  [ -n "$hbep" ] && [ $((now - hbep)) -gt 15 ] && down=1
 fi
 
 if [ "$down" = "1" ]; then
@@ -183,8 +184,10 @@ hashes it the same way, and reads that file directly.
 
 Key fields:
   engine_pid       int      pid of the daemon that wrote this file
-  heartbeat_at     RFC3339  rewritten every ~15-30s, even when idle —
-                            older than ~90s means the engine is DOWN
+  heartbeat_at     RFC3339  rewritten every ~5s, even when idle — older
+                            than 15s (3 missed = grafel's
+                            EngineHeartbeatStaleAfter, same threshold
+                            'grafel doctor' uses) means the engine is DOWN
   version          string   engine's self-reported version
   repo_path        string   absolute path this file describes
   indexed_ref      string   git ref the on-disk graph reflects
