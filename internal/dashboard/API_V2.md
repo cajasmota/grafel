@@ -224,7 +224,12 @@ Returns the full dependency graph for the WebUI v2 hero surface, wrapped in a
 ```
 
 Query params (mirror the v1 `/api/graph` handler): `repos=slug1,slug2`,
-`filter_kind=`, `include_external=true`, `view=modules`.
+`filter_kind=`, `include_external=true`, `view=modules`, and
+`lod=overview|normal|full` (`low|mid|high` remain accepted aliases). Capped LoD
+requests select their connected node set through compact integer adjacency and
+only then materialise response edges. The server therefore does not allocate a
+full wire-edge payload merely to discard most of it for overview or normal
+rendering.
 
 This is a NEW endpoint, not a reuse of v1 `/api/graph/{group}`. Rationale: the
 v1 tier-1 payload deliberately omits `pagerank` + `source_file` to keep its wire

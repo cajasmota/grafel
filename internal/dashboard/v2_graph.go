@@ -150,30 +150,8 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 		repos = filtered
 	}
 
-	resp := s.buildV2Graph(repos, grp, filterKind, includeExternal, includeModules)
-
-	// Apply LoD thinning: cap nodes by pagerank, then drop orphaned edges.
-	// total_node_count is preserved as the un-thinned count so the UI badge
-	// can read "500 / 12 000" even after thinning.
-	totalBeforeThin := resp.TotalNodeCount
 	nodeCap := lodNodeCap(lodParam)
-	if nodeCap > 0 && len(resp.Nodes) > nodeCap {
-		resp.Nodes = thinByPagerankConnected(resp.Nodes, resp.Edges, nodeCap)
-		keptIDs := make(map[string]bool, len(resp.Nodes))
-		for _, n := range resp.Nodes {
-			keptIDs[n.ID] = true
-		}
-		pruned := resp.Edges[:0]
-		for _, e := range resp.Edges {
-			if keptIDs[e.Source] && keptIDs[e.Target] {
-				pruned = append(pruned, e)
-			}
-		}
-		resp.Edges = pruned
-		// Degree must reflect the post-thin edge set, not the full payload.
-		recomputeServedDegree(resp.Nodes, resp.Edges)
-	}
-	resp.TotalNodeCount = totalBeforeThin
+	resp := s.buildV2GraphWithNodeCap(repos, grp, filterKind, includeExternal, includeModules, nodeCap)
 
 	if resp.TotalNodeCount > softNodeWarnThreshold {
 		w.Header().Set("X-Graph-Warning", "large-graph: node count exceeds 50k; consider filtering by repo or kind")
@@ -202,6 +180,14 @@ func (s *Server) handleV2Graph(w http.ResponseWriter, r *http.Request) {
 // which nodes/edges exist; adds pagerank + source_file + repo/community color
 // indices that the cosmos.gl canvas needs.
 func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool) v2GraphResponse {
+	return s.buildV2GraphWithNodeCap(repos, grp, filterKind, includeExternal, includeModules, 0)
+}
+
+// buildV2GraphWithNodeCap applies LoD before allocating wire edges. For large
+// groups this avoids materialising millions of v2GraphEdge values that would be
+// discarded immediately. A compact integer adjacency preserves the connected
+// thinning contract at a fraction of the memory cost.
+func (s *Server) buildV2GraphWithNodeCap(repos []*DashRepo, grp *DashGroup, filterKind string, includeExternal, includeModules bool, nodeCap int) v2GraphResponse {
 	totalEntities, totalRels, totalCommunities := 0, 0, 0
 	for _, rp := range repos {
 		if rp.Doc == nil {
@@ -213,10 +199,10 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 	}
 
 	nodes := make([]v2GraphNode, 0, totalEntities)
-	edges := make([]v2GraphEdge, 0, totalRels)
 	communities := make([]v2GraphCommunity, 0, totalCommunities)
 	reposOut := make([]v2GraphRepo, 0, len(repos))
-	visible := make(map[string]bool, totalEntities)
+	visible := make(map[string]int, totalEntities)
+	visibleLocal := make(map[string]map[string]int, len(repos))
 
 	// Stable 1-based repo color index (alphabetical, matching sortedRepos order).
 	repoColorIdx := make(map[string]int, len(repos))
@@ -238,6 +224,8 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 			Language:   lang,
 			ColorIndex: repoColorIdx[rp.Slug],
 		})
+		local := make(map[string]int, len(rp.Doc.Entities))
+		visibleLocal[rp.Slug] = local
 
 		for _, c := range rp.Doc.Communities {
 			label := c.AutoName
@@ -266,10 +254,9 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 				continue
 			}
 			pid := dashPrefixedID(rp.Slug, e.ID)
-			if visible[pid] {
+			if _, exists := visible[pid]; exists {
 				continue
 			}
-			visible[pid] = true
 			pr := 0.0
 			if e.PageRank != nil {
 				pr = *e.PageRank
@@ -293,28 +280,68 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 			if e.CommunityID != nil {
 				node.CommunityID = e.CommunityID
 			}
+			idx := len(nodes)
 			nodes = append(nodes, node)
+			visible[pid] = idx
+			local[e.ID] = idx
 		}
 	}
 
-	for _, rp := range repos {
-		if rp.Doc == nil {
-			continue
+	visitEdges := func(yield func(from, to int, kind string)) {
+		for _, rp := range repos {
+			if rp.Doc == nil {
+				continue
+			}
+			local := visibleLocal[rp.Slug]
+			for _, rel := range rp.Doc.Relationships {
+				from, fromOK := local[rel.FromID]
+				to, toOK := local[rel.ToID]
+				if fromOK && toOK {
+					yield(from, to, rel.Kind)
+				}
+			}
 		}
-		for _, rel := range rp.Doc.Relationships {
-			from := dashPrefixedID(rp.Slug, rel.FromID)
-			to := dashPrefixedID(rp.Slug, rel.ToID)
-			if visible[from] && visible[to] {
-				edges = append(edges, v2GraphEdge{Source: from, Target: to, Kind: rel.Kind})
+		for _, link := range grp.Links {
+			from, fromOK := visible[link.Source]
+			to, toOK := visible[link.Target]
+			if fromOK && toOK {
+				yield(from, to, link.Kind)
 			}
 		}
 	}
-	for _, l := range grp.Links {
-		if visible[l.Source] && visible[l.Target] {
-			edges = append(edges, v2GraphEdge{Source: l.Source, Target: l.Target, Kind: l.Kind})
-		}
-	}
 
+	totalNodeCount := len(nodes)
+	var edges []v2GraphEdge
+	if nodeCap > 0 && len(nodes) > nodeCap {
+		degrees := make([]int, len(nodes))
+		visitEdges(func(from, to int, _ string) {
+			degrees[from]++
+			degrees[to]++
+		})
+		adjacency := make([][]int, len(nodes))
+		for i, degree := range degrees {
+			nodes[i].Degree = degree
+			adjacency[i] = make([]int, 0, degree)
+		}
+		visitEdges(func(from, to int, _ string) {
+			adjacency[from] = append(adjacency[from], to)
+			adjacency[to] = append(adjacency[to], from)
+		})
+		originalNodes := nodes
+		var kept []bool
+		nodes, kept = thinByPagerankConnectedIndices(nodes, adjacency, nodeCap)
+		edges = make([]v2GraphEdge, 0, nodeCap*4)
+		visitEdges(func(from, to int, kind string) {
+			if kept[from] && kept[to] {
+				edges = append(edges, v2GraphEdge{Source: originalNodes[from].ID, Target: originalNodes[to].ID, Kind: kind})
+			}
+		})
+	} else {
+		edges = make([]v2GraphEdge, 0, totalRels)
+		visitEdges(func(from, to int, kind string) {
+			edges = append(edges, v2GraphEdge{Source: nodes[from].ID, Target: nodes[to].ID, Kind: kind})
+		})
+	}
 	recomputeServedDegree(nodes, edges)
 
 	return v2GraphResponse{
@@ -322,7 +349,7 @@ func (s *Server) buildV2Graph(repos []*DashRepo, grp *DashGroup, filterKind stri
 		Edges:          edges,
 		Communities:    communities,
 		Repos:          reposOut,
-		TotalNodeCount: len(nodes),
+		TotalNodeCount: totalNodeCount,
 	}
 }
 
@@ -499,6 +526,86 @@ func thinByPagerankConnected(nodes []v2GraphNode, edges []v2GraphEdge, cap int) 
 		}
 	}
 	return out
+}
+
+// thinByPagerankConnectedIndices is the compact-adjacency equivalent used by
+// the HTTP LoD path. kept is indexed by the original nodes slice so callers can
+// emit only surviving edges without allocating the full wire edge set first.
+func thinByPagerankConnectedIndices(nodes []v2GraphNode, adjacency [][]int, cap int) ([]v2GraphNode, []bool) {
+	kept := make([]bool, len(nodes))
+	if cap == 0 || len(nodes) <= cap {
+		for i := range kept {
+			kept[i] = true
+		}
+		return nodes, kept
+	}
+
+	ranked := make([]int, len(nodes))
+	for i := range ranked {
+		ranked[i] = i
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		left, right := nodes[ranked[i]], nodes[ranked[j]]
+		if left.PageRank != right.PageRank {
+			return left.PageRank > right.PageRank
+		}
+		return left.Degree > right.Degree
+	})
+	rankPosition := make([]int, len(nodes))
+	for pos, idx := range ranked {
+		rankPosition[idx] = pos
+	}
+	for i := 0; i < cap; i++ {
+		kept[ranked[i]] = true
+	}
+
+	connectedWithin := func(idx int) bool {
+		for _, neighbor := range adjacency[idx] {
+			if kept[neighbor] {
+				return true
+			}
+		}
+		return false
+	}
+	for i := 0; i < cap; i++ {
+		idx := ranked[i]
+		if !kept[idx] || len(adjacency[idx]) == 0 || connectedWithin(idx) {
+			continue
+		}
+		best := -1
+		for _, neighbor := range adjacency[idx] {
+			if kept[neighbor] {
+				continue
+			}
+			if best == -1 || rankPosition[neighbor] < rankPosition[best] {
+				best = neighbor
+			}
+		}
+		if best == -1 {
+			continue
+		}
+		victim := -1
+		for j := cap - 1; j >= 0; j-- {
+			candidate := ranked[j]
+			if kept[candidate] && candidate != idx && candidate != best {
+				victim = candidate
+				break
+			}
+		}
+		if victim == -1 {
+			continue
+		}
+		kept[victim] = false
+		kept[best] = true
+	}
+
+	out := make([]v2GraphNode, 0, cap)
+	for _, idx := range ranked {
+		if kept[idx] {
+			out = append(out, nodes[idx])
+		}
+	}
+	return out, kept
 }
 
 // dominantLanguage returns the most frequent non-empty Language across the
