@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
+	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -225,5 +226,108 @@ func TestRunWatch_BacksOffAndDiesWhenDaemonUnreachable(t *testing.T) {
 		}
 	case <-time.After(30 * time.Second):
 		t.Fatal("runWatch did not exit after repeated daemon-unreachable failures (issue #5140 regression)")
+	}
+}
+
+// TestMaybeTriggerIndex_UnchangedHeadSkipsSecondTick proves the
+// unchanged-HEAD no-op gate (defect b): when the stubbed HEAD SHA does
+// not move between two ticks, the index RPC must fire on the first tick
+// only (the initial trigger) and be skipped entirely on the second.
+// Before the fix, maybeTriggerIndex does not exist and every tick blindly
+// invokes the index RPC regardless of HEAD movement.
+func TestMaybeTriggerIndex_UnchangedHeadSkipsSecondTick(t *testing.T) {
+	prevSHA, prevTrigger := resolveHeadSHA, indexTriggerFunc
+	t.Cleanup(func() { resolveHeadSHA, indexTriggerFunc = prevSHA, prevTrigger })
+
+	resolveHeadSHA = func(repo string) string { return "abc123" }
+	calls := 0
+	indexTriggerFunc = func(repo string) error {
+		calls++
+		return nil
+	}
+
+	st := &watchTickState{}
+	if _, err := maybeTriggerIndex("/repo", st); err != nil {
+		t.Fatalf("first tick: unexpected error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("first tick (no cached SHA) should always trigger: got %d calls, want 1", calls)
+	}
+
+	if _, err := maybeTriggerIndex("/repo", st); err != nil {
+		t.Fatalf("second tick: unexpected error: %v", err)
+	}
+	if calls != 1 {
+		t.Fatalf("second tick with unchanged HEAD must NOT re-trigger the index RPC: got %d calls, want 1", calls)
+	}
+}
+
+// TestMaybeTriggerIndex_HeadAdvanceRetriggers proves the companion half
+// of the gate: once the stubbed HEAD SHA advances, the very next tick
+// must fire the index RPC again.
+func TestMaybeTriggerIndex_HeadAdvanceRetriggers(t *testing.T) {
+	prevSHA, prevTrigger := resolveHeadSHA, indexTriggerFunc
+	t.Cleanup(func() { resolveHeadSHA, indexTriggerFunc = prevSHA, prevTrigger })
+
+	sha := "sha-1"
+	resolveHeadSHA = func(repo string) string { return sha }
+	calls := 0
+	indexTriggerFunc = func(repo string) error {
+		calls++
+		return nil
+	}
+
+	st := &watchTickState{}
+	if _, err := maybeTriggerIndex("/repo", st); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := maybeTriggerIndex("/repo", st); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("unchanged HEAD across two more ticks should not retrigger: got %d calls, want 1", calls)
+	}
+
+	// HEAD advances.
+	sha = "sha-2"
+	if _, err := maybeTriggerIndex("/repo", st); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("tick after HEAD advance must retrigger the index RPC: got %d calls, want 2", calls)
+	}
+
+	// And settles again at the new SHA.
+	if _, err := maybeTriggerIndex("/repo", st); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 2 {
+		t.Fatalf("tick with HEAD unchanged at the new SHA should not retrigger: got %d calls, want 2", calls)
+	}
+}
+
+// TestIndexViaDaemon_SetsAsyncTrue proves indexViaDaemon requests the
+// daemon's async/coalescing fast path (service.go's Async fast-paths at
+// ~:491/:501) instead of a blocking synchronous full index, so a
+// HEAD-changed tick does not itself become a multi-minute stall on a
+// large repo.
+func TestIndexViaDaemon_SetsAsyncTrue(t *testing.T) {
+	prev := indexRPCFunc
+	t.Cleanup(func() { indexRPCFunc = prev })
+
+	var gotArgs proto.IndexArgs
+	indexRPCFunc = func(args proto.IndexArgs) (proto.IndexReply, error) {
+		gotArgs = args
+		return proto.IndexReply{RepoPath: args.RepoPath}, nil
+	}
+
+	if err := indexViaDaemon("/repo"); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !gotArgs.Async {
+		t.Fatal("indexViaDaemon must set IndexArgs.Async = true")
+	}
+	if gotArgs.RepoPath != "/repo" {
+		t.Fatalf("RepoPath = %q, want /repo", gotArgs.RepoPath)
 	}
 }

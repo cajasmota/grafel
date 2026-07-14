@@ -15,6 +15,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/client"
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/daemon/watchreg"
+	"github.com/cajasmota/grafel/internal/gitmeta"
 	"github.com/cajasmota/grafel/internal/registry"
 )
 
@@ -72,20 +73,91 @@ func (c watchBackoffConfig) shouldDie(failures int) bool {
 	return c.maxConsecutive > 0 && failures >= c.maxConsecutive
 }
 
+// indexRPCFunc issues the daemon's Index RPC. It is a var (not a direct
+// client.Dial + c.Index call) so tests can stub it and assert on the
+// IndexArgs the watcher builds (e.g. Async) without a live daemon
+// connection.
+var indexRPCFunc = func(args proto.IndexArgs) (proto.IndexReply, error) {
+	c, err := client.Dial()
+	if err != nil {
+		return proto.IndexReply{}, err
+	}
+	defer c.Close()
+	return c.Index(args)
+}
+
 // indexViaDaemon calls the daemon's Index RPC for one repo. Returns
 // the canonical "daemon not running" error so the watcher loop's log
 // line is identical to what `grafel index` would print.
+//
+// Async is set (#5140-followup / watch-head-gate): a tick that DOES need
+// to reindex (HEAD moved) must not itself block the watcher loop on a
+// full synchronous index — it enqueues onto the daemon's debounced/
+// coalescing scheduler (service.go's Async fast-paths) and returns as
+// soon as the request is queued, exactly like the git-hooks path (#3366).
 func indexViaDaemon(repo string) error {
-	c, err := client.Dial()
+	_, err := indexRPCFunc(proto.IndexArgs{RepoPath: repo, Async: true})
 	if err != nil {
 		if errors.Is(err, client.ErrDaemonNotRunning) {
 			return errDaemonNotRunning
 		}
 		return err
 	}
-	defer c.Close()
-	_, err = c.Index(proto.IndexArgs{RepoPath: repo})
-	return err
+	return nil
+}
+
+// indexTriggerFunc is the function each watch tick calls to trigger an
+// index. It defaults to indexViaDaemon; tests substitute a counting stub
+// so invocation counts can be asserted without a live daemon.
+var indexTriggerFunc = indexViaDaemon
+
+// resolveHeadSHA returns the repo's current git HEAD SHA, or "" when it
+// cannot be determined (non-git directory, git not on PATH, etc.). It is a
+// var (not a direct gitmeta.Capture call) so tests can stub a controllable
+// SHA sequence without needing a real git repository.
+var resolveHeadSHA = func(repo string) string {
+	return gitmeta.Capture(repo).SHA
+}
+
+// watchTickState carries the per-tick state that must persist across
+// polling ticks for the unchanged-HEAD no-op gate (defect b, watch-head-gate):
+// which SHA was in effect the last time an index was successfully
+// triggered, and whether any trigger has happened yet at all.
+type watchTickState struct {
+	haveTriggered bool
+	lastSHA       string
+}
+
+// maybeTriggerIndex implements the unchanged-HEAD no-op gate. It resolves
+// repo's current HEAD SHA and skips the index RPC entirely when it matches
+// the SHA recorded at the last SUCCESSFUL trigger — the per-repo `grafel
+// watch` poll loop previously triggered a full reindex on every tick even
+// when nothing had changed, which on a large repo produced a perpetual
+// rebuild loop that never settled to idle.
+//
+// The very first call always triggers (st.haveTriggered starts false), and
+// an unresolvable SHA (resolveHeadSHA returns "") always triggers too —
+// fail open rather than silently stop reindexing a repo the poller can't
+// read HEAD for.
+//
+// The cache is updated only after a SUCCESSFUL trigger, so a failed index
+// (daemon down, RPC error) does not get treated as "up to date" and does
+// not suppress a retry on the next tick.
+//
+// triggered reports whether the index RPC was invoked at all (regardless
+// of whether it returned an error), so callers can distinguish "skipped by
+// the gate" from "attempted and failed" for backoff bookkeeping.
+func maybeTriggerIndex(repo string, st *watchTickState) (triggered bool, err error) {
+	sha := resolveHeadSHA(repo)
+	if st.haveTriggered && sha != "" && sha == st.lastSHA {
+		return false, nil
+	}
+	if err := indexTriggerFunc(repo); err != nil {
+		return true, err
+	}
+	st.haveTriggered = true
+	st.lastSHA = sha
+	return true, nil
 }
 
 // newWatchCmd is the long-lived watcher daemon. The actual fsnotify-
@@ -165,6 +237,7 @@ func runWatch(repo, group string, interval time.Duration) error {
 
 	backoff := activeWatchBackoff()
 	consecutiveFailures := 0
+	tickState := &watchTickState{}
 
 	for {
 		select {
@@ -175,7 +248,15 @@ func runWatch(repo, group string, interval time.Duration) error {
 			// indexer runs inside the daemon — `watch` becomes a thin
 			// RPC client. Phase B will retire this subcommand entirely
 			// once the daemon's fsnotify loop is wired in.
-			if err := indexViaDaemon(repo); err != nil {
+			//
+			// maybeTriggerIndex gates the RPC on the repo's git HEAD SHA
+			// (watch-head-gate): a tick whose HEAD is unchanged since the
+			// last successful trigger is a cheap no-op instead of a full
+			// reindex, which previously ran unconditionally on every tick
+			// and, on a large repo, produced a perpetual rebuild loop that
+			// never settled to idle.
+			triggered, err := maybeTriggerIndex(repo, tickState)
+			if err != nil {
 				consecutiveFailures++
 				fmt.Fprintf(os.Stderr, "grafel watch: index failed (%d/%d): %v\n",
 					consecutiveFailures, backoff.maxConsecutive, err)
@@ -195,7 +276,9 @@ func runWatch(repo, group string, interval time.Duration) error {
 				}
 				continue
 			}
-			consecutiveFailures = 0
+			if triggered {
+				consecutiveFailures = 0
+			}
 			// 2. Detect any cross-repo graph.json mtime changes and
 			// re-run link passes for the affected groups. (Staleness
 			// signal only — see the note above; this does not re-trigger
