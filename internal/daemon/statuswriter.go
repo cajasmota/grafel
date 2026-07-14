@@ -10,6 +10,7 @@ import (
 	"github.com/cajasmota/grafel/internal/graph"
 	"github.com/cajasmota/grafel/internal/indexer/diff"
 	"github.com/cajasmota/grafel/internal/indexstate"
+	"github.com/cajasmota/grafel/internal/process"
 	"github.com/cajasmota/grafel/internal/registry"
 	"github.com/cajasmota/grafel/internal/statusfile"
 	"github.com/cajasmota/grafel/internal/version"
@@ -190,6 +191,37 @@ func EngineLivenessStatusKey(root string) string {
 	return engineLivenessStatusKey(root)
 }
 
+// populateProcessMetrics stamps f.RSSMB and f.CPUPct from the CURRENT
+// process's own stats (wizard CPU/RAM readout — see statusfile.File's
+// RSSMB/CPUPct doc). Called once per heartbeat write, from whichever process
+// is running the index: the standalone `grafel engine` child in split mode
+// (the DEFAULT), or the monolith daemon process itself when split mode is
+// disabled — both call startEngineLivenessHeartbeat identically (see
+// startEnginePlane in engineplane.go), so the readout works unchanged in
+// either mode.
+//
+// Cheap and non-blocking: RSSBytes is a single /proc read (Linux) or `ps`
+// shell-out (macOS); CPUPercent is likewise a single `ps` shell-out on macOS
+// or a /proc read on Linux — both return in low-single-digit milliseconds, so
+// calling this on every ~5-30s heartbeat tick is negligible overhead. Neither
+// call blocks on an interval sample (no "measure twice, subtract" dance): the
+// OS/toolchain (ps %cpu, or /proc's own accounting) already computes the
+// instantaneous percentage.
+//
+// Best-effort: a measurement failure (unsupported platform, transient ps
+// error) silently leaves the corresponding field at its current value (zero
+// on a fresh *statusfile.File) rather than erroring — RSS/CPU are an
+// observability nicety, never load-bearing for indexing itself.
+func populateProcessMetrics(f *statusfile.File) {
+	pid := os.Getpid()
+	if rss, err := process.RSSBytes(pid); err == nil && rss > 0 {
+		f.RSSMB = int64(rss / (1024 * 1024))
+	}
+	if pct, err := process.CPUPercent(pid); err == nil && pct > 0 {
+		f.CPUPct = pct
+	}
+}
+
 // startEngineLivenessHeartbeat launches a goroutine that stamps the
 // engine-global liveness statusfile (EnginePID + a fresh HeartbeatAt) once
 // immediately and then every interval, until the returned stop func is called
@@ -229,6 +261,7 @@ func startEngineLivenessHeartbeat(root string, interval time.Duration, warmingFn
 			ConcurrencyQueued:       conc.Queued,
 			ConcurrencyCap:          conc.Cap,
 		}
+		populateProcessMetrics(f)
 		if warmingFn != nil {
 			warm := warmingFn()
 			f.WarmIndexInFlight = warm.IndexInFlight

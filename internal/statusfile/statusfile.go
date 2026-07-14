@@ -128,6 +128,31 @@ type File struct {
 	WarmIndexInFlight bool `json:"warm_index_in_flight,omitempty"`
 	WarmPendingAlgo   int  `json:"warm_pending_algo,omitempty"`
 	WarmPendingLinks  int  `json:"warm_pending_links,omitempty"`
+
+	// --- Process metrics (wizard CPU/RAM readout) ---
+	// These are only meaningful on the ENGINE-LIVENESS sidecar (same scope as
+	// the Engine-global fields above): RSS/CPU are per-PROCESS, not per-repo,
+	// so a per-repo status file never sets them. Populated by whichever
+	// process actually runs the index — the standalone `grafel engine` child
+	// in split mode (the DEFAULT), or the monolith daemon process itself when
+	// split mode is disabled — from its OWN process stats
+	// (internal/process.RSSBytes / CPUPercent) on every heartbeat write. A
+	// reader (e.g. the wizard's index-progress TUI) uses these to show a live
+	// "CPU / RAM" readout during a long enrichment phase so the overall
+	// progress bar sitting near 100% doesn't look stuck. Both are
+	// best-effort: a platform/measurement failure leaves them at zero, and a
+	// tolerant reader must omit the readout entirely rather than render a
+	// misleading "0%" / "0.0 GB".
+
+	// RSSMB is the writing process's resident-set size in megabytes.
+	RSSMB int64 `json:"rss_mb,omitempty"`
+	// CPUPct is the writing process's instantaneous CPU percent (per
+	// internal/process.CPUPercent — can exceed 100% on a multi-threaded
+	// process using more than one core, matching `ps`/Activity Monitor
+	// convention). Best-effort: 0 when unavailable (e.g. no platform
+	// implementation) — a reader must not treat 0 as "idle", only as
+	// "unknown", and should omit the CPU portion of the readout when zero.
+	CPUPct float64 `json:"cpu_pct,omitempty"`
 }
 
 // statusSubdir is the directory name under GRAFEL_HOME holding one file per

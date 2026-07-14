@@ -48,14 +48,14 @@ func send(m tea.Model, msg tea.Msg) tea.Model {
 }
 
 func newTestModel(d Driver, idx IndexFunc) Model {
-	m := New(d, idx, true, true, nil)
+	m := New(d, idx, true, true, nil, nil)
 	return m.update(tea.WindowSizeMsg{Width: 100, Height: 40})
 }
 
 // newTestModelMCP builds a model WITH detected MCP tools so the
 // "Configure MCP for which tools?" screen is exercised (#5344).
 func newTestModelMCP(d Driver, idx IndexFunc, mcp []MCPToolOption) Model {
-	m := New(d, idx, true, true, mcp)
+	m := New(d, idx, true, true, mcp, nil)
 	return m.update(tea.WindowSizeMsg{Width: 100, Height: 40})
 }
 

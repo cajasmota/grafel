@@ -36,6 +36,17 @@ type indexView struct {
 	elapsed         string
 	daemonDown      bool           // group registered but not indexed
 	install         InstallSummary // captured applyGroupConfig output (fix C)
+
+	// rssMB / cpuPct are the engine process's live CPU/RAM readout (wizard
+	// CPU/RAM readout — see internal/statusfile.File's RSSMB/CPUPct doc),
+	// polled periodically from the engine-liveness status-plane sidecar via
+	// Model's metricsFn (see model.go). Zero/absent means "unknown or not yet
+	// polled" and the readout is omitted entirely — never rendered as a
+	// misleading 0%/0.0 GB. rssMB is the must-have signal (it shows the
+	// multi-GB enrichment-phase peak); cpuPct is best-effort and independently
+	// omittable.
+	rssMB  int64
+	cpuPct float64
 }
 
 func newIndexView(group string, expectedRepos int) indexView {
@@ -194,6 +205,32 @@ func (v indexView) renderRow(r Row, spinnerFrame string) string {
 	return fmt.Sprintf("%s %s  %s%s", glyph, name, phase, tail)
 }
 
+// metricSuffix renders the live "CPU / RAM" readout that appears to the right
+// of the overall progress bar's percentage — reassurance that a large-monorepo
+// rebuild's multi-minute post-index enrichment phase (where the bar sits near
+// 100% for a long stretch) is still doing real work, not stuck (motivation for
+// this whole feature).
+//
+// Omits gracefully: an absent/zero rssMB (old status file predating this
+// field, engine metric read failed, or no poll has landed yet) returns "" and
+// the bar renders exactly as it did before this feature — no dangling
+// separator, no misleading "0.0 GB". cpuPct is independently optional: a
+// positive rssMB with cpuPct==0 renders RAM only (matches the spec's
+// "best-effort CPU%" contract — RSS is the must-have signal).
+func (v indexView) metricSuffix() string {
+	if v.rssMB <= 0 {
+		return ""
+	}
+	gb := float64(v.rssMB) / 1024.0
+	var text string
+	if v.cpuPct > 0 {
+		text = fmt.Sprintf("%s CPU %.0f%% %s %.1f GB", g.MidDot, v.cpuPct, g.MidDot, gb)
+	} else {
+		text = fmt.Sprintf("%s %.1f GB", g.MidDot, gb)
+	}
+	return "  " + rowCountStyle.Render(text)
+}
+
 // view renders the full indexing body (overall bar + per-repo rows + summary).
 func (v indexView) view() string {
 	var b strings.Builder
@@ -223,7 +260,11 @@ func (v indexView) view() string {
 	b.WriteString(overallLblStyle.Render(fmt.Sprintf("Indexing %s — %s", v.group, label)))
 	b.WriteString("\n")
 	b.WriteString(bar.ViewAs(pct))
-	b.WriteString(fmt.Sprintf("  %3d%%\n\n", int(pct*100)))
+	b.WriteString(fmt.Sprintf("  %3d%%", int(pct*100)))
+	if suffix := v.metricSuffix(); suffix != "" {
+		b.WriteString(suffix)
+	}
+	b.WriteString("\n\n")
 
 	if len(rows) == 0 && !v.done() {
 		b.WriteString(rowCountStyle.Render("waiting for the indexer to report" + g.Ellipsis))

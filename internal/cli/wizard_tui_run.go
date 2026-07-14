@@ -190,7 +190,7 @@ func runInteractiveTUI(out, errOut io.Writer, opts wizardOptions) (wiztui.Result
 	if opts.MCPTools == nil {
 		mcpOpts = mcpToolOptions()
 	}
-	m := wiztui.New(drv, idxFn, opts.Watchers, opts.GitHooks, mcpOpts)
+	m := wiztui.New(drv, idxFn, opts.Watchers, opts.GitHooks, mcpOpts, wizardMetricsFunc())
 
 	// Switch the console to UTF-8 (Windows) before the alt-screen starts so the
 	// wizard's glyphs render instead of mojibake; restore on exit (#5340).

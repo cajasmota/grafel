@@ -371,3 +371,46 @@ func TestDoneScreen_DaemonDownNote(t *testing.T) {
 		}
 	})
 }
+
+// TestIndexView_MetricSuffix_PresentAndAbsent is the RED test for the wizard
+// CPU/RAM readout: with rssMB/cpuPct set, view() must render the "GB" (and
+// "CPU" when cpuPct>0) readout to the right of the overall bar's percentage;
+// with the metric unset (zero), the readout must be ABSENT and the bar's
+// existing percentage rendering must be unchanged (additive-only feature).
+func TestIndexView_MetricSuffix_PresentAndAbsent(t *testing.T) {
+	base := newIndexView("grp", 1)
+	base.width = 100
+	base.foldEvent(progress.Event{RepoSlug: "backend", Phase: progress.PhaseExtractAST, FilesDone: 1, FilesTotal: 10, TS: 1})
+
+	// No metric set: readout absent, but the percentage still renders.
+	withoutMetric := base.view()
+	if strings.Contains(withoutMetric, "GB") {
+		t.Errorf("readout should be absent when rssMB==0:\n%s", withoutMetric)
+	}
+	if !strings.Contains(withoutMetric, "%") {
+		t.Errorf("bar percentage missing even without the metric:\n%s", withoutMetric)
+	}
+
+	// RSS only (CPU best-effort unavailable): GB present, no "CPU" text.
+	rssOnly := base
+	rssOnly.rssMB = 2355 // ~2.3 GB
+	rssOnlyOut := rssOnly.view()
+	if !strings.Contains(rssOnlyOut, "2.3 GB") {
+		t.Errorf("expected \"2.3 GB\" in output:\n%s", rssOnlyOut)
+	}
+	if strings.Contains(rssOnlyOut, "CPU") {
+		t.Errorf("CPU text should be absent when cpuPct==0:\n%s", rssOnlyOut)
+	}
+
+	// RSS + CPU: both present.
+	both := base
+	both.rssMB = 2355
+	both.cpuPct = 412
+	bothOut := both.view()
+	if !strings.Contains(bothOut, "CPU 412%") {
+		t.Errorf("expected \"CPU 412%%\" in output:\n%s", bothOut)
+	}
+	if !strings.Contains(bothOut, "2.3 GB") {
+		t.Errorf("expected \"2.3 GB\" in output:\n%s", bothOut)
+	}
+}
