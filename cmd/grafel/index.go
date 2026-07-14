@@ -656,27 +656,25 @@ func Index(repoPath, outPath, repoTag string, skipPasses []string, pretty bool, 
 		// along in the stats sidecar and a WARN line is logged on a spike.
 		canaryRaw, canarySpiked := idx.buildParseErrorCanary()
 
-		// Sidecar: corpus-level metrics for `grafel doctor` and the future
-		// MCP `graph_stats` tool. Only written when Pass 4 actually ran.
-		if doc.AlgorithmStats != nil {
-			side := &graph.GraphStatsSidecar{
-				Version:            1,
-				ComputedAt:         deterministicGeneratedAt(),
-				TotalFiles:         doc.Stats.Files,
-				TotalEntities:      doc.Stats.Entities,
-				TotalRelationships: doc.Stats.Relationships,
-				Communities:        doc.AlgorithmStats.NumCommunities,
-				Modularity:         doc.AlgorithmStats.LouvainModularity,
-				GodNodes:           doc.AlgorithmStats.NumGodNodes,
-				ArticulationPoints: doc.AlgorithmStats.NumArticulationPts,
-				RuntimeMS:          doc.AlgorithmStats.RuntimeMS,
-				ExtractMS:          extractMS,
-				ParseErrorCanary:   canaryRaw,
-				ParseErrorSpike:    canarySpiked,
-			}
-			if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
-				fmt.Fprintf(os.Stderr, "grafel: sidecar write failed: %v\n", err)
-			}
+		// Sidecar: corpus-level metrics for `grafel doctor` and the MCP
+		// `graph_stats` tool. Written on EVERY build, not just when Pass 4
+		// (graph-algo) ran (#task-31 / count-drift bug): the daemon's
+		// reactive/rebuild reindex always runs with --skip-pass=graph-algo,
+		// so doc.AlgorithmStats is nil on that path. Gating the whole
+		// sidecar write behind AlgorithmStats != nil meant graph.fb was
+		// rewritten with fresh counts but graph-stats.json kept an
+		// arbitrarily stale count forever — silently diverging from the
+		// graph it's supposed to summarise. The counts (+ extract timing +
+		// parse-error canary) are now always refreshed from this build; the
+		// algorithm-derived fields (communities/modularity/god
+		// nodes/articulation points/runtime) are read-merged from the prior
+		// sidecar when Pass 4 didn't run, so a skip-graph-algo reindex can
+		// never zero out real algorithm data that a previous full build
+		// computed.
+		prior, _ := graph.LoadSidecar(filepath.Dir(outPath))
+		side := buildStatsSidecar(doc, extractMS, canaryRaw, canarySpiked, prior, deterministicGeneratedAt())
+		if err := graph.WriteSidecar(outPath, side, pretty); err != nil {
+			fmt.Fprintf(os.Stderr, "grafel: sidecar write failed: %v\n", err)
 		}
 	}
 
