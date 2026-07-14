@@ -188,3 +188,22 @@ func truncate(s string, max int) string {
 	}
 	return strings.TrimRight(string(runes), " ") + g.Ellipsis
 }
+
+// truncateLeft shortens s to max display columns by eliding from the FRONT
+// (leading ellipsis), keeping the TAIL — the distinguishing suffix of a
+// slug/module label — visible. Used where a shared, long common prefix (e.g. a
+// monorepo's RepoSlug) would otherwise swallow the whole column and make every
+// row render identically (see renderRow).
+func truncateLeft(s string, max int) string {
+	if max <= 1 {
+		return ""
+	}
+	if lipgloss.Width(s) <= max {
+		return s
+	}
+	runes := []rune(s)
+	if len(runes) > max-1 {
+		runes = runes[len(runes)-(max-1):]
+	}
+	return g.Ellipsis + strings.TrimLeft(string(runes), " ")
+}

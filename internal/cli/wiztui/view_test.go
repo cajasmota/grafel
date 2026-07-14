@@ -151,7 +151,9 @@ func TestIndexView_MonorepoModulesRenderSeparateRows(t *testing.T) {
 	}
 	out := v.view()
 	for _, mod := range []string{"a", "b", "c"} {
-		if !strings.Contains(out, "mono/"+mod) {
+		// The MODULE is the primary per-row label (not "repo/module") — see
+		// TestRenderRow_DistinctModulesRenderDistinctLabels for the bug this fixes.
+		if !strings.Contains(out, mod) {
 			t.Errorf("module row %q missing from view:\n%s", mod, out)
 		}
 	}
@@ -227,7 +229,7 @@ func TestDoneScreen_RendersCapturedSummary(t *testing.T) {
 	withGlyphs(unicodeGlyphs, func() {
 		v := m.View()
 		for _, want := range []string{
-			"1234 entities",
+			"1,234 entities",
 			"56 relationships",
 			"installed 2 hooks " + g.MidDot + " 1 watchers " + g.MidDot + " 3 MCP",
 			g.Warn + " watcher for X not activated",

@@ -3,6 +3,7 @@ package wiztui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/spinner"
@@ -36,6 +37,19 @@ type indexView struct {
 	elapsed         string
 	daemonDown      bool           // group registered but not indexed
 	install         InstallSummary // captured applyGroupConfig output (fix C)
+
+	// queryable marks the split-mode "graph queryable, background enhancement
+	// still running" sub-state: an interim IndexOutcome landed but the terminal
+	// one hasn't yet (or the user hasn't pressed enter to finish early). See
+	// Model's outcomeMsg handling and the scrIndex enter key case.
+	queryable bool
+
+	// startedAt / finishedAt bound the live elapsed timer shown in the index
+	// header. startedAt is stamped when the index screen begins (startIndex);
+	// finishedAt is stamped once terminal/failed so the header FREEZES at the
+	// real elapsed instead of continuing to grow with wall-clock time.
+	startedAt  time.Time
+	finishedAt time.Time
 
 	// rssMB / cpuPct are the engine process's live CPU/RAM readout (wizard
 	// CPU/RAM readout — see internal/statusfile.File's RSSMB/CPUPct doc),
@@ -161,16 +175,35 @@ var (
 	overallLblStyle = lipgloss.NewStyle().Foreground(colAccent2).Bold(true)
 )
 
+// rowLabel derives the primary display label for a row. For a monorepo
+// module (r.Module != ""), the MODULE — not the shared repo-slug prefix — is
+// the distinguishing part, so it is the label (its basename, if it happens to
+// carry path separators). Using "RepoSlug/Module" here regressed to every
+// module row rendering identically once RepoSlug alone filled the whole slug
+// column (e.g. a long monorepo slug like "some-example-monorepo-main") — see
+// renderRow's slugW.
+// A plain group repo (Module=="") keeps RepoSlug, which is already a short
+// basename.
+func rowLabel(r Row) string {
+	if r.Module == "" {
+		return r.RepoSlug
+	}
+	m := r.Module
+	if i := strings.LastIndexAny(m, `/\`); i >= 0 && i < len(m)-1 {
+		m = m[i+1:]
+	}
+	return m
+}
+
 // renderRow renders one repo row: name · phase · files done/total · entities ·
 // a spinner glyph while active.
 func (v indexView) renderRow(r Row, spinnerFrame string) string {
-	const slugW = 22
+	const slugW = 30
 
-	label := r.RepoSlug
-	if r.Module != "" {
-		label = r.RepoSlug + "/" + r.Module
-	}
-	name := truncate(label, slugW)
+	// Elide from the LEFT on overflow (keep the distinguishing tail) rather
+	// than the right — a long label's differentiating suffix matters more than
+	// its common prefix.
+	name := truncateLeft(rowLabel(r), slugW)
 	name = rowSlugStyle.Render(fmt.Sprintf("%-*s", slugW, name))
 
 	var glyph, phase string
@@ -192,10 +225,10 @@ func (v indexView) renderRow(r Row, spinnerFrame string) string {
 
 	var extra []string
 	if r.FilesTotal > 0 && !r.Terminal() {
-		extra = append(extra, fmt.Sprintf("%d/%d files", r.FilesDone, r.FilesTotal))
+		extra = append(extra, fmt.Sprintf("%s/%s files", commafy(int64(r.FilesDone)), commafy(int64(r.FilesTotal))))
 	}
 	if r.EntitiesSoFar > 0 {
-		extra = append(extra, fmt.Sprintf("%d entities", r.EntitiesSoFar))
+		extra = append(extra, fmt.Sprintf("%s entities", commafy(int64(r.EntitiesSoFar))))
 	}
 	tail := ""
 	if len(extra) > 0 {
@@ -231,6 +264,23 @@ func (v indexView) metricSuffix() string {
 	return "  " + rowCountStyle.Render(text)
 }
 
+// elapsedText renders the live/frozen elapsed segment for the index header
+// ("2m14s"). Absent (startedAt zero, e.g. a headless test that never called
+// startIndex) returns "" so the header renders exactly as before this
+// feature. While indexing it is computed against time.Now() (so it advances
+// every ~1s tick — see Model's timerMsg handling); once done() it freezes at
+// finishedAt-startedAt so it stops growing with wall-clock time.
+func (v indexView) elapsedText() string {
+	if v.startedAt.IsZero() {
+		return ""
+	}
+	end := time.Now()
+	if v.done() && !v.finishedAt.IsZero() {
+		end = v.finishedAt
+	}
+	return fmtElapsed(end.Sub(v.startedAt))
+}
+
 // view renders the full indexing body (overall bar + per-repo rows + summary).
 func (v indexView) view() string {
 	var b strings.Builder
@@ -257,7 +307,11 @@ func (v indexView) view() string {
 	bar := v.bar
 	bar.Width = width
 
-	b.WriteString(overallLblStyle.Render(fmt.Sprintf("Indexing %s — %s", v.group, label)))
+	head := fmt.Sprintf("Indexing %s — %s", v.group, label)
+	if e := v.elapsedText(); e != "" {
+		head += "  " + g.MidDot + " " + e
+	}
+	b.WriteString(overallLblStyle.Render(head))
 	b.WriteString("\n")
 	b.WriteString(bar.ViewAs(pct))
 	b.WriteString(fmt.Sprintf("  %3d%%", int(pct*100)))
@@ -277,15 +331,34 @@ func (v indexView) view() string {
 		b.WriteString("\n")
 	}
 
-	// Done / error summary.
+	// Done / error / queryable summary.
 	if v.failed {
 		b.WriteString("\n")
 		b.WriteString(rowErrStyle.Render("Index failed: " + v.errMsg))
 	} else if v.terminal {
 		b.WriteString("\n")
 		b.WriteString(v.doneSummary())
+	} else if v.queryable {
+		b.WriteString("\n")
+		b.WriteString(v.queryableBanner())
 	}
 
+	return b.String()
+}
+
+// queryableBanner renders the split-mode "graph queryable, background
+// enhancement still running" sub-state: a checkmark line naming the
+// queryable-time entity count, and a two-choice hint (finish now vs. wait for
+// the full background pass). Shown instead of the Done summary while
+// v.queryable is true and v.terminal is still false.
+func (v indexView) queryableBanner() string {
+	var b strings.Builder
+	b.WriteString(rowDoneStyle.Render(fmt.Sprintf(
+		"%s Graph queryable (%s entities) %s enhancing relationships in the background",
+		g.Check, commafy(v.summaryEntities), g.MidDot)))
+	b.WriteString("\n")
+	b.WriteString(rowCountStyle.Render(
+		"press enter to finish now (safe) " + g.MidDot + " or wait for background to complete"))
 	return b.String()
 }
 
@@ -303,10 +376,10 @@ func (v indexView) doneSummary() string {
 	}
 	parts := []string{head}
 	if v.summaryEntities > 0 {
-		parts = append(parts, fmt.Sprintf("%d entities", v.summaryEntities))
+		parts = append(parts, fmt.Sprintf("%s entities", commafy(v.summaryEntities)))
 	}
 	if v.summaryRels > 0 {
-		parts = append(parts, fmt.Sprintf("%d relationships", v.summaryRels))
+		parts = append(parts, fmt.Sprintf("%s relationships", commafy(v.summaryRels)))
 	}
 	if v.elapsed != "" {
 		parts = append(parts, v.elapsed)
