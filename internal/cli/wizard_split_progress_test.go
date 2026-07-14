@@ -12,7 +12,37 @@ import (
 
 	"github.com/cajasmota/grafel/internal/cli/wiztui"
 	"github.com/cajasmota/grafel/internal/progress"
+	"github.com/cajasmota/grafel/internal/statusfile"
 )
+
+// fakeStatusStore is a mutable in-memory status plane for probe tests.
+type fakeStatusStore struct {
+	mu    sync.Mutex
+	files map[string]*statusfile.File
+}
+
+func newFakeStatusStore() *fakeStatusStore {
+	return &fakeStatusStore{files: map[string]*statusfile.File{}}
+}
+
+func (s *fakeStatusStore) read(rp string) (*statusfile.File, bool) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	f, ok := s.files[rp]
+	if !ok || f == nil {
+		return nil, false
+	}
+	cp := *f
+	return &cp, true
+}
+
+func (s *fakeStatusStore) set(rp string, f *statusfile.File) {
+	s.mu.Lock()
+	s.files[rp] = f
+	s.mu.Unlock()
+}
+
+func aliveLiveness(string) (*statusfile.File, bool) { return &statusfile.File{}, true }
 
 // fakeSplitClock advances virtual time on Sleep so the poll loop's timeout
 // accounting works without any real delay.
@@ -199,6 +229,58 @@ func TestSplit_TimeoutSurfacesError(t *testing.T) {
 	o := runSplitIndexCore(ctx, cancel, func() {}, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
 	if o.err == nil {
 		t.Fatal("index never completed but no timeout error surfaced")
+	}
+}
+
+// 6. PROBE: a fresh-group first index whose status file shows Indexing:false and
+// an ADVANCED graph_fb_mtime but Entities==0 (the wizard/rebuild path does not
+// write the graph-stats sidecar) MUST complete — never spin to the timeout.
+// This is the exact live-daemon regression the coordinator flagged.
+func TestStatusProbe_CompletesOnMtimeAdvanceEvenWithZeroEntities(t *testing.T) {
+	const repo = "/repo/monorepo"
+	store := newFakeStatusStore() // fresh group: no status file yet → baseline 0
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness)
+
+	// Before the index finishes: not indexed yet.
+	if snap, _ := probe.Snapshot(); snap.Indexed {
+		t.Fatal("probe reported Indexed before any graph.fb was written")
+	}
+	// Index completes: graph.fb (re)written (mtime advances), but Entities stay
+	// 0 because the sidecar was never written on this path.
+	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 1_000_000, Entities: 0, Relationships: 0})
+
+	snap, _ := probe.Snapshot()
+	if !snap.Indexed {
+		t.Fatal("probe did NOT complete on graph_fb_mtime advance with Entities==0 (would spin to timeout — worse than the original bug)")
+	}
+	if snap.Entities != 0 {
+		t.Fatalf("Entities = %d; want 0 passed through untouched", snap.Entities)
+	}
+}
+
+// 6b. PROBE: a repo whose status file ALREADY exists with an OLD graph_fb_mtime
+// and Indexing:false at poll-start must NOT be treated as immediately complete —
+// it must wait for the mtime to advance past the captured baseline (re-index
+// correctness).
+func TestStatusProbe_WaitsForMtimeToAdvancePastBaseline(t *testing.T) {
+	const repo = "/repo/already-indexed"
+	store := newFakeStatusStore()
+	// Pre-existing graph from a prior index: mtime=1000, not indexing, has stats.
+	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 1000, Entities: 500, Relationships: 900})
+
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness) // baseline=1000
+
+	if snap, _ := probe.Snapshot(); snap.Indexed {
+		t.Fatal("probe treated a pre-existing OLD graph as immediately complete (no baseline advance)")
+	}
+	// Re-index finishes: graph.fb rewritten, mtime advances past baseline.
+	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 2000, Entities: 550, Relationships: 950})
+	snap, _ := probe.Snapshot()
+	if !snap.Indexed {
+		t.Fatal("probe did not complete after graph_fb_mtime advanced past baseline")
+	}
+	if snap.Entities != 550 || snap.Rels != 950 {
+		t.Fatalf("stats = (%d,%d); want (550,950)", snap.Entities, snap.Rels)
 	}
 }
 

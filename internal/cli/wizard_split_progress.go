@@ -30,6 +30,7 @@ import (
 	"github.com/cajasmota/grafel/internal/daemon/proto"
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/registry"
+	"github.com/cajasmota/grafel/internal/statusfile"
 )
 
 // runSplitIndex is the production split-mode driver invoked by
@@ -205,12 +206,23 @@ func runSplitIndexCore(
 	}
 }
 
+// statusReader reads one repo's status-plane sidecar (mirrors daemon.RepoStatusFile).
+type statusReader func(repoPath string) (*statusfile.File, bool)
+
+// livenessReader reads the engine-liveness heartbeat (mirrors daemon.EngineLivenessStatus).
+type livenessReader func(root string) (f *statusfile.File, fresh bool)
+
 // statusPlaneProbe is the production splitProbe: it reads each group repo's
-// status-plane sidecar (entities / indexing) and the engine-liveness heartbeat.
+// status-plane sidecar (graph_fb_mtime / indexing) and the engine-liveness
+// heartbeat. It captures a per-repo graph_fb_mtime baseline at construction so
+// completion is "graph.fb was (re)written past the pre-enqueue mtime".
 type statusPlaneProbe struct {
-	repoPaths []string
-	root      string
-	started   time.Time
+	repoPaths    []string
+	root         string
+	baseline     map[string]int64 // per-repo graph_fb_mtime captured BEFORE enqueue
+	readStatus   statusReader
+	readLiveness livenessReader
+	started      time.Time
 }
 
 // newStatusPlaneProbe builds a status-plane probe for group by loading its
@@ -233,17 +245,44 @@ func newStatusPlaneProbe(group string) (*statusPlaneProbe, error) {
 	if layout, lErr := daemon.DefaultLayout(); lErr == nil {
 		root = layout.Root
 	}
-	return &statusPlaneProbe{repoPaths: paths, root: root, started: time.Now()}, nil
+	return newStatusPlaneProbeWith(paths, root, daemon.RepoStatusFile, daemon.EngineLivenessStatus), nil
+}
+
+// newStatusPlaneProbeWith builds a probe with injected status/liveness readers
+// (production wires the real daemon funcs; tests inject fakes). It captures the
+// per-repo graph_fb_mtime BASELINE right now — BEFORE the rebuild is enqueued —
+// so completion can be detected as graph.fb being (re)written past this point.
+// For a fresh group the repos have no status file yet, so their baseline is 0.
+func newStatusPlaneProbeWith(paths []string, root string, rs statusReader, lr livenessReader) *statusPlaneProbe {
+	p := &statusPlaneProbe{
+		repoPaths:    paths,
+		root:         root,
+		baseline:     make(map[string]int64, len(paths)),
+		readStatus:   rs,
+		readLiveness: lr,
+		started:      time.Now(),
+	}
+	for _, rp := range paths {
+		if f, ok := rs(rp); ok && f != nil {
+			p.baseline[rp] = f.GraphFBMtime
+		}
+	}
+	return p
 }
 
 // Snapshot reads the status plane once. Indexed is true only when every group
-// repo has a status file that is not indexing and has entities>0.
+// repo has a status file that is not indexing and whose graph_fb_mtime has
+// ADVANCED past the pre-enqueue baseline (graph.fb was (re)written == index
+// completed). Entities/Relationships are NOT part of the completion predicate
+// because the wizard/rebuild code path does not write the graph-stats sidecar,
+// so Entities can stay 0 on a successful index (tracked as a separate bug); we
+// still surface whatever counts the status plane does have.
 func (p *statusPlaneProbe) Snapshot() (splitSnapshot, error) {
 	var ent, rels int64
 	allIndexed := len(p.repoPaths) > 0
 	for _, rp := range p.repoPaths {
-		f, ok := daemon.RepoStatusFile(rp)
-		if !ok || f == nil || f.Indexing || f.Entities == 0 {
+		f, ok := p.readStatus(rp)
+		if !ok || f == nil || f.Indexing || f.GraphFBMtime <= p.baseline[rp] {
 			allIndexed = false
 		}
 		if ok && f != nil {
@@ -251,7 +290,7 @@ func (p *statusPlaneProbe) Snapshot() (splitSnapshot, error) {
 			rels += f.Relationships
 		}
 	}
-	_, alive := daemon.EngineLivenessStatus(p.root)
+	_, alive := p.readLiveness(p.root)
 	return splitSnapshot{
 		Indexed:     allIndexed,
 		EngineAlive: alive,
