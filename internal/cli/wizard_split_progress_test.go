@@ -6,6 +6,7 @@ package cli
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -14,6 +15,70 @@ import (
 	"github.com/cajasmota/grafel/internal/progress"
 	"github.com/cajasmota/grafel/internal/statusfile"
 )
+
+// fakeSplitClock advances virtual time on Sleep so the poll loop's timeout
+// accounting works without any real delay.
+type fakeSplitClock struct {
+	mu  sync.Mutex
+	now time.Time
+}
+
+func (c *fakeSplitClock) Now() time.Time {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return c.now
+}
+
+func (c *fakeSplitClock) Sleep(d time.Duration) {
+	c.mu.Lock()
+	c.now = c.now.Add(d)
+	c.mu.Unlock()
+}
+
+// fakeProbe returns a scripted Poll sequence (by 1-based call count) and a fixed
+// Classify result.
+type fakeProbe struct {
+	mu       sync.Mutex
+	calls    int
+	pollFn   func(call int) splitPoll
+	classify splitResult
+}
+
+func (p *fakeProbe) Poll() (splitPoll, error) {
+	p.mu.Lock()
+	p.calls++
+	n := p.calls
+	fn := p.pollFn
+	p.mu.Unlock()
+	return fn(n), nil
+}
+
+func (p *fakeProbe) Classify() (splitResult, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.classify, nil
+}
+
+func (p *fakeProbe) count() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.calls
+}
+
+func testPollCfg() splitPollConfig {
+	return splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 5 * time.Minute}
+}
+
+func mkSSE(t *testing.T, e progress.Event) sseEvent {
+	t.Helper()
+	b, err := json.Marshal(e)
+	if err != nil {
+		t.Fatalf("marshal event: %v", err)
+	}
+	return sseEvent{name: "progress", data: string(b)}
+}
+
+func noTrigger() error { return nil }
 
 // fakeStatusStore is a mutable in-memory status plane for probe tests.
 type fakeStatusStore struct {
@@ -44,72 +109,30 @@ func (s *fakeStatusStore) set(rp string, f *statusfile.File) {
 
 func aliveLiveness(string) (*statusfile.File, bool) { return &statusfile.File{}, true }
 
-// fakeSplitClock advances virtual time on Sleep so the poll loop's timeout
-// accounting works without any real delay.
-type fakeSplitClock struct {
-	mu  sync.Mutex
-	now time.Time
-}
-
-func (c *fakeSplitClock) Now() time.Time {
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	return c.now
-}
-
-func (c *fakeSplitClock) Sleep(d time.Duration) {
-	c.mu.Lock()
-	c.now = c.now.Add(d)
-	c.mu.Unlock()
-}
-
-// fakeProbe returns a scripted sequence of snapshots. snapFn is called on every
-// Snapshot() with the (1-based) call count and returns the reading.
-type fakeProbe struct {
-	mu    sync.Mutex
-	calls int
-	fn    func(call int) splitSnapshot
-}
-
-func (p *fakeProbe) Snapshot() (splitSnapshot, error) {
-	p.mu.Lock()
-	p.calls++
-	n := p.calls
-	fn := p.fn
-	p.mu.Unlock()
-	return fn(n), nil
-}
-
-func (p *fakeProbe) count() int {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	return p.calls
-}
-
-func testPollCfg() splitPollConfig {
-	return splitPollConfig{interval: 10 * time.Millisecond, timeout: 5 * time.Minute}
-}
-
-func mkSSE(t *testing.T, e progress.Event) sseEvent {
-	t.Helper()
-	b, err := json.Marshal(e)
-	if err != nil {
-		t.Fatalf("marshal event: %v", err)
+// pendingUntil returns a pendingReader that reports "pending" for the first
+// (n-1) calls, then "gone" (acked) from the n-th call onward.
+func pendingUntil(n int) pendingReader {
+	var mu sync.Mutex
+	calls := 0
+	return func() (bool, error) {
+		mu.Lock()
+		calls++
+		c := calls
+		mu.Unlock()
+		return c < n, nil
 	}
-	return sseEvent{name: "progress", data: string(b)}
 }
 
-// 1. SPLIT: completion fires only AFTER the status transition, never at the
-// instant Rebuild returns.
-func TestSplit_CompletionWaitsForStatusTransition(t *testing.T) {
+// 1. SPLIT: completion fires only AFTER the engine acks our rebuild request,
+// never at the instant Rebuild returns.
+func TestSplit_CompletionWaitsForRequestAck(t *testing.T) {
 	const wantEntities, wantRels = int64(4321), int64(8765)
-	// Not indexed (but engine alive) for the first 3 polls; indexed on the 4th.
-	probe := &fakeProbe{fn: func(call int) splitSnapshot {
-		if call < 4 {
-			return splitSnapshot{Indexed: false, EngineAlive: true}
-		}
-		return splitSnapshot{Indexed: true, EngineAlive: true, Entities: wantEntities, Rels: wantRels}
-	}}
+	probe := &fakeProbe{
+		pollFn: func(call int) splitPoll {
+			return splitPoll{RequestPending: call < 4, EngineAlive: true}
+		},
+		classify: splitResult{Entities: wantEntities, Rels: wantRels},
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -117,7 +140,7 @@ func TestSplit_CompletionWaitsForStatusTransition(t *testing.T) {
 	evCh := make(chan progress.Event, 8)
 	rebuildCalled := false
 
-	o := runSplitIndexCore(ctx, cancel, func() { rebuildCalled = true }, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, func() error { rebuildCalled = true; return nil }, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg())
 
 	if !rebuildCalled {
 		t.Fatal("triggerRebuild was never called")
@@ -126,7 +149,7 @@ func TestSplit_CompletionWaitsForStatusTransition(t *testing.T) {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
 	if probe.count() < 4 {
-		t.Fatalf("completed after %d polls; want >=4 (must wait for the status transition, not the enqueue return)", probe.count())
+		t.Fatalf("completed after %d polls; want >=4 (must wait for the request ack, not the enqueue return)", probe.count())
 	}
 	if o.entities != wantEntities || o.rels != wantRels {
 		t.Fatalf("stats = (%d,%d); want (%d,%d)", o.entities, o.rels, wantEntities, wantRels)
@@ -148,24 +171,21 @@ func TestSplit_ForwardsPerModuleEventsDuringWindow(t *testing.T) {
 	}
 	evCh := make(chan progress.Event, n)
 
-	// Complete only once all n events have been forwarded into evCh's buffer.
-	probe := &fakeProbe{fn: func(int) splitSnapshot {
-		if len(evCh) >= n {
-			return splitSnapshot{Indexed: true, EngineAlive: true, Entities: 1, Rels: 1}
-		}
-		return splitSnapshot{Indexed: false, EngineAlive: true}
-	}}
+	// Ack (complete) only once all n events have been forwarded into evCh.
+	probe := &fakeProbe{
+		pollFn:   func(int) splitPoll { return splitPoll{RequestPending: len(evCh) < n, EngineAlive: true} },
+		classify: splitResult{Entities: 1, Rels: 1},
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, func() {}, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, sseCh, evCh, probe, &fakeSplitClock{}, testPollCfg())
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
 	if got := len(evCh); got != n {
 		t.Fatalf("forwarded %d events; want %d (per-module bars must render throughout the window)", got, n)
 	}
-	// Sanity: the forwarded events parse back to the per-module payloads.
 	first := <-evCh
 	if first.RepoSlug != "backend" || first.Phase != "scanning" {
 		t.Fatalf("first forwarded event = %+v; want backend/scanning", first)
@@ -173,18 +193,16 @@ func TestSplit_ForwardsPerModuleEventsDuringWindow(t *testing.T) {
 }
 
 // 3. SPLIT: the final outcome carries the real stats sourced from the status
-// signal (entities=E, rels=R), not empty.
-func TestSplit_OutcomeCarriesStatusStats(t *testing.T) {
+// classification (entities=E, rels=R).
+func TestSplit_OutcomeCarriesClassifiedStats(t *testing.T) {
 	const E, R = int64(12345), int64(67890)
-	probe := &fakeProbe{fn: func(call int) splitSnapshot {
-		if call < 2 {
-			return splitSnapshot{Indexed: false, EngineAlive: true}
-		}
-		return splitSnapshot{Indexed: true, EngineAlive: true, Entities: E, Rels: R, ElapsedSec: 7}
-	}}
+	probe := &fakeProbe{
+		pollFn:   func(call int) splitPoll { return splitPoll{RequestPending: call < 2, EngineAlive: true} },
+		classify: splitResult{Entities: E, Rels: R},
+	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, func() {}, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
 	if o.err != nil {
 		t.Fatalf("unexpected error: %v", o.err)
 	}
@@ -198,18 +216,17 @@ func TestSplit_OutcomeCarriesStatusStats(t *testing.T) {
 }
 
 // 4. SPLIT + engine dies: the engine-liveness heartbeat goes stale after having
-// been alive and the group never completes → the outcome is a real ERROR, never
-// a fake Done.
+// been alive and our request never acks → real ERROR, never a fake Done.
 func TestSplit_EngineDiesSurfacesError(t *testing.T) {
-	probe := &fakeProbe{fn: func(call int) splitSnapshot {
+	probe := &fakeProbe{pollFn: func(call int) splitPoll {
 		if call <= 2 {
-			return splitSnapshot{Indexed: false, EngineAlive: true} // alive, working
+			return splitPoll{RequestPending: true, EngineAlive: true}
 		}
-		return splitSnapshot{Indexed: false, EngineAlive: false} // engine died
+		return splitPoll{RequestPending: true, EngineAlive: false}
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	o := runSplitIndexCore(ctx, cancel, func() {}, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, testPollCfg())
 	if o.err == nil {
 		t.Fatal("engine died but outcome carried no error (fake Done)")
 	}
@@ -218,69 +235,139 @@ func TestSplit_EngineDiesSurfacesError(t *testing.T) {
 	}
 }
 
-// 4b. SPLIT + never completes while alive: bounded timeout → real error.
+// 4b. SPLIT + never acks while alive: bounded last-resort timeout → real error.
 func TestSplit_TimeoutSurfacesError(t *testing.T) {
-	probe := &fakeProbe{fn: func(int) splitSnapshot {
-		return splitSnapshot{Indexed: false, EngineAlive: true} // alive forever, never done
+	probe := &fakeProbe{pollFn: func(int) splitPoll {
+		return splitPoll{RequestPending: true, EngineAlive: true} // alive forever, never acks
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	cfg := splitPollConfig{interval: time.Second, timeout: 3 * time.Second}
-	o := runSplitIndexCore(ctx, cancel, func() {}, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	cfg := splitPollConfig{interval: time.Second, startupWindow: 0, timeout: 3 * time.Second}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
 	if o.err == nil {
-		t.Fatal("index never completed but no timeout error surfaced")
+		t.Fatal("rebuild never acked but no timeout error surfaced")
 	}
 }
 
-// 6. PROBE: a fresh-group first index whose status file shows Indexing:false and
-// an ADVANCED graph_fb_mtime but Entities==0 (the wizard/rebuild path does not
-// write the graph-stats sidecar) MUST complete — never spin to the timeout.
-// This is the exact live-daemon regression the coordinator flagged.
-func TestStatusProbe_CompletesOnMtimeAdvanceEvenWithZeroEntities(t *testing.T) {
+// S1. SPLIT + engine NEVER live: fail fast within the startup window, NOT after
+// the full 45m timeout.
+func TestSplit_NeverAliveEngineFailsFast(t *testing.T) {
+	probe := &fakeProbe{pollFn: func(int) splitPoll {
+		return splitPoll{RequestPending: true, EngineAlive: false} // never live
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: 100 * time.Millisecond, startupWindow: time.Second, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	if o.err == nil {
+		t.Fatal("engine never came alive but no error surfaced")
+	}
+	if !strings.Contains(o.err.Error(), "never became live") {
+		t.Fatalf("err = %v; want a fast never-live failure (not a 45m timeout)", o.err)
+	}
+	// Fast: it must have failed near the 1s startup window (~10 polls), not spin
+	// to the 45m timeout.
+	if probe.count() > 100 {
+		t.Fatalf("polled %d times before fast-failing; want ~10 (startup window, not the full timeout)", probe.count())
+	}
+}
+
+// B3. SPLIT multi-repo PARTIAL FAILURE: the engine acks the rebuild but repo B
+// never produced a graph. This is the exact case that hangs today. It must
+// reach a PROMPT terminal error naming B — not spin to the timeout. Uses the
+// REAL statusPlaneProbe (request-ack + mtime classification) with fake readers.
+func TestSplit_MultiRepoPartialFailure_PromptError(t *testing.T) {
+	const repoA, repoB = "/repo/backend", "/repo/frontend"
+	store := newFakeStatusStore() // both absent at construction → baseline 0
+
+	// Engine acks after 2 polls (drained our rebuild request).
+	probe := newStatusPlaneProbeWith([]string{repoA, repoB}, "/root", store.read, aliveLiveness, pendingUntil(3))
+
+	// The engine finished: A produced a graph (mtime advanced), B did NOT
+	// (no status file / no graph). Set A's completed state AFTER construction so
+	// its mtime is past the captured baseline.
+	store.set(repoA, &statusfile.File{Indexing: false, GraphFBMtime: 500, Entities: 1000, Relationships: 2000})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	// Short interval + comfortably large timeout: a PROMPT terminal state must
+	// arrive from the ack, long before the timeout.
+	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+
+	if o.err == nil {
+		t.Fatal("partial failure (repo B never indexed) produced no error — this is the hang/fake-done regression")
+	}
+	if !strings.Contains(o.err.Error(), "frontend") {
+		t.Fatalf("err = %v; want it to name the repo that failed (frontend)", o.err)
+	}
+}
+
+// B3b. EMPTY REPO: a single repo that legitimately produces no graph → prompt
+// terminal state, not a hang.
+func TestSplit_EmptyRepo_PromptTerminal(t *testing.T) {
+	const repo = "/repo/docs-only"
+	store := newFakeStatusStore() // never produces a graph
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness, pendingUntil(2))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cfg := splitPollConfig{interval: 10 * time.Millisecond, startupWindow: 0, timeout: 45 * time.Minute}
+	o := runSplitIndexCore(ctx, cancel, noTrigger, make(chan sseEvent), make(chan progress.Event, 4), probe, &fakeSplitClock{}, cfg)
+	if o.err == nil {
+		t.Fatal("empty repo produced no terminal error (would hang in production)")
+	}
+	if !strings.Contains(o.err.Error(), "docs-only") {
+		t.Fatalf("err = %v; want it to name the empty repo", o.err)
+	}
+}
+
+// PROBE: a fresh-group first index whose status file shows Indexing:false and an
+// ADVANCED graph_fb_mtime but Entities==0 (the wizard/rebuild path does not
+// write the graph-stats sidecar) MUST classify as indexed-OK (no Failed) — never
+// spin. This is the exact live-daemon regression the coordinator flagged.
+func TestStatusProbe_ClassifiesOKOnMtimeAdvanceEvenWithZeroEntities(t *testing.T) {
 	const repo = "/repo/monorepo"
 	store := newFakeStatusStore() // fresh group: no status file yet → baseline 0
-	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness)
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness, pendingUntil(1))
 
-	// Before the index finishes: not indexed yet.
-	if snap, _ := probe.Snapshot(); snap.Indexed {
-		t.Fatal("probe reported Indexed before any graph.fb was written")
-	}
 	// Index completes: graph.fb (re)written (mtime advances), but Entities stay
 	// 0 because the sidecar was never written on this path.
 	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 1_000_000, Entities: 0, Relationships: 0})
 
-	snap, _ := probe.Snapshot()
-	if !snap.Indexed {
-		t.Fatal("probe did NOT complete on graph_fb_mtime advance with Entities==0 (would spin to timeout — worse than the original bug)")
+	res, _ := probe.Classify()
+	if len(res.Failed) != 0 {
+		t.Fatalf("Classify marked %v as failed on a graph_fb_mtime advance with Entities==0 (would surface a false failure)", res.Failed)
 	}
-	if snap.Entities != 0 {
-		t.Fatalf("Entities = %d; want 0 passed through untouched", snap.Entities)
+	if res.Entities != 0 {
+		t.Fatalf("Entities = %d; want 0 passed through untouched", res.Entities)
 	}
 }
 
-// 6b. PROBE: a repo whose status file ALREADY exists with an OLD graph_fb_mtime
-// and Indexing:false at poll-start must NOT be treated as immediately complete —
-// it must wait for the mtime to advance past the captured baseline (re-index
-// correctness).
-func TestStatusProbe_WaitsForMtimeToAdvancePastBaseline(t *testing.T) {
+// PROBE: a repo whose status file ALREADY exists with an OLD graph_fb_mtime and
+// Indexing:false must NOT be classified as freshly indexed until graph_fb_mtime
+// advances past the captured baseline (re-index correctness).
+func TestStatusProbe_ClassifyWaitsForMtimeAdvancePastBaseline(t *testing.T) {
 	const repo = "/repo/already-indexed"
 	store := newFakeStatusStore()
 	// Pre-existing graph from a prior index: mtime=1000, not indexing, has stats.
 	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 1000, Entities: 500, Relationships: 900})
 
-	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness) // baseline=1000
+	probe := newStatusPlaneProbeWith([]string{repo}, "/root", store.read, aliveLiveness, pendingUntil(1)) // baseline=1000
 
-	if snap, _ := probe.Snapshot(); snap.Indexed {
-		t.Fatal("probe treated a pre-existing OLD graph as immediately complete (no baseline advance)")
+	// Before the re-index rewrites graph.fb, the stale graph must be treated as
+	// NOT freshly indexed.
+	if res, _ := probe.Classify(); len(res.Failed) == 0 {
+		t.Fatal("classified a pre-existing OLD graph as freshly indexed (no baseline advance)")
 	}
 	// Re-index finishes: graph.fb rewritten, mtime advances past baseline.
 	store.set(repo, &statusfile.File{Indexing: false, GraphFBMtime: 2000, Entities: 550, Relationships: 950})
-	snap, _ := probe.Snapshot()
-	if !snap.Indexed {
-		t.Fatal("probe did not complete after graph_fb_mtime advanced past baseline")
+	res, _ := probe.Classify()
+	if len(res.Failed) != 0 {
+		t.Fatalf("still failed after graph_fb_mtime advanced past baseline: %v", res.Failed)
 	}
-	if snap.Entities != 550 || snap.Rels != 950 {
-		t.Fatalf("stats = (%d,%d); want (550,950)", snap.Entities, snap.Rels)
+	if res.Entities != 550 || res.Rels != 950 {
+		t.Fatalf("stats = (%d,%d); want (550,950)", res.Entities, res.Rels)
 	}
 }
 

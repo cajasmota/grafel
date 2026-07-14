@@ -9,12 +9,18 @@ package cli
 // that async RPC return, so the TUI jumped 0→100% "Done" in <1s while the
 // engine indexed for ~20min in the background, and no per-module rows rendered.
 //
-// THE FIX (this file): in split mode the wizard still enqueues the rebuild, but
-// it KEEPS forwarding SSE per-module progress events to the TUI while it polls
-// a LEVEL-TRIGGERED completion signal off the status plane (statusfile). The
-// RPC return no longer marks completion. Engine-liveness (the engine-liveness
-// heartbeat) is a failure backstop and an overall timeout bounds the wait, so a
-// dead/wedged engine surfaces a real error instead of a fake "Done".
+// COMPLETION SIGNAL: the engine finishing OUR group rebuild — observed as the
+// KindRebuild request we enqueued (identified by our ProgressToken) being
+// drained+acked, i.e. daemon.RebuildRequestPending going false. This is
+// authoritative and race-free (the enqueue RPC returns only after the request
+// is on disk, and we poll for ITS disappearance) and, crucially, it fires even
+// when a repo fails / is empty / is skipped — where a "every repo's graph.fb
+// advanced" predicate would hang until the overall timeout. graph_fb_mtime is
+// then used only to CLASSIFY the per-repo result once the rebuild is done.
+//
+// While polling we KEEP forwarding SSE per-module progress events so the bars
+// render live. Engine-liveness is a failure backstop (never-alive fast-fail +
+// alive→stale), and the overall timeout is a last-resort bound.
 //
 // Monolith mode is UNCHANGED: there Service.Rebuild is synchronous (the RPC
 // return IS completion) and streamIndexWithSummary still uses
@@ -23,6 +29,8 @@ package cli
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon"
@@ -34,10 +42,9 @@ import (
 )
 
 // runSplitIndex is the production split-mode driver invoked by
-// streamIndexWithSummary. It builds the status-plane probe for the group and an
-// enqueue closure that fires the async Rebuild RPC on its own goroutine (so a
-// slow serve never stalls the completion poll), then delegates to
-// runSplitIndexCore.
+// streamIndexWithSummary. It builds the status-plane probe for the group (which
+// captures the per-repo graph_fb_mtime baseline BEFORE the enqueue) and a
+// synchronous enqueue closure, then delegates to runSplitIndexCore.
 func runSplitIndex(
 	ctx context.Context,
 	cancel context.CancelFunc,
@@ -46,17 +53,18 @@ func runSplitIndex(
 	sseCh <-chan sseEvent,
 	evCh chan<- progress.Event,
 ) rebuildOutcome {
-	probe, err := newStatusPlaneProbe(group)
+	probe, err := newStatusPlaneProbe(group, token)
 	if err != nil {
 		return rebuildOutcome{err: err}
 	}
-	trigger := func() {
-		go func() {
-			// Fire-and-forget: in split mode this enqueues onto the engine
-			// queue and returns immediately. Its reply carries no stats, so we
-			// ignore it — completion + stats come from the status-plane poll.
-			_, _ = c.Rebuild(proto.RebuildArgs{Group: group, ProgressToken: token, Interactive: true})
-		}()
+	// Synchronous enqueue: in split mode Service.Rebuild writes the KindRebuild
+	// request to disk and returns immediately, so this is fast. Returning only
+	// after the RPC completes (a) race-free gates the request-ack poll below
+	// (the request exists before we look for its disappearance) and (b) fixes
+	// the goroutine-leak (N1) — nothing outlives c.Close on an early return.
+	trigger := func() error {
+		_, rErr := c.Rebuild(proto.RebuildArgs{Group: group, ProgressToken: token, Interactive: true})
+		return rErr
 	}
 	return runSplitIndexCore(ctx, cancel, trigger, sseCh, evCh, probe, realSplitClock{}, defaultSplitPoll())
 }
@@ -74,69 +82,84 @@ type realSplitClock struct{}
 func (realSplitClock) Now() time.Time        { return time.Now() }
 func (realSplitClock) Sleep(d time.Duration) { time.Sleep(d) }
 
-// splitSnapshot is one level-triggered reading of a group's split-mode index
-// state, sourced from the status plane.
-type splitSnapshot struct {
-	// Indexed is true when EVERY repo in the group is freshly indexed
-	// (status file present, not indexing, entities>0). Level-triggered: it
-	// stays true once reached and is robust to dropped SSE events.
-	Indexed bool
-	// EngineAlive mirrors the engine-liveness heartbeat freshness. Used as a
-	// FAILURE backstop: if the engine was alive and then goes stale before the
-	// group finishes, the wait fails instead of hanging.
+// splitPoll is one reading of the completion loop's inputs: whether our rebuild
+// request is still queued, and whether the engine is live.
+type splitPoll struct {
+	// RequestPending is true while our KindRebuild request is still on the
+	// engine queue. false == the engine drained+acked it == our group rebuild
+	// finished (success OR partial); the poll then stops and classifies.
+	RequestPending bool
+	// EngineAlive mirrors the engine-liveness heartbeat freshness (backstop).
 	EngineAlive bool
-	// Entities / Rels are the summed status-plane counts across the group's
-	// repos — the source of the final summary stats (the async split RPC reply
-	// carries none).
-	Entities int64
-	Rels     int64
-	// ElapsedSec is wall time since the poll started.
-	ElapsedSec float64
 }
 
-// splitProbe polls the status plane for a group's completion snapshot. The
-// production implementation reads statusfiles; tests inject a fake.
+// splitResult is the classified outcome, produced once the rebuild is done.
+type splitResult struct {
+	// Failed names the repos that did NOT produce a fresh graph (with a reason).
+	// Empty == every repo indexed OK.
+	Failed []string
+	// Entities / Rels are summed across the repos that DID index (status plane;
+	// may be 0 on the wizard path where the graph-stats sidecar isn't written).
+	Entities int64
+	Rels     int64
+}
+
+// splitProbe is the seam the completion loop polls. Poll is called repeatedly;
+// Classify is called exactly once, after Poll reports RequestPending==false.
 type splitProbe interface {
-	Snapshot() (splitSnapshot, error)
+	Poll() (splitPoll, error)
+	Classify() (splitResult, error)
 }
 
 // splitPollConfig tunes the completion poll.
 type splitPollConfig struct {
-	interval time.Duration // between polls
-	timeout  time.Duration // overall bound; exceeding it is a failure
+	interval      time.Duration // between polls
+	startupWindow time.Duration // fast-fail if the engine is never live within this (S1)
+	timeout       time.Duration // last-resort overall bound
 }
 
-// defaultSplitPoll returns the production poll cadence: a 500ms interval and a
-// 45-minute overall timeout (comfortably above the observed ~20min large-repo
-// index, but bounded so a wedged engine never hangs the wizard forever).
+// defaultSplitPoll returns the production poll cadence: a 500ms interval, a 30s
+// never-alive fast-fail window, and a 45-minute last-resort timeout (well above
+// the observed ~20min large-repo index, but bounded so a genuinely wedged
+// engine never hangs the wizard forever). With the request-ack signal the
+// timeout should essentially never be hit.
 func defaultSplitPoll() splitPollConfig {
-	return splitPollConfig{interval: 500 * time.Millisecond, timeout: 45 * time.Minute}
+	return splitPollConfig{
+		interval:      500 * time.Millisecond,
+		startupWindow: 30 * time.Second,
+		timeout:       45 * time.Minute,
+	}
 }
 
-// awaitSplitCompletion polls probe until the group is freshly indexed (success),
-// the engine-liveness heartbeat goes stale AFTER having been alive (failure
-// backstop), or the overall timeout elapses (failure). It NEVER returns success
-// on the RPC-enqueue instant — completion is decided solely by the level-
-// triggered status-plane signal.
-func awaitSplitCompletion(probe splitProbe, clk splitClock, cfg splitPollConfig) (splitSnapshot, error) {
+// awaitSplitCompletion polls probe until our group rebuild is drained+acked
+// (RequestPending==false → classify + return), or a failure fires: the engine
+// is never seen live within startupWindow (S1 fast-fail), the engine was live
+// and then went stale (backstop), or the overall timeout elapses (last resort).
+// It NEVER returns success on the enqueue instant — completion is the request
+// ack, not the RPC return.
+func awaitSplitCompletion(probe splitProbe, clk splitClock, cfg splitPollConfig) (splitResult, error) {
 	start := clk.Now()
 	sawAlive := false
 	for {
-		snap, err := probe.Snapshot()
+		p, err := probe.Poll()
 		if err == nil {
-			if snap.Indexed {
-				return snap, nil
+			if !p.RequestPending {
+				// The engine finished our rebuild — classify the per-repo result.
+				return probe.Classify()
 			}
-			if snap.EngineAlive {
+			if p.EngineAlive {
 				sawAlive = true
 			} else if sawAlive {
-				// The engine was alive and is now stale without the group
-				// having finished — a real failure, not a fake "Done".
-				return splitSnapshot{}, fmt.Errorf("index engine stopped responding before the group finished indexing")
+				return splitResult{}, fmt.Errorf("index engine stopped responding before the group rebuild finished")
 			}
 		}
-		if clk.Now().Sub(start) >= cfg.timeout {
-			return splitSnapshot{}, fmt.Errorf("timed out after %s waiting for group to finish indexing", cfg.timeout)
+		elapsed := clk.Now().Sub(start)
+		if !sawAlive && cfg.startupWindow > 0 && elapsed >= cfg.startupWindow {
+			// S1: the engine never came alive — fail fast, don't wait the full timeout.
+			return splitResult{}, fmt.Errorf("index engine never became live within %s; is the daemon/engine running?", cfg.startupWindow)
+		}
+		if elapsed >= cfg.timeout {
+			return splitResult{}, fmt.Errorf("timed out after %s waiting for the group rebuild to finish", cfg.timeout)
 		}
 		clk.Sleep(cfg.interval)
 	}
@@ -169,40 +192,49 @@ func forwardSSEUntilCancel(ctx context.Context, sseCh <-chan sseEvent, evCh chan
 	}
 }
 
-// runSplitIndexCore drives the split-mode index: it enqueues the async rebuild,
-// forwards SSE events to the TUI CONCURRENTLY, and polls the status-plane probe
-// for real completion. The returned rebuildOutcome carries the status-sourced
-// stats on success, or a real error on engine-death/timeout — NEVER a fake Done.
+// runSplitIndexCore drives the split-mode index: it forwards SSE events to the
+// TUI CONCURRENTLY, enqueues the async rebuild (synchronously, so the ack poll
+// is race-free), and polls until the engine finishes OUR rebuild, then
+// classifies. The returned rebuildOutcome carries the status-sourced stats on a
+// clean success, or a PROMPT error naming the repo(s) that did not index — and
+// on engine-death/timeout — NEVER a fake Done and NEVER a 45m hang on a partial
+// failure.
 func runSplitIndexCore(
 	ctx context.Context,
 	cancel context.CancelFunc,
-	triggerRebuild func(),
+	triggerRebuild func() error,
 	sseCh <-chan sseEvent,
 	evCh chan<- progress.Event,
 	probe splitProbe,
 	clk splitClock,
 	cfg splitPollConfig,
 ) rebuildOutcome {
-	// 1. Enqueue the async rebuild. In split mode this returns almost
-	//    immediately (fire-and-forget) — we deliberately do NOT key completion
-	//    on it. The production closure spawns its own goroutine for the RPC, so
-	//    this call is non-blocking; completion is decided by the poll below.
-	triggerRebuild()
-
-	// 2. Forward SSE per-module events to the TUI CONCURRENTLY so the bars
-	//    render live for the whole index. Cancelled once completion is decided.
+	// 1. Start forwarding SSE per-module events CONCURRENTLY so the bars render
+	//    live from the first moment (even during the enqueue).
 	go forwardSSEUntilCancel(ctx, sseCh, evCh)
 
-	// 3. Poll the status plane for REAL, level-triggered completion.
-	snap, err := awaitSplitCompletion(probe, clk, cfg)
+	// 2. Enqueue the rebuild synchronously. The RPC returns only once the
+	//    request is on disk, which race-free gates the ack poll below.
+	if err := triggerRebuild(); err != nil {
+		cancel()
+		return rebuildOutcome{err: fmt.Errorf("enqueue rebuild: %w", err)}
+	}
+
+	// 3. Poll for real completion (the request ack), then classify.
+	res, err := awaitSplitCompletion(probe, clk, cfg)
 	cancel() // stop the SSE forward goroutine
 	if err != nil {
 		return rebuildOutcome{err: err}
 	}
+	if len(res.Failed) > 0 {
+		// Partial failure: the engine finished, but some repos produced no
+		// graph. Surface a PROMPT, clear terminal error naming them — never a
+		// hang, never a silent fake success.
+		return rebuildOutcome{err: fmt.Errorf("index did not complete for %d repo(s): %s", len(res.Failed), strings.Join(res.Failed, "; "))}
+	}
 	return rebuildOutcome{
-		entities: snap.Entities,
-		rels:     snap.Rels,
-		elapsed:  snap.ElapsedSec,
+		entities: res.Entities,
+		rels:     res.Rels,
 	}
 }
 
@@ -212,23 +244,30 @@ type statusReader func(repoPath string) (*statusfile.File, bool)
 // livenessReader reads the engine-liveness heartbeat (mirrors daemon.EngineLivenessStatus).
 type livenessReader func(root string) (f *statusfile.File, fresh bool)
 
-// statusPlaneProbe is the production splitProbe: it reads each group repo's
-// status-plane sidecar (graph_fb_mtime / indexing) and the engine-liveness
-// heartbeat. It captures a per-repo graph_fb_mtime baseline at construction so
-// completion is "graph.fb was (re)written past the pre-enqueue mtime".
+// pendingReader reports whether our rebuild request is still queued (mirrors
+// daemon.RebuildRequestPending bound to this group + token).
+type pendingReader func() (bool, error)
+
+// statusPlaneProbe is the production splitProbe. Poll consults the request-ack
+// queue (completion) + engine-liveness (backstop); Classify inspects each group
+// repo's status file vs the pre-enqueue graph_fb_mtime baseline. Entities are
+// NOT part of the completion/classification gate (the wizard/rebuild path does
+// not write the graph-stats sidecar, so a successfully-indexed repo can report
+// entities:0) — graph_fb_mtime advancing is the "graph was written" signal.
 type statusPlaneProbe struct {
 	repoPaths    []string
 	root         string
 	baseline     map[string]int64 // per-repo graph_fb_mtime captured BEFORE enqueue
 	readStatus   statusReader
 	readLiveness livenessReader
-	started      time.Time
+	pending      pendingReader
 }
 
 // newStatusPlaneProbe builds a status-plane probe for group by loading its
 // registry config to enumerate repo paths and resolving the daemon layout root
-// for the engine-liveness sidecar.
-func newStatusPlaneProbe(group string) (*statusPlaneProbe, error) {
+// for the engine-liveness sidecar. token scopes the request-ack check to OUR
+// specific rebuild.
+func newStatusPlaneProbe(group, token string) (*statusPlaneProbe, error) {
 	cfgPath, err := registry.ConfigPathFor(group)
 	if err != nil {
 		return nil, err
@@ -245,22 +284,23 @@ func newStatusPlaneProbe(group string) (*statusPlaneProbe, error) {
 	if layout, lErr := daemon.DefaultLayout(); lErr == nil {
 		root = layout.Root
 	}
-	return newStatusPlaneProbeWith(paths, root, daemon.RepoStatusFile, daemon.EngineLivenessStatus), nil
+	pending := func() (bool, error) { return daemon.RebuildRequestPending(group, token) }
+	return newStatusPlaneProbeWith(paths, root, daemon.RepoStatusFile, daemon.EngineLivenessStatus, pending), nil
 }
 
-// newStatusPlaneProbeWith builds a probe with injected status/liveness readers
-// (production wires the real daemon funcs; tests inject fakes). It captures the
-// per-repo graph_fb_mtime BASELINE right now — BEFORE the rebuild is enqueued —
-// so completion can be detected as graph.fb being (re)written past this point.
-// For a fresh group the repos have no status file yet, so their baseline is 0.
-func newStatusPlaneProbeWith(paths []string, root string, rs statusReader, lr livenessReader) *statusPlaneProbe {
+// newStatusPlaneProbeWith builds a probe with injected readers (production wires
+// the real daemon funcs; tests inject fakes). It captures the per-repo
+// graph_fb_mtime BASELINE right now — BEFORE the rebuild is enqueued — so a
+// completed index is detected as graph.fb being (re)written past this point. For
+// a fresh group the repos have no status file yet, so their baseline is 0.
+func newStatusPlaneProbeWith(paths []string, root string, rs statusReader, lr livenessReader, pending pendingReader) *statusPlaneProbe {
 	p := &statusPlaneProbe{
 		repoPaths:    paths,
 		root:         root,
 		baseline:     make(map[string]int64, len(paths)),
 		readStatus:   rs,
 		readLiveness: lr,
-		started:      time.Now(),
+		pending:      pending,
 	}
 	for _, rp := range paths {
 		if f, ok := rs(rp); ok && f != nil {
@@ -270,32 +310,41 @@ func newStatusPlaneProbeWith(paths []string, root string, rs statusReader, lr li
 	return p
 }
 
-// Snapshot reads the status plane once. Indexed is true only when every group
-// repo has a status file that is not indexing and whose graph_fb_mtime has
-// ADVANCED past the pre-enqueue baseline (graph.fb was (re)written == index
-// completed). Entities/Relationships are NOT part of the completion predicate
-// because the wizard/rebuild code path does not write the graph-stats sidecar,
-// so Entities can stay 0 on a successful index (tracked as a separate bug); we
-// still surface whatever counts the status plane does have.
-func (p *statusPlaneProbe) Snapshot() (splitSnapshot, error) {
-	var ent, rels int64
-	allIndexed := len(p.repoPaths) > 0
-	for _, rp := range p.repoPaths {
-		f, ok := p.readStatus(rp)
-		if !ok || f == nil || f.Indexing || f.GraphFBMtime <= p.baseline[rp] {
-			allIndexed = false
-		}
-		if ok && f != nil {
-			ent += f.Entities
-			rels += f.Relationships
-		}
+// Poll reads the completion signal (our request still queued?) and engine
+// liveness in one shot.
+func (p *statusPlaneProbe) Poll() (splitPoll, error) {
+	pend, err := p.pending()
+	if err != nil {
+		return splitPoll{}, err
 	}
 	_, alive := p.readLiveness(p.root)
-	return splitSnapshot{
-		Indexed:     allIndexed,
-		EngineAlive: alive,
-		Entities:    ent,
-		Rels:        rels,
-		ElapsedSec:  time.Since(p.started).Seconds(),
-	}, nil
+	return splitPoll{RequestPending: pend, EngineAlive: alive}, nil
+}
+
+// Classify inspects each group repo AFTER the rebuild finished. A repo counts as
+// indexed-OK when its status file exists, is not indexing, and its
+// graph_fb_mtime advanced past the pre-enqueue baseline; otherwise it is listed
+// as failed (with LastErr if the status plane recorded one, else a generic
+// "produced no graph"). Stats are summed only over the OK repos.
+func (p *statusPlaneProbe) Classify() (splitResult, error) {
+	var res splitResult
+	for _, rp := range p.repoPaths {
+		f, ok := p.readStatus(rp)
+		if ok && f != nil && !f.Indexing && f.GraphFBMtime > p.baseline[rp] {
+			res.Entities += f.Entities
+			res.Rels += f.Relationships
+			continue
+		}
+		reason := "produced no graph"
+		if ok && f != nil {
+			switch {
+			case f.LastErr != "":
+				reason = f.LastErr
+			case f.Indexing:
+				reason = "still indexing when the rebuild acked"
+			}
+		}
+		res.Failed = append(res.Failed, fmt.Sprintf("%s (%s)", filepath.Base(rp), reason))
+	}
+	return res, nil
 }
