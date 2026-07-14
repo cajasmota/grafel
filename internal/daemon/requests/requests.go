@@ -100,6 +100,16 @@ type Record struct {
 	Commit    string          `json:"commit,omitempty"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
 	CreatedAt time.Time       `json:"created_at"`
+
+	// Attempts counts how many times a consumer has CLAIMED this request for
+	// application (incremented and persisted BEFORE apply runs — see
+	// ApplyAndAckBounded). It exists so a request whose apply keeps crashing
+	// mid-flight (the process dies before an ack is ever written, so the
+	// request is never removed) is re-applied a BOUNDED number of times across
+	// engine restarts rather than forever. Persisted durably in the request
+	// file precisely so the count survives a crash/restart; an in-memory
+	// counter would reset to zero on every restart and re-open the loop.
+	Attempts int `json:"attempts,omitempty"`
 }
 
 // Ack is the small result sidecar the consumer (engine) writes after
@@ -336,6 +346,116 @@ func ApplyAndAck(dir string, rec Record, apply func(Record) error) error {
 	}
 	_ = deleteAck(dir, rec.ID) // best-effort GC; see doc comment above
 	return nil
+}
+
+// Outcome classifies how ApplyAndAckBounded resolved a single request, so the
+// caller (the engine drain) can log/observe crash-recovery vs dead-lettering.
+type Outcome int
+
+const (
+	// OutcomeApplied: apply returned nil; request was acked (ok) and deleted.
+	OutcomeApplied Outcome = iota
+	// OutcomeAppliedError: apply returned a non-nil error; request was acked
+	// (error) and deleted — consumed exactly once, NOT retried (a returned
+	// error is a completed application, not an interruption).
+	OutcomeAppliedError
+	// OutcomeCrashed: apply panicked — the in-process analogue of the engine
+	// being killed mid-apply. The request is LEFT PENDING (its incremented
+	// attempt claim already persisted) so a later drain retries it, bounded by
+	// maxAttempts.
+	OutcomeCrashed
+	// OutcomeDeadLettered: the attempt budget was exhausted; the request was
+	// acked (error) and deleted so it will never be re-applied again.
+	OutcomeDeadLettered
+)
+
+// ApplyAndAckBounded is the crash-resume-bounded consumer sequence for
+// expensive, non-incremental requests (KindRebuild). It differs from
+// ApplyAndAck in exactly one way: it makes re-application AT-MOST-N rather than
+// at-least-once-forever, so a rebuild that keeps getting interrupted mid-apply
+// (memlimit/reaper/crash/RPC EOF — the process dies before an ack is ever
+// written, so the request is never removed) does NOT re-run on every drain
+// tick / every engine restart.
+//
+// The mechanism is a DURABLE attempt claim:
+//
+//  1. If rec.Attempts has already reached maxAttempts, dead-letter: write an
+//     error ack, delete the request, GC the ack. This TERMINATES the loop —
+//     the request is gone, no future drain can re-apply it.
+//  2. Otherwise persist rec.Attempts+1 to the request file (atomically, same
+//     path) BEFORE calling apply. This is the load-bearing step: the claim is
+//     on disk, so if the process dies at ANY point during apply, the next
+//     drain (even after a full engine restart) reads the HIGHER count and
+//     converges toward the dead-letter — an in-memory counter would reset and
+//     re-open the loop.
+//  3. Run apply, recovering a panic as a "crash": on crash the request is left
+//     pending (the claim is already persisted) for a bounded redrain retry; a
+//     real SIGKILL takes the same on-disk path minus the recover, since the
+//     claim was persisted in step 2 regardless.
+//  4. On normal completion (apply returned, with or without error) ack + delete
+//     + GC exactly as ApplyAndAck does — consumed exactly once.
+//
+// maxAttempts <= 0 disables the cap (unbounded, i.e. ApplyAndAck semantics for
+// the crash case) and is not used by the engine.
+func ApplyAndAckBounded(dir string, rec Record, maxAttempts int, apply func(Record) error) (Outcome, error) {
+	if maxAttempts > 0 && rec.Attempts >= maxAttempts {
+		ack := Ack{
+			Status: StatusError,
+			Err:    fmt.Sprintf("requests: dead-lettered %s after %d attempts without completing", rec.ID, maxAttempts),
+		}
+		if err := WriteAck(dir, rec.ID, ack); err != nil {
+			return OutcomeDeadLettered, fmt.Errorf("requests: write dead-letter ack for %s: %w", rec.ID, err)
+		}
+		if err := Delete(dir, rec.ID); err != nil {
+			return OutcomeDeadLettered, fmt.Errorf("requests: delete dead-lettered request %s: %w", rec.ID, err)
+		}
+		_ = deleteAck(dir, rec.ID)
+		return OutcomeDeadLettered, nil
+	}
+
+	// Durable claim BEFORE apply (see doc comment step 2). Write targets the
+	// SAME dir/<id>.request.json path (rec.ID is set), so this atomically
+	// overwrites the record in place with the incremented count.
+	rec.Attempts++
+	if _, err := Write(dir, rec); err != nil {
+		return OutcomeCrashed, fmt.Errorf("requests: persist attempt claim for %s: %w", rec.ID, err)
+	}
+
+	applyErr, crashed := safeApply(apply, rec)
+	if crashed {
+		// Leave the request pending; the persisted claim bounds redrain.
+		return OutcomeCrashed, nil
+	}
+
+	ack := Ack{Status: StatusOK}
+	if applyErr != nil {
+		ack.Status = StatusError
+		ack.Err = applyErr.Error()
+	}
+	if err := WriteAck(dir, rec.ID, ack); err != nil {
+		return OutcomeApplied, fmt.Errorf("requests: write ack for %s: %w", rec.ID, err)
+	}
+	if err := Delete(dir, rec.ID); err != nil {
+		return OutcomeApplied, fmt.Errorf("requests: delete request %s: %w", rec.ID, err)
+	}
+	_ = deleteAck(dir, rec.ID)
+	if applyErr != nil {
+		return OutcomeAppliedError, nil
+	}
+	return OutcomeApplied, nil
+}
+
+// safeApply runs apply(rec), converting a panic into (err, crashed=true) so a
+// crashing apply leaves the request pending for a bounded redrain rather than
+// unwinding the whole drain loop.
+func safeApply(apply func(Record) error, rec Record) (err error, crashed bool) {
+	defer func() {
+		if r := recover(); r != nil {
+			crashed = true
+			err = fmt.Errorf("requests: apply panicked: %v", r)
+		}
+	}()
+	return apply(rec), false
 }
 
 // deleteAck removes dir/<id>.ack.json. Absent file is not an error.

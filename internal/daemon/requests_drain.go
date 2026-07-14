@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync"
 	"time"
 
 	"github.com/cajasmota/grafel/internal/daemon/proto"
@@ -21,6 +22,43 @@ import (
 // short since the scan itself is a cheap directory glob, not a full
 // filesystem walk.
 const requestsDrainInterval = 2 * time.Second
+
+// maxRebuildAttempts bounds how many times a single KindRebuild request may be
+// (re-)applied across drains/engine-restarts before it is dead-lettered
+// (epic #5729, defect d). A group rebuild is multi-minute and, if the engine
+// is killed mid-apply (memlimit/reaper/crash/RPC EOF) before the ack is
+// written, the request is never removed — so a naive drain re-applies it on
+// EVERY 2s tick and EVERY engine restart, an unbounded full-group-rebuild
+// loop. Bounding attempts (persisted durably in the request file, so the count
+// survives a restart) turns at-least-once-forever into at-most-N with a
+// terminating dead-letter.
+const maxRebuildAttempts = 3
+
+// engineGroupRebuildGuard serialises KindRebuild applications per group on the
+// ENGINE side — where rebuildFn actually executes (epic #5729, defect c).
+//
+// Service.groupRebuildMu (service.go) is the analogous capacity-1 guard, but in
+// split mode it guards nothing: Service.Rebuild returns after merely WRITING
+// the request file, never reaching that guard, and the engine drain calls
+// rebuildFn directly here with no such serialisation. This guard puts the
+// single-flight on the live path, so two concurrent KindRebuild applications
+// for the SAME group run one rebuildFn at a time (the second waits), while
+// DIFFERENT groups still proceed concurrently.
+var engineGroupRebuildGuard groupRebuildGuard
+
+// groupRebuildGuard is a per-group capacity-1 semaphore keyed by group name.
+type groupRebuildGuard struct {
+	sems sync.Map // group name -> chan struct{} (cap 1)
+}
+
+// acquire blocks until this group's slot is free and returns a release func
+// that must be called (defer) once the guarded rebuild completes.
+func (g *groupRebuildGuard) acquire(group string) (release func()) {
+	v, _ := g.sems.LoadOrStore(group, make(chan struct{}, 1))
+	ch := v.(chan struct{})
+	ch <- struct{}{}
+	return func() { <-ch }
+}
 
 // discoverRequestsDirs finds every `requests/` directory under the store
 // layout rooted at root (either GRAFEL_DAEMON_ROOT/state or
@@ -90,9 +128,31 @@ func drainRequestsOnce(root string, scheduler *sched.Scheduler, rebuildFn Rebuil
 		}
 		for _, rec := range recs {
 			rec := rec
-			applyErr := requests.ApplyAndAck(dir, rec, func(r requests.Record) error {
+			apply := func(r requests.Record) error {
 				return applyRequest(scheduler, rebuildFn, r)
-			})
+			}
+			// KindRebuild is the multi-minute, non-incremental path: route it
+			// through the crash-resume-bounded consumer so an apply that keeps
+			// getting killed mid-flight is re-applied at most maxRebuildAttempts
+			// times (persisted across engine restarts) and then dead-lettered,
+			// instead of re-running on every drain tick forever (defect d).
+			// Cheap/idempotent kinds (KindReindex) keep the plain at-least-once
+			// ApplyAndAck — re-enqueuing is harmless and coalesces.
+			if rec.Kind == requests.KindRebuild {
+				outcome, applyErr := requests.ApplyAndAckBounded(dir, rec, maxRebuildAttempts, apply)
+				if logger != nil {
+					switch {
+					case applyErr != nil:
+						logger.Warn("requests: rebuild apply/ack failed", "dir", dir, "id", rec.ID, "attempts", rec.Attempts, "err", applyErr)
+					case outcome == requests.OutcomeCrashed:
+						logger.Warn("requests: rebuild apply crashed mid-flight; will retry (bounded)", "dir", dir, "id", rec.ID, "attempt", rec.Attempts+1, "max", maxRebuildAttempts)
+					case outcome == requests.OutcomeDeadLettered:
+						logger.Error("requests: rebuild dead-lettered after max attempts; giving up (not re-running)", "dir", dir, "id", rec.ID, "max", maxRebuildAttempts)
+					}
+				}
+				continue
+			}
+			applyErr := requests.ApplyAndAck(dir, rec, apply)
 			if applyErr != nil && logger != nil {
 				logger.Warn("requests: apply/ack failed", "dir", dir, "id", rec.ID, "kind", rec.Kind, "err", applyErr)
 			}
@@ -122,14 +182,19 @@ func applyRequest(scheduler *sched.Scheduler, rebuildFn RebuildFunc, rec request
 		if err := json.Unmarshal(rec.Payload, &args); err != nil {
 			return fmt.Errorf("requests: decode rebuild payload for %s: %w", rec.ID, err)
 		}
-		// Idempotency (PR6 prerequisite, epic #5729): a rebuild rebuilds its
-		// group FROM SCRATCH — the same call daemon.Service.Rebuild makes
-		// synchronously in monolith/engine mode. A redrain after a crash
-		// mid-apply (before the ack was written) simply reruns the same
-		// full rebuild a second time; it is not additive/incremental, so
-		// there is no double-effect to guard against beyond the normal
-		// wasted-work cost, which ApplyAndAck's ack-before-delete ordering
-		// already keeps to "at most once more", never unboundedly.
+		// Engine-side single-flight (defect c, epic #5729): serialise rebuilds
+		// of the SAME group so at most one rebuildFn runs at a time on the live
+		// (engine drain) path — the split-mode analogue of Service.groupRebuildMu,
+		// which guards nothing here because Service.Rebuild returns before
+		// reaching it. Different groups are keyed separately and still overlap.
+		// The guard wraps ONLY the rebuild call and is released even if
+		// rebuildFn panics (defer), so a crash cannot leak the slot.
+		release := engineGroupRebuildGuard.acquire(args.Group)
+		defer release()
+		// Bounded-idempotency (defect d) is handled one layer up by
+		// ApplyAndAckBounded, which persists an attempt claim before this runs;
+		// a crash mid-rebuild is retried at most maxRebuildAttempts times across
+		// engine restarts, then dead-lettered — never an unbounded redrain loop.
 		_, _, err := rebuildFn(args)
 		return err
 	default:
